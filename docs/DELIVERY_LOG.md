@@ -127,3 +127,9 @@ DATA-01 is accepted only as a local persistence foundation. No Worker DB driver 
 ### JOB-01 assigned — 24 September 2026
 
 After accepting DATA-01, root recorded [ADR-002](decisions/ADR-002-job-queue-and-scheduler.md) and the [JOB-01 assignment](assignments/JOB-01.md) in `7f76c42` (`docs(JOB-01): define durable queue boundaries`), then created `work/JOB-01-durable-queue` in `.codex-build/worktrees/job-01`. The implementation scope is a local PostgreSQL queue/repository boundary with idempotent scheduled/manual acquisition requests, finite leases/attempts/backoff, crash recovery and connector-health updates. It excludes external scheduler bindings, database drivers, live sources, model calls and public API changes. The implementation agent has not yet returned code or test results.
+
+### User-requested pause checkpoint — 25 September 2026
+
+Implementation was stopped at the user's request and the active JOB-01 subagent was interrupted. The main checkout was clean and synchronized with `origin/main` at `41324d4` before this checkpoint. Root preserved the agent's sole untracked artifact, `apps/db/migrations/002_acquisition_jobs.sql`, with a clear incomplete/unreviewed note in `docs/assignments/JOB-01.md`; both are committed as `0d51db0` (`wip(JOB-01): checkpoint interrupted queue schema`) on `work/JOB-01-durable-queue`. No JOB-01 tests or review were run, and this WIP branch was not pushed or merged.
+
+The full snapshot, integrated components, branches, previously completed checks, outstanding gates, and resume point are recorded in [CURRENT_CHECKPOINT.md](CURRENT_CHECKPOINT.md). Root added only the checkpoint record to `main`; `git diff --check` passed in WSL before commit. No implementation task is continuing.
