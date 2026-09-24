@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Planning baselines, BOOT-01 runtime shell, and fixture-backed UI-00 screens accepted; the complete prototype remains in progress
+**Status:** Planning baselines, BOOT-01 runtime shell, fixture-backed UI-00 screens, and PLATFORM-01 compatibility report accepted; the complete prototype remains in progress
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
@@ -23,6 +23,7 @@ This Software Development Plan (SDP) is the project's main engineering document.
 | [docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) | Domain relations, independent status dimensions, versioning and service invariants |
 | [docs/UX_API_SPEC.md](docs/UX_API_SPEC.md) and [docs/api/openapi.yaml](docs/api/openapi.yaml) | UI states, public projections, moderator flows and proposed HTTP boundary |
 | [docs/IMPLEMENTATION_BACKLOG.md](docs/IMPLEMENTATION_BACKLOG.md) | Ordered work packages, dependencies and review status |
+| [docs/PLATFORM_COMPATIBILITY.md](docs/PLATFORM_COMPATIBILITY.md) | Dated Cloudflare/Neon Free limits, local measurements, sensitivity scenarios and unverified integration gates |
 | [docs/decisions/README.md](docs/decisions/README.md) | Architecture decision record (ADR) process and open decisions |
 | Local `AGENTS.md` (Git-ignored) | Planner, implementer and reviewer operating rules for this workspace |
 | [REFERENCES.md](REFERENCES.md) | Source register for the eventual report bibliography |
@@ -141,6 +142,8 @@ The deployment target is a **low-volume class prototype on free tiers**, not a h
 | Model inference | A Workers AI adapter may be benchmarked only with models accessible on Free | Free allocation is 10,000 Neurons/day; some models require a paid Workers plan. No paid fallback. Model selection remains open until Indonesian quality, supported-model access, quota and failure behavior are measured. |
 
 The exact published quotas and their review links are recorded in [REFERENCES.md](REFERENCES.md). They are hard ceilings, not a capacity claim. Add app-level usage counters and stop new background/AI work before quota exhaustion; keep static pages and cached public projections distinct from current database-backed status. When a service suspends or is unavailable, display degraded coverage and timestamps, not an all-clear. The prototype must demonstrate its selected flows while remaining under the free quotas; it must not promise continuous polling, always-on database access, production freshness or citywide event coverage.
+
+[PLATFORM-01](docs/PLATFORM_COMPATIBILITY.md) found that a bounded synthetic demonstration is plausible from published ceilings, but actual Cloudflare/Neon compatibility remains unverified because the prototype has no provider integrations. The polling intervals recorded above remain unvalidated proposals. Under an illustrative 10 billable Workflow steps per run, separate schedules at 2, 5 and 10 minutes would use 7,200, 2,880 and 1,440 steps/day respectively; the 2-minute case exceeds the documented 3,000-step daily allowance. Re-measure actual steps and scheduling before selecting a live cadence. Neon Free still lacks the required tested 30-day off-provider backup and deletion-replay path, so live-source persistence remains blocked.
 
 Local project startup and verification use WSL Ubuntu-26.04. The planned development server and test database approach will be selected in BOOT-01; no external account, database project, paid model, live connector or deployment has been created. Data retention is constrained by Neon Free's 0.5 GB/project cap: enforce a small demo corpus, monitor storage, pause new acquisition before the cap, and preserve current evidence/audit rows rather than silently evicting them. Until a free off-provider backup and deletion-replay procedure is implemented and rehearsed, use synthetic/historical demo data only.
 

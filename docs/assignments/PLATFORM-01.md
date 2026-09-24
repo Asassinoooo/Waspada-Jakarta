@@ -1,6 +1,6 @@
 # PLATFORM-01 — Cloudflare Workers and Neon Free compatibility spike
 
-- **Status:** In progress; no provider resources or credentials are authorized
+- **Status:** Accepted as a local assessment; provider compatibility remains unverified and no provider resources or credentials were authorized
 - **Depends on:** BOOT-01, SPEC-02, SPEC-03, ADR-010
 - **Requirement coverage:** NFR-02/04/05/06/07/08; FR-02/07/08/14/15
 - **Branch/worktree:** `work/PLATFORM-01-free-compatibility`; `D:\Projects\RPL\.codex-build\worktrees\platform-01` (`/mnt/d/Projects/RPL/.codex-build/worktrees/platform-01` in WSL)
@@ -58,3 +58,8 @@ Agent appends commit SHA/message, changed files, primary sources and access date
 - **Estimates:** The plan lists unvalidated proposed intervals (BMKG 2 min, PetaBencana 5 min, news/traffic 10 min). At 10 illustrative steps/run, the per-schedule sensitivity is 7,200 / 2,880 / 1,440 steps/day respectively. Actual steps/run and shared vs. source-specific Workflow scheduling are unmeasured; no audience, model, DB region, or production load was selected.
 - **Untested:** Cloudflare CPU/request quotas under load, Workflows/retries/subrequests, Hyperdrive SQL and connection behavior, Neon Free DB/extension activation, cold starts, real storage/egress growth, Workers AI Free model access/Neurons, quota error rendering against provider failures, and off-provider backup/restore/deletion replay. No provider resources, credentials, paid usage, source access, or deployment were used.
 - **Report commit:** `bc7f414ccaaf9b5cc707022632c439d93fe4080a` — `docs(PLATFORM-01): assess free-tier compatibility`.
+- **Other task commits:** `839873f9346e20b7b097bc853f8dac7ab73513e3` — `docs(PLATFORM-01): record implementation handoff`; `4b4908c803f7d93c80d618c6aeb2bee5b23e6e2d` — `docs(PLATFORM-01): align Workflow sensitivity with planned cadences`.
+
+### Root acceptance — 24 September 2026
+
+Root reviewed the assigned-branch diff, official source dates and direct links, local-versus-provider measurement labels, quota failure behaviors, and the cadence sensitivity correction. Root ran `git diff --check main..work/PLATFORM-01-free-compatibility` in WSL Ubuntu-26.04; it passed. The task is accepted as a local compatibility assessment only, not as provider validation or authorization to persist live data. Root merge: `80f9636` (`merge: accept PLATFORM-01 compatibility spike`).
