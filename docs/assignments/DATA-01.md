@@ -1,6 +1,6 @@
 # DATA-01 — PostgreSQL schema, migrations and repository ports
 
-- **Status:** Ready; no provider project or live persistence is authorized
+- **Status:** In progress; no provider project or live persistence is authorized
 - **Depends on:** BOOT-01, SPEC-02, PLATFORM-01
 - **Requirement coverage:** FR-01/03/14; NFR-04/05/06/07/08
 - **Branch/worktree:** `work/DATA-01-postgres-foundation`; `D:\Projects\RPL\.codex-build\worktrees\data-01` (`/mnt/d/Projects/RPL/.codex-build/worktrees/data-01` in WSL)
