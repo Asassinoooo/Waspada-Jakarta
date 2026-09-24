@@ -2,7 +2,7 @@
 
 Start with the **[Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md)** for the complete project scope, requirements, milestones and acceptance gates. The [implementation backlog](docs/IMPLEMENTATION_BACKLOG.md) defines the work packages. Local agent instructions are retained in the Git-ignored `AGENTS.md` file.
 
-This is the local Git repository for the engineering plan and prototype. Source feasibility, domain contracts and UI/API specifications are accepted design baselines; the BOOT-01 local synthetic UI/API shell is implemented, while the complete product and live integrations are not. Deployment targets Cloudflare Workers and Neon Free for a low-volume class demo, subject to measured quota and recovery gates. Local development/testing uses WSL; start with the [local bootstrap guide](docs/BOOTSTRAP.md). See the [delivery log](docs/DELIVERY_LOG.md) for reviews and remaining work.
+This is the local Git repository for the engineering plan and prototype. Source feasibility, domain contracts and UI/API specifications are accepted design baselines; BOOT-01 supplies the local synthetic UI/API shell and UI-00 adds fixture-backed discovery, event detail, map, and read-only evidence review screens. The complete product and live integrations remain in progress. Deployment targets Cloudflare Workers and Neon Free for a low-volume class demo, subject to measured quota and recovery gates. Local development/testing uses WSL; start with the [local bootstrap guide](docs/BOOTSTRAP.md). See the [delivery log](docs/DELIVERY_LOG.md) for reviews and remaining work.
 
 GitHub remote: [Asassinoooo/Waspada-Jakarta](https://github.com/Asassinoooo/Waspada-Jakarta), configured locally as `origin`. Root periodically pushes reviewed, integrated checkpoints; implementation agents commit on their own task branches and do not push.
 
@@ -23,4 +23,4 @@ The current report is the [Google Docs project overview](https://docs.google.com
 - [Updated kickoff deck](deliverables/Waspada_Jakarta_Project_Kickoff_Layered.pptx): five-layer presentation; supersedes the earlier kickoff deck.
 - [Architecture alignment record](docs/ARCHITECTURE_ALIGNMENT.md): audit findings, scope and remaining implementation work.
 
-The next implementation task is UI-00: build the assigned map/feed, event evidence/history, and read-only moderator screens in its own worktree, using the synthetic local shell and reviewed fixtures. The supplied course lecture deck and earlier deliverables are retained as source/history, not current architecture specifications.
+The next ready task is PLATFORM-01: measure Cloudflare Workers and Neon Free compatibility using WSL and current official documentation, without creating cloud resources or enabling live data. DATA-01 follows with the platform constraints recorded. The supplied course lecture deck and earlier deliverables are retained as source/history, not current architecture specifications.

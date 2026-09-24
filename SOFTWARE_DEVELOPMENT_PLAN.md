@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Development authorized; source, domain and UX/API design baselines accepted; runtime implementation not started
+**Status:** Planning baselines, BOOT-01 runtime shell, and fixture-backed UI-00 screens accepted; the complete prototype remains in progress
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
