@@ -5,7 +5,8 @@
  * An empty collection means only that this response contained no features; it
  * does not establish an all-clear condition.
  *
- * `created_at` is documented in the source feasibility note. The exact
+ * `created_at` is documented as report creation time in the source feasibility note;
+ * it does not establish when the described incident was observed. The exact
  * `properties.pkey`, `properties.status`, and `properties.report_type` names
  * are provisional synthetic-fixture assumptions; a non-empty provider payload
  * has not verified these names or their meanings.
@@ -42,9 +43,9 @@ export interface PetabencanaReport {
   readonly providerStatus: string | null;
   /** Provisional fixture assumption properties.report_type. */
   readonly reportType: string | null;
-  /** Valid properties.created_at copied verbatim; this is not retrieval time. */
-  readonly observedAt: string | null;
-  readonly observedAtState: "valid" | "missing" | "invalid";
+  /** Valid properties.created_at copied verbatim as report-record creation metadata. */
+  readonly sourceCreatedAt: string | null;
+  readonly sourceCreatedAtState: "valid" | "missing" | "invalid";
   readonly retrievedAt: string;
   /** Original source geometry, or null when GeoJSON explicitly supplies null. */
   readonly geometry: PetabencanaGeometry | null;
@@ -208,15 +209,15 @@ function parseFeature(
   const metadata = properties ?? {};
   const providerStatus = readOptionalProviderText(metadata, "status");
   const reportType = readOptionalProviderText(metadata, "report_type");
-  const createdAt = readOptionalCreatedAt(metadata);
+  const sourceCreatedAt = readOptionalCreatedAt(metadata);
   const geometry = value.geometry === null ? null : parseGeometry(value.geometry, budget);
 
   return {
     featureId,
     providerStatus,
     reportType,
-    observedAt: createdAt.value,
-    observedAtState: createdAt.state,
+    sourceCreatedAt: sourceCreatedAt.value,
+    sourceCreatedAtState: sourceCreatedAt.state,
     retrievedAt,
     geometry,
   };

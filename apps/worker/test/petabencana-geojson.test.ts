@@ -11,7 +11,7 @@ import {
 // non-empty provider payload has verified them. Only `created_at` is documented.
 const SYNTHETIC_FIXTURE_LABEL = "SYNTHETIC TEST ONLY — not a PetaBencana report";
 const SYNTHETIC_RETRIEVED_AT = "2001-02-03T10:00:00+07:00";
-const SYNTHETIC_OBSERVED_AT = "2001-02-03T09:45:00+07:00";
+const SYNTHETIC_SOURCE_CREATED_AT = "2001-02-03T09:45:00+07:00";
 
 interface SyntheticFeatureOptions {
   readonly id?: string | number;
@@ -84,7 +84,7 @@ test("multiple synthetic reports preserve explicit fields and all supported sour
     pkey: `synthetic-feature-${index + 1}`,
     status: "fixture-only",
     report_type: "test-only",
-    created_at: SYNTHETIC_OBSERVED_AT,
+    created_at: SYNTHETIC_SOURCE_CREATED_AT,
     includeCreatedAt: true,
     geometry,
   }));
@@ -99,14 +99,14 @@ test("multiple synthetic reports preserve explicit fields and all supported sour
     assert.equal(report.featureId, `synthetic-feature-${index + 1}`);
     assert.equal(report.providerStatus, "fixture-only");
     assert.equal(report.reportType, "test-only");
-    assert.equal(report.observedAt, SYNTHETIC_OBSERVED_AT);
-    assert.equal(report.observedAtState, "valid");
+    assert.equal(report.sourceCreatedAt, SYNTHETIC_SOURCE_CREATED_AT);
+    assert.equal(report.sourceCreatedAtState, "valid");
     assert.equal(report.retrievedAt, SYNTHETIC_RETRIEVED_AT);
     assert.deepEqual(report.geometry, geometries[index]);
   });
 });
 
-test("missing and invalid created_at remain unknown instead of using retrieval time", () => {
+test("missing and invalid source created_at remain unknown instead of using retrieval time", () => {
   const result = parsePetabencanaGeoJson(
     syntheticCollection([
       syntheticFeature(),
@@ -117,17 +117,17 @@ test("missing and invalid created_at remain unknown instead of using retrieval t
 
   assert.equal(result.kind, "records");
   if (result.kind !== "records") return;
-  assert.deepEqual(result.reports.map(({ observedAt, observedAtState }) => ({ observedAt, observedAtState })), [
-    { observedAt: null, observedAtState: "missing" },
-    { observedAt: null, observedAtState: "invalid" },
+  assert.deepEqual(result.reports.map(({ sourceCreatedAt, sourceCreatedAtState }) => ({ sourceCreatedAt, sourceCreatedAtState })), [
+    { sourceCreatedAt: null, sourceCreatedAtState: "missing" },
+    { sourceCreatedAt: null, sourceCreatedAtState: "invalid" },
   ]);
   assert.ok(result.reports.every((report) => report.retrievedAt === SYNTHETIC_RETRIEVED_AT));
 });
 
-test("source time and caller-supplied retrieval time remain distinct", () => {
+test("source record creation time and caller-supplied retrieval time remain distinct", () => {
   const result = parsePetabencanaGeoJson(
     syntheticCollection([syntheticFeature({
-      created_at: SYNTHETIC_OBSERVED_AT,
+      created_at: SYNTHETIC_SOURCE_CREATED_AT,
       includeCreatedAt: true,
     })]),
     SYNTHETIC_RETRIEVED_AT,
@@ -135,8 +135,10 @@ test("source time and caller-supplied retrieval time remain distinct", () => {
 
   assert.equal(result.kind, "records");
   if (result.kind !== "records") return;
-  assert.equal(result.reports[0]?.observedAt, SYNTHETIC_OBSERVED_AT);
-  assert.equal(result.reports[0]?.retrievedAt, SYNTHETIC_RETRIEVED_AT);
+  const report = result.reports[0];
+  assert.equal(report?.sourceCreatedAt, SYNTHETIC_SOURCE_CREATED_AT);
+  assert.equal(report?.retrievedAt, SYNTHETIC_RETRIEVED_AT);
+  assert.equal(report !== undefined && "observedAt" in report, false);
 });
 
 test("invalid coordinates reject the entire collection with a bounded error detail", () => {
