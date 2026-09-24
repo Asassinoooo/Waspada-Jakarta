@@ -42,7 +42,7 @@ Provider documentation was accessed 24 September 2026. Published ceilings do not
 | --- | --- | --- |
 | Workers requests/assets | 100,000 Worker requests/account/day, reset at 00:00 UTC. Static asset requests are free and unlimited when served as assets; API requests invoking Worker code count. | Local only; hosted request counts unknown. |
 | Workers execution | 10 ms active CPU/invocation, 128 MB/isolate, 50 external and 1,000 Cloudflare-service subrequests/invocation, six outbound connections concurrently waiting for response headers. | No provider CPU, memory, or subrequest metrics. Keep public reads small and deterministic. |
-| Cron Triggers | Up to 5 triggers/Free account; run on UTC time. | Polling cadence is undecided; combine schedules where appropriate and do not promise exact freshness from a trigger. |
+| Cron Triggers | Up to 5 triggers/Free account; run on UTC time. | The project plan proposes BMKG every 2 minutes, PetaBencana every 5 minutes, and news/traffic every 10 minutes. These intervals are unvalidated proposals, not commitments; Cron does not guarantee exact freshness. |
 | Workflows | Free includes 3,000 billable steps/day (billing effective 10 Aug 2026), 1 GB-month state, 100,000 executions/day shared with Workers requests, 1,024 steps/instance, 100 MB persisted state/instance, and 10 ms CPU per step. Retries and rollback handlers do not count toward billed steps. | No Workflow is implemented. Provider retry billing does not change the project rule: failed L3 attempts count against the persisted investigation budget. |
 | Hyperdrive | Free includes 100,000 SQL statements/day, resetting 00:00 UTC. Queries, mutations, and schema statements count; cached and uncached queries count. Pooling uses transaction mode; session state is reset when a connection returns to the pool. | No SQL/driver is implemented; statements per read and pool behavior are unknown. |
 | Workers AI | 10,000 Neurons/day free allocation, reset 00:00 UTC; exhausted calls fail. Some models require paid billing or prepaid credits. | No model is chosen or called. On quota/access failure, hold work for review; never select a paid model automatically. |
@@ -56,7 +56,7 @@ Sources are linked in [REFERENCES.md](../REFERENCES.md). Neon’s current plan t
 
 ## 3. Low-volume sensitivity scenarios
 
-These are arithmetic examples, not accepted user counts, poll requirements, benchmarks, or forecasts. The project plan names BMKG, PetaBencana, ANTARA, and a traffic-source candidate, but sets neither expected audience nor polling cadence.
+These are arithmetic examples, not accepted user counts, benchmarks, or forecasts. The project plan proposes polling BMKG every 2 minutes, PetaBencana every 5 minutes, and news/traffic every 10 minutes; these are not validated commitments. Expected audience and production load remain unspecified.
 
 Assume 10 API reads per active user/day. Static asset requests are excluded; background invocations also consume the shared Workers/Workflows request ceiling.
 
@@ -69,15 +69,15 @@ Assume 10 API reads per active user/day. Static asset requests are excluded; bac
 
 Hyperdrive read-cap sensitivity, excluding source jobs: 1 statement/read permits 100,000 reads/day; 2 permits 50,000; 5 permits 20,000; 10 permits 10,000. The current API has no SQL; DATA-01/API integration must measure actual query counts and include moderation, source work, and retries.
 
-For scheduled work, assume one composite acquisition Workflow handles the four automated-source candidates, one run per Cron tick, and 10 billable steps/run. Ten steps is an unmeasured placeholder; group notices are manual.
+For scheduled acquisition sensitivity, assume one workflow execution per tick at each proposed interval and 10 billable steps per run. Both values are illustrative: actual steps/run and whether sources share one Workflow schedule or use separate schedules have not been measured. Separate source-specific schedules at the same interval multiply the relevant estimate by their count; combining sources may change steps/run.
 
-| Illustrative cadence | Runs/day | Steps/day | Share of 3,000 |
-| --- | ---: | ---: | ---: |
-| 60 minutes | 24 | 240 | 8% |
-| 15 minutes | 96 | 960 | 32% |
-| 5 minutes | 288 | 2,880 | 96% |
+| Source group in plan | Proposed interval | Runs/day per schedule | Assumed billable steps/run | Illustrative steps/day | Share of 3,000/day |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| BMKG | 2 minutes | 720 | 10 | 7,200 | 240% |
+| PetaBencana | 5 minutes | 288 | 10 | 2,880 | 96% |
+| News/traffic | 10 minutes | 144 | 10 | 1,440 | 48% |
 
-At five-minute cadence, the hypothetical acquisition nearly uses the entire daily step allowance, leaving little room for investigations and maintenance. Four separate workflows per tick would multiply the estimates by four. Cadence/design remain unresolved. Each instance is also limited to 1,024 Free steps; no real step count or retry/replay behavior was tested.
+Under this placeholder, the proposed 2-minute BMKG schedule alone exceeds the 3,000-step daily allowance; the 5-minute PetaBencana schedule nearly consumes it. These figures exclude any additional investigation or maintenance work. The proposals remain unchanged in the project plan and are not approved service commitments. Each instance is also limited to 1,024 Free steps; no real step count or retry/replay behavior was tested.
 
 Neon’s 100 CU-hours permits at most 400 active hours/month at 0.25 CU, 200 at 0.5 CU, 100 at 1 CU, or 50 at 2 CU. Continuously active 0.25 CU over 30 days would use 180 CU-hours, above Free. Actual traffic, idle periods, cold starts, and pool behavior must be measured after authorized integration. The 0.5 GB storage and 5 GB transfer caps are known, but there is no DB schema or workload to estimate row/index/vector growth or SQL response bytes. Evenly dividing 5 GB by 30 yields about 167 MB/day only as arithmetic; actual daily use will not be even.
 
@@ -104,4 +104,4 @@ Provider errors to normalize include Workers Error 1027 for daily request exhaus
 
 Before live-source persistence or a deployment claim, authorized follow-up must: select a Neon PostgreSQL major and run migrations plus spatial/vector queries on Free; integrate the chosen driver via Hyperdrive and measure statements, result bytes, pool/session behavior, and warm/cold latency; implement and measure bounded source/L3 Workflows including retries and persisted budgets; measure deployed CPU/memory and exercise failure paths without paid fallback; choose a model only after Indonesian evaluation and Free quota measurement; and rehearse free encrypted off-provider backup, 30-day retention, restore, tombstones, and deletion replay.
 
-Unresolved inputs include audience, per-user read rate, polling cadence, route SQL count, retained-data volume, DB region, model/version, quota headroom, map/geocoder terms, and backup destination. Live-source persistence remains blocked until the recovery gate passes.
+Unresolved inputs include audience, per-user read rate, validation/selection of proposed polling intervals, route SQL count, retained-data volume, DB region, model/version, quota headroom, map/geocoder terms, and backup destination. Live-source persistence remains blocked until the recovery gate passes.
