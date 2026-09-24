@@ -190,11 +190,15 @@ describe('DATA-01 relational persistence', () => {
       ),
       /check constraint/i,
     );
-    const dimensions = await testDatabase.executor.query<{ dimensions: number }>(
-      'SELECT dimensions FROM waspada.embedding_runs WHERE dataset_kind = $1 ORDER BY embedding_run_id',
+    const dimensions = await testDatabase.executor.query<{ embedding_run_id: string; dimensions: number }>(
+      'SELECT embedding_run_id, dimensions FROM waspada.embedding_runs WHERE dataset_kind = $1 ORDER BY embedding_run_id',
       ['synthetic'],
     );
-    assert.deepEqual(dimensions.rows.map(({ dimensions: value }) => value), [2, 2, 3]);
+    assert.deepEqual(dimensions.rows, [
+      { embedding_run_id: 'embedding-a', dimensions: 2 },
+      { embedding_run_id: 'embedding-b', dimensions: 3 },
+      { embedding_run_id: 'embedding-bad-dimension', dimensions: 2 },
+    ]);
   });
 
   it('links traces and append-only audit rows while isolating audit datasets', async () => {
