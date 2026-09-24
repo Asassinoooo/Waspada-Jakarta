@@ -1,6 +1,6 @@
 # Waspada Jakarta — UI flows and API contract
 
-**Status:** SPEC-03 design baseline accepted on 24 September 2026. UI flows and public/moderator API behavior are proposed; no runtime service exists. The OpenAPI 3.1 document has been aligned to the accepted schema 2.0 proposal; BOOT-01/API-01/MOD-01 must still implement and test it.
+**Status:** SPEC-03 design baseline accepted on 24 September 2026. The BOOT-01 local shell implements only synthetic `GET /api/v1/context` and `GET /api/v1/events` projections. The broader public and moderator flows and routes remain design proposals; API-01/MOD-01 must implement and test them. The OpenAPI 3.1 contract remains unchanged.
 
 ## 1. Product and interaction rules
 

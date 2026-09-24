@@ -1,6 +1,6 @@
 # BOOT-01 — Runtime and application skeleton
 
-- **Status:** In progress
+- **Status:** Accepted after root review
 - **Assigned branch:** `work/BOOT-01-runtime-skeleton`
 - **Dependency baseline:** commit `544e0dc` (accepted design contracts and ADR-010)
 - **Owner:** Luna Max implementation agent; root reviews and integrates
@@ -37,7 +37,7 @@ Do not edit architecture, contracts, OpenAPI, the backlog, top-level README/SDP 
 
 ## Handoff
 
-Pending root review. Record actual changed paths, implementation, branch/commit, commands/results, limitations, and any required follow-up before handing off.
+**Accepted by root:** The reviewed branch implements the assigned synthetic UI/Worker skeleton without contract or architecture changes. The branch is integrated into `main` by merge commit `238128d74b8f97e24fb0392a626bf6e463c05094` (`merge: accept BOOT-01 runtime skeleton`). Agent commits: `1421e2497aa08c35f7d694502ab2be494b41678c` (`feat(BOOT-01): scaffold synthetic Worker demo app`) and `21f049e5c348acd7f6f0d04e77c91081fd14b304` (`docs(BOOT-01): record completed implementation handoff`). Root independently reran WSL smoke, six tests, typecheck, Vite build and Wrangler dry-run; all passed. The integration is local and queued for the next authorized checkpoint push.
 
 ## Completed implementation handoff
 
