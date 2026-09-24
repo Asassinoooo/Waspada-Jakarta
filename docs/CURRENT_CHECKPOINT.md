@@ -1,4 +1,4 @@
-# Waspada Jakarta — Current Project Checkpoint
+# Waspada Jakarta — Pause Checkpoint and Resumption Notes
 
 **Checkpoint date:** 25 September 2026
 **Reason:** Work paused at the user's request.
@@ -57,3 +57,9 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 ## Resume point
 
 Resume with root review of JOB-01's WIP, then complete the assigned local queue behavior and WSL tests on `work/JOB-01-durable-queue`. Preserve all existing scope boundaries: no API contract change, external provisioning, live acquisition, model calls, or deployment without separate authorization.
+
+## Autonomous development resumed — 25 September 2026
+
+The user resumed the broader local-development goal. Root verified that `main` is clean at `da49689` and matches `origin/main`; the JOB-01 branch is clean at `0d51db0`. The interrupted Luna Max agent has been reactivated on JOB-01 and is expected to continue the original assignment. No JOB-01 results are accepted yet.
+
+Root separated deterministic fixture parsing from scheduled acquisition and human evaluation gates. The backlog now includes **ING-PARSE-01**, a local-only PetaBencana-style GeoJSON parser task that uses synthetic fixtures and requires no JOB-01 queue, EVAL-01 labels, network, persistence, or new dependency. Its scope is in `docs/assignments/ING-PARSE-01.md`. `ING-01` remains the later queue-to-L1 acquisition/activation integration and still requires its defined dependencies and source approvals.
