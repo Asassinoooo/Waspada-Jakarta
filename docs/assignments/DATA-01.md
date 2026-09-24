@@ -38,6 +38,14 @@ The accepted domain model remains authoritative. Translate its stored records an
 - Use WSL Ubuntu-26.04 with the Node/npm versions from `docs/BOOTSTRAP.md`. Run the database tests, `npm test`, `npm run typecheck`, `npm run build`, and `npm run smoke` if runtime integration changes require it. Record actual commands and results; do not claim a Neon/Hyperdrive test.
 - `git diff --check` passes, changed paths stay within the allowlist, and the task branch is clean after descriptive commits.
 
+## Checkpoint — 24 September 2026
+
+DATA-01 is **checkpointed, incomplete, and not accepted**. The task branch contains `b4bf7e42451f1d1fe13e9758c363e11a13eeec31` (`wip(DATA-01): checkpoint PostgreSQL foundation`) and is pushed to `origin/work/DATA-01-postgres-foundation`; it has not been merged. The branch adds `apps/db/migrations/001_foundation.sql`, the migration runner and SQL boundary, typed repository ports, synthetic PGlite test harness/tests, the `@waspada/db` workspace, and root package/lockfile wiring.
+
+WSL Ubuntu-26.04 with Node.js 24.21.0/npm 11.19.0: `npm ci --offline --no-audit --no-fund` passed; `npm run typecheck` passed; `npm run db:test` passed 8/9 tests. The remaining vector-distance ordering assertion fails at `apps/db/test/persistence.test.ts:197` because actual dimensions are `[2,3,2]` and expected `[2,2,3]`. `npm test`, `npm run build`, `npm run smoke`, and `git diff --check` have not been run. The test-only versions are PGlite 0.5.8, PGlite PostGIS 0.2.8 (experimental), and PGlite pgvector 0.0.9; this does not establish Neon compatibility or provider extension versions. No OS packages or provider resources were added.
+
+The branch handoff records the SQL-enforced versus application-enforced invariants. Resume by resolving the vector query test’s ordering expectation, rerunning required checks, then reviewing the full branch before any merge or acceptance.
+
 ## Handoff
 
 Append the branch, commit SHAs/messages, changed files, migration/test strategy and exact WSL results. Name any test-only dependency and its license/source. List invariants covered by SQL versus repository/application validation, plus untested Neon/Hyperdrive behavior. Root records review, acceptance and the next package.
