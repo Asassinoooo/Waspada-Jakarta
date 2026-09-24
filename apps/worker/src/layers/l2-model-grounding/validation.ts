@@ -656,6 +656,9 @@ function parseProposedClaim(value: unknown, path: string, allowedEvidence: Reado
   const contradictions = parseReferenceSet(record.contradictions, `${path}.contradictions`, "contradicts", allowedEvidence);
   const contextEvidence = parseReferenceSet(record.contextEvidence, `${path}.contextEvidence`, "updates", allowedEvidence);
   const supportAssessment = enumValue(record.supportAssessment, ["supported", "uncertain", "disputed"] as const, `${path}.supportAssessment`) as SupportAssessment;
+  if (contradictions.length > 0 && supportAssessment === "supported") {
+    reject(`${path}:contradiction_cannot_be_marked_supported`);
+  }
   return { text, eventTime, validity, scope, qualifiers, support, contradictions, contextEvidence, supportAssessment };
 }
 
@@ -667,8 +670,9 @@ export async function parseReasoningOutput(
   const envelope = validateProviderEnvelope(raw, "provider.reasoning");
   const output = exactRecord(envelope.output, ["outcome", "claims", "unresolvedFields"], "provider.reasoning.output");
   const outcome = enumValue(output.outcome, ["proposed", "abstained"] as const, "provider.reasoning.output.outcome");
-  const unresolvedFields = uniqueStrings(output.unresolvedFields, "provider.reasoning.output.unresolvedFields", 100, 500);
   const context = request.data.groundingContext;
+  const modelUnresolvedFields = uniqueStrings(output.unresolvedFields, "provider.reasoning.output.unresolvedFields", 100, 500);
+  const unresolvedFields = [...new Set([...modelUnresolvedFields, ...context.missingFields])];
   const allowedEvidence = new Set(context.evidence.map((entry) => referenceKey(entry.reference)));
   const claims = boundedArray(output.claims, 20, "provider.reasoning.output.claims")
     .map((claim, index) => parseProposedClaim(claim, `provider.reasoning.output.claims[${index}]`, allowedEvidence));
@@ -683,7 +687,7 @@ export async function parseReasoningOutput(
     promptVersion: model.promptVersion,
     ...envelope.usage,
   };
-  return { outcome, claims, unresolvedFields, modelRun, provider: model.provider };
+  return { outcome, claims, unresolvedFields, conflicts: context.conflicts, modelRun, provider: model.provider };
 }
 
 /** Hash helper for trusted L1 callers and contract fixtures. */

@@ -208,6 +208,8 @@ export interface ReasoningResult {
   readonly outcome: "proposed" | "abstained";
   readonly claims: readonly ProposedClaim[];
   readonly unresolvedFields: readonly string[];
+  /** Retrieval conflicts are preserved verbatim for the downstream review gate. */
+  readonly conflicts: readonly string[];
   readonly modelRun: ModelRun<"reasoning">;
   readonly provider: string;
 }

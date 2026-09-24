@@ -180,6 +180,10 @@ test("classification validates report hash and Unicode code-point evidence", asy
   const badRequest = await createModelCapabilityAdapter(requestProvider, configuration).classify({ data: { report: badHash } });
   assert.equal(badRequest.status, "invalid_request");
   assert.equal(requestProvider.calls.classification, 0);
+
+  const throwingProvider = new ScriptedModelProviderDoubleForTests({ classification: new Error("provider unavailable") });
+  const failed = await createModelCapabilityAdapter(throwingProvider, configuration).classify({ data: { report } });
+  assert.deepEqual(failed, { status: "provider_error", capability: "classification" });
 });
 
 test("extractor rejects extra fields and invalid time precision", async () => {
@@ -204,6 +208,11 @@ test("extractor rejects extra fields and invalid time precision", async () => {
   });
   const extra = await createModelCapabilityAdapter(extraProvider, configuration).extract(request);
   assert.equal(extra.status, "invalid_output");
+
+  const { unknownFields: _unknownFields, ...missingFieldOutput } = baseOutput;
+  const missingProvider = new ScriptedModelProviderDoubleForTests({ extraction: providerEnvelope(missingFieldOutput) });
+  const missing = await createModelCapabilityAdapter(missingProvider, configuration).extract(request);
+  assert.equal(missing.status, "invalid_output");
 
   const badTimeProvider = new ScriptedModelProviderDoubleForTests({
     extraction: providerEnvelope({ ...baseOutput, eventTime: { start: "2026-09-25T08:00:00+07:00", end: null, precision: "date" } }),
@@ -236,6 +245,8 @@ test("reasoning can cite only exact retrieved context and retains contrary evide
     assert.equal(result.value.claims[0]?.contradictions.length, 1);
     assert.equal(result.value.claims[0]?.supportAssessment, "disputed");
     assert.equal(result.value.provider, "scripted");
+    assert.deepEqual(result.value.unresolvedFields, ["reopening_confirmation"]);
+    assert.deepEqual(result.value.conflicts, groundingContext.conflicts);
   }
 
   const invented = { ...support, spanStart: support.spanStart + 1, spanEnd: support.spanEnd };
@@ -244,6 +255,18 @@ test("reasoning can cite only exact retrieved context and retains contrary evide
   });
   const invalid = await createModelCapabilityAdapter(inventedProvider, configuration).reason({ data: { groundingContext } });
   assert.equal(invalid.status, "invalid_output");
+
+  const overconfidentProvider = new ScriptedModelProviderDoubleForTests({
+    reasoning: providerEnvelope({ outcome: "proposed", claims: [{ ...claim, supportAssessment: "supported" }], unresolvedFields: [] }),
+  });
+  const overconfident = await createModelCapabilityAdapter(overconfidentProvider, configuration).reason({ data: { groundingContext } });
+  assert.equal(overconfident.status, "invalid_output");
+
+  const oversizedProvider = new ScriptedModelProviderDoubleForTests({
+    reasoning: providerEnvelope({ outcome: "proposed", claims: [{ ...claim, text: "x".repeat(4_001) }], unresolvedFields: [] }),
+  });
+  const oversized = await createModelCapabilityAdapter(oversizedProvider, configuration).reason({ data: { groundingContext } });
+  assert.equal(oversized.status, "invalid_output");
 });
 
 test("embedding validates finite vector dimensions and binds result to chunk lineage", async () => {
@@ -276,5 +299,8 @@ test("embedding validates finite vector dimensions and binds result to chunk lin
   const badProvider = new ScriptedModelProviderDoubleForTests({ embedding: { vector: [0.1, Number.NaN, 0.3] } });
   const bad = await createModelCapabilityAdapter(badProvider, configuration).embed(request);
   assert.equal(bad.status, "invalid_output");
-});
 
+  const wrongDimensionProvider = new ScriptedModelProviderDoubleForTests({ embedding: { vector: [0.1, 0.2] } });
+  const wrongDimension = await createModelCapabilityAdapter(wrongDimensionProvider, configuration).embed(request);
+  assert.equal(wrongDimension.status, "invalid_output");
+});
