@@ -26,7 +26,7 @@ Planning/specification files include `SOFTWARE_DEVELOPMENT_PLAN.md`, `PROJECT_PL
 | `work/BOOT-01-runtime-skeleton` | Accepted and merged; retained clean at `21f049e`. |
 | `work/UI-00-civic-interface` | Accepted and merged; retained clean at `eddb962`. |
 | `work/DATA-01-postgres-foundation` | Accepted and merged; clean at `b996c72`, also pushed to its origin branch. |
-| `work/PLATFORM-01-free-compatibility` | Accepted report is integrated. A later cadence-documentation correction at `4b4908c` is clean on this branch but was not merged or independently reviewed by root. |
+| `work/PLATFORM-01-free-compatibility` | The accepted report and cadence-documentation correction at `4b4908c` are integrated; the task branch is retained clean for traceability. The merge and root review are recorded in `docs/DELIVERY_LOG.md`. |
 | `work/JOB-01-durable-queue` | Local WIP commit `0d51db0` preserves the interrupted initial migration and assignment handoff. Not pushed, tested, reviewed, merged, or accepted. |
 
 JOB-01 implementation was interrupted and its agent halted. The only implementation artifact is `apps/db/migrations/002_acquisition_jobs.sql`, an initial queue-table draft. The WIP commit also updates `docs/assignments/JOB-01.md` to record what is incomplete. Do not apply or treat this migration as accepted. No JOB-01 tests were run.
@@ -52,7 +52,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 - Measure actual Cloudflare/Neon workloads, quotas, latency, and stop thresholds using an authorized provider setup before deployment.
 - Collect user research and human-adjudicated evaluation labels; no labels or safety-coverage claims are inferred from synthetic fixtures.
 - Finish moderator authentication, publication rules, incident correction/retraction propagation, ingestion, retrieval, bounded investigation, and public API work according to the backlog.
-- Review, test, and complete JOB-01's partial schema and repository behavior. Separately review the unmerged PLATFORM-01 cadence-documentation correction.
+- Review, test, and complete JOB-01's partial schema and repository behavior.
 
 ## Resume point
 
@@ -60,7 +60,7 @@ Resume with root review of JOB-01's WIP, then complete the assigned local queue 
 
 ## Autonomous development resumed — 25 September 2026
 
-The user resumed the broader local-development goal. Root verified that `main` is clean at `da49689` and matches `origin/main`; the JOB-01 branch is clean at `0d51db0`. The interrupted Luna Max agent has been reactivated on JOB-01 and is expected to continue the original assignment. No JOB-01 results are accepted yet.
+The user resumed the broader local-development goal. Root verified that `main` was clean at `da49689` and matched `origin/main`; the JOB-01 branch was clean at `0d51db0`. The interrupted Luna Max agent has been reactivated on JOB-01. No JOB-01 results are accepted yet.
 
 Root separated deterministic fixture parsing from scheduled acquisition and human evaluation gates. The backlog now includes **ING-PARSE-01**, a local-only PetaBencana-style GeoJSON parser task that uses synthetic fixtures and requires no JOB-01 queue, EVAL-01 labels, network, persistence, or new dependency. Its scope is in `docs/assignments/ING-PARSE-01.md`. `ING-01` remains the later queue-to-L1 acquisition/activation integration and still requires its defined dependencies and source approvals.
 
