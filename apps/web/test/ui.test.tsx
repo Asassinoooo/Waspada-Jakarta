@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { EventView, PublicContext } from "@waspada/worker/public-contracts";
+import { SiteHeader } from "../src/App.js";
+import { EventDetail } from "../src/EventDetail.js";
 import { EventFeed } from "../src/EventFeed.js";
+import { ModeratorReview } from "../src/ModeratorReview.js";
+import type { MapSelection } from "../src/MapPanel.js";
 
 const demoContext: PublicContext = {
   dataset_mode: "demo",
   dataset_label: "synthetic",
-  generated_at: "2026-09-24T00:00:00.000Z",
+  generated_at: "2026-09-24T10:00:00.000Z",
   sources: [],
 };
 
@@ -33,26 +37,97 @@ const sampleEvent: EventView = {
   published_at: "2026-09-24T00:00:00.000Z",
 };
 
-test("the visible page keeps the synthetic demo banner and source gap clear", () => {
-  const html = renderToStaticMarkup(
-    <EventFeed status="loaded" events={[sampleEvent]} context={demoContext} />,
+function renderFeed(options: { status?: "loading" | "loaded" | "unavailable"; events?: EventView[]; query?: string; selection?: MapSelection } = {}) {
+  return renderToStaticMarkup(
+    <EventFeed
+      status={options.status ?? "loaded"}
+      events={options.events ?? [sampleEvent]}
+      context={demoContext}
+      query={options.query ?? ""}
+      onQueryChange={() => {}}
+      onRetry={() => {}}
+      mapSelection={options.selection ?? { kind: "none" }}
+      onSelectApiEvent={() => {}}
+      onSelectPresentation={() => {}}
+      mobilePanel="list"
+      onMobilePanelChange={() => {}}
+    />,
   );
+}
 
-  assert.match(html, /DEMO — data sintetis; bukan peringatan langsung/);
-  assert.match(html, /Tidak ada sumber live yang terhubung/);
-  assert.match(html, /Contoh fiktif: pemberitahuan kelompok/);
-  assert.match(html, /Waktu, lokasi, klaim, dan dampak tidak tersedia/);
+test("persistent shell and discovery expose synthetic dataset and linked list/map controls", () => {
+  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} />);
+  const page = renderFeed();
+
+  assert.match(header, /DEMO — data sintetis; bukan peringatan langsung/);
+  assert.match(header, /Tidak ada sumber live yang terhubung/);
+  assert.match(header, /Lewati ke konten utama/);
+  assert.match(page, /Contoh fiktif: pemberitahuan kelompok/);
+  assert.match(page, /aria-label="Tampilan jelajah"/);
+  assert.match(page, /aria-pressed="true">Daftar/);
+  assert.match(page, /aria-pressed="false">Peta/);
+  assert.match(page, /Siklus/);
+  assert.match(page, /Kesegaran/);
+  assert.match(page, /Bukti/);
+  assert.match(page, /Relevansi/);
+  assert.match(page, /Belum ada segmen dipilih/);
+  assert.match(page, /aria-pressed="false">Tampilkan segmen/);
+  assert.doesNotMatch(page, /route-diagram/);
+  const selectedApi = renderFeed({ selection: { kind: "api-event", event: sampleEvent } });
+  assert.match(selectedApi, /Tidak dipetakan/);
+  const selectedPresentation = renderFeed({ selection: { kind: "presentation" } });
+  assert.match(selectedPresentation, /route-diagram/);
+  assert.match(selectedPresentation, /aria-pressed="true">Segmen dipilih/);
+  assert.match(selectedPresentation, /106\.8, -6\.2 → 106\.81, -6\.21/);
 });
 
-test("empty and unavailable states never imply an all-clear", () => {
-  const emptyHtml = renderToStaticMarkup(
-    <EventFeed status="loaded" events={[]} context={demoContext} />,
-  );
-  assert.match(emptyHtml, /Kekosongan data tidak berarti area aman/);
+test("loading, empty, and unavailable states give honest next steps", () => {
+  const loading = renderFeed({ status: "loading", events: [] });
+  const empty = renderFeed({ events: [] });
+  const noMatch = renderFeed({ query: "tidak-ada" });
+  const unavailable = renderFeed({ status: "unavailable", events: [] });
 
-  const unavailableHtml = renderToStaticMarkup(
-    <EventFeed status="unavailable" events={[]} context={null} />,
+  assert.match(loading, /Memuat record sintetis/);
+  assert.match(empty, /bukan pernyataan bahwa area aman/);
+  assert.match(noMatch, /Tidak ada laporan yang cocok/);
+  assert.match(unavailable, /keadaan keselamatan tidak diketahui/);
+  assert.match(unavailable, />Coba lagi</);
+});
+
+test("documented detail keeps evidence times distinct and does not invent history", () => {
+  const markup = renderToStaticMarkup(<EventDetail mode="presentation" context={demoContext} />);
+
+  assert.match(markup, /Contoh detail terpisah dari API/);
+  assert.match(markup, /Bus 12 diversion \(synthetic demo\)/);
+  assert.match(markup, /Waktu sumber diterbitkan/);
+  assert.match(markup, /Waktu sistem mengambil sumber/);
+  assert.match(markup, /URL fixture/);
+  assert.match(markup, /Tidak ada perubahan terdahulu di contoh ini/);
+  assert.match(markup, /data: \[\]/);
+  assert.match(markup, /Jalan Contoh \(synthetic\)/);
+  assert.doesNotMatch(markup, /<a[^>]+example\.invalid/);
+});
+
+test("API detail preserves unknown fields as unknown and has no invented geometry", () => {
+  const markup = renderToStaticMarkup(
+    <EventDetail mode="api-event" event={sampleEvent} context={demoContext} />,
   );
-  assert.match(unavailableHtml, /keadaan keselamatan tidak diketahui/);
-  assert.match(unavailableHtml, /DEMO — data sintetis; bukan peringatan langsung/);
+
+  assert.match(markup, /Detail dari API lokal/);
+  assert.match(markup, /Waktu kejadian tidak diketahui/);
+  assert.match(markup, /Tidak tersedia pada record/);
+  assert.match(markup, /API lokal belum menyediakan klaim, geometri, atau riwayat/);
+  assert.match(markup, /Riwayat perubahan belum tersedia/);
+});
+
+test("moderator presentation is explicitly read-only and has no decision controls", () => {
+  const markup = renderToStaticMarkup(<ModeratorReview />);
+
+  assert.match(markup, /Bukan antrean moderator/);
+  assert.match(markup, /Pratinjau baca saja/);
+  assert.match(markup, /Synthetic Transit Operator/);
+  assert.match(markup, /Mendukung klaim fixture/);
+  assert.match(markup, /reviewed_synthetic_fixture/);
+  assert.doesNotMatch(markup, /<button/);
+  assert.doesNotMatch(markup, /Terbitkan klaim|Simpan koreksi|Tolak klaim|Tarik versi/);
 });
