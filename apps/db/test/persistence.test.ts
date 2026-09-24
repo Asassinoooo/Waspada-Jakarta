@@ -112,6 +112,26 @@ describe('DATA-01 relational persistence', () => {
     assert.equal(count.rows[0]?.count, '0');
   });
 
+  it('enables automatic acquisition only for active, approved sources', async () => {
+    await assert.rejects(
+      insertSourceRegistryCandidate(testDatabase, 'source-pending', 'active', 'pending'),
+      /source_registry_auto_acquisition_eligible_check/,
+    );
+    await assert.rejects(
+      insertSourceRegistryCandidate(testDatabase, 'source-paused', 'paused', 'approved'),
+      /source_registry_auto_acquisition_eligible_check/,
+    );
+
+    await insertSourceRegistryCandidate(testDatabase, 'source-enabled', 'active', 'approved');
+    const eligible = await testDatabase.executor.query<{ source_id: string }>(
+      `SELECT source_id FROM waspada.source_registry
+       WHERE auto_acquisition_enabled
+         AND approval_status = 'approved'
+         AND registry_status = 'active'`,
+    );
+    assert.deepEqual(eligible.rows, [{ source_id: 'source-enabled' }]);
+  });
+
   it('stores only valid WGS 84 geometry, links evidence and supports spatial queries', async () => {
     await testDatabase.executor.query(
       `INSERT INTO waspada.geometries
@@ -382,6 +402,24 @@ async function seedGroundingContext(
     `INSERT INTO waspada.grounding_evidence (dataset_kind, context_id, evidence_ref_id)
      VALUES ('synthetic', 'context-synthetic', $1)`,
     [referenceId],
+  );
+}
+
+async function insertSourceRegistryCandidate(
+  testDatabase: TestDatabase,
+  sourceId: string,
+  registryStatus: 'active' | 'paused',
+  approvalStatus: 'pending' | 'approved',
+): Promise<void> {
+  await testDatabase.executor.query(
+    `INSERT INTO waspada.source_registry
+       (source_id, trace_id, registry_version, display_name, source_kind, remit,
+        access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+        approval_status, health_status, auto_acquisition_enabled, auto_publication_policy)
+     VALUES ($1, 'trace-source-catalog', 1, 'Synthetic acquisition policy fixture',
+        'authority', ARRAY['synthetic test policy'], 'api', ARRAY['synthetic.invalid'],
+        ARRAY['synthetic rows only'], ARRAY['fixture'], $2, $3, 'unknown', true, 'never')`,
+    [sourceId, registryStatus, approvalStatus],
   );
 }
 

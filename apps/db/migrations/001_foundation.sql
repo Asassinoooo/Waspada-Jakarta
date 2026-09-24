@@ -58,7 +58,9 @@ CREATE TABLE waspada.source_registry (
   last_success_at timestamptz,
   CHECK (approval_status = 'approved' OR auto_publication_policy = 'never'),
   CHECK (source_kind IN ('authority', 'operator', 'institution') OR auto_publication_policy = 'never'),
-  CHECK (registry_status <> 'retired' OR auto_acquisition_enabled = false)
+  CHECK (registry_status <> 'retired' OR auto_acquisition_enabled = false),
+  CONSTRAINT source_registry_auto_acquisition_eligible_check
+    CHECK (NOT auto_acquisition_enabled OR (approval_status = 'approved' AND registry_status = 'active'))
 );
 
 CREATE TABLE waspada.report_revisions (
