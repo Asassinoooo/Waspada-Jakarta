@@ -7,7 +7,7 @@
 
 ## Repository state
 
-`main` is at `662634c` (`docs(checkpoint): record implementation pause`) and synchronized with `origin/main`. Its parent `b1d1cbe` accepts L2-ADAPTER-01; the branch also includes accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, and ING-PARSE-01. The checkpoint documentation is committed and pushed. Implementation is paused at the user's request. All implementation agents have finished their turns, and no new package is being started.
+`main` is synchronized with `origin/main` after the checkpoint documentation push. The implementation base at `b1d1cbe` accepts L2-ADAPTER-01; the branch also includes accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, and ING-PARSE-01. The checkpoint documentation is committed and pushed. Implementation is paused at the user's request. All implementation agents have finished their turns, and no new package is being started.
 
 The project plan and backlog continue to use the five-layer architecture. No live ingestion, external model, cloud provisioning, paid service, or deployment was performed. Future work remains limited to the free-tier target unless the user changes that constraint.
 
@@ -23,7 +23,7 @@ The project plan and backlog continue to use the five-layer architecture. No liv
 
 Accepted implementation files are listed above. Root also updated `docs/IMPLEMENTATION_BACKLOG.md`, `docs/DELIVERY_LOG.md`, and this checkpoint to reflect acceptance and current branch states. The two implementation merges were independently verified before acceptance; JOB-01 remains only agent-verified. No fresh runtime tests were run solely for this documentation checkpoint. The root branch had only these documentation changes before the checkpoint commit.
 
-Root committed this documentation checkpoint as `662634c` and pushed it to `origin/main`.
+Root committed and pushed the checkpoint record as `662634c`, then pushed the repository-state wording correction as `150d67c`.
 
 ## Open items and resume point
 
