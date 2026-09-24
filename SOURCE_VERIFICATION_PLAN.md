@@ -1,6 +1,6 @@
 # Waspada Jakarta — source acquisition and verification plan
 
-This expands [the project plan](PROJECT_PLAN.md) within the five-layer design in [ARCHITECTURE.md](ARCHITECTURE.md). Layer 1 acquires and preprocesses evidence, Layer 2 retrieves and assesses it, Layer 3 investigates remaining gaps, Layer 4 decides publication, and Layer 5 evaluates all stages. It preserves broad event coverage, location- and group-based relevance, and automatic publication with exception review. The defaults below are proposed prototype settings; they are not provider service guarantees or predictions of ground conditions.
+This expands [the project plan](PROJECT_PLAN.md) within the five-layer design in [ARCHITECTURE.md](ARCHITECTURE.md). Layer 1 acquires and preprocesses evidence, Layer 2 retrieves and assesses it, Layer 3 investigates remaining gaps, Layer 4 decides publication, and Layer 5 evaluates all stages. It preserves broad event coverage and location- and group-based relevance. Initial publication requires moderator review; source-specific automatic publication is enabled only after the acceptance gates in the [Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md) pass. The defaults below are proposed prototype settings; they are not provider service guarantees or predictions of ground conditions.
 
 ## 1. What verification means
 
@@ -36,6 +36,8 @@ For original journalism, ANTARA is the initial feed provider. Kompas.com and Tem
 Public social posts can supply discovery leads. For the prototype, moderators submit original URLs from authenticated institutional accounts or relevant public reporting. Automated social collection requires a supported, authorised access method before activation. Private groups, private reports, and personal tracking are outside this acquisition plan. A screenshot without an accessible original remains an unverified lead.
 
 ## 3. Acquisition methods and feasibility findings
+
+The current implementation-facing [source feasibility matrix](docs/SOURCE_FEASIBILITY.md) records the 24 September checks, activation gates and retention baseline. The earlier observations below remain dated evidence, not current source permissions or a guarantee of live coverage.
 
 Prefer documented APIs and RSS. Use permitted public-page retrieval when a feed supplies a link but insufficient content. Where automated access is unavailable, accept an original URL plus a moderator-reviewed excerpt and provenance. Keep this manual path available for all categories.
 

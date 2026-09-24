@@ -2,7 +2,7 @@
 
 Delivery scope, requirements and work sequencing are maintained in [SOFTWARE_DEVELOPMENT_PLAN.md](SOFTWARE_DEVELOPMENT_PLAN.md). This file owns the detailed logical architecture; proposed deployment, missing domain contracts and open decisions are tracked in that plan.
 
-Status: proposed implementation design. This workspace contains documentation and deliverables, not an implemented application. The five layers describe logical responsibilities; the prototype can deploy them as one modular backend, separate workers, one database, and a web frontend. Separate microservices are not required.
+Status: proposed implementation design. This workspace contains documentation and deliverables, not an implemented application. The five layers describe logical responsibilities, not five microservices. The current physical target is React/TypeScript assets and a modular TypeScript API on Cloudflare Workers, bounded Cloudflare Workflows for asynchronous execution, and Neon Free Postgres with PostGIS/pgvector. Free-tier limits and failure behavior are specified in [ADR-010](docs/decisions/ADR-010-cloudflare-neon-free.md).
 
 ## 1. Architecture and boundaries
 
@@ -74,7 +74,7 @@ Use strict schema validation at every boundary. Source-span existence and hash c
 
 ## 4. Layer 3 — bounded investigation
 
-Layer 3 owns a case state machine, not the whole data platform. Its initial state contains candidate ID, GroundingContext ID, unresolved questions, checked sources, counters, elapsed time, model usage and checkpoint version. Use a workflow library such as LangGraph for persisted conditional transitions.
+Layer 3 owns a case state machine, not the whole data platform. Its initial state contains candidate ID, GroundingContext ID, unresolved questions, checked sources, counters, elapsed time, model usage and checkpoint version. Use a bounded TypeScript workflow on Cloudflare Workflows for persisted asynchronous transitions. Neon case/job rows remain authoritative for investigation identity, counters and outcomes; every step checks its saved budget before acting. The workflow does not own ingestion, normalization or publication. Free step/CPU quotas may require smaller investigations or a held-for-review outcome.
 
 ```mermaid
 stateDiagram-v2
@@ -112,7 +112,7 @@ The machine-readable boundary specification is [docs/contracts.schema.json](docs
 
 Required service checks go beyond JSON shape: references must resolve to accessible immutable report revisions; offsets must match normalized text; hashes and event versions must still match; geometry must be valid and source-supported; event time must be compatible; claim evidence and origin relationships must be checked. For a new candidate, event ID and base revision are both null; for an existing event, both must resolve together. Grounding contexts retain source review states and prior decision IDs from the retrieval service, with status rechecked before publication. Do not accept model-provided source approval or independence claims without recorded evidence. Proposal fields never overwrite policy-owned decision fields.
 
-Suggested module boundaries are ingestion, preprocessing, knowledge_store (L1); model_adapters, retrieval, grounding (L2); investigation, tool_executor (L3); publication_policy, moderation, public_api, frontend (L4); and evaluation, telemetry (L5). These are intended interfaces, not existing source directories. A modular FastAPI backend and separate queue workers are sufficient initially. Database credentials restrict ingestion to source data, model workers to drafts, and the publication service to public event versions.
+Suggested module boundaries are ingestion, preprocessing and knowledge_store (L1); model_adapters, retrieval and grounding (L2); investigation and tool_executor (L3); publication_policy, moderation, public_api and frontend (L4); and evaluation and telemetry (L5). These are intended interfaces, not existing source directories. Deploy the modules in a TypeScript Worker with static frontend assets rather than a separately billed server. Keep scheduled acquisition, extraction and investigation as distinct bounded workflows; apply database roles and service boundaries so model/ingestion code cannot write public event versions. WSL hosts local development and tests.
 
 ## 6. Layer 4 — publication and application integration
 

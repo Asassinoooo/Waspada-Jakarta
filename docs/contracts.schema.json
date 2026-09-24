@@ -1,135 +1,159 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:waspada-jakarta:contracts:1",
+  "$id": "urn:waspada-jakarta:contracts:2",
   "title": "Waspada Jakarta proposed layer-boundary contracts",
-  "description": "Design specification. Runtime validation and cross-record evidence checks are not implemented by this file.",
+  "description": "Breaking design specification v2.0. Runtime validation, database checks, and semantic evidence checks are not implemented by this file.",
   "oneOf": [
+    {"$ref": "#/$defs/SourceRegistry"},
     {"$ref": "#/$defs/ReportRevision"},
+    {"$ref": "#/$defs/EvidenceOrigin"},
+    {"$ref": "#/$defs/Geometry"},
+    {"$ref": "#/$defs/EvidenceChunk"},
+    {"$ref": "#/$defs/EmbeddingRun"},
     {"$ref": "#/$defs/ExtractionResult"},
     {"$ref": "#/$defs/GroundingContext"},
     {"$ref": "#/$defs/InvestigationRequest"},
+    {"$ref": "#/$defs/InvestigationCheckpoint"},
     {"$ref": "#/$defs/EventProposal"},
+    {"$ref": "#/$defs/Event"},
+    {"$ref": "#/$defs/Impact"},
     {"$ref": "#/$defs/PublicationDecision"}
   ],
   "$defs": {
-    "Id": {"type": "string", "minLength": 1},
-    "Ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "uniqueItems": true},
-    "Strings": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "Id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+    "Ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/Id"}},
+    "Strings": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "DatasetKind": {"enum": ["live", "historical", "synthetic"]},
+    "Version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "Hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "DateTime": {"type": "string", "format": "date-time"},
+    "DateOnly": {"type": "string", "format": "date"},
     "NullableDateTime": {"oneOf": [{"$ref": "#/$defs/DateTime"}, {"type": "null"}]},
-    "TimeScope": {
-      "type": "object", "additionalProperties": false,
-      "required": ["start", "end", "precision"],
+    "NullableDate": {"oneOf": [{"$ref": "#/$defs/DateOnly"}, {"type": "null"}]},
+    "Envelope": {
+      "type": "object",
+      "required": ["schema_version", "trace_id", "record_type"],
       "properties": {
-        "start": {"$ref": "#/$defs/NullableDateTime"},
-        "end": {"$ref": "#/$defs/NullableDateTime"},
-        "precision": {"enum": ["exact", "date", "range", "unknown"]}
+        "schema_version": {"const": "2.0"},
+        "trace_id": {"$ref": "#/$defs/Id"},
+        "record_type": {"type": "string", "minLength": 1}
       }
     },
-    "EvidenceRef": {
-      "type": "object", "additionalProperties": false,
-      "required": ["report_revision_id", "span_start", "span_end", "relation"],
+    "DatasetEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/Envelope"},
+        {"type": "object", "required": ["dataset_kind"], "properties": {"dataset_kind": {"$ref": "#/$defs/DatasetKind"}}}
+      ]
+    },
+    "EventTarget": {
+      "oneOf": [
+        {"required": ["event_id", "event_version"], "properties": {"event_id": {"type": "null"}, "event_version": {"type": "null"}}},
+        {"required": ["event_id", "event_version"], "properties": {"event_id": {"$ref": "#/$defs/Id"}, "event_version": {"$ref": "#/$defs/Version"}}}
+      ]
+    },
+    "ProposalEventTarget": {
+      "oneOf": [
+        {"required": ["event_id", "base_event_version"], "properties": {"event_id": {"type": "null"}, "base_event_version": {"type": "null"}}},
+        {"required": ["event_id", "base_event_version"], "properties": {"event_id": {"$ref": "#/$defs/Id"}, "base_event_version": {"$ref": "#/$defs/Version"}}}
+      ]
+    },
+    "TimeScope": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["start", "end", "precision"],
+          "properties": {"start": {"$ref": "#/$defs/DateTime"}, "end": {"$ref": "#/$defs/NullableDateTime"}, "precision": {"const": "exact"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["start", "end", "precision"],
+          "properties": {"start": {"$ref": "#/$defs/DateOnly"}, "end": {"$ref": "#/$defs/NullableDate"}, "precision": {"const": "date"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["start", "end", "precision"],
+          "properties": {
+            "start": {"oneOf": [{"$ref": "#/$defs/DateTime"}, {"$ref": "#/$defs/DateOnly"}]},
+            "end": {"oneOf": [{"$ref": "#/$defs/DateTime"}, {"$ref": "#/$defs/DateOnly"}]},
+            "precision": {"const": "range"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["start", "end", "precision"],
+          "properties": {"start": {"type": "null"}, "end": {"type": "null"}, "precision": {"const": "unknown"}}
+        }
+      ],
+      "description": "Date precision does not imply a time of day. Ordering and source-specific interpretation are service checks."
+    },
+    "ValidityPeriod": {
+      "type": "object", "additionalProperties": false, "required": ["valid_from", "valid_until"],
+      "properties": {"valid_from": {"$ref": "#/$defs/NullableDateTime"}, "valid_until": {"$ref": "#/$defs/NullableDateTime"}},
+      "description": "Null is unknown or unstated, never the current time. The service checks valid_from < valid_until when both are present."
+    },
+    "Freshness": {
+      "type": "object", "additionalProperties": false, "required": ["status", "evaluated_at", "review_due_at", "basis"],
       "properties": {
-        "report_revision_id": {"$ref": "#/$defs/Id"},
-        "span_start": {"type": "integer", "minimum": 0},
-        "span_end": {"type": "integer", "minimum": 1},
-        "relation": {"enum": ["supports", "contradicts", "updates", "context"]}
+        "status": {"enum": ["current", "needs_update", "expired"]},
+        "evaluated_at": {"$ref": "#/$defs/DateTime"},
+        "review_due_at": {"$ref": "#/$defs/NullableDateTime"},
+        "basis": {"enum": ["source_validity", "fast_observation_review", "undated_advisory_review", "manual_review", "unknown"]}
       },
-      "description": "Offsets are Unicode code-point offsets into the immutable normalized permitted_text. The service must check end > start, span existence, actual claim support and revision eligibility."
+      "description": "Freshness is independent of incident lifecycle; expiry does not imply resolution or safety."
+    },
+    "Tag": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": {
+        "namespace": {"enum": ["topic", "service", "audience", "hazard", "transport_mode", "place_type"]},
+        "value": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$"}
+      }
     },
     "Scope": {
-      "type": "object", "additionalProperties": false,
-      "required": ["place_ids", "audience_ids", "geometry_ids"],
+      "type": "object", "additionalProperties": false, "required": ["place_ids", "service_ids", "institution_ids", "audience_ids", "geometry_ids"],
       "properties": {
         "place_ids": {"$ref": "#/$defs/Ids"},
+        "service_ids": {"$ref": "#/$defs/Ids"},
+        "institution_ids": {"$ref": "#/$defs/Ids"},
         "audience_ids": {"$ref": "#/$defs/Ids"},
         "geometry_ids": {"$ref": "#/$defs/Ids"}
       },
-      "description": "IDs reference stored entities and validated geometry. Publication requires an evidenced place or audience; no polygon is required for non-geographic notices."
+      "description": "At least an evidenced place, service, institution or audience is required for publication; this semantic rule permits an empty scope in an extraction candidate."
+    },
+    "EvidenceRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["report_revision_id", "permitted_text_hash", "span_start", "span_end", "offset_unit", "relation"],
+      "properties": {
+        "report_revision_id": {"$ref": "#/$defs/Id"},
+        "permitted_text_hash": {"$ref": "#/$defs/Hash"},
+        "span_start": {"type": "integer", "minimum": 0, "maximum": 10000000},
+        "span_end": {"type": "integer", "minimum": 1, "maximum": 10000000},
+        "offset_unit": {"const": "unicode_code_points"},
+        "relation": {"enum": ["supports", "contradicts", "updates", "context"]}
+      },
+      "description": "Zero-based, end-exclusive Unicode code-point offsets into the referenced immutable normalized permitted_text. The service checks hash equality, end > start, and span bounds."
+    },
+    "SupportEvidenceRef": {
+      "allOf": [{"$ref": "#/$defs/EvidenceRef"}, {"type": "object", "properties": {"relation": {"const": "supports"}}}],
+      "unevaluatedProperties": false
+    },
+    "ContradictionEvidenceRef": {
+      "allOf": [{"$ref": "#/$defs/EvidenceRef"}, {"type": "object", "properties": {"relation": {"const": "contradicts"}}}],
+      "unevaluatedProperties": false
+    },
+    "ContextEvidenceRef": {
+      "allOf": [{"$ref": "#/$defs/EvidenceRef"}, {"type": "object", "properties": {"relation": {"enum": ["updates", "context"]}}}],
+      "unevaluatedProperties": false
     },
     "ModelRun": {
       "type": "object", "additionalProperties": false,
       "required": ["capability", "model_version", "prompt_version", "input_tokens", "output_tokens"],
       "properties": {
         "capability": {"enum": ["parser", "extraction", "reasoning"]},
-        "model_version": {"type": ["string", "null"]},
-        "prompt_version": {"type": ["string", "null"]},
+        "model_version": {"type": ["string", "null"], "minLength": 1},
+        "prompt_version": {"type": ["string", "null"], "minLength": 1},
         "input_tokens": {"type": "integer", "minimum": 0},
         "output_tokens": {"type": "integer", "minimum": 0}
-      }
-    },
-    "Envelope": {
-      "type": "object",
-      "required": ["schema_version", "trace_id", "record_type"],
-      "properties": {
-        "schema_version": {"const": "1.0"},
-        "trace_id": {"$ref": "#/$defs/Id"},
-        "record_type": {"type": "string"}
-      }
-    },
-    "ReportRevision": {
-      "allOf": [{"$ref": "#/$defs/Envelope"}], "unevaluatedProperties": false,
-      "required": ["report_revision_id", "source_id", "canonical_url", "content_hash", "permitted_text", "published_at", "retrieved_at", "supersedes_id", "status"],
-      "properties": {
-        "record_type": {"const": "ReportRevision"},
-        "report_revision_id": {"$ref": "#/$defs/Id"},
-        "source_id": {"$ref": "#/$defs/Id"},
-        "canonical_url": {"type": "string", "format": "uri"},
-        "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-        "permitted_text": {"type": "string", "minLength": 1},
-        "published_at": {"$ref": "#/$defs/NullableDateTime"},
-        "retrieved_at": {"$ref": "#/$defs/DateTime"},
-        "supersedes_id": {"type": ["string", "null"]},
-        "status": {"enum": ["unreviewed", "eligible", "quarantined", "superseded", "retracted"]}
-      }
-    },
-    "ExtractionResult": {
-      "allOf": [{"$ref": "#/$defs/Envelope"}], "unevaluatedProperties": false,
-      "required": ["candidate_id", "report_revision_id", "category", "time", "scope", "evidence", "unknown_fields", "model_run"],
-      "properties": {
-        "record_type": {"const": "ExtractionResult"},
-        "candidate_id": {"$ref": "#/$defs/Id"},
-        "report_revision_id": {"$ref": "#/$defs/Id"},
-        "category": {"type": ["string", "null"]},
-        "time": {"$ref": "#/$defs/TimeScope"},
-        "scope": {"$ref": "#/$defs/Scope"},
-        "evidence": {"type": "array", "items": {"$ref": "#/$defs/EvidenceRef"}},
-        "unknown_fields": {"$ref": "#/$defs/Strings"},
-        "model_run": {"$ref": "#/$defs/ModelRun"}
-      }
-    },
-    "GroundingContext": {
-      "allOf": [{"$ref": "#/$defs/Envelope"}], "unevaluatedProperties": false,
-      "required": ["context_id", "candidate_id", "evidence", "revision_states", "candidate_events", "prior_decision_ids", "missing_fields", "conflicts", "retrieval_version", "index_version", "sufficient"],
-      "properties": {
-        "record_type": {"const": "GroundingContext"},
-        "context_id": {"$ref": "#/$defs/Id"},
-        "candidate_id": {"$ref": "#/$defs/Id"},
-        "evidence": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/EvidenceRef"}},
-        "revision_states": {"type": "array", "items": {
-          "type": "object", "additionalProperties": false,
-          "required": ["report_revision_id", "status"],
-          "properties": {
-            "report_revision_id": {"$ref": "#/$defs/Id"},
-            "status": {"enum": ["unreviewed", "eligible", "quarantined", "superseded", "retracted"]}
-          }
-        }},
-        "candidate_events": {"type": "array", "items": {
-          "type": "object", "additionalProperties": false, "required": ["event_id", "version"],
-          "properties": {"event_id": {"$ref": "#/$defs/Id"}, "version": {"type": "integer", "minimum": 1}}
-        }},
-        "prior_decision_ids": {"$ref": "#/$defs/Ids"},
-        "missing_fields": {"$ref": "#/$defs/Strings"},
-        "conflicts": {"$ref": "#/$defs/Strings"},
-        "retrieval_version": {"$ref": "#/$defs/Id"},
-        "index_version": {"$ref": "#/$defs/Id"},
-        "sufficient": {"type": "boolean"}
       },
-      "description": "sufficient is a routing assessment, never publication authorization. Revision states and prior decisions are supplied by the retrieval service, not invented by a model, and rechecked at publication. Configured context limits require a schema-version change when updated."
+      "description": "Embedding runs are separate records and are not represented by this extraction/reasoning token record."
     },
-    "Budget": {
-      "type": "object", "additionalProperties": false,
-      "required": ["tool_attempts", "reasoning_turns", "active_seconds", "model_tokens"],
+    "BudgetLimits": {
+      "type": "object", "additionalProperties": false, "required": ["tool_attempts", "reasoning_turns", "active_seconds", "model_tokens"],
       "properties": {
         "tool_attempts": {"type": "integer", "minimum": 1, "maximum": 5},
         "reasoning_turns": {"type": "integer", "minimum": 1, "maximum": 4},
@@ -137,79 +161,487 @@
         "model_tokens": {"type": "integer", "minimum": 1, "maximum": 12000}
       }
     },
-    "InvestigationRequest": {
-      "allOf": [{"$ref": "#/$defs/Envelope"}], "unevaluatedProperties": false,
-      "required": ["investigation_id", "candidate_id", "context_id", "event_id", "event_revision", "questions", "budget"],
+    "BudgetCounters": {
+      "type": "object", "additionalProperties": false, "required": ["tool_attempts", "reasoning_turns", "active_seconds", "model_tokens"],
       "properties": {
-        "record_type": {"const": "InvestigationRequest"},
-        "investigation_id": {"$ref": "#/$defs/Id"},
-        "candidate_id": {"$ref": "#/$defs/Id"},
-        "context_id": {"$ref": "#/$defs/Id"},
-        "event_id": {"type": ["string", "null"]},
-        "event_revision": {"type": ["integer", "null"], "minimum": 1},
-        "questions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-        "budget": {"$ref": "#/$defs/Budget"}
-      },
-      "description": "A new candidate has null event_id and event_revision; an existing event has both set. The service checks this pair and preserves the investigation ID and counters across resume."
+        "tool_attempts": {"type": "integer", "minimum": 0, "maximum": 5},
+        "reasoning_turns": {"type": "integer", "minimum": 0, "maximum": 4},
+        "active_seconds": {"type": "integer", "minimum": 0, "maximum": 60},
+        "model_tokens": {"type": "integer", "minimum": 0, "maximum": 12000}
+      }
     },
-    "Claim": {
+    "BudgetLedger": {
+      "type": "object", "additionalProperties": false, "required": ["policy_version", "limits", "consumed", "reserved"],
+      "properties": {
+        "policy_version": {"$ref": "#/$defs/Id"},
+        "limits": {"$ref": "#/$defs/BudgetLimits"},
+        "consumed": {"$ref": "#/$defs/BudgetCounters"},
+        "reserved": {"$ref": "#/$defs/BudgetCounters"}
+      },
+      "description": "Limits are configuration; consumed includes failed attempts; reserved is preflight work not yet reconciled. The service enforces consumed + reserved <= each case limit."
+    },
+    "Category": {
+      "enum": [
+        "crime_personal_security",
+        "demonstrations_public_gatherings",
+        "crowds_major_events",
+        "violence_immediate_threats",
+        "disasters_weather",
+        "fires_infrastructure_hazards",
+        "transport_road_incidents",
+        "utilities_essential_services",
+        "health_environmental_advisories",
+        "group_specific_critical_notices"
+      ]
+    },
+    "Lifecycle": {"enum": ["planned", "ongoing", "resolved", "cancelled", "unknown"]},
+    "GeoPosition": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "prefixItems": [{"type": "number", "minimum": -180, "maximum": 180}, {"type": "number", "minimum": -90, "maximum": 90}],
+      "items": false,
+      "description": "Longitude, latitude in CRS84 order."
+    },
+    "LineCoordinates": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/GeoPosition"}},
+    "LinearRing": {"type": "array", "minItems": 4, "items": {"$ref": "#/$defs/GeoPosition"}, "description": "Service validation checks ring closure and polygon topology."},
+    "PolygonCoordinates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/LinearRing"}},
+    "GeoJSONGeometry": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["type", "coordinates"], "properties": {"type": {"const": "Point"}, "coordinates": {"$ref": "#/$defs/GeoPosition"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "coordinates"], "properties": {"type": {"const": "LineString"}, "coordinates": {"$ref": "#/$defs/LineCoordinates"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "coordinates"], "properties": {"type": {"const": "Polygon"}, "coordinates": {"$ref": "#/$defs/PolygonCoordinates"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "coordinates"], "properties": {"type": {"const": "MultiPoint"}, "coordinates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/GeoPosition"}}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "coordinates"], "properties": {"type": {"const": "MultiLineString"}, "coordinates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/LineCoordinates"}}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "coordinates"], "properties": {"type": {"const": "MultiPolygon"}, "coordinates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/PolygonCoordinates"}}}}
+      ]
+    },
+    "SourceRegistry": {
+      "allOf": [
+        {"$ref": "#/$defs/Envelope"},
+        {
+          "type": "object", "required": ["source_id", "registry_version", "display_name", "source_kind", "publisher_group_id", "remit", "access_method", "approved_hosts", "access_restrictions", "reuse_basis", "registry_status", "approval_status", "health_status", "auto_acquisition_enabled", "auto_publication_policy", "polling_interval_seconds", "last_checked_at", "last_success_at"],
+          "properties": {
+            "record_type": {"const": "SourceRegistry"},
+            "source_id": {"$ref": "#/$defs/Id"},
+            "registry_version": {"$ref": "#/$defs/Version"},
+            "display_name": {"type": "string", "minLength": 1, "maxLength": 200},
+            "source_kind": {"enum": ["authority", "operator", "newsroom", "institution", "crowdsourced_platform", "other"]},
+            "publisher_group_id": {"oneOf": [{"$ref": "#/$defs/Id"}, {"type": "null"}]},
+            "remit": {"$ref": "#/$defs/Strings", "minItems": 1},
+            "access_method": {"enum": ["api", "rss", "public_web", "moderator_submission", "manual_fixture"]},
+            "approved_hosts": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9.-]+$"}},
+            "access_restrictions": {"$ref": "#/$defs/Strings"},
+            "reuse_basis": {"$ref": "#/$defs/Strings", "minItems": 1},
+            "registry_status": {"enum": ["active", "paused", "retired"]},
+            "approval_status": {"enum": ["pending", "approved", "suspended", "revoked"]},
+            "health_status": {"enum": ["unknown", "healthy", "degraded", "unavailable"]},
+            "auto_acquisition_enabled": {"type": "boolean"},
+            "auto_publication_policy": {"enum": ["never", "approved_issuer_notice"]},
+            "polling_interval_seconds": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+            "last_checked_at": {"$ref": "#/$defs/NullableDateTime"},
+            "last_success_at": {"$ref": "#/$defs/NullableDateTime"}
+          },
+          "allOf": [
+            {"if": {"properties": {"approval_status": {"not": {"const": "approved"}}}, "required": ["approval_status"]}, "then": {"properties": {"auto_publication_policy": {"const": "never"}}}},
+            {"if": {"properties": {"source_kind": {"not": {"enum": ["authority", "operator", "institution"]}}}, "required": ["source_kind"]}, "then": {"properties": {"auto_publication_policy": {"const": "never"}}}},
+            {"if": {"properties": {"registry_status": {"const": "retired"}}, "required": ["registry_status"]}, "then": {"properties": {"auto_acquisition_enabled": {"const": false}}}}
+          ]
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "L4/moderator owns approval. Connector health, source approval, registry lifecycle and report-revision status are independent."
+    },
+    "ReportRevision": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["report_revision_id", "source_id", "canonical_url", "source_revision_key", "content_hash", "permitted_text", "permitted_text_hash", "normalization_version", "published_at", "observed_at", "retrieved_at", "validity", "supersedes_id", "revision_status"],
+          "properties": {
+            "record_type": {"const": "ReportRevision"},
+            "report_revision_id": {"$ref": "#/$defs/Id"},
+            "source_id": {"$ref": "#/$defs/Id"},
+            "canonical_url": {"type": "string", "format": "uri"},
+            "source_revision_key": {"type": ["string", "null"], "minLength": 1, "maxLength": 256},
+            "content_hash": {"$ref": "#/$defs/Hash"},
+            "permitted_text": {"type": "string", "minLength": 1, "maxLength": 2000000},
+            "permitted_text_hash": {"$ref": "#/$defs/Hash"},
+            "normalization_version": {"$ref": "#/$defs/Id"},
+            "published_at": {"$ref": "#/$defs/NullableDateTime"},
+            "observed_at": {"$ref": "#/$defs/NullableDateTime"},
+            "retrieved_at": {"$ref": "#/$defs/DateTime"},
+            "validity": {"$ref": "#/$defs/ValidityPeriod"},
+            "supersedes_id": {"oneOf": [{"$ref": "#/$defs/Id"}, {"type": "null"}]},
+            "revision_status": {"enum": ["unreviewed", "eligible", "quarantined", "superseded", "retracted"]}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "Permitted source content is immutable once referenced. The service checks source eligibility and that permitted_text_hash is SHA-256 of the exact stored text."
+    },
+    "EvidenceOrigin": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["origin_id", "origin_kind", "actor_label", "source_id", "source_revision_ids", "lineage_relation", "independence_status", "depends_on_origin_ids", "discovery_evidence"],
+          "properties": {
+            "record_type": {"const": "EvidenceOrigin"},
+            "origin_id": {"$ref": "#/$defs/Id"},
+            "origin_kind": {"enum": ["issuer_statement", "operator_notice", "reporter_observation", "public_record", "original_document", "crowdsourced_observation", "unknown"]},
+            "actor_label": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
+            "source_id": {"oneOf": [{"$ref": "#/$defs/Id"}, {"type": "null"}]},
+            "source_revision_ids": {"$ref": "#/$defs/Ids"},
+            "lineage_relation": {"enum": ["original", "quoted", "copied", "reused_media", "unknown"]},
+            "independence_status": {"enum": ["established", "dependent", "unknown"]},
+            "depends_on_origin_ids": {"$ref": "#/$defs/Ids"},
+            "discovery_evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/EvidenceRef"}}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "Unknown lineage is not independent corroboration. Relationship and claim relevance are checked against immutable source spans."
+    },
+    "Geometry": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["geometry_id", "role", "geojson", "coordinate_reference_system", "precision_m", "precision_basis", "display_label", "source_evidence"],
+          "properties": {
+            "record_type": {"const": "Geometry"},
+            "geometry_id": {"$ref": "#/$defs/Id"},
+            "role": {"enum": ["incident_scene", "affected_area", "warning_boundary", "route_segment", "service_stop", "facility", "venue", "service_area", "approximate_place"]},
+            "geojson": {"$ref": "#/$defs/GeoJSONGeometry"},
+            "coordinate_reference_system": {"const": "OGC:CRS84"},
+            "precision_m": {"oneOf": [{"type": "number", "minimum": 0, "maximum": 10000000}, {"type": "null"}]},
+            "precision_basis": {"enum": ["source_supplied", "provider_accuracy", "gazetteer_match", "moderator_generalization", "unknown"]},
+            "display_label": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
+            "source_evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/SupportEvidenceRef"}}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "RFC 7946 GeoJSON coordinates are WGS 84 longitude/latitude. Schema checks shape/range; service checks topology, source support and truthful precision."
+    },
+    "EvidenceChunk": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["chunk_id", "report_revision_id", "permitted_text_hash", "span_start", "span_end", "offset_unit", "chunker_version", "chunk_text_hash", "status"],
+          "properties": {
+            "record_type": {"const": "EvidenceChunk"},
+            "chunk_id": {"$ref": "#/$defs/Id"},
+            "report_revision_id": {"$ref": "#/$defs/Id"},
+            "permitted_text_hash": {"$ref": "#/$defs/Hash"},
+            "span_start": {"type": "integer", "minimum": 0, "maximum": 10000000},
+            "span_end": {"type": "integer", "minimum": 1, "maximum": 10000000},
+            "offset_unit": {"const": "unicode_code_points"},
+            "chunker_version": {"$ref": "#/$defs/Id"},
+            "chunk_text_hash": {"$ref": "#/$defs/Hash"},
+            "status": {"enum": ["active", "invalidated"]}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "Chunk offsets and hashes are checked against the exact immutable revision before embedding or retrieval."
+    },
+    "EmbeddingRun": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["embedding_run_id", "chunk_id", "capability", "provider", "model_version", "dimensions", "distance_metric", "vector_index_version", "input_text_hash", "status", "created_at"],
+          "properties": {
+            "record_type": {"const": "EmbeddingRun"},
+            "embedding_run_id": {"$ref": "#/$defs/Id"},
+            "chunk_id": {"$ref": "#/$defs/Id"},
+            "capability": {"const": "embedding"},
+            "provider": {"type": "string", "minLength": 1, "maxLength": 120},
+            "model_version": {"type": "string", "minLength": 1, "maxLength": 200},
+            "dimensions": {"type": "integer", "minimum": 1, "maximum": 100000},
+            "distance_metric": {"enum": ["cosine", "dot_product", "euclidean"]},
+            "vector_index_version": {"$ref": "#/$defs/Id"},
+            "input_text_hash": {"$ref": "#/$defs/Hash"},
+            "status": {"enum": ["available", "invalidated", "failed"]},
+            "created_at": {"$ref": "#/$defs/DateTime"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "Embedding capability/version/dimension/index metadata are independent of extraction and reasoning ModelRun records."
+    },
+    "ExtractionResult": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["candidate_id", "report_revision_id", "category", "tags", "event_time", "scope", "evidence", "unknown_fields", "model_run"],
+          "properties": {
+            "record_type": {"const": "ExtractionResult"},
+            "candidate_id": {"$ref": "#/$defs/Id"},
+            "report_revision_id": {"$ref": "#/$defs/Id"},
+            "category": {"oneOf": [{"$ref": "#/$defs/Category"}, {"type": "null"}]},
+            "tags": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/Tag"}},
+            "event_time": {"$ref": "#/$defs/TimeScope"},
+            "scope": {"$ref": "#/$defs/Scope"},
+            "evidence": {"type": "array", "items": {"$ref": "#/$defs/EvidenceRef"}},
+            "unknown_fields": {"$ref": "#/$defs/Strings"},
+            "model_run": {"$ref": "#/$defs/ModelRun"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "GroundingContext": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["context_id", "candidate_id", "evidence", "revision_states", "candidate_events", "prior_decision_ids", "missing_fields", "conflicts", "retrieval_version", "index_version", "sufficient"],
+          "properties": {
+            "record_type": {"const": "GroundingContext"},
+            "context_id": {"$ref": "#/$defs/Id"},
+            "candidate_id": {"$ref": "#/$defs/Id"},
+            "evidence": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/EvidenceRef"}},
+            "revision_states": {
+              "type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["report_revision_id", "revision_status"], "properties": {"report_revision_id": {"$ref": "#/$defs/Id"}, "revision_status": {"enum": ["unreviewed", "eligible", "quarantined", "superseded", "retracted"]}}}
+            },
+            "candidate_events": {
+              "type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["event_id", "event_version"], "properties": {"event_id": {"$ref": "#/$defs/Id"}, "event_version": {"$ref": "#/$defs/Version"}}}
+            },
+            "prior_decision_ids": {"$ref": "#/$defs/Ids"},
+            "missing_fields": {"$ref": "#/$defs/Strings"},
+            "conflicts": {"$ref": "#/$defs/Strings"},
+            "retrieval_version": {"$ref": "#/$defs/Id"},
+            "index_version": {"$ref": "#/$defs/Id"},
+            "sufficient": {"type": "boolean"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "Sufficient is a routing assessment, never publication authorization. Configured retrieval limits require a schema-version change."
+    },
+    "InvestigationRequest": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {"$ref": "#/$defs/EventTarget"},
+        {
+          "type": "object", "required": ["investigation_id", "candidate_id", "context_id", "questions", "budget", "requested_at"],
+          "properties": {
+            "record_type": {"const": "InvestigationRequest"},
+            "investigation_id": {"$ref": "#/$defs/Id"},
+            "candidate_id": {"$ref": "#/$defs/Id"},
+            "context_id": {"$ref": "#/$defs/Id"},
+            "event_id": {},
+            "event_version": {},
+            "questions": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 1000}},
+            "budget": {"$ref": "#/$defs/BudgetLedger"},
+            "requested_at": {"$ref": "#/$defs/DateTime"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "A new unmatched candidate starts with null event_id and event_version. A resumed investigation is driven from its checkpoint and preserves its saved event pair and counters."
+    },
+    "ToolAttempt": {
+      "type": "object", "additionalProperties": false, "required": ["attempt_id", "tool", "outcome", "started_at", "finished_at"],
+      "properties": {
+        "attempt_id": {"$ref": "#/$defs/Id"},
+        "tool": {"type": "string", "minLength": 1, "maxLength": 100},
+        "outcome": {"enum": ["succeeded", "failed", "timed_out", "denied", "cancelled"]},
+        "started_at": {"$ref": "#/$defs/DateTime"},
+        "finished_at": {"$ref": "#/$defs/NullableDateTime"}
+      }
+    },
+    "InvestigationCheckpoint": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {"$ref": "#/$defs/EventTarget"},
+        {
+          "type": "object", "required": ["checkpoint_id", "investigation_id", "checkpoint_version", "candidate_id", "context_id", "case_status", "stop_reason", "budget", "attempts", "reasoning_runs", "created_at", "updated_at", "completed_at"],
+          "properties": {
+            "record_type": {"const": "InvestigationCheckpoint"},
+            "checkpoint_id": {"$ref": "#/$defs/Id"},
+            "investigation_id": {"$ref": "#/$defs/Id"},
+            "checkpoint_version": {"$ref": "#/$defs/Version"},
+            "candidate_id": {"$ref": "#/$defs/Id"},
+            "context_id": {"$ref": "#/$defs/Id"},
+            "event_id": {},
+            "event_version": {},
+            "case_status": {"enum": ["open", "paused", "completed", "stopped_for_review"]},
+            "stop_reason": {"oneOf": [{"enum": ["limit_exhausted", "no_progress", "material_conflict", "tool_unavailable", "awaiting_moderator", "completed"]}, {"type": "null"}]},
+            "budget": {"$ref": "#/$defs/BudgetLedger"},
+            "attempts": {"type": "array", "items": {"$ref": "#/$defs/ToolAttempt"}},
+            "reasoning_runs": {"type": "array", "maxItems": 4, "items": {"$ref": "#/$defs/ModelRun"}},
+            "created_at": {"$ref": "#/$defs/DateTime"},
+            "updated_at": {"$ref": "#/$defs/DateTime"},
+            "completed_at": {"$ref": "#/$defs/NullableDateTime"}
+          },
+          "allOf": [
+            {"if": {"properties": {"case_status": {"enum": ["open", "paused"]}}, "required": ["case_status"]}, "then": {"properties": {"completed_at": {"type": "null"}}}},
+            {"if": {"properties": {"case_status": {"const": "completed"}}, "required": ["case_status"]}, "then": {"properties": {"completed_at": {"$ref": "#/$defs/DateTime"}, "stop_reason": {"const": "completed"}}}},
+            {"if": {"properties": {"case_status": {"const": "stopped_for_review"}}, "required": ["case_status"]}, "then": {"properties": {"completed_at": {"$ref": "#/$defs/DateTime"}, "stop_reason": {"enum": ["limit_exhausted", "no_progress", "material_conflict", "tool_unavailable", "awaiting_moderator"]}}}}
+          ]
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "A resume increments checkpoint_version while retaining investigation_id, event pair, budget policy/limits, consumed counts and reservations. Failed attempts count."
+    },
+    "ProposalClaim": {
       "type": "object", "additionalProperties": false,
-      "required": ["claim_id", "text", "time", "scope", "qualifiers", "support", "contradictions", "origin_ids", "independence", "support_assessment"],
+      "required": ["claim_id", "text", "event_time", "validity", "scope", "qualifiers", "support", "contradictions", "context_evidence", "origin_ids", "support_assessment", "evidence_label"],
       "properties": {
         "claim_id": {"$ref": "#/$defs/Id"},
-        "text": {"type": "string", "minLength": 1},
-        "time": {"$ref": "#/$defs/TimeScope"},
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "event_time": {"$ref": "#/$defs/TimeScope"},
+        "validity": {"$ref": "#/$defs/ValidityPeriod"},
         "scope": {"$ref": "#/$defs/Scope"},
         "qualifiers": {"$ref": "#/$defs/Strings"},
-        "support": {"type": "array", "minItems": 1, "items": {"allOf": [{"$ref": "#/$defs/EvidenceRef"}, {"properties": {"relation": {"const": "supports"}}}]}},
-        "contradictions": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/EvidenceRef"}, {"properties": {"relation": {"const": "contradicts"}}}]}},
-        "origin_ids": {"$ref": "#/$defs/Ids"},
-        "independence": {"enum": ["established", "dependent", "unknown"]},
-        "support_assessment": {"enum": ["supported", "uncertain", "disputed"]}
+        "support": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/SupportEvidenceRef"}},
+        "contradictions": {"type": "array", "items": {"$ref": "#/$defs/ContradictionEvidenceRef"}},
+        "context_evidence": {"type": "array", "items": {"$ref": "#/$defs/ContextEvidenceRef"}},
+        "origin_ids": {"$ref": "#/$defs/Ids", "minItems": 1},
+        "support_assessment": {"enum": ["supported", "uncertain", "disputed"]},
+        "evidence_label": {"enum": ["issuer_notice", "attributed_report", "independent_corroboration", "crowdsourced_observation", "under_review"]}
       },
-      "description": "Model-originated assessments are proposals. L4 checks recorded provenance and assessment eligibility; unclear support or independence requires review."
+      "description": "Assessment and evidence label are proposals; L4 verifies support and origin lineage."
+    },
+    "PublishedClaim": {
+      "type": "object", "additionalProperties": false,
+      "required": ["claim_id", "text", "event_time", "validity", "scope", "qualifiers", "support", "contradictions", "context_evidence", "origin_ids", "evidence_label"],
+      "properties": {
+        "claim_id": {"$ref": "#/$defs/Id"},
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "event_time": {"$ref": "#/$defs/TimeScope"},
+        "validity": {"$ref": "#/$defs/ValidityPeriod"},
+        "scope": {"$ref": "#/$defs/Scope"},
+        "qualifiers": {"$ref": "#/$defs/Strings"},
+        "support": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/SupportEvidenceRef"}},
+        "contradictions": {"type": "array", "items": {"$ref": "#/$defs/ContradictionEvidenceRef"}},
+        "context_evidence": {"type": "array", "items": {"$ref": "#/$defs/ContextEvidenceRef"}},
+        "origin_ids": {"$ref": "#/$defs/Ids", "minItems": 1},
+        "evidence_label": {"enum": ["issuer_notice", "attributed_report", "independent_corroboration", "crowdsourced_observation"]}
+      },
+      "description": "A public claim carries claim-specific support and an L4-assigned label. Unsupported or under-review claims are not members of a published Event version."
+    },
+    "EventImpactRef": {
+      "type": "object", "additionalProperties": false, "required": ["impact_id", "version"],
+      "properties": {"impact_id": {"$ref": "#/$defs/Id"}, "version": {"$ref": "#/$defs/Version"}}
     },
     "EventProposal": {
-      "allOf": [{"$ref": "#/$defs/Envelope"}], "unevaluatedProperties": false,
-      "required": ["proposal_id", "candidate_id", "context_id", "event_id", "base_event_version", "investigation_id", "claims", "unresolved_fields", "model_runs"],
-      "properties": {
-        "record_type": {"const": "EventProposal"},
-        "proposal_id": {"$ref": "#/$defs/Id"},
-        "candidate_id": {"$ref": "#/$defs/Id"},
-        "context_id": {"$ref": "#/$defs/Id"},
-        "event_id": {"type": ["string", "null"]},
-        "base_event_version": {"type": ["integer", "null"], "minimum": 1},
-        "investigation_id": {"type": ["string", "null"]},
-        "claims": {"type": "array", "items": {"$ref": "#/$defs/Claim"}},
-        "unresolved_fields": {"$ref": "#/$defs/Strings"},
-        "model_runs": {"type": "array", "items": {"$ref": "#/$defs/ModelRun"}}
-      },
-      "description": "Empty claims permit abstention. The publication service checks unresolved fields and current event version. Models cannot set publication status."
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {"$ref": "#/$defs/ProposalEventTarget"},
+        {
+          "type": "object", "required": ["proposal_id", "candidate_id", "context_id", "investigation_id", "claims", "unresolved_fields", "model_runs", "proposed_at"],
+          "properties": {
+            "record_type": {"const": "EventProposal"},
+            "proposal_id": {"$ref": "#/$defs/Id"},
+            "candidate_id": {"$ref": "#/$defs/Id"},
+            "context_id": {"$ref": "#/$defs/Id"},
+            "event_id": {},
+            "base_event_version": {},
+            "investigation_id": {"oneOf": [{"$ref": "#/$defs/Id"}, {"type": "null"}]},
+            "claims": {"type": "array", "items": {"$ref": "#/$defs/ProposalClaim"}},
+            "unresolved_fields": {"$ref": "#/$defs/Strings"},
+            "model_runs": {"type": "array", "items": {"$ref": "#/$defs/ModelRun"}},
+            "proposed_at": {"$ref": "#/$defs/DateTime"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "Empty claims permit abstention. event_id and base_event_version are both null for a new/unmatched event, or both populated for an existing event. L4 rechecks concurrency."
+    },
+    "Event": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["event_id", "version", "supersedes_version", "title", "summary", "category", "tags", "lifecycle", "freshness", "event_time", "validity", "scope", "claims", "impact_refs", "publication_status", "withdrawal_reason", "publication_decision_id", "published_at", "withdrawn_at"],
+          "properties": {
+            "record_type": {"const": "Event"},
+            "event_id": {"$ref": "#/$defs/Id"},
+            "version": {"$ref": "#/$defs/Version"},
+            "supersedes_version": {"oneOf": [{"$ref": "#/$defs/Version"}, {"type": "null"}]},
+            "title": {"type": "string", "minLength": 1, "maxLength": 240},
+            "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+            "category": {"$ref": "#/$defs/Category"},
+            "tags": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/Tag"}},
+            "lifecycle": {"$ref": "#/$defs/Lifecycle"},
+            "freshness": {"$ref": "#/$defs/Freshness"},
+            "event_time": {"$ref": "#/$defs/TimeScope"},
+            "validity": {"$ref": "#/$defs/ValidityPeriod"},
+            "scope": {"$ref": "#/$defs/Scope"},
+            "claims": {"type": "array", "items": {"$ref": "#/$defs/PublishedClaim"}},
+            "impact_refs": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/EventImpactRef"}},
+            "publication_status": {"enum": ["published", "withdrawn"]},
+            "withdrawal_reason": {"oneOf": [{"enum": ["source_retracted", "evidence_ineligible", "incorrect_event_match", "privacy_removal", "duplicate", "other"]}, {"type": "null"}]},
+            "publication_decision_id": {"$ref": "#/$defs/Id"},
+            "published_at": {"$ref": "#/$defs/NullableDateTime"},
+            "withdrawn_at": {"$ref": "#/$defs/NullableDateTime"}
+          },
+          "allOf": [
+            {"if": {"properties": {"version": {"const": 1}}, "required": ["version"]}, "then": {"properties": {"supersedes_version": {"type": "null"}}}},
+            {"if": {"properties": {"version": {"minimum": 2}}, "required": ["version"]}, "then": {"properties": {"supersedes_version": {"$ref": "#/$defs/Version"}}}},
+            {"if": {"properties": {"publication_status": {"const": "published"}}, "required": ["publication_status"]}, "then": {"properties": {"claims": {"minItems": 1}, "withdrawal_reason": {"type": "null"}, "published_at": {"$ref": "#/$defs/DateTime"}, "withdrawn_at": {"type": "null"}}}},
+            {"if": {"properties": {"publication_status": {"const": "withdrawn"}}, "required": ["publication_status"]}, "then": {"properties": {"claims": {"maxItems": 0}, "impact_refs": {"maxItems": 0}, "withdrawal_reason": {"enum": ["source_retracted", "evidence_ineligible", "incorrect_event_match", "privacy_removal", "duplicate", "other"]}, "published_at": {"type": "null"}, "withdrawn_at": {"$ref": "#/$defs/DateTime"}}}}
+          ]
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "An Event is a version produced after L4 acceptance. Withdrawn versions are minimal public tombstones with no claims or impacts. A new version is immutable and has the immediately preceding version as supersedes_version."
+    },
+    "Impact": {
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {
+          "type": "object", "required": ["impact_id", "version", "event_id", "event_version", "impact_type", "title", "description", "lifecycle", "freshness", "event_time", "validity", "scope", "supporting_claim_ids", "published_at"],
+          "properties": {
+            "record_type": {"const": "Impact"},
+            "impact_id": {"$ref": "#/$defs/Id"},
+            "version": {"$ref": "#/$defs/Version"},
+            "event_id": {"$ref": "#/$defs/Id"},
+            "event_version": {"$ref": "#/$defs/Version"},
+            "impact_type": {"enum": ["road_closure", "traffic_diversion", "transport_service_disruption", "facility_closure", "utility_outage", "hazard_observation", "public_access_restriction", "event_attendance", "audience_notice", "other"]},
+            "title": {"type": "string", "minLength": 1, "maxLength": 240},
+            "description": {"type": "string", "minLength": 1, "maxLength": 2000},
+            "lifecycle": {"$ref": "#/$defs/Lifecycle"},
+            "freshness": {"$ref": "#/$defs/Freshness"},
+            "event_time": {"$ref": "#/$defs/TimeScope"},
+            "validity": {"$ref": "#/$defs/ValidityPeriod"},
+            "scope": {"$ref": "#/$defs/Scope"},
+            "supporting_claim_ids": {"$ref": "#/$defs/Ids", "minItems": 1},
+            "published_at": {"$ref": "#/$defs/DateTime"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "Each impact has its own lifecycle, freshness, timing, validity and scope. The service checks all supporting_claim_ids belong to the linked event version."
     },
     "PublicationDecision": {
-      "allOf": [{"$ref": "#/$defs/Envelope"}], "unevaluatedProperties": false,
-      "required": ["decision_id", "proposal_id", "policy_version", "event_id", "event_version", "claim_decisions", "reviewer_id", "decided_at"],
-      "properties": {
-        "record_type": {"const": "PublicationDecision"},
-        "decision_id": {"$ref": "#/$defs/Id"},
-        "proposal_id": {"$ref": "#/$defs/Id"},
-        "policy_version": {"$ref": "#/$defs/Id"},
-        "event_id": {"type": ["string", "null"]},
-        "event_version": {"type": ["integer", "null"], "minimum": 1},
-        "claim_decisions": {"type": "array", "items": {
-          "type": "object", "additionalProperties": false,
-          "required": ["claim_id", "disposition", "reason_codes", "evidence"],
+      "allOf": [
+        {"$ref": "#/$defs/DatasetEnvelope"},
+        {"$ref": "#/$defs/EventTarget"},
+        {
+          "type": "object", "required": ["decision_id", "proposal_id", "policy_version", "claim_decisions", "reviewer_id", "decided_at"],
           "properties": {
-            "claim_id": {"$ref": "#/$defs/Id"},
-            "disposition": {"enum": ["publish", "review", "reject", "retract"]},
-            "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-            "evidence": {"type": "array", "items": {"$ref": "#/$defs/EvidenceRef"}}
+            "record_type": {"const": "PublicationDecision"},
+            "decision_id": {"$ref": "#/$defs/Id"},
+            "proposal_id": {"$ref": "#/$defs/Id"},
+            "policy_version": {"$ref": "#/$defs/Id"},
+            "event_id": {},
+            "event_version": {},
+            "claim_decisions": {
+              "type": "array", "items": {"type": "object", "additionalProperties": false,
+                "required": ["claim_id", "disposition", "reason_codes", "evidence"],
+                "properties": {
+                  "claim_id": {"$ref": "#/$defs/Id"},
+                  "disposition": {"enum": ["publish", "review", "reject", "retract"]},
+                  "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "maxLength": 120}},
+                  "evidence": {"type": "array", "items": {"$ref": "#/$defs/EvidenceRef"}}
+                }
+              }
+            },
+            "reviewer_id": {"oneOf": [{"$ref": "#/$defs/Id"}, {"type": "null"}]},
+            "decided_at": {"$ref": "#/$defs/DateTime"}
           }
-        }},
-        "reviewer_id": {"type": ["string", "null"]},
-        "decided_at": {"$ref": "#/$defs/DateTime"}
-      },
-      "description": "Produced only by L4. Authorization, evidence, concurrency and idempotency checks remain required beyond schema validation."
+        }
+      ],
+      "unevaluatedProperties": false,
+      "description": "A decision can reject or hold a proposal without creating an event version; the null event pair represents no resulting version. Only L4 creates decisions. Authorization, evidence, concurrency and idempotency checks remain required."
     }
   }
 }

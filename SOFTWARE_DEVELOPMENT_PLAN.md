@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Development authorized; M1 specifications in progress
+**Status:** Development authorized; source, domain and UX/API design baselines accepted; runtime implementation not started
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
@@ -18,7 +18,10 @@ This Software Development Plan (SDP) is the project's main engineering document.
 | [PROJECT_PLAN.md](PROJECT_PLAN.md) | Product context, ten-category taxonomy and user-facing concept |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Five-layer boundaries, retrieval, investigation and publication design |
 | [SOURCE_VERIFICATION_PLAN.md](SOURCE_VERIFICATION_PLAN.md) | Acquisition, evidence independence, source-specific freshness and publication rules |
+| [docs/SOURCE_FEASIBILITY.md](docs/SOURCE_FEASIBILITY.md) | Dated source access findings, live/manual/demo activation gates and retention baseline |
 | [docs/contracts.schema.json](docs/contracts.schema.json) | Proposed versioned message shapes; not the complete database or public API schema |
+| [docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) | Domain relations, independent status dimensions, versioning and service invariants |
+| [docs/UX_API_SPEC.md](docs/UX_API_SPEC.md) and [docs/api/openapi.yaml](docs/api/openapi.yaml) | UI states, public projections, moderator flows and proposed HTTP boundary |
 | [docs/IMPLEMENTATION_BACKLOG.md](docs/IMPLEMENTATION_BACKLOG.md) | Ordered work packages, dependencies and review status |
 | [docs/decisions/README.md](docs/decisions/README.md) | Architecture decision record (ADR) process and open decisions |
 | Local `AGENTS.md` (Git-ignored) | Planner, implementer and reviewer operating rules for this workspace |
@@ -52,7 +55,7 @@ Validate needs with 6–8 interviews. The initial usability target is at least 8
 - Scheduled BMKG, PetaBencana and ANTARA acquisition as initial connector candidates; add a permitted traffic/operator source for the demonstration. Each connector needs a fresh feasibility check before activation.
 - Ten supported category labels; four complete scenarios: historical crime, gathering plus transport impact, weather warning plus flood observation, and a non-geographic group notice.
 - Versioned evidence storage, extraction, hybrid retrieval, a direct grounded proposal path, bounded investigation, deterministic publication, freshness jobs and monitoring.
-- Reproducible labelled fixtures, automated checks, a single-server deployment specification, backup/restore procedure and operator handover.
+- Reproducible labelled fixtures, automated checks, a Cloudflare/Neon Free deployment profile, restore/rebuild procedure and operator handover.
 
 Historical or synthetic fixtures can fill source gaps in the demonstration, with explicit labels and a separate demo environment/data namespace. A fixture-backed scenario must never be reported as a live integration.
 
@@ -98,11 +101,11 @@ Requirement IDs remain stable across task and design changes. “Must” identif
 | NFR-01 Evidence integrity | No known unsupported factual claim or geometry is published in release scenarios. | Adjudicated claim/span and geometry checks; disputed cases held. |
 | NFR-02 Resource bounds | L3 stops at 5 tool attempts, 4 reasoning turns, 60 active seconds or 12,000 model input/output tokens, whichever comes first. | Failure/retry/resume cases; preflight reservations and persisted counters; no budget reset. |
 | NFR-03 Usability | Mobile and desktop discovery remain usable with a list fallback; keyboard access and understandable labels. | US-01/02 tasks on a real phone and desktop, 80% target, documented issues. |
-| NFR-04 Responsiveness | Public API reads never wait for scraping or model inference. Provisional target: p95 <=1 second at 20 concurrent browsing sessions on the declared reference host. | A repeatable workload with stated event/vector volume, connection settings and background load; target revisited after baseline measurement. |
+| NFR-04 Responsiveness | Public reads never wait for source acquisition or model inference. Report warm and cold-start latency separately; Neon Free may scale to zero after five idle minutes. | WSL workload and a free-tier compatibility run report p50/p95, dataset size and concurrent reads. Set a measured target before release; never present a cold or failed database response as current coverage. |
 | NFR-05 Reliability | Duplicate delivery/retries do not duplicate public versions or notifications; stale proposals cannot overwrite a newer event. | Transaction, retry and optimistic concurrency cases. |
-| NFR-06 Recoverability | Nightly external backup; proposed prototype RPO 24 hours and RTO 4 hours. | Timed restoration into an isolated database and reconciliation of pending jobs; no guarantee until rehearsed. |
+| NFR-06 Recoverability | The demo dataset must be rebuildable from versioned synthetic fixtures and migrations. Neon Free's built-in restore is limited to up to six hours or 1 GB of changes, with one manual snapshot; no 30-day external backup is assumed. Live-data activation waits for a free, encrypted, off-provider backup/restore path to be selected and rehearsed. | WSL restore/rebuild rehearsal; record tested recovery point, recovery time and deletion-tombstone behavior. Do not represent Neon Free restore history as a long-term backup. |
 | NFR-07 Privacy/security | Least-privilege roles, approved outbound hosts, input isolation, minimal personal data and protected moderator access. | Access-control, malicious-source, redirect, secret-handling and retention checks. |
-| NFR-08 Maintainability | Layer responsibilities, versioned interfaces and reproducible builds remain explicit. | Dependency locks, migrations, clear run instructions, reviewed contract changes. |
+| NFR-08 Maintainability | Layer responsibilities, versioned interfaces and reproducible builds remain explicit; local development and checks run in WSL Ubuntu-26.04. | Locked dependencies, migrations, WSL run instructions, reviewed contract changes and a free-tier-compatible build. |
 
 ## 5. Architecture and deployment baseline
 
@@ -128,17 +131,24 @@ flowchart TD
 
 The refreshed-context edge applies only to an already open investigation and preserves its case ID/budget. The initial sufficient-context path never opens L3. A moderator's evidence-backed correction re-enters L4 checks.
 
-The proposed deployment baseline, based on the latest hosting discussion, is one Linux VPS with a reverse proxy, static React/TypeScript frontend, FastAPI API, scheduler, bounded workers, and PostgreSQL with PostGIS and pgvector. Use separate processes/containers, database roles and resource limits on that host. A PostgreSQL-backed job queue keeps initial infrastructure small; leases, unique job keys, retries and crash recovery must be implemented explicitly. LangGraph manages L3 state transitions and checkpoints, not all application scheduling.
+The deployment target is a **low-volume class prototype on free tiers**, not a high-availability public safety service:
 
-Budget initially for **4 vCPU, 16 GB RAM and 100 GB expandable SSD**, with hosted extraction, embedding and reasoning APIs. This is a sizing assumption requiring measurement, not a promised capacity. Start with one concurrent investigation and one or two ingestion jobs. A local model/GPU server is outside the baseline. Provider, hosting region, model versions, paid service budget and exact dependency versions remain open implementation decisions.
+| Concern | Proposed free-tier component | Boundary |
+| --- | --- | --- |
+| Web UI and API | React/TypeScript static assets and modular TypeScript API on Cloudflare Workers | Free Workers allowance is 100,000 requests/day, 10 ms CPU per invocation, 128 MB memory, 50 subrequests/request and six simultaneous outgoing connections/request. Keep synchronous handlers small and SQL-backed; no scrape or inference in a public request. |
+| Scheduled/background work | Cloudflare Cron plus bounded Workflows; durable case counters and application records remain in Neon | At most five Cron triggers/account; Workflows free allowance is 3,000 steps/day with 10 ms CPU per invocation. Each run processes a small bounded unit; database job state is authoritative. |
+| PostgreSQL | Neon Free with PostgreSQL, PostGIS and pgvector; Cloudflare Hyperdrive for Worker connections | Per project: 100 CU-hours/month, 0.5 GB storage, 5 GB network transfer/month, scale-to-zero after five minutes, 6-hour/1-GB instant-restore window and one manual snapshot. Hyperdrive Free permits 100,000 SQL statements/day. |
+| Model inference | A Workers AI adapter may be benchmarked only with models accessible on Free | Free allocation is 10,000 Neurons/day; some models require a paid Workers plan. No paid fallback. Model selection remains open until Indonesian quality, supported-model access, quota and failure behavior are measured. |
 
-Backups are stored outside the VPS. Put large permitted source files in object/file storage and retain references in the database. On a single host, failure affects all services; the MVP accepts this limitation subject to the restore rehearsal. Public browsing uses stored published versions during model outages and shows source freshness limitations.
+The exact published quotas and their review links are recorded in [REFERENCES.md](REFERENCES.md). They are hard ceilings, not a capacity claim. Add app-level usage counters and stop new background/AI work before quota exhaustion; keep static pages and cached public projections distinct from current database-backed status. When a service suspends or is unavailable, display degraded coverage and timestamps, not an all-clear. The prototype must demonstrate its selected flows while remaining under the free quotas; it must not promise continuous polling, always-on database access, production freshness or citywide event coverage.
+
+Local project startup and verification use WSL Ubuntu-26.04. The planned development server and test database approach will be selected in BOOT-01; no external account, database project, paid model, live connector or deployment has been created. Data retention is constrained by Neon Free's 0.5 GB/project cap: enforce a small demo corpus, monitor storage, pause new acquisition before the cap, and preserve current evidence/audit rows rather than silently evicting them. Until a free off-provider backup and deletion-replay procedure is implemented and rehearsed, use synthetic/historical demo data only.
 
 ## 6. Data lifecycle and status model
 
-Store source registry, report revisions, extracted candidates, chunks/vectors, origin relationships, events/impacts, claim versions, contexts, investigations, decisions, jobs/outbox, moderator accounts and audit records. Existing JSON contracts define message boundaries; M1 must add database relations, public/review API shapes and migration rules.
+The proposed schema 2.0 boundaries in [docs/contracts.schema.json](docs/contracts.schema.json) and [docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) define source, revision, origin, geometry, evidence, embedding, extraction, grounding, investigation, event, impact and publication-decision records. The synthetic examples cover each record type. Database relations, migration code and runtime/service-level invariants remain implementation work in DATA-01; schema validation alone does not prove evidence support, permissions or referential integrity.
 
-Known contract work for SPEC-02: define source/origin/geometry/event/impact/checkpoint records; replace free-text category with the agreed taxonomy plus tags; record embedding capability/version/dimensions separately from extraction/reasoning runs; distinguish investigation limits from consumed/reserved counters; formalize ID/version pairing, time ordering and status transitions. Do not treat the existing six illustrative contracts as a complete implementation model.
+The public and moderator projections are specified separately in [docs/UX_API_SPEC.md](docs/UX_API_SPEC.md) and [docs/api/openapi.yaml](docs/api/openapi.yaml). They deliberately omit internal model runs and raw evidence offsets from public responses. SPEC-02/03 are accepted as design contracts; OpenAPI-to-domain projection mapping is explicit in SPEC-03, and BOOT-01/DATA-01 must implement and test the service checks.
 
 Keep four independent dimensions:
 
@@ -155,7 +165,7 @@ Maintain histories for collected events, not every event that ever happened. Act
 
 Baseline freshness rules remain those in SOURCE_VERIFICATION_PLAN.md: explicit issuer validity first; 60-minute review deadline for fast-changing observations; 24-hour review for an undated-end advisory. Fetching again never refreshes observation time. Proposed polling intervals are BMKG 2 minutes, PetaBencana 5 minutes and news/traffic 10 minutes, always subject to source limits.
 
-Retention durations and permitted archival formats require a source/data retention matrix before live enablement. Do not promise indefinite raw-document retention. Minimize unnecessary personal details before embedding; a deletion workflow must reach derived data and define backup expiry. Public user location remains optional; prototype preferences stay on the user's device.
+The [source feasibility matrix](docs/SOURCE_FEASIBILITY.md) and [ADR-005](docs/decisions/ADR-005-source-retention.md) define the accepted prototype retention baseline. Source-specific reuse rights, permitted archival formats and rate limits remain required before live enablement. Do not promise indefinite raw-document retention. Minimize unnecessary personal details before embedding; a deletion workflow must reach derived data and define backup expiry. Public user location remains optional; prototype preferences stay on the user's device.
 
 ## 7. AI strategy and verification
 
@@ -175,21 +185,21 @@ Weeks are relative estimates inherited from the semester plan, not committed cal
 | --- | --- | --- |
 | M0 Planning baseline | Now | Versioned SDP, linked architecture, backlog and agent/review rules in local Git; origin connected to the team's GitHub repository. No application completion claim. |
 | M1 Requirements and contracts | Weeks 1–2 | User/source findings, wireframes, entity/state/API specifications, labelled fixture plan and key ADRs reviewed. |
-| M2 Data foundation | Weeks 3–4 | Local runtime, migrations, source registry, permitted connectors and idempotent preprocessing; traces, basic API, early feed/detail/map shell and read-only moderator views using reviewed fixtures. Real moderation mutations wait for MOD-01 authorization. |
+| M2 Data foundation | Weeks 3–4 | WSL runtime, Neon-compatible migrations, source registry, approved connectors and idempotent preprocessing; traces, Cloudflare Worker API, early feed/detail/map shell and read-only moderator views using reviewed fixtures. Real moderation mutations wait for MOD-01 authorization. |
 | M3 Grounded direct path | Weeks 5–6 | Model adapter comparison, hybrid retrieval and typed proposals with fixtures; supported cases bypass L3. |
 | M4 Bounded investigation | Weeks 7–8 | Tool service, durable counters/checkpoints and escalation; exhaustion, malicious input and restart cases pass. |
 | M5 Complete application | Weeks 9–10 | One publication gate, moderation, responsive map/feed/details/preferences/briefing and consistent correction updates. |
-| M6 Evaluation and operation | Weeks 11–12 | Held-out evaluation, usability, deployment/restore rehearsal, operating guide and final report evidence. |
+| M6 Evaluation and operation | Weeks 11–12 | Held-out evaluation, usability, Cloudflare/Neon Free quota and latency report, free-tier-compatible deployment/restore rehearsal, operating guide and final report evidence. |
 
 Build L4 policy foundations and UI using reviewed fixtures before M5; M5 is the integration gate, not the start of that work. Instrumentation and evaluation cases begin in M1/M2. Finish a narrow end-to-end path before expanding connector breadth.
 
-Use separate local development, isolated demo/staging and eventual live deployment configurations with distinct databases, secrets and source-enable flags. The first integrated slice is moderator-approved. Source-specific automatic publication is a later reviewed gate within the prototype, never the default for unassessed model output. Release changes through a versioned build, database migration plan, health check and rollback procedure; recovery must account for migrations that cannot simply be reversed.
+Use separate local development, isolated demo/staging and any later live configuration with distinct databases, secrets and source-enable flags. The first integrated slice is moderator-approved. Source-specific automatic publication is a later reviewed gate within the prototype, never the default for unassessed model output. Release changes through a versioned build, database migration plan, health check and rollback procedure; recovery must account for migrations that cannot simply be reversed. The demo must stay within Cloudflare/Neon Free quotas and remain reconstructible from synthetic fixtures. Live-source activation remains gated on permissions, quota monitoring, and a tested free off-provider backup/deletion path.
 
 ## 9. Team and agent responsibilities
 
 | Role | Responsibility |
 | --- | --- |
-| Root assistant | Planner and reviewer: write bounded assignments, maintain requirements, resolve interface decisions, inspect changes, evaluate verification evidence and integrate accepted work. |
+| Primary orchestrator/reviewer | **GPT-6 Luna, max reasoning**: plan the work, assign bounded tasks, maintain requirements, resolve interfaces, inspect changes and verification evidence, and integrate accepted work. |
 | Implementation subagents | **GPT-6 Luna, max reasoning**: implement assigned work and relevant checks; return evidence and limitations; address review findings. |
 | Jesaya Hamonangan Gaudensius Malau — 2406409845 | Proposed human ownership of storage/spatial contracts, backend API and publication policy. |
 | Perry Tjahya — 2406409965 | Proposed human ownership of connectors/preprocessing, model/grounding capabilities and investigation. |
@@ -197,9 +207,9 @@ Use separate local development, isolated demo/staging and eventual live deployme
 
 Human owners validate requirements, adjudicate labelled evidence and accept product decisions. Subagents are engineering implementers, separate from the product's runtime investigation agents. Do not encode the implementation-agent model preference as the production model choice.
 
-Workflow: root selects a ready task → specifies allowed paths/interfaces and acceptance checks → dispatches a Luna/max agent → implementer returns changes and actual results → root reviews against requirement IDs → fixes are requested if needed → root integrates and records an accepted commit. Disjoint tasks may run concurrently in separate worktrees. Shared migrations, contracts and dependency locks have one integration owner.
+Workflow: primary orchestrator selects a ready task → specifies allowed paths/interfaces and acceptance checks → assigns a separate Luna/max branch and worktree → implementer commits each coherent work package with a descriptive message and returns branch, commit SHA and actual results → orchestrator reviews against requirement IDs → fixes are requested if needed → orchestrator integrates and records an accepted commit. Shared migrations, contracts and dependency locks have one integration owner. Astra/xhigh is reserved for a rare, substantive technical difficulty that a Luna/max agent has attempted and failed to resolve; resource or usage limits alone do not trigger escalation. All local runtime checks use WSL.
 
-Root review checks behavior, evidence correctness, layer boundaries, security, migration impact, failure handling, maintainability and actual acceptance results. An agent's “done” message alone is insufficient. Task states are planned, ready, in_progress, in_review, changes_requested, accepted or blocked. Record the blocker/dependency explicitly; accepted is set by the root.
+Orchestrator review checks behavior, evidence correctness, layer boundaries, security, migration impact, failure handling, maintainability and actual acceptance results. An agent's “done” message alone is insufficient. Task states are planned, ready, in_progress, in_review, changes_requested, accepted or blocked. Record the blocker/dependency explicitly; accepted is set by the orchestrator.
 
 ## 10. Verification and release acceptance
 
@@ -216,7 +226,7 @@ Use at least 40 reports across at least 12 cases, at least three documents per c
 
 Report quality counts and rates separately by category/source/model role; track review workload, latency, tokens and cost. Set model accuracy thresholds during M1/M3 with the labelled cases and workload; do not invent benchmark results. Release-blocking defects include known unsupported publication, exposed personal data, wrong active warning geometry, budget bypass, unauthorized moderation, and stale/retracted evidence reinstated as current.
 
-Definition of done for each implementation task: intended behavior complete, relevant checks executed and reported, interface/migration/docs updated, no unresolved blocking review finding, and root acceptance recorded. Release completion additionally requires all Must requirements, four integrated scenarios, actual held-out/usability evidence, a reproducible deployment and restored backup. A model or source outage may reduce coverage but must not silently fabricate freshness or safety.
+Definition of done for each implementation task: intended behavior complete, relevant checks executed and reported, interface/migration/docs updated, no unresolved blocking review finding, and root acceptance recorded. Release completion additionally requires all Must requirements, four integrated scenarios, actual held-out/usability evidence, a reproducible Free-tier deployment and tested restoration or deterministic rebuild. No live-source launch is accepted without a free off-provider backup and deletion-replay test. A model or source outage may reduce coverage but must not silently fabricate freshness or safety.
 
 ## 11. Risks, cost and open decisions
 
@@ -225,11 +235,11 @@ Definition of done for each implementation task: intended behavior complete, rel
 | Source changes, limited access or incomplete coverage | Connector acceptance checklist, fixtures/manual URL fallback, health display; Perry. |
 | Incorrect dates, event merging or claimed independence | Human-labelled adversarial cases, typed unknowns, claim-level lineage and review; Perry + Jesaya. |
 | Scope exceeds three-person capacity | Four integrated scenarios, narrow connector set, stable IDs and dependency gates; root + team. |
-| Model cost or investigation loops | Per-case limits, separate configurable daily spend ceiling, usage ledger, queue backpressure; Perry. |
-| Single-server contention or failure | Worker concurrency/resource limits, API isolation, external backup/restore rehearsal; Jesaya. |
+| Model quota exhaustion or investigation loops | Per-case limits, Workers AI free-allocation ledger, stop before quota exhaustion, explicit held-for-review path and queue backpressure; Perry. No paid fallback. |
+| Free-tier quota exhaustion, scale-to-zero latency or storage cap | Usage counters, small bounded jobs, visible source-health/degraded status, synthetic demo limits and a restore gate before live activation; Jesaya + Perry. |
 | Moderator backlog | Count queue age and review rate, prioritize current operational impact, reduce automatic intake if capacity is exceeded; Rasya + team. |
 | Prompt injection or data exposure | Isolated source inputs, outbound restrictions, least privilege and privacy minimization; shared. |
 
-Implementation is authorized using fixtures and mock adapters while cost-dependent decisions remain open. Paid provider activation, hosting purchases, external deployment and public launch require their own delivery tasks and the necessary budget. Record infrastructure, inference, embedding, OCR, map/geocoding and backup costs separately; actual spending limits must be selected before enabling paid jobs.
+Implementation is authorized using fixtures and mock adapters. The deployment design targets Cloudflare and Neon free tiers; no paid upgrade, paid model, new external project or live source has been activated. If a required behavior cannot fit free-tier limits, narrow the prototype or leave it explicitly unavailable; do not silently depend on a paid service. Record any future cost-dependent alternative separately, but the current acceptance path assumes no spending.
 
 Open decisions with owners and timing are in the ADR register. The user has authorized starting the plan: M1 contract/source/UX preparation is active, followed by the first data-to-public-view slice. The root integrates reviewed work in dependency order and records actual completion in the backlog.

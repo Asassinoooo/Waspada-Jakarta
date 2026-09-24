@@ -1,193 +1,601 @@
 {
-  "description": "Entirely synthetic, non-public examples of each proposed boundary contract. Not live event data.",
+  "description": "Entirely synthetic, non-public examples covering every proposed schema 2.0 record. No live event or provider rights are implied.",
   "records": [
     {
-      "schema_version": "1.0",
-      "trace_id": "synthetic-trace-1",
-      "record_type": "ReportRevision",
-      "report_revision_id": "demo-report-r1",
-      "source_id": "demo-operator",
-      "canonical_url": "https://example.invalid/synthetic/diversion",
-      "content_hash": "ea70541b19a07c8ca9f9091075c760080c93756ac0477ba3a2728d7fccc4ee7a",
-      "permitted_text": "Synthetic example: the demo operator announces a service diversion.",
-      "published_at": "2026-01-01T08:00:00+07:00",
-      "retrieved_at": "2026-01-01T08:00:00+07:00",
-      "supersedes_id": null,
-      "status": "eligible"
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "SourceRegistry",
+      "source_id": "demo-source-operator-12",
+      "registry_version": 1,
+      "display_name": "Synthetic Transit Operator",
+      "source_kind": "operator",
+      "publisher_group_id": "demo-publisher-12",
+      "remit": [
+        "own bus service notices"
+      ],
+      "access_method": "manual_fixture",
+      "approved_hosts": [
+        "example.invalid"
+      ],
+      "access_restrictions": [
+        "synthetic fixture only"
+      ],
+      "reuse_basis": [
+        "synthetic content; no third-party source rights asserted"
+      ],
+      "registry_status": "active",
+      "approval_status": "approved",
+      "health_status": "unknown",
+      "auto_acquisition_enabled": false,
+      "auto_publication_policy": "never",
+      "polling_interval_seconds": null,
+      "last_checked_at": null,
+      "last_success_at": null
     },
     {
-      "schema_version": "1.0",
-      "trace_id": "synthetic-trace-1",
-      "record_type": "ExtractionResult",
-      "candidate_id": "demo-candidate",
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "ReportRevision",
+      "dataset_kind": "synthetic",
       "report_revision_id": "demo-report-r1",
-      "category": "transport",
-      "time": {
-        "start": "2026-01-01T08:00:00+07:00",
+      "source_id": "demo-source-operator-12",
+      "canonical_url": "https://example.invalid/demo/bus-diversion",
+      "source_revision_key": "fixture-v1",
+      "content_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+      "permitted_text": "Synthetic demo: Operator 12 announces Bus 12 diversion on Jalan Contoh on 2026-09-24 08:00 WIB.",
+      "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+      "normalization_version": "nfc-v1",
+      "published_at": "2026-09-24T09:00:00+07:00",
+      "observed_at": null,
+      "retrieved_at": "2026-09-24T09:00:00+07:00",
+      "validity": {
+        "valid_from": "2026-09-24T08:00:00+07:00",
+        "valid_until": "2026-09-24T10:00:00+07:00"
+      },
+      "supersedes_id": null,
+      "revision_status": "eligible"
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "EvidenceOrigin",
+      "dataset_kind": "synthetic",
+      "origin_id": "demo-origin-1",
+      "origin_kind": "operator_notice",
+      "actor_label": "Synthetic Transit Operator",
+      "source_id": "demo-source-operator-12",
+      "source_revision_ids": [
+        "demo-report-r1"
+      ],
+      "lineage_relation": "original",
+      "independence_status": "established",
+      "depends_on_origin_ids": [],
+      "discovery_evidence": [
+        {
+          "report_revision_id": "demo-report-r1",
+          "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+          "span_start": 0,
+          "span_end": 95,
+          "offset_unit": "unicode_code_points",
+          "relation": "supports"
+        }
+      ]
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "Geometry",
+      "dataset_kind": "synthetic",
+      "geometry_id": "demo-geometry-route",
+      "role": "route_segment",
+      "geojson": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            106.8,
+            -6.2
+          ],
+          [
+            106.81,
+            -6.21
+          ]
+        ]
+      },
+      "coordinate_reference_system": "OGC:CRS84",
+      "precision_m": null,
+      "precision_basis": "unknown",
+      "display_label": "Jalan Contoh (synthetic)",
+      "source_evidence": [
+        {
+          "report_revision_id": "demo-report-r1",
+          "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+          "span_start": 0,
+          "span_end": 95,
+          "offset_unit": "unicode_code_points",
+          "relation": "supports"
+        }
+      ]
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "EvidenceChunk",
+      "dataset_kind": "synthetic",
+      "chunk_id": "demo-chunk-1",
+      "report_revision_id": "demo-report-r1",
+      "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+      "span_start": 0,
+      "span_end": 95,
+      "offset_unit": "unicode_code_points",
+      "chunker_version": "chunker-v1",
+      "chunk_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+      "status": "active"
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "EmbeddingRun",
+      "dataset_kind": "synthetic",
+      "embedding_run_id": "demo-embedding-1",
+      "chunk_id": "demo-chunk-1",
+      "capability": "embedding",
+      "provider": "mock",
+      "model_version": "demo-embedding-v1",
+      "dimensions": 3,
+      "distance_metric": "cosine",
+      "vector_index_version": "demo-index-v1",
+      "input_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+      "status": "available",
+      "created_at": "2026-09-24T09:00:00+07:00"
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "ExtractionResult",
+      "dataset_kind": "synthetic",
+      "candidate_id": "demo-candidate-1",
+      "report_revision_id": "demo-report-r1",
+      "category": "transport_road_incidents",
+      "tags": [
+        {
+          "namespace": "service",
+          "value": "bus"
+        },
+        {
+          "namespace": "audience",
+          "value": "commuters"
+        }
+      ],
+      "event_time": {
+        "start": "2026-09-24T08:00:00+07:00",
         "end": null,
         "precision": "exact"
       },
       "scope": {
-        "place_ids": [],
-        "audience_ids": [
-          "demo-service"
+        "place_ids": [
+          "demo-place-jalan-contoh"
         ],
-        "geometry_ids": []
+        "service_ids": [
+          "demo-service-bus-12"
+        ],
+        "institution_ids": [],
+        "audience_ids": [
+          "commuters"
+        ],
+        "geometry_ids": [
+          "demo-geometry-route"
+        ]
       },
       "evidence": [
         {
           "report_revision_id": "demo-report-r1",
+          "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
           "span_start": 0,
-          "span_end": 67,
+          "span_end": 95,
+          "offset_unit": "unicode_code_points",
           "relation": "supports"
         }
       ],
       "unknown_fields": [
-        "service_resume_time"
+        "service_resume_confirmation"
       ],
       "model_run": {
         "capability": "extraction",
-        "model_version": "demo-extractor-v1",
-        "prompt_version": "demo-prompt-v1",
-        "input_tokens": 500,
-        "output_tokens": 100
+        "model_version": "mock-extractor-v1",
+        "prompt_version": "extract-v1",
+        "input_tokens": 40,
+        "output_tokens": 22
       }
     },
     {
-      "schema_version": "1.0",
-      "trace_id": "synthetic-trace-1",
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
       "record_type": "GroundingContext",
-      "context_id": "demo-context",
-      "candidate_id": "demo-candidate",
+      "dataset_kind": "synthetic",
+      "context_id": "demo-context-1",
+      "candidate_id": "demo-candidate-1",
       "evidence": [
         {
           "report_revision_id": "demo-report-r1",
+          "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
           "span_start": 0,
-          "span_end": 67,
+          "span_end": 95,
+          "offset_unit": "unicode_code_points",
           "relation": "supports"
         }
       ],
       "revision_states": [
         {
           "report_revision_id": "demo-report-r1",
-          "status": "eligible"
+          "revision_status": "eligible"
         }
       ],
       "candidate_events": [],
       "prior_decision_ids": [],
       "missing_fields": [
-        "service_resume_time"
+        "service_resume_confirmation"
       ],
       "conflicts": [],
-      "retrieval_version": "demo-retrieval-v1",
+      "retrieval_version": "exact-v1",
       "index_version": "demo-index-v1",
       "sufficient": false
     },
     {
-      "schema_version": "1.0",
-      "trace_id": "synthetic-trace-1",
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
       "record_type": "InvestigationRequest",
-      "investigation_id": "demo-case",
-      "candidate_id": "demo-candidate",
-      "context_id": "demo-context",
+      "dataset_kind": "synthetic",
+      "investigation_id": "demo-investigation-1",
+      "candidate_id": "demo-candidate-1",
+      "context_id": "demo-context-1",
       "event_id": null,
-      "event_revision": null,
+      "event_version": null,
       "questions": [
-        "Has the demo service resumed?"
+        "Is the diversion still in effect?"
       ],
       "budget": {
-        "tool_attempts": 5,
-        "reasoning_turns": 4,
-        "active_seconds": 60,
-        "model_tokens": 12000
-      }
+        "policy_version": "prototype-v1",
+        "limits": {
+          "tool_attempts": 5,
+          "reasoning_turns": 4,
+          "active_seconds": 60,
+          "model_tokens": 12000
+        },
+        "consumed": {
+          "tool_attempts": 1,
+          "reasoning_turns": 1,
+          "active_seconds": 8,
+          "model_tokens": 120
+        },
+        "reserved": {
+          "tool_attempts": 0,
+          "reasoning_turns": 0,
+          "active_seconds": 0,
+          "model_tokens": 0
+        }
+      },
+      "requested_at": "2026-09-24T09:00:00+07:00"
     },
     {
-      "schema_version": "1.0",
-      "trace_id": "synthetic-trace-1",
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "InvestigationCheckpoint",
+      "dataset_kind": "synthetic",
+      "checkpoint_id": "demo-checkpoint-1",
+      "investigation_id": "demo-investigation-1",
+      "checkpoint_version": 1,
+      "candidate_id": "demo-candidate-1",
+      "context_id": "demo-context-1",
+      "event_id": null,
+      "event_version": null,
+      "case_status": "completed",
+      "stop_reason": "completed",
+      "budget": {
+        "policy_version": "prototype-v1",
+        "limits": {
+          "tool_attempts": 5,
+          "reasoning_turns": 4,
+          "active_seconds": 60,
+          "model_tokens": 12000
+        },
+        "consumed": {
+          "tool_attempts": 1,
+          "reasoning_turns": 1,
+          "active_seconds": 8,
+          "model_tokens": 120
+        },
+        "reserved": {
+          "tool_attempts": 0,
+          "reasoning_turns": 0,
+          "active_seconds": 0,
+          "model_tokens": 0
+        }
+      },
+      "attempts": [
+        {
+          "attempt_id": "demo-attempt-1",
+          "tool": "fetch_original_notice",
+          "outcome": "succeeded",
+          "started_at": "2026-09-24T09:00:00+07:00",
+          "finished_at": "2026-09-24T09:00:00+07:00"
+        }
+      ],
+      "reasoning_runs": [
+        {
+          "capability": "reasoning",
+          "model_version": "mock-reasoner-v1",
+          "prompt_version": "investigate-v1",
+          "input_tokens": 80,
+          "output_tokens": 40
+        }
+      ],
+      "created_at": "2026-09-24T09:00:00+07:00",
+      "updated_at": "2026-09-24T09:00:00+07:00",
+      "completed_at": "2026-09-24T09:00:00+07:00"
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
       "record_type": "EventProposal",
-      "proposal_id": "demo-proposal",
-      "candidate_id": "demo-candidate",
-      "context_id": "demo-context",
+      "dataset_kind": "synthetic",
+      "proposal_id": "demo-proposal-1",
+      "candidate_id": "demo-candidate-1",
+      "context_id": "demo-context-1",
       "event_id": null,
       "base_event_version": null,
-      "investigation_id": "demo-case",
+      "investigation_id": "demo-investigation-1",
       "claims": [
         {
-          "claim_id": "demo-claim",
-          "text": "Synthetic example: the demo operator announces a service diversion.",
-          "time": {
-            "start": "2026-01-01T08:00:00+07:00",
+          "claim_id": "demo-claim-1",
+          "text": "Synthetic demo: Operator 12 announces Bus 12 diversion on Jalan Contoh on 2026-09-24 08:00 WIB.",
+          "event_time": {
+            "start": "2026-09-24T08:00:00+07:00",
             "end": null,
             "precision": "exact"
           },
+          "validity": {
+            "valid_from": "2026-09-24T08:00:00+07:00",
+            "valid_until": "2026-09-24T10:00:00+07:00"
+          },
           "scope": {
-            "place_ids": [],
-            "audience_ids": [
-              "demo-service"
+            "place_ids": [
+              "demo-place-jalan-contoh"
             ],
-            "geometry_ids": []
+            "service_ids": [
+              "demo-service-bus-12"
+            ],
+            "institution_ids": [],
+            "audience_ids": [
+              "commuters"
+            ],
+            "geometry_ids": [
+              "demo-geometry-route"
+            ]
           },
           "qualifiers": [
-            "synthetic example; issuer notice only"
+            "Synthetic example; not a live road warning."
           ],
           "support": [
             {
               "report_revision_id": "demo-report-r1",
+              "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
               "span_start": 0,
-              "span_end": 67,
+              "span_end": 95,
+              "offset_unit": "unicode_code_points",
               "relation": "supports"
             }
           ],
           "contradictions": [],
+          "context_evidence": [],
           "origin_ids": [
-            "demo-origin"
+            "demo-origin-1"
           ],
-          "independence": "unknown",
-          "support_assessment": "supported"
+          "support_assessment": "supported",
+          "evidence_label": "issuer_notice"
         }
       ],
       "unresolved_fields": [
-        "service_resume_time"
+        "service_resume_confirmation"
       ],
       "model_runs": [
         {
           "capability": "reasoning",
-          "model_version": "demo-reasoner-v1",
-          "prompt_version": "demo-prompt-v1",
-          "input_tokens": 500,
-          "output_tokens": 100
+          "model_version": "mock-reasoner-v1",
+          "prompt_version": "propose-v1",
+          "input_tokens": 100,
+          "output_tokens": 50
         }
-      ]
+      ],
+      "proposed_at": "2026-09-24T09:00:00+07:00"
     },
     {
-      "schema_version": "1.0",
-      "trace_id": "synthetic-trace-1",
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "Event",
+      "dataset_kind": "synthetic",
+      "event_id": "demo-event-1",
+      "version": 1,
+      "supersedes_version": null,
+      "title": "Bus 12 diversion (synthetic demo)",
+      "summary": "Synthetic, non-live example of a service diversion.",
+      "category": "transport_road_incidents",
+      "tags": [
+        {
+          "namespace": "service",
+          "value": "bus"
+        }
+      ],
+      "lifecycle": "ongoing",
+      "freshness": {
+        "status": "current",
+        "evaluated_at": "2026-09-24T09:00:00+07:00",
+        "review_due_at": "2026-09-24T09:30:00+07:00",
+        "basis": "source_validity"
+      },
+      "event_time": {
+        "start": "2026-09-24T08:00:00+07:00",
+        "end": null,
+        "precision": "exact"
+      },
+      "validity": {
+        "valid_from": "2026-09-24T08:00:00+07:00",
+        "valid_until": "2026-09-24T10:00:00+07:00"
+      },
+      "scope": {
+        "place_ids": [
+          "demo-place-jalan-contoh"
+        ],
+        "service_ids": [
+          "demo-service-bus-12"
+        ],
+        "institution_ids": [],
+        "audience_ids": [
+          "commuters"
+        ],
+        "geometry_ids": [
+          "demo-geometry-route"
+        ]
+      },
+      "claims": [
+        {
+          "claim_id": "demo-claim-1",
+          "text": "Synthetic demo: Operator 12 announces Bus 12 diversion on Jalan Contoh on 2026-09-24 08:00 WIB.",
+          "event_time": {
+            "start": "2026-09-24T08:00:00+07:00",
+            "end": null,
+            "precision": "exact"
+          },
+          "validity": {
+            "valid_from": "2026-09-24T08:00:00+07:00",
+            "valid_until": "2026-09-24T10:00:00+07:00"
+          },
+          "scope": {
+            "place_ids": [
+              "demo-place-jalan-contoh"
+            ],
+            "service_ids": [
+              "demo-service-bus-12"
+            ],
+            "institution_ids": [],
+            "audience_ids": [
+              "commuters"
+            ],
+            "geometry_ids": [
+              "demo-geometry-route"
+            ]
+          },
+          "qualifiers": [
+            "Synthetic example; not a live road warning."
+          ],
+          "support": [
+            {
+              "report_revision_id": "demo-report-r1",
+              "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
+              "span_start": 0,
+              "span_end": 95,
+              "offset_unit": "unicode_code_points",
+              "relation": "supports"
+            }
+          ],
+          "contradictions": [],
+          "context_evidence": [],
+          "origin_ids": [
+            "demo-origin-1"
+          ],
+          "evidence_label": "issuer_notice"
+        }
+      ],
+      "impact_refs": [
+        {
+          "impact_id": "demo-impact-1",
+          "version": 1
+        }
+      ],
+      "publication_status": "published",
+      "withdrawal_reason": null,
+      "publication_decision_id": "demo-decision-1",
+      "published_at": "2026-09-24T09:00:00+07:00",
+      "withdrawn_at": null
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
+      "record_type": "Impact",
+      "dataset_kind": "synthetic",
+      "impact_id": "demo-impact-1",
+      "version": 1,
+      "event_id": "demo-event-1",
+      "event_version": 1,
+      "impact_type": "traffic_diversion",
+      "title": "Bus 12 detour",
+      "description": "Synthetic route effect example.",
+      "lifecycle": "ongoing",
+      "freshness": {
+        "status": "current",
+        "evaluated_at": "2026-09-24T09:00:00+07:00",
+        "review_due_at": "2026-09-24T09:30:00+07:00",
+        "basis": "source_validity"
+      },
+      "event_time": {
+        "start": "2026-09-24T08:00:00+07:00",
+        "end": null,
+        "precision": "exact"
+      },
+      "validity": {
+        "valid_from": "2026-09-24T08:00:00+07:00",
+        "valid_until": "2026-09-24T10:00:00+07:00"
+      },
+      "scope": {
+        "place_ids": [
+          "demo-place-jalan-contoh"
+        ],
+        "service_ids": [
+          "demo-service-bus-12"
+        ],
+        "institution_ids": [],
+        "audience_ids": [
+          "commuters"
+        ],
+        "geometry_ids": [
+          "demo-geometry-route"
+        ]
+      },
+      "supporting_claim_ids": [
+        "demo-claim-1"
+      ],
+      "published_at": "2026-09-24T09:00:00+07:00"
+    },
+    {
+      "schema_version": "2.0",
+      "trace_id": "demo-trace-1",
       "record_type": "PublicationDecision",
-      "decision_id": "demo-decision",
-      "proposal_id": "demo-proposal",
-      "policy_version": "demo-policy-v1",
-      "event_id": null,
-      "event_version": null,
+      "dataset_kind": "synthetic",
+      "decision_id": "demo-decision-1",
+      "proposal_id": "demo-proposal-1",
+      "policy_version": "publication-v1",
+      "event_id": "demo-event-1",
+      "event_version": 1,
       "claim_decisions": [
         {
-          "claim_id": "demo-claim",
-          "disposition": "review",
+          "claim_id": "demo-claim-1",
+          "disposition": "publish",
           "reason_codes": [
-            "review_pending"
+            "reviewed_synthetic_fixture"
           ],
           "evidence": [
             {
               "report_revision_id": "demo-report-r1",
+              "permitted_text_hash": "c97d7e50c98b2ac807c6b8928c14332734e8e9bae45d53a3e7bedafcad49422a",
               "span_start": 0,
-              "span_end": 67,
+              "span_end": 95,
+              "offset_unit": "unicode_code_points",
               "relation": "supports"
             }
           ]
         }
       ],
-      "reviewer_id": null,
-      "decided_at": "2026-01-01T08:00:00+07:00"
+      "reviewer_id": "demo-moderator-1",
+      "decided_at": "2026-09-24T09:00:00+07:00"
     }
   ]
 }

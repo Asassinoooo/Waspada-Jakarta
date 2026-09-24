@@ -1,0 +1,1008 @@
+openapi: 3.1.0
+info:
+  title: Waspada Jakarta API
+  version: 0.1.0
+  description: >
+    Proposed same-origin API. No runtime service exists. Public routes return only
+    published event projections. Private source text, raw evidence spans, model
+    traces, credentials, and moderator notes are not part of public responses.
+servers:
+  - url: /api/v1
+security: []
+tags:
+  - name: Public
+  - name: Moderator session
+  - name: Moderation
+paths:
+  /context:
+    get:
+      tags: [Public]
+      operationId: getPublicContext
+      summary: Read the deployment-selected dataset label and public source health
+      responses:
+        '200':
+          description: Dataset and connector context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicContext' }
+              example:
+                dataset_mode: demo
+                dataset_label: synthetic
+                generated_at: '2026-09-24T09:00:00+07:00'
+                sources: []
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /events:
+    get:
+      tags: [Public]
+      operationId: listPublishedEvents
+      summary: Search bounded published event pages
+      description: Does not acquire sources, invoke models, or trigger investigation. Dataset is selected by deployment.
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { $ref: '#/components/parameters/Category' }
+        - { $ref: '#/components/parameters/Lifecycle' }
+        - { $ref: '#/components/parameters/Freshness' }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - name: q
+          in: query
+          description: Place, service or event text, up to 120 characters.
+          schema: { type: string, maxLength: 120 }
+        - name: place_id
+          in: query
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: Published events and a bounded continuation cursor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventPage' }
+              example:
+                data: []
+                page: { next_cursor: null, cursor_expires_at: null }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /events/{event_id}:
+    get:
+      tags: [Public]
+      operationId: getPublishedEvent
+      summary: Read the current published event and impact versions
+      parameters: [{ $ref: '#/components/parameters/EventId' }]
+      responses:
+        '200':
+          description: Public event projection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventDetail' }
+              example:
+                event_id: demo-event-1
+                version: 1
+                title: Demonstration event (synthetic)
+                summary: Synthetic example; not a current warning.
+                category: demonstrations_public_gatherings
+                tags: []
+                lifecycle: planned
+                freshness: { status: current, evaluated_at: '2026-09-24T09:00:00+07:00', review_due_at: '2026-09-24T10:00:00+07:00', basis: manual_review }
+                event_time: { start: '2026-09-24T10:00:00+07:00', end: null, precision: exact }
+                validity: { valid_from: '2026-09-24T09:00:00+07:00', valid_until: '2026-09-24T11:00:00+07:00' }
+                scope: { places: [Jakarta Pusat], services: [], institutions: [], audiences: [] }
+                claims:
+                  - claim_id: demo-claim-1
+                    text: Synthetic fixture example; this is not a current notice.
+                    event_time: { start: '2026-09-24T10:00:00+07:00', end: null, precision: exact }
+                    validity: { valid_from: '2026-09-24T09:00:00+07:00', valid_until: '2026-09-24T11:00:00+07:00' }
+                    scope: { places: [Jakarta Pusat], services: [], institutions: [], audiences: [] }
+                    qualifiers: []
+                    evidence_label: issuer_notice
+                    sources:
+                      - display_name: Synthetic fixture
+                        url: https://example.invalid/synthetic/demo-event-1
+                        published_at: '2026-09-24T09:00:00+07:00'
+                        observed_at: null
+                        excerpt: null
+                impacts: []
+                published_at: '2026-09-24T09:00:00+07:00'
+                geometries: []
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /events/{event_id}/history:
+    get:
+      tags: [Public]
+      operationId: getPublishedEventHistory
+      summary: Read the permitted public event change history
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: Publicly safe versions and change summaries
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoryPage' }
+              example:
+                data: []
+                page: { next_cursor: null, cursor_expires_at: null }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /events.geojson:
+    get:
+      tags: [Public]
+      operationId: getPublishedEventGeoJSON
+      summary: Read published, source-supported map geometry
+      parameters:
+        - { $ref: '#/components/parameters/Category' }
+        - { $ref: '#/components/parameters/Lifecycle' }
+        - { $ref: '#/components/parameters/Freshness' }
+        - name: bbox
+          in: query
+          description: CRS84 west,south,east,north bounds inside the configured Jakarta viewport.
+          schema: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: GeoJSON collection; feed remains the accessible fallback
+          content:
+            application/geo+json:
+              schema: { $ref: '#/components/schemas/PublicFeatureCollection' }
+              example: { type: FeatureCollection, features: [] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /briefings:
+    post:
+      tags: [Public]
+      operationId: buildInterestBriefing
+      summary: Match transient local interests against published information
+      description: Stores no user preferences and invokes no model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BriefingRequest' }
+            example:
+              interests: { places: [Jakarta Pusat], services: [], institutions: [], audiences: [], categories: [demonstrations_public_gatherings] }
+      responses:
+        '200':
+          description: Matching published events with relevance reasons
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BriefingResponse' }
+              example:
+                items: []
+                generated_at: '2026-09-24T09:00:00+07:00'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /updates:
+    get:
+      tags: [Public]
+      operationId: pollPublishedUpdates
+      summary: Poll material published changes from an opaque cursor
+      parameters:
+        - name: cursor
+          in: query
+          required: true
+          description: On 410, fetch a new event-list snapshot before restarting the update poll.
+          schema: { type: string, minLength: 1, maxLength: 2048 }
+      responses:
+        '200':
+          description: Change summaries and next cursor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UpdatePage' }
+              example:
+                items: []
+                next_cursor: demo-cursor-next
+                cursor_expires_at: '2026-09-24T10:00:00+07:00'
+                checked_at: '2026-09-24T09:00:00+07:00'
+        '410':
+          description: Cursor expired; refresh event list and restart polling
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: CURSOR_EXPIRED, message: Cursor expired., request_id: demo-trace-1 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/csrf:
+    get:
+      tags: [Moderator session]
+      operationId: getPreAuthCsrfToken
+      summary: Issue a short-lived same-origin token before login
+      description: Also sets a host-only Secure HttpOnly SameSite=Strict pre-auth cookie.
+      responses:
+        '200':
+          description: Pre-auth token to send in X-CSRF-Token
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Short-lived __Host-waspada_pre_auth cookie; Secure, HttpOnly, SameSite=Strict, Path=/; no Domain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CsrfToken' }
+              example: { csrf_token: synthetic-token-value-not-usable, expires_at: '2026-09-24T09:10:00+07:00' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/session:
+    get:
+      tags: [Moderator session]
+      operationId: getModeratorSession
+      summary: Read the server-authorized role for the active session
+      security: [{ ModeratorSessionCookie: [] }]
+      responses:
+        '200':
+          description: Current session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModeratorSession' }
+              example: { moderator_id: demo-moderator, role: moderator, csrf_token: synthetic-session-token-not-usable, expires_at: '2026-09-24T17:00:00+07:00' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/login:
+    post:
+      tags: [Moderator session]
+      operationId: loginModerator
+      summary: Authenticate a provisioned moderator
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            example: { username: demo-user, password: never-use-this-placeholder }
+      responses:
+        '200':
+          description: Session created and CSRF token rotated
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: __Host-waspada_session; Secure, HttpOnly, SameSite=Strict, Path=/; no Domain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModeratorSession' }
+              example: { moderator_id: demo-moderator, role: moderator, csrf_token: synthetic-session-token-not-usable, expires_at: '2026-09-24T17:00:00+07:00' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/logout:
+    post:
+      tags: [Moderator session]
+      operationId: logoutModerator
+      summary: Revoke the active moderator session
+      security: [{ ModeratorSessionCookie: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '204': { description: Session revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/reviews:
+    get:
+      tags: [Moderation]
+      operationId: listReviewQueue
+      summary: Read a bounded page of held proposals
+      security: [{ ModeratorSessionCookie: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: Review queue for the deployment-selected dataset
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewPage' }
+              example: { data: [], page: { next_cursor: null, cursor_expires_at: null } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/reviews/{proposal_id}:
+    get:
+      tags: [Moderation]
+      operationId: getReview
+      summary: Read a proposed change and permitted supporting or contrary evidence
+      security: [{ ModeratorSessionCookie: [] }]
+      parameters:
+        - name: proposal_id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: Moderator review projection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/reviews/{proposal_id}/decision:
+    post:
+      tags: [Moderation]
+      operationId: decideReview
+      summary: Submit claim dispositions to the L4 publication gate
+      description: A moderator cannot bypass source, evidence, geometry or concurrency checks.
+      security: [{ ModeratorSessionCookie: [] }]
+      parameters:
+        - name: proposal_id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecisionRequest' }
+            example:
+              event_id: null
+              expected_event_version: null
+              decisions:
+                - claim_id: demo-claim-1
+                  disposition: review
+                  reason_codes: [insufficient_independent_support]
+                  evidence: []
+              reason: Synthetic example held for review.
+      responses:
+        '200':
+          description: Idempotent result or new policy decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewDecisionResult' }
+              example: { decision_id: demo-decision-1, publication_status: held, event_id: null, event_version: null, audit_id: demo-audit-1 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/DomainRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/events/{event_id}/retraction:
+    post:
+      tags: [Moderation]
+      operationId: retractEvent
+      summary: Request a retraction through the publication gate
+      security: [{ ModeratorSessionCookie: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RetractionRequest' }
+            example: { expected_event_version: 2, reason: Synthetic example; source claim withdrawn. }
+      responses:
+        '200':
+          description: New withdrawn tombstone version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetractionResult' }
+              example: { event_id: demo-event-1, version: 3, publication_status: withdrawn, decision_id: demo-decision-2, audit_id: demo-audit-2 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/DomainRejected' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/sources/{source_id}/approval:
+    put:
+      tags: [Moderation]
+      operationId: updateSourceApproval
+      summary: Change source approval (admin only)
+      description: Approval does not grant source-content reuse rights or approve individual claims.
+      security: [{ ModeratorSessionCookie: [] }]
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+        - name: If-Match
+          in: header
+          required: true
+          description: Quoted SourceRegistry registry_version.
+          schema: { type: string, pattern: '^"[1-9][0-9]*"$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceApprovalRequest' }
+            example: { approval_status: suspended, reason: Synthetic example; permissions need review. }
+      responses:
+        '200':
+          description: Updated state and incremented registry version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceApprovalResult' }
+              example: { source_id: demo-source-1, registry_version: 2, approval_status: suspended, audit_id: demo-audit-3 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/DomainRejected' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+components:
+  securitySchemes:
+    ModeratorSessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-waspada_session
+      description: Opaque server-side session; Secure, HttpOnly, SameSite=Strict.
+  parameters:
+    EventId: { name: event_id, in: path, required: true, schema: { type: string, maxLength: 128 } }
+    Cursor: { name: cursor, in: query, required: false, schema: { type: string, maxLength: 2048 } }
+    PageSize: { name: limit, in: query, required: false, description: Defaults to 20; maximum is 100., schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+    Category: { name: category, in: query, required: false, schema: { $ref: '#/components/schemas/Category' } }
+    Lifecycle: { name: lifecycle, in: query, required: false, schema: { $ref: '#/components/schemas/Lifecycle' } }
+    Freshness: { name: freshness, in: query, required: false, schema: { type: string, enum: [current, needs_update, expired] } }
+    From: { name: from, in: query, required: false, description: Inclusive RFC 3339 date-time; ranges over 90 days are rejected., schema: { type: string, format: date-time } }
+    To: { name: to, in: query, required: false, schema: { type: string, format: date-time } }
+    Origin: { name: Origin, in: header, required: true, description: Must exactly match the application origin., schema: { type: string, format: uri } }
+    CsrfToken: { name: X-CSRF-Token, in: header, required: true, schema: { type: string, minLength: 32, maxLength: 512 } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, description: Reuse with identical actor, operation and body; changed-body reuse is rejected., schema: { type: string, minLength: 16, maxLength: 128 } }
+  responses:
+    BadRequest:
+      description: Invalid filter, cursor or request body
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: INVALID_REQUEST, message: Request parameters are invalid., request_id: demo-trace-1 }
+    Unauthorized:
+      description: Missing or expired session; generic body
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: UNAUTHORIZED, message: Authentication is required., request_id: demo-trace-1 }
+    Forbidden:
+      description: Role, Origin or CSRF check failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: FORBIDDEN, message: The request is not permitted., request_id: demo-trace-1 }
+    NotFound:
+      description: No public item or accessible moderator item
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: NOT_FOUND, message: The requested item is unavailable., request_id: demo-trace-1 }
+    Conflict:
+      description: Expected version is stale or an idempotency key was reused with another body
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ConflictError' }
+          example: { code: VERSION_CONFLICT, message: Reload and review the current version., request_id: demo-trace-1, current_version: 4 }
+    DomainRejected:
+      description: Domain, evidence, source or policy validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: POLICY_REJECTED, message: The proposal did not pass publication checks., request_id: demo-trace-1 }
+    RateLimited:
+      description: Request limit reached
+      headers:
+        Retry-After: { description: Seconds before retry, schema: { type: integer, minimum: 1 } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: RATE_LIMITED, message: Retry after the indicated interval., request_id: demo-trace-1 }
+    UnexpectedError:
+      description: Temporary service failure without private source content
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: TEMPORARILY_UNAVAILABLE, message: The service is temporarily unavailable., request_id: demo-trace-1 }
+  schemas:
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message, request_id]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        request_id: { type: string }
+    ConflictError:
+      type: object
+      additionalProperties: false
+      required: [code, message, request_id, current_version]
+      properties:
+        code: { const: VERSION_CONFLICT }
+        message: { type: string }
+        request_id: { type: string }
+        current_version: { type: integer, minimum: 1 }
+    PageInfo:
+      type: object
+      additionalProperties: false
+      required: [next_cursor, cursor_expires_at]
+      properties:
+        next_cursor: { type: [string, 'null'], maxLength: 2048 }
+        cursor_expires_at: { type: [string, 'null'], format: date-time }
+    Category:
+      type: string
+      enum: [crime_personal_security, demonstrations_public_gatherings, crowds_major_events, violence_immediate_threats, disasters_weather, fires_infrastructure_hazards, transport_road_incidents, utilities_essential_services, health_environmental_advisories, group_specific_critical_notices]
+    Lifecycle:
+      type: string
+      enum: [planned, ongoing, resolved, cancelled, unknown]
+    Tag:
+      type: object
+      additionalProperties: false
+      required: [namespace, value]
+      properties:
+        namespace: { type: string, enum: [topic, service, audience, hazard, transport_mode, place_type] }
+        value: { type: string, maxLength: 64, pattern: '^[a-z][a-z0-9_]*$' }
+    TimeScope:
+      type: object
+      additionalProperties: false
+      required: [start, end, precision]
+      properties:
+        start: { type: [string, 'null'] }
+        end: { type: [string, 'null'] }
+        precision: { type: string, enum: [exact, date, range, unknown] }
+      description: Mirrors schema 2.0; unknown has null times and date precision never implies a time of day.
+    Validity:
+      type: object
+      additionalProperties: false
+      required: [valid_from, valid_until]
+      properties:
+        valid_from: { type: [string, 'null'], format: date-time }
+        valid_until: { type: [string, 'null'], format: date-time }
+    Freshness:
+      type: object
+      additionalProperties: false
+      required: [status, evaluated_at, review_due_at, basis]
+      properties:
+        status: { type: string, enum: [current, needs_update, expired] }
+        evaluated_at: { type: string, format: date-time }
+        review_due_at: { type: [string, 'null'], format: date-time }
+        basis: { type: string, enum: [source_validity, fast_observation_review, undated_advisory_review, manual_review, unknown] }
+    PublicScope:
+      type: object
+      additionalProperties: false
+      required: [places, services, institutions, audiences]
+      properties:
+        places: { type: array, items: { type: string } }
+        services: { type: array, items: { type: string } }
+        institutions: { type: array, items: { type: string } }
+        audiences: { type: array, items: { type: string } }
+    PublicSource:
+      type: object
+      additionalProperties: false
+      required: [display_name, url, published_at, observed_at, excerpt]
+      properties:
+        display_name: { type: string }
+        url: { type: string, format: uri }
+        published_at: { type: [string, 'null'], format: date-time }
+        observed_at: { type: [string, 'null'], format: date-time }
+        excerpt: { type: [string, 'null'], maxLength: 300, description: A permitted short excerpt only; null if disallowed or unavailable. }
+    PublicClaim:
+      type: object
+      additionalProperties: false
+      required: [claim_id, text, event_time, validity, scope, qualifiers, evidence_label, sources]
+      properties:
+        claim_id: { type: string }
+        text: { type: string }
+        event_time: { $ref: '#/components/schemas/TimeScope' }
+        validity: { $ref: '#/components/schemas/Validity' }
+        scope: { $ref: '#/components/schemas/PublicScope' }
+        qualifiers: { type: array, items: { type: string } }
+        evidence_label: { type: string, enum: [issuer_notice, attributed_report, independent_corroboration, crowdsourced_observation] }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/PublicSource' } }
+    PublicImpact:
+      type: object
+      additionalProperties: false
+      required: [impact_id, version, impact_type, title, description, lifecycle, freshness, event_time, validity, scope]
+      properties:
+        impact_id: { type: string }
+        version: { type: integer, minimum: 1 }
+        impact_type: { type: string, enum: [road_closure, traffic_diversion, transport_service_disruption, facility_closure, utility_outage, hazard_observation, public_access_restriction, event_attendance, audience_notice, other] }
+        title: { type: string }
+        description: { type: string }
+        lifecycle: { $ref: '#/components/schemas/Lifecycle' }
+        freshness: { $ref: '#/components/schemas/Freshness' }
+        event_time: { $ref: '#/components/schemas/TimeScope' }
+        validity: { $ref: '#/components/schemas/Validity' }
+        scope: { $ref: '#/components/schemas/PublicScope' }
+    EventView:
+      type: object
+      additionalProperties: false
+      required: [event_id, version, title, summary, category, tags, lifecycle, freshness, event_time, validity, scope, claims, impacts, published_at]
+      properties:
+        event_id: { type: string }
+        version: { type: integer, minimum: 1 }
+        title: { type: string }
+        summary: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        tags: { type: array, items: { $ref: '#/components/schemas/Tag' } }
+        lifecycle: { $ref: '#/components/schemas/Lifecycle' }
+        freshness: { $ref: '#/components/schemas/Freshness' }
+        event_time: { $ref: '#/components/schemas/TimeScope' }
+        validity: { $ref: '#/components/schemas/Validity' }
+        scope: { $ref: '#/components/schemas/PublicScope' }
+        claims: { type: array, items: { $ref: '#/components/schemas/PublicClaim' } }
+        impacts: { type: array, items: { $ref: '#/components/schemas/PublicImpact' } }
+        published_at: { type: string, format: date-time }
+    PublicGeometry:
+      type: object
+      additionalProperties: false
+      required: [geometry_id, role, geometry, precision_m, label]
+      properties:
+        geometry_id: { type: string }
+        role: { type: string, enum: [incident_scene, affected_area, warning_boundary, route_segment, service_stop, facility, venue, service_area, approximate_place] }
+        geometry: { $ref: '#/components/schemas/GeoJSONGeometry' }
+        precision_m: { type: [number, 'null'], minimum: 0 }
+        label: { type: [string, 'null'] }
+    GeoJSONPosition:
+      type: array
+      minItems: 2
+      maxItems: 3
+      items: { type: number }
+      description: CRS84 longitude, latitude, and optional altitude; Jakarta range and geometry topology require service validation.
+    GeoJSONLine:
+      type: array
+      minItems: 2
+      items: { $ref: '#/components/schemas/GeoJSONPosition' }
+    GeoJSONRing:
+      type: array
+      minItems: 4
+      items: { $ref: '#/components/schemas/GeoJSONPosition' }
+      description: Runtime validation must ensure first and last positions are equal.
+    GeoJSONGeometry:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, coordinates]
+          properties:
+            type: { const: Point }
+            coordinates: { $ref: '#/components/schemas/GeoJSONPosition' }
+        - type: object
+          additionalProperties: false
+          required: [type, coordinates]
+          properties:
+            type: { const: MultiPoint }
+            coordinates: { type: array, minItems: 1, items: { $ref: '#/components/schemas/GeoJSONPosition' } }
+        - type: object
+          additionalProperties: false
+          required: [type, coordinates]
+          properties:
+            type: { const: LineString }
+            coordinates: { $ref: '#/components/schemas/GeoJSONLine' }
+        - type: object
+          additionalProperties: false
+          required: [type, coordinates]
+          properties:
+            type: { const: MultiLineString }
+            coordinates: { type: array, minItems: 1, items: { $ref: '#/components/schemas/GeoJSONLine' } }
+        - type: object
+          additionalProperties: false
+          required: [type, coordinates]
+          properties:
+            type: { const: Polygon }
+            coordinates: { type: array, minItems: 1, items: { $ref: '#/components/schemas/GeoJSONRing' } }
+        - type: object
+          additionalProperties: false
+          required: [type, coordinates]
+          properties:
+            type: { const: MultiPolygon }
+            coordinates: { type: array, minItems: 1, items: { type: array, minItems: 1, items: { $ref: '#/components/schemas/GeoJSONRing' } } }
+        - type: object
+          additionalProperties: false
+          required: [type, geometries]
+          properties:
+            type: { const: GeometryCollection }
+            geometries: { type: array, items: { $ref: '#/components/schemas/GeoJSONGeometry' } }
+      description: RFC 7946 geometry in CRS84 longitude,latitude order; L4 validates source support, topology and Jakarta scope.
+    EventDetail:
+      type: object
+      additionalProperties: false
+      required: [event_id, version, title, summary, category, tags, lifecycle, freshness, event_time, validity, scope, claims, impacts, published_at, geometries]
+      properties:
+        event_id: { type: string }
+        version: { type: integer, minimum: 1 }
+        title: { type: string }
+        summary: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        tags: { type: array, items: { $ref: '#/components/schemas/Tag' } }
+        lifecycle: { $ref: '#/components/schemas/Lifecycle' }
+        freshness: { $ref: '#/components/schemas/Freshness' }
+        event_time: { $ref: '#/components/schemas/TimeScope' }
+        validity: { $ref: '#/components/schemas/Validity' }
+        scope: { $ref: '#/components/schemas/PublicScope' }
+        claims: { type: array, items: { $ref: '#/components/schemas/PublicClaim' } }
+        impacts: { type: array, items: { $ref: '#/components/schemas/PublicImpact' } }
+        published_at: { type: string, format: date-time }
+        geometries: { type: array, items: { $ref: '#/components/schemas/PublicGeometry' } }
+    EventPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/EventView' } }
+        page: { $ref: '#/components/schemas/PageInfo' }
+    HistoryEntry:
+      type: object
+      additionalProperties: false
+      required: [event_id, version, change_type, changed_at, summary]
+      properties:
+        event_id: { type: string }
+        version: { type: integer, minimum: 1 }
+        change_type: { type: string, enum: [published, corrected, impact_changed, retracted] }
+        changed_at: { type: string, format: date-time }
+        summary: { type: string, maxLength: 500 }
+    HistoryPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/HistoryEntry' } }
+        page: { $ref: '#/components/schemas/PageInfo' }
+    PublicFeatureCollection:
+      type: object
+      additionalProperties: false
+      required: [type, features]
+      properties:
+        type: { const: FeatureCollection }
+        features:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, id, geometry, properties]
+            properties:
+              type: { const: Feature }
+              id: { type: string }
+              geometry: { $ref: '#/components/schemas/GeoJSONGeometry' }
+              properties:
+                type: object
+                additionalProperties: false
+                required: [event_id, version, title, category, lifecycle, freshness, geometry_role]
+                properties:
+                  event_id: { type: string }
+                  version: { type: integer }
+                  title: { type: string }
+                  category: { $ref: '#/components/schemas/Category' }
+                  lifecycle: { $ref: '#/components/schemas/Lifecycle' }
+                  freshness: { type: string, enum: [current, needs_update, expired] }
+                  geometry_role: { type: string }
+    PublicContext:
+      type: object
+      additionalProperties: false
+      required: [dataset_mode, dataset_label, generated_at, sources]
+      properties:
+        dataset_mode: { type: string, enum: [live, demo] }
+        dataset_label: { type: string, enum: [live, historical, synthetic] }
+        generated_at: { type: string, format: date-time }
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [display_name, health, last_success_at]
+            properties:
+              display_name: { type: string }
+              health: { type: string, enum: [unknown, healthy, degraded, unavailable] }
+              last_success_at: { type: [string, 'null'], format: date-time }
+    BriefingRequest:
+      type: object
+      additionalProperties: false
+      required: [interests]
+      properties:
+        interests:
+          type: object
+          additionalProperties: false
+          required: [places, services, institutions, audiences, categories]
+          properties:
+            places: { type: array, maxItems: 30, items: { type: string, maxLength: 128 } }
+            services: { type: array, maxItems: 30, items: { type: string, maxLength: 128 } }
+            institutions: { type: array, maxItems: 30, items: { type: string, maxLength: 128 } }
+            audiences: { type: array, maxItems: 30, items: { type: string, maxLength: 128 } }
+            categories: { type: array, maxItems: 10, uniqueItems: true, items: { $ref: '#/components/schemas/Category' } }
+    BriefingResponse:
+      type: object
+      additionalProperties: false
+      required: [items, generated_at]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/BriefingItem' } }
+        generated_at: { type: string, format: date-time }
+    BriefingItem:
+      type: object
+      additionalProperties: false
+      required: [event, relevance_reasons]
+      properties:
+        event: { $ref: '#/components/schemas/EventView' }
+        relevance_reasons: { type: array, minItems: 1, maxItems: 10, items: { type: string, maxLength: 200 } }
+    UpdatePage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor, cursor_expires_at, checked_at]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/HistoryEntry' } }
+        next_cursor: { type: string, minLength: 1, maxLength: 2048 }
+        cursor_expires_at: { type: string, format: date-time }
+        checked_at: { type: string, format: date-time }
+    CsrfToken:
+      type: object
+      additionalProperties: false
+      required: [csrf_token, expires_at]
+      properties:
+        csrf_token: { type: string, minLength: 32 }
+        expires_at: { type: string, format: date-time }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 200 }
+        password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
+    ModeratorSession:
+      type: object
+      additionalProperties: false
+      required: [moderator_id, role, csrf_token, expires_at]
+      properties:
+        moderator_id: { type: string }
+        role: { type: string, enum: [moderator, admin] }
+        csrf_token: { type: string, minLength: 32 }
+        expires_at: { type: string, format: date-time }
+    ReviewSummary:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, category, title, proposed_at, conflict_count]
+      properties:
+        proposal_id: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        title: { type: string }
+        proposed_at: { type: string, format: date-time }
+        conflict_count: { type: integer, minimum: 0 }
+    ReviewPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/ReviewSummary' } }
+        page: { $ref: '#/components/schemas/PageInfo' }
+    ReviewEvidence:
+      type: object
+      additionalProperties: false
+      required: [evidence_ref, source_name, source_url, revision_status, published_at, observed_at, excerpt, origin_id, origin_status]
+      properties:
+        evidence_ref: { $ref: '#/components/schemas/EvidenceReference' }
+        source_name: { type: string }
+        source_url: { type: string, format: uri }
+        revision_status: { type: string, enum: [unreviewed, eligible, quarantined, superseded, retracted] }
+        published_at: { type: [string, 'null'], format: date-time }
+        observed_at: { type: [string, 'null'], format: date-time }
+        excerpt: { type: [string, 'null'], maxLength: 2000, description: Only permitted review text; raw/private content is excluded. }
+        origin_id: { type: [string, 'null'] }
+        origin_status: { type: string, enum: [established, dependent, unknown] }
+    EvidenceReference:
+      type: object
+      additionalProperties: false
+      required: [report_revision_id, permitted_text_hash, span_start, span_end, offset_unit, relation]
+      properties:
+        report_revision_id: { type: string, maxLength: 128 }
+        permitted_text_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        span_start: { type: integer, minimum: 0, maximum: 10000000 }
+        span_end: { type: integer, minimum: 1, maximum: 10000000 }
+        offset_unit: { const: unicode_code_points }
+        relation: { type: string, enum: [supports, contradicts, updates, context] }
+    ReviewDetail:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, event_id, base_event_version, proposal, evidence, conflicts, dataset_label]
+      properties:
+        proposal_id: { type: string }
+        event_id: { type: [string, 'null'] }
+        base_event_version: { type: [integer, 'null'], minimum: 1 }
+        proposal: { $ref: '#/components/schemas/ModeratorProposal' }
+        evidence: { type: array, items: { $ref: '#/components/schemas/ReviewEvidence' } }
+        conflicts: { type: array, items: { type: string } }
+        dataset_label: { type: string, enum: [live, historical, synthetic] }
+    ModeratorProposal:
+      type: object
+      additionalProperties: false
+      required: [event_id, base_event_version, claims, unresolved_fields, proposed_at]
+      properties:
+        event_id: { type: [string, 'null'] }
+        base_event_version: { type: [integer, 'null'], minimum: 1 }
+        claims: { type: array, items: { $ref: '#/components/schemas/ModeratorProposalClaim' } }
+        unresolved_fields: { type: array, items: { type: string } }
+        proposed_at: { type: string, format: date-time }
+    ModeratorProposalClaim:
+      type: object
+      additionalProperties: false
+      required: [claim_id, text, event_time, validity, scope, qualifiers, support, contradictions, context_evidence, origin_ids, support_assessment, evidence_label]
+      properties:
+        claim_id: { type: string, maxLength: 128 }
+        text: { type: string, maxLength: 4000 }
+        event_time: { $ref: '#/components/schemas/TimeScope' }
+        validity: { $ref: '#/components/schemas/Validity' }
+        scope: { $ref: '#/components/schemas/ModeratorScope' }
+        qualifiers: { type: array, items: { type: string, maxLength: 500 } }
+        support: { type: array, minItems: 1, items: { $ref: '#/components/schemas/EvidenceReference' } }
+        contradictions: { type: array, items: { $ref: '#/components/schemas/EvidenceReference' } }
+        context_evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceReference' } }
+        origin_ids: { type: array, minItems: 1, items: { type: string, maxLength: 128 } }
+        support_assessment: { type: string, enum: [supported, uncertain, disputed] }
+        evidence_label: { type: string, enum: [issuer_notice, attributed_report, independent_corroboration, crowdsourced_observation, under_review] }
+    ModeratorScope:
+      type: object
+      additionalProperties: false
+      required: [place_ids, service_ids, institution_ids, audience_ids, geometry_ids]
+      properties:
+        place_ids: { type: array, items: { type: string, maxLength: 128 } }
+        service_ids: { type: array, items: { type: string, maxLength: 128 } }
+        institution_ids: { type: array, items: { type: string, maxLength: 128 } }
+        audience_ids: { type: array, items: { type: string, maxLength: 128 } }
+        geometry_ids: { type: array, items: { type: string, maxLength: 128 } }
+    ClaimDecisionInput:
+      type: object
+      additionalProperties: false
+      required: [claim_id, disposition, reason_codes, evidence]
+      properties:
+        claim_id: { type: string }
+        disposition: { type: string, enum: [publish, review, reject, retract] }
+        reason_codes: { type: array, minItems: 1, items: { type: string } }
+        evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceReference' } }
+    ReviewDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [event_id, expected_event_version, decisions, reason]
+      properties:
+        event_id: { type: [string, 'null'] }
+        expected_event_version: { type: [integer, 'null'], minimum: 1 }
+        decisions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ClaimDecisionInput' } }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+      description: Event ID and expected version are both null for a new event or both set for an update; L4 rechecks the target pair and version.
+    ReviewDecisionResult:
+      type: object
+      additionalProperties: false
+      required: [decision_id, publication_status, event_id, event_version, audit_id]
+      properties:
+        decision_id: { type: string }
+        publication_status: { type: string, enum: [published, held, rejected] }
+        event_id: { type: [string, 'null'] }
+        event_version: { type: [integer, 'null'], minimum: 1 }
+        audit_id: { type: string }
+    RetractionRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_event_version, reason]
+      properties:
+        expected_event_version: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    RetractionResult:
+      type: object
+      additionalProperties: false
+      required: [event_id, version, publication_status, decision_id, audit_id]
+      properties:
+        event_id: { type: string }
+        version: { type: integer, minimum: 2 }
+        publication_status: { const: withdrawn }
+        decision_id: { type: string }
+        audit_id: { type: string }
+    SourceApprovalRequest:
+      type: object
+      additionalProperties: false
+      required: [approval_status, reason]
+      properties:
+        approval_status: { type: string, enum: [approved, suspended, revoked] }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    SourceApprovalResult:
+      type: object
+      additionalProperties: false
+      required: [source_id, registry_version, approval_status, audit_id]
+      properties:
+        source_id: { type: string }
+        registry_version: { type: integer, minimum: 1 }
+        approval_status: { type: string, enum: [approved, suspended, revoked] }
+        audit_id: { type: string }
