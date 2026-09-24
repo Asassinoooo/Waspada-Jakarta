@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import "./petabencana-geojson.test.js";
 import worker from "../src/index.js";
 import type { WorkerEnvironment } from "../src/layers/l4-application-integration/api.js";
 
