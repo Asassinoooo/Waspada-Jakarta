@@ -541,14 +541,36 @@ components:
         namespace: { type: string, enum: [topic, service, audience, hazard, transport_mode, place_type] }
         value: { type: string, maxLength: 64, pattern: '^[a-z][a-z0-9_]*$' }
     TimeScope:
-      type: object
-      additionalProperties: false
-      required: [start, end, precision]
-      properties:
-        start: { type: [string, 'null'] }
-        end: { type: [string, 'null'] }
-        precision: { type: string, enum: [exact, date, range, unknown] }
-      description: Mirrors schema 2.0; unknown has null times and date precision never implies a time of day.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [start, end, precision]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: [string, 'null'], format: date-time }
+            precision: { const: exact }
+        - type: object
+          additionalProperties: false
+          required: [start, end, precision]
+          properties:
+            start: { type: string, format: date }
+            end: { type: [string, 'null'], format: date }
+            precision: { const: date }
+        - type: object
+          additionalProperties: false
+          required: [start, end, precision]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+            precision: { const: range }
+        - type: object
+          additionalProperties: false
+          required: [start, end, precision]
+          properties:
+            start: { type: 'null' }
+            end: { type: 'null' }
+            precision: { const: unknown }
+      description: Mirrors schema 2.0; date precision never implies a time of day, and unknown precision carries null start/end.
     Validity:
       type: object
       additionalProperties: false
