@@ -193,6 +193,7 @@ CREATE TABLE waspada.evidence_chunks (
   status text NOT NULL CHECK (status IN ('active', 'invalidated')),
   PRIMARY KEY (dataset_kind, chunk_id),
   UNIQUE (dataset_kind, chunk_id, permitted_text_hash),
+  UNIQUE (dataset_kind, chunk_id, chunk_text_hash),
   FOREIGN KEY (trace_id, dataset_kind) REFERENCES waspada.traces (trace_id, dataset_kind),
   FOREIGN KEY (dataset_kind, report_revision_id, permitted_text_hash)
     REFERENCES waspada.report_revisions (dataset_kind, report_revision_id, permitted_text_hash)
@@ -216,7 +217,8 @@ CREATE TABLE waspada.embedding_runs (
   PRIMARY KEY (dataset_kind, embedding_run_id),
   UNIQUE (dataset_kind, embedding_run_id, dimensions),
   FOREIGN KEY (trace_id, dataset_kind) REFERENCES waspada.traces (trace_id, dataset_kind),
-  FOREIGN KEY (dataset_kind, chunk_id) REFERENCES waspada.evidence_chunks (dataset_kind, chunk_id)
+  FOREIGN KEY (dataset_kind, chunk_id, input_text_hash)
+    REFERENCES waspada.evidence_chunks (dataset_kind, chunk_id, chunk_text_hash)
 );
 
 -- Dimensions remain row data. Select an ANN index only after an embedding model is accepted.

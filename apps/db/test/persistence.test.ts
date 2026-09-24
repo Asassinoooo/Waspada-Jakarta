@@ -174,7 +174,7 @@ describe('DATA-01 relational persistence', () => {
     );
   });
 
-  it('keeps vector dimensions as per-run metadata and supports vector distance queries', async () => {
+  it('ties embedding input hashes to chunks and supports per-run vector distance queries', async () => {
     const textHash = sha256('synthetic chunk');
     await testDatabase.executor.query(
       `INSERT INTO waspada.evidence_chunks
@@ -186,6 +186,10 @@ describe('DATA-01 relational persistence', () => {
     );
     await insertEmbeddingRun(testDatabase, 'embedding-a', 2);
     await insertEmbeddingRun(testDatabase, 'embedding-b', 3);
+    await assert.rejects(
+      insertEmbeddingRun(testDatabase, 'embedding-wrong-input-hash', 2, sha256('different synthetic chunk')),
+      /foreign key constraint/i,
+    );
     await testDatabase.executor.query(
       `INSERT INTO waspada.embedding_vectors (dataset_kind, embedding_run_id, dimensions, embedding)
        VALUES ('synthetic', 'embedding-a', 2, '[1,0]'::vector),
@@ -706,7 +710,12 @@ async function insertWithdrawalVersionTwo(testDatabase: TestDatabase): Promise<v
   }
 }
 
-async function insertEmbeddingRun(testDatabase: TestDatabase, embeddingRunId: string, dimensions: number): Promise<void> {
+async function insertEmbeddingRun(
+  testDatabase: TestDatabase,
+  embeddingRunId: string,
+  dimensions: number,
+  inputTextHash = sha256('synthetic chunk'),
+): Promise<void> {
   await testDatabase.executor.query(
     `INSERT INTO waspada.embedding_runs
        (dataset_kind, embedding_run_id, trace_id, chunk_id, capability, provider,
@@ -715,7 +724,7 @@ async function insertEmbeddingRun(testDatabase: TestDatabase, embeddingRunId: st
      VALUES ('synthetic', $1, 'trace-synthetic', 'chunk-a', 'embedding',
         'local-test', 'model-not-selected-fixture', $2, 'cosine', 'index-test-v1',
         $3, 'available', '2026-09-24T10:15:00Z')`,
-    [embeddingRunId, dimensions, sha256('synthetic chunk')],
+    [embeddingRunId, dimensions, inputTextHash],
   );
 }
 
