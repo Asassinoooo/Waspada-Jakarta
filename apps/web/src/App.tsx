@@ -56,9 +56,11 @@ export function App() {
   const [events, setEvents] = useState<EventView[]>([]);
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
   const [retryKey, setRetryKey] = useState(0);
-  const [query, setQuery] = useState("");
-  const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>("list");
-  const [mapSelection, setMapSelection] = useState<MapSelection>({ kind: "presentation" });
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
+  const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>(() =>
+    new URLSearchParams(window.location.search).get("panel") === "map" ? "map" : "list",
+  );
+  const [mapSelection, setMapSelection] = useState<MapSelection>({ kind: "none" });
 
   useEffect(() => {
     const updateRoute = () => setRoute(routeFromHash(window.location.hash));
@@ -66,6 +68,15 @@ export function App() {
     window.addEventListener("hashchange", updateRoute);
     return () => window.removeEventListener("hashchange", updateRoute);
   }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (query) url.searchParams.set("q", query);
+    else url.searchParams.delete("q");
+    if (mobilePanel === "map") url.searchParams.set("panel", "map");
+    else url.searchParams.delete("panel");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [query, mobilePanel]);
 
   useEffect(() => {
     let cancelled = false;

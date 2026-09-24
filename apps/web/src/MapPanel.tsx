@@ -2,6 +2,7 @@ import type { EventView } from "@waspada/worker/public-contracts";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
 
 export type MapSelection =
+  | { kind: "none" }
   | { kind: "presentation" }
   | { kind: "api-event"; event: EventView };
 
@@ -11,6 +12,7 @@ interface MapPanelProps {
 }
 
 export function MapPanel({ selection, onReturnToList }: MapPanelProps) {
+  const isUnselected = selection.kind === "none";
   const isPresentation = selection.kind === "presentation";
 
   return (
@@ -62,7 +64,7 @@ export function MapPanel({ selection, onReturnToList }: MapPanelProps) {
               </div>
             </dl>
           </>
-        ) : (
+        ) : selection.kind === "api-event" ? (
           <div className="map-unavailable" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">—</span>
             <h3>{selection.event.title}</h3>
@@ -74,14 +76,27 @@ export function MapPanel({ selection, onReturnToList }: MapPanelProps) {
               Kembali ke daftar
             </button>
           </div>
+        ) : (
+          <div className="map-unavailable" role="status">
+            <span className="map-unavailable__mark" aria-hidden="true">—</span>
+            <h3>Belum ada segmen dipilih</h3>
+            <p>Pilih “Tampilkan segmen” pada fixture presentasi di daftar untuk melihat geometri yang didokumentasikan.</p>
+            <p className="supporting-note">Record API yang tersedia tidak memuat geometri; daftar tetap menjadi alternatif lengkap.</p>
+          </div>
         )}
       </figure>
 
-      <footer className="map-legend">
-        <span className="legend-line" aria-hidden="true" />
-        <span>Segmen rute yang didokumentasikan</span>
-        <span className="map-legend__note">Warna dan garis tidak menilai tingkat bahaya.</span>
-      </footer>
+      {isPresentation ? (
+        <footer className="map-legend">
+          <span className="legend-line" aria-hidden="true" />
+          <span>Segmen rute yang didokumentasikan</span>
+          <span className="map-legend__note">Warna dan garis tidak menilai tingkat bahaya.</span>
+        </footer>
+      ) : isUnselected ? (
+        <footer className="map-legend map-legend--empty">Belum ada geometri dipilih.</footer>
+      ) : (
+        <footer className="map-legend map-legend--empty">Record API ini tidak memuat geometri.</footer>
+      )}
     </section>
   );
 }

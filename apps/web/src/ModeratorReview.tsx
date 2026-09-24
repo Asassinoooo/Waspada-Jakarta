@@ -1,4 +1,4 @@
-import { formatInstant } from "./display.js";
+import { evidenceLabel, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
 import { MapPanel } from "./MapPanel.js";
 
@@ -68,13 +68,13 @@ export function ModeratorReview() {
             <h2 id="claim-review-title">Klaim dan dukungan</h2>
           </header>
           <article className="review-claim">
-            <div className="claim-card__label">{fixture.claim.evidenceLabel.replaceAll("_", " ")} · nilai fixture</div>
+            <div className="claim-card__label">{evidenceLabel(fixture.claim.evidenceLabel)} · nilai fixture</div>
             <blockquote>{fixture.claim.text}</blockquote>
             <p className="qualifier">{fixture.claim.qualifier}</p>
             <dl className="detail-facts">
               <div><dt>Waktu kejadian</dt><dd><time dateTime={fixture.event.eventTime.start}>{formatInstant(fixture.event.eventTime.start)}</time> · {fixture.event.eventTime.precision}</dd></div>
-              <div><dt>Siklus</dt><dd>{fixture.event.lifecycle} · nilai fixture</dd></div>
-              <div><dt>Freshness</dt><dd>{fixture.event.freshness.status} pada evaluasi {formatInstant(fixture.event.freshness.evaluatedAt)}</dd></div>
+              <div><dt>Siklus</dt><dd>{lifecycleLabel(fixture.event.lifecycle)}</dd></div>
+              <div><dt>Kesegaran</dt><dd>{freshnessLabel(fixture.event.freshness.status)} · dievaluasi {formatInstant(fixture.event.freshness.evaluatedAt)}</dd></div>
               <div><dt>Asal pendukung</dt><dd>{fixture.claim.originId}</dd></div>
             </dl>
           </article>

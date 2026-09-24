@@ -46,7 +46,7 @@ function renderFeed(options: { status?: "loading" | "loaded" | "unavailable"; ev
       query={options.query ?? ""}
       onQueryChange={() => {}}
       onRetry={() => {}}
-      mapSelection={options.selection ?? { kind: "presentation" }}
+      mapSelection={options.selection ?? { kind: "none" }}
       onSelectApiEvent={() => {}}
       onSelectPresentation={() => {}}
       mobilePanel="list"
@@ -70,9 +70,15 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
   assert.match(page, /Kesegaran/);
   assert.match(page, /Bukti/);
   assert.match(page, /Relevansi/);
+  assert.match(page, /Belum ada segmen dipilih/);
+  assert.match(page, /aria-pressed="false">Tampilkan segmen/);
+  assert.doesNotMatch(page, /route-diagram/);
   const selectedApi = renderFeed({ selection: { kind: "api-event", event: sampleEvent } });
   assert.match(selectedApi, /Tidak dipetakan/);
-  assert.match(page, /106\.8, -6\.2 → 106\.81, -6\.21/);
+  const selectedPresentation = renderFeed({ selection: { kind: "presentation" } });
+  assert.match(selectedPresentation, /route-diagram/);
+  assert.match(selectedPresentation, /aria-pressed="true">Segmen dipilih/);
+  assert.match(selectedPresentation, /106\.8, -6\.2 → 106\.81, -6\.21/);
 });
 
 test("loading, empty, and unavailable states give honest next steps", () => {

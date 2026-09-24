@@ -49,16 +49,17 @@ export function EventFeed({
   const matchingEvents = events.filter((event) =>
     (event.title + " " + event.summary + " " + event.category).toLocaleLowerCase("id").includes(search),
   );
+  const presentationSelected = mapSelection.kind === "presentation";
 
   return (
     <main id="main-content" className="main-shell">
       <section className="page-intro" aria-labelledby="discover-title">
         <div>
           <p className="section-kicker">Jelajah informasi publik</p>
-          <h1 id="discover-title">Daftar lebih dulu. Peta hanya saat ada geometri.</h1>
+          <h1 id="discover-title">Daftar lebih dulu</h1>
         </div>
         <p className="page-intro__copy">
-          Baca contoh yang tersedia, lihat asal setiap detail, dan bedakan waktu kejadian dari waktu sumber.
+          Baca asal setiap detail dan waktunya. Peta hanya menampilkan geometri yang tercatat; record lain tetap ada di daftar.
         </p>
       </section>
 
@@ -87,7 +88,7 @@ export function EventFeed({
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.currentTarget.value)}
-            placeholder="Judul atau ringkasan…"
+            placeholder="contoh: pemberitahuan…"
           />
           {query.length > 0 && (
             <button className="search-clear" type="button" onClick={() => onQueryChange("")}>
@@ -119,7 +120,7 @@ export function EventFeed({
         <section className="feed-panel" aria-labelledby="feed-title">
           <header className="panel-heading">
             <div>
-              <p className="section-kicker">Read-only API</p>
+              <p className="section-kicker">Data API lokal</p>
               <h2 id="feed-title">Daftar contoh</h2>
             </div>
             {status === "loaded" && <span className="count-chip">{matchingEvents.length} dari {events.length}</span>}
@@ -192,14 +193,19 @@ export function EventFeed({
             </ul>
           )}
 
-          <section className="presentation-card" aria-labelledby="presentation-title">
+          <section className={"presentation-card" + (presentationSelected ? " presentation-card--selected" : "")} aria-labelledby="presentation-title">
             <div className="presentation-card__rule" aria-hidden="true" />
             <p className="section-kicker">Contoh terpisah dari API</p>
             <h3 id="presentation-title">{presentation.event.title}</h3>
             <p>Detail, bukti, dan satu segmen geometri yang tercatat pada fixture dokumentasi.</p>
             <div className="presentation-card__actions">
-              <button className="button button--quiet" type="button" onClick={onSelectPresentation}>
-                Tampilkan segmen
+              <button
+                className="button button--quiet"
+                type="button"
+                aria-pressed={presentationSelected}
+                onClick={onSelectPresentation}
+              >
+                {presentationSelected ? "Segmen dipilih" : "Tampilkan segmen"}
               </button>
               <a className="text-link" href="#detail/presentation">Buka detail fixture</a>
             </div>

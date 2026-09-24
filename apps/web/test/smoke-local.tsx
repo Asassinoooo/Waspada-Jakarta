@@ -34,7 +34,7 @@ async function runSmoke() {
       query=""
       onQueryChange={() => {}}
       onRetry={() => {}}
-      mapSelection={{ kind: "presentation" }}
+      mapSelection={{ kind: "none" }}
       onSelectApiEvent={() => {}}
       onSelectPresentation={() => {}}
       mobilePanel="list"
@@ -47,7 +47,8 @@ async function runSmoke() {
   assert.match(feedMarkup, /Contoh fiktif/);
   assert.match(feedMarkup, /Daftar/);
   assert.match(feedMarkup, /Peta/);
-  assert.match(feedMarkup, /bukan pernyataan bahwa area aman/);
+  assert.match(feedMarkup, /Belum ada segmen dipilih/);
+  assert.match(feedMarkup, /tidak memastikan kondisi aman/);
 
   console.log("UI/API smoke passed: local shell, read routes, mobile switch, demo banner, and honest empty state.");
 }
