@@ -1,6 +1,6 @@
 # ADR-010 — Cloudflare Workers and Neon Free target
 
-- **Status:** Accepted as the prototype deployment target; implementation and quota fit remain unverified. No provider resources were created.
+- **Status:** Accepted as the no-cost prototype target; PLATFORM-01 found bounded-demo fit plausible, while provider fit remains unverified. No provider resources were created.
 - **Date:** 24 September 2026
 - **Owners:** Team 12; platform implementation led by Jesaya and Perry
 
@@ -8,7 +8,7 @@
 
 The user selected Cloudflare and Neon Free for later deployment and requires the planned system to work without a paid tier. This is a class prototype handling a bounded demonstration dataset. It must retain the five logical AI layers, L1 source processing outside L3, L2 grounding before investigation, and a deterministic L4 publication gate. The current repository contains specifications and fixtures, not a running system.
 
-The providers publish hard ceilings: Workers Free allows 100,000 requests/day, 10 ms CPU per HTTP/Cron/Workflow invocation, 128 MB memory, 50 subrequests per request and six concurrent outbound connections per request. An account has at most five Cron triggers. Workflows Free allows 3,000 steps/day. Hyperdrive Free allows 100,000 SQL statements/day. Neon Free allows 100 CU-hours, 0.5 GB database storage and 5 GB public transfer per project/month; compute scales to zero after five idle minutes, instant restore covers at most six hours or 1 GB of changes, and one manual snapshot is available. Workers AI offers 10,000 Neurons/day at no cost, but some models require a paid plan. Exact sources are listed in [REFERENCES.md](../../REFERENCES.md).
+Current provider documentation lists these Free ceilings: Workers has 100,000 requests/day, 10 ms active CPU per invocation, 128 MB memory, 50 external subrequests and six simultaneous outbound connections waiting for response headers. A Free account has up to five Cron triggers. Workflows has 3,000 billable steps/day, 1,024 steps per instance, and 1 GB-month of persisted state; retries are excluded from billable step count. Hyperdrive has 100,000 SQL statements/day. Neon has 100 CU-hours, 0.5 GB storage and 5 GB public network transfer per project/month; compute scales to zero after five idle minutes, restore history is limited to six hours or 1 GB of changes, and one manual snapshot is included. Workers AI provides 10,000 Neurons/day, while some models require paid billing. These are documented ceilings and capabilities, not measurements of this project. Source links and access/update dates are in [REFERENCES.md](../../REFERENCES.md).
 
 ## Decision
 
@@ -41,9 +41,15 @@ Keep source connector, normalization, entity extraction, retrieval, investigatio
 - **Cloudflare D1:** free-tier option, but the project needs PostGIS and pgvector-compatible relational retrieval. Keep Neon Postgres as the selected database and verify extension support on the target plan.
 - **Always-on production service:** not achievable as a promise under these free quotas. A live safety coverage claim, guaranteed polling interval, sustained public load or guaranteed recovery needs a new measured design decision and potentially resources outside this no-spend target.
 
+## PLATFORM-01 evidence — 24 September 2026
+
+The local WSL Ubuntu-26.04 prototype passed typecheck, all 9 tests, smoke, and build/Wrangler dry-run. Against the local Vite-to-Wrangler proxy, 50 sequential warm reads measured p50/p95 of 15.469/18.332 ms for context (106-byte response) and 16.372/21.086 ms for events (1,403-byte response). The Vite build emitted 259.69 kB JavaScript and 21.41 kB CSS; the Wrangler dry-run bundle was 9.46 KiB uncompressed. These measurements include local runtime/proxy costs and do not measure Cloudflare CPU, hosted latency, database queries, or Neon transfer.
+
+The report [PLATFORM_COMPATIBILITY.md](../PLATFORM_COMPATIBILITY.md) records the source-backed limits, arithmetic sensitivity scenarios, failure actions, and untested items. Neon’s current plan table and FAQ, updated 17 and 23 September respectively, confirm 100 CU-hours/project/month; the 50-CU figure in its older 2025 pricing article is superseded by the provider’s November 2025 update. Neon documentation lists PostGIS and pgvector support by PostgreSQL major version, with pgvector available on every plan. No Free resource was created, so extension activation, Hyperdrive behavior, Neon cold starts, Workflow budgets, and Workers AI access remain untested.
+
 ## Acceptance gates and unresolved decisions
 
-PLATFORM-01 must test a representative demo workload from WSL; measure warm/cold API latency, Worker CPU per route, SQL statements/request, Workflow steps per pipeline/investigation, Free model access and neuron consumption, PostGIS/pgvector availability, and data/egress growth. It must run a quota-exhaustion simulation and confirm no paid fallback or false-current display. BOOT-01 must remain runnable without provider secrets using synthetic fixtures and mocked models.
+PLATFORM-01 completed the local measurements described above, but this does not satisfy provider-side tests. Authorized later integration must still measure deployed Worker CPU, SQL statements/request, Workflow steps and replay, Free model access/Neuron use, extension activation on the selected PostgreSQL version, Neon cold/warm latency, and actual data/egress growth; exercise quota failures without a paid fallback or false-current display. BOOT-01 must remain runnable without provider secrets using synthetic fixtures and mocked models.
 
 Still open: model/version choice after Indonesian evaluation; a free off-provider backup/export mechanism; database region and data residency; source access/reuse rights; map tile/geocoder service and its own free-use terms; quota stop thresholds from measured workload; provider logging retention; and whether the demo can meet the desired response-time target after Neon cold starts. These do not prevent local fixture development. They prevent unreviewed live-source activation or a production-safety claim.
 
