@@ -52,6 +52,10 @@ describe('JOB-01 durable acquisition queue', () => {
       registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
       pollingIntervalSeconds: null,
     });
+    await insertSource('source-queue-race', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+      pollingIntervalSeconds: 300,
+    });
   });
 
   after(async () => {
@@ -243,9 +247,13 @@ describe('JOB-01 durable acquisition queue', () => {
     assert.ok(claimed);
     assert.equal(claimed.sourceId, 'source-queue-active');
 
-    const completed = await ports.acquisitionJobs.complete(
-      'synthetic', claimed.jobId, claimed.leaseToken ?? '', addMs(t0, 1_000),
-    );
+    const completionRace = await Promise.all([
+      ports.acquisitionJobs.complete('synthetic', claimed.jobId, claimed.leaseToken ?? '', addMs(t0, 1_000)),
+      ports.acquisitionJobs.complete('synthetic', claimed.jobId, claimed.leaseToken ?? '', addMs(t0, 1_000)),
+    ]);
+    assert.deepEqual(completionRace.map(({ outcome }) => outcome).sort(), ['not_owned', 'updated']);
+    const completed = completionRace.find(({ outcome }) => outcome === 'updated');
+    assert.ok(completed);
     assert.equal(completed.outcome, 'updated');
     if (completed.outcome !== 'updated') return;
     assert.equal(completed.job.status, 'completed');
@@ -359,10 +367,10 @@ describe('JOB-01 durable acquisition queue', () => {
   it('rejects acknowledgements after lease expiry and applies all bounded worker inputs', async () => {
     const queued = await ports.acquisitionJobs.enqueueModeratorSubmission({
       datasetKind: 'synthetic', idempotencyKey: 'lease:expired', traceId: syntheticTraceId,
-      requestedBy: 'moderator-lease', submittedUrl: 'https://example.org/expired', requestedAt: '2026-09-25T13:00:00.000Z',
+      requestedBy: 'moderator-lease', submittedUrl: 'https://example.org/expired', requestedAt: '2026-09-25T15:00:00.000Z',
     });
     assert.equal(queued.outcome, 'enqueued');
-    const claimed = await ports.acquisitionJobs.claimDueJob('2026-09-25T13:00:00.000Z', 1_000);
+    const claimed = await ports.acquisitionJobs.claimDueJob('2026-09-25T15:00:00.000Z', 1_000);
     assert.ok(claimed);
     const expires = claimed.leaseExpiresAt ?? '';
     assert.deepEqual(await ports.acquisitionJobs.renewLease(
@@ -385,6 +393,41 @@ describe('JOB-01 durable acquisition queue', () => {
     await assert.rejects(ports.acquisitionJobs.recoverExpiredLeases(t0, 501), /Recovery limit/);
   });
 
+  it('lets expiry recovery win against acknowledgements and leaves source health single-valued', async () => {
+    const queued = await ports.acquisitionJobs.enqueueSourcePoll(sourcePollInput(
+      'synthetic', 'lease-race:source-poll', 'source-queue-race', '2026-09-25T14:00:00.000Z',
+    ));
+    assert.equal(queued.outcome, 'enqueued');
+    if (queued.outcome !== 'enqueued') return;
+    const claimed = await ports.acquisitionJobs.claimDueJob('2026-09-25T14:00:00.000Z', 1_000);
+    assert.ok(claimed);
+    const expires = claimed.leaseExpiresAt ?? '';
+    const [completion, failure, recovered] = await Promise.all([
+      ports.acquisitionJobs.complete('synthetic', claimed.jobId, claimed.leaseToken ?? '', expires),
+      ports.acquisitionJobs.fail('synthetic', claimed.jobId, claimed.leaseToken ?? '', {
+        failureCode: 'late_result', disposition: 'retryable', now: expires,
+      }),
+      ports.acquisitionJobs.recoverExpiredLeases(expires, 1),
+    ]);
+    assert.deepEqual(completion, { outcome: 'not_owned' });
+    assert.deepEqual(failure, { outcome: 'not_owned' });
+    assert.equal(recovered, 1);
+
+    const stored = await ports.acquisitionJobs.findById('synthetic', claimed.jobId);
+    assert.ok(stored);
+    assert.equal(stored.status, 'retry');
+    assert.equal(stored.lastFailureCode, 'lease_expired');
+    const healthAfterRecovery = await getSourceHealth('source-queue-race');
+    assert.equal(healthAfterRecovery.health_status, 'degraded');
+    assert.equal(healthAfterRecovery.last_checked_at, expires);
+    assert.equal(healthAfterRecovery.last_success_at, null);
+
+    assert.deepEqual(await ports.acquisitionJobs.complete(
+      'synthetic', claimed.jobId, claimed.leaseToken ?? '', addMs(expires, 1_000),
+    ), { outcome: 'not_owned' });
+    assert.deepEqual(await getSourceHealth('source-queue-race'), healthAfterRecovery);
+  });
+
   it('keeps L1 health writes, L4 policy writes and queue worker grants distinct', async () => {
     const grants = await database.executor.query<{
       l1_health: boolean;
@@ -392,6 +435,8 @@ describe('JOB-01 durable acquisition queue', () => {
       l4_health: boolean;
       l4_policy: boolean;
       l1_queue_update: boolean;
+      l4_queue_insert: boolean;
+      l4_queue_select: boolean;
       l4_queue_update: boolean;
       public_queue_select: boolean;
     }>(
@@ -401,12 +446,15 @@ describe('JOB-01 durable acquisition queue', () => {
          has_column_privilege('waspada_l4_publication_writer', 'waspada.source_registry', 'health_status', 'UPDATE') AS l4_health,
          has_column_privilege('waspada_l4_publication_writer', 'waspada.source_registry', 'registry_status', 'UPDATE') AS l4_policy,
          has_table_privilege('waspada_l1_pipeline', 'waspada.acquisition_jobs', 'UPDATE') AS l1_queue_update,
+         has_table_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'INSERT') AS l4_queue_insert,
+         has_table_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'SELECT') AS l4_queue_select,
          has_table_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'UPDATE') AS l4_queue_update,
          has_table_privilege('public', 'waspada.acquisition_jobs', 'SELECT') AS public_queue_select`,
     );
     assert.deepEqual(grants.rows, [{
       l1_health: true, l1_policy: false, l4_health: false, l4_policy: true,
-      l1_queue_update: true, l4_queue_update: false, public_queue_select: false,
+      l1_queue_update: true, l4_queue_insert: true, l4_queue_select: true,
+      l4_queue_update: false, public_queue_select: false,
     }]);
   });
 
