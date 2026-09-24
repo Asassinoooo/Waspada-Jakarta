@@ -7,7 +7,7 @@
 
 ## Repository state
 
-- `main` is clean at `1ff762e` (`docs(checkpoint): correct platform merge status`) and was synchronized with `origin/main` when inspected. It includes accepted BOOT-01, UI-00, PLATFORM-01 and DATA-01, plus the latest planning assignments for ING-PARSE-01 and L2-ADAPTER-01. No implementation from the three paused branches has been merged.
+- `main` is clean at `43045c9` (`docs(checkpoint): record paused implementation state`) and is synchronized with `origin/main`. It includes accepted BOOT-01, UI-00, PLATFORM-01 and DATA-01, plus the latest planning assignments for ING-PARSE-01 and L2-ADAPTER-01. No implementation from the three paused branches has been merged.
 - The repository follows the five-layer AI architecture and existing live-data, paid-service, deployment, source-permission, and model-provider gates documented below and in the delivery log.
 - All active subagents were interrupted at the user's request. Their task branches and worktrees are cleanly preserved with commits; no one is continuing implementation.
 
@@ -23,7 +23,7 @@ The root-created WIP commits preserve paused changes; they are not agent handoff
 
 ## Work and checks since the previous checkpoint
 
-- Root added the bounded synthetic parser assignment and the strict L2 adapter assignment, then aligned the implementation backlog and recorded that `4b4908c` is already integrated through PLATFORM-01 merge `80f9636`. The planning changes are on `main` and were pushed in commits `05ca11b`, `7bb66c0` and `1ff762e`.
+- Root added the bounded synthetic parser assignment and the strict L2 adapter assignment, then aligned the implementation backlog and recorded that `4b4908c` is already integrated through PLATFORM-01 merge `80f9636`. The planning changes are on `main` and were pushed in commits `05ca11b`, `7bb66c0`, `1ff762e` and `43045c9`.
 - ING-PARSE-01 agent committed the parser and handoff. Its agent-reported WSL checks are recorded above; root did not independently rerun them.
 - JOB-01 agent committed the queue implementation and lease-race changes, then began the L4 column-level permission hardening. Root interrupted the agent and preserved the final unverified diff in `880933d`.
 - L2-ADAPTER-01 agent implemented the capability contracts and validators. Root interrupted during the typecheck/full-check rerun and preserved the work in `62f800e`.

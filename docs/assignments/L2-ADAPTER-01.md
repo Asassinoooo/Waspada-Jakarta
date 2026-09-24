@@ -32,7 +32,7 @@ Replace the placeholder L2 `unknown` interfaces with explicit capability contrac
 
 ## Boundaries and checks
 
-- **Allowed paths:** `apps/worker/src/layers/l2-model-grounding/**`, `apps/worker/test/l2-*.test.ts`, and this assignment's handoff section.
+- **Allowed paths:** `apps/worker/src/layers/l2-model-grounding/**`, `apps/worker/test/l2-*.test.ts`, the `test` script in `apps/worker/package.json` (so the focused L2 test runs under the standard workspace test command), and this assignment's handoff section.
 - **Forbidden:** public API/OpenAPI/domain schema changes, L1 parsing or DB changes, L3 tool orchestration, L4 publication writes, user-facing UI, external provider calls, credentials/secrets, new dependencies, cloud resources, or deployment.
 - No human-labelled casebook is needed to validate contracts. Do not claim model accuracy, grounding quality, latency, semantic retrieval quality, or provider compatibility.
 - Use WSL Ubuntu-26.04 with native Node.js/npm from `docs/BOOTSTRAP.md`. Run the new focused test, `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` from the assigned worktree. No API route changes are expected, so no smoke test is expected; explain if that boundary changes.
