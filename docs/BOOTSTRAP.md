@@ -60,4 +60,4 @@ Run from the assigned worktree with Node.js `v24.21.0` and npm `11.19.0`:
 - `npm run typecheck` — passed for both workspaces.
 - `npm run build` — passed; Vite production assets built and Wrangler dry-run exited successfully with only the local demo binding.
 
-No live sources, model calls, database, moderator authentication, publication writes, push, cloud resources, or deployment are implemented. The synthetic fixtures are not incident reports and must not be treated as current warnings or evidence of safety.
+The Worker demo is not connected to a database; no live sources, model calls, moderator authentication, publication writes, cloud resources, or deployment are implemented. DATA-01 adds a local PostgreSQL schema/repository foundation and test-only in-memory PGlite harness, not runtime database access. The synthetic fixtures are not incident reports and must not be treated as current warnings or evidence of safety.

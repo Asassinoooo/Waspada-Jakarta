@@ -4,6 +4,8 @@
 **Status:** Conditional fit; provider compatibility is not validated
 **Scope:** Local measurements and current official documentation only. No account, database, secret, billing change, deployment, paid model, or live source was used.
 
+**Follow-up after DATA-01 acceptance (24 September 2026):** the repository now contains a local PostgreSQL schema/migration and typed repository-port foundation with synthetic PGlite tests. The Worker still has no database driver or Hyperdrive integration, and no Neon project was provisioned. This follow-up does not change the provider limits or measurements below; provider compatibility remains unverified.
+
 ## Finding
 
 The local BOOT-01/UI-00 shell builds and its fixture-backed read routes pass tests and smoke checks. Published limits leave plausible headroom for a small class demonstration with bounded reads, scheduled work, model use, and retention. This is not an operational capacity result: the repository has no database adapter, Hyperdrive configuration, durable Workflow, Cron poller, or model call. Provider-side CPU, SQL, Workflow, compute, transfer, cold-start, and inference usage remain unmeasured.
@@ -79,7 +81,7 @@ For scheduled acquisition sensitivity, assume one workflow execution per tick at
 
 Under this placeholder, the proposed 2-minute BMKG schedule alone exceeds the 3,000-step daily allowance; the 5-minute PetaBencana schedule nearly consumes it. These figures exclude any additional investigation or maintenance work. The proposals remain unchanged in the project plan and are not approved service commitments. Each instance is also limited to 1,024 Free steps; no real step count or retry/replay behavior was tested.
 
-Neon’s 100 CU-hours permits at most 400 active hours/month at 0.25 CU, 200 at 0.5 CU, 100 at 1 CU, or 50 at 2 CU. Continuously active 0.25 CU over 30 days would use 180 CU-hours, above Free. Actual traffic, idle periods, cold starts, and pool behavior must be measured after authorized integration. The 0.5 GB storage and 5 GB transfer caps are known, but there is no DB schema or workload to estimate row/index/vector growth or SQL response bytes. Evenly dividing 5 GB by 30 yields about 167 MB/day only as arithmetic; actual daily use will not be even.
+Neon’s 100 CU-hours permits at most 400 active hours/month at 0.25 CU, 200 at 0.5 CU, 100 at 1 CU, or 50 at 2 CU. Continuously active 0.25 CU over 30 days would use 180 CU-hours, above Free. Actual traffic, idle periods, cold starts, and pool behavior must be measured after authorized integration. The 0.5 GB storage and 5 GB transfer caps are known. DATA-01 has since added a local schema, but no populated provider workload exists to estimate row/index/vector growth or SQL response bytes. Evenly dividing 5 GB by 30 yields about 167 MB/day only as arithmetic; actual daily use will not be even.
 
 ## 4. Quota response and user-visible behavior
 
