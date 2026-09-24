@@ -10,6 +10,7 @@ CREATE TABLE waspada.acquisition_jobs (
   source_id text REFERENCES waspada.source_registry (source_id),
   submitted_url text,
   requested_by text,
+  request_fingerprint text,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'leased', 'retry', 'completed', 'terminal')),
   attempt_count smallint NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
   max_attempts smallint NOT NULL DEFAULT 5 CHECK (max_attempts BETWEEN 1 AND 5),
@@ -26,11 +27,14 @@ CREATE TABLE waspada.acquisition_jobs (
   FOREIGN KEY (trace_id, dataset_kind) REFERENCES waspada.traces (trace_id, dataset_kind),
   CHECK (attempt_count <= max_attempts),
   CHECK (
-    (job_kind = 'source_poll' AND source_id IS NOT NULL AND submitted_url IS NULL AND requested_by IS NULL)
+    (job_kind = 'source_poll' AND source_id IS NOT NULL AND submitted_url IS NULL
+      AND requested_by IS NULL AND request_fingerprint IS NULL)
     OR
     (job_kind = 'moderator_submission' AND source_id IS NULL
       AND submitted_url IS NOT NULL AND length(submitted_url) BETWEEN 1 AND 2048
-      AND requested_by IS NOT NULL AND length(requested_by) BETWEEN 1 AND 200)
+      AND requested_by IS NOT NULL AND length(requested_by) BETWEEN 1 AND 200
+      AND request_fingerprint IS NOT NULL
+      AND request_fingerprint ~ '^[0-9a-f]{64}$')
   ),
   CHECK (updated_at >= created_at),
   CHECK (finished_at IS NULL OR finished_at >= created_at),
@@ -64,7 +68,8 @@ CREATE INDEX acquisition_jobs_source_idx
 
 REVOKE ALL ON waspada.acquisition_jobs FROM PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON waspada.acquisition_jobs TO waspada_l1_pipeline;
-GRANT SELECT ON waspada.acquisition_jobs TO waspada_l4_publication_writer;
+GRANT SELECT (job_id, dataset_kind, idempotency_key, job_kind, request_fingerprint)
+  ON waspada.acquisition_jobs TO waspada_l4_publication_writer;
 GRANT INSERT (job_id, dataset_kind, idempotency_key, trace_id, submitted_url,
-  requested_by, available_at, created_at, updated_at)
+  requested_by, request_fingerprint, available_at, created_at, updated_at)
   ON waspada.acquisition_jobs TO waspada_l4_publication_writer;

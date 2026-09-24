@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { DatasetKind } from './ports.js';
 import type { SqlExecutor } from './sql.js';
 
@@ -46,9 +46,21 @@ export interface AcquisitionJobRecord {
   readonly finishedAt: string | null;
 }
 
+export interface AcquisitionJobEnqueueReceipt {
+  readonly jobId: string;
+  readonly datasetKind: DatasetKind;
+  readonly idempotencyKey: string;
+  readonly jobKind: AcquisitionJobKind;
+}
+
 export type EnqueueResult =
   | { readonly outcome: 'enqueued' | 'existing'; readonly job: AcquisitionJobRecord }
   | { readonly outcome: 'source_not_schedulable' };
+
+export type ModeratorSubmissionEnqueueResult = {
+  readonly outcome: 'enqueued' | 'existing';
+  readonly job: AcquisitionJobEnqueueReceipt;
+};
 
 export type LeaseTransitionResult =
   | { readonly outcome: 'updated'; readonly job: AcquisitionJobRecord }
@@ -62,7 +74,7 @@ export interface FailJobInput {
 
 export interface AcquisitionJobRepository {
   enqueueSourcePoll(input: EnqueueSourcePollInput): Promise<EnqueueResult>;
-  enqueueModeratorSubmission(input: EnqueueModeratorSubmissionInput): Promise<EnqueueResult>;
+  enqueueModeratorSubmission(input: EnqueueModeratorSubmissionInput): Promise<ModeratorSubmissionEnqueueResult>;
   findById(datasetKind: DatasetKind, jobId: string): Promise<AcquisitionJobRecord | null>;
   claimDueJob(now: string, leaseDurationMs?: number): Promise<AcquisitionJobRecord | null>;
   renewLease(
@@ -117,6 +129,21 @@ interface AcquisitionJobRow {
   created_at: string;
   updated_at: string;
   finished_at: string | null;
+}
+
+interface ModeratorIdempotencyRow {
+  job_id: string;
+  dataset_kind: DatasetKind;
+  idempotency_key: string;
+  job_kind: AcquisitionJobKind;
+  request_fingerprint: string | null;
+}
+
+interface AcquisitionJobEnqueueReceiptRow {
+  job_id: string;
+  dataset_kind: DatasetKind;
+  idempotency_key: string;
+  job_kind: AcquisitionJobKind;
 }
 
 const RETURNING_JOB_COLUMNS = `
@@ -181,32 +208,35 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
     return { outcome: 'source_not_schedulable' };
   }
 
-  async enqueueModeratorSubmission(input: EnqueueModeratorSubmissionInput): Promise<EnqueueResult> {
+  async enqueueModeratorSubmission(
+    input: EnqueueModeratorSubmissionInput,
+  ): Promise<ModeratorSubmissionEnqueueResult> {
     validateDatasetKind(input.datasetKind);
     validateOpaqueText(input.idempotencyKey, 'idempotency key', 256);
     validateOpaqueText(input.traceId, 'trace ID', 200);
     const requestedBy = validateActorId(input.requestedBy);
     const submittedUrl = validateSubmittedUrl(input.submittedUrl);
     const requestedAt = normalizeTimestamp(input.requestedAt, 'requestedAt');
+    const requestFingerprint = moderatorRequestFingerprint(submittedUrl, requestedBy);
 
-    const existing = await this.findByIdempotencyKey(input.datasetKind, input.idempotencyKey);
-    if (existing) return existingModeratorSubmissionResult(existing, submittedUrl, requestedBy);
+    const existing = await this.findModeratorIdempotencyRow(input.datasetKind, input.idempotencyKey);
+    if (existing) return existingModeratorSubmissionResult(existing, requestFingerprint);
 
-    const inserted = await this.executor.query<AcquisitionJobRow>(
+    const inserted = await this.executor.query<AcquisitionJobEnqueueReceiptRow>(
       `INSERT INTO waspada.acquisition_jobs
          (job_id, dataset_kind, idempotency_key, trace_id,
-          submitted_url, requested_by, available_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $7)
+          submitted_url, requested_by, request_fingerprint, available_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
        ON CONFLICT (dataset_kind, idempotency_key) DO NOTHING
-       RETURNING ${RETURNING_JOB_COLUMNS}`,
+       RETURNING job_id, dataset_kind, idempotency_key, job_kind`,
       [randomUUID(), input.datasetKind, input.idempotencyKey, input.traceId,
-        submittedUrl, requestedBy, requestedAt],
+        submittedUrl, requestedBy, requestFingerprint, requestedAt],
     );
     const insertedRow = inserted.rows[0];
-    if (insertedRow) return { outcome: 'enqueued', job: mapAcquisitionJob(insertedRow) };
+    if (insertedRow) return { outcome: 'enqueued', job: mapEnqueueReceipt(insertedRow) };
 
-    const raced = await this.findByIdempotencyKey(input.datasetKind, input.idempotencyKey);
-    if (raced) return existingModeratorSubmissionResult(raced, submittedUrl, requestedBy);
+    const raced = await this.findModeratorIdempotencyRow(input.datasetKind, input.idempotencyKey);
+    if (raced) return existingModeratorSubmissionResult(raced, requestFingerprint);
     throw new Error('The moderator submission could not be enqueued');
   }
 
@@ -440,6 +470,19 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
     const row = result.rows[0];
     return row ? mapAcquisitionJob(row) : null;
   }
+
+  private async findModeratorIdempotencyRow(
+    datasetKind: DatasetKind,
+    idempotencyKey: string,
+  ): Promise<ModeratorIdempotencyRow | null> {
+    const result = await this.executor.query<ModeratorIdempotencyRow>(
+      `SELECT job_id, dataset_kind, idempotency_key, job_kind, request_fingerprint
+       FROM waspada.acquisition_jobs
+       WHERE dataset_kind = $1 AND idempotency_key = $2`,
+      [datasetKind, idempotencyKey],
+    );
+    return result.rows[0] ?? null;
+  }
 }
 
 function existingSourcePollResult(job: AcquisitionJobRecord, sourceId: string): EnqueueResult {
@@ -450,15 +493,27 @@ function existingSourcePollResult(job: AcquisitionJobRecord, sourceId: string): 
 }
 
 function existingModeratorSubmissionResult(
-  job: AcquisitionJobRecord,
-  submittedUrl: string,
-  requestedBy: string,
-): EnqueueResult {
-  if (job.jobKind !== 'moderator_submission'
-    || job.submittedUrl !== submittedUrl || job.requestedBy !== requestedBy) {
+  job: ModeratorIdempotencyRow,
+  requestFingerprint: string,
+): ModeratorSubmissionEnqueueResult {
+  if (job.job_kind !== 'moderator_submission'
+    || job.request_fingerprint !== requestFingerprint) {
     throw new Error('Idempotency key is already used for a different acquisition request');
   }
-  return { outcome: 'existing', job };
+  return { outcome: 'existing', job: mapEnqueueReceipt(job) };
+}
+
+function mapEnqueueReceipt(row: AcquisitionJobEnqueueReceiptRow): AcquisitionJobEnqueueReceipt {
+  return {
+    jobId: row.job_id,
+    datasetKind: row.dataset_kind,
+    idempotencyKey: row.idempotency_key,
+    jobKind: row.job_kind,
+  };
+}
+
+function moderatorRequestFingerprint(submittedUrl: string, requestedBy: string): string {
+  return createHash('sha256').update(`${requestedBy}\0${submittedUrl}`, 'utf8').digest('hex');
 }
 
 function transitionResult(row: AcquisitionJobRow | undefined): LeaseTransitionResult {
