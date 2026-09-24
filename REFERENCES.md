@@ -33,6 +33,11 @@ This working file keeps the sources for the Waspada Jakarta report while the fin
 - **Building Blocks of AI: Designing an AI-Powered Feature — From Idea to Architecture.** User-supplied infographic, received 18 September 2026. Author, publisher, original publication date and public URL were not supplied. Used for the five layer names and Responsible AI as a cross-cutting concern. Do not invent bibliographic attribution; obtain the original source before adding it to the final bibliography.
 - The layered boundaries, budgets, stack selection, ownership, retrieval limits and proposed evaluation gates are project design decisions. They are not claims that the infographic or software documentation prescribes those exact choices. No application implementation or evaluation results are claimed.
 
+## UI design and review guidance
+
+- **Anthropic skills maintainers.** [Frontend Design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md) and [raw skill file](https://raw.githubusercontent.com/anthropics/skills/main/skills/frontend-design/SKILL.md). Reviewed 24 September 2026. Used for the compact visual direction, named token set, ASCII wireframes, subject-specific design critique, and screenshot review process in UI-00; it does not define Waspada's product requirements.
+- **Vercel Labs.** [Web Design Guidelines skill](https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines); [skill instructions](https://raw.githubusercontent.com/vercel-labs/agent-skills/main/skills/web-design-guidelines/SKILL.md) and [current guideline checklist](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md). Reviewed 24 September 2026. Used for the final UI-00 accessibility, keyboard, responsive layout, interaction, content, and performance review; it does not change the accepted product/API contract.
+
 ## Final citation work
 
 - Decide which claims in the project definition need a source.
