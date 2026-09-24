@@ -48,3 +48,12 @@ Implement the PostgreSQL-backed job ledger and typed scheduler/repository bounda
 ## Handoff
 
 Implementation agent appends branch/worktree, commit SHA(s) and exact messages, changed files, behavior, actual checks, limitations and configuration impact here. Root independently reviews and records acceptance.
+
+### User-stop checkpoint — 25 September 2026
+
+- Work was interrupted at the user's request before implementation handoff or root review.
+- Branch/worktree: `work/JOB-01-durable-queue` / `D:\Projects\RPL\.codex-build\worktrees\job-01`.
+- Preserved WIP: `apps/db/migrations/002_acquisition_jobs.sql` defines an initial acquisition-job table and indexes. This migration is incomplete and unreviewed; no repository operations, typed interfaces, source-health updates, or tests were completed.
+- No JOB-01 checks were run. Do not treat this migration as accepted or apply it to a database until it has been reviewed and tested.
+- Open implementation checks include schema invariants and permissions against DATA-01, URL validation (HTTPS-only/no userinfo and length bound), lease/retry transitions, source-health behavior, and the complete WSL test suite.
+- This checkpoint is a preservation record only; it does not change JOB-01 scope or acceptance criteria.
