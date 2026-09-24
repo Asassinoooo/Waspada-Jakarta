@@ -41,3 +41,11 @@ Replace the placeholder L2 `unknown` interfaces with explicit capability contrac
 ## Handoff
 
 Implementation agent appends branch/worktree, commit SHA(s) and exact messages, changed paths, actual checks and results, limitations, and any contract impact. Root independently reviews before acceptance.
+
+### User-stop checkpoint — 25 September 2026
+
+- The user stopped active work before agent handoff or root review. The GPT-6 Luna Max implementation agent was interrupted; this branch is retained without merge or push.
+- Branch/worktree: `work/L2-ADAPTER-01-typed-contracts` / `D:\Projects\RPL\.codex-build\worktrees\l2-adapter-01` (`/mnt/d/Projects/RPL/.codex-build/worktrees/l2-adapter-01` in WSL). Base commit: `7bb66c0` (`docs(L2-ADAPTER-01): define typed model boundary`).
+- Preserved WIP paths: `apps/worker/src/layers/l2-model-grounding/contracts.ts`, `adapter.ts`, `validation.ts`, and `apps/worker/test/l2-model-grounding.test.ts`. It adds explicit capability types, strict untrusted-output validation, provider-not-configured outcomes, and a test-only adapter. No provider, API route, database, public contract, dependency, or production test double was added.
+- **Agent-reported checks before interruption:** focused test passed 5/5. Initial WSL typecheck exposed a generic failure-union issue, which the agent said it had corrected; the rerun was in progress when stopped. Full tests, build, and diff-check were not reported complete. Root has not independently run checks or reviewed this WIP.
+- Root preserved the current WIP in a separate checkpoint commit. Do not treat the adapter as accepted or provider-validated.
