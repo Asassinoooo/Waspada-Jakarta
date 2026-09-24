@@ -46,3 +46,15 @@ Use explicit low-volume demonstration scenarios grounded in the existing plan. I
 ## Handoff
 
 Agent appends commit SHA/message, changed files, primary sources and access date, WSL commands/results, the distinction between measured and estimated values, open compatibility gates, and any follow-up needed. Root records acceptance and pushes the reviewed checkpoint.
+
+### Implementation handoff — 24 September 2026
+
+- **Branch/worktree:** work/PLATFORM-01-free-compatibility; D:\Projects\RPL\.codex-build\worktrees\platform-01.
+- **Files:** docs/PLATFORM_COMPATIBILITY.md (new); docs/decisions/ADR-010-cloudflare-neon-free.md; REFERENCES.md; this handoff section only.
+- **Finding:** Free-tier fit is plausible only for bounded synthetic demonstration scenarios and remains provider-unverified. Neon’s 30-day off-provider backup/replay gate is unmet, so live-source persistence remains blocked.
+- **Official sources:** Current Cloudflare Workers, Workflows, Cron, Hyperdrive, Workers AI, Neon plans/FAQ, and Neon extension matrix pages were accessed 24 September 2026; page update dates and direct links are listed in REFERENCES.md. Current Neon plan/FAQ say 100 CU-hours/project/month; older 2025 blog value of 50 is superseded by Neon’s November 2025 update.
+- **WSL checks:** Ubuntu-26.04; Node 24.21.0, npm 11.19.0, Vite 8.3.0, Wrangler 4.137.0. npm run typecheck passed; npm test passed 9/9; npm run smoke passed; npm run build passed including Wrangler dry-run. git diff --check is recorded after documentation edits.
+- **Measurements:** Local GET context 106 B / first observed 50.465 ms / warm p50 15.469 ms / p95 18.332 ms; GET events 1,403 B / first observed 17.460 ms / p50 16.372 ms / p95 21.086 ms. Vite bundle: 259.69 kB JS, 21.41 kB CSS; Wrangler dry-run bundle: 9.46 KiB uncompressed. These are local fixture/proxy measurements only, not provider CPU/latency/database/egress results.
+- **Estimates:** User-read, SQL/read, polling, Workflow-step, and Neon CU tables use explicit illustrative assumptions in the report; no audience, polling interval, model, DB region, or production load was selected.
+- **Untested:** Cloudflare CPU/request quotas under load, Workflows/retries/subrequests, Hyperdrive SQL and connection behavior, Neon Free DB/extension activation, cold starts, real storage/egress growth, Workers AI Free model access/Neurons, quota error rendering against provider failures, and off-provider backup/restore/deletion replay. No provider resources, credentials, paid usage, source access, or deployment were used.
+- **Report commit:** `bc7f414ccaaf9b5cc707022632c439d93fe4080a` — `docs(PLATFORM-01): assess free-tier compatibility`.
