@@ -11,8 +11,8 @@ The user has requested a five-layer architecture, orchestration confined to L3, 
 | ID | Decision | Current working position | Owner / deadline |
 | --- | --- | --- | --- |
 | [ADR-001](ADR-001-single-server-prototype.md) | Historical single-server proposal | Superseded by ADR-010; no VPS purchased or deployed | Closed |
-| ADR-002 | Job queue and orchestration persistence | Cloudflare Workflows for bounded execution; Neon job/checkpoint state is authoritative; specify idempotency, leases, cancellation and quota reservations | Jesaya + Perry, JOB-01 |
-| [ADR-003](ADR-003-domain-publication-evidence.md) | Domain states, evidence and publication | Accepted schema 2.0 design; runtime relations and semantic/L4 checks remain in DATA-01/PUB-01 | Root accepted; implement later |
+| [ADR-002](ADR-002-job-queue-and-scheduler.md) | Job queue and scheduler boundary | PostgreSQL job rows are authoritative; later Cron/Workflows only trigger bounded work; idempotency, leases, retry cap and source health are explicit | Accepted for JOB-01 |
+| [ADR-003](ADR-003-domain-publication-evidence.md) | Domain states, evidence and publication | Accepted schema 2.0 design; local persistence foundation is DATA-01, semantic/L4 checks remain in PUB-01 | Root accepted; implement later |
 | ADR-004 | Model/provider and embedding dimensions | Separate capability adapters; evaluate only no-cost-accessible models and compare Indonesian accuracy, latency, quota and failure behavior; no fine-tuning | Perry, AI-01 |
 | [ADR-005](ADR-005-source-retention.md) | Source reuse, archival retention and deletion | Accepted source-gated schedule; permissions and free off-provider backup/deletion replay block live activation | Team, before live data |
 | [ADR-006](ADR-006-moderator-auth.md) | Moderator authentication and authorization | Accepted design: server-side sessions, CSRF, roles, audit, dataset scope, concurrency and idempotency; provisioning/MFA/parameters remain open | Jesaya, MOD-01 |
