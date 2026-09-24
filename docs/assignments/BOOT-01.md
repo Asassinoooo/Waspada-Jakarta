@@ -38,3 +38,56 @@ Do not edit architecture, contracts, OpenAPI, the backlog, top-level README/SDP 
 ## Handoff
 
 Pending root review. Record actual changed paths, implementation, branch/commit, commands/results, limitations, and any required follow-up before handing off.
+
+## Completed implementation handoff
+
+- **Branch:** work/BOOT-01-runtime-skeleton
+- **Worktree:** D:\Projects\RPL\.codex-build\worktrees\boot-01 (WSL: /mnt/d/Projects/RPL/.codex-build/worktrees/boot-01)
+- **Implementation commit:** 1421e2497aa08c35f7d694502ab2be494b41678c — feat(BOOT-01): scaffold synthetic Worker demo app
+- **Review state:** implementation committed and ready for root review; task status remains subject to root acceptance.
+
+The local app has a React/TypeScript feed shell and a modular TypeScript Worker. The Worker exposes only GET /api/v1/context and GET /api/v1/events, using the PublicContext and EventPage projections. DATASET_MODE=demo is server-side Wrangler configuration; query parameters and headers cannot select a dataset. Fixtures are explicitly synthetic, with no live source data. The persistent Indonesian demo disclaimer, source-unavailable information, empty feed, and unavailable-API state do not imply current safety. The L1–L5 responsibilities have separate modules; L2/L3 are interfaces only. Wrangler local development disables its optional Cloudflare Request.cf fetch, and telemetry is disabled.
+
+**Changed paths in the implementation commit:**
+
+- apps/web/index.html
+- apps/web/package.json
+- apps/web/src/App.tsx
+- apps/web/src/EventFeed.tsx
+- apps/web/src/api-client.ts
+- apps/web/src/main.tsx
+- apps/web/src/styles.css
+- apps/web/src/vite-env.d.ts
+- apps/web/test/smoke-local.tsx
+- apps/web/test/ui.test.tsx
+- apps/web/tsconfig.json
+- apps/web/vite.config.ts
+- apps/worker/package.json
+- apps/worker/src/contracts/public-api.ts
+- apps/worker/src/index.ts
+- apps/worker/src/layers/l1-data-knowledge/source-status.ts
+- apps/worker/src/layers/l2-model-grounding/contracts.ts
+- apps/worker/src/layers/l3-investigation/contracts.ts
+- apps/worker/src/layers/l4-application-integration/api.ts
+- apps/worker/src/layers/l4-application-integration/public-read-model.ts
+- apps/worker/src/layers/l4-application-integration/synthetic-fixtures.ts
+- apps/worker/src/layers/l5-evaluation-monitoring/telemetry.ts
+- apps/worker/test/api.test.ts
+- apps/worker/tsconfig.json
+- apps/worker/wrangler.toml
+- docs/BOOTSTRAP.md
+- package-lock.json
+- package.json
+- tsconfig.json
+
+**Actual WSL checks (Ubuntu-26.04; native Node.js 24.21.0 and npm 11.19.0):**
+
+- npm ci --offline --no-audit --no-fund — passed with the populated WSL npm cache.
+- npm run dev — Vite and local Wrangler started; no external Request.cf lookup was attempted.
+- npm run smoke — passed through Vite's API proxy; /api/v1/context and /api/v1/events returned HTTP 200 and the rendered UI assertions passed.
+- npm test — passed: 6 tests (2 UI, 4 Worker), 0 failures.
+- npm run typecheck — passed for both workspaces.
+- npm run build — passed TypeScript checks, Vite production build, and Wrangler deploy --dry-run; no deployment occurred.
+- git diff --cached --check — passed before commit.
+
+**Limitations and remaining decisions:** no database, scraping, model call, agent loop, live-source activation, moderator authentication, event publication/mutation, cloud resources, push, or deployment is implemented. Event fixtures are not real reports. No contract or architecture change, migration, credential, or external provider setup was needed. Root review/integration remains; later API, source, publication, and UI work stays with its assigned backlog tasks.
