@@ -39,6 +39,22 @@ describe('DATA-01 migrations', () => {
     );
   });
 
+  it('rejects a newly introduced migration that sorts before an applied version', async () => {
+    const outOfOrder = [
+      { version: '000_late_backfill', sql: 'SELECT 1;' },
+      ...migrations,
+    ];
+    await assert.rejects(
+      applyMigrations(testDatabase.executor, outOfOrder),
+      /Cannot apply migration 000_late_backfill before already applied migration 001_foundation/,
+    );
+
+    const ledger = await testDatabase.executor.query<{ version: string }>(
+      'SELECT version FROM waspada.schema_migrations ORDER BY version',
+    );
+    assert.deepEqual(ledger.rows, [{ version: '001_foundation' }]);
+  });
+
   it('loads only ordered, named SQL migrations', async () => {
     assert.deepEqual(migrations.map(({ version }) => version), ['001_foundation']);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(

@@ -71,6 +71,21 @@ export async function applyMigrations(
     }
   }
 
+  const latestAppliedVersion = [...appliedByVersion.keys()]
+    .sort((left, right) => left.localeCompare(right))
+    .at(-1);
+  if (latestAppliedVersion !== undefined) {
+    const outOfOrderMigration = migrations.find(
+      (migration) =>
+        !appliedByVersion.has(migration.version) && migration.version.localeCompare(latestAppliedVersion) < 0,
+    );
+    if (outOfOrderMigration !== undefined) {
+      throw new Error(
+        `Cannot apply migration ${outOfOrderMigration.version} before already applied migration ${latestAppliedVersion}`,
+      );
+    }
+  }
+
   const applied: string[] = [];
   const skipped: string[] = [];
   for (const migration of migrations) {

@@ -825,10 +825,12 @@ GRANT INSERT ON waspada.publication_decisions, waspada.publication_claim_decisio
   waspada.publication_decision_evidence, waspada.event_versions, waspada.event_claims,
   waspada.event_claim_evidence, waspada.event_claim_origins, waspada.event_claim_geometries,
   waspada.impact_versions, waspada.impact_claim_support, waspada.event_impact_refs TO waspada_l4_publication_writer;
+GRANT UPDATE (health_status, last_checked_at, last_success_at)
+  ON waspada.source_registry TO waspada_l1_pipeline;
 GRANT UPDATE (registry_version, display_name, remit, access_method, approved_hosts,
-  access_restrictions, reuse_basis, registry_status, approval_status, health_status,
+  access_restrictions, reuse_basis, registry_status, approval_status,
   auto_acquisition_enabled, auto_publication_policy, polling_interval_seconds,
-  last_checked_at, last_success_at, trace_id)
+  trace_id)
   ON waspada.source_registry TO waspada_l4_publication_writer;
 GRANT INSERT, SELECT ON waspada.traces, waspada.audit_records TO waspada_l4_publication_writer;
 GRANT UPDATE (ended_at, outcome, metadata) ON waspada.traces TO waspada_l4_publication_writer;

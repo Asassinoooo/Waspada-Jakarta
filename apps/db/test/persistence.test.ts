@@ -307,17 +307,37 @@ describe('DATA-01 relational persistence', () => {
       reader_base: boolean;
       l1_source_insert: boolean;
       l4_event_update: boolean;
+      l1_connector_health_update: boolean;
+      l4_connector_health_update: boolean;
+      l1_source_policy_update: boolean;
+      l4_source_policy_update: boolean;
     }>(
       `SELECT has_table_privilege('waspada_public_reader', 'waspada.public_event_versions', 'SELECT') AS reader_view,
               has_table_privilege('waspada_public_reader', 'waspada.report_revisions', 'SELECT') AS reader_base,
               has_table_privilege('waspada_l1_pipeline', 'waspada.source_registry', 'INSERT') AS l1_source_insert,
-              has_table_privilege('waspada_l4_publication_writer', 'waspada.event_versions', 'UPDATE') AS l4_event_update`,
+              has_table_privilege('waspada_l4_publication_writer', 'waspada.event_versions', 'UPDATE') AS l4_event_update,
+              (SELECT bool_and(has_column_privilege('waspada_l1_pipeline', 'waspada.source_registry', privilege_column, 'UPDATE'))
+               FROM unnest(ARRAY['health_status', 'last_checked_at', 'last_success_at']) AS columns(privilege_column)) AS l1_connector_health_update,
+              (SELECT bool_and(NOT has_column_privilege('waspada_l4_publication_writer', 'waspada.source_registry', privilege_column, 'UPDATE'))
+               FROM unnest(ARRAY['health_status', 'last_checked_at', 'last_success_at']) AS columns(privilege_column)) AS l4_connector_health_update,
+              (SELECT bool_and(NOT has_column_privilege('waspada_l1_pipeline', 'waspada.source_registry', privilege_column, 'UPDATE'))
+               FROM unnest(ARRAY['registry_version', 'display_name', 'remit', 'access_method', 'approved_hosts',
+                 'access_restrictions', 'reuse_basis', 'registry_status', 'approval_status',
+                 'auto_acquisition_enabled', 'auto_publication_policy', 'polling_interval_seconds']) AS columns(privilege_column)) AS l1_source_policy_update,
+              (SELECT bool_and(has_column_privilege('waspada_l4_publication_writer', 'waspada.source_registry', privilege_column, 'UPDATE'))
+               FROM unnest(ARRAY['registry_version', 'display_name', 'remit', 'access_method', 'approved_hosts',
+                 'access_restrictions', 'reuse_basis', 'registry_status', 'approval_status',
+                 'auto_acquisition_enabled', 'auto_publication_policy', 'polling_interval_seconds']) AS columns(privilege_column)) AS l4_source_policy_update`,
     );
     assert.deepEqual(privileges.rows[0], {
       reader_view: true,
       reader_base: false,
       l1_source_insert: false,
       l4_event_update: false,
+      l1_connector_health_update: true,
+      l4_connector_health_update: true,
+      l1_source_policy_update: true,
+      l4_source_policy_update: true,
     });
   });
 });
