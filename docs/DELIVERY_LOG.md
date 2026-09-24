@@ -79,3 +79,7 @@ Root independently reran checks in WSL Ubuntu-26.04 with Node.js 24.21.0/npm 11.
 Desktop discovery was reviewed at 1440×1000. Discovery/map, detail, and moderator layouts were also reviewed at 390×844; a narrower 720 CSS-pixel desktop viewport showed no horizontal clipping. Screenshots are retained locally under ignored `.codex-build/ui-00-review/`. The critique refined initial map selection, mobile copy/wrapping, URL state, and search scope labels. Remaining limitations are synthetic-only data, no basemap/live source/authentication/publication, and read-only moderator behavior; UI-00 is a front-end fixture slice, not proof of live coverage or safety.
 
 PLATFORM-01 is the next ready task: measure Cloudflare Workers and Neon Free compatibility in WSL and against current official documentation. This work must remain a no-provisioning spike; its results constrain DATA-01 schema decisions. Human evaluation labels and live-source activation gates remain outstanding.
+
+### PLATFORM-01 assigned — 24 September 2026
+
+After pushing the accepted UI-00 checkpoint, root assigned the no-provisioning compatibility spike to a dedicated Luna Max branch/worktree. The scope is recorded in [the PLATFORM-01 assignment](assignments/PLATFORM-01.md). The report must cite current official provider documentation and distinguish hard limits, reproducible local measurements, scenario estimates, and facts that require an authorized provider resource. No Cloudflare or Neon resource, account change, paid service, secret, or live data access is part of the assignment.

@@ -23,4 +23,4 @@ The current report is the [Google Docs project overview](https://docs.google.com
 - [Updated kickoff deck](deliverables/Waspada_Jakarta_Project_Kickoff_Layered.pptx): five-layer presentation; supersedes the earlier kickoff deck.
 - [Architecture alignment record](docs/ARCHITECTURE_ALIGNMENT.md): audit findings, scope and remaining implementation work.
 
-The next ready task is PLATFORM-01: measure Cloudflare Workers and Neon Free compatibility using WSL and current official documentation, without creating cloud resources or enabling live data. DATA-01 follows with the platform constraints recorded. The supplied course lecture deck and earlier deliverables are retained as source/history, not current architecture specifications.
+PLATFORM-01 is measuring Cloudflare Workers and Neon Free compatibility using WSL and current official documentation, without creating cloud resources or enabling live data. DATA-01 follows with the platform constraints recorded. The supplied course lecture deck and earlier deliverables are retained as source/history, not current architecture specifications.
