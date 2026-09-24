@@ -194,15 +194,13 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
 
     const inserted = await this.executor.query<AcquisitionJobRow>(
       `INSERT INTO waspada.acquisition_jobs
-         (job_id, dataset_kind, idempotency_key, job_kind, trace_id,
-          submitted_url, requested_by, status, attempt_count, max_attempts,
-          available_at, created_at, updated_at)
-       VALUES ($1, $2, $3, 'moderator_submission', $4, $5, $6,
-               'pending', 0, $7, $8, $8, $8)
+         (job_id, dataset_kind, idempotency_key, trace_id,
+          submitted_url, requested_by, available_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $7)
        ON CONFLICT (dataset_kind, idempotency_key) DO NOTHING
        RETURNING ${RETURNING_JOB_COLUMNS}`,
       [randomUUID(), input.datasetKind, input.idempotencyKey, input.traceId,
-        submittedUrl, requestedBy, JOB_QUEUE_POLICY.maxAttempts, requestedAt],
+        submittedUrl, requestedBy, requestedAt],
     );
     const insertedRow = inserted.rows[0];
     if (insertedRow) return { outcome: 'enqueued', job: mapAcquisitionJob(insertedRow) };

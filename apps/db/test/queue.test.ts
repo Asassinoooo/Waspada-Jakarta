@@ -438,6 +438,10 @@ describe('JOB-01 durable acquisition queue', () => {
       l4_queue_insert: boolean;
       l4_queue_select: boolean;
       l4_queue_update: boolean;
+      l4_moderator_fields: boolean;
+      l4_job_kind: boolean;
+      l4_source_id: boolean;
+      l4_status: boolean;
       public_queue_select: boolean;
     }>(
       `SELECT
@@ -449,13 +453,36 @@ describe('JOB-01 durable acquisition queue', () => {
          has_table_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'INSERT') AS l4_queue_insert,
          has_table_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'SELECT') AS l4_queue_select,
          has_table_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'UPDATE') AS l4_queue_update,
+         has_column_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'submitted_url', 'INSERT') AS l4_moderator_fields,
+         has_column_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'job_kind', 'INSERT') AS l4_job_kind,
+         has_column_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'source_id', 'INSERT') AS l4_source_id,
+         has_column_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'status', 'INSERT') AS l4_status,
          has_table_privilege('public', 'waspada.acquisition_jobs', 'SELECT') AS public_queue_select`,
     );
     assert.deepEqual(grants.rows, [{
       l1_health: true, l1_policy: false, l4_health: false, l4_policy: true,
-      l1_queue_update: true, l4_queue_insert: true, l4_queue_select: true,
-      l4_queue_update: false, public_queue_select: false,
+      l1_queue_update: true, l4_queue_insert: false, l4_queue_select: true,
+      l4_queue_update: false, l4_moderator_fields: true, l4_job_kind: false,
+      l4_source_id: false, l4_status: false, public_queue_select: false,
     }]);
+
+    await database.executor.execute('SET ROLE waspada_l4_publication_writer;');
+    try {
+      const authorizedL4Port = createRepositoryPorts(database.executor).acquisitionJobs;
+      const queued = await authorizedL4Port.enqueueModeratorSubmission({
+        datasetKind: 'synthetic', idempotencyKey: 'l4-role:moderator-submission',
+        traceId: syntheticTraceId, requestedBy: 'authorized-moderator-test',
+        submittedUrl: 'https://example.org/role-checked', requestedAt: dedupeTime,
+      });
+      assert.equal(queued.outcome, 'enqueued');
+      if (queued.outcome === 'enqueued') {
+        assert.equal(queued.job.jobKind, 'moderator_submission');
+        assert.equal(queued.job.status, 'pending');
+        assert.equal(queued.job.attemptCount, 0);
+      }
+    } finally {
+      await database.executor.execute('RESET ROLE;');
+    }
   });
 
   async function insertTrace(traceId: string, datasetKind: DatasetKind | null): Promise<void> {

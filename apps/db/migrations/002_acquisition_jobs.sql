@@ -4,7 +4,8 @@ CREATE TABLE waspada.acquisition_jobs (
   job_id text NOT NULL CHECK (length(job_id) BETWEEN 1 AND 128),
   dataset_kind text NOT NULL CHECK (dataset_kind IN ('live', 'historical', 'synthetic')),
   idempotency_key text NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 256),
-  job_kind text NOT NULL CHECK (job_kind IN ('source_poll', 'moderator_submission')),
+  job_kind text NOT NULL DEFAULT 'moderator_submission'
+    CHECK (job_kind IN ('source_poll', 'moderator_submission')),
   trace_id text NOT NULL,
   source_id text REFERENCES waspada.source_registry (source_id),
   submitted_url text,
@@ -63,4 +64,7 @@ CREATE INDEX acquisition_jobs_source_idx
 
 REVOKE ALL ON waspada.acquisition_jobs FROM PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON waspada.acquisition_jobs TO waspada_l1_pipeline;
-GRANT SELECT, INSERT ON waspada.acquisition_jobs TO waspada_l4_publication_writer;
+GRANT SELECT ON waspada.acquisition_jobs TO waspada_l4_publication_writer;
+GRANT INSERT (job_id, dataset_kind, idempotency_key, trace_id, submitted_url,
+  requested_by, available_at, created_at, updated_at)
+  ON waspada.acquisition_jobs TO waspada_l4_publication_writer;
