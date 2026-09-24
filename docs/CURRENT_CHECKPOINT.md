@@ -1,4 +1,43 @@
-# Waspada Jakarta — Pause Checkpoint and Resumption Notes
+# Waspada Jakarta — Current Checkpoint
+
+**Checkpoint date:** 25 September 2026
+**Reason:** The user asked to stop active implementation and checkpoint the current state.
+**Repository:** `D:\Projects\RPL`
+**Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
+
+## Repository state
+
+- `main` is clean at `1ff762e` (`docs(checkpoint): correct platform merge status`) and was synchronized with `origin/main` when inspected. It includes accepted BOOT-01, UI-00, PLATFORM-01 and DATA-01, plus the latest planning assignments for ING-PARSE-01 and L2-ADAPTER-01. No implementation from the three paused branches has been merged.
+- The repository follows the five-layer AI architecture and existing live-data, paid-service, deployment, source-permission, and model-provider gates documented below and in the delivery log.
+- All active subagents were interrupted at the user's request. Their task branches and worktrees are cleanly preserved with commits; no one is continuing implementation.
+
+## Paused work branches
+
+| Package | Branch and current commit | Preserved state | Review status |
+| --- | --- | --- | --- |
+| ING-PARSE-01 | `work/ING-PARSE-01-petabencana-fixtures` at `28902fd` | Parser commit `4931b82` and handoff commit `28902fd`; clean worktree. It parses bounded synthetic GeoJSON only. The precise `pkey`, `status`, and `report_type` fields are explicitly marked as unvalidated fixture assumptions. | Agent reports focused Worker 16/16, full suite 32/32, typecheck, build and diff check passed. Root review not done; not merged or pushed. |
+| JOB-01 | `work/JOB-01-durable-queue` at `880933d` | Queue commits `f4408df`, `6d0b765`, then root WIP checkpoint `880933d`. The final commit narrows L4 inserts to moderator-submission columns and adds a database-role test. | Agent reports checks passed before the final privilege WIP; the final WIP is unverified. Root review not done; not merged or pushed. PGlite cannot establish independent-session PostgreSQL locking. |
+| L2-ADAPTER-01 | `work/L2-ADAPTER-01-typed-contracts` at `62f800e` | Typed capability contracts, output validators, explicit unconfigured-provider behavior and test-only adapter preserved in root WIP checkpoint `62f800e`; clean worktree. | Agent reports focused tests 5/5 passed. It fixed a type error, but the WSL rerun and full checks were interrupted. Root review not done; not merged or pushed. |
+
+The root-created WIP commits preserve paused changes; they are not agent handoff commits and do not mean acceptance. The branch assignment files contain the corresponding handoff/checkpoint details. Branch worktrees remain under `.codex-build/worktrees/`.
+
+## Work and checks since the previous checkpoint
+
+- Root added the bounded synthetic parser assignment and the strict L2 adapter assignment, then aligned the implementation backlog and recorded that `4b4908c` is already integrated through PLATFORM-01 merge `80f9636`. The planning changes are on `main` and were pushed in commits `05ca11b`, `7bb66c0` and `1ff762e`.
+- ING-PARSE-01 agent committed the parser and handoff. Its agent-reported WSL checks are recorded above; root did not independently rerun them.
+- JOB-01 agent committed the queue implementation and lease-race changes, then began the L4 column-level permission hardening. Root interrupted the agent and preserved the final unverified diff in `880933d`.
+- L2-ADAPTER-01 agent implemented the capability contracts and validators. Root interrupted during the typecheck/full-check rerun and preserved the work in `62f800e`.
+- Root did not independently run code tests or accept any of these three packages after the previous checkpoint. No new runtime/deployment check, source fetch, model call, cloud resource, paid service, or external configuration was performed at this stop.
+
+## Remaining work and resume point
+
+When work resumes, begin with root review rather than assuming the agent reports imply acceptance. Review and independently verify the clean ING-PARSE-01 branch; verify JOB-01 from its final WIP commit, especially the column-level role grants and `SET ROLE` test; then complete L2-ADAPTER-01 checks in WSL. Only merge and push implementation branches after review.
+
+Other existing gates remain: source reuse/retention permission, human-adjudicated evaluation labels, a no-cost backup and deletion-replay path before live persistence, model/provider selection and evaluation, basemap/geocoder/privacy terms, and measured Cloudflare/Neon behavior. No cloud deployment or live-data activation is authorized by this checkpoint.
+
+---
+
+# Earlier Pause Checkpoint and Resumption Notes
 
 **Checkpoint date:** 25 September 2026
 **Reason:** Work paused at the user's request.
