@@ -1,0 +1,30 @@
+{
+  "name": "waspada-jakarta-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "apps/worker"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others --names web,worker --prefix-colors cyan,magenta \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\"",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "smoke": "npm run smoke --workspace=@waspada/web",
+    "build:web": "npm run build --workspace=@waspada/web",
+    "build:worker": "npm run build --workspace=@waspada/worker",
+    "build": "npm run typecheck && npm run build:web && npm run build:worker"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^10.0.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.137.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.28.1": true,
+    "workerd@1.20260921.1": true
+  }
+}

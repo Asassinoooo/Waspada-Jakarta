@@ -1,0 +1,7 @@
+name = "waspada-jakarta-api-demo"
+main = "src/index.ts"
+compatibility_date = "2026-09-24"
+send_metrics = false
+
+[vars]
+DATASET_MODE = "demo"
