@@ -4,12 +4,14 @@
   "version": "0.1.0",
   "workspaces": [
     "apps/web",
-    "apps/worker"
+    "apps/worker",
+    "apps/db"
   ],
   "scripts": {
     "dev": "concurrently --kill-others --names web,worker --prefix-colors cyan,magenta \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "db:test": "npm run test --workspace=@waspada/db",
     "smoke": "npm run smoke --workspace=@waspada/web",
     "build:web": "npm run build --workspace=@waspada/web",
     "build:worker": "npm run build --workspace=@waspada/worker",
