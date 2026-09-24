@@ -1,6 +1,6 @@
 # Waspada Jakarta — Team 12
 
-Start with the **[Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md)** for the complete project scope, requirements, milestones and acceptance gates. The [implementation backlog](docs/IMPLEMENTATION_BACKLOG.md) defines the work packages, and [AGENTS.md](AGENTS.md) defines the root planner/reviewer and GPT-6 Luna (max reasoning) implementation workflow.
+Start with the **[Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md)** for the complete project scope, requirements, milestones and acceptance gates. The [implementation backlog](docs/IMPLEMENTATION_BACKLOG.md) defines the work packages. Local agent instructions are retained in the Git-ignored `AGENTS.md` file.
 
 This is the local Git repository for the engineering plan and future application. Implementation has not started. The first baseline tracks current documentation, contracts, diagrams and the revised kickoff deck; generated caches, credentials, local data and retired/reference deliverables are excluded through `.gitignore`.
 

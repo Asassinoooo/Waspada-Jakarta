@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Initial planning baseline; implementation not started
+**Status:** Development authorized; M1 specifications in progress
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
@@ -21,7 +21,7 @@ This Software Development Plan (SDP) is the project's main engineering document.
 | [docs/contracts.schema.json](docs/contracts.schema.json) | Proposed versioned message shapes; not the complete database or public API schema |
 | [docs/IMPLEMENTATION_BACKLOG.md](docs/IMPLEMENTATION_BACKLOG.md) | Ordered work packages, dependencies and review status |
 | [docs/decisions/README.md](docs/decisions/README.md) | Architecture decision record (ADR) process and open decisions |
-| [AGENTS.md](AGENTS.md) | Planner, implementer and reviewer operating rules |
+| Local `AGENTS.md` (Git-ignored) | Planner, implementer and reviewer operating rules for this workspace |
 | [REFERENCES.md](REFERENCES.md) | Source register for the eventual report bibliography |
 
 The latest user instruction is authoritative. Within the repository, the SDP owns scope and delivery; supporting specifications own their detailed subject. Resolve a conflict explicitly rather than letting an agent select the easier rule. The root planner records the decision and updates all affected documents together. Numerical budgets, model settings and thresholds are versioned configuration, not measured guarantees.
@@ -230,6 +230,6 @@ Definition of done for each implementation task: intended behavior complete, rel
 | Moderator backlog | Count queue age and review rate, prioritize current operational impact, reduce automatic intake if capacity is exceeded; Rasya + team. |
 | Prompt injection or data exposure | Isolated source inputs, outbound restrictions, least privilege and privacy minimization; shared. |
 
-No paid provider, hosting purchase, external deployment or public launch is part of this planning task. Implementation can begin with fixtures and mock adapters while cost-dependent decisions remain open. Record infrastructure, inference, embedding, OCR, map/geocoding and backup costs separately; actual spending limits must be selected before enabling paid jobs.
+Implementation is authorized using fixtures and mock adapters while cost-dependent decisions remain open. Paid provider activation, hosting purchases, external deployment and public launch require their own delivery tasks and the necessary budget. Record infrastructure, inference, embedding, OCR, map/geocoding and backup costs separately; actual spending limits must be selected before enabling paid jobs.
 
-Open decisions with owners and timing are in the ADR register. The next work package is M1 contract/source/UX preparation, followed by the first data-to-public-view slice. Product implementation starts only when the user moves from this planning task to implementation.
+Open decisions with owners and timing are in the ADR register. The user has authorized starting the plan: M1 contract/source/UX preparation is active, followed by the first data-to-public-view slice. The root integrates reviewed work in dependency order and records actual completion in the backlog.

@@ -1,4 +1,5 @@
 # Local artifact runtimes, render caches and dependency staging
+/AGENTS.md
 .codex-build/
 .codex-finalizer/
 node_modules/
