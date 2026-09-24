@@ -1,0 +1,40 @@
+# Local artifact runtimes, render caches and dependency staging
+.codex-build/
+.codex-finalizer/
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage/
+dist/
+build/
+test-results/
+playwright-report/
+
+# Credentials and local runtime state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+*.sqlite*
+data/raw/
+data/private/
+data/runtime/
+backups/
+volumes/
+
+# Retired report sources and original reference deliverables
+deliverables/chapter1-latex/
+deliverables/*LaTeX*.zip
+deliverables/Waspada_Jakarta_Project_Kickoff.pptx
+RPL 1 INTRODUCTION - RFS 2026 (1).pptx
+.DS_Store
+Thumbs.db

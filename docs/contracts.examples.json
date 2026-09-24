@@ -1,0 +1,193 @@
+{
+  "description": "Entirely synthetic, non-public examples of each proposed boundary contract. Not live event data.",
+  "records": [
+    {
+      "schema_version": "1.0",
+      "trace_id": "synthetic-trace-1",
+      "record_type": "ReportRevision",
+      "report_revision_id": "demo-report-r1",
+      "source_id": "demo-operator",
+      "canonical_url": "https://example.invalid/synthetic/diversion",
+      "content_hash": "ea70541b19a07c8ca9f9091075c760080c93756ac0477ba3a2728d7fccc4ee7a",
+      "permitted_text": "Synthetic example: the demo operator announces a service diversion.",
+      "published_at": "2026-01-01T08:00:00+07:00",
+      "retrieved_at": "2026-01-01T08:00:00+07:00",
+      "supersedes_id": null,
+      "status": "eligible"
+    },
+    {
+      "schema_version": "1.0",
+      "trace_id": "synthetic-trace-1",
+      "record_type": "ExtractionResult",
+      "candidate_id": "demo-candidate",
+      "report_revision_id": "demo-report-r1",
+      "category": "transport",
+      "time": {
+        "start": "2026-01-01T08:00:00+07:00",
+        "end": null,
+        "precision": "exact"
+      },
+      "scope": {
+        "place_ids": [],
+        "audience_ids": [
+          "demo-service"
+        ],
+        "geometry_ids": []
+      },
+      "evidence": [
+        {
+          "report_revision_id": "demo-report-r1",
+          "span_start": 0,
+          "span_end": 67,
+          "relation": "supports"
+        }
+      ],
+      "unknown_fields": [
+        "service_resume_time"
+      ],
+      "model_run": {
+        "capability": "extraction",
+        "model_version": "demo-extractor-v1",
+        "prompt_version": "demo-prompt-v1",
+        "input_tokens": 500,
+        "output_tokens": 100
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "trace_id": "synthetic-trace-1",
+      "record_type": "GroundingContext",
+      "context_id": "demo-context",
+      "candidate_id": "demo-candidate",
+      "evidence": [
+        {
+          "report_revision_id": "demo-report-r1",
+          "span_start": 0,
+          "span_end": 67,
+          "relation": "supports"
+        }
+      ],
+      "revision_states": [
+        {
+          "report_revision_id": "demo-report-r1",
+          "status": "eligible"
+        }
+      ],
+      "candidate_events": [],
+      "prior_decision_ids": [],
+      "missing_fields": [
+        "service_resume_time"
+      ],
+      "conflicts": [],
+      "retrieval_version": "demo-retrieval-v1",
+      "index_version": "demo-index-v1",
+      "sufficient": false
+    },
+    {
+      "schema_version": "1.0",
+      "trace_id": "synthetic-trace-1",
+      "record_type": "InvestigationRequest",
+      "investigation_id": "demo-case",
+      "candidate_id": "demo-candidate",
+      "context_id": "demo-context",
+      "event_id": null,
+      "event_revision": null,
+      "questions": [
+        "Has the demo service resumed?"
+      ],
+      "budget": {
+        "tool_attempts": 5,
+        "reasoning_turns": 4,
+        "active_seconds": 60,
+        "model_tokens": 12000
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "trace_id": "synthetic-trace-1",
+      "record_type": "EventProposal",
+      "proposal_id": "demo-proposal",
+      "candidate_id": "demo-candidate",
+      "context_id": "demo-context",
+      "event_id": null,
+      "base_event_version": null,
+      "investigation_id": "demo-case",
+      "claims": [
+        {
+          "claim_id": "demo-claim",
+          "text": "Synthetic example: the demo operator announces a service diversion.",
+          "time": {
+            "start": "2026-01-01T08:00:00+07:00",
+            "end": null,
+            "precision": "exact"
+          },
+          "scope": {
+            "place_ids": [],
+            "audience_ids": [
+              "demo-service"
+            ],
+            "geometry_ids": []
+          },
+          "qualifiers": [
+            "synthetic example; issuer notice only"
+          ],
+          "support": [
+            {
+              "report_revision_id": "demo-report-r1",
+              "span_start": 0,
+              "span_end": 67,
+              "relation": "supports"
+            }
+          ],
+          "contradictions": [],
+          "origin_ids": [
+            "demo-origin"
+          ],
+          "independence": "unknown",
+          "support_assessment": "supported"
+        }
+      ],
+      "unresolved_fields": [
+        "service_resume_time"
+      ],
+      "model_runs": [
+        {
+          "capability": "reasoning",
+          "model_version": "demo-reasoner-v1",
+          "prompt_version": "demo-prompt-v1",
+          "input_tokens": 500,
+          "output_tokens": 100
+        }
+      ]
+    },
+    {
+      "schema_version": "1.0",
+      "trace_id": "synthetic-trace-1",
+      "record_type": "PublicationDecision",
+      "decision_id": "demo-decision",
+      "proposal_id": "demo-proposal",
+      "policy_version": "demo-policy-v1",
+      "event_id": null,
+      "event_version": null,
+      "claim_decisions": [
+        {
+          "claim_id": "demo-claim",
+          "disposition": "review",
+          "reason_codes": [
+            "review_pending"
+          ],
+          "evidence": [
+            {
+              "report_revision_id": "demo-report-r1",
+              "span_start": 0,
+              "span_end": 67,
+              "relation": "supports"
+            }
+          ]
+        }
+      ],
+      "reviewer_id": null,
+      "decided_at": "2026-01-01T08:00:00+07:00"
+    }
+  ]
+}
