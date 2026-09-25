@@ -17,6 +17,10 @@ Root reviewed and merged `work/GEO-STORE-CORE-source-backed-geometry` at `320780
 
 Root independently passed WSL Ubuntu-26.04 checks with native Linux Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` 58/58; `npm test` 127/127 (web 5, Worker 52, database 58, evaluation 12); `npm run typecheck`; `npm run build` (Vite production build and Wrangler dry-run); and `git diff main...HEAD --check` using the linked-worktree Git directory. PGlite uses local synthetic rows and does not establish hosted Postgres/Neon behavior, source rights, or semantic/factual validation. An initial concurrent dry-run hit WSL memory pressure; the isolated build passed.
 
+### L1-WRITE-IDEMPOTENCY-CORE — in progress
+
+Assigned to `work/L1-WRITE-IDEMPOTENCY-CORE` in `.codex-build/worktrees/l1-write-idempotency-core`, based on pushed `main` at `45e283c`. This local DB slice makes same-ID report revision retries create-or-verify and gives exact evidence references one database-enforced identity. It uses no live data and does not change schema 2.0 or public APIs. A uniqueness migration must stop safely if duplicate legacy evidence rows exist; it may not merge or delete them. The completed queue-to-fixture pipeline remains a later slice.
+
 ### API-PROJECT-CORE — accepted
 
 Root reviewed and merged the pure Layer 4 public projection from `work/API-PROJECT-CORE`. It validates the consumed fields of schema 2.0 event/impact inputs, resolves names and explicitly rights-approved source attributions, matches exact event/impact versions, and creates the existing public `EventView` using a field allowlist. Adversarial synthetic tests verify private metadata is stripped, failures are bounded, source publication/observation times remain distinct, and schema-valid mixed date/date-time ranges remain unmodified. This does not wire a database reader or route. Source/data rights remain pending.
