@@ -17,6 +17,7 @@
     {
       "case_id": "synthetic-case-01",
       "split": "development",
+      "scenario_tags": [],
       "reports": [
         {
           "report_id": "synthetic-report-01",

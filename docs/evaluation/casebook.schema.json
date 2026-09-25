@@ -238,10 +238,11 @@
     "case": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["case_id", "split", "reports", "independent_reviews", "adjudication"],
+      "required": ["case_id", "split", "scenario_tags", "reports", "independent_reviews", "adjudication"],
       "properties": {
         "case_id": { "$ref": "#/$defs/id" },
         "split": { "enum": ["development", "validation", "held_out"] },
+        "scenario_tags": { "type": "array", "uniqueItems": true, "items": { "enum": ["historical_crime", "gathering_transport_impact", "weather_warning_flood_observation", "non_geographic_group_notice"] } },
         "reports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/report" } },
         "independent_reviews": { "type": "array", "items": { "$ref": "#/$defs/review" } },
         "adjudication": { "oneOf": [{ "$ref": "#/$defs/adjudication" }, { "type": "null" }] }

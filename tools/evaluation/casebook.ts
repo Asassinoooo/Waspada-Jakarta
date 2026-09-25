@@ -20,11 +20,18 @@ const evidenceRelationEnumIsComplete: MissingEvidenceRelations extends never ? t
 void evidenceRelationEnumIsComplete;
 export const PUBLICATION_DISPOSITIONS = ["publish", "review", "reject", "retract"] as const;
 export const CASEBOOK_SPLITS = ["development", "validation", "held_out"] as const;
+export const SCENARIO_TAGS = [
+  "historical_crime",
+  "gathering_transport_impact",
+  "weather_warning_flood_observation",
+  "non_geographic_group_notice",
+] as const;
 
 export type Category = L2Category;
 export type EvidenceRelation = L2EvidenceRelation;
 export type PublicationDisposition = (typeof PUBLICATION_DISPOSITIONS)[number];
 export type CasebookSplit = (typeof CASEBOOK_SPLITS)[number];
+export type ScenarioTag = (typeof SCENARIO_TAGS)[number];
 export type AssessmentStatus = "labeled" | "unknown" | "disputed" | "not_applicable";
 
 export type Assessment<T> =
@@ -96,6 +103,8 @@ export interface Adjudication {
 export interface CasebookCase {
   readonly case_id: string;
   readonly split: CasebookSplit;
+  /** Explicit curator coverage metadata, not model output or an adjudicated label. */
+  readonly scenario_tags: readonly ScenarioTag[];
   readonly reports: readonly CasebookReport[];
   readonly independent_reviews: readonly IndependentReview[];
   readonly adjudication: Adjudication | null;
@@ -156,6 +165,8 @@ export type ReadinessReasonCode =
   | "REPORTS_PER_CASE_BELOW_MINIMUM"
   | "HUMAN_REVIEWERS_BELOW_MINIMUM"
   | "ADJUDICATION_MISSING"
+  | "CATEGORY_COVERAGE_INCOMPLETE"
+  | "SCENARIO_COVERAGE_INCOMPLETE"
   | "HELD_OUT_SPLIT_MISSING"
   | "HELD_OUT_NOT_FROZEN";
 
@@ -436,11 +447,20 @@ function validateAdjudication(value: unknown, path: string, reportIds: ReadonlyS
 }
 
 function validateCase(value: unknown, path: string, datasetKind: unknown, issues: CasebookIssue[]): void {
-  const fields = ["case_id", "split", "reports", "independent_reviews", "adjudication"] as const;
+  const fields = ["case_id", "split", "scenario_tags", "reports", "independent_reviews", "adjudication"] as const;
   const object = readObject(value, path, fields, fields, issues);
   if (!object) return;
   checkId(object.case_id, `${path}.case_id`, issues);
   checkEnum(object.split, CASEBOOK_SPLITS, `${path}.split`, issues);
+  if (!Array.isArray(object.scenario_tags)) addIssue(issues, "INVALID_VALUE", `${path}.scenario_tags`);
+  else {
+    const seenScenarioTags = new Set<unknown>();
+    object.scenario_tags.forEach((scenarioTag, index) => {
+      checkEnum(scenarioTag, SCENARIO_TAGS, `${path}.scenario_tags[${index}]`, issues);
+      if (seenScenarioTags.has(scenarioTag)) addIssue(issues, "INVALID_VALUE", `${path}.scenario_tags[${index}]`);
+      seenScenarioTags.add(scenarioTag);
+    });
+  }
   if (!Array.isArray(object.reports) || object.reports.length === 0) addIssue(issues, "INVALID_VALUE", `${path}.reports`);
   else object.reports.forEach((report, index) => validateReport(report, `${path}.reports[${index}]`, datasetKind, issues));
   const reportIds = new Set<string>(Array.isArray(object.reports)
@@ -589,6 +609,15 @@ export function evaluateReleaseReadiness(input: unknown): ReadinessResult {
   if (casebook.cases.some((item) => item.adjudication?.status !== "reconciled" || item.adjudication.adjudicator_kind !== "human")) {
     reasons.add("ADJUDICATION_MISSING");
   }
+  const reconciledCategories = new Set<Category>();
+  const coveredScenarios = new Set<ScenarioTag>();
+  for (const item of casebook.cases) {
+    const category = item.adjudication?.status === "reconciled" ? item.adjudication.labels.category : null;
+    if (category?.status === "labeled") reconciledCategories.add(category.value);
+    for (const scenarioTag of item.scenario_tags) coveredScenarios.add(scenarioTag);
+  }
+  if (CATEGORIES.some((category) => !reconciledCategories.has(category))) reasons.add("CATEGORY_COVERAGE_INCOMPLETE");
+  if (SCENARIO_TAGS.some((scenarioTag) => !coveredScenarios.has(scenarioTag))) reasons.add("SCENARIO_COVERAGE_INCOMPLETE");
   const hasHeldOut = casebook.cases.some((item) => item.split === "held_out");
   if (!hasHeldOut) reasons.add("HELD_OUT_SPLIT_MISSING");
   if (casebook.held_out_freeze.state !== "frozen" || casebook.held_out_freeze.frozen_at === null) {

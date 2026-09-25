@@ -8,6 +8,7 @@ import {
 import {
   CATEGORIES,
   EVIDENCE_RELATIONS,
+  SCENARIO_TAGS,
   evaluateReleaseReadiness,
   validateCasebook,
   type CasebookIssueCode,
@@ -34,6 +35,7 @@ interface TestReview {
 interface TestCase {
   case_id: string;
   split: string;
+  scenario_tags: string[];
   reports: TestReport[];
   independent_reviews: TestReview[];
   adjudication: Record<string, unknown> | null;
@@ -61,6 +63,7 @@ const casebookSchema = JSON.parse(
   $defs: {
     labels: { properties: { category: { allOf: [unknown, { properties: { value: { enum: string[] } } }] } } };
     reportAssessment: { properties: { evidence_relations: { allOf: [unknown, { properties: { value: { items: { enum: string[] } } } }] } } };
+    case: { properties: { scenario_tags: { items: { enum: string[] } } } };
   };
 };
 
@@ -68,10 +71,10 @@ type MissingL2EvidenceRelations = Exclude<L2EvidenceRelation, (typeof EVIDENCE_R
 const evidenceRelationParity: MissingL2EvidenceRelations extends never ? true : never = true;
 void evidenceRelationParity;
 
-function placeholderLabels(reportIds: readonly string[]) {
+function placeholderLabels(reportIds: readonly string[], category?: (typeof CATEGORIES)[number]) {
   return {
     incident_identity: { status: "unknown" },
-    category: { status: "unknown" },
+    category: category === undefined ? { status: "unknown" } : { status: "labeled", value: category },
     event_time: { status: "unknown" },
     scope: { status: "unknown" },
     expected_publication_disposition: { status: "unknown" },
@@ -143,9 +146,18 @@ function makeStructureOnlyCasebook(options: {
     return {
       case_id: caseId,
       split: isHeldOut ? "held_out" : caseIndex % 2 === 0 ? "development" : "validation",
+      scenario_tags: [SCENARIO_TAGS[caseIndex % SCENARIO_TAGS.length]],
       reports,
       independent_reviews,
-      adjudication,
+      adjudication: adjudication === null
+        ? null
+        : {
+            ...adjudication,
+            labels: placeholderLabels(
+              reports.map((report) => report.report_id),
+              caseIndex < CATEGORIES.length ? CATEGORIES[caseIndex] : undefined,
+            ),
+          },
     };
   });
 
@@ -202,6 +214,21 @@ test("published contract is closed, versioned, and excludes live data", () => {
   assert.deepEqual(CATEGORIES, L2_CATEGORIES);
   assert.deepEqual(casebookSchema.$defs.labels.properties.category.allOf[1].properties.value.enum, L2_CATEGORIES);
   assert.deepEqual(casebookSchema.$defs.reportAssessment.properties.evidence_relations.allOf[1].properties.value.items.enum, EVIDENCE_RELATIONS);
+  assert.deepEqual(casebookSchema.$defs.case.properties.scenario_tags.items.enum, SCENARIO_TAGS);
+});
+
+test("case scenario tags are required, closed, and unique curator metadata", () => {
+  const missing = cloneFixture();
+  delete (missing.cases[0] as unknown as Record<string, unknown>).scenario_tags;
+  assertIssue(missing, "MISSING_FIELD");
+
+  const unknown = cloneFixture();
+  unknown.cases[0].scenario_tags = ["invented_scenario"];
+  assertIssue(unknown, "INVALID_VALUE");
+
+  const duplicate = cloneFixture();
+  duplicate.cases[0].scenario_tags = [SCENARIO_TAGS[0], SCENARIO_TAGS[0]];
+  assertIssue(duplicate, "INVALID_VALUE");
 });
 
 test("closed metadata shape rejects embedded source text and credential-like URLs", () => {
@@ -330,12 +357,39 @@ test("known origin and content may repeat within one incident case", () => {
 test("readiness gates use separate stable reasons on in-memory structure-only shapes", () => {
   const baseline = makeStructureOnlyCasebook();
   const baselineReasons = assertReadinessReason(baseline, "SOURCE_RIGHTS_NOT_APPROVED");
+  assert.deepEqual([...baselineReasons], ["SOURCE_RIGHTS_NOT_APPROVED"]);
   assert.equal(baselineReasons.has("REPORT_COUNT_BELOW_MINIMUM"), false);
   assert.equal(baselineReasons.has("CASE_COUNT_BELOW_MINIMUM"), false);
   assert.equal(baselineReasons.has("REPORTS_PER_CASE_BELOW_MINIMUM"), false);
   assert.equal(baselineReasons.has("HUMAN_REVIEWERS_BELOW_MINIMUM"), false);
   assert.equal(baselineReasons.has("ADJUDICATION_MISSING"), false);
+  assert.equal(baselineReasons.has("CATEGORY_COVERAGE_INCOMPLETE"), false);
+  assert.equal(baselineReasons.has("SCENARIO_COVERAGE_INCOMPLETE"), false);
   assert.equal(baselineReasons.has("HELD_OUT_NOT_FROZEN"), false);
+
+  const missingCategory = makeStructureOnlyCasebook();
+  const firstCategory = missingCategory.cases[0].adjudication!.labels as { category: Record<string, unknown> };
+  firstCategory.category = { status: "unknown" };
+  const categoryReasons = assertReadinessReason(missingCategory, "CATEGORY_COVERAGE_INCOMPLETE");
+  assert.equal(categoryReasons.has("SCENARIO_COVERAGE_INCOMPLETE"), false);
+
+  for (const status of ["disputed", "not_applicable"]) {
+    const nonLabeledCategory = makeStructureOnlyCasebook();
+    const labels = nonLabeledCategory.cases[0].adjudication!.labels as { category: Record<string, unknown> };
+    labels.category = { status };
+    assertReadinessReason(nonLabeledCategory, "CATEGORY_COVERAGE_INCOMPLETE");
+  }
+
+  const pendingAdjudication = makeStructureOnlyCasebook();
+  pendingAdjudication.cases[0].adjudication!.status = "pending";
+  const pendingCategoryReasons = assertReadinessReason(pendingAdjudication, "CATEGORY_COVERAGE_INCOMPLETE");
+  assert.equal(pendingCategoryReasons.has("SCENARIO_COVERAGE_INCOMPLETE"), false);
+
+  const missingScenario = makeStructureOnlyCasebook();
+  const omittedScenario = SCENARIO_TAGS[0];
+  for (const item of missingScenario.cases) item.scenario_tags = item.scenario_tags.filter((tag) => tag !== omittedScenario);
+  const scenarioReasons = assertReadinessReason(missingScenario, "SCENARIO_COVERAGE_INCOMPLETE");
+  assert.equal(scenarioReasons.has("CATEGORY_COVERAGE_INCOMPLETE"), false);
 
   const tooFewReports = makeStructureOnlyCasebook({ reportsPerCase: 3, extraReports: 3 });
   const reportReasons = assertReadinessReason(tooFewReports, "REPORT_COUNT_BELOW_MINIMUM");
