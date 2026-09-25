@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** RAG-ACCESS-01 is accepted locally; continue the Layer 4 manual-gate foundation.
+**Reason:** RAG-ACCESS-01 and the pure PUB-POLICY-CORE foundation are accepted; continue toward evaluated retrieval and transactional publication.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` and `origin/main` are synchronized through the root-reviewed RAG-ACCESS-01 acceptance. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, and RAG-ACCESS-01. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. PUB-POLICY-CORE is assigned on a separate worktree with an explicit rule preventing historical or synthetic fixtures from receiving publishable decisions.
+`main` is locally root-reviewed through PUB-POLICY-CORE and ready to push with this acceptance update. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, and PUB-POLICY-CORE. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures; historical and synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
 
@@ -25,11 +25,12 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - DATA-02-CORE is accepted as local synthetic implementation. Pattern redaction is incomplete; PGlite does not prove Neon compatibility or concurrent locking across independent sessions; no live source, provider, or cloud behavior was exercised.
 - `RAG-CORE` is accepted as a local-only Layer 2 retrieval module. Synthetic records and fixed vectors preserve provenance and contradictions, but do not prove retrieval quality or sufficiency. Its evidence-reference row cap does not guarantee a bounded physical database scan.
 - `RAG-ACCESS-01` is accepted: a NOLOGIN role has only query-required column-level reads, and the real retrieval SQL passes in synthetic PGlite under `SET ROLE` across non-semantic, semantic, geometry, and combined paths. The role is not yet wired to a Worker connection or hosted Neon service.
+- `PUB-POLICY-CORE` is accepted as a pure L4 assessment requiring explicit authorized moderator approval and exact evidence, source/revision/remit/freshness, source-linked geometry, and event-version checks. It performs no write or authentication; its live-only output rule holds historical and synthetic cases. Human quality evaluation and transactional rechecks remain outstanding.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
 - RAG-CORE is accepted on `main` at merge `5e739cf`, from task head `7c6ded1` on `work/RAG-CORE-hybrid-retrieval`. Root independently ran database tests 38/38, all workspace tests 69/69 (web 5, Worker 26, database 38), typecheck, build/Wrangler dry-run, and WSL diff check.
 - RAG-ACCESS-01 was implemented on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` and accepted into `main`; the handoff and root review are recorded in the assignment and delivery log.
-- PUB-POLICY-CORE is assigned on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core`. It implements the pure moderator-reviewed Layer 4 gate against existing typed L2/RAG results; persistence, authentication, model thresholds and auto-publication remain outside its scope.
+- PUB-POLICY-CORE was implemented on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core` and accepted into `main`; the branch handoff and root review are recorded in the assignment and delivery log.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---

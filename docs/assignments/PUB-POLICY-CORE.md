@@ -1,6 +1,6 @@
 # PUB-POLICY-CORE — Deterministic manual publication assessment
 
-- **Status:** Assigned for local synthetic implementation
+- **Status:** Accepted — pure local manual policy assessment; persistence/auth and human-quality evaluation remain outside scope
 - **Depends on:** SPEC-02, L2-ADAPTER-01, RAG-CORE
 - **Requirements:** FR-08; NFR-01, NFR-05, NFR-07
 - **Architecture:** Layer 4 publication-policy kernel
@@ -60,7 +60,7 @@ Root owns architecture, backlog, and other planning documents. If the current co
 
 The implementation agent appends its branch/worktree, commit SHAs/messages, changed paths, behavior, actual checks, limitations, and any scope issue here. Root reviews and accepts the task before integration.
 
-### Implementation handoff — 25 September 2026 (root review pending)
+### Implementation handoff — 25 September 2026 (accepted by root review)
 
 - **Branch/worktree:** `work/PUB-POLICY-CORE-manual-gate` / `D:\Projects\RPL\.codex-build\worktrees\pub-policy-core` (`/mnt/d/Projects/RPL/.codex-build/worktrees/pub-policy-core` in WSL).
 - **Implementation commit:** `1a746f8f74fb2ea2c59782f11ba030fdd20d21e6` — `feat(PUB-POLICY-CORE): add manual publication assessment`. Root amended the policy assignment at `f9e6806` to require a live-dataset publication gate; that root-owned commit is not in this branch because root instructed that unrelated main changes not be merged here. It will be retained when root integrates the branch.
