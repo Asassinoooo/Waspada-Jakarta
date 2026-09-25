@@ -39,4 +39,14 @@ Run one aggregate test command at a time. Do not run PGlite suites concurrently 
 
 ## Handoff
 
-The implementation agent records its branch and worktree, commits and messages, changed paths, root-cause evidence, exact checks and counts, and any remaining limitation here. Root reviews and integrates only after the aggregate checks pass.
+### Diagnosis report
+
+- **Branch/worktree/base:** `work/DB-TEST-RUNNER-CORE`, `.codex-build/worktrees/db-test-runner-core`, based on clean commit `3b9930a874250f2bcb9e1eabcb2efb5bc17e3c5c`.
+- **Changed paths:** `docs/assignments/DB-TEST-RUNNER-CORE.md` only. No runner, test, product, migration, dependency, or lockfile changes were made.
+- **Runtime:** WSL Ubuntu-26.04; Node.js `v24.21.0`, npm `11.19.0`.
+- **First aggregate reproduction:** Ran `npm run db:test` by itself, without another aggregate test or build running. It exited 0 and reported eight suites/files exactly once: DATA-02-CORE evidence chunks, RAG-CORE retrieval, GEO-STORE-CORE geometry, DATA-01 migrations, DATA-01 persistence, PUB-WRITE-CORE, JOB-01, and L1 synthetic fixture pipeline. Result: **61 tests, 8 suites, 61 passed, 0 failed**.
+- **Second aggregate reproduction:** Ran `npm test` by itself after the DB command finished. It exited 0 and reported web **5/5**, Worker **62/62**, database **61/61** across eight suites, and evaluation **12/12**: **140 tests passed**. No test file was skipped or duplicated.
+- **Other checks:** `npm run typecheck` passed. `npm run build` passed the Vite production build and Wrangler deploy dry-run. `git diff --check` passed after the handoff edit.
+- **Root-cause conclusion:** The historical aggregate exit 1 without a test summary was not reproducible in this clean assigned worktree during either isolated aggregate run. The recorded historical attempts provide no failure summary or other diagnostic evidence from which to establish a root cause. Although the default runner executes DB test files in parallel and each file creates a PGlite instance, the two passing runs do not establish that concurrency caused the earlier exits. No concurrency override or other unsupported workaround was added.
+- **Commits:** No implementation fix commit was warranted because no defect or fix was established. Handoff commit: `docs(DB-TEST-RUNNER-CORE): record aggregate verification and non-reproduction` (SHA is reported by the implementer with the branch handoff).
+- **Remaining limitation/decision:** Root should decide whether to accept the repeated passing aggregate evidence or provide a reproducible failing environment/log before any runner change is authorized. The earlier exit-1 remains unexplained; it is not reported as fixed.
