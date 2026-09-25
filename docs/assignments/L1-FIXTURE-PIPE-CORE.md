@@ -52,4 +52,15 @@ The Worker processor must use injected structural interfaces; do not import DB r
 
 ## Handoff
 
-Append the implementation branch/worktree, exact commits/messages, changed paths, behavior, actual WSL versions/checks, migration/configuration impact, limitations, and unresolved decisions. Root reviews and accepts before integration.
+### Implementation report
+
+- **Branch/worktree:** `work/L1-FIXTURE-PIPE-CORE` — `.codex-build/worktrees/l1-fixture-pipe-core`
+- **Implementation commit:** `01c9bac465b3839f16b7efe50b20fadab7159d3d` — `feat(L1-FIXTURE-PIPE-CORE): process synthetic moderator fixtures`
+- **Handoff commit:** `docs(L1-FIXTURE-PIPE-CORE): record implementation handoff` (SHA is reported by the implementer with the branch handoff.)
+- **Changed paths:** `apps/worker/src/layers/l1-data-knowledge/synthetic-fixture-pipeline.ts`, `apps/worker/test/synthetic-fixture-pipeline.test.ts`, `apps/worker/package.json`, and `apps/db/test/synthetic-fixture-pipeline.test.ts`.
+- **Behavior:** Added an injected exact-URL in-memory fixture catalog and a processor for already-leased synthetic moderator-submission jobs. It constructs only closed schema 2.0 unreviewed revisions from manifest-authored fields, keeps parser metadata transient, runs deterministic text preparation/chunking, persists explicit supporting spans and manifest-mapped 2D geometry, checks the synthetic source's manual-fixture approval/policy, and acknowledges the job after writes. Empty collections complete explicitly without record writes. Parse, catalog, source, persistence, and acknowledgement failures return fixed redacted codes; lost leases and uncertain completion acknowledgements never trigger an unsafe second transition. Feature IDs are lookup keys only and never become persisted identifiers.
+- **WSL runtime:** Ubuntu-26.04, Node.js `v24.21.0`, npm `11.19.0`.
+- **Checks:** `npm test --workspace=@waspada/worker` passed **62/62**. The new PGlite composition test passed **1/1** under `SET ROLE waspada_l1_pipeline`; root also verified each of the eight DB test files individually, including the new integration file. `npm run typecheck` and `npm run build` passed. Staged `git diff --check` passed. `npm run db:test` exited 1 without a test summary; root's serialized retry reported `Could not find ''` before running tests. Aggregate `npm test` passed web **5/5** and Worker **61/61** at that run, then the DB test runner exited 1 after its first suite without a failure summary. The aggregate DB-runner issue remains unresolved, so it is not reported as passing.
+- **Migration/configuration impact:** None. No schema, API, migrations, dependencies, runtime bindings, or deployment configuration changed. The Worker package script only registers the new test.
+- **Limitations:** The processor consumes authored synthetic fixtures only; it performs no source acquisition and has no Worker route or scheduler wiring. PGlite is a single-session local test and does not establish hosted multi-session transaction behavior. Individual DB test files pass, but the aggregate DB runner still needs diagnosis.
+- **Remaining decisions:** None for this bounded implementation. Root review and acceptance are pending.
