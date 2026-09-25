@@ -59,6 +59,15 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
     await testDatabase.close();
   });
 
+  async function runAsL1<T>(operation: () => Promise<T>): Promise<T> {
+    await testDatabase.executor.query('SET ROLE waspada_l1_pipeline');
+    try {
+      return await operation();
+    } finally {
+      await testDatabase.executor.query('RESET ROLE');
+    }
+  }
+
   it('persists only chunk metadata, accepts identical retries, and scopes by dataset', async () => {
     const set = makeSet(revision, [
       makeChunk(revision, 'chunk-synthetic-v1-a', 'chunker-v1', 0, 52,
@@ -67,8 +76,8 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
         Array.from(permittedText).slice(40).join('')),
     ]);
 
-    const first = await ports.evidenceChunks.persist(set);
-    const retry = await ports.evidenceChunks.persist(set);
+    const first = await runAsL1(() => ports.evidenceChunks.persist(set));
+    const retry = await runAsL1(() => ports.evidenceChunks.persist(set));
     assert.deepEqual(first, {
       persistedChunkCount: 2,
       invalidatedChunkCount: 0,
@@ -89,7 +98,7 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
     assert.equal(rows.rows[0]?.span_end, 52);
 
     await assert.rejects(
-      ports.evidenceChunks.persist({ ...set, datasetKind: 'historical' }),
+      runAsL1(() => ports.evidenceChunks.persist({ ...set, datasetKind: 'historical' })),
       /not present in the requested dataset/,
     );
     const otherDataset = await testDatabase.executor.query<{ count: string }>(
@@ -104,22 +113,22 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
         Array.from(permittedText).length, permittedText),
     ]);
     await assert.rejects(
-      ports.evidenceChunks.persist({ ...complete, normalizationVersion: 'different-normalizer-v1' }),
+      runAsL1(() => ports.evidenceChunks.persist({ ...complete, normalizationVersion: 'different-normalizer-v1' })),
       /normalization version does not match/,
     );
     await assert.rejects(
-      ports.evidenceChunks.persist({ ...complete, permittedTextHash: '0'.repeat(64) }),
+      runAsL1(() => ports.evidenceChunks.persist({ ...complete, permittedTextHash: '0'.repeat(64) })),
       /hash does not match/,
     );
     await assert.rejects(
-      ports.evidenceChunks.persist({
+      runAsL1(() => ports.evidenceChunks.persist({
         ...complete,
         chunks: [{ ...complete.chunks[0]!, text: 'Synthetic false fixture.' }],
-      }),
+      })),
       /text length does not match|span does not resolve|hash does not match/,
     );
     await assert.rejects(
-      ports.evidenceChunks.persist({
+      runAsL1(() => ports.evidenceChunks.persist({
         ...complete,
         chunks: [{
           ...complete.chunks[0]!,
@@ -127,7 +136,7 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
           text: Array.from(permittedText).slice(1).join(''),
           chunkTextHash: sha256(Array.from(permittedText).slice(1).join('')),
         }],
-      }),
+      })),
       /gap|span|cover the entire/,
     );
     const count = await testDatabase.executor.query<{ count: string }>(
@@ -149,7 +158,7 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
     const chunks = await chunkPreparedText('synthetic', privateFixtureRevision.reportRevisionId, prepared);
     const compatibleL2Input: import('../../worker/src/layers/l2-model-grounding/contracts.js').EvidenceChunkInput = chunks[0]!;
     assert.equal(compatibleL2Input.normalizationVersion, prepared.normalizationVersion);
-    await ports.evidenceChunks.persist(makeSet(privateFixtureRevision, chunks));
+    await runAsL1(() => ports.evidenceChunks.persist(makeSet(privateFixtureRevision, chunks)));
 
     const stored = await testDatabase.executor.query<{ revision_text: string; chunk_metadata: string }>(
       `SELECT revision.permitted_text AS revision_text,
@@ -175,7 +184,7 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
       makeChunk(revision, 'chunk-synthetic-collision', 'chunker-collision-v1', 0,
         Array.from(permittedText).length, permittedText),
     ]);
-    await ports.evidenceChunks.persist(original);
+    await runAsL1(() => ports.evidenceChunks.persist(original));
     const nextVersion = makeSet(revision, [
       makeChunk(revision, 'chunk-synthetic-collision', 'chunker-collision-v2', 0, 40,
         Array.from(permittedText).slice(0, 40).join('')),
@@ -183,7 +192,7 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
         Array.from(permittedText).length, Array.from(permittedText).slice(35).join('')),
     ]);
 
-    await assert.rejects(ports.evidenceChunks.persist(nextVersion), /lineage\/content does not match/);
+    await assert.rejects(runAsL1(() => ports.evidenceChunks.persist(nextVersion)), /lineage\/content does not match/);
     const rows = await testDatabase.executor.query<{ chunk_id: string; status: string }>(
       `SELECT chunk_id, status FROM waspada.evidence_chunks
        WHERE dataset_kind = 'synthetic' AND report_revision_id = $1
@@ -199,7 +208,7 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
       makeChunk(revision, 'chunk-synthetic-version-old', 'chunker-old', 0,
         Array.from(permittedText).length, permittedText),
     ]);
-    await ports.evidenceChunks.persist(oldSet);
+    await runAsL1(() => ports.evidenceChunks.persist(oldSet));
     const oldChunk = oldSet.chunks[0]!;
     await testDatabase.executor.query(
       `INSERT INTO waspada.embedding_runs
@@ -220,7 +229,7 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
       makeChunk(revision, 'chunk-synthetic-version-new', 'chunker-new', 0,
         Array.from(permittedText).length, permittedText),
     ]);
-    const result = await ports.evidenceChunks.persist(newSet);
+    const result = await runAsL1(() => ports.evidenceChunks.persist(newSet));
     assert.deepEqual(result, {
       persistedChunkCount: 1,
       invalidatedChunkCount: 1,
