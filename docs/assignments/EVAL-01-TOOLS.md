@@ -18,7 +18,7 @@ Prepare a versioned, machine-checked casebook format and release-readiness valid
 - `docs/IMPLEMENTATION_BACKLOG.md`
 - `docs/DOMAIN_MODEL.md`
 - `docs/SOURCE_FEASIBILITY.md`
-- `docs/assignments/SPEC-01.md`
+- `docs/SOURCE_FEASIBILITY.md` (SPEC-01)
 - `docs/contracts.schema.json`
 - `apps/worker/src/layers/l2-model-grounding/contracts.ts`
 - Existing root scripts and TypeScript test setup
