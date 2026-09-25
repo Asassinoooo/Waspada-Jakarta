@@ -1,7 +1,7 @@
 # OBS-01-L2-RETRIEVAL-TELEMETRY-CORE — privacy-safe retrieval metrics
 
 **Parent package:** OBS-01 (Layer 5 evaluation and monitoring)
-**Status:** Assigned; local synthetic module only
+**Status:** Accepted on `main` at `12509e3` after root review and independent WSL verification; local synthetic module only
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/OBS-01-L2-RETRIEVAL-TELEMETRY-CORE`
 **Worktree:** `.codex-build/worktrees/obs-01-l2-retrieval-telemetry-core`

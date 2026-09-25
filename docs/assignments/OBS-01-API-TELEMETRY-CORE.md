@@ -1,7 +1,7 @@
 # OBS-01-API-TELEMETRY-CORE — measured Worker request telemetry
 
 **Parent package:** OBS-01 (Layer 5 evaluation and monitoring)
-**Status:** Assigned; local synthetic demo only
+**Status:** Accepted on `main` at `8135a90`; local synthetic demo only
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/OBS-01-API-TELEMETRY-CORE`
 **Worktree:** `.codex-build/worktrees/obs-01-api-telemetry-core`

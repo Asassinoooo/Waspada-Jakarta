@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Planning baselines and partial local implementations (BOOT-01, UI-00, PLATFORM-01, DATA-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, L2-CONTEXT-PERSIST-CORE, L2-CONTEXT-BRIDGE-CORE, PUB-POLICY-CORE, PUB-WRITE-CORE, API-PROJECT-CORE, L3-LEDGER-CORE, DB-TEST-RUNNER-ISOLATION and L1-EVIDENCE-RELATION-ALIGN-CORE) accepted; DB/full-workspace tests, typecheck and build pass with sequential per-file DB test processes; schema 2.0 evidence relations and canonical refs-only L2 context persistence and Worker-side bridging now pass locally; source/model integration, Worker/database runtime wiring, evaluation and the complete prototype remain in progress
+**Status:** Planning baselines and partial local implementations accepted, including OBS-01 privacy-safe API and L2 retrieval telemetry; the full local workspace suite (166 tests), typecheck and build pass with sequential per-file DB test processes. Retrieval telemetry is injected and defaults to no-op because Worker/database runtime composition is not yet implemented. Source/model integration, live-source rights, human-adjudicated evaluation, hosted service behavior and the complete prototype remain in progress.
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
