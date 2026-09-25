@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** L2-CONTEXT-BRIDGE-CORE is accepted on `main` at merge `6ced3ea`. Root independently passed the focused bridge test (4/4), full suite (160/160), typecheck, build, and WSL diff checks. The bridge validates expanded reasoning requests and maps only canonical schema 2.0 references into the existing immutable L2 writer; excerpt/provenance fields remain in the returned in-memory request, and `sufficient` passes through without assessment. No route, hosted wiring, source/model calls, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
+**Reason:** L2-CONTEXT-BRIDGE-CORE is accepted on `main` at merge `6ced3ea`. Root independently passed the focused bridge test (4/4), full suite (160/160), typecheck, build, and WSL diff checks. The bridge validates expanded reasoning requests and maps only canonical schema 2.0 references into the existing immutable L2 writer; excerpt/provenance fields remain in the returned in-memory request, and `sufficient` passes through without assessment. The next ready slice, OBS-01-API-TELEMETRY-CORE, will replace the demo API's no-op measurement path with sampled, structured, privacy-safe request telemetry; it has been assigned on a dedicated branch/worktree and has not started. No deployment is planned. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
