@@ -16,7 +16,7 @@ The Google Doc retains its seven required sections, three representative user st
 
 The original course lecture deck is reference material and is unchanged. Earlier LaTeX deliverables are retired from active maintenance at the user's request. The earlier kickoff deck is retained as an input/history file; the Layered deck is its current replacement.
 
-## Implementation boundaries still to deliver
+## Initial gaps recorded on 18 September 2026
 
 - Source adapters, relational/spatial/vector migrations and access-controlled storage.
 - Extraction/embedding/reasoning adapters and measured provider/model selection.
@@ -27,7 +27,7 @@ The original course lecture deck is reference material and is unchanged. Earlier
 
 Contract examples are wholly synthetic. Schema validation can reject malformed structure but cannot establish source authenticity, evidence independence, semantic support, geometry truth, authorization or cross-record consistency. Those checks belong to the implementation and its future integration tests.
 
-## Revision checks
+## 18 September 2026 revision checks
 
 - Draft 2020-12 schema checked with format validation: all six record examples accepted; ten malformed examples rejected, including unsupported publish fields, missing evidence, exceeded budgets, wrong types and malformed timestamps.
 - Google Doc read back after editing: seven chapter sections, three user stories, five layer descriptions and the replacement diagram; no internal file references or numbered citations. All 11 exported pages inspected visually.
@@ -41,3 +41,9 @@ The current architecture retains the five-layer boundaries above and replaces th
 SPEC-02 now uses schema 2.0 with 14 synthetic record examples. Root accepted ADR-003 and checked the examples against the JSON Schema on WSL. SPEC-03 now defines a separate OpenAPI 3.1 application projection; its schema mapping omits private text offsets from public responses and preserves evidence references in moderator views. Runtime implementation and cross-record semantic checks remain for later tasks.
 
 The default planner/implementer model remains Luna Max; Astra xhigh is reserved for a substantive technical issue attempted and unresolved by Luna, not an account usage limit. Future agents must work in dedicated branches/worktrees and commit each coherent work package with descriptive messages. The initial three spec drafts were already written in the shared checkout before that requirement; they stopped on usage limits before committing, and their history has not been rewritten. Future project tests will use WSL Ubuntu-26.04. Current local checks include YAML/OpenAPI shape, local references, JSON Schema structure and synthetic example validation; no app runtime or external service is involved.
+
+## 26 September 2026 — current implementation status
+
+The five-layer ownership model remains the project baseline. Locally tested components now include L1 fixture parsing, text/chunk preparation, revision/evidence/geometry persistence and queue-to-fixture processing; L2 typed adapters, hybrid retrieval, a least-privilege reader, refs-only context persistence and the injected reasoning-request bridge; the L3 bounded-investigation ledger; and L4 publication policy, public projection and manual-write transaction. L5 has synthetic casebook tooling and per-package checks, while human-adjudicated evaluation and production monitoring remain future work. The accepted bridge validates expanded in-memory context and persists only canonical references; it does not assess `sufficient` or invoke a model, retrieval, tools, L3 or an application route.
+
+The root independently passed the focused L2 bridge test (4/4), the WSL workspace suite (160/160), typecheck, build and diff checks. These results establish local component behavior only. The Worker has no database-session or hosted Neon wiring, no live connectors or model provider are enabled, source/data rights and human review labels are pending, and no moderator or public database-backed HTTP route is complete. Keep the 30-day off-provider backup and deletion-replay requirement as a live-data gate. The five layers are logical boundaries within the selected modular Worker and data platform, not five deployed services.

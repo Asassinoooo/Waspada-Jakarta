@@ -1,7 +1,7 @@
 # Waspada Jakarta domain model and state rules
 
 - **Specification:** SPEC-02, schema 2.0
-- **Status:** Design baseline accepted on 24 September 2026. DATA-01 now supplies the local PostgreSQL schema, migration runner, core persistence ports and database constraints; provider-backed persistence and full service-level semantic validation remain future work.
+- **Status:** Design baseline accepted on 24 September 2026. DATA-01 supplies the local PostgreSQL schema, migration runner, core persistence ports and database constraints. L2-CONTEXT-PERSIST-CORE and L2-CONTEXT-BRIDGE-CORE locally validate and persist canonical refs-only grounding contexts; Worker-to-database runtime wiring, provider-backed persistence and full service-level semantic validation remain future work.
 - **Scope:** FR-03, FR-06, FR-08 and FR-13. The machine-readable boundary contracts are in [contracts.schema.json](contracts.schema.json), with synthetic examples in [contracts.examples.json](contracts.examples.json).
 
 Schema 2.0 is a breaking design change from the original 1.0 proposal. No running clients or production application records exist, so migration means updating fixtures and future runtime integrations before they start. Root checked the Draft 2020-12 schema and all 14 synthetic record examples on WSL. DATA-01 implements the local relational/spatial/vector foundation and tests its database-enforceable invariants; semantic support, authorization, source reuse, lifecycle transitions and other application-level checks remain in later services.
