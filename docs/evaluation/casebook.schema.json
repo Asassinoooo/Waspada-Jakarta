@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:waspada-jakarta:evaluation:casebook:1.0",
+  "title": "Waspada Jakarta evaluation casebook",
+  "description": "Metadata-only casebook for rights-controlled historical evaluation or visibly synthetic validator fixtures. This schema does not establish source rights, human authorship, or release approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "casebook_id", "dataset_kind", "sources", "held_out_freeze", "cases"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "casebook_id": { "$ref": "#/$defs/id" },
+    "dataset_kind": { "enum": ["historical", "synthetic"] },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "held_out_freeze": { "$ref": "#/$defs/heldOutFreeze" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "dataset_kind": { "const": "synthetic" } }, "required": ["dataset_kind"] },
+      "then": {
+        "properties": {
+          "sources": {
+            "items": {
+              "properties": {
+                "evaluation_use_rights": { "const": "not_applicable" },
+                "permission_ref": { "type": "null" }
+              }
+            }
+          },
+          "cases": {
+            "items": {
+              "properties": {
+                "reports": {
+                  "items": {
+                    "properties": {
+                      "content_ref": { "pattern": "^synthetic-ref:" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "dataset_kind": { "const": "historical" } }, "required": ["dataset_kind"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "reports": {
+                  "items": {
+                    "properties": {
+                      "content_ref": { "pattern": "^permission-ref:" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "dateTime": { "type": "string", "format": "date-time" },
+    "contentRef": {
+      "type": "string",
+      "maxLength": 143,
+      "pattern": "^(permission-ref|synthetic-ref):[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "description": "Opaque metadata handle only; never a URL, credential, report body, or source excerpt."
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "evaluation_use_rights", "permission_ref"],
+      "properties": {
+        "source_id": { "$ref": "#/$defs/id" },
+        "evaluation_use_rights": { "enum": ["approved", "pending", "not_applicable"] },
+        "permission_ref": { "oneOf": [{ "$ref": "#/$defs/contentRef" }, { "type": "null" }] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "evaluation_use_rights": { "const": "approved" } }, "required": ["evaluation_use_rights"] },
+          "then": { "properties": { "permission_ref": { "type": "string", "pattern": "^permission-ref:" } } }
+        },
+        {
+          "if": { "properties": { "evaluation_use_rights": { "enum": ["pending", "not_applicable"] } }, "required": ["evaluation_use_rights"] },
+          "then": { "properties": { "permission_ref": { "type": "null" } } }
+        }
+      ]
+    },
+    "heldOutFreeze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "frozen_at"],
+      "properties": {
+        "state": { "enum": ["frozen", "not_frozen"] },
+        "frozen_at": { "oneOf": [{ "$ref": "#/$defs/dateTime" }, { "type": "null" }] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "frozen" } }, "required": ["state"] },
+          "then": { "properties": { "frozen_at": { "$ref": "#/$defs/dateTime" } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "not_frozen" } }, "required": ["state"] },
+          "then": { "properties": { "frozen_at": { "type": "null" } } }
+        }
+      ]
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["report_id", "revision_id", "source_id", "content_hash", "origin_group_id", "content_ref"],
+      "properties": {
+        "report_id": { "$ref": "#/$defs/id" },
+        "revision_id": { "$ref": "#/$defs/id" },
+        "source_id": { "$ref": "#/$defs/id" },
+        "content_hash": { "$ref": "#/$defs/hash" },
+        "origin_group_id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "content_ref": { "$ref": "#/$defs/contentRef" }
+      }
+    },
+    "assessment": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value"],
+          "properties": { "status": { "const": "labeled" }, "value": {} }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": { "status": { "enum": ["unknown", "disputed", "not_applicable"] } }
+        }
+      ]
+    },
+    "dateValue": {
+      "type": "string",
+      "format": "date"
+    },
+    "timeValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end", "precision"],
+          "properties": { "start": { "$ref": "#/$defs/dateTime" }, "end": { "oneOf": [{ "$ref": "#/$defs/dateTime" }, { "type": "null" }] }, "precision": { "const": "exact" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end", "precision"],
+          "properties": { "start": { "$ref": "#/$defs/dateValue" }, "end": { "oneOf": [{ "$ref": "#/$defs/dateValue" }, { "type": "null" }] }, "precision": { "const": "date" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end", "precision"],
+          "properties": { "start": { "$ref": "#/$defs/dateTime" }, "end": { "$ref": "#/$defs/dateTime" }, "precision": { "const": "range" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end", "precision"],
+          "properties": { "start": { "$ref": "#/$defs/dateValue" }, "end": { "$ref": "#/$defs/dateValue" }, "precision": { "const": "range" } }
+        }
+      ]
+    },
+    "scopeValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["place_ids", "service_ids", "institution_ids", "audience_ids", "geometry_ids"],
+      "properties": {
+        "place_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "service_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "institution_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "audience_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "geometry_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["incident_identity", "category", "event_time", "scope", "expected_publication_disposition", "report_assessments"],
+      "properties": {
+        "incident_identity": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "enum": ["single_incident", "multiple_incidents", "not_an_incident"] } } }] },
+        "category": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "enum": ["crime_personal_security", "demonstrations_public_gatherings", "crowds_major_events", "violence_immediate_threats", "disasters_weather", "fires_infrastructure_hazards", "transport_road_incidents", "utilities_essential_services", "health_environmental_advisories", "group_specific_critical_notices"] } } }] },
+        "event_time": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "$ref": "#/$defs/timeValue" } } }] },
+        "scope": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "$ref": "#/$defs/scopeValue" } } }] },
+        "expected_publication_disposition": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "enum": ["publish", "review", "reject", "retract"] } } }] },
+        "report_assessments": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/reportAssessment" } }
+      }
+    },
+    "reportAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["report_id", "observation_time", "evidence_relations", "source_origin_dependence"],
+      "properties": {
+        "report_id": { "$ref": "#/$defs/id" },
+        "observation_time": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "$ref": "#/$defs/timeValue" } } }] },
+        "evidence_relations": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["supports", "contradicts", "updates", "context"] } } } }] },
+        "source_origin_dependence": { "allOf": [{ "$ref": "#/$defs/assessment" }, { "properties": { "value": { "enum": ["independent", "dependent"] } } }] }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer_id", "reviewer_kind", "reviewed_at", "labels"],
+      "properties": { "reviewer_id": { "$ref": "#/$defs/id" }, "reviewer_kind": { "const": "human" }, "reviewed_at": { "$ref": "#/$defs/dateTime" }, "labels": { "$ref": "#/$defs/labels" } }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "adjudicator_id", "adjudicator_kind", "adjudicated_at", "labels"],
+      "properties": { "status": { "enum": ["reconciled", "pending"] }, "adjudicator_id": { "$ref": "#/$defs/id" }, "adjudicator_kind": { "const": "human" }, "adjudicated_at": { "$ref": "#/$defs/dateTime" }, "labels": { "$ref": "#/$defs/labels" } }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "split", "scenario_tags", "reports", "independent_reviews", "adjudication"],
+      "properties": {
+        "case_id": { "$ref": "#/$defs/id" },
+        "split": { "enum": ["development", "validation", "held_out"] },
+        "scenario_tags": { "type": "array", "uniqueItems": true, "items": { "enum": ["historical_crime", "gathering_transport_impact", "weather_warning_flood_observation", "non_geographic_group_notice"] } },
+        "reports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/report" } },
+        "independent_reviews": { "type": "array", "items": { "$ref": "#/$defs/review" } },
+        "adjudication": { "oneOf": [{ "$ref": "#/$defs/adjudication" }, { "type": "null" }] }
+      }
+    }
+  }
+}

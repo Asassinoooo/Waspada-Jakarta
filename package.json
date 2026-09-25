@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "dev": "concurrently --kill-others --names web,worker --prefix-colors cyan,magenta \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\"",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json",
+    "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts",
     "db:test": "npm run test --workspace=@waspada/db",
     "smoke": "npm run smoke --workspace=@waspada/web",
     "build:web": "npm run build --workspace=@waspada/web",
