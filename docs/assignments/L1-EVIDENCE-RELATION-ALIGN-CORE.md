@@ -33,13 +33,13 @@ Make local evidence-reference persistence and retrieval accept all four relation
 - Add migration `009` that forward-updates only the `evidence_references.relation` check constraint to accept all four schema 2.0 values. Leave migration 001 and existing rows untouched; migration application and reapplication must be transactional and repeatable.
 - Extend `apps/db/src/ports.ts` `EvidenceRelation` to exactly match the existing schema 2.0 enum. Ensure repository input and retrieval results preserve `updates` without remapping it to `supports`, `contradicts`, or `context`.
 - Test an `updates` reference through the L1 persistence repository under the existing L1 role, including its stable natural-key retry behavior. Test retrieval preserves `updates` under `waspada_l2_grounding_reader`.
-- Verify migration tests assert the four accepted values and exclude unrelated values; reapply the migration to prove idempotency.
+- Verify migration tests assert the four accepted values and exclude unrelated values; reapply the migration to prove idempotency. Refresh any test that explicitly records the latest migration version, without changing its behavior assertions.
 - Keep downstream meaning unchanged: the L4 publication policy must still fail closed if it cannot use `updates` as claim support. Do not modify L4 code or reinterpret the relation.
 - Use synthetic fixtures only. Do not modify schema 2.0, OpenAPI, public API, providers, sources, source rights, or model prompts.
 
 ## Boundaries
 
-- **Allowed paths:** `apps/db/migrations/009_evidence_reference_updates_relation.sql`, `apps/db/src/ports.ts` (relation type only), `apps/db/test/migrations.test.ts`, `apps/db/test/persistence.test.ts`, `apps/db/test/evidence-retrieval.test.ts`, and this assignment's implementation handoff.
+- **Allowed paths:** `apps/db/migrations/009_evidence_reference_updates_relation.sql`, `apps/db/src/ports.ts` (relation type only), `apps/db/test/migrations.test.ts`, `apps/db/test/persistence.test.ts`, `apps/db/test/evidence-retrieval.test.ts`, `apps/db/test/investigation-ledger.test.ts` (latest-migration expectation only), and this assignment's implementation handoff.
 - **Forbidden:** edits to migration 001, L4 publication policy behavior, Worker model contracts, public schemas/OpenAPI, retrieval ranking/filter semantics, new dependencies, external data, credentials, hosted service configuration, or deployment.
 - Do not grant new privileges or alter the L1/L2 roles.
 
