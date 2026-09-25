@@ -11,7 +11,8 @@ describe('DATA-01 migrations', () => {
   before(async () => {
     testDatabase = await createTestDatabase();
     migrations = await readMigrations(new URL('../migrations/', import.meta.url));
-    const through006 = migrations.filter(({ version }) => version !== '007_l1_write_idempotency');
+    const through006 = migrations.filter(({ version }) =>
+      version !== '007_l1_write_idempotency' && version !== '008_l3_investigation_ledger');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -99,6 +100,7 @@ describe('DATA-01 migrations', () => {
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
       '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
+      '008_l3_investigation_ledger',
     ]);
   });
 
@@ -109,12 +111,13 @@ describe('DATA-01 migrations', () => {
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
       '007_l1_write_idempotency',
+      '008_l3_investigation_ledger',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '7');
+    assert.equal(count.rows[0]?.count, '8');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -133,7 +136,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 007_l1_write_idempotency/,
+      /Cannot apply migration 000_late_backfill before already applied migration 008_l3_investigation_ledger/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -147,6 +150,7 @@ describe('DATA-01 migrations', () => {
       { version: '005_publication_write_receipts_outbox' },
       { version: '006_l1_geometry_evidence_reads' },
       { version: '007_l1_write_idempotency' },
+      { version: '008_l3_investigation_ledger' },
     ]);
   });
 
@@ -154,6 +158,7 @@ describe('DATA-01 migrations', () => {
     assert.deepEqual(migrations.map(({ version }) => version), [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
       '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
+      '008_l3_investigation_ledger',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -440,6 +445,139 @@ describe('DATA-01 migrations', () => {
                 'waspada.evidence_references_evidence_ref_id_seq', 'UPDATE') AS can_update`,
     );
     assert.deepEqual(sequencePrivileges.rows[0], { can_usage: false, can_select: false, can_update: false });
+  });
+
+  it('creates a NOLOGIN L3 coordinator with only ledger and grounding columns', async () => {
+    const role = await testDatabase.executor.query<{
+      rolcanlogin: boolean;
+      rolsuper: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+    }>(
+      `SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+       FROM pg_roles WHERE rolname = 'waspada_l3_coordinator'`,
+    );
+    assert.deepEqual(role.rows[0], {
+      rolcanlogin: false, rolsuper: false, rolcreatedb: false,
+      rolcreaterole: false, rolreplication: false, rolbypassrls: false,
+    });
+
+    const schema = await testDatabase.executor.query<{ can_use: boolean; can_create: boolean }>(
+      `SELECT has_schema_privilege('waspada_l3_coordinator', 'waspada', 'USAGE') AS can_use,
+              has_schema_privilege('waspada_l3_coordinator', 'waspada', 'CREATE') AS can_create`,
+    );
+    assert.deepEqual(schema.rows[0], { can_use: true, can_create: false });
+
+    const columns = await testDatabase.executor.query<{
+      table_name: string;
+      column_name: string;
+      can_select: boolean;
+      can_insert: boolean;
+      can_update: boolean;
+    }>(
+      `SELECT table_class.relname AS table_name, column_meta.attname AS column_name,
+              has_column_privilege('waspada_l3_coordinator', table_class.oid, column_meta.attnum, 'SELECT') AS can_select,
+              has_column_privilege('waspada_l3_coordinator', table_class.oid, column_meta.attnum, 'INSERT') AS can_insert,
+              has_column_privilege('waspada_l3_coordinator', table_class.oid, column_meta.attnum, 'UPDATE') AS can_update
+       FROM pg_class AS table_class
+       JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+       JOIN pg_attribute AS column_meta ON column_meta.attrelid = table_class.oid
+       WHERE table_schema.nspname = 'waspada'
+         AND table_class.relname IN ('extraction_results', 'grounding_contexts',
+           'investigation_requests', 'investigation_checkpoints', 'investigation_action_reservations')
+         AND column_meta.attnum > 0 AND NOT column_meta.attisdropped
+       ORDER BY table_class.relname, column_meta.attname`,
+    );
+
+    const expected = new Set<string>();
+    const expect = (table: string, privilege: 'select' | 'insert' | 'update', names: readonly string[]) => {
+      for (const name of names) expected.add(`${table}.${name}.${privilege}`);
+    };
+    expect('extraction_results', 'select', ['dataset_kind', 'candidate_id']);
+    expect('grounding_contexts', 'select', ['dataset_kind', 'context_id', 'trace_id', 'candidate_id', 'sufficient']);
+    expect('investigation_requests', 'select', [
+      'dataset_kind', 'investigation_id', 'trace_id', 'candidate_id', 'context_id', 'event_id', 'event_version',
+      'questions', 'budget_policy_version', 'limit_tool_attempts', 'limit_reasoning_turns', 'limit_active_seconds',
+      'limit_model_tokens', 'consumed_tool_attempts', 'consumed_reasoning_turns', 'consumed_active_seconds',
+      'consumed_model_tokens', 'reserved_tool_attempts', 'reserved_reasoning_turns', 'reserved_active_seconds',
+      'reserved_model_tokens', 'requested_at', 'record_json',
+    ]);
+    expect('investigation_requests', 'insert', [
+      'dataset_kind', 'investigation_id', 'trace_id', 'candidate_id', 'context_id', 'event_id', 'event_version',
+      'questions', 'budget_policy_version', 'limit_tool_attempts', 'limit_reasoning_turns', 'limit_active_seconds',
+      'limit_model_tokens', 'requested_at', 'record_json',
+    ]);
+    expect('investigation_requests', 'update', [
+      'consumed_tool_attempts', 'consumed_reasoning_turns', 'consumed_active_seconds', 'consumed_model_tokens',
+      'reserved_tool_attempts', 'reserved_reasoning_turns', 'reserved_active_seconds', 'reserved_model_tokens',
+    ]);
+    const checkpointColumns = [
+      'dataset_kind', 'checkpoint_id', 'investigation_id', 'checkpoint_version', 'trace_id', 'candidate_id',
+      'context_id', 'event_id', 'event_version', 'case_status', 'stop_reason', 'budget_policy_version',
+      'limit_tool_attempts', 'limit_reasoning_turns', 'limit_active_seconds', 'limit_model_tokens',
+      'consumed_tool_attempts', 'consumed_reasoning_turns', 'consumed_active_seconds', 'consumed_model_tokens',
+      'reserved_tool_attempts', 'reserved_reasoning_turns', 'reserved_active_seconds', 'reserved_model_tokens',
+      'attempts', 'reasoning_runs', 'created_at', 'updated_at', 'completed_at', 'record_json',
+    ];
+    expect('investigation_checkpoints', 'select', checkpointColumns);
+    expect('investigation_checkpoints', 'insert', checkpointColumns);
+    const reservationColumns = [
+      'dataset_kind', 'reservation_id', 'investigation_id', 'action_kind', 'action_name',
+      'expected_checkpoint_version', 'reserved_tool_attempts', 'reserved_reasoning_turns',
+      'reserved_active_seconds', 'reserved_model_tokens', 'reservation_status', 'outcome',
+      'actual_active_seconds', 'actual_model_tokens', 'created_at', 'started_at', 'finished_at',
+      'reconciled_checkpoint_version',
+    ];
+    expect('investigation_action_reservations', 'select', reservationColumns);
+    expect('investigation_action_reservations', 'insert', [
+      'dataset_kind', 'reservation_id', 'investigation_id', 'action_kind', 'action_name',
+      'expected_checkpoint_version', 'reserved_tool_attempts', 'reserved_reasoning_turns',
+      'reserved_active_seconds', 'reserved_model_tokens', 'reservation_status', 'created_at',
+    ]);
+    expect('investigation_action_reservations', 'update', [
+      'reservation_status', 'outcome', 'actual_active_seconds', 'actual_model_tokens',
+      'started_at', 'finished_at', 'reconciled_checkpoint_version',
+    ]);
+
+    const granted = new Set<string>();
+    for (const row of columns.rows) {
+      for (const [privilege, grantedPrivilege] of [
+        ['select', row.can_select], ['insert', row.can_insert], ['update', row.can_update],
+      ] as const) {
+        if (grantedPrivilege) granted.add(`${row.table_name}.${row.column_name}.${privilege}`);
+      }
+    }
+    assert.deepEqual([...granted].sort(), [...expected].sort());
+
+    const tables = await testDatabase.executor.query<{
+      table_name: string;
+      can_select: boolean;
+      can_insert: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+    }>(
+      `SELECT table_class.relname AS table_name,
+              has_table_privilege('waspada_l3_coordinator', table_class.oid, 'SELECT') AS can_select,
+              has_table_privilege('waspada_l3_coordinator', table_class.oid, 'INSERT') AS can_insert,
+              has_table_privilege('waspada_l3_coordinator', table_class.oid, 'UPDATE') AS can_update,
+              has_table_privilege('waspada_l3_coordinator', table_class.oid, 'DELETE') AS can_delete
+       FROM pg_class AS table_class
+       JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+       WHERE table_schema.nspname = 'waspada' AND table_class.relkind IN ('r', 'p')
+       ORDER BY table_class.relname`,
+    );
+    assert.equal(tables.rows.some((row) => row.can_select || row.can_insert || row.can_update || row.can_delete), false,
+      'no table-level privilege shortcut is granted');
+
+    const publication = await testDatabase.executor.query<{ can_select: boolean; can_insert: boolean; can_update: boolean; can_delete: boolean }>(
+      `SELECT has_table_privilege('waspada_l3_coordinator', 'waspada.event_versions', 'SELECT') AS can_select,
+              has_table_privilege('waspada_l3_coordinator', 'waspada.event_versions', 'INSERT') AS can_insert,
+              has_table_privilege('waspada_l3_coordinator', 'waspada.event_versions', 'UPDATE') AS can_update,
+              has_table_privilege('waspada_l3_coordinator', 'waspada.event_versions', 'DELETE') AS can_delete`,
+    );
+    assert.deepEqual(publication.rows[0], { can_select: false, can_insert: false, can_update: false, can_delete: false });
   });
 });
 
