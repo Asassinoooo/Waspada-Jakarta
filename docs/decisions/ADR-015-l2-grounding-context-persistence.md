@@ -7,7 +7,7 @@
 
 ## Context
 
-RAG-CORE returns bounded evidence candidates and RAG-ACCESS-01 gives its query a read-only database role. The schema already defines append-only `grounding_contexts` and link tables, but no typed Layer 2 writer persists a context for L3 or later proposal handling. The Layer 2 Worker contract also carries an expanded in-memory reasoning context with retrieved text and provenance, while the persisted schema 2.0 `GroundingContext` contains evidence references and structured state. Treating those two shapes as the same storage record would copy source excerpts and internal prompt context into the durable ledger. The database currently accepts only three evidence-reference relations even though schema 2.0 permits four; [ADR-016](ADR-016-evidence-reference-relation-alignment.md) assigns that storage alignment first.
+RAG-CORE returns bounded evidence candidates and RAG-ACCESS-01 gives its query a read-only database role. The schema already defines append-only `grounding_contexts` and link tables, but no typed Layer 2 writer persists a context for L3 or later proposal handling. The Layer 2 Worker contract also carries an expanded in-memory reasoning context with retrieved text and provenance, while the persisted schema 2.0 `GroundingContext` contains evidence references and structured state. Treating those two shapes as the same storage record would copy source excerpts and internal prompt context into the durable ledger. Schema 2.0 permits four evidence-reference relations; accepted L1-EVIDENCE-RELATION-ALIGN-CORE migration 009 now aligns local persistence before this writer resolves canonical evidence references. This task uses migration 010.
 
 ## Decision
 

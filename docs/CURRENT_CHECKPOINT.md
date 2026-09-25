@@ -1,11 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** DB-TEST-RUNNER-ISOLATION is accepted on `main`; root independently passed 9/9 DB files (68/68), the full workspace suite (147/147), typecheck, build and WSL diff checks. The original silent aggregate exit and one transient silent migration-suite exit remain unexplained; the runner deliberately does not retry or suppress recurrence. A mismatch was found between schema 2.0 EvidenceRef relations and database storage. L1-EVIDENCE-RELATION-ALIGN-CORE is selected as the next local prerequisite, followed by canonical L2 context persistence. No source/model calls, Worker routes, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
+**Reason:** L1-EVIDENCE-RELATION-ALIGN-CORE is accepted on `main` at merge `7dd8ea7`; root independently passed 9/9 DB files (70/70), the full suite (149/149), typecheck, build, and WSL diff checks. Schema 2.0 evidence relations now round-trip through local storage and retrieval, with `updates` still distinct from L4 claim support. The prior silent aggregate exits remain unexplained; the sequential runner deliberately does not retry or hide recurrence. The next ready local slice is canonical L2 grounding-context persistence. No source/model calls, Worker routes, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
+
+The latest accepted task is L1-EVIDENCE-RELATION-ALIGN-CORE at merge `7dd8ea7` (`34ecb04` implementation, `9b8f20a` handoff). Its independent WSL checks passed 70/70 DB tests and 149/149 overall tests, typecheck, build, and diff checks. L2-CONTEXT-PERSIST-CORE is now the next ready local assignment and will use migration 010.
 
 Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, L1-FIXTURE-PIPE-CORE at merge `e5b1647`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, PUB-WRITE-CORE at merge `b2fb994`, L3-LEDGER-CORE at implementation `ed0f307` plus handoff `32d4678`, and DB-TEST-RUNNER-ISOLATION at handoff `805ccd4`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, L3-LEDGER-CORE, DB-TEST-RUNNER-ISOLATION, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
@@ -43,9 +45,9 @@ Root reviewed and fast-forwarded `work/DB-TEST-RUNNER-ISOLATION` to `main` at ha
 
 Root independently passed WSL Ubuntu-26.04 `npm run db:test` (9/9 files, 68/68 tests), `npm test` (147/147: web 5, Worker 62, DB 68, evaluation 12), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and WSL `git diff --check` with explicit Git directory/worktree paths. The original silent aggregate exit and one transient silent `migrations.test.ts` exit remain unexplained; the final retries and aggregate runs passed, and the runner returns any recurrence as a failure.
 
-### L1-EVIDENCE-RELATION-ALIGN-CORE — selected
+### L1-EVIDENCE-RELATION-ALIGN-CORE — accepted
 
-The contract audit found that schema 2.0 `EvidenceRef` and L2 model types include `updates`, while the database check and DB `EvidenceRelation` union accept only `supports`, `contradicts`, and `context`. Root recorded [ADR-016](decisions/ADR-016-evidence-reference-relation-alignment.md) and assigned the narrow forward-only storage correction in [L1-EVIDENCE-RELATION-ALIGN-CORE](assignments/L1-EVIDENCE-RELATION-ALIGN-CORE.md). All four relations must persist and retrieve unchanged; `updates` remains distinct from claim support, and the L4 publication policy stays fail-closed. After this prerequisite, the refs-only schema 2.0 grounding-context persistence task in [ADR-015](decisions/ADR-015-l2-grounding-context-persistence.md) is ready. The requested `docs/api/openapi.yaml` restoration was applied from `main` and verified to have no diff.
+Root accepted `work/L1-EVIDENCE-RELATION-ALIGN-CORE` at merge `7dd8ea7`, from implementation `34ecb04` and handoff `9b8f20a`. Forward migration 009 changes only the evidence-reference relation check, preserving existing rows and admitting the four existing schema 2.0 values. L1 writes and L2 retrieval preserve `updates` without remapping it, and the L4 policy continues to reject `updates` as claim support. Root independently passed `npm run db:test` (9/9 files, 70 tests), `npm test` (149/149: web 5, Worker 62, DB 70, casebook 12), `npm run typecheck`, `npm run build`, and WSL `git diff --check`. PGlite does not prove hosted PostgreSQL/Neon behavior. The requested `docs/api/openapi.yaml` restoration was applied from `main` and verified to have no diff. ADR-015 and its context writer now follow as the next local slice, using migration 010.
 
 ### API-PROJECT-CORE — accepted
 
@@ -155,11 +157,10 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 - Measure actual Cloudflare/Neon workloads, quotas, latency, and stop thresholds using an authorized provider setup before deployment.
 - Collect user research and human-adjudicated evaluation labels; no labels or safety-coverage claims are inferred from synthetic fixtures.
 - Finish moderator authentication, publication rules, incident correction/retraction propagation, ingestion, retrieval, bounded investigation, and public API work according to the backlog.
-- Review, test, and complete JOB-01's partial schema and repository behavior.
 
 ## Resume point
 
-Resume with the assigned `L1-EVIDENCE-RELATION-ALIGN-CORE` local implementation on `work/L1-EVIDENCE-RELATION-ALIGN-CORE`. Root will review the branch and run WSL checks before accepting it; then proceed to the already specified L2 grounding-context persistence task. Preserve all existing scope boundaries: no public contract change, external provisioning, live acquisition, model calls, or deployment.
+Resume with `L2-CONTEXT-PERSIST-CORE` on `work/L2-CONTEXT-PERSIST-CORE`, using migration 010. The L1 relation prerequisite is accepted. Keep canonical schema 2.0 persistence refs-only and synthetic; do not add sufficiency evaluation, Worker/API wiring, live data, model calls, or hosted resources.
 
 ## Autonomous development resumed — 25 September 2026
 

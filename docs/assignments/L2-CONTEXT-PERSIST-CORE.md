@@ -1,6 +1,6 @@
 # L2-CONTEXT-PERSIST-CORE — immutable grounding-context persistence
 
-- **Status:** Planned after the L1 relation-alignment prerequisite
+- **Status:** Ready for local implementation after L1-EVIDENCE-RELATION-ALIGN-CORE acceptance
 - **Depends on:** DATA-01, L1-EVIDENCE-RELATION-ALIGN-CORE, L2-ADAPTER-01, RAG-ACCESS-01, L3-LEDGER-CORE, ADR-015
 - **Requirements:** FR-05/06/07; NFR-01/05/07
 - **Branch/worktree:** `work/L2-CONTEXT-PERSIST-CORE`; `.codex-build/worktrees/l2-context-persist-core`
@@ -44,7 +44,7 @@ Add a typed, transactional Layer 2 repository that stores and create-or-verifies
 
 ## Boundaries
 
-- **Allowed paths:** `apps/db/migrations/009_l2_grounding_context_writer.sql`, `apps/db/src/grounding-contexts.ts`, additions to `apps/db/src/ports.ts` for the repository port/factory, `apps/db/test/grounding-contexts.test.ts`, `apps/db/test/migrations.test.ts`, and this assignment's implementation handoff.
+- **Allowed paths:** `apps/db/migrations/010_l2_grounding_context_writer.sql`, `apps/db/src/grounding-contexts.ts`, additions to `apps/db/src/ports.ts` for the repository port/factory, `apps/db/test/grounding-contexts.test.ts`, `apps/db/test/migrations.test.ts`, and this assignment's implementation handoff.
 - **Forbidden:** Worker runtime or API wiring, changes to the model/reasoning contract, public schemas/OpenAPI, retrieval/sufficiency/proposal logic, L3 orchestration, L4 publication behavior, live-source data, human evaluation labels, new dependencies, credentials, hosted role membership, Cloudflare/Neon provisioning, or deployment.
 - No real source excerpt or rights-pending report may be added to fixtures. The stored schema record has reference metadata only.
 

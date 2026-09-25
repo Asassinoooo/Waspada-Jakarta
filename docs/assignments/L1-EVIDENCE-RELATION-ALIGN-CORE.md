@@ -1,6 +1,6 @@
 # L1-EVIDENCE-RELATION-ALIGN-CORE — schema 2.0 evidence relations
 
-- **Status:** Ready for local implementation
+- **Status:** Accepted on `main` at merge `7dd8ea7`
 - **Depends on:** DATA-01, DATA-02-CORE, L2-ADAPTER-01
 - **Requirements:** FR-03/05/07; NFR-01/07
 - **Branch/worktree:** `work/L1-EVIDENCE-RELATION-ALIGN-CORE`; `.codex-build/worktrees/l1-evidence-relation-align-core`
@@ -54,9 +54,9 @@ Make local evidence-reference persistence and retrieval accept all four relation
 
 ### Implementation handoff — 26 September 2026
 
-- **Status:** Implementation and local verification complete; root review and acceptance remain pending.
+- **Status:** Root reviewed and accepted on `main` at merge `7dd8ea7`.
 - **Branch/worktree:** `work/L1-EVIDENCE-RELATION-ALIGN-CORE`; `D:\Projects\RPL\.codex-build\worktrees\l1-evidence-relation-align-core` (`/mnt/d/Projects/RPL/.codex-build/worktrees/l1-evidence-relation-align-core` in WSL).
-- **Commits:** `34ecb04665f019f4ab1f8e266f505f9f80b4f9e5` — `fix(L1-EVIDENCE-RELATION-ALIGN-CORE): preserve updates evidence references`; handoff commit to follow separately.
+- **Commits:** `34ecb04665f019f4ab1f8e266f505f9f80b4f9e5` — `fix(L1-EVIDENCE-RELATION-ALIGN-CORE): preserve updates evidence references`; `9b8f20ad3f318fa3cbacb029ac62ec262cbb31b8` — `docs(L1-EVIDENCE-RELATION-ALIGN-CORE): record implementation handoff`; integrated at root merge `7dd8ea7c5d540a56a1b4436f456b5f678ff6e9a1`.
 - **Implementation paths:** `apps/db/migrations/009_evidence_reference_updates_relation.sql`, `apps/db/src/ports.ts`, `apps/db/test/migrations.test.ts`, `apps/db/test/persistence.test.ts`, `apps/db/test/evidence-retrieval.test.ts`, and `apps/db/test/investigation-ledger.test.ts`. Root explicitly authorized the final test file as a narrow addition to the allowlist: it updates only the latest migration inventory assertion from 008 to 009, since 009 is now the last migration.
 - **Behavior:** Migration 009 replaces only the evidence-reference relation check constraint with the existing schema 2.0 four-value enum. Tests seed existing three-value rows before migration and prove their identities and fields remain unchanged; a synthetic failing migration proves the transaction rolls back both the constraint change and ledger entry. The migration accepts `supports`, `contradicts`, `updates`, and `context`, rejects an unrelated value, and is safely reapplied inside a transaction. L1's `EvidenceRelation` now matches that enum. Under `waspada_l1_pipeline`, repository writes preserve `updates`, and a stable-natural-key retry returns the original evidence reference ID and trace. Under `waspada_l2_grounding_reader`, retrieval returns each relation unchanged, including `updates`. Role attributes and evidence relation privileges are snapshotted and remain unchanged. Existing L4 policy tests continue to pass with `updates` unable to satisfy claim support.
 - **Runtime/dependencies:** WSL Ubuntu-26.04, native Node.js `v24.21.0`, npm `11.19.0`, Git `2.53.0`. The existing locked test harness uses PGlite `0.5.8`, PGlite PostGIS `0.2.8` (experimental), and PGlite pgvector `0.0.9`; no dependencies or lockfiles changed.
