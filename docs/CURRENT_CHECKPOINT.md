@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** GEO-STORE-CORE is accepted as a local synthetic L1 persistence slice. The next local prerequisite is idempotent report/evidence writes before connecting queue jobs to the fixture pipeline. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
+**Reason:** L1-WRITE-IDEMPOTENCY-CORE is accepted as a local synthetic persistence slice. The next candidate is a credential-free synthetic queue-to-fixture pipeline using caller-authored revision IDs, permitted text, geometry roles, and exact evidence spans. Parser-only `sourceCreatedAt`, `providerStatus`, and `reportType` remain transient because schema 2.0 has no approved persistence mapping; `created_at` must not become incident observation or publication time. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, and PUB-WRITE-CORE at merge `b2fb994`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
+Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, and PUB-WRITE-CORE at merge `b2fb994`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
 
@@ -17,9 +17,9 @@ Root reviewed and merged `work/GEO-STORE-CORE-source-backed-geometry` at `320780
 
 Root independently passed WSL Ubuntu-26.04 checks with native Linux Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` 58/58; `npm test` 127/127 (web 5, Worker 52, database 58, evaluation 12); `npm run typecheck`; `npm run build` (Vite production build and Wrangler dry-run); and `git diff main...HEAD --check` using the linked-worktree Git directory. PGlite uses local synthetic rows and does not establish hosted Postgres/Neon behavior, source rights, or semantic/factual validation. An initial concurrent dry-run hit WSL memory pressure; the isolated build passed.
 
-### L1-WRITE-IDEMPOTENCY-CORE — in progress
+### L1-WRITE-IDEMPOTENCY-CORE — accepted
 
-Assigned to `work/L1-WRITE-IDEMPOTENCY-CORE` in `.codex-build/worktrees/l1-write-idempotency-core`, based on pushed `main` at `45e283c`. This local DB slice makes same-ID report revision retries create-or-verify and gives exact evidence references one database-enforced identity. It uses no live data and does not change schema 2.0 or public APIs. A uniqueness migration must stop safely if duplicate legacy evidence rows exist; it may not merge or delete them. The completed queue-to-fixture pipeline remains a later slice.
+Root reviewed and integrated `work/L1-WRITE-IDEMPOTENCY-CORE` at `59e59e8`, from implementation commit `c333ecd` and handoff commit `aa31f9a`. The writer inserts on the caller's dataset/revision key, compares every immutable typed field and JSONB record on retry, and returns a stable typed conflict for any changed payload. Evidence references use a database-enforced natural key and preserve their first trace on replay. Migration 007 refuses duplicate legacy identities without changing their rows and adds no role grants. Root independently passed `npm run db:test` 60/60, `npm test` 129/129 (web 5, Worker 52, database 60, evaluation 12), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and WSL `git diff --check` using Node.js `v24.21.0` and npm `11.19.0`. A test-only GEO-STORE-CORE ambiguity fixture was removed because duplicate evidence references are no longer representable after migration 007. PGlite does not establish multi-session hosted PostgreSQL/Neon concurrency. The queue-to-fixture pipeline remains a later local slice.
 
 ### API-PROJECT-CORE — accepted
 

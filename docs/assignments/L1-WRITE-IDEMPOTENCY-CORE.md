@@ -1,6 +1,6 @@
 # L1-WRITE-IDEMPOTENCY-CORE — Retry-safe report and evidence writes
 
-- **Status:** Assigned
+- **Status:** Accepted for local synthetic persistence; hosted PostgreSQL concurrency remains unverified
 - **Depends on:** DATA-01, GEO-STORE-CORE
 - **Requirements:** FR-02/03; NFR-05/07
 - **Architecture:** Layer 1 immutable report/evidence persistence
@@ -39,6 +39,7 @@ No network, live source content, provider/model call, new dependency, domain/API
 - `apps/db/src/ports.ts`
 - `apps/db/test/persistence.test.ts`
 - `apps/db/test/migrations.test.ts`
+- `apps/db/test/geometry-writer.test.ts` — root-authorized test-only removal of an obsolete duplicate-reference ambiguity fixture after uniqueness became database-enforced
 - `apps/db/migrations/007_l1_write_idempotency.sql` only
 - This assignment's implementation handoff only
 
