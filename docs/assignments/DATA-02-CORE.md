@@ -58,3 +58,11 @@ Root owns the backlog, architecture, and other planning documents. Do not change
 ## Implementation handoff
 
 The implementation agent appends the branch and worktree, commit SHAs/messages, changed paths, behavior, actual checks, limitations, and any scope issue here. Root reviews and accepts the branch before integration.
+
+### User checkpoint — 25 September 2026
+
+The user asked to stop implementation and record the current state. Root interrupted the Luna Max implementation agent. The partial work is preserved locally on `work/DATA-02-core-text-pipeline` in `.codex-build/worktrees/data-02-core` at `e5d4fe1` (`wip(DATA-02-CORE): checkpoint interrupted text pipeline`). This is an unreviewed WIP snapshot, not a completed or accepted implementation, and it has not been pushed or merged.
+
+The snapshot adds deterministic text-preparation and code-point chunking modules, an evidence-chunk repository, and a repository-port registration: `apps/worker/src/layers/l1-data-knowledge/text-preparation.ts`, `apps/worker/src/layers/l1-data-knowledge/evidence-chunking.ts`, `apps/db/src/evidence-chunks.ts`, and `apps/db/src/ports.ts`. No test files or package configuration were added before the stop. The implementation has not been compiled, tested, or reviewed for behavioral correctness. `git diff --cached --check` passed before the WIP commit. No tests or typecheck were run for this snapshot.
+
+The next step after resumption is to review the existing changes against this assignment, continue the task on this branch, add the required synthetic unit and PGlite coverage, then run all listed WSL checks on the completed revision. Keep the branch based on or integrate it with the latest `main` documentation before acceptance; root has since added the RAG-CORE planning commit. Preserve the single-session PGlite limitation and do not push or merge this WIP before root review.
