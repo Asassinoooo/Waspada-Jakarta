@@ -19,7 +19,7 @@ describe('L3 durable investigation ledger', () => {
     testDatabase = await createTestDatabase();
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const result = await applyMigrations(testDatabase.executor, migrations);
-    assert.deepEqual(result.applied.at(-1), '008_l3_investigation_ledger');
+    assert.deepEqual(result.applied.at(-1), '009_evidence_reference_updates_relation');
   });
 
   after(async () => {

@@ -12,7 +12,9 @@ describe('DATA-01 migrations', () => {
     testDatabase = await createTestDatabase();
     migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const through006 = migrations.filter(({ version }) =>
-      version !== '007_l1_write_idempotency' && version !== '008_l3_investigation_ledger');
+      version !== '007_l1_write_idempotency'
+      && version !== '008_l3_investigation_ledger'
+      && version !== '009_evidence_reference_updates_relation');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -23,6 +25,170 @@ describe('DATA-01 migrations', () => {
 
   after(async () => {
     await testDatabase.close();
+  });
+
+  it('updates only the relation constraint transactionally and preserves all four values on reapplication', async () => {
+    const migrationDatabase = await createTestDatabase();
+    try {
+      const relationMigration = migrations.find(({ version }) =>
+        version === '009_evidence_reference_updates_relation');
+      assert.ok(relationMigration, 'the additive evidence relation migration is loaded');
+      const beforeRelationMigration = migrations.filter(({ version }) =>
+        version !== '009_evidence_reference_updates_relation');
+      await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
+
+      await migrationDatabase.executor.query(
+        `INSERT INTO waspada.traces
+           (trace_id, dataset_kind, started_at, outcome, metadata)
+         VALUES ('trace-relation-migration', 'synthetic', '2026-09-26T10:00:00Z', 'open',
+           '{"fixture":"synthetic-test-only"}'::jsonb)`,
+      );
+      await migrationDatabase.executor.query(
+        `INSERT INTO waspada.source_registry
+           (source_id, trace_id, registry_version, display_name, source_kind, remit,
+            access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+            approval_status, health_status, auto_acquisition_enabled, auto_publication_policy)
+         VALUES ('source-relation-migration', 'trace-relation-migration', 1,
+           'Synthetic evidence relation fixture', 'other', ARRAY['migration test'],
+           'manual_fixture', ARRAY[]::text[], ARRAY['synthetic rows only'], ARRAY['test fixture'],
+           'active', 'approved', 'unknown', false, 'never')`,
+      );
+      const permittedText = 'Synthetic relation fixture.';
+      const permittedTextHash = sha256(permittedText);
+      await migrationDatabase.executor.query(
+        `INSERT INTO waspada.report_revisions
+           (dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+            source_revision_key, content_hash, permitted_text, permitted_text_hash,
+            normalization_version, retrieved_at, revision_status, record_json)
+         VALUES ('synthetic', 'revision-relation-migration', 'trace-relation-migration',
+           'source-relation-migration', 'https://synthetic.invalid/relation-migration',
+           NULL, $1, $2, $3, 'normalization-test-v1', '2026-09-26T10:01:00Z',
+           'unreviewed', '{"fixture":"synthetic-test-only"}'::jsonb)`,
+        [sha256('synthetic source fixture'), permittedText, permittedTextHash],
+      );
+      await migrationDatabase.executor.query(
+        `INSERT INTO waspada.evidence_references
+           (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
+            span_start, span_end, offset_unit, relation)
+         VALUES ('synthetic', 'trace-relation-migration', 'revision-relation-migration', $1,
+                   0, 1, 'unicode_code_points', 'supports'),
+                ('synthetic', 'trace-relation-migration', 'revision-relation-migration', $1,
+                   0, 1, 'unicode_code_points', 'contradicts'),
+                ('synthetic', 'trace-relation-migration', 'revision-relation-migration', $1,
+                   0, 1, 'unicode_code_points', 'context')`,
+        [permittedTextHash],
+      );
+
+      const readEvidenceRows = () => migrationDatabase.executor.query<{
+        evidence_ref_id: string;
+        dataset_kind: string;
+        trace_id: string;
+        report_revision_id: string;
+        permitted_text_hash: string;
+        span_start: number;
+        span_end: number;
+        offset_unit: string;
+        relation: string;
+      }>(
+        `SELECT evidence_ref_id::text AS evidence_ref_id, dataset_kind, trace_id,
+                report_revision_id, permitted_text_hash, span_start, span_end,
+                offset_unit, relation
+         FROM waspada.evidence_references ORDER BY evidence_ref_id`,
+      );
+      const readReferenceConstraints = () => migrationDatabase.executor.query<{
+        conname: string;
+        definition: string;
+      }>(
+        `SELECT conname, pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+         WHERE conrelid = 'waspada.evidence_references'::regclass
+         ORDER BY conname`,
+      );
+      const readRoleState = () => readEvidenceRelationRoleSnapshot(migrationDatabase);
+      const originalRows = await readEvidenceRows();
+      const originalConstraints = await readReferenceConstraints();
+      const originalRoleState = await readRoleState();
+
+      await assert.rejects(
+        applyMigrations(migrationDatabase.executor, [
+          ...beforeRelationMigration,
+          { ...relationMigration, sql: `${relationMigration.sql}\nSELECT 1 / 0;` },
+        ]),
+        /division by zero/i,
+      );
+      const failedLedgerEntry = await migrationDatabase.executor.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM waspada.schema_migrations
+         WHERE version = '009_evidence_reference_updates_relation'`,
+      );
+      assert.equal(failedLedgerEntry.rows[0]?.count, '0');
+      assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
+        'a failed migration transaction leaves existing references untouched');
+      assert.deepEqual((await readReferenceConstraints()).rows, originalConstraints.rows,
+        'a failed migration transaction restores the original constraint');
+      assert.deepEqual(await readRoleState(), originalRoleState,
+        'a failed migration does not alter the L1/L2 role state');
+      await assert.rejects(
+        migrationDatabase.executor.query(
+          `INSERT INTO waspada.evidence_references
+             (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
+              span_start, span_end, offset_unit, relation)
+           VALUES ('synthetic', 'trace-relation-migration', 'revision-relation-migration',
+              $1, 0, 1, 'unicode_code_points', 'updates')`,
+          [permittedTextHash],
+        ),
+        /check constraint/i,
+      );
+
+      const applied = await applyMigrations(migrationDatabase.executor, migrations);
+      assert.deepEqual(applied.applied, ['009_evidence_reference_updates_relation']);
+      assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
+      assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
+        'the forward migration leaves existing evidence references unchanged');
+      const updatedConstraints = await readReferenceConstraints();
+      assert.deepEqual(
+        updatedConstraints.rows.filter(({ conname }) => conname !== 'evidence_references_relation_check'),
+        originalConstraints.rows.filter(({ conname }) => conname !== 'evidence_references_relation_check'),
+        'the migration changes only the relation check constraint',
+      );
+      assert.match(
+        updatedConstraints.rows.find(({ conname }) => conname === 'evidence_references_relation_check')?.definition ?? '',
+        /updates/,
+      );
+
+      await migrationDatabase.executor.query(
+        `INSERT INTO waspada.evidence_references
+           (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
+            span_start, span_end, offset_unit, relation)
+         VALUES ('synthetic', 'trace-relation-migration', 'revision-relation-migration',
+            $1, 0, 1, 'unicode_code_points', 'updates')`,
+        [permittedTextHash],
+      );
+      const acceptedRows = await readEvidenceRows();
+      assert.deepEqual(acceptedRows.rows.map(({ relation }) => relation), [
+        'supports', 'contradicts', 'context', 'updates',
+      ]);
+      await assert.rejects(
+        migrationDatabase.executor.query(
+          `INSERT INTO waspada.evidence_references
+             (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
+              span_start, span_end, offset_unit, relation)
+           VALUES ('synthetic', 'trace-relation-migration', 'revision-relation-migration',
+              $1, 1, 2, 'unicode_code_points', 'unrelated')`,
+          [permittedTextHash],
+        ),
+        /check constraint/i,
+      );
+      assert.deepEqual(await readRoleState(), originalRoleState,
+        'the L1/L2 roles and relation-column privileges remain unchanged');
+
+      await migrationDatabase.executor.transaction((transaction) => transaction.execute(relationMigration.sql));
+      assert.deepEqual((await readEvidenceRows()).rows, acceptedRows.rows,
+        'reapplying the SQL migration is safe and preserves every relation and identity');
+      assert.deepEqual(await readRoleState(), originalRoleState,
+        'reapplying the constraint migration leaves the L1/L2 roles unchanged');
+    } finally {
+      await migrationDatabase.close();
+    }
   });
 
   it('refuses duplicate legacy evidence identities without changing either row', async () => {
@@ -100,7 +266,7 @@ describe('DATA-01 migrations', () => {
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
       '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
-      '008_l3_investigation_ledger',
+      '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
     ]);
   });
 
@@ -111,13 +277,13 @@ describe('DATA-01 migrations', () => {
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
       '007_l1_write_idempotency',
-      '008_l3_investigation_ledger',
+      '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '8');
+    assert.equal(count.rows[0]?.count, '9');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -136,7 +302,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 008_l3_investigation_ledger/,
+      /Cannot apply migration 000_late_backfill before already applied migration 009_evidence_reference_updates_relation/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -151,6 +317,7 @@ describe('DATA-01 migrations', () => {
       { version: '006_l1_geometry_evidence_reads' },
       { version: '007_l1_write_idempotency' },
       { version: '008_l3_investigation_ledger' },
+      { version: '009_evidence_reference_updates_relation' },
     ]);
   });
 
@@ -158,7 +325,7 @@ describe('DATA-01 migrations', () => {
     assert.deepEqual(migrations.map(({ version }) => version), [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
       '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
-      '008_l3_investigation_ledger',
+      '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -580,6 +747,41 @@ describe('DATA-01 migrations', () => {
     assert.deepEqual(publication.rows[0], { can_select: false, can_insert: false, can_update: false, can_delete: false });
   });
 });
+
+async function readEvidenceRelationRoleSnapshot(testDatabase: TestDatabase) {
+  const roleAttributes = await testDatabase.executor.query<{
+    rolname: string;
+    rolcanlogin: boolean;
+    rolsuper: boolean;
+    rolcreatedb: boolean;
+    rolcreaterole: boolean;
+    rolreplication: boolean;
+    rolbypassrls: boolean;
+  }>(
+    `SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+     FROM pg_roles
+     WHERE rolname IN ('waspada_l1_pipeline', 'waspada_l2_grounding_reader')
+     ORDER BY rolname`,
+  );
+  const relationPrivileges = await testDatabase.executor.query<{
+    role_name: string;
+    can_select_table: boolean;
+    can_select_relation: boolean;
+    can_insert_relation: boolean;
+    can_update_relation: boolean;
+    can_delete_table: boolean;
+  }>(
+    `SELECT role_name,
+            has_table_privilege(role_name, 'waspada.evidence_references', 'SELECT') AS can_select_table,
+            has_column_privilege(role_name, 'waspada.evidence_references', 'relation', 'SELECT') AS can_select_relation,
+            has_column_privilege(role_name, 'waspada.evidence_references', 'relation', 'INSERT') AS can_insert_relation,
+            has_column_privilege(role_name, 'waspada.evidence_references', 'relation', 'UPDATE') AS can_update_relation,
+            has_table_privilege(role_name, 'waspada.evidence_references', 'DELETE') AS can_delete_table
+     FROM (VALUES ('waspada_l1_pipeline'), ('waspada_l2_grounding_reader')) AS roles(role_name)
+     ORDER BY role_name`,
+  );
+  return { roleAttributes: roleAttributes.rows, relationPrivileges: relationPrivileges.rows };
+}
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
