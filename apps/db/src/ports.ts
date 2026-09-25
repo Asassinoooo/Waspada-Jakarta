@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
+import {
+  createSqlGroundingContextRepository,
+  type GroundingContextRepository,
+} from './grounding-contexts.js';
 import { createSqlEvidenceRetrievalRepository, type EvidenceRetrievalRepository } from './evidence-retrieval.js';
 import { createSqlEvidenceChunkRepository, type EvidenceChunkRepository } from './evidence-chunks.js';
 import { SqlAcquisitionJobRepository, type AcquisitionJobRepository } from './queue.js';
-import type { SqlExecutor, SqlTransactionRunner } from './sql.js';
+import type { SqlExecutor, SqlTransactionRunner, TransactionalSqlExecutor } from './sql.js';
 
 export type DatasetKind = 'live' | 'historical' | 'synthetic';
 export type JsonObject = Readonly<Record<string, unknown>>;
@@ -125,16 +129,18 @@ export interface TraceAuditRepository {
 export interface RepositoryPorts {
   readonly sourceRegistry: SourceRegistryRepository;
   readonly reportRevisions: ReportRevisionRepository;
+  readonly groundingContexts: GroundingContextRepository;
   readonly evidenceChunks: EvidenceChunkRepository;
   readonly evidenceRetrieval: EvidenceRetrievalRepository;
   readonly tracesAndAudit: TraceAuditRepository;
   readonly acquisitionJobs: AcquisitionJobRepository;
 }
 
-export function createRepositoryPorts(executor: SqlExecutor): RepositoryPorts {
+export function createRepositoryPorts(executor: TransactionalSqlExecutor): RepositoryPorts {
   return {
     sourceRegistry: new SqlSourceRegistryRepository(executor),
     reportRevisions: new SqlReportRevisionRepository(executor),
+    groundingContexts: createSqlGroundingContextRepository(executor),
     evidenceChunks: createSqlEvidenceChunkRepository(executor),
     evidenceRetrieval: createSqlEvidenceRetrievalRepository(executor),
     tracesAndAudit: new SqlTraceAuditRepository(executor),
