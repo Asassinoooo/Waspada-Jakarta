@@ -17,7 +17,7 @@ Make the accepted RAG-CORE SQL query usable under a dedicated least-privilege da
 - `AGENTS.md`
 - `SOFTWARE_DEVELOPMENT_PLAN.md`
 - `docs/IMPLEMENTATION_BACKLOG.md`
-- `docs/ARCHITECTURE.md`
+- `ARCHITECTURE.md`
 - `docs/decisions/ADR-011-l2-grounding-reader.md`
 - `docs/assignments/DATA-01.md`
 - `docs/assignments/DATA-02-CORE.md`
