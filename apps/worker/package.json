@@ -10,6 +10,6 @@
     "dev": "CLOUDFLARE_CF_FETCH_ENABLED=false wrangler dev --local --ip 127.0.0.1 --port 8787",
     "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test test/api.test.ts test/petabencana-geojson.test.ts test/l2-model-grounding.test.ts test/l1-text-preparation.test.ts test/l2-evidence-retrieval.test.ts test/l4-publication-policy.test.ts test/l4-public-projection.test.ts"
+    "test": "tsx --test test/api.test.ts test/petabencana-geojson.test.ts test/l2-model-grounding.test.ts test/l1-text-preparation.test.ts test/l2-evidence-retrieval.test.ts test/l4-publication-policy.test.ts test/l4-public-projection.test.ts test/synthetic-fixture-pipeline.test.ts"
   }
 }
