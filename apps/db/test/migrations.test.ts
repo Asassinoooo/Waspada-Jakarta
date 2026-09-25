@@ -14,7 +14,8 @@ describe('DATA-01 migrations', () => {
     const through006 = migrations.filter(({ version }) =>
       version !== '007_l1_write_idempotency'
       && version !== '008_l3_investigation_ledger'
-      && version !== '009_evidence_reference_updates_relation');
+      && version !== '009_evidence_reference_updates_relation'
+      && version !== '010_l2_grounding_context_writer');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -34,7 +35,8 @@ describe('DATA-01 migrations', () => {
         version === '009_evidence_reference_updates_relation');
       assert.ok(relationMigration, 'the additive evidence relation migration is loaded');
       const beforeRelationMigration = migrations.filter(({ version }) =>
-        version !== '009_evidence_reference_updates_relation');
+        version !== '009_evidence_reference_updates_relation'
+        && version !== '010_l2_grounding_context_writer');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -140,7 +142,7 @@ describe('DATA-01 migrations', () => {
       );
 
       const applied = await applyMigrations(migrationDatabase.executor, migrations);
-      assert.deepEqual(applied.applied, ['009_evidence_reference_updates_relation']);
+      assert.deepEqual(applied.applied, ['009_evidence_reference_updates_relation', '010_l2_grounding_context_writer']);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
         'the forward migration leaves existing evidence references unchanged');
@@ -267,6 +269,7 @@ describe('DATA-01 migrations', () => {
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
       '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
+      '010_l2_grounding_context_writer',
     ]);
   });
 
@@ -278,12 +281,13 @@ describe('DATA-01 migrations', () => {
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
       '007_l1_write_idempotency',
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
+      '010_l2_grounding_context_writer',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '9');
+    assert.equal(count.rows[0]?.count, '10');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -302,7 +306,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 009_evidence_reference_updates_relation/,
+      /Cannot apply migration 000_late_backfill before already applied migration 010_l2_grounding_context_writer/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -318,6 +322,7 @@ describe('DATA-01 migrations', () => {
       { version: '007_l1_write_idempotency' },
       { version: '008_l3_investigation_ledger' },
       { version: '009_evidence_reference_updates_relation' },
+      { version: '010_l2_grounding_context_writer' },
     ]);
   });
 
@@ -326,6 +331,7 @@ describe('DATA-01 migrations', () => {
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
       '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
+      '010_l2_grounding_context_writer',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
