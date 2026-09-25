@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** DATA-02-CORE has been accepted and pushed; RAG-CORE has been assigned for local implementation.
+**Reason:** Resume RAG-CORE integration review and assign its missing least-privilege database reader boundary.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` is synchronized with `origin/main` at the current root-reviewed checkpoint. DATA-02-CORE acceptance was recorded and pushed in `be4c366`. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, and DATA-02-CORE. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All recent implementation used local synthetic fixtures; RAG-CORE is assigned on its own branch/worktree.
+`main` is synchronized with `origin/main` at the current root-reviewed checkpoint. DATA-02-CORE acceptance was recorded and pushed in `be4c366`. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, and DATA-02-CORE. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. RAG-CORE implementation is committed and under root review; RAG-ACCESS-01 is assigned to verify it under a dedicated read-only role.
 
 ## Latest work and files
 
@@ -23,10 +23,12 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 
 - JOB-01 is accepted as local queue behavior. PGlite uses one in-memory database connection and cannot prove locking across concurrent PostgreSQL sessions; Neon and hosted Worker behavior remain unverified.
 - DATA-02-CORE is accepted as local synthetic implementation. Pattern redaction is incomplete; PGlite does not prove Neon compatibility or concurrent locking across independent sessions; no live source, provider, or cloud behavior was exercised.
-- `RAG-CORE` is ready as a local-only Layer 2 retrieval boundary. It may use synthetic records/fixed vectors to preserve provenance and contradictions, but cannot claim sufficiency or measured retrieval quality before EVAL-01. No implementation has started yet.
+- `RAG-CORE` is a local-only Layer 2 retrieval module. Synthetic records and fixed vectors preserve provenance and contradictions, but do not prove retrieval quality or sufficiency. The implementation branch has passed independent WSL checks; root review is in progress. Its SQL currently runs in the owner-level test harness; the existing roles do not grant its required read access.
+- `RAG-ACCESS-01` adds only column-level read privileges for a dedicated internal L2 retrieval role and verifies the actual retrieval query under that role. It adds no login, hosted wiring, or provider resource.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
-- RAG-CORE is assigned on `work/RAG-CORE-hybrid-retrieval` in `.codex-build/worktrees/rag-core`. The implementation is read-only Layer 2 retrieval using only the existing schema and synthetic/fixed-vector tests; no public contract, migration, model provider, or L3 orchestration is in scope.
+- RAG-CORE is implemented on `work/RAG-CORE-hybrid-retrieval` in `.codex-build/worktrees/rag-core` at `7c6ded1`. Its retrieval module changes no schema or public contract; root review is pending.
+- RAG-ACCESS-01 is assigned on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` to prove retrieval works under `waspada_l2_grounding_reader` before RAG-01.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---
