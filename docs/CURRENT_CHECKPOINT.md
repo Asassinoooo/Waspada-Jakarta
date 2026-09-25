@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** EVAL-01-TOOLS is accepted; real case collection remains gated on source/data rights.
+**Reason:** EVAL-01-TOOLS is accepted; API-PROJECT-CORE is the next source-independent task.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -27,6 +27,8 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 
 ## Limits and next work
 
+- `API-PROJECT-CORE` is assigned as the next ready implementation task. It builds a pure Layer 4 whitelist projection before any database read model is connected to HTTP. The assignment and ADR-012 record why raw `record_json` must remain internal.
+- The existing database `public_event_*` views expose whole schema 2.0 event/impact `record_json` documents. Those contain internal evidence/revision/origin/decision fields; they cannot be serialized as `EventView`. ADR-012 requires explicit runtime validation, exact source/impact resolution, and whitelisted output. The new task changes no endpoint or contract.
 - EVAL-01-TOOLS is accepted as local metadata validation and readiness gating only. Root independently passed `npm test` 100/100 (web 5, Worker 43, DB 40, casebook 12), `npm run typecheck`, Vite production build, and Wrangler deploy dry-run in WSL Ubuntu-26.04 with Node.js `v24.21.0` / npm `11.19.0`. The checker cannot verify external rights, reviewer identity, label truth, representativeness, or a genuine held-out freeze.
 - Source/data rights remain pending, so no real incident material has been collected, retained, or labeled. The four required evaluation scenarios and ten categories are coverage gates, not claims of current data coverage.
 
@@ -41,6 +43,7 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - RAG-ACCESS-01 was implemented on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` and accepted into `main`; the handoff and root review are recorded in the assignment and delivery log.
 - PUB-POLICY-CORE was implemented on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core` and accepted into `main`; the branch handoff and root review are recorded in the assignment and delivery log.
 - EVAL-01-TOOLS was implemented on `work/EVAL-01-tools` in `.codex-build/worktrees/eval-01-tools` and accepted into `main`; the assignment, delivery log, and synthetic fixture document its schema, leakage checks, category/scenario readiness gates, handoff, and limitations.
+- The public projection boundary is recorded in `docs/decisions/ADR-012-public-projection-boundary.md`; `API-PROJECT-CORE` is assigned for a pure L4 projector with live-shaped synthetic tests and no route/database wiring.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---
