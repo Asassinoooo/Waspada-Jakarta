@@ -1,10 +1,10 @@
 # DATA-02-CORE — Deterministic text preparation and chunk persistence
 
-- **Status:** In progress after user resumed the task; implementation is on the assigned branch
+- **Status:** Accepted after root review; local synthetic implementation merged to `main`
 - **Depends on:** DATA-01, L2-ADAPTER-01
 - **Requirements:** FR-03, NFR-07
 - **Architecture:** Layer 1 processing and persistence; independent of L2 providers and L3 orchestration
-- **Branch/worktree:** `work/DATA-02-core-text-pipeline`; `.codex-build/worktrees/data-02-core`
+- **Branch/worktree:** `work/DATA-02-core-text-pipeline`; `.codex-build/worktrees/data-02-core`; merged into `main` as `31bf43e`
 - **Owner:** GPT-6 Luna Max implementation agent; root plans and reviews
 
 ## Objective
@@ -73,7 +73,7 @@ The snapshot adds deterministic text-preparation and code-point chunking modules
 
 The next step after resumption is to review the existing changes against this assignment, continue the task on this branch, add the required synthetic unit and PGlite coverage, then run all listed WSL checks on the completed revision. Keep the branch based on or integrate it with the latest `main` documentation before acceptance; root has since added the RAG-CORE planning commit. Preserve the single-session PGlite limitation and do not push or merge this WIP before root review.
 
-### Final implementation handoff — 25 September 2026 (root review pending)
+### Final implementation handoff — 25 September 2026
 
 - **Branch/worktree:** `work/DATA-02-core-text-pipeline` / `D:\Projects\RPL\.codex-build\worktrees\data-02-core` (`/mnt/d/Projects/RPL/.codex-build/worktrees/data-02-core` in WSL); final implementation head `5d7ce2de13db5a0078b621085d11645b0238e947` before this handoff entry.
 - **Implementation commits:** `e5d4fe11dd9a8d90e45303a2d05a26f3bd3e9069` — `wip(DATA-02-CORE): checkpoint interrupted text pipeline`; `8f4386c0679698c8f084057a8c3e6d9c4db97298` — `test(DATA-02-CORE): cover text and chunk persistence`; `5d7ce2de13db5a0078b621085d11645b0238e947` — `fix(DATA-02-CORE): grant L1 chunk metadata reads`. The root-approved scope update is `b3df14e82c56020c6dc77329af6bed1c5124867d` — `docs(DATA-02-CORE): authorize least-privilege metadata grants`, merged into this branch by `7d778ccab481b9bb241e6357992ca9c2f6d96b73` — `Merge branch 'main' into work/DATA-02-core-text-pipeline`.
@@ -81,4 +81,8 @@ The next step after resumption is to review the existing changes against this as
 - **Behavior:** L1 applies versioned NFKC and line-ending normalization, bounded input/output work, and deterministic email/Indonesian-mobile pattern redaction. It returns SHA-256 digests for source input and exact permitted output plus rule counts only; matched values are omitted from metadata. Chunking emits stable IDs and hashes with exact Unicode code-point spans, 4,096-code-point maximum chunks, and 512-code-point overlap. The typed repository checks the dataset-scoped immutable revision, normalization/hash lineage, every chunk digest and span, then writes metadata only. One atomic SQL statement supports identical retries, rejects conflicting IDs without partial changes, and invalidates superseded active chunks and available embedding-run rows while retaining vector rows. Migration 003 grants `waspada_l1_pipeline` column-level `SELECT` only on the chunk and embedding metadata named in the approved scope. Migration assertions and repository tests exercise the operation under `SET ROLE waspada_l1_pipeline` and confirm the vector row remains present.
 - **WSL verification:** Ubuntu-26.04, Node.js `v24.21.0`, npm `11.19.0`. `npm run db:test` passed 27/27; `npm test` passed 57/57 total (web 5, Worker 25, database 27); `npm run typecheck` passed; `npm run build` passed the TypeScript checks, Vite production build, and Wrangler deploy dry-run; `git diff --check` passed. No deployment occurred.
 - **Limits:** contact matching is incomplete, is not comprehensive PII detection, and does not authorize live-report persistence. PGlite uses a single in-memory connection, so these checks do not establish multi-session locking, Neon behavior, or provider extension compatibility. No live source, model, embedding generation, Worker database wiring, or external service was exercised.
-- **Configuration and remaining decisions:** the only schema change is the additive 003 column-read grant migration authorized by root; it grants no table-wide reads and exposes neither source text nor vector columns. No new dependency or application secret was added. No further contract decision is pending; root review and acceptance remain outstanding.
+- **Configuration and remaining decisions:** the only schema change is the additive 003 column-read grant migration authorized by root; it grants no table-wide reads and exposes neither source text nor vector columns. No new dependency or application secret was added.
+
+### Root review and acceptance — 25 September 2026
+
+Root reviewed the final branch diff against the assignment and integrated it into `main` as `31bf43e` (`merge: accept DATA-02-CORE text preparation`). The change stays within the authorized paths and adds no provider, source, model, public API, or UI behavior. Root independently reran the required checks from the merged main worktree in WSL Ubuntu-26.04 using Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` passed 27/27; `npm test` passed 57/57 (web 5, Worker 25, database 27); `npm run typecheck`, `npm run build` (including Vite and Wrangler deploy dry-run), and `git diff --check origin/main...HEAD` passed. These results verify the local implementation only. Pattern redaction is incomplete; PGlite does not establish Neon compatibility or locking across independent sessions, and no live source or provider was exercised. RAG-CORE is now the next ready local package. See [delivery log](../DELIVERY_LOG.md).

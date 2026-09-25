@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** The user resumed implementation after the checkpoint; DATA-02-CORE is active on its assigned branch.
+**Reason:** DATA-02-CORE has been root-reviewed, merged, and independently verified; RAG-CORE is the next ready local task.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` was clean at `24386a4` before this resumption update and contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, and JOB-01. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. DATA-02-CORE is being completed with synthetic fixtures; RAG-CORE remains the next planned local slice.
+`main` is at `31bf43e` (`merge: accept DATA-02-CORE text preparation`), eight commits ahead of `origin/main` before this checkpoint update. It contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, and DATA-02-CORE. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All recent implementation used local synthetic fixtures; RAG-CORE is next.
 
 ## Latest work and files
 
@@ -17,15 +17,16 @@ Root ran `npm run db:test` on the final JOB-01 branch (21/21), then `npm test` o
 
 Root updated `docs/assignments/JOB-01.md`, `docs/IMPLEMENTATION_BACKLOG.md`, `docs/DELIVERY_LOG.md`, and the checkpoint to record acceptance. It then defined DATA-02-CORE (`87452c8`) as a synthetic-only L1 text preparation and chunk-persistence slice and defined RAG-CORE (`4e1531b`) as a separate deterministic retrieval boundary. Both planning commits are on `origin/main`. No live source, provider, model, cloud account, paid service, or deployment was used.
 
-DATA-02-CORE resumes on `work/DATA-02-core-text-pipeline` in `.codex-build/worktrees/data-02-core`; root merged current `main` into that branch at `54b66cb`. The branch retains WIP code commits `e5d4fe1` and `bccf813`. Before the latest scope update, the implementation agent reported that `npm run db:test` passed 26/26, `npm test` 56/56, and `npm run typecheck` passed. Its WSL `SET ROLE waspada_l1_pipeline` probe confirmed SQLSTATE `42501` (`permission denied for table evidence_chunks`) during the chunk persistence statement; the operation wrote no rows. The current DATA-02-CORE assignment now authorizes one additive, column-level role-grant migration and a role-based regression test. Full checks and root review are pending.
+DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-build/worktrees/data-02-core`; root reviewed and merged it as `31bf43e`. The implementation adds versioned text normalization, scoped contact redaction, deterministic evidence chunking, metadata-only persistence and invalidation, and the narrowly approved column-level L1 reads in migration 003. Root independently ran WSL Ubuntu-26.04 checks on merged `main` with Node.js `v24.21.0` / npm `11.19.0`: database tests 27/27, all workspace tests 57/57 (web 5, Worker 25, database 27), typecheck, Vite production build, Wrangler deploy dry-run, and `git diff --check` all passed. The accepted handoff and limits are in `docs/assignments/DATA-02-CORE.md` and `docs/DELIVERY_LOG.md`.
 
 ## Limits and next work
 
 - JOB-01 is accepted as local queue behavior. PGlite uses one in-memory database connection and cannot prove locking across concurrent PostgreSQL sessions; Neon and hosted Worker behavior remain unverified.
-- DATA-02-CORE remains unaccepted until its new role-grant migration, synthetic tests, full WSL checks, and root review are complete. The grant is limited to metadata columns needed by chunk collision and invalidation queries; table-wide reads and vector/source-text access are excluded.
-- `RAG-CORE` is specified in `docs/assignments/RAG-CORE.md` as a later local-only Layer 2 retrieval boundary. It can use synthetic records/vectors to preserve provenance and contradictions, but cannot claim sufficiency or measured retrieval quality before EVAL-01. No implementation has started.
+- DATA-02-CORE is accepted as local synthetic implementation. Pattern redaction is incomplete; PGlite does not prove Neon compatibility or concurrent locking across independent sessions; no live source, provider, or cloud behavior was exercised.
+- `RAG-CORE` is ready as a local-only Layer 2 retrieval boundary. It may use synthetic records/fixed vectors to preserve provenance and contradictions, but cannot claim sufficiency or measured retrieval quality before EVAL-01. No implementation has started yet.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
+- Next: prepare the RAG-CORE assignment's exact paths and worktree from the accepted main, then implement and review the synthetic retrieval slice.
 
 ---
 
