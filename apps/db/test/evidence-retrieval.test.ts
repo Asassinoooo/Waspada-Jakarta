@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
+import { createSqlEvidenceRetrievalRepository } from '../src/evidence-retrieval.js';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createRepositoryPorts, type NewReportRevision, type TraceRecord } from '../src/ports.js';
 import type { EvidenceRetrievalQuery } from '../src/evidence-retrieval.js';
@@ -280,6 +281,91 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
     const dotProductCandidate = dotProduct.candidates.find((candidate) => candidate.candidateId === 'candidate-syn-alpha')!;
     assert.equal(dotProductCandidate.matchFacets.semanticDistance, -2);
     assert.equal(dotProductCandidate.chunk?.embeddingDistanceMetric, 'dot_product');
+  });
+
+  it('executes retrieval branches under the least-privilege L2 reader and denies writes and unrelated reads', async () => {
+    const retriever = createSqlEvidenceRetrievalRepository(testDatabase.executor);
+    await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_reader');
+    try {
+      const activeRole = await testDatabase.executor.query<{ current_user: string }>(
+        'SELECT current_user',
+      );
+      assert.equal(activeRole.rows[0]?.current_user, 'waspada_l2_grounding_reader');
+
+      const nonSemantic = await retriever.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-beta' }],
+      });
+      const beta = nonSemantic.candidates.find((candidate) => candidate.candidateId === 'candidate-syn-beta');
+      assert.ok(beta, 'the non-semantic query returns the copied report');
+      assert.equal(beta.origins[0]?.originId, 'origin-syn-beta');
+      assert.deepEqual(beta.origins[0]?.dependsOnOriginIds, ['origin-syn-alpha']);
+
+      const spatial = await retriever.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-beta' }],
+        geometry: { type: 'Point', coordinates: [106.80001, -6.2] },
+      });
+      const spatialBeta = spatial.candidates.find((candidate) => candidate.candidateId === 'candidate-syn-beta');
+      assert.equal(spatialBeta?.geometryMatches[0]?.geometryId, 'geometry-syn-beta');
+      assert.deepEqual(spatialBeta?.origins[0]?.dependsOnOriginIds, ['origin-syn-alpha']);
+
+      const semantic = await retriever.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-alpha' }],
+        semantic: { identity: embeddingIdentity, queryVector: [1, 0] },
+      });
+      const semanticAlpha = semantic.candidates.find((candidate) => candidate.candidateId === 'candidate-syn-alpha');
+      assert.equal(semanticAlpha?.matchFacets.semanticDistance, 0);
+      assert.equal(semanticAlpha?.chunk?.embeddingRunId, 'embedding-candidate-syn-alpha');
+      assert.equal(semanticAlpha?.origins[0]?.originId, 'origin-syn-alpha');
+
+      const combined = await retriever.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-alpha' }],
+        geometry: { type: 'Point', coordinates: [106.8, -6.2] },
+        semantic: { identity: embeddingIdentity, queryVector: [1, 0] },
+      });
+      const combinedAlpha = combined.candidates.find((candidate) => candidate.candidateId === 'candidate-syn-alpha');
+      assert.equal(combinedAlpha?.geometryMatches[0]?.geometryId, 'geometry-syn-alpha');
+      assert.equal(combinedAlpha?.matchFacets.semanticDistance, 0);
+
+      await assert.rejects(
+        testDatabase.executor.query(
+          `INSERT INTO waspada.extraction_evidence (dataset_kind, candidate_id, evidence_ref_id)
+           VALUES ('synthetic', 'forbidden-candidate', -1)`,
+        ),
+        /permission denied for table extraction_evidence/,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          `UPDATE waspada.report_revisions SET revision_status = 'eligible'
+           WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-syn-alpha'`,
+        ),
+        /permission denied for table report_revisions/,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          `DELETE FROM waspada.evidence_references
+           WHERE dataset_kind = 'synthetic' AND evidence_ref_id = -1`,
+        ),
+        /permission denied for table evidence_references/,
+      );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT access_restrictions FROM waspada.source_registry LIMIT 1'),
+        /permission denied for table source_registry/,
+      );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT canonical_url FROM waspada.report_revisions LIMIT 1'),
+        /permission denied for table report_revisions/,
+      );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT * FROM waspada.audit_records LIMIT 1'),
+        /permission denied for table audit_records/,
+      );
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
   });
 
   it('isolates datasets, includes statuses by default, and applies exact status filters', async () => {
