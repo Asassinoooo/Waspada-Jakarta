@@ -301,6 +301,24 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
       assert.equal(beta.origins[0]?.originId, 'origin-syn-beta');
       assert.deepEqual(beta.origins[0]?.dependsOnOriginIds, ['origin-syn-alpha']);
 
+      const existingRelations = await retriever.search({
+        datasetKind: 'synthetic',
+        identifiers: [
+          { kind: 'candidate', value: 'candidate-syn-alpha' },
+          { kind: 'candidate', value: 'candidate-syn-beta' },
+          { kind: 'candidate', value: 'candidate-syn-gamma' },
+        ],
+      });
+      const existingRelationsByCandidate = new Map(existingRelations.candidates.map((candidate) => [
+        candidate.candidateId,
+        candidate.relation,
+      ]));
+      assert.deepEqual([...existingRelationsByCandidate.entries()].sort(([left], [right]) => left.localeCompare(right)), [
+        ['candidate-syn-alpha', 'supports'],
+        ['candidate-syn-beta', 'contradicts'],
+        ['candidate-syn-gamma', 'context'],
+      ]);
+
       const spatial = await retriever.search({
         datasetKind: 'synthetic',
         identifiers: [{ kind: 'candidate', value: 'candidate-syn-beta' }],
@@ -498,6 +516,37 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
       'the exact term match remains tied to the full reference span while the excerpt is visibly capped');
   });
 
+  it('retrieves updates references exactly under the least-privilege L2 reader', async () => {
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: syntheticTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-delta',
+      reportRevisionId: 'revision-syn-delta',
+      text: 'Synthetic update: the fixture notice has a corrected time.',
+      span: 'fixture notice has a corrected time',
+      relation: 'updates',
+      revisionStatus: 'eligible',
+      publishedAt: '2026-09-25T08:15:00Z',
+      observedAt: '2026-09-25T08:20:00Z',
+      retrievedAt: '2026-09-25T08:25:00Z',
+      eventTime: { start: '2026-09-25', end: null, precision: 'date' },
+      vector: null,
+    });
+
+    await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_reader');
+    try {
+      const update = await ports.evidenceRetrieval.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-delta' }],
+      });
+      assert.equal(update.candidates.length, 1);
+      assert.equal(update.candidates[0]?.relation, 'updates');
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+  });
+
   async function addSource(
     sourceId: string,
     registryStatus: 'active' | 'paused' | 'retired',
@@ -654,7 +703,7 @@ interface FixtureInput {
   readonly reportRevisionId: string;
   readonly text: string;
   readonly span: string;
-  readonly relation: 'supports' | 'contradicts' | 'context';
+  readonly relation: 'supports' | 'contradicts' | 'updates' | 'context';
   readonly revisionStatus: 'unreviewed' | 'eligible' | 'quarantined' | 'superseded' | 'retracted';
   readonly publishedAt: string | null;
   readonly observedAt: string | null;

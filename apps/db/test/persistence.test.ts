@@ -152,6 +152,7 @@ describe('DATA-01 relational persistence', () => {
     };
     let firstId = '';
     let differentRelationId = '';
+    let updatesId = '';
     let differentSpanId = '';
     let differentDatasetId = '';
 
@@ -226,6 +227,13 @@ describe('DATA-01 relational persistence', () => {
         ...evidenceInput,
         relation: 'contradicts',
       });
+      const updatesInput = { ...evidenceInput, relation: 'updates' as const };
+      updatesId = await ports.reportRevisions.createEvidenceReference(updatesInput);
+      const updatesRetryId = await ports.reportRevisions.createEvidenceReference({
+        ...updatesInput,
+        traceId: 'trace-l1-retry-second',
+      });
+      assert.equal(updatesRetryId, updatesId, 'replaying an updates reference preserves its original identity');
       differentSpanId = await ports.reportRevisions.createEvidenceReference({
         ...evidenceInput,
         spanStart: 1,
@@ -236,7 +244,7 @@ describe('DATA-01 relational persistence', () => {
         reportRevisionId: historicalRevision.reportRevisionId,
         traceId: 'trace-l1-retry-historical',
       });
-      assert.equal(new Set([firstId, differentRelationId, differentSpanId, differentDatasetId]).size, 4);
+      assert.equal(new Set([firstId, differentRelationId, updatesId, differentSpanId, differentDatasetId]).size, 5);
 
       await assert.rejects(
         testDatabase.executor.query('SELECT * FROM waspada.event_versions LIMIT 1'),
@@ -317,15 +325,18 @@ describe('DATA-01 relational persistence', () => {
        FROM waspada.evidence_references
        WHERE evidence_ref_id = ANY($1::bigint[])
        ORDER BY evidence_ref_id`,
-      [[firstId, differentRelationId, differentSpanId, differentDatasetId]],
+      [[firstId, differentRelationId, updatesId, differentSpanId, differentDatasetId]],
     );
-    assert.equal(storedEvidence.rows.length, 4);
+    assert.equal(storedEvidence.rows.length, 5);
     const storedFirst = storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === firstId);
     assert.equal(storedFirst?.trace_id, 'trace-l1-retry-first');
     assert.equal(storedFirst?.relation, 'supports');
     assert.equal(storedFirst?.span_start, 0);
     assert.equal(storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === differentRelationId)?.relation,
       'contradicts');
+    const storedUpdates = storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === updatesId);
+    assert.equal(storedUpdates?.relation, 'updates');
+    assert.equal(storedUpdates?.trace_id, 'trace-l1-retry-first');
     assert.equal(storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === differentSpanId)?.span_start, 1);
     assert.equal(storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === differentDatasetId)?.dataset_kind,
       'historical');
@@ -338,6 +349,15 @@ describe('DATA-01 relational persistence', () => {
         Array.from(retryRevision.permittedText).length],
     );
     assert.equal(naturalCount.rows[0]?.count, '1');
+    const updatesNaturalCount = await testDatabase.executor.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM waspada.evidence_references
+       WHERE dataset_kind = 'synthetic' AND report_revision_id = $1 AND permitted_text_hash = $2
+         AND span_start = 0 AND span_end = $3 AND offset_unit = 'unicode_code_points'
+         AND relation = 'updates'`,
+      [retryRevision.reportRevisionId, retryRevision.permittedTextHash,
+        Array.from(retryRevision.permittedText).length],
+    );
+    assert.equal(updatesNaturalCount.rows[0]?.count, '1');
   });
 
   it('prevents a record in one dataset from referring to another dataset revision', async () => {

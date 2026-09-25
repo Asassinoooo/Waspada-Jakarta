@@ -11,7 +11,7 @@ export type RegistryStatus = 'active' | 'paused' | 'retired';
 export type ApprovalStatus = 'pending' | 'approved' | 'suspended' | 'revoked';
 export type HealthStatus = 'unknown' | 'healthy' | 'degraded' | 'unavailable';
 export type RevisionStatus = 'unreviewed' | 'eligible' | 'quarantined' | 'superseded' | 'retracted';
-export type EvidenceRelation = 'supports' | 'contradicts' | 'context';
+export type EvidenceRelation = 'supports' | 'contradicts' | 'updates' | 'context';
 
 export interface SourceRegistryRecord {
   readonly sourceId: string;
