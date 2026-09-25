@@ -1,15 +1,21 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** EVAL-01-TOOLS is accepted; API-PROJECT-CORE is the next source-independent task.
+**Reason:** API-PROJECT-CORE is accepted; PUB-WRITE-CORE is the next source-independent implementation task.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-Local `main` includes root-reviewed EVAL-01-TOOLS at merge `9f80600`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
+Local `main` includes root-reviewed EVAL-01-TOOLS at merge `9f80600` and API-PROJECT-CORE at root integration commits `c383faa` and `249c5e2`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
+
+### API-PROJECT-CORE — accepted
+
+Root reviewed and merged the pure Layer 4 public projection from `work/API-PROJECT-CORE`. It validates the consumed fields of schema 2.0 event/impact inputs, resolves names and explicitly rights-approved source attributions, matches exact event/impact versions, and creates the existing public `EventView` using a field allowlist. Adversarial synthetic tests verify private metadata is stripped, failures are bounded, source publication/observation times remain distinct, and schema-valid mixed date/date-time ranges remain unmodified. This does not wire a database reader or route. Source/data rights remain pending.
+
+Root independently passed WSL Ubuntu-26.04 `npm test` (5 web, 52 Worker, 40 DB, 12 evaluation; 109 total), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and `git diff main...work/API-PROJECT-CORE --check` on the final branch.
 
 ### EVAL-01-TOOLS — accepted
 
@@ -27,8 +33,8 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 
 ## Limits and next work
 
-- `API-PROJECT-CORE` is assigned as the next ready implementation task. It builds a pure Layer 4 whitelist projection before any database read model is connected to HTTP. The assignment and ADR-012 record why raw `record_json` must remain internal.
-- The existing database `public_event_*` views expose whole schema 2.0 event/impact `record_json` documents. Those contain internal evidence/revision/origin/decision fields; they cannot be serialized as `EventView`. ADR-012 requires explicit runtime validation, exact source/impact resolution, and whitelisted output. The new task changes no endpoint or contract.
+- API-PROJECT-CORE is accepted as a pure Layer 4 whitelist projector. The existing database `public_event_*` views still expose full internal schema 2.0 `record_json`; no view output can be serialized directly as `EventView`. ADR-012 records the boundary; API-01 still needs database/read-role wiring and route composition.
+- `PUB-WRITE-CORE` is assigned as the next source-independent task. It adds atomic persistence for explicit manual approval, event-version concurrency, idempotency and a minimal outbox without introducing a route or moderator authentication. It uses synthetic live-shaped test values only and does not close the real-data rights gate.
 - EVAL-01-TOOLS is accepted as local metadata validation and readiness gating only. Root independently passed `npm test` 100/100 (web 5, Worker 43, DB 40, casebook 12), `npm run typecheck`, Vite production build, and Wrangler deploy dry-run in WSL Ubuntu-26.04 with Node.js `v24.21.0` / npm `11.19.0`. The checker cannot verify external rights, reviewer identity, label truth, representativeness, or a genuine held-out freeze.
 - Source/data rights remain pending, so no real incident material has been collected, retained, or labeled. The four required evaluation scenarios and ten categories are coverage gates, not claims of current data coverage.
 
@@ -44,6 +50,8 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - PUB-POLICY-CORE was implemented on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core` and accepted into `main`; the branch handoff and root review are recorded in the assignment and delivery log.
 - EVAL-01-TOOLS was implemented on `work/EVAL-01-tools` in `.codex-build/worktrees/eval-01-tools` and accepted into `main`; the assignment, delivery log, and synthetic fixture document its schema, leakage checks, category/scenario readiness gates, handoff, and limitations.
 - The public projection boundary is recorded in `docs/decisions/ADR-012-public-projection-boundary.md`; `API-PROJECT-CORE` is assigned for a pure L4 projector with live-shaped synthetic tests and no route/database wiring.
+- `API-PROJECT-CORE` is accepted on `main` at integration commits `c383faa` and `249c5e2`; the assignment, architecture and delivery log record the final branch review and independent WSL checks.
+- The publication transaction boundary is recorded in ADR-013; `PUB-WRITE-CORE` is assigned on `work/PUB-WRITE-CORE` and its implementation handoff will follow.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---

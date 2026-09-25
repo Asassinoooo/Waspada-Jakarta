@@ -1,6 +1,6 @@
 # API-PROJECT-CORE — Layer 4 public whitelist projection
 
-- **Status:** Assigned
+- **Status:** Accepted — pure Layer 4 public projection; database and HTTP wiring remain unimplemented
 - **Depends on:** BOOT-01, SPEC-02, SPEC-03, ADR-012
 - **Requirements:** FR-09/10; NFR-01/07
 - **Branch/worktree:** `work/API-PROJECT-CORE`; `.codex-build/worktrees/api-project-core`
@@ -63,7 +63,7 @@ The implementation agent appends the branch/worktree, exact commit SHAs/messages
 - **Behavior:** Added runtime validation for live, published schema 2.0 event/impact inputs; exact named-scope, public-support attribution, and event/impact-version resolution; deterministic EventView allowlist construction; and bounded typed failures that do not echo input. Unknown storage fields are ignored. Geometry remains outside this projection.
 - **Tests:** Authored synthetic/live-shaped values use `.invalid` URLs and fixture-only approval flags. They are not live records, publications, actual source-rights permissions, or reviewer data. Tests compare EventView, PublicClaim, PublicSource, PublicImpact, scope, time, validity, freshness, and tag keys with the existing OpenAPI shapes; cover privacy filtering, multiple source dates, non-geographic audience scope, ordering, invalid/missing/ambiguous lookups, and impact mismatches.
 - **WSL checks:** With WSL Ubuntu-26.04 and Node `v24.21.0` / npm `11.19.0` (TypeScript `7.0.2`, tsx `4.23.15`, Wrangler `4.137.0`), `npm test` passed (5 web, 51 Worker, 40 DB, and 12 evaluation tests); `npm run typecheck` passed; `npm run build` passed (typecheck, Vite build, Wrangler dry-run); `git diff --check` and `git diff --cached --check` passed. The Windows-created worktree has a Windows-form `.git` pointer, so WSL Git checks supplied its `GIT_DIR` and `GIT_WORK_TREE` explicitly.
-- **Limitations / remaining decisions:** This is pure projection tooling; database reads, route composition, publication authorization, current-version selection, and factual support remain outside this task. Source reuse and excerpt rights remain pending; no real source content or permission metadata was added. No migration, configuration, dependency, or public API/OpenAPI change was made. Root review and acceptance remain outstanding.
+- **Limitations / remaining decisions:** This is pure projection tooling; database reads, route composition, publication authorization, current-version selection, and factual support remain outside this task. Source reuse and excerpt rights remain pending; no real source content or permission metadata was added. No migration, configuration, dependency, or public API/OpenAPI change was made.
 
 ### Follow-up — mixed-precision range endpoints — 25 September 2026
 
@@ -71,3 +71,9 @@ The implementation agent appends the branch/worktree, exact commit SHAs/messages
 - **Changed paths:** `apps/worker/src/layers/l4-application-integration/public-projection.ts`; `apps/worker/test/l4-public-projection.test.ts`.
 - **Behavior:** A `range` now validates its start and end independently as either a schema-valid date or date-time, preserves each original value, and compares ordering only when both endpoints have the same precision. Same-type inverted ranges still fail.
 - **WSL checks:** On Ubuntu-26.04 with the same Node/npm toolchain, `npm test` passed (5 web, 52 Worker, 40 DB, and 12 evaluation tests); `npm run typecheck` passed; `npm run build` passed; `git diff --check HEAD` and `git diff --cached --check` passed. No schema or public contract changes.
+
+### Root review and acceptance — 25 September 2026
+
+- Root reviewed the complete branch, including the mixed-precision range follow-up, and merged it into `main` in two integration commits: the initial implementation at `c383faa` and the follow-up at `249c5e2`.
+- Root independently ran the final branch in WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0`: `npm test` passed (5 web, 52 Worker, 40 DB, 12 casebook; 109 total), `npm run typecheck` passed, `npm run build` passed (Vite production build and Wrangler dry-run), and `git diff main...work/API-PROJECT-CORE --check` passed.
+- Root accepted the task as a pure, runtime-validated Layer 4 allowlist. It does not connect the database views to an HTTP route. Source/data rights remain pending; fixture-only approval flags and live-shaped records are not actual authorization or publications.
