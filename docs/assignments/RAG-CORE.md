@@ -69,3 +69,23 @@ Root owns architecture, backlog, and other planning documents. Do not change pub
 ## Implementation handoff
 
 The implementation agent appends its branch/worktree, commit SHAs/messages, changed paths, exact checks, limitations, and any scope issue here.
+
+### RAG-CORE implementation handoff — 2026-09-25
+
+- **Branch/worktree:** `work/RAG-CORE-hybrid-retrieval`; `D:\Projects\RPL\.codex-build\worktrees\rag-core`
+- **Implementation commit:** `15ae32252facf79d48202eca33168330883d2bd0` — `feat(RAG-CORE): add bounded hybrid evidence retrieval`
+- **Changed paths:** `apps/db/src/evidence-retrieval.ts`, `apps/db/src/ports.ts`, `apps/db/test/evidence-retrieval.test.ts`, `apps/worker/package.json` (test command only), `apps/worker/src/layers/l2-model-grounding/retrieval.ts`, and `apps/worker/test/l2-evidence-retrieval.test.ts`.
+
+The database repository now accepts bounded, typed evidence searches through the existing injected SQL executor, and the Worker exposes a thin read-only Layer 2 adapter. Searches remain dataset-scoped and deterministic, cap examined rows and returned results, deduplicate identifiers and terms, match exact terms only inside the cited evidence span, and preserve full reference offsets separately from bounded excerpt offsets. Results retain relation, source/revision states, distinct publication/observation/retrieval/validity/event time bases, source geometry matches, recorded origin dependencies, and chunk/index metadata. Event time is read only from persisted `record_json.event_time`; its object and timestamps are validated in TypeScript before matching. CRS84 geometry coordinates and GeoJSON nesting, lines, and closed polygon rings are checked before SQL invokes PostGIS. Spatial matching uses exact intersection against geometry linked to the same evidence reference. Semantic distance uses only a supplied vector and an active chunk/run whose provider, model version, dimension, metric, index version, and input hash match; cosine, Euclidean, and dot-product operators are covered. Exact/time/spatial search remains available without a query vector.
+
+Synthetic PGlite tests cover contradictory relations, source/revision states, unknown and dependent origins, exact span attribution, separate time bases, linked geometry, malformed geometry rejection, dataset isolation, duplicate facets, deterministic bounds/truncation, excerpt offsets, missing vectors, and vector identity/hash/dimension binding. The geometry intersection and all three vector distance operators were exercised under PGlite. Vectors and records are synthetic; these tests do not establish real-world retrieval quality or sufficiency. No migration, dependency, grant, public contract, or route changed. No smoke test was run because no runtime route changed.
+
+**Checks run in WSL Ubuntu-26.04** (Node `24.21.0`, npm `11.19.0`; lockfile versions include `tsx 4.23.15`, TypeScript `7.0.2`, Wrangler `4.137.0`, PGlite `0.5.8`, PGlite pgvector `0.0.9`, and PGlite PostGIS `0.2.8`):
+
+- `npm run db:test` — passed: 38 tests, 5 suites, 38 passed, 0 failed. The `RAG-CORE deterministic evidence retrieval` suite passed all 11 tests.
+- `npm test` — passed across workspaces: web 5/5, Worker 26/26, database 38/38 (69 passed, 0 failed).
+- `npm run typecheck` — passed for web, Worker, and database.
+- `npm run build` — passed typecheck, Vite production build, and Wrangler Worker deploy dry-run.
+- `git diff --check` — passed in WSL with explicit `GIT_DIR` and `GIT_WORK_TREE` because this Windows-created worktree's `.git` pointer contains a Windows path.
+
+No local schema/repository boundary gap prevented this slice. Dedicated Layer 2 database-role privileges and Worker/Neon wiring remain unverified integration work; no grants were changed. Review and acceptance remain with the root orchestrator.

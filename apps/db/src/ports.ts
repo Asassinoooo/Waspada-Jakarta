@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createSqlEvidenceRetrievalRepository, type EvidenceRetrievalRepository } from './evidence-retrieval.js';
 import { createSqlEvidenceChunkRepository, type EvidenceChunkRepository } from './evidence-chunks.js';
 import { SqlAcquisitionJobRepository, type AcquisitionJobRepository } from './queue.js';
 import type { SqlExecutor } from './sql.js';
@@ -116,6 +117,7 @@ export interface RepositoryPorts {
   readonly sourceRegistry: SourceRegistryRepository;
   readonly reportRevisions: ReportRevisionRepository;
   readonly evidenceChunks: EvidenceChunkRepository;
+  readonly evidenceRetrieval: EvidenceRetrievalRepository;
   readonly tracesAndAudit: TraceAuditRepository;
   readonly acquisitionJobs: AcquisitionJobRepository;
 }
@@ -125,6 +127,7 @@ export function createRepositoryPorts(executor: SqlExecutor): RepositoryPorts {
     sourceRegistry: new SqlSourceRegistryRepository(executor),
     reportRevisions: new SqlReportRevisionRepository(executor),
     evidenceChunks: createSqlEvidenceChunkRepository(executor),
+    evidenceRetrieval: createSqlEvidenceRetrievalRepository(executor),
     tracesAndAudit: new SqlTraceAuditRepository(executor),
     acquisitionJobs: new SqlAcquisitionJobRepository(executor),
   };
