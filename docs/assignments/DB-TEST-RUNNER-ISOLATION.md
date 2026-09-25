@@ -1,9 +1,10 @@
 # DB-TEST-RUNNER-ISOLATION — Deterministic aggregate database tests
 
-**Status:** Assigned for local runner diagnosis and repair.
+**Status:** Accepted — sequential per-file local runner; underlying silent process-exit cause remains unknown.
 **Depends on:** DB-TEST-RUNNER-CORE, L3-LEDGER-CORE.
 **Requirements:** NFR-08.
 **Branch/worktree:** `work/DB-TEST-RUNNER-ISOLATION`; `.codex-build/worktrees/db-test-runner-isolation`.
+**Handoff:** [Implementation and root acceptance record](DB-TEST-RUNNER-ISOLATION-HANDOFF.md).
 
 ## Objective
 

@@ -1,6 +1,6 @@
 # DB-TEST-RUNNER-ISOLATION — implementation handoff
 
-**Status:** Implementation complete on the task branch; root review pending.
+**Status:** Accepted on `main` after independent root review and WSL verification.
 
 ## Branch and commits
 
@@ -35,4 +35,8 @@ An initial launcher check found and fixed a path-resolution error: the first dra
 
 Before finding the existing runtime path in `docs/BOOTSTRAP.md`, Node.js `v24.21.0` was also installed through WSL-local nvm. That installation changed only `/home/perry/.nvm`, not the repository. Nvm reported a matching checksum for its cached Node archive, whose SHA-256 is `fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6`; its binary hash matches the existing documented runtime. All project checks used the pre-existing documented runtime path.
 
-The isolated migrations exit remains unexplained. The runner deliberately does not retry or hide it: if any child failure or interruption recurs, the aggregate will report that file and return non-zero. No migration, dependency, lockfile, application, or deployment impact is expected. Root review and acceptance remain pending.
+The isolated migrations exit remains unexplained. The runner deliberately does not retry or hide it: if any child failure or interruption recurs, the aggregate will report that file and return non-zero. No migration, dependency, lockfile, application, or deployment impact is expected.
+
+## Root review and acceptance — 26 September 2026
+
+Root reviewed the launcher, its failure/interruption handling, the handoff and branch scope, then fast-forwarded both task commits into `main` at handoff `805ccd48d8a72662b38a1b49648d6461be8b0781`. Root independently verified the merged branch in WSL Ubuntu-26.04 using Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` passed all nine files (68/68); `npm test` passed 147/147 (web 5, Worker 62, DB 68, evaluation 12); `npm run typecheck` passed; `npm run build` passed Vite production build and Wrangler deploy dry-run; and `git diff 8184cac...HEAD --check` passed with explicit WSL Git directory/worktree paths. The worktree was clean before integration. Acceptance is limited to local runner behavior; PGlite, Neon and the cause of the earlier silent process exits remain unverified.

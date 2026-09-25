@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Planning baselines and partial local implementations (BOOT-01, UI-00, PLATFORM-01, DATA-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, PUB-WRITE-CORE, API-PROJECT-CORE and L3-LEDGER-CORE) accepted; L3 persists bounded investigation cases, reservations and immutable checkpoints using synthetic PGlite tests; individual DB files, typecheck and build pass, while aggregate DB runs currently exit without diagnostics and runner isolation is assigned; source/model integration, Worker/database runtime wiring, evaluation and the complete prototype remain in progress
+**Status:** Planning baselines and partial local implementations (BOOT-01, UI-00, PLATFORM-01, DATA-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, PUB-WRITE-CORE, API-PROJECT-CORE, L3-LEDGER-CORE and DB-TEST-RUNNER-ISOLATION) accepted; L3 persists bounded investigation cases, reservations and immutable checkpoints; DB/full-workspace tests, typecheck and build pass with sequential per-file DB test processes; the cause of prior silent exits remains unknown and any recurrence fails visibly; source/model integration, Worker/database runtime wiring, evaluation and the complete prototype remain in progress
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
@@ -149,7 +149,7 @@ Local project startup and verification use WSL Ubuntu-26.04. BOOT-01 provides th
 
 ## 6. Data lifecycle and status model
 
-The schema stores investigation requests and checkpoints; [ADR-014](docs/decisions/ADR-014-l3-investigation-ledger.md) defines the durable L3 persistence boundary. `L3-LEDGER-CORE` is accepted on `main` with same-candidate refreshed-context checkpoints, idempotent reservations and budget reconciliation. It does not invoke models/tools or grant publication authority. Aggregate DB runner isolation is assigned separately under `DB-TEST-RUNNER-ISOLATION`.
+The schema stores investigation requests and checkpoints; [ADR-014](docs/decisions/ADR-014-l3-investigation-ledger.md) defines the durable L3 persistence boundary. `L3-LEDGER-CORE` is accepted on `main` with same-candidate refreshed-context checkpoints, idempotent reservations and budget reconciliation. It does not invoke models/tools or grant publication authority. `DB-TEST-RUNNER-ISOLATION` is accepted on `main`; each DB test runs in a separate sequential Node process, and root independently passed the DB and full-workspace suites. The cause of the former silent aggregate exit and one transient silent migration-suite exit remains unknown; the runner does not retry or hide any recurrence.
 
 The schema 2.0 boundaries in [docs/contracts.schema.json](docs/contracts.schema.json) and [docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) define source, revision, origin, geometry, evidence, embedding, extraction, grounding, investigation, event, impact and publication-decision records. The synthetic examples cover each record type. DATA-01 implements the local database relations, migration code and core SQL constraints; Worker integration and runtime/service-level semantic invariants remain implementation work. Schema validation alone does not prove evidence support, permissions or referential integrity.
 
