@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** RAG-CORE has been accepted; continue the Layer 2 access and Layer 4 manual-gate foundations.
+**Reason:** RAG-ACCESS-01 is accepted locally; continue the Layer 4 manual-gate foundation.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` is synchronized with `origin/main` at the current root-reviewed checkpoint. DATA-02-CORE acceptance was recorded and pushed in `be4c366`. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, and the local RAG-CORE retrieval module. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. RAG-ACCESS-01 and PUB-POLICY-CORE are assigned on separate worktrees.
+`main` is locally root-reviewed through the RAG-ACCESS-01 integration and is ready to push with this acceptance update. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, and RAG-ACCESS-01. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. PUB-POLICY-CORE is assigned on a separate worktree.
 
 ## Latest work and files
 
@@ -23,12 +23,12 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 
 - JOB-01 is accepted as local queue behavior. PGlite uses one in-memory database connection and cannot prove locking across concurrent PostgreSQL sessions; Neon and hosted Worker behavior remain unverified.
 - DATA-02-CORE is accepted as local synthetic implementation. Pattern redaction is incomplete; PGlite does not prove Neon compatibility or concurrent locking across independent sessions; no live source, provider, or cloud behavior was exercised.
-- `RAG-CORE` is accepted as a local-only Layer 2 retrieval module. Synthetic records and fixed vectors preserve provenance and contradictions, but do not prove retrieval quality or sufficiency. Its SQL currently runs in the owner-level test harness; the existing roles do not grant its required read access. Its evidence-reference row cap does not guarantee a bounded physical database scan.
-- `RAG-ACCESS-01` adds only column-level read privileges for a dedicated internal L2 retrieval role and verifies the actual retrieval query under that role. It adds no login, hosted wiring, or provider resource.
+- `RAG-CORE` is accepted as a local-only Layer 2 retrieval module. Synthetic records and fixed vectors preserve provenance and contradictions, but do not prove retrieval quality or sufficiency. Its evidence-reference row cap does not guarantee a bounded physical database scan.
+- `RAG-ACCESS-01` is accepted: a NOLOGIN role has only query-required column-level reads, and the real retrieval SQL passes in synthetic PGlite under `SET ROLE` across non-semantic, semantic, geometry, and combined paths. The role is not yet wired to a Worker connection or hosted Neon service.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
 - RAG-CORE is accepted on `main` at merge `5e739cf`, from task head `7c6ded1` on `work/RAG-CORE-hybrid-retrieval`. Root independently ran database tests 38/38, all workspace tests 69/69 (web 5, Worker 26, database 38), typecheck, build/Wrangler dry-run, and WSL diff check.
-- RAG-ACCESS-01 is assigned on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` to prove retrieval works under `waspada_l2_grounding_reader` before RAG-01.
+- RAG-ACCESS-01 was implemented on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` and accepted into `main`; the handoff and root review are recorded in the assignment and delivery log.
 - PUB-POLICY-CORE is assigned on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core`. It implements the pure moderator-reviewed Layer 4 gate against existing typed L2/RAG results; persistence, authentication, model thresholds and auto-publication remain outside its scope.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 

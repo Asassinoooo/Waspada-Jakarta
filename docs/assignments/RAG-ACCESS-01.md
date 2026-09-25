@@ -1,6 +1,6 @@
 # RAG-ACCESS-01 — Least-privilege Layer 2 retrieval reader
 
-- **Status:** Assigned for local synthetic implementation
+- **Status:** Accepted — local PGlite role/query proof; hosted role wiring unverified
 - **Depends on:** DATA-01, DATA-02-CORE, RAG-CORE
 - **Requirements:** FR-05, FR-06, FR-07; NFR-01, NFR-05, NFR-07
 - **Architecture:** Layer 2 database access; read-only retrieval
