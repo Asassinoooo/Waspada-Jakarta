@@ -8,7 +8,7 @@ import {
 import {
   API_REQUEST_EVENT_NAME,
   consoleTelemetry,
-  type ApiTelemetryRecord,
+  type TelemetryRecord,
 } from "../src/layers/l5-evaluation-monitoring/telemetry.js";
 
 const demoEnvironment: WorkerEnvironment = { DATASET_MODE: "demo" };
@@ -122,7 +122,7 @@ test("injected telemetry records only bounded route, status, and duration across
   const cases: Array<{
     request: Request;
     env: WorkerEnvironment;
-    route: ApiTelemetryRecord["route"];
+    route: "context" | "events" | "other";
     status: number;
   }> = [
     {
@@ -158,7 +158,7 @@ test("injected telemetry records only bounded route, status, and duration across
   ];
 
   for (const outcome of cases) {
-    const records: ApiTelemetryRecord[] = [];
+    const records: TelemetryRecord[] = [];
     const response = await handlePublicApiRequest(outcome.request, outcome.env, {
       record(record) {
         records.push(record);
@@ -169,6 +169,9 @@ test("injected telemetry records only bounded route, status, and duration across
     assert.equal(records.length, 1);
     const [record] = records;
     assert.ok(record);
+    if (record.eventName !== API_REQUEST_EVENT_NAME) {
+      assert.fail("expected one API request telemetry record");
+    }
     assert.deepEqual(Object.keys(record).sort(), ["durationMs", "eventName", "route", "status"]);
     assert.equal(record.eventName, API_REQUEST_EVENT_NAME);
     assert.equal(record.route, outcome.route);
@@ -216,7 +219,7 @@ test("console telemetry writes only the stable allowlisted structured fields", (
       durationMs: 12,
       url: "http://localhost/private?token=must-not-appear",
       requestId: "private-request-id",
-    } as ApiTelemetryRecord);
+    } as TelemetryRecord);
   } finally {
     console.log = originalLog;
   }
