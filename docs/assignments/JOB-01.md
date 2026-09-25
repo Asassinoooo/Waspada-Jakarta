@@ -1,6 +1,6 @@
 # JOB-01 — Durable scheduler queue and source-health tracking
 
-- **Status:** Assigned; local synthetic implementation only
+- **Status:** Accepted for local implementation; hosted PostgreSQL behavior remains unverified
 - **Depends on:** DATA-01 accepted, SPEC-01, ADR-002
 - **Requirement coverage:** FR-02/13; NFR-05
 - **Branch/worktree:** `work/JOB-01-durable-queue`; `D:\Projects\RPL\.codex-build\worktrees\job-01` (`/mnt/d/Projects/RPL/.codex-build/worktrees/job-01` in WSL)
@@ -90,3 +90,10 @@ Implementation agent appends branch/worktree, commit SHA(s) and exact messages, 
 - **Concurrency limitation:** The PGlite harness in this repository uses one in-memory database instance without independent client sessions. The `Promise.all` claim/completion and expiry-recovery cases test repository outcomes on that single serialized connection; they do not verify row locking with concurrent PostgreSQL sessions. No Neon or hosted PostgreSQL/Worker verification was run. A true multi-session claim race remains for a later authorized integration check.
 - **Migration/configuration impact:** Only local database migration `002_acquisition_jobs.sql` and the existing DB role grants changed; runtime/provider configuration and dependency manifests are unchanged. The migration was applied from the empty PGlite state and repeat-application/checksum tests passed.
 - **Remaining decisions:** Root review and acceptance. No contract or human decision is outstanding.
+
+### Root review and acceptance — 25 September 2026
+
+- Root reviewed the final task branch at `6d92eb0`, including migration constraints, queue state transitions, source-health field boundaries, L4 column grants, fingerprint-based idempotency, HTTPS URL validation, and the database-role tests. No scope or public contract changes were found.
+- Root independently ran `npm run db:test` on the final task branch (21/21), the merged workspace `npm test` (47/47: web 5, Worker 21, database 21), `npm run typecheck`, and `npm run build` in WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0`. The build includes Vite and Wrangler dry-run. `git diff --check main...work/JOB-01-durable-queue` passed with repository Git in PowerShell. No runtime surface changed, so smoke was not required.
+- The branch was merged as `0d49f9e` (`merge: accept JOB-01 durable acquisition queue`). Root then made test discovery explicit by listing API, parser, and L2 suites exactly once in the Worker script and removing the parser suite's side-effect import from `api.test.ts` (`3a40f60`). The merged workspace checks passed after this correction.
+- **Acceptance limit:** PGlite uses a single in-memory database connection. The tests and SQL exercise idempotency, role privileges, state transitions, and stale acknowledgements but do not prove row-lock behavior across independent PostgreSQL sessions. PostgreSQL/Neon concurrency and hosted Worker behavior remain a later environment check. No live source, model, provider, or deployment was used.
