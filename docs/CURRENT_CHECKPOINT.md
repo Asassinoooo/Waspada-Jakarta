@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** L2-CONTEXT-PERSIST-CORE is accepted on `main` at merge `6effd54`; root independently passed 10/10 DB files (77/77), the full suite (156/156), typecheck, build, and WSL diff checks. Layer 2 now has a local immutable writer for the refs-only schema 2.0 `GroundingContext`, with exact normalized evidence/event/decision links, a distinct least-privilege writer role, and no sufficiency assessment or excerpt persistence. This builds on accepted migration 009, where `updates` remains distinct from L4 claim support. The sequential runner still exposes any recurrence of the previously unexplained silent aggregate exit without retry. No source/model calls, Worker routes, hosted wiring, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
+**Reason:** L2-CONTEXT-PERSIST-CORE is accepted on `main` at merge `6effd54`; root independently passed 10/10 DB files (77/77), the full suite (156/156), typecheck, build, and WSL diff checks. Layer 2 now has a local immutable writer for the refs-only schema 2.0 `GroundingContext`, with exact normalized evidence/event/decision links, a distinct least-privilege writer role, and no sufficiency assessment or excerpt persistence. This builds on accepted migration 009, where `updates` remains distinct from L4 claim support. The next selected task is the rights-independent, synthetic-only L2-CONTEXT-BRIDGE-CORE seam between validated reasoning requests and that writer. The sequential runner still exposes any recurrence of the previously unexplained silent aggregate exit without retry. No source/model calls, Worker routes, hosted wiring, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -170,7 +170,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 
 ## Resume point
 
-Audit the next dependency-safe local task. Keep source acquisition and model/sufficiency quality claims gated on rights-cleared human evaluation; the accepted L2 writer remains refs-only and is not wired to Worker or hosted Neon. Continue using synthetic fixtures for locally verifiable work and do not enable live sources, providers, or cloud services.
+Implement L2-CONTEXT-BRIDGE-CORE in its dedicated task worktree. Validate the existing `ReasoningRequest`, persist only its canonical refs-only schema 2.0 projection, and retain excerpt/provenance data only in the returned in-memory request. Preserve caller-supplied `sufficient` without assessment. Keep source acquisition and model/sufficiency quality claims gated on rights-cleared human evaluation; do not add Worker routes, hosted Neon wiring, live sources, providers, or cloud services.
 
 ## Autonomous development resumed — 25 September 2026
 
