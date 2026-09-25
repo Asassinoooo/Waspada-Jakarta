@@ -120,6 +120,32 @@ describe('L2 canonical grounding-context persistence', () => {
     assert.equal(contexts.rows[0]?.count, '0');
   });
 
+  it('counts schema Strings limits in code points and preserves repeated revision states', async () => {
+    const seed = await seedCandidate('unicode-validation');
+    const astralCharacter = '😀';
+    const maxLengthRecord = makeContext(seed, 'unicode-500', {
+      missing_fields: [astralCharacter.repeat(500)],
+    });
+    assert.deepEqual(await ports.groundingContexts.createOrVerify(maxLengthRecord), maxLengthRecord);
+    await assertValidationError(makeContext(seed, 'unicode-501', {
+      missing_fields: [astralCharacter.repeat(501)],
+    }));
+
+    const revisionState = maxLengthRecord.revision_states[0]!;
+    const repeatedRevisionRecord = makeContext(seed, 'repeated-revision-state', {
+      revision_states: [revisionState, revisionState],
+    });
+    assert.deepEqual(
+      await ports.groundingContexts.createOrVerify(repeatedRevisionRecord),
+      repeatedRevisionRecord,
+    );
+    const persisted = await database.executor.query<{ record_json: unknown }>(
+      'SELECT record_json FROM waspada.grounding_contexts WHERE dataset_kind = $1 AND context_id = $2',
+      [repeatedRevisionRecord.dataset_kind, repeatedRevisionRecord.context_id],
+    );
+    assert.deepEqual(persisted.rows[0]?.record_json, repeatedRevisionRecord);
+  });
+
   it('resolves only an existing exact same-dataset evidence identity and never creates L1 evidence', async () => {
     const seed = await seedCandidate('identity', 'synthetic', 'updates');
     const before = await evidenceCount(seed);

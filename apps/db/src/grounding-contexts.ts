@@ -182,8 +182,6 @@ function validateGroundingContext(value: unknown): GroundingContextRecord {
   assertUnique(evidence.map(evidenceKey), 'context.evidence', 'duplicate_reference');
   const revisionStates = arrayValue(record.revision_states, 'context.revision_states')
     .map((entry, index) => parseRevisionState(entry, 'context.revision_states[' + index + ']'));
-  assertUnique(revisionStates.map((state) => state.report_revision_id),
-    'context.revision_states', 'duplicate_revision');
   const candidateEvents = arrayValue(record.candidate_events, 'context.candidate_events')
     .map((entry, index) => parseCandidateEvent(entry, 'context.candidate_events[' + index + ']'));
   assertUnique(candidateEvents.map(candidateEventKey),
@@ -303,7 +301,7 @@ function uniqueIds(value: unknown, path: string): string[] {
 
 function uniqueStrings(value: unknown, path: string): string[] {
   const values = arrayValue(value, path).map((entry, index) => {
-    if (typeof entry !== 'string' || entry.length < 1 || entry.length > 500) {
+    if (typeof entry !== 'string' || Array.from(entry).length < 1 || Array.from(entry).length > 500) {
       invalid(path + '[' + index + ']', 'invalid_string');
     }
     return entry;
