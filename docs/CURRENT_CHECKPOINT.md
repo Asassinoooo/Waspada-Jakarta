@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** L1-FIXTURE-PIPE-CORE is accepted on `main` at merge `e5b1647`. The already-leased synthetic moderator-submission processor uses exact injected fixture lookup, caller-authored revision IDs and permitted text, explicit evidence spans and 2D geometry, and completes only after persistence. Parser-only `sourceCreatedAt`, `providerStatus`, and `reportType` remain transient because schema 2.0 has no approved persistence mapping; `created_at` must not become incident observation or publication time. The historical aggregate DB exit 1 was not reproduced in two isolated WSL runs: `npm run db:test` passed 61/61 and `npm test` passed 140/140. No runner change was made because no cause was established. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
+**Reason:** The current checkpoint advances to L3-LEDGER-CORE, a local persistence prerequisite for real bounded orchestration. L1-FIXTURE-PIPE-CORE remains accepted at merge `e5b1647`; the historical aggregate DB exit 1 was not reproduced, while the isolated WSL `npm run db:test` (61/61) and `npm test` (140/140) pass. L3 work uses synthetic PGlite records only; it adds no source/model calls, public route, or publication permission. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -10,6 +10,10 @@
 Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, L1-FIXTURE-PIPE-CORE at merge `e5b1647`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, and PUB-WRITE-CORE at merge `b2fb994`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
+
+### L3-LEDGER-CORE — assigned
+
+Root accepted ADR-014 and assigned [L3-LEDGER-CORE](assignments/L3-LEDGER-CORE.md) on `work/L3-LEDGER-CORE` in `.codex-build/worktrees/l3-ledger-core`. It will implement transactional local persistence for investigation cases and checkpointed action reservations, including the existing-schema mismatch that currently prevents a resumed case from referencing refreshed L2 context for the same candidate. Tool/model invocation and Worker integration remain later work; no external resource or source rights are needed for this slice.
 
 ### GEO-STORE-CORE — accepted
 
