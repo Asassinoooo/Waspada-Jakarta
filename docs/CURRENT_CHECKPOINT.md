@@ -1,17 +1,24 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** L2-CONTEXT-PERSIST-CORE is accepted on `main` at merge `6effd54`; root independently passed 10/10 DB files (77/77), the full suite (156/156), typecheck, build, and WSL diff checks. Layer 2 now has a local immutable writer for the refs-only schema 2.0 `GroundingContext`, with exact normalized evidence/event/decision links, a distinct least-privilege writer role, and no sufficiency assessment or excerpt persistence. L2-CONTEXT-BRIDGE-CORE is assigned on `work/L2-CONTEXT-BRIDGE-CORE` for a rights-independent, synthetic-only seam between validated reasoning requests and that writer. The sequential runner still exposes any recurrence of the previously unexplained silent aggregate exit without retry. No source/model calls, Worker routes, hosted wiring, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
+**Reason:** L2-CONTEXT-BRIDGE-CORE is accepted on `main` at merge `6ced3ea`. Root independently passed the focused bridge test (4/4), full suite (160/160), typecheck, build, and WSL diff checks. The bridge validates expanded reasoning requests and maps only canonical schema 2.0 references into the existing immutable L2 writer; excerpt/provenance fields remain in the returned in-memory request, and `sufficient` passes through without assessment. No route, hosted wiring, source/model calls, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-The latest accepted task is L2-CONTEXT-PERSIST-CORE at merge `6effd54` (`9c5f582` implementation, `25454b5` schema-parity fix, `075ddd3` and `ab092bd` handoffs). Root independently passed the 77-test DB suite, 156-test full suite, typecheck, build and WSL diff check. Migration 010 adds only the local `waspada_l2_grounding_writer` role and exact grants; Worker/Neon runtime wiring remains separate.
+The latest accepted task is L2-CONTEXT-BRIDGE-CORE at merge `6ced3ea` (`4cebaa2` implementation, `32b4460` handoff). Root independently passed the 160-test full suite, typecheck, build and WSL diff check. The prior L2-CONTEXT-PERSIST-CORE at merge `6effd54` provides migration 010 and the local `waspada_l2_grounding_writer` role; neither task adds hosted Neon runtime wiring.
 
-Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, L1-FIXTURE-PIPE-CORE at merge `e5b1647`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, PUB-WRITE-CORE at merge `b2fb994`, L3-LEDGER-CORE at implementation `ed0f307` plus handoff `32d4678`, DB-TEST-RUNNER-ISOLATION at handoff `805ccd4`, and L2-CONTEXT-PERSIST-CORE at merge `6effd54`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, L2-CONTEXT-PERSIST-CORE, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, L3-LEDGER-CORE, DB-TEST-RUNNER-ISOLATION, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
+Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, L1-FIXTURE-PIPE-CORE at merge `e5b1647`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, PUB-WRITE-CORE at merge `b2fb994`, L3-LEDGER-CORE at implementation `ed0f307` plus handoff `32d4678`, DB-TEST-RUNNER-ISOLATION at handoff `805ccd4`, and L2-CONTEXT-PERSIST-CORE at merge `6effd54`, L2-CONTEXT-BRIDGE-CORE at merge `6ced3ea`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, L2-CONTEXT-PERSIST-CORE, L2-CONTEXT-BRIDGE-CORE, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, L3-LEDGER-CORE, DB-TEST-RUNNER-ISOLATION, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
+
+### L2-CONTEXT-BRIDGE-CORE — accepted
+
+Root reviewed and merged `work/L2-CONTEXT-BRIDGE-CORE` at `6ced3ea`. Implementation commit `4cebaa2` adds a pure injected adapter that validates unknown input with `validateReasoningRequest`, maps all canonical schema 2.0 fields into the refs-only `GroundingContextRecord`, invokes `createOrVerify` once, and returns both the validated expanded request and the persisted record. Excerpt text, source metadata, timestamps and origin lineage remain only in memory; the supplied `sufficient` value is preserved without interpretation. Four synthetic Worker tests cover the full projection, all four relations, input immutability, validation-before-write and exact error propagation. Handoff `32b4460` records the commands and limitations.
+
+Root independently ran the focused bridge test (4/4), `npm test` (160/160: web 5, Worker 66, DB 77, casebook 12), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and WSL `git diff --check`. No dependency, lockfile, migration, contract, Worker route, hosted database wiring, model/provider integration or publication behavior changed. The writer still depends on database records already existing, and PGlite/hosted Neon behavior remains limited as documented in the persistence handoff.
+
 
 ### L3-LEDGER-CORE — accepted
 
@@ -170,7 +177,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 
 ## Resume point
 
-Review the implementation and handoff from `work/L2-CONTEXT-BRIDGE-CORE` in `.codex-build/worktrees/l2-context-bridge-core`. Independently verify the existing `ReasoningRequest` validation, canonical refs-only schema 2.0 projection, excerpt/provenance retention only in memory, and `sufficient` pass-through. Keep source acquisition and model/sufficiency quality claims gated on rights-cleared human evaluation; do not add Worker routes, hosted Neon wiring, live sources, providers, or cloud services.
+Audit the next dependency-safe local task. Keep source acquisition and model/sufficiency quality claims gated on rights-cleared human evaluation. Continue using synthetic fixtures for locally verifiable work; do not enable live sources, providers, or cloud services.
 
 ## Autonomous development resumed — 25 September 2026
 
