@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** Resume RAG-CORE integration review and assign its missing least-privilege database reader boundary.
+**Reason:** RAG-CORE has been accepted; continue the Layer 2 access and Layer 4 manual-gate foundations.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` is synchronized with `origin/main` at the current root-reviewed checkpoint. DATA-02-CORE acceptance was recorded and pushed in `be4c366`. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, and the local RAG-CORE retrieval module. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. RAG-ACCESS-01 is assigned to verify retrieval under a dedicated read-only role.
+`main` is synchronized with `origin/main` at the current root-reviewed checkpoint. DATA-02-CORE acceptance was recorded and pushed in `be4c366`. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, and the local RAG-CORE retrieval module. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. RAG-ACCESS-01 and PUB-POLICY-CORE are assigned on separate worktrees.
 
 ## Latest work and files
 
@@ -29,6 +29,7 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
 - RAG-CORE is accepted on `main` at merge `5e739cf`, from task head `7c6ded1` on `work/RAG-CORE-hybrid-retrieval`. Root independently ran database tests 38/38, all workspace tests 69/69 (web 5, Worker 26, database 38), typecheck, build/Wrangler dry-run, and WSL diff check.
 - RAG-ACCESS-01 is assigned on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` to prove retrieval works under `waspada_l2_grounding_reader` before RAG-01.
+- PUB-POLICY-CORE is assigned on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core`. It implements the pure moderator-reviewed Layer 4 gate against existing typed L2/RAG results; persistence, authentication, model thresholds and auto-publication remain outside its scope.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---
