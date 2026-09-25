@@ -1,15 +1,21 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** RAG-ACCESS-01 and PUB-POLICY-CORE are accepted; prepare the casebook tooling needed for human evaluation.
+**Reason:** EVAL-01-TOOLS is accepted; real case collection remains gated on source/data rights.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` and `origin/main` are synchronized through the root-reviewed PUB-POLICY-CORE acceptance. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, and PUB-POLICY-CORE. EVAL-01 casebook tooling is assigned. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as the independent-reviewer pair; rights to retain and label source reports remain pending. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implemented fixtures are synthetic; historical and synthetic datasets cannot receive publishable policy dispositions.
+Local `main` includes root-reviewed EVAL-01-TOOLS at merge `9f80600`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
+
+### EVAL-01-TOOLS — accepted
+
+The implementation branch `work/EVAL-01-tools` was accepted into `main` at `9f80600`. It adds `docs/evaluation/CASEBOOK.md`, `docs/evaluation/casebook.schema.json`, the authored synthetic fixture, and the standalone validator/tests under `tools/evaluation/`; root recorded the assignment status in `docs/assignments/EVAL-01-TOOLS.md`, updated the backlog and delivery log, and refreshed this checkpoint. The format is metadata-only, rejects live data and split leakage, separates reviewer records from adjudication, and checks all ten category and four scenario coverage gates. These rules prepare future evaluation but do not assert real source rights or labels.
+
+Root independently ran the final integrated tree in WSL Ubuntu-26.04 using native Linux Node.js `v24.21.0` and npm `11.19.0`. `npm test` passed 100/100 (web 5, Worker 43, DB 40, casebook 12); `npm run typecheck`, `npm run build` (Vite production build and Wrangler dry-run), and `git diff --check` passed. Source/data rights remain pending; no real incident records or human judgments were used.
 
 JOB-01 (`work/JOB-01-durable-queue` at `6d92eb0`) was reviewed and merged as `0d49f9e`. It adds `apps/db/migrations/002_acquisition_jobs.sql`, `apps/db/src/queue.ts`, acquisition-queue ports, migration/queue tests, and the JOB-01 handoff. The queue enforces dataset-scoped idempotency, source eligibility, finite lease/attempt/retry rules, recovery, restricted L4 enqueue privileges, and source-health-only updates. Root also made Worker test discovery explicit in `apps/worker/package.json` and removed the test side-effect import from `apps/worker/test/api.test.ts` (`3a40f60`), so API, parser, and L2 suites run once each.
 
@@ -21,6 +27,9 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 
 ## Limits and next work
 
+- EVAL-01-TOOLS is accepted as local metadata validation and readiness gating only. Root independently passed `npm test` 100/100 (web 5, Worker 43, DB 40, casebook 12), `npm run typecheck`, Vite production build, and Wrangler deploy dry-run in WSL Ubuntu-26.04 with Node.js `v24.21.0` / npm `11.19.0`. The checker cannot verify external rights, reviewer identity, label truth, representativeness, or a genuine held-out freeze.
+- Source/data rights remain pending, so no real incident material has been collected, retained, or labeled. The four required evaluation scenarios and ten categories are coverage gates, not claims of current data coverage.
+
 - JOB-01 is accepted as local queue behavior. PGlite uses one in-memory database connection and cannot prove locking across concurrent PostgreSQL sessions; Neon and hosted Worker behavior remain unverified.
 - DATA-02-CORE is accepted as local synthetic implementation. Pattern redaction is incomplete; PGlite does not prove Neon compatibility or concurrent locking across independent sessions; no live source, provider, or cloud behavior was exercised.
 - `RAG-CORE` is accepted as a local-only Layer 2 retrieval module. Synthetic records and fixed vectors preserve provenance and contradictions, but do not prove retrieval quality or sufficiency. Its evidence-reference row cap does not guarantee a bounded physical database scan.
@@ -31,7 +40,7 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - RAG-CORE is accepted on `main` at merge `5e739cf`, from task head `7c6ded1` on `work/RAG-CORE-hybrid-retrieval`. Root independently ran database tests 38/38, all workspace tests 69/69 (web 5, Worker 26, database 38), typecheck, build/Wrangler dry-run, and WSL diff check.
 - RAG-ACCESS-01 was implemented on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` and accepted into `main`; the handoff and root review are recorded in the assignment and delivery log.
 - PUB-POLICY-CORE was implemented on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core` and accepted into `main`; the branch handoff and root review are recorded in the assignment and delivery log.
-- EVAL-01-TOOLS is assigned on `work/EVAL-01-tools` in `.codex-build/worktrees/eval-01-tools`. It creates only a versioned rights-aware casebook validator and synthetic tests; the independent reviewer pair is identified, while real review labels remain gated on documented data permissions.
+- EVAL-01-TOOLS was implemented on `work/EVAL-01-tools` in `.codex-build/worktrees/eval-01-tools` and accepted into `main`; the assignment, delivery log, and synthetic fixture document its schema, leakage checks, category/scenario readiness gates, handoff, and limitations.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---

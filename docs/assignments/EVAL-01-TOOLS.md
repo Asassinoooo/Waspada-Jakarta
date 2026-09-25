@@ -1,6 +1,6 @@
 # EVAL-01-TOOLS — Casebook contract and split-leakage validator
 
-- **Status:** Assigned for synthetic-only tooling
+- **Status:** Accepted for synthetic-only tooling
 - **Parent:** EVAL-01
 - **Depends on:** SPEC-01, SPEC-02
 - **Requirements:** FR-15; NFR-01
@@ -128,3 +128,9 @@ Result: passed (exit 0) with GIT_DIR=/mnt/d/Projects/RPL/.git/worktrees/eval-01-
 ```
 
 The WSL Git workaround only supplies the linked worktree metadata paths explicitly because its `.git` pointer contains a Windows path. No source/network/provider/database calls, dependency changes, deployment, push, or merge occurred.
+
+### Root review and acceptance — 25 September 2026
+
+Root reviewed the task branch, including the closed schema, validator, fixture, tests, and handoff. The branch was merged into `main` as `9f80600` (`merge(EVAL-01-TOOLS): accept synthetic casebook tooling`). Root independently reran checks in WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0`: `npm test` passed 100/100 (web 5, Worker 43, DB 40, casebook 12), `npm run typecheck`, `npm run build` (Vite production output and Wrangler dry-run), and `git diff --check` passed.
+
+Acceptance is limited to the synthetic-only format and local readiness tooling. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are the identified future independent reviewers; neither has labeled reports in this task. Source/data retention and evaluation rights remain pending. The checker validates declarations and structure; it does not authenticate rights, reviewers, labels, freeze procedures, or any model-quality claim.
