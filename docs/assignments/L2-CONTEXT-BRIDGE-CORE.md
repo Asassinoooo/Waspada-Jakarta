@@ -1,6 +1,6 @@
 # L2-CONTEXT-BRIDGE-CORE — validated reasoning context to canonical persistence
 
-- **Status:** Selected for local implementation
+- **Status:** Assigned; implementation in progress
 - **Depends on:** L2-ADAPTER-01, L2-CONTEXT-PERSIST-CORE
 - **Requirements:** FR-05/06/07; NFR-01/05/07
 - **Branch/worktree:** `work/L2-CONTEXT-BRIDGE-CORE`; `.codex-build/worktrees/l2-context-bridge-core`
