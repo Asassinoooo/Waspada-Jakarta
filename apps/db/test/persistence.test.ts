@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
-import { createRepositoryPorts, type NewReportRevision, type TraceRecord } from '../src/ports.js';
+import {
+  createRepositoryPorts,
+  ReportRevisionConflictError,
+  type NewReportRevision,
+  type TraceRecord,
+} from '../src/ports.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const sourceCatalogTrace: TraceRecord = {
@@ -94,6 +99,247 @@ describe('DATA-01 relational persistence', () => {
     );
   });
 
+  it('creates or verifies immutable revisions and natural evidence identities under the L1 role', async () => {
+    await ports.tracesAndAudit.createTrace(makeTrace('trace-l1-retry-first', 'synthetic'));
+    await ports.tracesAndAudit.createTrace(makeTrace('trace-l1-retry-second', 'synthetic'));
+    await ports.tracesAndAudit.createTrace({
+      ...makeTrace('trace-l1-retry-historical', 'synthetic'),
+      datasetKind: 'historical',
+    });
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.source_registry
+         (source_id, trace_id, registry_version, display_name, source_kind, remit,
+          access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+          approval_status, health_status, auto_acquisition_enabled, auto_publication_policy)
+       VALUES ('source-fixture-alternate', 'trace-source-catalog', 1, 'Synthetic alternate source',
+          'other', ARRAY['synthetic idempotency tests'], 'manual_fixture', ARRAY[]::text[],
+          ARRAY['synthetic rows only'], ARRAY['test fixture'], 'paused', 'approved',
+          'unknown', false, 'never')`,
+    );
+
+    const text = 'Synthetic retry fixture with Unicode 🚧.';
+    const textHash = sha256(text);
+    const seed = makeRevision(text, textHash);
+    const retryRevision: NewReportRevision = {
+      ...seed,
+      reportRevisionId: 'revision-l1-idempotency',
+      traceId: 'trace-l1-retry-first',
+      recordJson: {
+        ...seed.recordJson,
+        report_revision_id: 'revision-l1-idempotency',
+        trace_id: 'trace-l1-retry-first',
+      },
+    };
+    const supersededRevision: NewReportRevision = {
+      ...retryRevision,
+      reportRevisionId: 'revision-l1-superseded',
+      recordJson: {
+        ...retryRevision.recordJson,
+        report_revision_id: 'revision-l1-superseded',
+      },
+    };
+    const historicalRevision: NewReportRevision = {
+      ...retryRevision,
+      datasetKind: 'historical',
+      reportRevisionId: 'revision-l1-idempotency-historical',
+      traceId: 'trace-l1-retry-historical',
+      recordJson: {
+        ...retryRevision.recordJson,
+        dataset_kind: 'historical',
+        report_revision_id: 'revision-l1-idempotency-historical',
+        trace_id: 'trace-l1-retry-historical',
+      },
+    };
+    let firstId = '';
+    let differentRelationId = '';
+    let differentSpanId = '';
+    let differentDatasetId = '';
+
+    await testDatabase.executor.execute('SET ROLE waspada_l1_pipeline;');
+    try {
+      await ports.reportRevisions.create(supersededRevision);
+      await ports.reportRevisions.create(retryRevision);
+      await ports.reportRevisions.create(retryRevision);
+      await ports.reportRevisions.create(historicalRevision);
+
+      const changedText = 'Synthetic retry fixture changed with Unicode 🚧.';
+      const conflictVariants: readonly [string, NewReportRevision][] = [
+        ['permitted text and its hash', {
+          ...retryRevision,
+          permittedText: changedText,
+          permittedTextHash: sha256(changedText),
+        }],
+        ['source', { ...retryRevision, sourceId: 'source-fixture-alternate' }],
+        ['canonical URL', { ...retryRevision, canonicalUrl: 'https://synthetic.invalid/alternate-url' }],
+        ['source revision key', { ...retryRevision, sourceRevisionKey: 'fixture-2' }],
+        ['content hash', { ...retryRevision, contentHash: sha256('different synthetic source bytes') }],
+        ['normalization version', { ...retryRevision, normalizationVersion: 'normalization-test-v2' }],
+        ['published timestamp', { ...retryRevision, publishedAt: '2026-09-24T10:03:00Z' }],
+        ['observed timestamp', { ...retryRevision, observedAt: '2026-09-24T10:02:00Z' }],
+        ['retrieval timestamp', { ...retryRevision, retrievedAt: '2026-09-24T10:05:00Z' }],
+        ['valid from', { ...retryRevision, validFrom: '2026-09-24T10:01:00Z' }],
+        ['valid until', { ...retryRevision, validUntil: '2026-09-24T10:01:00Z' }],
+        ['supersedes ID', { ...retryRevision, supersedesId: supersededRevision.reportRevisionId }],
+        ['revision status', { ...retryRevision, revisionStatus: 'quarantined' }],
+        ['trace', { ...retryRevision, traceId: 'trace-l1-retry-second' }],
+        ['record JSON', {
+          ...retryRevision,
+          recordJson: { ...retryRevision.recordJson, retry_variant: true },
+        }],
+      ];
+      for (const [field, conflictingRevision] of conflictVariants) {
+        await assert.rejects(
+          ports.reportRevisions.create(conflictingRevision),
+          (error: unknown) => {
+            assert.ok(error instanceof ReportRevisionConflictError, `${field} returns the typed conflict`);
+            assert.equal(error.code, 'report_revision_conflict');
+            assert.equal(error.message, 'report_revision_conflict');
+            return true;
+          },
+        );
+      }
+
+      const reportCount = await testDatabase.executor.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM waspada.report_revisions
+         WHERE dataset_kind = 'synthetic' AND report_revision_id = $1`,
+        [retryRevision.reportRevisionId],
+      );
+      assert.equal(reportCount.rows[0]?.count, '1');
+
+      const evidenceInput = {
+        datasetKind: 'synthetic' as const,
+        traceId: 'trace-l1-retry-first',
+        reportRevisionId: retryRevision.reportRevisionId,
+        permittedTextHash: retryRevision.permittedTextHash,
+        spanStart: 0,
+        spanEnd: Array.from(retryRevision.permittedText).length,
+        relation: 'supports' as const,
+      };
+      firstId = await ports.reportRevisions.createEvidenceReference(evidenceInput);
+      const replayId = await ports.reportRevisions.createEvidenceReference({
+        ...evidenceInput,
+        traceId: 'trace-l1-retry-second',
+      });
+      assert.equal(replayId, firstId);
+
+      differentRelationId = await ports.reportRevisions.createEvidenceReference({
+        ...evidenceInput,
+        relation: 'contradicts',
+      });
+      differentSpanId = await ports.reportRevisions.createEvidenceReference({
+        ...evidenceInput,
+        spanStart: 1,
+      });
+      differentDatasetId = await ports.reportRevisions.createEvidenceReference({
+        ...evidenceInput,
+        datasetKind: 'historical',
+        reportRevisionId: historicalRevision.reportRevisionId,
+        traceId: 'trace-l1-retry-historical',
+      });
+      assert.equal(new Set([firstId, differentRelationId, differentSpanId, differentDatasetId]).size, 4);
+
+      await assert.rejects(
+        testDatabase.executor.query('SELECT * FROM waspada.event_versions LIMIT 1'),
+        /permission denied/i,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          `SELECT trace_id FROM waspada.evidence_references
+           WHERE dataset_kind = 'synthetic' AND evidence_ref_id = $1`,
+          [firstId],
+        ),
+        /permission denied/i,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          `UPDATE waspada.report_revisions SET revision_status = 'retracted'
+           WHERE dataset_kind = 'synthetic' AND report_revision_id = $1`,
+          [retryRevision.reportRevisionId],
+        ),
+        /permission denied/i,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          `DELETE FROM waspada.evidence_references
+           WHERE dataset_kind = 'synthetic' AND evidence_ref_id = $1`,
+          [firstId],
+        ),
+        /permission denied/i,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          `DELETE FROM waspada.report_revisions
+           WHERE dataset_kind = 'synthetic' AND report_revision_id = $1`,
+          [retryRevision.reportRevisionId],
+        ),
+        /permission denied/i,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          `UPDATE waspada.evidence_references SET relation = 'context'
+           WHERE dataset_kind = 'synthetic' AND evidence_ref_id = $1`,
+          [firstId],
+        ),
+        /permission denied/i,
+      );
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE;');
+    }
+
+    const storedRevision = await ports.reportRevisions.findById('synthetic', retryRevision.reportRevisionId);
+    assert.equal(storedRevision?.datasetKind, retryRevision.datasetKind);
+    assert.equal(storedRevision?.reportRevisionId, retryRevision.reportRevisionId);
+    assert.equal(storedRevision?.traceId, 'trace-l1-retry-first');
+    assert.equal(storedRevision?.sourceId, retryRevision.sourceId);
+    assert.equal(storedRevision?.canonicalUrl, retryRevision.canonicalUrl);
+    assert.equal(storedRevision?.sourceRevisionKey, retryRevision.sourceRevisionKey);
+    assert.equal(storedRevision?.contentHash, retryRevision.contentHash);
+    assert.equal(storedRevision?.permittedText, retryRevision.permittedText);
+    assert.equal(storedRevision?.permittedTextHash, retryRevision.permittedTextHash);
+    assert.equal(storedRevision?.normalizationVersion, retryRevision.normalizationVersion);
+    assert.equal(Date.parse(storedRevision?.publishedAt ?? ''), Date.parse(retryRevision.publishedAt ?? ''));
+    assert.equal(Date.parse(storedRevision?.observedAt ?? ''), Date.parse(retryRevision.observedAt ?? ''));
+    assert.equal(Date.parse(storedRevision?.retrievedAt ?? ''), Date.parse(retryRevision.retrievedAt));
+    assert.equal(storedRevision?.validFrom, retryRevision.validFrom);
+    assert.equal(storedRevision?.validUntil, retryRevision.validUntil);
+    assert.equal(storedRevision?.supersedesId, retryRevision.supersedesId);
+    assert.equal(storedRevision?.revisionStatus, retryRevision.revisionStatus);
+    assert.deepEqual(storedRevision?.recordJson, retryRevision.recordJson);
+
+    const storedEvidence = await testDatabase.executor.query<{
+      evidence_ref_id: string;
+      dataset_kind: string;
+      relation: string;
+      span_start: number;
+      trace_id: string;
+    }>(
+      `SELECT evidence_ref_id::text AS evidence_ref_id, dataset_kind, relation, span_start, trace_id
+       FROM waspada.evidence_references
+       WHERE evidence_ref_id = ANY($1::bigint[])
+       ORDER BY evidence_ref_id`,
+      [[firstId, differentRelationId, differentSpanId, differentDatasetId]],
+    );
+    assert.equal(storedEvidence.rows.length, 4);
+    const storedFirst = storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === firstId);
+    assert.equal(storedFirst?.trace_id, 'trace-l1-retry-first');
+    assert.equal(storedFirst?.relation, 'supports');
+    assert.equal(storedFirst?.span_start, 0);
+    assert.equal(storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === differentRelationId)?.relation,
+      'contradicts');
+    assert.equal(storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === differentSpanId)?.span_start, 1);
+    assert.equal(storedEvidence.rows.find(({ evidence_ref_id }) => evidence_ref_id === differentDatasetId)?.dataset_kind,
+      'historical');
+    const naturalCount = await testDatabase.executor.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM waspada.evidence_references
+       WHERE dataset_kind = 'synthetic' AND report_revision_id = $1 AND permitted_text_hash = $2
+         AND span_start = 0 AND span_end = $3 AND offset_unit = 'unicode_code_points'
+         AND relation = 'supports'`,
+      [retryRevision.reportRevisionId, retryRevision.permittedTextHash,
+        Array.from(retryRevision.permittedText).length],
+    );
+    assert.equal(naturalCount.rows[0]?.count, '1');
+  });
+
   it('prevents a record in one dataset from referring to another dataset revision', async () => {
     await assert.rejects(
       testDatabase.executor.query(
@@ -107,7 +353,7 @@ describe('DATA-01 relational persistence', () => {
     );
 
     const count = await testDatabase.executor.query<{ count: string }>(
-      "SELECT count(*)::text AS count FROM waspada.report_revisions WHERE dataset_kind <> 'synthetic'",
+      "SELECT count(*)::text AS count FROM waspada.report_revisions WHERE dataset_kind = 'live'",
     );
     assert.equal(count.rows[0]?.count, '0');
   });

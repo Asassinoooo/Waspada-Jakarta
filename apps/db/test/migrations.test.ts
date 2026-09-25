@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations, type SqlMigration } from '../src/migrations.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
@@ -10,7 +11,8 @@ describe('DATA-01 migrations', () => {
   before(async () => {
     testDatabase = await createTestDatabase();
     migrations = await readMigrations(new URL('../migrations/', import.meta.url));
-    const result = await applyMigrations(testDatabase.executor, migrations);
+    const through006 = migrations.filter(({ version }) => version !== '007_l1_write_idempotency');
+    const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
@@ -22,18 +24,97 @@ describe('DATA-01 migrations', () => {
     await testDatabase.close();
   });
 
+  it('refuses duplicate legacy evidence identities without changing either row', async () => {
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.traces
+         (trace_id, dataset_kind, started_at, outcome, metadata)
+       VALUES ('trace-legacy-evidence-a', 'synthetic', '2026-09-25T10:00:00Z', 'open', '{"fixture":"synthetic"}'::jsonb),
+              ('trace-legacy-evidence-b', 'synthetic', '2026-09-25T10:01:00Z', 'open', '{"fixture":"synthetic"}'::jsonb)`,
+    );
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.source_registry
+         (source_id, trace_id, registry_version, display_name, source_kind, remit,
+          access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+          approval_status, health_status, auto_acquisition_enabled, auto_publication_policy)
+       VALUES ('source-legacy-evidence', 'trace-legacy-evidence-a', 1, 'Synthetic migration fixture',
+          'other', ARRAY['migration test'], 'manual_fixture', ARRAY[]::text[],
+          ARRAY['synthetic rows only'], ARRAY['test fixture'], 'active', 'approved',
+          'unknown', false, 'never')`,
+    );
+    const text = 'Legacy fixture text';
+    const textHash = sha256(text);
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.report_revisions
+         (dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+          source_revision_key, content_hash, permitted_text, permitted_text_hash,
+          normalization_version, retrieved_at, revision_status, record_json)
+       VALUES ('synthetic', 'revision-legacy-evidence', 'trace-legacy-evidence-a',
+          'source-legacy-evidence', 'https://synthetic.invalid/legacy', 'legacy-fixture',
+          $1, $2, $3, 'normalization-test-v1', '2026-09-25T10:02:00Z', 'unreviewed',
+          '{"fixture":"synthetic"}'::jsonb)`,
+      [sha256('synthetic legacy source bytes'), text, textHash],
+    );
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.evidence_references
+         (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
+          span_start, span_end, offset_unit, relation)
+       VALUES ('synthetic', 'trace-legacy-evidence-a', 'revision-legacy-evidence', $1,
+                  0, 6, 'unicode_code_points', 'supports'),
+              ('synthetic', 'trace-legacy-evidence-b', 'revision-legacy-evidence', $1,
+                  0, 6, 'unicode_code_points', 'supports')`,
+      [textHash],
+    );
+
+    const beforeRows = await testDatabase.executor.query<{
+      evidence_ref_id: string;
+      trace_id: string;
+    }>(
+      `SELECT evidence_ref_id::text AS evidence_ref_id, trace_id
+       FROM waspada.evidence_references ORDER BY evidence_ref_id`,
+    );
+    assert.equal(beforeRows.rows.length, 2);
+    await assert.rejects(
+      applyMigrations(testDatabase.executor, migrations),
+      /007_l1_write_idempotency refuses pre-existing duplicate natural evidence-reference identities/,
+    );
+
+    const afterFailure = await testDatabase.executor.query<{
+      evidence_ref_id: string;
+      trace_id: string;
+    }>(
+      `SELECT evidence_ref_id::text AS evidence_ref_id, trace_id
+       FROM waspada.evidence_references ORDER BY evidence_ref_id`,
+    );
+    assert.deepEqual(afterFailure.rows, beforeRows.rows);
+    const migrationLedger = await testDatabase.executor.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM waspada.schema_migrations WHERE version = '007_l1_write_idempotency'",
+    );
+    assert.equal(migrationLedger.rows[0]?.count, '0');
+
+    // Keep the failed legacy database untouched and release it before opening the clean test database.
+    await testDatabase.close();
+    testDatabase = await createTestDatabase();
+    const cleanDatabaseMigrations = await applyMigrations(testDatabase.executor, migrations);
+    assert.deepEqual(cleanDatabaseMigrations.applied, [
+      '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
+      '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
+      '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
+    ]);
+  });
+
   it('applies from empty state and is repeatable with checksum protection', async () => {
     const repeated = await applyMigrations(testDatabase.executor, migrations);
     assert.deepEqual(repeated.applied, []);
     assert.deepEqual(repeated.skipped, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
       '004_l2_grounding_reader', '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
+      '007_l1_write_idempotency',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '6');
+    assert.equal(count.rows[0]?.count, '7');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -52,7 +133,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 006_l1_geometry_evidence_reads/,
+      /Cannot apply migration 000_late_backfill before already applied migration 007_l1_write_idempotency/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -65,13 +146,14 @@ describe('DATA-01 migrations', () => {
       { version: '004_l2_grounding_reader' },
       { version: '005_publication_write_receipts_outbox' },
       { version: '006_l1_geometry_evidence_reads' },
+      { version: '007_l1_write_idempotency' },
     ]);
   });
 
   it('loads only ordered, named SQL migrations', async () => {
     assert.deepEqual(migrations.map(({ version }) => version), [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
-      '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
+      '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -360,3 +442,7 @@ describe('DATA-01 migrations', () => {
     assert.deepEqual(sequencePrivileges.rows[0], { can_usage: false, can_select: false, can_update: false });
   });
 });
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
