@@ -40,11 +40,12 @@ Add a typed, transactional Layer 2 repository that stores and create-or-verifies
 - Require a `TransactionalSqlExecutor`; do not silently fall back to non-transactional partial writes.
 - Add an idempotent migration for a separate `NOLOGIN` `waspada_l2_grounding_writer` role. Grant only schema usage, exact column-level reads needed for evidence/context replay checks, and insert/select privileges needed on the grounding context/link tables. Grant no update/delete, sequence, general report/source, audit, event, decision, queue, or publication writes. Keep the existing `waspada_l2_grounding_reader` read-only.
 - Test role attributes and exact effective table/column privileges; execute real create/replay operations under `SET ROLE`; prove unrelated reads/writes and context/link mutation are denied; verify migration reapplication.
+- Refresh the existing L3 ledger test's latest-migration inventory assertion to 010 only; do not change ledger behavior or other assertions.
 - Use authored synthetic fixtures only. Preserve `sufficient` exactly as provided; do not default, derive, or evaluate it. The field remains routing metadata, not a safety/factuality or publication decision.
 
 ## Boundaries
 
-- **Allowed paths:** `apps/db/migrations/010_l2_grounding_context_writer.sql`, `apps/db/src/grounding-contexts.ts`, additions to `apps/db/src/ports.ts` for the repository port/factory, `apps/db/test/grounding-contexts.test.ts`, `apps/db/test/migrations.test.ts`, and this assignment's implementation handoff.
+- **Allowed paths:** `apps/db/migrations/010_l2_grounding_context_writer.sql`, `apps/db/src/grounding-contexts.ts`, additions to `apps/db/src/ports.ts` for the repository port/factory, `apps/db/test/grounding-contexts.test.ts`, `apps/db/test/migrations.test.ts`, `apps/db/test/investigation-ledger.test.ts` (latest-migration expectation only), and this assignment's implementation handoff.
 - **Forbidden:** Worker runtime or API wiring, changes to the model/reasoning contract, public schemas/OpenAPI, retrieval/sufficiency/proposal logic, L3 orchestration, L4 publication behavior, live-source data, human evaluation labels, new dependencies, credentials, hosted role membership, Cloudflare/Neon provisioning, or deployment.
 - No real source excerpt or rights-pending report may be added to fixtures. The stored schema record has reference metadata only.
 
