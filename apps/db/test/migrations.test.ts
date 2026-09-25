@@ -13,7 +13,7 @@ describe('DATA-01 migrations', () => {
     const result = await applyMigrations(testDatabase.executor, migrations);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
-      '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
+      '004_l2_grounding_reader', '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
     ]);
     assert.deepEqual(result.skipped, []);
   });
@@ -27,13 +27,13 @@ describe('DATA-01 migrations', () => {
     assert.deepEqual(repeated.applied, []);
     assert.deepEqual(repeated.skipped, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
-      '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
+      '004_l2_grounding_reader', '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '5');
+    assert.equal(count.rows[0]?.count, '6');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -52,7 +52,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 005_publication_write_receipts_outbox/,
+      /Cannot apply migration 000_late_backfill before already applied migration 006_l1_geometry_evidence_reads/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -64,13 +64,14 @@ describe('DATA-01 migrations', () => {
       { version: '003_evidence_chunk_pipeline_reads' },
       { version: '004_l2_grounding_reader' },
       { version: '005_publication_write_receipts_outbox' },
+      { version: '006_l1_geometry_evidence_reads' },
     ]);
   });
 
   it('loads only ordered, named SQL migrations', async () => {
     assert.deepEqual(migrations.map(({ version }) => version), [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
-      '005_publication_write_receipts_outbox',
+      '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -116,6 +117,75 @@ describe('DATA-01 migrations', () => {
       'evidence_chunks.span_end',
       'evidence_chunks.span_start',
       'evidence_chunks.status',
+    ]);
+  });
+
+  it('grants L1 only geometry and support columns, with no table-level reads or geometry mutations', async () => {
+    const columns = await testDatabase.executor.query<{
+      table_name: string;
+      column_name: string;
+      can_select: boolean;
+    }>(
+      `SELECT table_class.relname AS table_name,
+              column_meta.attname AS column_name,
+              has_column_privilege('waspada_l1_pipeline', table_class.oid,
+                                   column_meta.attnum, 'SELECT') AS can_select
+       FROM pg_class AS table_class
+       JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+       JOIN pg_attribute AS column_meta ON column_meta.attrelid = table_class.oid
+       WHERE table_schema.nspname = 'waspada'
+         AND table_class.relname IN ('evidence_references', 'geometries', 'geometry_evidence')
+         AND column_meta.attnum > 0 AND NOT column_meta.attisdropped
+       ORDER BY table_class.relname, column_meta.attname`,
+    );
+    const granted = columns.rows
+      .filter((row) => row.can_select)
+      .map((row) => `${row.table_name}.${row.column_name}`)
+      .sort();
+    assert.deepEqual(granted, [
+      'evidence_references.dataset_kind',
+      'evidence_references.evidence_ref_id',
+      'evidence_references.offset_unit',
+      'evidence_references.permitted_text_hash',
+      'evidence_references.relation',
+      'evidence_references.report_revision_id',
+      'evidence_references.span_end',
+      'evidence_references.span_start',
+      'geometries.coordinate_reference_system',
+      'geometries.dataset_kind',
+      'geometries.display_label',
+      'geometries.geometry_id',
+      'geometries.precision_basis',
+      'geometries.precision_m',
+      'geometries.record_json',
+      'geometries.role',
+      'geometries.shape',
+      'geometries.trace_id',
+      'geometry_evidence.dataset_kind',
+      'geometry_evidence.evidence_ref_id',
+      'geometry_evidence.geometry_id',
+    ]);
+
+    const tablePrivileges = await testDatabase.executor.query<{
+      table_name: string;
+      can_select: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+    }>(
+      `SELECT table_class.relname AS table_name,
+              has_table_privilege('waspada_l1_pipeline', table_class.oid, 'SELECT') AS can_select,
+              has_table_privilege('waspada_l1_pipeline', table_class.oid, 'UPDATE') AS can_update,
+              has_table_privilege('waspada_l1_pipeline', table_class.oid, 'DELETE') AS can_delete
+       FROM pg_class AS table_class
+       JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+       WHERE table_schema.nspname = 'waspada'
+         AND table_class.relname IN ('evidence_references', 'geometries', 'geometry_evidence')
+       ORDER BY table_class.relname`,
+    );
+    assert.deepEqual(tablePrivileges.rows, [
+      { table_name: 'evidence_references', can_select: false, can_update: false, can_delete: false },
+      { table_name: 'geometries', can_select: false, can_update: false, can_delete: false },
+      { table_name: 'geometry_evidence', can_select: false, can_update: false, can_delete: false },
     ]);
   });
 
