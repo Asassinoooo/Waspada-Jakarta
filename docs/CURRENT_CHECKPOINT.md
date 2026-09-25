@@ -1,19 +1,21 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** PUB-WRITE-CORE is accepted as a local synthetic implementation; GEO-STORE-CORE is the next local slice. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
+**Reason:** GEO-STORE-CORE is accepted as a local synthetic L1 persistence slice. The next local prerequisite is idempotent report/evidence writes before connecting queue jobs to the fixture pipeline. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-Local `main` includes root-reviewed EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at root integration commits `c383faa` and `249c5e2`, and PUB-WRITE-CORE at merge `b2fb994`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
+Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, and PUB-WRITE-CORE at merge `b2fb994`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
 
-### GEO-STORE-CORE — in progress
+### GEO-STORE-CORE — accepted
 
-Assigned on `work/GEO-STORE-CORE-source-backed-geometry` in `.codex-build/worktrees/geo-store-core`. This local-only task adds the missing typed L1 persistence operation for source-backed geometry. It is constrained to exact CRS84 geometry storage and persisted `supports` references, with a narrow L1 role grant and PGlite tests. No geometry is geocoded, expanded into a danger area, published, or treated as semantically verified. Fixtures remain synthetic; source rights are unchanged.
+Root reviewed and merged `work/GEO-STORE-CORE-source-backed-geometry` at `3207800` from `40f1572` (`feat(GEO-STORE-CORE): persist source-backed geometry`) and `dc73384` (`docs(GEO-STORE-CORE): record implementation handoff`). It adds `apps/db/src/geometry-writer.ts`, synthetic PGlite cases, migration 006 and the updated migration privilege tests. The transactional writer validates schema 2.0 Geometry fields, CRS84 coordinates, role/type compatibility and PostGIS topology; verifies each support reference against exactly one same-dataset immutable text revision and Unicode span; and stores the submitted shape and links atomically. Replays compare typed columns, EWKB, record JSON and the complete stored link set. Migration 006 grants only the column reads required for evidence resolution and retries. It does not infer or transform geometry or assert that a support relation proves the geometry's meaning.
+
+Root independently passed WSL Ubuntu-26.04 checks with native Linux Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` 58/58; `npm test` 127/127 (web 5, Worker 52, database 58, evaluation 12); `npm run typecheck`; `npm run build` (Vite production build and Wrangler dry-run); and `git diff main...HEAD --check` using the linked-worktree Git directory. PGlite uses local synthetic rows and does not establish hosted Postgres/Neon behavior, source rights, or semantic/factual validation. An initial concurrent dry-run hit WSL memory pressure; the isolated build passed.
 
 ### API-PROJECT-CORE — accepted
 
@@ -53,6 +55,7 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - `RAG-CORE` is accepted as a local-only Layer 2 retrieval module. Synthetic records and fixed vectors preserve provenance and contradictions, but do not prove retrieval quality or sufficiency. Its evidence-reference row cap does not guarantee a bounded physical database scan.
 - `RAG-ACCESS-01` is accepted: a NOLOGIN role has only query-required column-level reads, and the real retrieval SQL passes in synthetic PGlite under `SET ROLE` across non-semantic, semantic, geometry, and combined paths. The role is not yet wired to a Worker connection or hosted Neon service.
 - `PUB-POLICY-CORE` is accepted as a pure L4 assessment requiring explicit authorized moderator approval and exact evidence, source/revision/remit/freshness, source-linked geometry, and event-version checks. It performs no write or authentication; its live-only output rule holds historical and synthetic cases. Human quality evaluation and transactional rechecks remain outstanding.
+- `GEO-STORE-CORE` is accepted as local L1 geometry persistence with exact evidence linkage and least-privilege reads. Geometry role mapping and source semantics remain the responsibility of a reviewed source adapter; no live PetaBencana fields or geometry meaning have been verified.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
 - RAG-CORE is accepted on `main` at merge `5e739cf`, from task head `7c6ded1` on `work/RAG-CORE-hybrid-retrieval`. Root independently ran database tests 38/38, all workspace tests 69/69 (web 5, Worker 26, database 38), typecheck, build/Wrangler dry-run, and WSL diff check.

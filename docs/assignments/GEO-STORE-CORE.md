@@ -1,6 +1,6 @@
 # GEO-STORE-CORE — Source-backed geometry persistence
 
-- **Status:** Assigned; implementation in progress
+- **Status:** Accepted by root review
 - **Depends on:** DATA-01, DATA-02-CORE
 - **Requirements:** FR-03/09; NFR-01/07
 - **Architecture:** L1 persistence; stores supplied geometry and its evidence links without geocoding or inference
@@ -64,4 +64,5 @@ Append the implementation branch/worktree, exact commits/messages, paths, behavi
 - Verification in WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`: `npm run db:test` passed (58/58); `npm test` passed (web 5/5, Worker 52/52, database 58/58, evaluation casebook 12/12); `npm run typecheck` passed; `npm run build` passed (Vite production output and Wrangler dry-run); `git diff --check` passed.
 - Migration/configuration impact: additive migration `006_l1_geometry_evidence_reads.sql` gives `waspada_l1_pipeline` only the selected columns used for exact support lookup, geometry retry comparison, and evidence-link comparison. No dependency, contract, API, deployment, or live-source configuration changed.
 - Limitations: checks use authored synthetic records in local PGlite. They establish structure, persisted lineage linkage, atomicity, and storage/retry behavior only; they do not prove semantic support, source rights, human validation, hosted PostgreSQL/Neon behavior, or factual accuracy.
-- Remaining decisions: none within this bounded implementation. Root review and acceptance remain pending before integration.
+- Remaining decisions: none within this bounded implementation.
+- Root review: accepted after branch diff review, independent read-only implementation audit, and independent WSL Ubuntu-26.04 verification on the committed branch. The implementation is integrated into `main` at merge `3207800`.
