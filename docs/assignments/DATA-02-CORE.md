@@ -1,6 +1,6 @@
 # DATA-02-CORE — Deterministic text preparation and chunk persistence
 
-- **Status:** Planned; local synthetic implementation only
+- **Status:** Paused at user checkpoint; partial unreviewed WIP is preserved on the assigned branch
 - **Depends on:** DATA-01, L2-ADAPTER-01
 - **Requirements:** FR-03, NFR-07
 - **Architecture:** Layer 1 processing and persistence; independent of L2 providers and L3 orchestration
