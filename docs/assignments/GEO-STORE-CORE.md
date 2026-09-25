@@ -54,3 +54,14 @@ Root owns the contract, architecture, backlog, and any grant scope. If PGlite/Po
 ## Handoff
 
 Append the implementation branch/worktree, exact commits/messages, paths, behavior, actual verification results, limitations, and unresolved decisions. Root reviews and accepts before integration.
+
+### Implementation handoff — 25 September 2026
+
+- Branch/worktree: `work/GEO-STORE-CORE-source-backed-geometry`; `D:\Projects\RPL\.codex-build\worktrees\geo-store-core` (`/mnt/d/Projects/RPL/.codex-build/worktrees/geo-store-core` in WSL).
+- Implementation commit: `40f1572927dc0c9c48081ec8087b57439e8e7ecf` — `feat(GEO-STORE-CORE): persist source-backed geometry`.
+- Paths: `apps/db/src/geometry-writer.ts`, `apps/db/test/geometry-writer.test.ts`, `apps/db/test/migrations.test.ts`, and `apps/db/migrations/006_l1_geometry_evidence_reads.sql`.
+- Behavior: The typed transactional writer validates complete schema 2.0 Geometry input, CRS84 coordinates, bounded GeoJSON structures and role compatibility; checks PostGIS topology; resolves unique persisted `supports` references against exact same-dataset immutable report text/hash and Unicode code-point spans; stores the unchanged geometry and supplied record with its evidence links atomically; and accepts only identical shape, typed-column, record, and link retries. Reusing an ID for a different record or link set conflicts. The L1 role test proves the writer works with the added column-scoped reads and no table-level SELECT, UPDATE, or DELETE grants.
+- Verification in WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`: `npm run db:test` passed (58/58); `npm test` passed (web 5/5, Worker 52/52, database 58/58, evaluation casebook 12/12); `npm run typecheck` passed; `npm run build` passed (Vite production output and Wrangler dry-run); `git diff --check` passed.
+- Migration/configuration impact: additive migration `006_l1_geometry_evidence_reads.sql` gives `waspada_l1_pipeline` only the selected columns used for exact support lookup, geometry retry comparison, and evidence-link comparison. No dependency, contract, API, deployment, or live-source configuration changed.
+- Limitations: checks use authored synthetic records in local PGlite. They establish structure, persisted lineage linkage, atomicity, and storage/retry behavior only; they do not prove semantic support, source rights, human validation, hosted PostgreSQL/Neon behavior, or factual accuracy.
+- Remaining decisions: none within this bounded implementation. Root review and acceptance remain pending before integration.
