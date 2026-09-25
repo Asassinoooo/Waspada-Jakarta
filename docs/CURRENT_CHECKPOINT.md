@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** The user resumed local development; JOB-01 has now been reviewed, tested, and accepted.
+**Reason:** The user asked to stop implementation and checkpoint the current work.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` includes accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, and JOB-01. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. Development is active and continues with local synthetic work.
+The accepted implementation baseline on `main` is `4e1531b`, synchronized with `origin/main` before this documentation-only checkpoint. It includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, and JOB-01. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. Implementation is paused at the user's request; no agent is continuing work.
 
 ## Latest work and files
 
@@ -15,12 +15,15 @@ JOB-01 (`work/JOB-01-durable-queue` at `6d92eb0`) was reviewed and merged as `0d
 
 Root ran `npm run db:test` on the final JOB-01 branch (21/21), then `npm test` on merged `main` (47/47: web 5, Worker 21, database 21), `npm run typecheck`, and `npm run build` in WSL Ubuntu-26.04 using Node.js `v24.21.0` / npm `11.19.0`. Vite and Wrangler dry-run passed. The root WSL checkout needed the documented `npm ci --offline --no-audit --no-fund` install (88 packages); the lockfile remained unchanged. Repository `git diff --check` passed. No route changed, so no smoke test was needed.
 
-Root updated `docs/assignments/JOB-01.md`, `docs/IMPLEMENTATION_BACKLOG.md`, `docs/DELIVERY_LOG.md`, and this checkpoint to record the review and acceptance. No live source, provider, model, cloud account, paid service, or deployment was used.
+Root updated `docs/assignments/JOB-01.md`, `docs/IMPLEMENTATION_BACKLOG.md`, `docs/DELIVERY_LOG.md`, and the checkpoint to record acceptance. It then defined DATA-02-CORE (`87452c8`) as a synthetic-only L1 text preparation and chunk-persistence slice and defined RAG-CORE (`4e1531b`) as a separate deterministic retrieval boundary. Both planning commits are on `origin/main`. No live source, provider, model, cloud account, paid service, or deployment was used.
+
+DATA-02-CORE implementation was interrupted and preserved locally on `work/DATA-02-core-text-pipeline` at `bccf813` (`docs(DATA-02-CORE): record paused implementation state`), following WIP code snapshot `e5d4fe1` (`wip(DATA-02-CORE): checkpoint interrupted text pipeline`). The branch/worktree is `.codex-build/worktrees/data-02-core`; it has not been pushed or merged. The snapshot contains `apps/worker/src/layers/l1-data-knowledge/text-preparation.ts`, `apps/worker/src/layers/l1-data-knowledge/evidence-chunking.ts`, `apps/db/src/evidence-chunks.ts`, and a registration in `apps/db/src/ports.ts`. The worker has not added tests or package-script changes yet. This WIP has not been behaviorally reviewed, compiled, or tested; `git diff --cached --check` passed before the code snapshot commit. The branch predates the latest RAG-CORE planning commit, so it must be aligned with current `main` before acceptance.
 
 ## Limits and next work
 
 - JOB-01 is accepted as local queue behavior. PGlite uses one in-memory database connection and cannot prove locking across concurrent PostgreSQL sessions; Neon and hosted Worker behavior remain unverified.
-- Root has split the locally testable portion of DATA-02 into `DATA-02-CORE`: deterministic L1 normalization, scoped contact redaction, Unicode code-point chunking, content hashes, and persistence/invalidation against the existing chunk schema with synthetic fixtures only. Its assignment is `docs/assignments/DATA-02-CORE.md`; the task has not yet been delegated or implemented.
+- DATA-02-CORE is paused with the partial WIP described above. On resumption, review the snapshot against `docs/assignments/DATA-02-CORE.md`, add its required synthetic tests, and run the assignment's WSL checks before considering integration.
+- `RAG-CORE` is specified in `docs/assignments/RAG-CORE.md` as a later local-only Layer 2 retrieval boundary. It can use synthetic records/vectors to preserve provenance and contradictions, but cannot claim sufficiency or measured retrieval quality before EVAL-01. No implementation has started.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
 
