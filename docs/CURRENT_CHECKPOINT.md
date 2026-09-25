@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** RAG-ACCESS-01 and the pure PUB-POLICY-CORE foundation are accepted; continue toward evaluated retrieval and transactional publication.
+**Reason:** RAG-ACCESS-01 and PUB-POLICY-CORE are accepted; prepare the casebook tooling needed for human evaluation.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` is locally root-reviewed through PUB-POLICY-CORE and ready to push with this acceptance update. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, and PUB-POLICY-CORE. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures; historical and synthetic datasets cannot receive publishable policy dispositions.
+`main` and `origin/main` are synchronized through the root-reviewed PUB-POLICY-CORE acceptance. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, and PUB-POLICY-CORE. EVAL-01 casebook tooling is assigned. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as the independent-reviewer pair; rights to retain and label source reports remain pending. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implemented fixtures are synthetic; historical and synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
 
@@ -31,6 +31,7 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - RAG-CORE is accepted on `main` at merge `5e739cf`, from task head `7c6ded1` on `work/RAG-CORE-hybrid-retrieval`. Root independently ran database tests 38/38, all workspace tests 69/69 (web 5, Worker 26, database 38), typecheck, build/Wrangler dry-run, and WSL diff check.
 - RAG-ACCESS-01 was implemented on `work/RAG-ACCESS-01-l2-reader` in `.codex-build/worktrees/rag-access-01` and accepted into `main`; the handoff and root review are recorded in the assignment and delivery log.
 - PUB-POLICY-CORE was implemented on `work/PUB-POLICY-CORE-manual-gate` in `.codex-build/worktrees/pub-policy-core` and accepted into `main`; the branch handoff and root review are recorded in the assignment and delivery log.
+- EVAL-01-TOOLS is assigned on `work/EVAL-01-tools` in `.codex-build/worktrees/eval-01-tools`. It creates only a versioned rights-aware casebook validator and synthetic tests; the independent reviewer pair is identified, while real review labels remain gated on documented data permissions.
 - The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---
