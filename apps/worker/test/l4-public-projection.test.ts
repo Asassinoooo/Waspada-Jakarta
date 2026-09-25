@@ -431,6 +431,40 @@ test("invalid consumed event, claim, freshness, time, and version fields fail cl
   }
 });
 
+test("range times preserve mixed date/date-time endpoints and reject inverted same-type endpoints", () => {
+  const mixedRange = makeSyntheticEvent();
+  mixedRange.event_time = {
+    start: "2026-09-25",
+    end: "2026-09-25T10:00:00Z",
+    precision: "range",
+  };
+  assert.deepEqual(
+    projectPublicEvent(mixedRange, makeSyntheticLookups()).event_time,
+    { start: "2026-09-25", end: "2026-09-25T10:00:00Z", precision: "range" },
+  );
+
+  // A date-only endpoint has coarser precision than a timestamp. Preserve a
+  // mixed pair without inferring an ordering across those precision levels.
+  const mixedPrecision = makeSyntheticEvent();
+  mixedPrecision.event_time = {
+    start: "2026-09-26",
+    end: "2026-09-25T10:00:00Z",
+    precision: "range",
+  };
+  assert.deepEqual(
+    projectPublicEvent(mixedPrecision, makeSyntheticLookups()).event_time,
+    { start: "2026-09-26", end: "2026-09-25T10:00:00Z", precision: "range" },
+  );
+
+  const invertedTimestamps = makeSyntheticEvent();
+  invertedTimestamps.event_time = {
+    start: "2026-09-25T10:00:00Z",
+    end: "2026-09-25T09:00:00Z",
+    precision: "range",
+  };
+  assertProjectionError(() => projectPublicEvent(invertedTimestamps, makeSyntheticLookups()), "INVALID_EVENT");
+});
+
 test("missing, ambiguous, or invalid scope names fail closed", () => {
   const event = makeSyntheticEvent();
   const lookups = makeSyntheticLookups();
