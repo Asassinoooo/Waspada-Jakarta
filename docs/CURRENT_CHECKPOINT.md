@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** L1-EVIDENCE-RELATION-ALIGN-CORE is accepted on `main` at merge `7dd8ea7`; root independently passed 9/9 DB files (70/70), the full suite (149/149), typecheck, build, and WSL diff checks. Schema 2.0 evidence relations now round-trip through local storage and retrieval, with `updates` still distinct from L4 claim support. The prior silent aggregate exits remain unexplained; the sequential runner deliberately does not retry or hide recurrence. The next ready local slice is canonical L2 grounding-context persistence. No source/model calls, Worker routes, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
+**Reason:** L1-EVIDENCE-RELATION-ALIGN-CORE is accepted on `main` at merge `7dd8ea7`; root independently passed 9/9 DB files (70/70), the full suite (149/149), typecheck, build, and WSL diff checks. Schema 2.0 evidence relations now round-trip through local storage and retrieval, with `updates` still distinct from L4 claim support. The prior silent aggregate exits remain unexplained; the sequential runner deliberately does not retry or hide recurrence. L2-CONTEXT-PERSIST-CORE is assigned on `work/L2-CONTEXT-PERSIST-CORE`, using migration 010. No source/model calls, Worker routes, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-The latest accepted task is L1-EVIDENCE-RELATION-ALIGN-CORE at merge `7dd8ea7` (`34ecb04` implementation, `9b8f20a` handoff). Its independent WSL checks passed 70/70 DB tests and 149/149 overall tests, typecheck, build, and diff checks. L2-CONTEXT-PERSIST-CORE is now the next ready local assignment and will use migration 010.
+The latest accepted task is L1-EVIDENCE-RELATION-ALIGN-CORE at merge `7dd8ea7` (`34ecb04` implementation, `9b8f20a` handoff). Its independent WSL checks passed 70/70 DB tests and 149/149 overall tests, typecheck, build, and diff checks. L2-CONTEXT-PERSIST-CORE is assigned on `work/L2-CONTEXT-PERSIST-CORE` and uses migration 010.
 
 Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, L1-FIXTURE-PIPE-CORE at merge `e5b1647`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, PUB-WRITE-CORE at merge `b2fb994`, L3-LEDGER-CORE at implementation `ed0f307` plus handoff `32d4678`, and DB-TEST-RUNNER-ISOLATION at handoff `805ccd4`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, L3-LEDGER-CORE, DB-TEST-RUNNER-ISOLATION, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
@@ -160,7 +160,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 
 ## Resume point
 
-Resume with `L2-CONTEXT-PERSIST-CORE` on `work/L2-CONTEXT-PERSIST-CORE`, using migration 010. The L1 relation prerequisite is accepted. Keep canonical schema 2.0 persistence refs-only and synthetic; do not add sufficiency evaluation, Worker/API wiring, live data, model calls, or hosted resources.
+Continue root review of `L2-CONTEXT-PERSIST-CORE` on `work/L2-CONTEXT-PERSIST-CORE`, using migration 010. The L1 relation prerequisite is accepted. Keep canonical schema 2.0 persistence refs-only and synthetic; do not add sufficiency evaluation, Worker/API wiring, live data, model calls, or hosted resources.
 
 ## Autonomous development resumed — 25 September 2026
 

@@ -1,6 +1,6 @@
 # L2-CONTEXT-PERSIST-CORE — immutable grounding-context persistence
 
-- **Status:** Ready for local implementation after L1-EVIDENCE-RELATION-ALIGN-CORE acceptance
+- **Status:** Assigned on `work/L2-CONTEXT-PERSIST-CORE`; implementation pending
 - **Depends on:** DATA-01, L1-EVIDENCE-RELATION-ALIGN-CORE, L2-ADAPTER-01, RAG-ACCESS-01, L3-LEDGER-CORE, ADR-015
 - **Requirements:** FR-05/06/07; NFR-01/05/07
 - **Branch/worktree:** `work/L2-CONTEXT-PERSIST-CORE`; `.codex-build/worktrees/l2-context-persist-core`
