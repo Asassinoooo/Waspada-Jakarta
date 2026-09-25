@@ -1,13 +1,13 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** DATA-02-CORE has been root-reviewed, merged, and independently verified; RAG-CORE is the next ready local task.
+**Reason:** DATA-02-CORE has been accepted and pushed; RAG-CORE has been assigned for local implementation.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-`main` is at `31bf43e` (`merge: accept DATA-02-CORE text preparation`), eight commits ahead of `origin/main` before this checkpoint update. It contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, and DATA-02-CORE. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All recent implementation used local synthetic fixtures; RAG-CORE is next.
+`main` is synchronized with `origin/main` at the current root-reviewed checkpoint. DATA-02-CORE acceptance was recorded and pushed in `be4c366`. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, and DATA-02-CORE. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All recent implementation used local synthetic fixtures; RAG-CORE is assigned on its own branch/worktree.
 
 ## Latest work and files
 
@@ -26,7 +26,8 @@ DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-bui
 - `RAG-CORE` is ready as a local-only Layer 2 retrieval boundary. It may use synthetic records/fixed vectors to preserve provenance and contradictions, but cannot claim sufficiency or measured retrieval quality before EVAL-01. No implementation has started yet.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
-- Next: prepare the RAG-CORE assignment's exact paths and worktree from the accepted main, then implement and review the synthetic retrieval slice.
+- RAG-CORE is assigned on `work/RAG-CORE-hybrid-retrieval` in `.codex-build/worktrees/rag-core`. The implementation is read-only Layer 2 retrieval using only the existing schema and synthetic/fixed-vector tests; no public contract, migration, model provider, or L3 orchestration is in scope.
+- The DATA-02-CORE acceptance checkpoint and docs are pushed to `origin/main` at `be4c366`. RAG-CORE's bounded design and exact implementation paths are recorded in its assignment and delivery log.
 
 ---
 
