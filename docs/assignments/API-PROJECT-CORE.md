@@ -54,3 +54,13 @@ Root owns ADRs, architecture, backlog, public API composition, database view/rol
 ## Implementation handoff
 
 The implementation agent appends the branch/worktree, exact commit SHAs/messages, changed paths, behavior, WSL checks, limitations and any scope issue. Root reviews and accepts before integration.
+
+### Implemented handoff — 25 September 2026
+
+- **Branch/worktree:** `work/API-PROJECT-CORE` at `D:\Projects\RPL\.codex-build\worktrees\api-project-core`.
+- **Code commit:** `749869d0804e60847878b057f69132e72990c9e4` — `feat(API-PROJECT-CORE): add public event projection`.
+- **Changed paths:** `apps/worker/src/layers/l4-application-integration/public-projection.ts`; `apps/worker/test/l4-public-projection.test.ts`; `apps/worker/package.json` (focused test registration only).
+- **Behavior:** Added runtime validation for live, published schema 2.0 event/impact inputs; exact named-scope, public-support attribution, and event/impact-version resolution; deterministic EventView allowlist construction; and bounded typed failures that do not echo input. Unknown storage fields are ignored. Geometry remains outside this projection.
+- **Tests:** Authored synthetic/live-shaped values use `.invalid` URLs and fixture-only approval flags. They are not live records, publications, actual source-rights permissions, or reviewer data. Tests compare EventView, PublicClaim, PublicSource, PublicImpact, scope, time, validity, freshness, and tag keys with the existing OpenAPI shapes; cover privacy filtering, multiple source dates, non-geographic audience scope, ordering, invalid/missing/ambiguous lookups, and impact mismatches.
+- **WSL checks:** With WSL Ubuntu-26.04 and Node `v24.21.0` / npm `11.19.0` (TypeScript `7.0.2`, tsx `4.23.15`, Wrangler `4.137.0`), `npm test` passed (5 web, 51 Worker, 40 DB, and 12 evaluation tests); `npm run typecheck` passed; `npm run build` passed (typecheck, Vite build, Wrangler dry-run); `git diff --check` and `git diff --cached --check` passed. The Windows-created worktree has a Windows-form `.git` pointer, so WSL Git checks supplied its `GIT_DIR` and `GIT_WORK_TREE` explicitly.
+- **Limitations / remaining decisions:** This is pure projection tooling; database reads, route composition, publication authorization, current-version selection, and factual support remain outside this task. Source reuse and excerpt rights remain pending; no real source content or permission metadata was added. No migration, configuration, dependency, or public API/OpenAPI change was made. Root review and acceptance remain outstanding.
