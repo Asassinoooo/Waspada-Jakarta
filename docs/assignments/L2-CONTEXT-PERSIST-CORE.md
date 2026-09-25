@@ -1,6 +1,6 @@
 # L2-CONTEXT-PERSIST-CORE — immutable grounding-context persistence
 
-- **Status:** Assigned on `work/L2-CONTEXT-PERSIST-CORE`; implementation pending
+- **Status:** Accepted on `main` at merge `6effd54` (implementation `9c5f582`, schema-parity correction `25454b5`; handoffs `075ddd3`, `ab092bd`). Root independently passed 10/10 DB files (77 tests), the full suite (156/156), typecheck, build, and WSL diff checks. PGlite only; hosted Neon and Worker wiring remain unverified and out of scope.
 - **Depends on:** DATA-01, L1-EVIDENCE-RELATION-ALIGN-CORE, L2-ADAPTER-01, RAG-ACCESS-01, L3-LEDGER-CORE, ADR-015
 - **Requirements:** FR-05/06/07; NFR-01/05/07
 - **Branch/worktree:** `work/L2-CONTEXT-PERSIST-CORE`; `.codex-build/worktrees/l2-context-persist-core`

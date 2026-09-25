@@ -1,15 +1,15 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** L1-EVIDENCE-RELATION-ALIGN-CORE is accepted on `main` at merge `7dd8ea7`; root independently passed 9/9 DB files (70/70), the full suite (149/149), typecheck, build, and WSL diff checks. Schema 2.0 evidence relations now round-trip through local storage and retrieval, with `updates` still distinct from L4 claim support. The prior silent aggregate exits remain unexplained; the sequential runner deliberately does not retry or hide recurrence. L2-CONTEXT-PERSIST-CORE is assigned on `work/L2-CONTEXT-PERSIST-CORE`, using migration 010. No source/model calls, Worker routes, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
+**Reason:** L2-CONTEXT-PERSIST-CORE is accepted on `main` at merge `6effd54`; root independently passed 10/10 DB files (77/77), the full suite (156/156), typecheck, build, and WSL diff checks. Layer 2 now has a local immutable writer for the refs-only schema 2.0 `GroundingContext`, with exact normalized evidence/event/decision links, a distinct least-privilege writer role, and no sufficiency assessment or excerpt persistence. This builds on accepted migration 009, where `updates` remains distinct from L4 claim support. The sequential runner still exposes any recurrence of the previously unexplained silent aggregate exit without retry. No source/model calls, Worker routes, hosted wiring, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 ## Repository state
 
-The latest accepted task is L1-EVIDENCE-RELATION-ALIGN-CORE at merge `7dd8ea7` (`34ecb04` implementation, `9b8f20a` handoff). Its independent WSL checks passed 70/70 DB tests and 149/149 overall tests, typecheck, build, and diff checks. L2-CONTEXT-PERSIST-CORE is assigned on `work/L2-CONTEXT-PERSIST-CORE` and uses migration 010.
+The latest accepted task is L2-CONTEXT-PERSIST-CORE at merge `6effd54` (`9c5f582` implementation, `25454b5` schema-parity fix, `075ddd3` and `ab092bd` handoffs). Root independently passed the 77-test DB suite, 156-test full suite, typecheck, build and WSL diff check. Migration 010 adds only the local `waspada_l2_grounding_writer` role and exact grants; Worker/Neon runtime wiring remains separate.
 
-Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, L1-FIXTURE-PIPE-CORE at merge `e5b1647`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, PUB-WRITE-CORE at merge `b2fb994`, L3-LEDGER-CORE at implementation `ed0f307` plus handoff `32d4678`, and DB-TEST-RUNNER-ISOLATION at handoff `805ccd4`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, L3-LEDGER-CORE, DB-TEST-RUNNER-ISOLATION, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
+Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-IDEMPOTENCY-CORE at merge `59e59e8`, L1-FIXTURE-PIPE-CORE at merge `e5b1647`, EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at integration commits `c383faa` and `249c5e2`, PUB-WRITE-CORE at merge `b2fb994`, L3-LEDGER-CORE at implementation `ed0f307` plus handoff `32d4678`, DB-TEST-RUNNER-ISOLATION at handoff `805ccd4`, and L2-CONTEXT-PERSIST-CORE at merge `6effd54`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE, L1-FIXTURE-PIPE-CORE, RAG-CORE, RAG-ACCESS-01, L2-CONTEXT-PERSIST-CORE, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, L3-LEDGER-CORE, DB-TEST-RUNNER-ISOLATION, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
 
@@ -74,6 +74,16 @@ Root ran `npm run db:test` on the final JOB-01 branch (21/21), then `npm test` o
 Root updated `docs/assignments/JOB-01.md`, `docs/IMPLEMENTATION_BACKLOG.md`, `docs/DELIVERY_LOG.md`, and the checkpoint to record acceptance. It then defined DATA-02-CORE (`87452c8`) as a synthetic-only L1 text preparation and chunk-persistence slice and defined RAG-CORE (`4e1531b`) as a separate deterministic retrieval boundary. Both planning commits are on `origin/main`. No live source, provider, model, cloud account, paid service, or deployment was used.
 
 DATA-02-CORE was implemented on `work/DATA-02-core-text-pipeline` in `.codex-build/worktrees/data-02-core`; root reviewed and merged it as `31bf43e`. The implementation adds versioned text normalization, scoped contact redaction, deterministic evidence chunking, metadata-only persistence and invalidation, and the narrowly approved column-level L1 reads in migration 003. Root independently ran WSL Ubuntu-26.04 checks on merged `main` with Node.js `v24.21.0` / npm `11.19.0`: database tests 27/27, all workspace tests 57/57 (web 5, Worker 25, database 27), typecheck, Vite production build, Wrangler deploy dry-run, and `git diff --check` all passed. The accepted handoff and limits are in `docs/assignments/DATA-02-CORE.md` and `docs/DELIVERY_LOG.md`.
+
+### L2-CONTEXT-PERSIST-CORE — accepted — 26 September 2026
+
+Root reviewed and merged `work/L2-CONTEXT-PERSIST-CORE` at merge `6effd54c9ec3b8a794f4410925f14ce1cb3fdb55`. The implementation commit is `9c5f58228990b828a3fc643f0e16fe718cc14eec`; schema-parity correction `25454b5078765161eb7ff232bebd4860f71b0378` counts schema `Strings` limits by Unicode code point and preserves repeated `revision_states` entries allowed by schema 2.0. Handoff commits are `075ddd384a2e0eb641df621fd53bf8e9cb821898` and `ab092bd2234baca9ccd42418307bef939eb128d8`.
+
+Migration 010 and the typed `GroundingContext` repository store only canonical reference metadata and normalized evidence/event-version/prior-decision links. Writes require a transaction, resolve references in the same dataset, create-or-verify immutable rows and links, and use a separate `NOLOGIN NOINHERIT` writer role with exact column/table grants. `sufficient` is preserved without evaluation; no retrieved excerpt, model output, source copy, route, Worker/Neon wiring, or publication action is included.
+
+Root independently ran WSL Ubuntu-26.04 checks with Node.js `v24.21.0` / npm `11.19.0`: `npm run db:test` passed 10/10 files (77 tests); `npm test` passed 156/156 (web 5, Worker 62, DB 77, casebook 12); `npm run typecheck`, `npm run build` (Vite production build and Wrangler deploy dry-run), and `git diff d45f137..HEAD --check` passed. The detailed implementation and follow-up checks are in [the handoff](assignments/L2-CONTEXT-PERSIST-CORE-HANDOFF.md).
+
+PGlite verifies local behavior only; Neon/hosted PostgreSQL role setup, concurrency, and Worker wiring remain unverified. Rights-cleared source data, human labels, retrieval quality, and sufficiency evaluation remain gated. No hosted resource was created or deployment performed.
 
 ## Limits and next work
 
@@ -160,7 +170,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 
 ## Resume point
 
-Continue root review of `L2-CONTEXT-PERSIST-CORE` on `work/L2-CONTEXT-PERSIST-CORE`, using migration 010. The L1 relation prerequisite is accepted. Keep canonical schema 2.0 persistence refs-only and synthetic; do not add sufficiency evaluation, Worker/API wiring, live data, model calls, or hosted resources.
+Audit the next dependency-safe local task. Keep source acquisition and model/sufficiency quality claims gated on rights-cleared human evaluation; the accepted L2 writer remains refs-only and is not wired to Worker or hosted Neon. Continue using synthetic fixtures for locally verifiable work and do not enable live sources, providers, or cloud services.
 
 ## Autonomous development resumed — 25 September 2026
 

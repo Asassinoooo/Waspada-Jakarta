@@ -5,8 +5,9 @@
 - Branch: `work/L2-CONTEXT-PERSIST-CORE`
 - Worktree: `D:\Projects\RPL\.codex-build\worktrees\l2-context-persist-core`
 - Implementation commit: `9c5f58228990b828a3fc643f0e16fe718cc14eec` — `feat(L2-CONTEXT-PERSIST-CORE): persist canonical grounding contexts`
-- Handoff commit: recorded in the follow-up documentation commit.
-- Review/integration: awaiting independent root review; this handoff does not mark the backlog task accepted.
+- Initial handoff commit: `075ddd384a2e0eb641df621fd53bf8e9cb821898` (`docs(L2-CONTEXT-PERSIST-CORE): record implementation handoff`).
+- Schema-parity correction: `25454b5078765161eb7ff232bebd4860f71b0378` (`fix(L2-CONTEXT-PERSIST-CORE): match schema array semantics`); updated handoff commit: `ab092bd2234baca9ccd42418307bef939eb128d8` (`docs(L2-CONTEXT-PERSIST-CORE): record schema parity follow-up`).
+- Review/integration: root accepted and merged the task into `main` at `6effd54c9ec3b8a794f4410925f14ce1cb3fdb55` after independent review and WSL verification.
 
 ## Behavior implemented
 
@@ -44,6 +45,10 @@ All project checks ran in WSL Ubuntu-26.04 using Node `v24.21.0` and npm `11.19.
 - Schema `$defs.Strings` length now counts Unicode code points (`Array.from(value).length`), matching JSON Schema semantics for astral characters. `revision_states` now preserves schema-valid repeated entries because the schema does not declare uniqueness for that array; uniqueness checks remain on the normalized evidence/event/decision link sets and schema-unique prior decision IDs.
 - Added a synthetic PGlite boundary test: 500 astral code points are accepted and persisted, 501 are rejected, and repeated `revision_states` remain intact in JSONB.
 - Follow-up WSL Ubuntu-26.04 checks with Node `v24.21.0` / npm `11.19.0`: focused grounding-context test passed 7/7; `npm run db:test` passed all 10/10 files (77 tests); `npm test` passed 156 tests total (web 5, Worker 62, database 77, evaluation casebook 12); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry-run). WSL `git diff --cached --check` passed for the follow-up implementation, and `git diff --check` was rerun after updating this handoff.
+
+## Root acceptance
+
+Root independently verified the integrated `main` tree in WSL Ubuntu-26.04 using Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` passed all 10 files (77 tests); `npm test` passed 156 tests (web 5, Worker 62, DB 77, casebook 12); `npm run typecheck`, `npm run build` (Vite production build and Wrangler deploy dry-run), and `git diff d45f137..HEAD --check` passed. No deployment occurred. The acceptance and next-work audit are recorded in `docs/DELIVERY_LOG.md`.
 
 ## Limitations and remaining decisions
 

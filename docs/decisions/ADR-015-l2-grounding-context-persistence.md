@@ -1,6 +1,6 @@
 # ADR-015 — Persisted Layer 2 grounding-context boundary
 
-- **Status:** Accepted for local implementation
+- **Status:** Accepted; local persistence implementation integrated at `6effd54`
 - **Date:** 26 September 2026
 - **Owner:** Root planner
 - **Requirements:** FR-05/06/07; NFR-01/05/07
@@ -22,6 +22,8 @@ RAG-CORE returns bounded evidence candidates and RAG-ACCESS-01 gives its query a
 ## Consequences
 
 L3 can depend on an immutable, dataset-scoped context record without owning Layer 2 retrieval or its grounding decision. The canonical stored context avoids retaining retrieved text a second time. PGlite role tests prove local repository invariants only; hosted PostgreSQL/Neon locking, service-role membership, source rights, retrieval quality, and sufficiency remain unverified.
+
+Migration 010 and the typed writer are accepted locally. Root reviewed the task branch and independently passed the WSL database suite (10 files, 77 tests), full workspace suite (156 tests), typecheck, build, and diff checks. This accepts the persistence boundary only; it does not authorize Worker/Neon wiring or a sufficiency/factuality claim.
 
 ## Alternatives considered
 
