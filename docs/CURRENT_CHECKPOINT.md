@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** PUB-WRITE-CORE is accepted as a local synthetic implementation; source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
+**Reason:** PUB-WRITE-CORE is accepted as a local synthetic implementation; GEO-STORE-CORE is the next local slice. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -10,6 +10,10 @@
 Local `main` includes root-reviewed EVAL-01-TOOLS at merge `9f80600`, API-PROJECT-CORE at root integration commits `c383faa` and `249c5e2`, and PUB-WRITE-CORE at merge `b2fb994`. The accepted project work includes BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01, PUB-POLICY-CORE, API-PROJECT-CORE, PUB-WRITE-CORE, and the synthetic-only casebook contract/validator. EVAL-01 real case collection remains planned because source/data rights are pending. Perry Tjahya and Jesaya Hamonangan Gaudensius Malau are identified as future independent reviewers; no human labels were created. Implemented fixtures remain synthetic, and historical/synthetic datasets cannot receive publishable policy dispositions.
 
 ## Latest work and files
+
+### GEO-STORE-CORE — assigned
+
+This local-only task adds the missing typed L1 persistence operation for source-backed geometry. It is constrained to exact CRS84 geometry storage and persisted `supports` references, with a narrow L1 role grant and PGlite tests. No geometry is geocoded, expanded into a danger area, published, or treated as semantically verified. Fixtures remain synthetic; source rights are unchanged.
 
 ### API-PROJECT-CORE — accepted
 
