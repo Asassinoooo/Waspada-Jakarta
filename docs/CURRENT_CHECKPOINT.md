@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** OBS-01-API-TELEMETRY-CORE is accepted on `main` at integration `8135a90` after root review and independent WSL verification. The synthetic API now emits sampled structured records containing only a fixed route category, HTTP status and duration; the sink is injectable and fails open. Root passed the full suite (163/163), typecheck, Vite/Wrangler build and diff checks. No Worker was deployed; Cloudflare log collection remains unverified. Source/data rights, human-labelled evaluation, model selection, moderator authorization, hosted Neon behavior, and full-stack monitoring remain pending.
+**Reason:** OBS-01-API-TELEMETRY-CORE is accepted on `main` at integration `8135a90` after root review and independent WSL verification. The synthetic API now emits sampled structured records containing only a fixed route category, HTTP status and duration; the sink is injectable and fails open. Root passed the full suite (163/163), typecheck, Vite/Wrangler build and diff checks. The next ready slice, OBS-01-L2-RETRIEVAL-TELEMETRY-CORE, is assigned on an isolated branch/worktree and has not started. No Worker was deployed; Cloudflare log collection remains unverified. Source/data rights, human-labelled evaluation, model selection, moderator authorization, hosted Neon behavior, and full-stack monitoring remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
