@@ -388,13 +388,10 @@ function readTimeScope(value: unknown, code: PublicProjectionErrorCode): TimeSco
 
   const startIsDate = isDateOnly(start);
   const endIsDate = isDateOnly(end);
-  if (startIsDate && endIsDate) {
-    if (end < start) fail(code);
-    return { start, end, precision };
-  }
-  const rangeStart = readDateTime(start, code);
-  const rangeEnd = readDateTime(end, code);
-  if (Date.parse(rangeEnd) < Date.parse(rangeStart)) fail(code);
+  const rangeStart = startIsDate ? readDateOnly(start, code) : readDateTime(start, code);
+  const rangeEnd = endIsDate ? readDateOnly(end, code) : readDateTime(end, code);
+  if (startIsDate && endIsDate && rangeEnd < rangeStart) fail(code);
+  if (!startIsDate && !endIsDate && Date.parse(rangeEnd) < Date.parse(rangeStart)) fail(code);
   return { start: rangeStart, end: rangeEnd, precision };
 }
 
