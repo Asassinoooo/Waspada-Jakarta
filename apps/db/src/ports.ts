@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createSqlEvidenceRetrievalRepository, type EvidenceRetrievalRepository } from './evidence-retrieval.js';
 import { createSqlEvidenceChunkRepository, type EvidenceChunkRepository } from './evidence-chunks.js';
 import { SqlAcquisitionJobRepository, type AcquisitionJobRepository } from './queue.js';
-import type { SqlExecutor } from './sql.js';
+import type { SqlExecutor, SqlTransactionRunner } from './sql.js';
 
 export type DatasetKind = 'live' | 'historical' | 'synthetic';
 export type JsonObject = Readonly<Record<string, unknown>>;
@@ -100,6 +100,15 @@ export interface ReportRevisionRepository {
   createEvidenceReference(input: NewEvidenceReference): Promise<string>;
 }
 
+export class ReportRevisionConflictError extends Error {
+  readonly code = 'report_revision_conflict' as const;
+
+  constructor() {
+    super('report_revision_conflict');
+    this.name = 'ReportRevisionConflictError';
+  }
+}
+
 export interface TraceAuditRepository {
   createTrace(input: TraceRecord): Promise<void>;
   finishTrace(
@@ -157,79 +166,143 @@ class SqlReportRevisionRepository implements ReportRevisionRepository {
 
   async create(input: NewReportRevision): Promise<void> {
     validateRevision(input);
-    await this.executor.query(
-      `INSERT INTO waspada.report_revisions
-         (dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
-          source_revision_key, content_hash, permitted_text, permitted_text_hash,
-          normalization_version, published_at, observed_at, retrieved_at, valid_from,
-          valid_until, supersedes_id, revision_status, record_json)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb)`,
-      [
-        input.datasetKind,
-        input.reportRevisionId,
-        input.traceId,
-        input.sourceId,
-        input.canonicalUrl,
-        input.sourceRevisionKey,
-        input.contentHash,
-        input.permittedText,
-        input.permittedTextHash,
-        input.normalizationVersion,
-        input.publishedAt,
-        input.observedAt,
-        input.retrievedAt,
-        input.validFrom,
-        input.validUntil,
-        input.supersedesId,
-        input.revisionStatus,
-        JSON.stringify(input.recordJson),
-      ],
-    );
+    await withOptionalTransaction(this.executor, async (executor) => {
+      await executor.query(
+        `INSERT INTO waspada.report_revisions
+           (dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+            source_revision_key, content_hash, permitted_text, permitted_text_hash,
+            normalization_version, published_at, observed_at, retrieved_at, valid_from,
+            valid_until, supersedes_id, revision_status, record_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb)
+         ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
+        revisionParameters(input),
+      );
+
+      const verification = await executor.query<{ matches: boolean }>(
+        `SELECT r.trace_id IS NOT DISTINCT FROM $3::text
+                  AND r.source_id IS NOT DISTINCT FROM $4::text
+                  AND r.canonical_url IS NOT DISTINCT FROM $5::text
+                  AND r.source_revision_key IS NOT DISTINCT FROM $6::text
+                  AND r.content_hash IS NOT DISTINCT FROM $7::text
+                  AND r.permitted_text IS NOT DISTINCT FROM $8::text
+                  AND r.permitted_text_hash IS NOT DISTINCT FROM $9::text
+                  AND r.normalization_version IS NOT DISTINCT FROM $10::text
+                  AND r.published_at IS NOT DISTINCT FROM $11::timestamptz
+                  AND r.observed_at IS NOT DISTINCT FROM $12::timestamptz
+                  AND r.retrieved_at IS NOT DISTINCT FROM $13::timestamptz
+                  AND r.valid_from IS NOT DISTINCT FROM $14::timestamptz
+                  AND r.valid_until IS NOT DISTINCT FROM $15::timestamptz
+                  AND r.supersedes_id IS NOT DISTINCT FROM $16::text
+                  AND r.revision_status IS NOT DISTINCT FROM $17::text
+                  AND r.record_json = $18::jsonb AS matches
+         FROM waspada.report_revisions AS r
+         WHERE r.dataset_kind = $1 AND r.report_revision_id = $2`,
+        revisionParameters(input),
+      );
+      if (verification.rows[0]?.matches !== true) throw new ReportRevisionConflictError();
+    });
   }
 
   async findById(datasetKind: DatasetKind, reportRevisionId: string): Promise<ReportRevisionRecord | null> {
-    const result = await this.executor.query<ReportRevisionRecordRow>(
-      `SELECT dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
-              source_revision_key, content_hash, permitted_text, permitted_text_hash,
-              normalization_version, published_at::text AS published_at,
-              observed_at::text AS observed_at, retrieved_at::text AS retrieved_at,
-              valid_from::text AS valid_from, valid_until::text AS valid_until,
-              supersedes_id, revision_status, record_json
-       FROM waspada.report_revisions
-       WHERE dataset_kind = $1 AND report_revision_id = $2`,
-      [datasetKind, reportRevisionId],
-    );
-    const row = result.rows[0];
-    return row ? mapReportRevision(row) : null;
+    return findReportRevision(this.executor, datasetKind, reportRevisionId);
   }
 
   async createEvidenceReference(input: NewEvidenceReference): Promise<string> {
-    const revision = await this.findById(input.datasetKind, input.reportRevisionId);
-    if (!revision) {
-      throw new Error(`Report revision not found in dataset ${input.datasetKind}: ${input.reportRevisionId}`);
-    }
-    if (revision.permittedTextHash !== input.permittedTextHash) {
-      throw new Error('Evidence reference hash does not match its immutable report revision');
-    }
-    const codePointLength = Array.from(revision.permittedText).length;
-    if (!Number.isInteger(input.spanStart) || !Number.isInteger(input.spanEnd)
-      || input.spanStart < 0 || input.spanEnd <= input.spanStart || input.spanEnd > codePointLength) {
-      throw new Error('Evidence span must be a non-empty Unicode code-point range within the report revision');
-    }
+    return withOptionalTransaction(this.executor, async (executor) => {
+      const revision = await findReportRevision(executor, input.datasetKind, input.reportRevisionId);
+      if (!revision) {
+        throw new Error(`Report revision not found in dataset ${input.datasetKind}: ${input.reportRevisionId}`);
+      }
+      if (revision.permittedTextHash !== input.permittedTextHash) {
+        throw new Error('Evidence reference hash does not match its immutable report revision');
+      }
+      const codePointLength = Array.from(revision.permittedText).length;
+      if (!Number.isInteger(input.spanStart) || !Number.isInteger(input.spanEnd)
+        || input.spanStart < 0 || input.spanEnd <= input.spanStart || input.spanEnd > codePointLength) {
+        throw new Error('Evidence span must be a non-empty Unicode code-point range within the report revision');
+      }
 
-    const result = await this.executor.query<{ evidence_ref_id: string | number | bigint }>(
-      `INSERT INTO waspada.evidence_references
-         (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
-          span_start, span_end, offset_unit, relation)
-       VALUES ($1, $2, $3, $4, $5, $6, 'unicode_code_points', $7)
-       RETURNING evidence_ref_id`,
-      [input.datasetKind, input.traceId, input.reportRevisionId, input.permittedTextHash,
-        input.spanStart, input.spanEnd, input.relation],
-    );
-    const id = result.rows[0]?.evidence_ref_id;
-    if (id === undefined) throw new Error('Database did not return the evidence reference ID');
-    return String(id);
+      const result = await executor.query<{ evidence_ref_id: string | number | bigint }>(
+        `INSERT INTO waspada.evidence_references
+           (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
+            span_start, span_end, offset_unit, relation)
+         VALUES ($1, $2, $3, $4, $5, $6, 'unicode_code_points', $7)
+         ON CONFLICT (dataset_kind, report_revision_id, permitted_text_hash,
+                      span_start, span_end, offset_unit, relation) DO NOTHING
+         RETURNING evidence_ref_id`,
+        [input.datasetKind, input.traceId, input.reportRevisionId, input.permittedTextHash,
+          input.spanStart, input.spanEnd, input.relation],
+      );
+      const insertedId = result.rows[0]?.evidence_ref_id;
+      if (insertedId !== undefined) return String(insertedId);
+
+      const existing = await executor.query<{ evidence_ref_id: string | number | bigint }>(
+        `SELECT evidence_ref_id
+         FROM waspada.evidence_references
+         WHERE dataset_kind = $1 AND report_revision_id = $2 AND permitted_text_hash = $3
+           AND span_start = $4 AND span_end = $5 AND offset_unit = 'unicode_code_points'
+           AND relation = $6`,
+        [input.datasetKind, input.reportRevisionId, input.permittedTextHash,
+          input.spanStart, input.spanEnd, input.relation],
+      );
+      const existingId = existing.rows[0]?.evidence_ref_id;
+      if (existingId === undefined) throw new Error('Database did not return the existing evidence reference ID');
+      return String(existingId);
+    });
   }
+}
+
+function withOptionalTransaction<Result>(
+  executor: SqlExecutor,
+  work: (transaction: SqlExecutor) => Promise<Result>,
+): Promise<Result> {
+  const transactionRunner = executor as SqlExecutor & Partial<SqlTransactionRunner>;
+  return transactionRunner.transaction
+    ? transactionRunner.transaction(work)
+    : work(executor);
+}
+
+function revisionParameters(input: NewReportRevision): readonly unknown[] {
+  return [
+    input.datasetKind,
+    input.reportRevisionId,
+    input.traceId,
+    input.sourceId,
+    input.canonicalUrl,
+    input.sourceRevisionKey,
+    input.contentHash,
+    input.permittedText,
+    input.permittedTextHash,
+    input.normalizationVersion,
+    input.publishedAt,
+    input.observedAt,
+    input.retrievedAt,
+    input.validFrom,
+    input.validUntil,
+    input.supersedesId,
+    input.revisionStatus,
+    JSON.stringify(input.recordJson),
+  ];
+}
+
+async function findReportRevision(
+  executor: SqlExecutor,
+  datasetKind: DatasetKind,
+  reportRevisionId: string,
+): Promise<ReportRevisionRecord | null> {
+  const result = await executor.query<ReportRevisionRecordRow>(
+    `SELECT dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+            source_revision_key, content_hash, permitted_text, permitted_text_hash,
+            normalization_version, published_at::text AS published_at,
+            observed_at::text AS observed_at, retrieved_at::text AS retrieved_at,
+            valid_from::text AS valid_from, valid_until::text AS valid_until,
+            supersedes_id, revision_status, record_json
+     FROM waspada.report_revisions
+     WHERE dataset_kind = $1 AND report_revision_id = $2`,
+    [datasetKind, reportRevisionId],
+  );
+  const row = result.rows[0];
+  return row ? mapReportRevision(row) : null;
 }
 
 class SqlTraceAuditRepository implements TraceAuditRepository {

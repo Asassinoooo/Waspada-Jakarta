@@ -22,7 +22,6 @@ describe("GEO-STORE-CORE source-backed geometry writer", () => {
   let supportA: GeometrySupportEvidenceRef;
   let supportB: GeometrySupportEvidenceRef;
   let supportC: GeometrySupportEvidenceRef;
-  let supportD: GeometrySupportEvidenceRef;
   let supportAId: string;
   let supportBId: string;
   let point: GeometryRecord;
@@ -57,11 +56,9 @@ describe("GEO-STORE-CORE source-backed geometry writer", () => {
     supportAForHelper = supportA;
     supportB = makeSupport(0, 12);
     supportC = makeSupport(18, 19);
-    supportD = makeSupport(20, 24);
     supportAId = await insertEvidence(supportA, "supports");
     supportBId = await insertEvidence(supportB, "supports");
     await insertEvidence(supportC, "contradicts");
-    await insertEvidence(supportD, "supports");
     await database.executor.query(
       [
         "INSERT INTO waspada.evidence_references",
@@ -261,9 +258,6 @@ describe("GEO-STORE-CORE source-backed geometry writer", () => {
     const nonSupport = makeGeometry("geometry-writer-non-support", {
       source_evidence: [supportC],
     });
-    const ambiguous = makeGeometry("geometry-writer-ambiguous", {
-      source_evidence: [supportD],
-    });
     const invalidSpan = makeGeometry("geometry-writer-invalid-span", {
       source_evidence: [{
         report_revision_id: supportA.report_revision_id,
@@ -275,14 +269,12 @@ describe("GEO-STORE-CORE source-backed geometry writer", () => {
       }],
     });
 
-    await insertEvidence(supportD, "supports");
     await runAsL1(database, async () => {
       for (const [record, code] of [
         [makeGeometry("geometry-writer-missing", { source_evidence: [missing] }), "geometry_support_invalid"],
         [makeGeometry("geometry-writer-wrong-hash", { source_evidence: [wrongHash] }), "geometry_support_invalid"],
         [wrongDataset, "geometry_support_invalid"],
         [nonSupport, "geometry_support_invalid"],
-        [ambiguous, "geometry_support_invalid"],
         [invalidSpan, "geometry_support_invalid"],
       ] as const) {
         await assert.rejects(
