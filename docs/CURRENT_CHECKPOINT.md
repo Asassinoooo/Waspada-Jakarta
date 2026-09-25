@@ -20,7 +20,7 @@ Root updated `docs/assignments/JOB-01.md`, `docs/IMPLEMENTATION_BACKLOG.md`, `do
 ## Limits and next work
 
 - JOB-01 is accepted as local queue behavior. PGlite uses one in-memory database connection and cannot prove locking across concurrent PostgreSQL sessions; Neon and hosted Worker behavior remain unverified.
-- Root has split the locally testable portion of DATA-02 into `DATA-02-CORE`: deterministic L1 normalization, scoped contact redaction, Unicode code-point chunking, content hashes, and persistence/invalidation against the existing chunk schema with synthetic fixtures only. Its assignment is `docs/assignments/DATA-02-CORE.md`; the task has not yet been delegated or implemented.
+- Root has split the locally testable portion of DATA-02 into `DATA-02-CORE`: deterministic L1 normalization, scoped contact redaction, Unicode code-point chunking, content hashes, and persistence/invalidation against the existing chunk schema with synthetic fixtures only. Its assignment is `docs/assignments/DATA-02-CORE.md`; GPT-6 Luna Max is implementing it on `work/DATA-02-core-text-pipeline` in `.codex-build/worktrees/data-02-core`.
 - Future live operation still needs source reuse/attribution/rate/retention approval and non-empty source field mapping; human-adjudicated evaluation labels; a no-cost backup/restore/deletion path; model/provider selection and quota; basemap/geocoder/privacy terms; and measured Cloudflare/Neon behavior.
 - No live-source activation, model call, cloud provisioning, paid service, or production deployment is enabled.
 
