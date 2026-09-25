@@ -1,6 +1,6 @@
 # DB-TEST-RUNNER-CORE — Reliable aggregate DB test execution
 
-**Status:** Assigned for diagnosis and bounded repair.
+**Status:** Investigated; the reported failure was not reproduced, so no runner change was made.
 
 ## Objective
 
@@ -49,4 +49,4 @@ Run one aggregate test command at a time. Do not run PGlite suites concurrently 
 - **Other checks:** `npm run typecheck` passed. `npm run build` passed the Vite production build and Wrangler deploy dry-run. `git diff --check` passed after the handoff edit.
 - **Root-cause conclusion:** The historical aggregate exit 1 without a test summary was not reproducible in this clean assigned worktree during either isolated aggregate run. The recorded historical attempts provide no failure summary or other diagnostic evidence from which to establish a root cause. Although the default runner executes DB test files in parallel and each file creates a PGlite instance, the two passing runs do not establish that concurrency caused the earlier exits. No concurrency override or other unsupported workaround was added.
 - **Commits:** No implementation fix commit was warranted because no defect or fix was established. Handoff commit: `docs(DB-TEST-RUNNER-CORE): record aggregate verification and non-reproduction` (SHA is reported by the implementer with the branch handoff).
-- **Remaining limitation/decision:** Root should decide whether to accept the repeated passing aggregate evidence or provide a reproducible failing environment/log before any runner change is authorized. The earlier exit-1 remains unexplained; it is not reported as fixed.
+- **Root review disposition:** The current passing WSL aggregate evidence is accepted for the main-branch checkpoint. No test-runner fix is claimed. The historical exit 1 remains unresolved; reopen this diagnosis if a failing environment or log becomes available.
