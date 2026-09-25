@@ -11,9 +11,9 @@ Local `main` includes root-reviewed EVAL-01-TOOLS at merge `9f80600`, API-PROJEC
 
 ## Latest work and files
 
-### GEO-STORE-CORE — assigned
+### GEO-STORE-CORE — in progress
 
-This local-only task adds the missing typed L1 persistence operation for source-backed geometry. It is constrained to exact CRS84 geometry storage and persisted `supports` references, with a narrow L1 role grant and PGlite tests. No geometry is geocoded, expanded into a danger area, published, or treated as semantically verified. Fixtures remain synthetic; source rights are unchanged.
+Assigned on `work/GEO-STORE-CORE-source-backed-geometry` in `.codex-build/worktrees/geo-store-core`. This local-only task adds the missing typed L1 persistence operation for source-backed geometry. It is constrained to exact CRS84 geometry storage and persisted `supports` references, with a narrow L1 role grant and PGlite tests. No geometry is geocoded, expanded into a danger area, published, or treated as semantically verified. Fixtures remain synthetic; source rights are unchanged.
 
 ### API-PROJECT-CORE — accepted
 

@@ -1,9 +1,10 @@
 # GEO-STORE-CORE — Source-backed geometry persistence
 
-- **Status:** Ready for local implementation
+- **Status:** Assigned; implementation in progress
 - **Depends on:** DATA-01, DATA-02-CORE
 - **Requirements:** FR-03/09; NFR-01/07
 - **Architecture:** L1 persistence; stores supplied geometry and its evidence links without geocoding or inference
+- **Branch/worktree:** `work/GEO-STORE-CORE-source-backed-geometry`; `.codex-build/worktrees/geo-store-core`
 - **Owner:** GPT-6 Luna Max implementation agent; root plans and reviews
 
 ## Objective
