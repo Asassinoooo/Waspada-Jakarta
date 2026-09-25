@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { SqlAcquisitionJobRepository, type AcquisitionJobRepository } from './queue.js';
 import type { SqlExecutor } from './sql.js';
 
 export type DatasetKind = 'live' | 'historical' | 'synthetic';
@@ -114,6 +115,7 @@ export interface RepositoryPorts {
   readonly sourceRegistry: SourceRegistryRepository;
   readonly reportRevisions: ReportRevisionRepository;
   readonly tracesAndAudit: TraceAuditRepository;
+  readonly acquisitionJobs: AcquisitionJobRepository;
 }
 
 export function createRepositoryPorts(executor: SqlExecutor): RepositoryPorts {
@@ -121,6 +123,7 @@ export function createRepositoryPorts(executor: SqlExecutor): RepositoryPorts {
     sourceRegistry: new SqlSourceRegistryRepository(executor),
     reportRevisions: new SqlReportRevisionRepository(executor),
     tracesAndAudit: new SqlTraceAuditRepository(executor),
+    acquisitionJobs: new SqlAcquisitionJobRepository(executor),
   };
 }
 

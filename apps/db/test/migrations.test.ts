@@ -11,7 +11,7 @@ describe('DATA-01 migrations', () => {
     testDatabase = await createTestDatabase();
     migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const result = await applyMigrations(testDatabase.executor, migrations);
-    assert.deepEqual(result.applied, ['001_foundation']);
+    assert.deepEqual(result.applied, ['001_foundation', '002_acquisition_jobs']);
     assert.deepEqual(result.skipped, []);
   });
 
@@ -22,12 +22,12 @@ describe('DATA-01 migrations', () => {
   it('applies from empty state and is repeatable with checksum protection', async () => {
     const repeated = await applyMigrations(testDatabase.executor, migrations);
     assert.deepEqual(repeated.applied, []);
-    assert.deepEqual(repeated.skipped, ['001_foundation']);
+    assert.deepEqual(repeated.skipped, ['001_foundation', '002_acquisition_jobs']);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '1');
+    assert.equal(count.rows[0]?.count, '2');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -46,17 +46,17 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 001_foundation/,
+      /Cannot apply migration 000_late_backfill before already applied migration 002_acquisition_jobs/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
       'SELECT version FROM waspada.schema_migrations ORDER BY version',
     );
-    assert.deepEqual(ledger.rows, [{ version: '001_foundation' }]);
+    assert.deepEqual(ledger.rows, [{ version: '001_foundation' }, { version: '002_acquisition_jobs' }]);
   });
 
   it('loads only ordered, named SQL migrations', async () => {
-    assert.deepEqual(migrations.map(({ version }) => version), ['001_foundation']);
+    assert.deepEqual(migrations.map(({ version }) => version), ['001_foundation', '002_acquisition_jobs']);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
     );
