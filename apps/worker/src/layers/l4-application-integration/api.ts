@@ -1,6 +1,10 @@
 import type { EventPage, PublicContext } from "../../contracts/public-api.js";
 import { noConfiguredSources } from "../l1-data-knowledge/source-status.js";
-import { noOpTelemetry } from "../l5-evaluation-monitoring/telemetry.js";
+import {
+  API_REQUEST_EVENT_NAME,
+  noOpTelemetry,
+  type TelemetrySink,
+} from "../l5-evaluation-monitoring/telemetry.js";
 import { PublicReadModel, QueryValidationError } from "./public-read-model.js";
 
 export interface WorkerEnvironment {
@@ -24,7 +28,11 @@ function apiError(code: string, message: string, status: number) {
   return jsonResponse({ code, message, request_id: crypto.randomUUID() }, status);
 }
 
-export async function handlePublicApiRequest(request: Request, env: WorkerEnvironment) {
+export async function handlePublicApiRequest(
+  request: Request,
+  env: WorkerEnvironment,
+  telemetry: TelemetrySink = noOpTelemetry,
+) {
   const startedAt = Date.now();
   const url = new URL(request.url);
   const route =
@@ -59,11 +67,17 @@ export async function handlePublicApiRequest(request: Request, env: WorkerEnviro
         ? apiError("INVALID_REQUEST", error.message, 400)
         : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500);
   } finally {
-    noOpTelemetry.record({
-      route,
-      status: response?.status ?? 500,
-      durationMs: Math.max(0, Date.now() - startedAt),
-    });
+    try {
+      const elapsedMs = Date.now() - startedAt;
+      telemetry.record({
+        eventName: API_REQUEST_EVENT_NAME,
+        route,
+        status: response?.status ?? 500,
+        durationMs: Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0,
+      });
+    } catch {
+      // Request telemetry is best-effort and must never change the API response.
+    }
   }
 
   return response ?? apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500);

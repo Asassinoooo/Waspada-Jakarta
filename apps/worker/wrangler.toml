@@ -5,3 +5,10 @@ send_metrics = false
 
 [vars]
 DATASET_MODE = "demo"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.01
+
+[observability.logs]
+invocation_logs = false
