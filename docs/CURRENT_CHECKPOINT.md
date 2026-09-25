@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** L1-WRITE-IDEMPOTENCY-CORE is accepted as a local synthetic persistence slice. The next candidate is a credential-free synthetic queue-to-fixture pipeline using caller-authored revision IDs, permitted text, geometry roles, and exact evidence spans. Parser-only `sourceCreatedAt`, `providerStatus`, and `reportType` remain transient because schema 2.0 has no approved persistence mapping; `created_at` must not become incident observation or publication time. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
+**Reason:** L1-WRITE-IDEMPOTENCY-CORE is accepted, and L1-FIXTURE-PIPE-CORE is assigned as the next local synthetic slice. It uses caller-authored revision IDs, permitted text, geometry roles, and exact evidence spans. Parser-only `sourceCreatedAt`, `providerStatus`, and `reportType` remain transient because schema 2.0 has no approved persistence mapping; `created_at` must not become incident observation or publication time. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -19,7 +19,11 @@ Root independently passed WSL Ubuntu-26.04 checks with native Linux Node.js `v24
 
 ### L1-WRITE-IDEMPOTENCY-CORE — accepted
 
-Root reviewed and integrated `work/L1-WRITE-IDEMPOTENCY-CORE` at `59e59e8`, from implementation commit `c333ecd` and handoff commit `aa31f9a`. The writer inserts on the caller's dataset/revision key, compares every immutable typed field and JSONB record on retry, and returns a stable typed conflict for any changed payload. Evidence references use a database-enforced natural key and preserve their first trace on replay. Migration 007 refuses duplicate legacy identities without changing their rows and adds no role grants. Root independently passed `npm run db:test` 60/60, `npm test` 129/129 (web 5, Worker 52, database 60, evaluation 12), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and WSL `git diff --check` using Node.js `v24.21.0` and npm `11.19.0`. A test-only GEO-STORE-CORE ambiguity fixture was removed because duplicate evidence references are no longer representable after migration 007. PGlite does not establish multi-session hosted PostgreSQL/Neon concurrency. The queue-to-fixture pipeline remains a later local slice.
+Root reviewed and integrated `work/L1-WRITE-IDEMPOTENCY-CORE` at `59e59e8`, from implementation commit `c333ecd` and handoff commit `aa31f9a`. The writer inserts on the caller's dataset/revision key, compares every immutable typed field and JSONB record on retry, and returns a stable typed conflict for any changed payload. Evidence references use a database-enforced natural key and preserve their first trace on replay. Migration 007 refuses duplicate legacy identities without changing their rows and adds no role grants. Root independently passed `npm run db:test` 60/60, `npm test` 129/129 (web 5, Worker 52, database 60, evaluation 12), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and WSL `git diff --check` using Node.js `v24.21.0` and npm `11.19.0`. A test-only GEO-STORE-CORE ambiguity fixture was removed because duplicate evidence references are no longer representable after migration 007. PGlite does not establish multi-session hosted PostgreSQL/Neon concurrency. The next local processor is assigned below.
+
+### L1-FIXTURE-PIPE-CORE — assigned
+
+Assigned to `work/L1-FIXTURE-PIPE-CORE` in `.codex-build/worktrees/l1-fixture-pipe-core` after acceptance of retry-safe L1 writes. The processor receives an already-claimed synthetic moderator submission, resolves only an exact injected fixture URL, and persists parser-grounded records plus caller-authored permitted text, stable revision IDs, explicit evidence spans and explicit 2D geometry. Empty fixtures complete with no incident rows and no all-clear meaning. Source creation/status/type metadata stays transient until a separate schema mapping is approved; no live source or event publication is included.
 
 ### API-PROJECT-CORE — accepted
 
