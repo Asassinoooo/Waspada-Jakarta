@@ -38,6 +38,13 @@ All project checks ran in WSL Ubuntu-26.04 using Node `v24.21.0` and npm `11.19.
 - `npm run build` — passed; Vite production build succeeded and Wrangler Worker deploy dry-run completed.
 - `git diff --check` — passed in WSL after writing this handoff. Because the worktree `.git` pointer contains a Windows path, the WSL invocation supplied `GIT_DIR=/mnt/d/Projects/RPL/.git/worktrees/l2-context-persist-core` and `GIT_WORK_TREE=/mnt/d/Projects/RPL/.codex-build/worktrees/l2-context-persist-core`.
 
+## Follow-up schema-parity correction
+
+- Follow-up implementation commit: `25454b5078765161eb7ff232bebd4860f71b0378` — `fix(L2-CONTEXT-PERSIST-CORE): match schema array semantics`.
+- Schema `$defs.Strings` length now counts Unicode code points (`Array.from(value).length`), matching JSON Schema semantics for astral characters. `revision_states` now preserves schema-valid repeated entries because the schema does not declare uniqueness for that array; uniqueness checks remain on the normalized evidence/event/decision link sets and schema-unique prior decision IDs.
+- Added a synthetic PGlite boundary test: 500 astral code points are accepted and persisted, 501 are rejected, and repeated `revision_states` remain intact in JSONB.
+- Follow-up WSL Ubuntu-26.04 checks with Node `v24.21.0` / npm `11.19.0`: focused grounding-context test passed 7/7; `npm run db:test` passed all 10/10 files (77 tests); `npm test` passed 156 tests total (web 5, Worker 62, database 77, evaluation casebook 12); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry-run). WSL `git diff --cached --check` passed for the follow-up implementation, and `git diff --check` was rerun after updating this handoff.
+
 ## Limitations and remaining decisions
 
 Persistence and authorization evidence uses authored synthetic fixtures in PGlite only. It does not establish Neon/hosted PostgreSQL behavior or hosted role membership, and the role is intentionally not wired to a Worker or provider. No retrieval, model assessment, proposal creation, API/publication path, source access, deployment, or live data was introduced. There are no contract or design changes requiring a new decision; root review and integration remain outstanding.
