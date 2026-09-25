@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "casebook_id": "synthetic-validator-fixture-v1",
+  "dataset_kind": "synthetic",
+  "sources": [
+    {
+      "source_id": "synthetic-source-01",
+      "evaluation_use_rights": "not_applicable",
+      "permission_ref": null
+    }
+  ],
+  "held_out_freeze": {
+    "state": "not_frozen",
+    "frozen_at": null
+  },
+  "cases": [
+    {
+      "case_id": "synthetic-case-01",
+      "split": "development",
+      "reports": [
+        {
+          "report_id": "synthetic-report-01",
+          "revision_id": "synthetic-revision-01",
+          "source_id": "synthetic-source-01",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "origin_group_id": null,
+          "content_ref": "synthetic-ref:validator-report-01"
+        }
+      ],
+      "independent_reviews": [],
+      "adjudication": null
+    }
+  ]
+}
