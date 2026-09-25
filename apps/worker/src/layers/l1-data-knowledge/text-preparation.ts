@@ -8,7 +8,7 @@ export const NORMALIZATION_VERSION = "nfkc-lf-contact-redaction-v1";
 export const MAX_PERMITTED_TEXT_CODE_POINTS = MAX_REPORT_CODE_POINTS;
 
 const EMAIL_PATTERN = /(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![A-Z0-9.-])/giu;
-const INDONESIAN_MOBILE_PATTERN = /(?<![A-Z0-9])(?:\+62|62|0)8(?:[ .-]?\d){8,11}(?!\d)/giu;
+const INDONESIAN_MOBILE_PATTERN = /(?<![A-Z0-9])(?:\+62|62|0)[ .-]?8(?:[ .-]?\d){8,11}(?!\d)/giu;
 
 export interface RedactionCounts {
   readonly email: number;
