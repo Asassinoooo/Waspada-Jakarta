@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 25 September 2026
-**Reason:** L1-FIXTURE-PIPE-CORE is accepted on `main` at merge `e5b1647`. The already-leased synthetic moderator-submission processor uses exact injected fixture lookup, caller-authored revision IDs and permitted text, explicit evidence spans and 2D geometry, and completes only after persistence. Parser-only `sourceCreatedAt`, `providerStatus`, and `reportType` remain transient because schema 2.0 has no approved persistence mapping; `created_at` must not become incident observation or publication time. All eight database test files passed individually, but aggregate DB commands exit 1 without a test summary. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
+**Reason:** L1-FIXTURE-PIPE-CORE is accepted on `main` at merge `e5b1647`. The already-leased synthetic moderator-submission processor uses exact injected fixture lookup, caller-authored revision IDs and permitted text, explicit evidence spans and 2D geometry, and completes only after persistence. Parser-only `sourceCreatedAt`, `providerStatus`, and `reportType` remain transient because schema 2.0 has no approved persistence mapping; `created_at` must not become incident observation or publication time. All eight database test files passed individually, but aggregate DB commands exit 1 without a test summary. DB-TEST-RUNNER-CORE is assigned to diagnose that local verification issue. Source/data rights, MOD-01 authorization, a dedicated runtime role and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -24,6 +24,10 @@ Root reviewed and integrated `work/L1-WRITE-IDEMPOTENCY-CORE` at `59e59e8`, from
 ### L1-FIXTURE-PIPE-CORE — accepted
 
 Root reviewed and integrated `work/L1-FIXTURE-PIPE-CORE` at merge `e5b1647` from implementation commit `01c9bac` and handoff commit `ea117d7`. The injected processor receives only an already-leased synthetic moderator submission, looks up its exact URL in an in-memory fixture catalog, builds a closed schema 2.0 unreviewed report from explicit manifest fields, and persists prepared text, support references, deterministic chunks, and only explicitly mapped 2D geometry. It does not claim jobs, fetch sources, update source health, or publish events. Empty fixtures complete with no incident rows or all-clear interpretation; stale or uncertain queue acknowledgements do not issue an unsafe second transition. The Worker suite passes 62/62, typecheck and build pass, the new PGlite integration passes 1/1 under the L1 role, and each of the eight DB test files passed individually. Aggregate `npm run db:test` and `npm test` still exit 1 without a DB failure summary; this remains a runtime-check limitation. PGlite is single-session and does not establish hosted Neon behavior.
+
+### DB-TEST-RUNNER-CORE — assigned
+
+Root assigned [DB-TEST-RUNNER-CORE](assignments/DB-TEST-RUNNER-CORE.md) to diagnose the aggregate PGlite test-runner exit after all eight DB test files passed individually. The task is restricted to the DB test script/harness and does not permit dropping tests or changing product behavior. It runs in `.codex-build/worktrees/db-test-runner-core` on `work/DB-TEST-RUNNER-CORE`.
 
 ### API-PROJECT-CORE — accepted
 
