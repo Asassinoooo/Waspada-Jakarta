@@ -12,7 +12,8 @@ describe('DATA-01 migrations', () => {
     migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const result = await applyMigrations(testDatabase.executor, migrations);
     assert.deepEqual(result.applied, [
-      '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
+      '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
+      '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
     ]);
     assert.deepEqual(result.skipped, []);
   });
@@ -25,13 +26,14 @@ describe('DATA-01 migrations', () => {
     const repeated = await applyMigrations(testDatabase.executor, migrations);
     assert.deepEqual(repeated.applied, []);
     assert.deepEqual(repeated.skipped, [
-      '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
+      '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
+      '004_l2_grounding_reader', '005_publication_write_receipts_outbox',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '4');
+    assert.equal(count.rows[0]?.count, '5');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -50,7 +52,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 004_l2_grounding_reader/,
+      /Cannot apply migration 000_late_backfill before already applied migration 005_publication_write_receipts_outbox/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -61,12 +63,14 @@ describe('DATA-01 migrations', () => {
       { version: '002_acquisition_jobs' },
       { version: '003_evidence_chunk_pipeline_reads' },
       { version: '004_l2_grounding_reader' },
+      { version: '005_publication_write_receipts_outbox' },
     ]);
   });
 
   it('loads only ordered, named SQL migrations', async () => {
     assert.deepEqual(migrations.map(({ version }) => version), [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads', '004_l2_grounding_reader',
+      '005_publication_write_receipts_outbox',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
