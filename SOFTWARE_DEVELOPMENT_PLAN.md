@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Planning baselines, BOOT-01 runtime shell, fixture-backed UI-00 screens, and PLATFORM-01 compatibility report accepted; the complete prototype remains in progress
+**Status:** Planning baselines and partial local implementations (BOOT-01, UI-00, PLATFORM-01, DATA-01, JOB-01, DATA-02-CORE and RAG-CORE) accepted; source/model integration, Layer 2 authorization, publication, and the complete prototype remain in progress
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 

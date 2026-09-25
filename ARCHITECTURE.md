@@ -2,7 +2,7 @@
 
 Delivery scope, requirements and work sequencing are maintained in [SOFTWARE_DEVELOPMENT_PLAN.md](SOFTWARE_DEVELOPMENT_PLAN.md). This file owns the detailed logical architecture; proposed deployment, missing domain contracts and open decisions are tracked in that plan.
 
-Status: target architecture with partial local implementation. The repository contains the React/TypeScript demo shell, a modular Worker read API, and DATA-01's local PostgreSQL persistence foundation; source pipelines, model integrations, durable workflows and publication services remain planned. The five layers describe logical responsibilities, not five microservices. The current physical target is React/TypeScript assets and a modular TypeScript API on Cloudflare Workers, bounded Cloudflare Workflows for asynchronous execution, and Neon Free Postgres with PostGIS/pgvector. Free-tier limits and failure behavior are specified in [ADR-010](docs/decisions/ADR-010-cloudflare-neon-free.md).
+Status: target architecture with partial local implementation. The repository contains a React/TypeScript demo shell, modular Worker read API, typed L2 model contracts, a synthetic GeoJSON fixture parser, deterministic L1 text preparation and chunk persistence, and DATA-01's local PostgreSQL foundation. RAG-CORE adds a read-only hybrid evidence retrieval repository and thin Worker adapter; it returns evidence candidates only and does not assess sufficiency, create proposals or start L3. A dedicated least-privilege L2 read role is assigned in RAG-ACCESS-01. Worker/database wiring, source polling, provider-backed models, durable workflows and publication services remain planned. The five layers describe logical responsibilities, not five microservices. The current physical target is React/TypeScript assets and a modular TypeScript API on Cloudflare Workers, bounded Cloudflare Workflows for asynchronous execution, and Neon Free Postgres with PostGIS/pgvector. Free-tier limits and failure behavior are specified in [ADR-010](docs/decisions/ADR-010-cloudflare-neon-free.md).
 
 ## 1. Architecture and boundaries
 
@@ -49,6 +49,8 @@ Proposed persistence is PostgreSQL with PostGIS and pgvector. Relational records
 
 Evidence chunks reference a report revision and stable offsets in its normalized text. Embeddings retain chunk ID, embedding model/version, dimension and text hash. Strip unnecessary personal data before embedding or sending data to a hosted model. Store full raw documents only where access/reuse conditions permit; otherwise retain allowed excerpts and hashes. Embeddings assist candidate deduplication and context lookup; they do not establish evidence independence or truth.
 
+The local implementation currently covers synthetic GeoJSON parsing plus deterministic text preparation and chunk metadata persistence. It does not poll a source, persist live source content, or connect the Worker to a hosted database. Source-field mapping, rights, and per-source approval remain activation gates.
+
 Keep unreviewed reports, eligible claims and public event versions logically separate with database roles/views. A correction, withdrawal or privacy deletion invalidates derived chunks, embeddings and retrieval caches. Every retrieval also checks source revision status at read time, so a lagging vector index cannot reinstate withdrawn evidence. Re-embedding after a model change uses a new index version; do not compare vectors from incompatible models.
 
 ## 3. Layer 2 — models and grounding
@@ -71,6 +73,8 @@ Initial grounding runs for every new candidate before autonomy:
 5. Assess support claim by claim. If required evidence is sufficient, produce a proposal for Layer 4 directly. Otherwise create an InvestigationRequest containing the specific gap and the context already searched.
 
 Use strict schema validation at every boundary. Source-span existence and hash checks are deterministic; whether prose actually supports a claim requires an evidence assessment and sometimes human judgement. Schema conformance alone does not prove factual correctness. A novel inference, contradictory source, unknown independence or uncertain semantic support stays unresolved.
+
+The accepted RAG-CORE repository implements bounded exact-identifier/term, report/event-time, source-linked geometry-intersection, and optional exact-embedding-identity distance facets over stored evidence. It returns source/revision state, source and origin lineage, time distinctions, exact offsets, match facets and truncation metadata. Its row-evaluation limit is not a physical database scan or latency bound. Synthetic PGlite coverage runs as the test owner; RAG-ACCESS-01 adds and tests the dedicated `waspada_l2_grounding_reader` grants. Until that task and later Worker/database wiring are accepted, the module is not an application retrieval path. It never sets `GroundingContext.sufficient`, makes a safety/factuality claim, or invokes L3.
 
 ## 4. Layer 3 — bounded investigation
 
