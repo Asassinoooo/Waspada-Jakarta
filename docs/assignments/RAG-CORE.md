@@ -1,6 +1,6 @@
 # RAG-CORE — Deterministic hybrid evidence retrieval
 
-- **Status:** Assigned for local synthetic implementation
+- **Status:** Accepted as a local repository module; read-role and runtime wiring remain gated
 - **Depends on:** DATA-01, DATA-02-CORE, L2-ADAPTER-01
 - **Requirements:** FR-05, FR-06, FR-07; NFR-01, NFR-07
 - **Architecture:** Layer 2 retrieval and grounding; no Layer 3 orchestration
@@ -89,3 +89,11 @@ Synthetic PGlite tests cover contradictory relations, source/revision states, un
 - `git diff --check` — passed in WSL with explicit `GIT_DIR` and `GIT_WORK_TREE` because this Windows-created worktree's `.git` pointer contains a Windows path.
 
 No local schema/repository boundary gap prevented this slice. Dedicated Layer 2 database-role privileges and Worker/Neon wiring remain unverified integration work; no grants were changed. Review and acceptance remain with the root orchestrator.
+
+### Root review and acceptance — 25 September 2026
+
+Root reviewed the complete diff against the assigned paths and requirements, then merged the clean task branch into `main` as `5e739cf` (`merge: accept RAG-CORE bounded evidence retrieval`). The code adds a bounded, dataset-scoped repository query and a thin Worker Layer 2 adapter. It retains contrary evidence, state and provenance, keeps event/report/source times distinct, matches only source-linked geometry, binds semantic distances to the exact active chunk and embedding identity, and exposes truncation and match facets without asserting sufficiency or truth. The diff adds no migration, privilege, dependency, route, public contract, model call, source access, or L3 action.
+
+Root independently ran the required checks in WSL Ubuntu-26.04 against merged `main` using Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` passed 38/38; `npm test` passed 69/69 (web 5, Worker 26, database 38); `npm run typecheck` passed; `npm run build` passed typecheck, Vite production build, and Wrangler deploy dry-run; and `git diff --check origin/main...HEAD` passed. No route changed, so no smoke test was required.
+
+Acceptance is limited to local repository and adapter behavior under the fixture executor. The current migration roles cannot run this query: no dedicated Layer 2 reader has the required extraction, chunk, embedding, geometry, and lineage reads. The owner-level PGlite tests therefore do not establish deployable role access; [RAG-ACCESS-01](RAG-ACCESS-01.md) adds a separate least-privilege role and restricted-role test before RAG-01. `rowsExamined` bounds evidence-reference rows evaluated by the application; it is not a database physical-scan or latency guarantee. PGlite and synthetic vectors do not establish Neon behavior, retrieval quality, or evidence sufficiency. Worker/Neon connection wiring remains later integration work.
