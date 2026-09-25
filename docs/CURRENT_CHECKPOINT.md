@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** L3-LEDGER-CORE and DB-TEST-RUNNER-ISOLATION are accepted on `main`. The sequential DB test launcher reports each child process and preserves failure status; root independently passed 9/9 DB files (68/68), the full workspace suite (147/147), typecheck, build and WSL diff checks. The original silent aggregate exit and one transient silent migration-suite exit remain unexplained; the runner deliberately does not retry or suppress recurrence. No source/model calls, Worker routes, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
+**Reason:** DB-TEST-RUNNER-ISOLATION is accepted on `main`; root independently passed 9/9 DB files (68/68), the full workspace suite (147/147), typecheck, build and WSL diff checks. The original silent aggregate exit and one transient silent migration-suite exit remain unexplained; the runner deliberately does not retry or suppress recurrence. A mismatch was found between schema 2.0 EvidenceRef relations and database storage. L1-EVIDENCE-RELATION-ALIGN-CORE is selected as the next local prerequisite, followed by canonical L2 context persistence. No source/model calls, Worker routes, or publication authority were added. Source/data rights, human-labelled evaluation, model selection, moderator authorization, and hosted Neon behavior remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -42,6 +42,10 @@ Root assigned [DB-TEST-RUNNER-ISOLATION](assignments/DB-TEST-RUNNER-ISOLATION.md
 Root reviewed and fast-forwarded `work/DB-TEST-RUNNER-ISOLATION` to `main` at handoff `805ccd4` (`cac88f9` implementation, `805ccd4` handoff). The database script discovers all `*.test.ts` files in stable order and runs each in a separate Node/tsx process, preserving child output and returning non-zero for failures, spawn errors, and signals. A parent interrupt cancels the active test and marks later files as unrun. No dependencies, test assertions, migrations, lockfiles, or product behavior changed. The runner never retries failures.
 
 Root independently passed WSL Ubuntu-26.04 `npm run db:test` (9/9 files, 68/68 tests), `npm test` (147/147: web 5, Worker 62, DB 68, evaluation 12), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and WSL `git diff --check` with explicit Git directory/worktree paths. The original silent aggregate exit and one transient silent `migrations.test.ts` exit remain unexplained; the final retries and aggregate runs passed, and the runner returns any recurrence as a failure.
+
+### L1-EVIDENCE-RELATION-ALIGN-CORE — selected
+
+The contract audit found that schema 2.0 `EvidenceRef` and L2 model types include `updates`, while the database check and DB `EvidenceRelation` union accept only `supports`, `contradicts`, and `context`. Root recorded [ADR-016](decisions/ADR-016-evidence-reference-relation-alignment.md) and assigned the narrow forward-only storage correction in [L1-EVIDENCE-RELATION-ALIGN-CORE](assignments/L1-EVIDENCE-RELATION-ALIGN-CORE.md). All four relations must persist and retrieve unchanged; `updates` remains distinct from claim support, and the L4 publication policy stays fail-closed. After this prerequisite, the refs-only schema 2.0 grounding-context persistence task in [ADR-015](decisions/ADR-015-l2-grounding-context-persistence.md) is ready. The requested `docs/api/openapi.yaml` restoration was applied from `main` and verified to have no diff.
 
 ### API-PROJECT-CORE — accepted
 
@@ -155,7 +159,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 
 ## Resume point
 
-Resume with root review of JOB-01's WIP, then complete the assigned local queue behavior and WSL tests on `work/JOB-01-durable-queue`. Preserve all existing scope boundaries: no API contract change, external provisioning, live acquisition, model calls, or deployment without separate authorization.
+Resume with the assigned `L1-EVIDENCE-RELATION-ALIGN-CORE` local implementation on `work/L1-EVIDENCE-RELATION-ALIGN-CORE`. Root will review the branch and run WSL checks before accepting it; then proceed to the already specified L2 grounding-context persistence task. Preserve all existing scope boundaries: no public contract change, external provisioning, live acquisition, model calls, or deployment.
 
 ## Autonomous development resumed — 25 September 2026
 
