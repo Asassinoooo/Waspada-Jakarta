@@ -7,7 +7,7 @@
 
 ## Repository state
 
-`main` is locally root-reviewed through the RAG-ACCESS-01 integration and is ready to push with this acceptance update. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, and RAG-ACCESS-01. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. PUB-POLICY-CORE is assigned on a separate worktree.
+`main` and `origin/main` are synchronized through the root-reviewed RAG-ACCESS-01 acceptance. The repository contains accepted BOOT-01, UI-00, PLATFORM-01, DATA-01, ING-PARSE-01, L2-ADAPTER-01, JOB-01, DATA-02-CORE, RAG-CORE, and RAG-ACCESS-01. The project plan follows the five-layer architecture and Cloudflare/Neon Free target. All implementation uses local synthetic fixtures. PUB-POLICY-CORE is assigned on a separate worktree with an explicit rule preventing historical or synthetic fixtures from receiving publishable decisions.
 
 ## Latest work and files
 
