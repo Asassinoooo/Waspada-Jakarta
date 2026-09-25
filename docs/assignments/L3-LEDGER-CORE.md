@@ -1,6 +1,6 @@
 # L3-LEDGER-CORE — Durable investigation requests and checkpoints
 
-**Status:** Assigned for local synthetic implementation.
+**Status:** Accepted on `main` at `32d4678` after root review; implementation `ed0f307`, handoff `32d4678`.
 **Depends on:** DATA-01, RAG-ACCESS-01, ADR-014.
 **Requirements:** FR-07; NFR-02/05/07.
 **Branch/worktree:** `work/L3-LEDGER-CORE`; `.codex-build/worktrees/l3-ledger-core`.
