@@ -94,3 +94,36 @@ Result: passed (exit 0); staged implementation diff also passed git diff --cache
 ```
 
 No runtime JSON Schema dependency was added. Tests parse the schema JSON and assert its version, closed top-level shape, live-data exclusion, and taxonomy parity; semantic validation, including calendar/date-time correctness and per-report label coverage, is exercised by the standalone TypeScript validator tests.
+
+### Coverage follow-up handoff — 25 September 2026
+
+- **Branch/worktree:** `work/EVAL-01-tools`; `D:\Projects\RPL\.codex-build\worktrees\eval-01-tools` (`/mnt/d/Projects/RPL/.codex-build/worktrees/eval-01-tools` in WSL).
+- **Follow-up scope:** implemented the release-readiness coverage requirements from the root-owned assignment amendment at `6bcf7cb` without merging or rebasing this branch.
+- **Parent:** `fa0c5d5c75781351b6335d0ff24e5faf8ee6647e` — `docs(EVAL-01-TOOLS): record implementation handoff`.
+- **Implementation commit:** `bcfed900edce30d2562d50cac0a83e322efaeb78` — `feat(EVAL-01-TOOLS): require category and scenario coverage`.
+- **Changed implementation paths:** `docs/evaluation/CASEBOOK.md`, `docs/evaluation/casebook.schema.json`, `docs/evaluation/fixtures/synthetic-casebook.json`, `tools/evaluation/casebook.ts`, and `tools/evaluation/casebook.test.ts`.
+- **Handoff path:** `docs/assignments/EVAL-01-TOOLS.md` only.
+
+Each case now requires `scenario_tags`, restricted to the four assigned casebook IDs; the checked-in synthetic fixture uses an empty array. Scenario tags are documented and typed as explicit curator coverage metadata, never model output. Readiness returns separate `CATEGORY_COVERAGE_INCOMPLETE` and `SCENARIO_COVERAGE_INCOMPLETE` codes. Category coverage counts only labeled `labels.category` assessments on reconciled adjudications; unknown, disputed, and not-applicable values and labels from pending adjudications do not count. Tests isolate one missing category and one missing scenario, reject missing/unknown/duplicate tags, and verify a structure-only shape with full category/scenario coverage remains non-ready solely because source rights are pending.
+
+The fixture and tests contain only authored synthetic or invented in-memory structures. No checked-in fixture or test value represents actual rights approval, and no report or reviewer data was acquired. No dependency, public contract, migration, API, UI, provider integration, or runtime behavior outside the standalone evaluation validator changed. Actual source rights, reviewer authenticity, label accuracy, representativeness, and release approval remain external decisions.
+
+**Checks run in WSL Ubuntu-26.04 (all passed):**
+
+```text
+Runtime: Node v24.21.0, npm 11.19.0, process.platform=linux.
+
+npm test
+Result: passed — web 5/5, Worker 43/43, DB 40/40, casebook 12/12.
+
+npm run typecheck
+Result: passed — web, Worker, DB, and standalone evaluation tooling TypeScript checks.
+
+npm run build
+Result: passed — included typecheck, Vite production build, and Wrangler deploy dry-run.
+
+git diff --check
+Result: passed (exit 0) with GIT_DIR=/mnt/d/Projects/RPL/.git/worktrees/eval-01-tools and GIT_WORK_TREE=/mnt/d/Projects/RPL/.codex-build/worktrees/eval-01-tools set for the linked worktree.
+```
+
+The WSL Git workaround only supplies the linked worktree metadata paths explicitly because its `.git` pointer contains a Windows path. No source/network/provider/database calls, dependency changes, deployment, push, or merge occurred.
