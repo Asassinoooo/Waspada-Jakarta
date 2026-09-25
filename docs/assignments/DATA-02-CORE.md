@@ -1,6 +1,6 @@
 # DATA-02-CORE — Deterministic text preparation and chunk persistence
 
-- **Status:** Paused at user checkpoint; partial unreviewed WIP is preserved on the assigned branch
+- **Status:** In progress after user resumed the task; implementation is on the assigned branch
 - **Depends on:** DATA-01, L2-ADAPTER-01
 - **Requirements:** FR-03, NFR-07
 - **Architecture:** Layer 1 processing and persistence; independent of L2 providers and L3 orchestration
@@ -29,11 +29,16 @@ Create a deterministic local path from already permission-screened report text t
 - Chunk the exact normalized permitted text with bounded size/count and deterministic overlap. Emit stable IDs, `chunker_version`, `chunk_text_hash`, and zero-based, end-exclusive Unicode code-point spans. Every span must resolve exactly to its chunk text in the immutable revision. Align output fields with L2 `EvidenceChunkInput` without invoking an L2 capability.
 - Add a typed DB repository operation that verifies dataset, revision, normalization version, text hash, chunk hashes, and spans against the persisted immutable `report_revisions` row. Store only chunk metadata and offsets in `evidence_chunks`; do not duplicate the text or write embeddings/vectors.
 - Make persistence retries idempotent and reject an existing chunk ID with different lineage or content. When reprocessing the same immutable revision with a new chunker version, invalidate superseded active chunks and their available embedding-run metadata as one atomic database operation. Do not delete vector rows or mutate the report revision. If the existing executor/schema cannot support these guarantees, report the exact gap to root rather than changing a migration or contract unilaterally.
+- Exercise the repository under `SET ROLE waspada_l1_pipeline`, not only as the migration owner. The L1 role must have only the column-level read access it needs for idempotent collision checks and old-chunk/embedding-run invalidation.
 - Add meaningful unit and PGlite tests for Unicode/combining marks, emoji, privacy redaction, deterministic hashes/IDs, complete span coverage and overlap, size bounds, idempotence, dataset isolation, immutable revision checks, and old chunk/embedding invalidation. Use only clearly synthetic text and identities.
 
 ## Explicit exclusions
 
-No network access, live acquisition, ingestion scheduler changes, source approval, raw source persistence, model/provider call, embedding generation, gazetteer/geocoding, location or event extraction, entity truth claims, RAG retrieval, publication, API/OpenAPI or UI change, new dependency, database migration, cloud account, secret, paid service, or deployment. DATA-02 and RAG-01 remain separate follow-on work.
+No network access, live acquisition, ingestion scheduler changes, source approval, raw source persistence, model/provider call, embedding generation, gazetteer/geocoding, location or event extraction, entity truth claims, RAG retrieval, publication, API/OpenAPI or UI change, new dependency, any migration other than the exact additive role-grant migration authorized below, cloud account, secret, paid service, or deployment. DATA-02 and RAG-01 remain separate follow-on work.
+
+## Root-approved scope clarification — least-privilege L1 reads
+
+A synthetic `SET ROLE waspada_l1_pipeline` persistence check confirmed SQLSTATE `42501` (`permission denied for table evidence_chunks`) in the atomic write: DATA-01 grants the L1 role `INSERT` on `evidence_chunks` and `UPDATE(status)` on chunks/runs but no `SELECT`, while collision and invalidation predicates must read existing metadata. The operation wrote no rows. Root therefore authorizes exactly one additive migration, `apps/db/migrations/003_evidence_chunk_pipeline_reads.sql`, plus migration and repository tests. Grant column-level `SELECT` on `evidence_chunks` for `dataset_kind`, `chunk_id`, `report_revision_id`, `permitted_text_hash`, `span_start`, `span_end`, `offset_unit`, `chunker_version`, `chunk_text_hash`, and `status`; and on `embedding_runs` for `dataset_kind`, `embedding_run_id`, `chunk_id`, and `status`. Do not grant table-wide `SELECT`, expose vectors or source text, alter migration 001/002, or expand any other role privilege. The repository test must exercise insert/retry and invalidation under `SET ROLE waspada_l1_pipeline` and verify that vector rows remain present.
 
 ## Allowed paths
 
@@ -42,16 +47,17 @@ No network access, live acquisition, ingestion scheduler changes, source approva
 - `apps/worker/package.json`
 - `apps/db/src/**`
 - `apps/db/test/**`
+- `apps/db/migrations/003_evidence_chunk_pipeline_reads.sql` only, under the scope clarification above
 - This assignment's implementation handoff only
 
-Root owns the backlog, architecture, and other planning documents. Do not change L2 contracts, database migrations, package lockfiles, root package manifests, public API contracts, or other assignments. If a new schema or executor contract is necessary, stop and ask root for a bounded scope decision.
+Root owns the backlog, architecture, and other planning documents. Do not change L2 contracts, database migrations other than the exact 003 grant migration authorized above, package lockfiles, root package manifests, public API contracts, or other assignments. If a new schema or executor contract beyond that grant is necessary, stop and ask root for a bounded scope decision.
 
 ## Acceptance and checks
 
 - Processing is a pure Layer 1 transform before orchestration; repeat inputs produce byte-identical output and metadata.
 - Hashes bind to the exact UTF-8 text, and offsets/counts use Unicode code points end to end. Sensitive fixture values are absent from persisted/logged metadata.
 - Chunks preserve all normalized text through exact spans and declared overlap. Existing version rows are retained as invalidated history; current output is retry-safe.
-- PGlite proves storage constraints and authorization using synthetic rows, but makes no claim about Neon or multi-session locking.
+- PGlite proves storage constraints and the exact `waspada_l1_pipeline` column privileges using synthetic rows, but makes no claim about Neon or multi-session locking.
 - In WSL Ubuntu-26.04 run `npm run db:test`, `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check`. No smoke test is needed because this task does not change a runtime route.
 - Commit all work on the assigned branch with descriptive messages. Leave the worktree clean and report exact commits, paths, check results, schema/configuration impact, limitations, and unresolved decisions. Do not push or merge.
 
