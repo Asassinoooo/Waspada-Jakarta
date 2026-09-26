@@ -625,3 +625,13 @@ Root independently passed the focused WSL test **5/5** and diff checks. The agen
 ### API-PUBLIC-EVENT-LIST-ROUTE-CORE assigned — 27 September 2026
 
 Root assigned a narrow Worker route adapter for `GET /api/v1/events`. The handler will accept an injected page service, use it only when provided, map typed service errors to the existing API error envelope, and keep the current synthetic `PublicReadModel` path as the default. The slice will not add a Worker environment binding, production key, database connection, deployment configuration, contract or dependency. See the [assignment](assignments/API-PUBLIC-EVENT-LIST-ROUTE-CORE.md).
+
+### API-PUBLIC-EVENT-LIST-ROUTE-CORE accepted — 27 September 2026
+
+Root reviewed the route and tests on `work/API-PUBLIC-EVENT-LIST-ROUTE-CORE`, then cherry-picked agent implementation `6c6e48c` and handoff `498eb6e` to `main` as `63e6458` and `53b1408`. The handler accepts an optional page service for `GET /api/v1/events`, forwards the URL query, and returns its existing `EventPage` unchanged. Typed request failures map to `400 INVALID_REQUEST`; internal service errors map to the existing generic temporary-failure response. The default synthetic reader, non-demo dataset gate, response headers and allowlisted telemetry remain in place.
+
+Root independently passed focused WSL API tests **22/22** and diff checks. The agent passed the full suite (web 22/22, Worker 186/186, DB 16/16 files, evaluation 12/12), typecheck, build and focused tests. No Worker environment, entrypoint, key, database, public contract, dependency or deployment config changed. The injection seam is not wired by the Worker entrypoint. See the [assignment and handoff](assignments/API-PUBLIC-EVENT-LIST-ROUTE-CORE.md).
+
+### DB-HYPERDRIVE-SQL-EXECUTOR-CORE assigned — 27 September 2026
+
+Root added [ADR-022](decisions/ADR-022-worker-postgres-driver.md) after reviewing current Cloudflare Hyperdrive/Neon integration guidance. It selects node-postgres for the future Hyperdrive adapter while leaving provider configuration unimplemented. The assigned local code slice wraps a supplied connection string in the existing `SqlExecutor`, scopes a PostgreSQL client to one operation, and tests cleanup using a fake client. It adds no Worker binding, key, database resource, route wiring, transaction behavior or live data. See the [assignment](assignments/DB-HYPERDRIVE-SQL-EXECUTOR-CORE.md).
