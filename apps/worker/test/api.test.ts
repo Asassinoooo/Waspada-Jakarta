@@ -5,6 +5,10 @@ import {
   handlePublicApiRequest,
   type WorkerEnvironment,
 } from "../src/layers/l4-application-integration/api.js";
+import {
+  JAKARTA_GEOJSON_QUERY_ENVELOPE,
+  readPublicGeoJSONQuery,
+} from "../src/layers/l4-application-integration/public-geojson-query.js";
 import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
 import {
   API_REQUEST_EVENT_NAME,
@@ -21,6 +25,152 @@ async function readJson<T>(response: Response): Promise<T> {
 function assertKeys(value: object, expected: string[]) {
   assert.deepEqual(Object.keys(value).sort(), [...expected].sort());
 }
+
+test("GeoJSON query defaults to the inclusive application envelope and accepts contained bounds", () => {
+  assert.deepEqual(readPublicGeoJSONQuery(new URLSearchParams()), {
+    bbox: JAKARTA_GEOJSON_QUERY_ENVELOPE,
+    category: null,
+    lifecycle: null,
+    freshness: null,
+  });
+  assert.deepEqual(
+    readPublicGeoJSONQuery(new URLSearchParams({ bbox: "106.32,-6.40,106.98,-5.16" })).bbox,
+    JAKARTA_GEOJSON_QUERY_ENVELOPE,
+  );
+  assert.deepEqual(
+    readPublicGeoJSONQuery(new URLSearchParams({ bbox: "106.70,-6.30,106.90,-6.10" })).bbox,
+    [106.7, -6.3, 106.9, -6.1],
+  );
+});
+
+test("GeoJSON route returns the exact empty FeatureCollection for the current demo dataset", async () => {
+  const requests = [
+    new Request("http://localhost/api/v1/events.geojson"),
+    new Request("http://localhost/api/v1/events.geojson?bbox=106.32,-6.40,106.98,-5.16"),
+    new Request("http://localhost/api/v1/events.geojson?bbox=106.70,-6.30,106.90,-6.10"),
+  ];
+
+  for (const request of requests) {
+    const response = await worker.fetch(request, demoEnvironment);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/geo+json");
+    assert.deepEqual(await readJson(response), { type: "FeatureCollection", features: [] });
+  }
+
+  const write = await worker.fetch(
+    new Request("http://localhost/api/v1/events.geojson", { method: "POST" }),
+    demoEnvironment,
+  );
+  assert.equal(write.status, 405);
+});
+
+test("GeoJSON rejects malformed, reversed, overlong, non-finite, and out-of-envelope bounds safely", async () => {
+  const invalidBounds = [
+    "106.4,-6.2,106.7",
+    "106.4,-6.2,106.7,-6.1,1",
+    "106.4,-6.2,not-a-number,-6.1",
+    "106.4,-6.2,Infinity,-6.1",
+    "106.4,-6.2,NaN,-6.1",
+    "106.4,-6.2,1e999,-6.1",
+    "106.8,-6.2,106.7,-6.1",
+    "106.4,-5.8,106.7,-6.0",
+    "106.31,-6.2,106.7,-6.1",
+    "106.4,-6.41,106.7,-6.1",
+    "106.4,-6.2,106.99,-6.1",
+    "106.4,-6.2,106.7,-5.15",
+    "x".repeat(101),
+  ];
+
+  for (const bbox of invalidBounds) {
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/v1/events.geojson?${new URLSearchParams({ bbox })}`),
+      demoEnvironment,
+    );
+    const body = await readJson<{ code: string; message: string; request_id: string }>(response);
+    assert.equal(response.status, 400, bbox.slice(0, 40));
+    assertKeys(body, ["code", "message", "request_id"]);
+    assert.equal(body.code, "INVALID_REQUEST");
+    assert.equal(body.message, "bbox is invalid");
+    assert.ok(!body.message.includes(bbox));
+    assert.match(body.request_id, /^[0-9a-f-]{36}$/i);
+  }
+});
+
+test("GeoJSON validates only its documented category, lifecycle, and freshness enums", async () => {
+  const validFilters = [
+    ...[
+      "crime_personal_security",
+      "demonstrations_public_gatherings",
+      "crowds_major_events",
+      "violence_immediate_threats",
+      "disasters_weather",
+      "fires_infrastructure_hazards",
+      "transport_road_incidents",
+      "utilities_essential_services",
+      "health_environmental_advisories",
+      "group_specific_critical_notices",
+    ].map((category) => new URLSearchParams({ category })),
+    ...["planned", "ongoing", "resolved", "cancelled", "unknown"].map(
+      (lifecycle) => new URLSearchParams({ lifecycle }),
+    ),
+    ...["current", "needs_update", "expired"].map(
+      (freshness) => new URLSearchParams({ freshness }),
+    ),
+  ];
+
+  for (const search of validFilters) {
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/v1/events.geojson?${search}`),
+      demoEnvironment,
+    );
+    assert.equal(response.status, 200, search.toString());
+  }
+
+  for (const search of [
+    new URLSearchParams({ category: "unknown_category" }),
+    new URLSearchParams({ lifecycle: "active" }),
+    new URLSearchParams({ freshness: "stale" }),
+    new URLSearchParams("category=planned&category=ongoing"),
+    new URLSearchParams("bbox=106.4%2C-6.2%2C106.7%2C-6.1&bbox=106.5%2C-6.2%2C106.7%2C-6.1"),
+    new URLSearchParams({ limit: "1" }),
+    new URLSearchParams({ cursor: "0" }),
+    new URLSearchParams({ q: "extra-filter" }),
+  ]) {
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/v1/events.geojson?${search}`),
+      demoEnvironment,
+    );
+    const body = await readJson<{ code: string; message: string }>(response);
+    assert.equal(response.status, 400, search.toString());
+    assert.equal(body.code, "INVALID_REQUEST");
+    assert.ok(!body.message.includes(search.toString()));
+  }
+});
+
+test("explicit non-demo mode blocks GeoJSON before the read model is accessed", async () => {
+  const originalGeoJSON = PublicReadModel.prototype.geoJSON;
+  let readCount = 0;
+  PublicReadModel.prototype.geoJSON = function () {
+    readCount += 1;
+    throw new Error("GeoJSON fixtures must not be read");
+  };
+
+  let response: Response;
+  try {
+    response = await worker.fetch(
+      new Request("http://localhost/api/v1/events.geojson?bbox=malformed"),
+      { DATASET_MODE: "live" },
+    );
+  } finally {
+    PublicReadModel.prototype.geoJSON = originalGeoJSON;
+  }
+
+  const body = await readJson<{ code: string; message: string }>(response!);
+  assert.equal(response!.status, 503);
+  assert.equal(body.code, "TEMPORARILY_UNAVAILABLE");
+  assert.match(body.message, /synthetic demo dataset/);
+  assert.equal(readCount, 0);
+});
 
 test("context reports a server-selected synthetic dataset with no live sources", async () => {
   const response = await worker.fetch(
@@ -372,6 +522,12 @@ test("injected telemetry records only bounded route, status, and duration across
       status: 400,
     },
     {
+      request: new Request(`http://localhost/api/v1/events.geojson?bbox=${marker}`),
+      env: demoEnvironment,
+      route: "events",
+      status: 400,
+    },
+    {
       request: new Request(`http://localhost/api/v1/events/synthetic-demo-01?cursor=0&token=${marker}`),
       env: demoEnvironment,
       route: "events",
@@ -448,6 +604,21 @@ test("telemetry sink exceptions leave the original API error response intact", a
   assert.equal(body.message, "limit must be between 1 and 100");
   assert.match(body.request_id, /^[0-9a-f-]{36}$/i);
   assert.deepEqual(Object.keys(body).sort(), ["code", "message", "request_id"]);
+
+  const geoJSONResponse = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events.geojson?bbox=private-bounds-marker"),
+    demoEnvironment,
+    {
+      record() {
+        throw new Error("private sink failure detail");
+      },
+    },
+  );
+  const geoJSONBody = await readJson<{ code: string; message: string }>(geoJSONResponse);
+  assert.equal(geoJSONResponse.status, 400);
+  assert.equal(geoJSONBody.code, "INVALID_REQUEST");
+  assert.equal(geoJSONBody.message, "bbox is invalid");
+  assert.ok(!JSON.stringify(geoJSONBody).includes("private-bounds-marker"));
 });
 
 test("unexpected detail read errors are generic and do not expose exception text", async () => {
@@ -465,6 +636,29 @@ test("unexpected detail read errors are generic and do not expose exception text
     );
   } finally {
     PublicReadModel.prototype.detail = originalDetail;
+  }
+
+  const body = await response!.text();
+  assert.equal(response!.status, 500);
+  assert.ok(!body.includes(marker));
+  assert.ok(body.includes("The public read could not be completed."));
+});
+
+test("unexpected GeoJSON read errors are generic and do not expose exception text", async () => {
+  const marker = "private GeoJSON read failure detail";
+  const originalGeoJSON = PublicReadModel.prototype.geoJSON;
+  PublicReadModel.prototype.geoJSON = function () {
+    throw new Error(marker);
+  };
+
+  let response: Response;
+  try {
+    response = await worker.fetch(
+      new Request("http://localhost/api/v1/events.geojson"),
+      demoEnvironment,
+    );
+  } finally {
+    PublicReadModel.prototype.geoJSON = originalGeoJSON;
   }
 
   const body = await response!.text();

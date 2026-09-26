@@ -4,8 +4,10 @@ import type {
   HistoryEntry,
   HistoryPage,
   PublicContext,
+  PublicFeatureCollection,
 } from "../../contracts/public-api.js";
 import type { SourceStatusProvider } from "../l1-data-knowledge/source-status.js";
+import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
 
 const categories = new Set([
@@ -80,6 +82,11 @@ export class PublicReadModel {
         cursor_expires_at: cursorExpiry,
       },
     };
+  }
+
+  geoJSON(): PublicFeatureCollection {
+    // The current synthetic fixtures contain no source-supported geometry.
+    return projectPublicFeatureCollection([]);
   }
 
   detail(eventId: string): EventDetail | null {

@@ -1,4 +1,10 @@
-import type { EventDetail, EventPage, HistoryPage, PublicContext } from "../../contracts/public-api.js";
+import type {
+  EventDetail,
+  EventPage,
+  HistoryPage,
+  PublicContext,
+  PublicFeatureCollection,
+} from "../../contracts/public-api.js";
 import { noConfiguredSources } from "../l1-data-knowledge/source-status.js";
 import {
   API_REQUEST_EVENT_NAME,
@@ -6,6 +12,7 @@ import {
   type TelemetrySink,
 } from "../l5-evaluation-monitoring/telemetry.js";
 import { PublicReadModel, QueryValidationError } from "./public-read-model.js";
+import { readPublicGeoJSONQuery } from "./public-geojson-query.js";
 
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
@@ -18,6 +25,17 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+function geoJSONResponse(body: PublicFeatureCollection) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      "content-type": "application/geo+json",
       "cache-control": "no-store",
       "x-content-type-options": "nosniff",
     },
@@ -67,10 +85,11 @@ export async function handlePublicApiRequest(
   const startedAt = Date.now();
   const url = new URL(request.url);
   const selectedEventRoute = eventRoute(url.pathname);
+  const selectedGeoJSONRoute = url.pathname === "/api/v1/events.geojson";
   const route =
     url.pathname === "/api/v1/context"
       ? "context"
-      : url.pathname === "/api/v1/events" || selectedEventRoute !== null
+      : url.pathname === "/api/v1/events" || selectedEventRoute !== null || selectedGeoJSONRoute
         ? "events"
         : "other";
   let response: Response | undefined;
@@ -88,7 +107,11 @@ export async function handlePublicApiRequest(
       const context: PublicContext = readModel.context("demo");
       response = jsonResponse(context);
     } else if (route === "events") {
-      if (url.pathname === "/api/v1/events") {
+      if (selectedGeoJSONRoute) {
+        readPublicGeoJSONQuery(url.searchParams);
+        const featureCollection: PublicFeatureCollection = readModel.geoJSON();
+        response = geoJSONResponse(featureCollection);
+      } else if (url.pathname === "/api/v1/events") {
         const page: EventPage = readModel.events(url.searchParams);
         response = jsonResponse(page);
       } else if (selectedEventRoute) {
