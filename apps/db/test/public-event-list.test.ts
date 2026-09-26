@@ -155,6 +155,7 @@ describe('public event list candidate repository', () => {
       [valid, { ...valid, version: 2 }],
       [{ ...valid, first_published_at: '2026-09-26T10:00:01.000000Z' }],
       [valid, makeRow(live, 'event-later', 1, UPDATED)],
+      [valid, valid],
     ];
     for (const rows of malformedRows) {
       await assert.rejects(
@@ -163,6 +164,15 @@ describe('public event list candidate repository', () => {
           && error.code === 'RESULT_INVALID' && !error.message.includes(marker),
       );
     }
+
+    const beyondProbe = ['event-a', 'event-b', 'event-c', 'event-d']
+      .map((eventId) => makeRow(live, eventId, 1, FIRST));
+    await assert.rejects(
+      createPublicEventListRepository(fixedRowsExecutor(beyondProbe)).read({ limit: 2 }),
+      (error: unknown) => error instanceof PublicEventListError
+        && error.code === 'RESULT_INVALID' && !error.message.includes(marker),
+      'the reader rejects results larger than the limit plus one probe row',
+    );
   });
 });
 

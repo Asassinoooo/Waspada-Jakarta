@@ -52,6 +52,12 @@ Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, act
 
 ### Completed implementation
 
+#### Acceptance review follow-up
+
+- Added authored PGlite reader-result cases for duplicate event IDs and a four-row response when `limit = 2` allows at most the three-row limit-plus-one probe. Both reject with bounded `RESULT_INVALID`; no production change was needed.
+- In WSL Ubuntu-26.04, `node --import tsx --test apps/db/test/public-event-list.test.ts` passed (2/2), and `git diff --check` exited successfully. It emitted only existing CRLF normalization warnings for unrelated files; no whitespace errors were reported. The full suite was not rerun for these additional assertions.
+- Reused the verified `D:\Projects\RPL\node_modules` junction for this focused run and removed it afterward after confirming its exact target.
+
 - Branch/worktree: work/API-PUBLIC-EVENT-LIST-CANDIDATE-CORE; C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL (WSL: /mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL).
 - Implementation commit: 369694aab46bcd518f15a20b4173fe7c9332c04f - feat(API-PUBLIC-EVENT-LIST-CANDIDATE-CORE): read bounded live event candidates.
 - Changed paths: apps/db/src/public-event-list.ts and apps/db/test/public-event-list.test.ts. The existing DB runner auto-discovers *.test.ts, so registration changes were unnecessary.
