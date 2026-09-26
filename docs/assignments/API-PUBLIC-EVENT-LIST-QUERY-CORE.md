@@ -46,3 +46,15 @@ Stop and report if preserving the current query vocabulary requires an OpenAPI/D
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, actual WSL checks, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+
+### Implementer handoff — 27 September 2026
+
+- **Branch/worktree:** `work/API-PUBLIC-EVENT-LIST-QUERY-CORE`; WSL path `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL` (Windows path `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL`), based on root assignment commit `52135afe31b1e9495e5b0a22cbab47f13bea1685`.
+- **Implementation commit:** `d5ea840ff8c2ea7086f77e5127a9f9c0eab28176` — `feat(API-PUBLIC-EVENT-LIST-QUERY-CORE): parse public event-list queries`. The handoff is recorded in a separate documentation commit; its exact SHA and message are in the implementer report.
+- **Changed paths:** `apps/worker/src/layers/l4-application-integration/public-event-list-query.ts`; `apps/worker/test/l4-public-event-list-query.test.ts`; this assignment's implementation handoff.
+- **Behavior:** Added a pure parser for the existing nine query parameters. It rejects unsupported or repeated names; validates integer page sizes from 1–100; defaults limit to 20; returns absent cursor as `null`, preserves a supplied nonblank cursor up to 2,048 characters without decoding, validates the existing category/lifecycle/freshness enums, preserves date strings for accepted service validation, trims and Indonesian-lowercases `q`, trims `place_id`, omits blank text filters, and enforces 120/128-character post-trim limits. All parser failures use one fixed redacted `INVALID_QUERY` error. No query values are logged or echoed.
+- **WSL tools/packages:** Ubuntu-26.04; Node.js `v24.21.0`, npm `11.19.0`, Git `2.53.0`; TypeScript `7.0.2`, tsx `4.23.15`, Vite `8.3.0`, Wrangler `4.137.0`. Existing dependencies were reused through a temporary symlink verified to target `/mnt/d/Projects/RPL/node_modules`; the symlink was removed before handoff.
+- **Checks:** Direct `node --import tsx --test apps/worker/test/l4-public-event-list-query.test.ts` — exit 0, 9/9. `npm test` — exit 0 (web 22/22, Worker 183/183, DB 16/16 files, evaluation 12/12); the focused parser test is not in the Worker aggregate and was run separately. `npm run typecheck` — exit 0. `npm run build` — exit 0, including Vite production build and Wrangler dry-run. `git diff --check` and `git diff --cached --check` — exit 0.
+- **Limitations:** Synthetic query inputs only. This utility does not validate date-time syntax/ranges, authenticate cursor contents, call a list service, or wire a route; accepted Layer 4 services retain those responsibilities. No live data or external provider was used.
+- **Migration/configuration impact:** None. No route, OpenAPI/DTO, demo behavior, migration, dependency, package script, key, binding, or deployment configuration changed.
+- **Remaining decisions:** None within this assigned slice. Root review and integration remain outstanding.
