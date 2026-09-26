@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { InvestigationLedgerError } from '../../db/src/investigation-ledger.js';
 import type {
   InvestigationCheckpointRecord,
   InvestigationLedgerRepository,
@@ -129,8 +130,94 @@ test('rejects malformed, unknown, disabled, and action-invalid proposals before 
   }
 });
 
-test('a reservation replay returns its checkpoint without starting or invoking', async () => {
+test('ledger expected denials return closed review results without invoking the handler', async () => {
+  const scenarios: Array<{
+    readonly name: string;
+    readonly latest: InvestigationCheckpointRecord | null;
+    readonly reserveError: InvestigationLedgerError;
+    readonly reason: string;
+  }> = [
+    {
+      name: 'missing case',
+      latest: null,
+      reserveError: new InvestigationLedgerError('investigation_not_found'),
+      reason: 'investigation_not_found',
+    },
+    {
+      name: 'closed case',
+      latest: makeCheckpoint(2, { case_status: 'completed' }),
+      reserveError: new InvestigationLedgerError('invalid_state'),
+      reason: 'investigation_not_open',
+    },
+    {
+      name: 'stale version',
+      latest: makeCheckpoint(3),
+      reserveError: new InvestigationLedgerError('stale_checkpoint'),
+      reason: 'stale_checkpoint',
+    },
+    {
+      name: 'another reservation is active',
+      latest: makeCheckpoint(2),
+      reserveError: new InvestigationLedgerError('reservation_in_flight'),
+      reason: 'reservation_in_flight',
+    },
+    {
+      name: 'mismatched checkpoint identity is not returned',
+      latest: makeCheckpoint(2, { dataset_kind: 'historical' }),
+      reserveError: new InvestigationLedgerError('investigation_not_found'),
+      reason: 'investigation_not_found',
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const ledger = makeLedger({ latestCheckpoint: scenario.latest, reserveError: scenario.reserveError });
+    let handlerCalls = 0;
+    const executor = makeExecutor({
+      ledger: ledger.repository,
+      handler() {
+        handlerCalls += 1;
+        return { status: 'succeeded' };
+      },
+    });
+
+    const result = await executor.execute(makeProposal());
+    const latestMatchesProposal = scenario.latest?.dataset_kind === 'synthetic'
+      && scenario.latest.investigation_id === 'investigation_synthetic';
+    assert.deepEqual(result, {
+      status: 'review_required',
+      reason: scenario.reason,
+      ...(latestMatchesProposal ? { checkpoint: scenario.latest! } : {}),
+    }, scenario.name);
+    assert.deepEqual(ledger.calls, ['reserve', 'getLatest'], scenario.name);
+    assert.equal(handlerCalls, 0, scenario.name);
+  }
+});
+
+test('checkpoint lookup errors after an expected denial preserve identity', async () => {
+  const error = new Error('synthetic checkpoint read failure');
   const ledger = makeLedger({
+    latestCheckpoint: makeCheckpoint(3),
+    latestError: error,
+    reserveError: new InvestigationLedgerError('stale_checkpoint'),
+  });
+  let handlerCalls = 0;
+  const executor = makeExecutor({
+    ledger: ledger.repository,
+    handler() {
+      handlerCalls += 1;
+      return { status: 'succeeded' };
+    },
+  });
+
+  await assert.rejects(executor.execute(makeProposal()), (actual: unknown) => actual === error);
+  assert.deepEqual(ledger.calls, ['reserve', 'getLatest']);
+  assert.equal(handlerCalls, 0);
+});
+
+test('an exact in-flight reservation replay reaches the ledger after checkpoint advancement', async () => {
+  const ledger = makeLedger({
+    latestCheckpoint: makeCheckpoint(3),
+    inFlightReservation: makeReservation(),
     reserveResult: (checkpoint) => ({
       reservation: makeReservation(),
       checkpoint,
@@ -152,6 +239,45 @@ test('a reservation replay returns its checkpoint without starting or invoking',
   assert.deepEqual(ledger.calls, ['reserve']);
   assert.equal(handlerCalls, 0);
   assert.deepEqual(result, { status: 'replayed', checkpoint: ledger.reservationCheckpoint });
+  assert.equal(ledger.reserveInputs[0]?.reservationId, 'reservation_synthetic_1');
+  assert.equal(ledger.reserveInputs[0]?.expectedCheckpointVersion, 2);
+});
+
+test('a completed reservation ID replay wins over a closed case and different in-flight reservation', async () => {
+  const completedReservation: ReservationRecord = {
+    ...makeReservation(),
+    status: 'reconciled',
+    outcome: 'succeeded',
+    actual: { activeSeconds: 1, modelTokens: 0 },
+    finishedAt: timestamp,
+    reconciledCheckpointVersion: 3,
+  };
+  const ledger = makeLedger({
+    latestCheckpoint: makeCheckpoint(3, { case_status: 'completed' }),
+    inFlightReservation: makeReservation({ reservationId: 'reservation_other' }),
+    reserveResult: (checkpoint) => ({
+      reservation: completedReservation,
+      checkpoint,
+      mayInvoke: false,
+      replayed: true,
+    }),
+  });
+  let handlerCalls = 0;
+  const executor = makeExecutor({
+    ledger: ledger.repository,
+    handler() {
+      handlerCalls += 1;
+      return { status: 'succeeded' };
+    },
+  });
+
+  const result = await executor.execute(makeProposal());
+
+  assert.deepEqual(ledger.calls, ['reserve']);
+  assert.equal(handlerCalls, 0);
+  assert.deepEqual(result, { status: 'replayed', checkpoint: ledger.reservationCheckpoint });
+  assert.equal(ledger.reserveInputs[0]?.reservationId, completedReservation.reservationId);
+  assert.equal(ledger.reserveInputs[0]?.expectedCheckpointVersion, 2);
 });
 
 test('a non-invocable or replayed start returns its checkpoint without invoking', async () => {
@@ -208,7 +334,9 @@ test('reservation and start errors pass through unchanged and prevent invocation
 
     await assert.rejects(executor.execute(makeProposal()), (actual: unknown) => actual === error);
     assert.equal(handlerCalls, 0);
-    assert.deepEqual(ledger.calls, failingStage === 'reserve' ? ['reserve'] : ['reserve', 'start']);
+    assert.deepEqual(ledger.calls, failingStage === 'reserve'
+      ? ['reserve']
+      : ['reserve', 'start']);
   }
 });
 
@@ -502,6 +630,10 @@ function makeProposal(input: unknown = { query: 'synthetic-query' }, name = acti
 
 function makeLedger(config: {
   readonly calls?: string[];
+  readonly latestCheckpoint?: InvestigationCheckpointRecord | null;
+  readonly inFlightReservation?: ReservationRecord | null;
+  readonly latestError?: Error;
+  readonly inFlightError?: Error;
   readonly reserveResult?: (checkpoint: InvestigationCheckpointRecord) => ReservationOperationResult;
   readonly startResult?: (checkpoint: InvestigationCheckpointRecord) => ReservationOperationResult;
   readonly reserveError?: Error;
@@ -512,6 +644,7 @@ function makeLedger(config: {
   const reserveInputs: ReserveActionInput[] = [];
   const startInputs: Array<Parameters<InvestigationLedgerRepository['startAction']>[0]> = [];
   const reconcileInputs: ReconcileActionInput[] = [];
+  const latestCheckpoint = config.latestCheckpoint === undefined ? makeCheckpoint(2) : config.latestCheckpoint;
   const reservationCheckpoint = makeCheckpoint(7);
   const startCheckpoint = makeCheckpoint(7);
   const finalCheckpoint = makeCheckpoint(8);
@@ -520,10 +653,14 @@ function makeLedger(config: {
       throw new Error('unexpected create');
     },
     async getLatest() {
-      return null;
+      calls.push('getLatest');
+      if (config.latestError) throw config.latestError;
+      return latestCheckpoint;
     },
     async getInFlightReservation() {
-      return null;
+      calls.push('getInFlight');
+      if (config.inFlightError) throw config.inFlightError;
+      return config.inFlightReservation ?? null;
     },
     async reserveAction(input) {
       calls.push('reserve');
@@ -611,7 +748,10 @@ function makeReservation(input: Partial<ReserveActionInput & { startedAt: string
   };
 }
 
-function makeCheckpoint(version: number): InvestigationCheckpointRecord {
+function makeCheckpoint(
+  version: number,
+  overrides: Partial<InvestigationCheckpointRecord> = {},
+): InvestigationCheckpointRecord {
   return {
     schema_version: '2.0',
     trace_id: 'trace_synthetic',
@@ -637,6 +777,7 @@ function makeCheckpoint(version: number): InvestigationCheckpointRecord {
     created_at: timestamp,
     updated_at: timestamp,
     completed_at: null,
+    ...overrides,
   };
 }
 

@@ -1,3 +1,4 @@
+import { InvestigationLedgerError } from '../../../../db/src/investigation-ledger.js';
 import type {
   ActionOutcome,
   InvestigationCheckpointRecord,
@@ -66,6 +67,11 @@ export type SingleStepReviewReason =
   | 'invalid_proposal'
   | 'invalid_action_input'
   | 'clock_unavailable'
+  | 'investigation_not_found'
+  | 'investigation_not_open'
+  | 'stale_checkpoint'
+  | 'reservation_in_flight'
+  | 'reservation_state_uncertain'
   | 'reservation_result_uncertain'
   | 'start_not_authorized';
 
@@ -162,7 +168,25 @@ export function createSingleStepExecutor(options: SingleStepExecutorOptions): Si
         reservedModelTokens: 0,
         reservedAt: proposal.reservedAt,
       };
-      const reservation = await ledger.reserveAction(reserveInput);
+      let reservation: Awaited<ReturnType<InvestigationLedgerRepository['reserveAction']>>;
+      try {
+        reservation = await ledger.reserveAction(reserveInput);
+      } catch (error) {
+        const reason = reserveDenialReason(error);
+        if (!reason) throw error;
+
+        const latest = await ledger.getLatest(proposal.datasetKind, proposal.investigationId);
+        const matchingCheckpoint = latest
+          && latest.dataset_kind === proposal.datasetKind
+          && latest.investigation_id === proposal.investigationId
+          ? latest
+          : undefined;
+        return {
+          status: 'review_required',
+          reason,
+          ...(matchingCheckpoint ? { checkpoint: matchingCheckpoint } : {}),
+        };
+      }
       if (reservation.replayed === true) {
         return { status: 'replayed', checkpoint: reservation.checkpoint };
       }
@@ -263,6 +287,22 @@ function createRegistry(
     });
   }
   return registry;
+}
+
+function reserveDenialReason(error: unknown): SingleStepReviewReason | undefined {
+  if (!(error instanceof InvestigationLedgerError)) return undefined;
+  switch (error.code) {
+    case 'investigation_not_found':
+      return 'investigation_not_found';
+    case 'invalid_state':
+      return 'investigation_not_open';
+    case 'stale_checkpoint':
+      return 'stale_checkpoint';
+    case 'reservation_in_flight':
+      return 'reservation_in_flight';
+    default:
+      return undefined;
+  }
 }
 
 function parseProposal(value: unknown): ParsedProposal | undefined {
