@@ -45,4 +45,24 @@ Stop and report if a contract/schema/publication change is required, if malforme
 
 ## Implementation handoff
 
-Append the exact branch/worktree, commit(s), changed paths, behavior, actual WSL checks, limitations and remaining decisions here. Do not merge or push.
+### Implemented on 27 September 2026
+
+- **Branch:** `work/API-PUBLIC-DETAIL-RUNTIME-CORE`
+- **Worktree:** `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL` in WSL Ubuntu-26.04)
+- **Implementation commit:** `027d90fdbcfdd80ffcbcbcfc6d3576075d636597` — `feat(API-PUBLIC-DETAIL-RUNTIME-CORE): wire live EventDetail reader`
+- **Changed paths:** `apps/worker/package.json`; `apps/worker/src/index.ts`; `apps/worker/src/layers/l4-application-integration/api.ts`; `apps/worker/src/runtime/public-event-detail-runtime.ts`; `apps/worker/src/runtime/public-event-list-runtime.ts` (shared connection-string validator only); `apps/worker/test/api.test.ts`; `apps/worker/test/public-event-detail-runtime.test.ts`.
+
+The Worker now composes the accepted snapshot, reviewed lookup, exact geometry repositories and strict detail projector inside one request-scoped `withPostgresSqlExecutor` operation for exact-live detail GETs. It validates the decoded ID before invoking the SQL runner, returns the unchanged `EventDetail`, maps absent/currently withdrawn events to the existing 404, and returns generic unavailable errors for incomplete configuration or read/projection failures. Demo detail remains fixture-backed, the list runtime retains its existing behavior, and history, GeoJSON, context and unknown routes remain unavailable in live mode.
+
+**Checks run in WSL Ubuntu-26.04:**
+
+- Focused detail runtime: `npx --no-install tsx --test test/public-event-detail-runtime.test.ts` — passed, 5/5.
+- API routes: `npx --no-install tsx --test test/api.test.ts` — passed, 23/23.
+- `npm test` — passed; web 22/22, Worker 200/200, DB 17/17 files, evaluation casebook 12/12.
+- `npm run typecheck` — passed.
+- `npm run build` — passed; Wrangler dry-run completed with Wrangler 4.137.0. Its output showed only the checked-in `DATASET_MODE="demo"` binding.
+- `git diff --check` — passed.
+
+Recorded tool versions: Node.js 24.21.0; npm 11.19.0; Git 2.53.0; TypeScript 7.0.2; `pg` 8.16.3; `@types/pg` 8.23.1; PGlite 0.5.8; Wrangler 4.137.0.
+
+**Limits and impact:** Tests use authored fictional rows and a fake SQL executor only. No hosted Neon/Hyperdrive connection, live record, provider resource, secret, Wrangler binding, schema, migration or dependency change was introduced. A deployment still needs its separately configured live dataset mode and Hyperdrive binding; hosted behavior remains unverified. No additional slice-level design decision remains. This branch is ready for independent root review; it was not merged or pushed.
