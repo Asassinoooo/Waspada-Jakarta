@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
-import { createSqlEvidenceRetrievalRepository } from '../src/evidence-retrieval.js';
+import {
+  createSqlEvidenceRetrievalRepository,
+  createSqlExactEvidenceSpanReader,
+  ExactEvidenceSpanReadError,
+} from '../src/evidence-retrieval.js';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createRepositoryPorts, type NewReportRevision, type TraceRecord } from '../src/ports.js';
 import type { EvidenceRetrievalQuery } from '../src/evidence-retrieval.js';
@@ -542,6 +546,69 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
       });
       assert.equal(update.candidates.length, 1);
       assert.equal(update.candidates[0]?.relation, 'updates');
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+  });
+
+  it('rehydrates only exact code-point spans under the least-privilege L2 reader', async () => {
+    const reader = createSqlExactEvidenceSpanReader(testDatabase.executor);
+    await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_reader');
+    try {
+      const result = await ports.evidenceRetrieval.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-alpha' }],
+      });
+      assert.equal(result.candidates.length, 1);
+      const candidate = result.candidates[0]!;
+      const request = {
+        datasetKind: candidate.datasetKind,
+        candidateId: candidate.candidateId,
+        evidenceReferenceId: candidate.evidenceReferenceId,
+        reportRevisionId: candidate.reportRevisionId,
+        permittedTextHash: candidate.permittedTextHash,
+        spanStart: candidate.spanStart,
+        spanEnd: candidate.spanEnd,
+        offsetUnit: candidate.offsetUnit,
+        relation: candidate.relation,
+        revisionStatus: candidate.revisionStatus,
+      } as const;
+      const exact = await reader.readExactSpan(request);
+
+      assert.equal(exact.text, 'closure near Monas 😀');
+      assert.equal(Array.from(exact.text).length, candidate.spanEnd - candidate.spanStart);
+      assert.equal(exact.text.includes('Synthetic notice:'), false, 'the whole report is not returned');
+      assert.equal(exact.text.includes('2026-09-25.'), false, 'text outside the cited span is not returned');
+      assert.equal(exact.revisionStatus, candidate.revisionStatus);
+
+      await assert.rejects(
+        reader.readExactSpan({ ...request, permittedTextHash: 'b'.repeat(64) }),
+        (error: unknown) => error instanceof ExactEvidenceSpanReadError && error.code === 'identity_mismatch',
+      );
+      await assert.rejects(
+        reader.readExactSpan({ ...request, spanStart: request.spanStart + 1 }),
+        (error: unknown) => error instanceof ExactEvidenceSpanReadError && error.code === 'identity_mismatch',
+      );
+      await assert.rejects(
+        reader.readExactSpan({ ...request, relation: 'contradicts' }),
+        (error: unknown) => error instanceof ExactEvidenceSpanReadError && error.code === 'identity_mismatch',
+      );
+      await assert.rejects(
+        reader.readExactSpan({ ...request, revisionStatus: 'retracted' }),
+        (error: unknown) => error instanceof ExactEvidenceSpanReadError && error.code === 'identity_mismatch',
+      );
+      await assert.rejects(
+        reader.readExactSpan({ ...request, candidateId: 'candidate-syn-beta' }),
+        (error: unknown) => error instanceof ExactEvidenceSpanReadError && error.code === 'not_found',
+      );
+      await assert.rejects(
+        reader.readExactSpan({ ...request, spanEnd: request.spanStart + 40_001 }),
+        (error: unknown) => error instanceof ExactEvidenceSpanReadError && error.code === 'span_too_large',
+      );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT access_restrictions FROM waspada.source_registry'),
+        /permission denied|denied/i,
+      );
     } finally {
       await testDatabase.executor.execute('RESET ROLE');
     }

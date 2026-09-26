@@ -162,6 +162,44 @@ export interface EvidenceRetrievalRepository {
   search(query: EvidenceRetrievalQuery): Promise<EvidenceRetrievalResult>;
 }
 
+/** Exact persisted identity required to safely rehydrate one selected span. */
+export interface ExactEvidenceSpanRequest {
+  readonly datasetKind: DatasetKind;
+  readonly candidateId: string;
+  readonly evidenceReferenceId: string;
+  readonly reportRevisionId: string;
+  readonly permittedTextHash: string;
+  readonly spanStart: number;
+  readonly spanEnd: number;
+  readonly offsetUnit: 'unicode_code_points';
+  readonly relation: EvidenceRelation;
+  readonly revisionStatus: EvidenceRetrievalRevisionStatus;
+}
+
+/** The exact selected text and the identity verified against persisted rows. */
+export interface ExactEvidenceSpan extends ExactEvidenceSpanRequest {
+  readonly text: string;
+}
+
+export interface ExactEvidenceSpanReader {
+  readExactSpan(request: ExactEvidenceSpanRequest): Promise<ExactEvidenceSpan>;
+}
+
+export type ExactEvidenceSpanReadErrorCode =
+  | 'invalid_identity'
+  | 'span_too_large'
+  | 'not_found'
+  | 'identity_mismatch';
+
+export class ExactEvidenceSpanReadError extends Error {
+  constructor(readonly code: ExactEvidenceSpanReadErrorCode) {
+    super(code);
+    this.name = 'ExactEvidenceSpanReadError';
+  }
+}
+
+export const MAX_EXACT_EVIDENCE_SPAN_CODE_POINTS = 40_000;
+
 const RETRIEVAL_VERSION = 'hybrid-evidence-v1' as const;
 const MAX_IDENTIFIERS = 20;
 const MAX_EXACT_TERMS = 20;
@@ -182,6 +220,164 @@ const RFC3339_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]
 
 export function createSqlEvidenceRetrievalRepository(executor: SqlExecutor): EvidenceRetrievalRepository {
   return new SqlEvidenceRetrievalRepository(executor);
+}
+
+/**
+ * Creates a read-only, dataset- and candidate-scoped exact-span reader.
+ * Its SQL uses only columns already granted to waspada_l2_grounding_reader.
+ */
+export function createSqlExactEvidenceSpanReader(executor: SqlExecutor): ExactEvidenceSpanReader {
+  return new SqlExactEvidenceSpanReader(executor);
+}
+
+class SqlExactEvidenceSpanReader implements ExactEvidenceSpanReader {
+  constructor(private readonly executor: SqlExecutor) {}
+
+  async readExactSpan(request: ExactEvidenceSpanRequest): Promise<ExactEvidenceSpan> {
+    validateExactEvidenceSpanRequest(request);
+
+    const result = await this.executor.query<ExactEvidenceSpanRow>(
+      `SELECT reference.dataset_kind,
+              link.candidate_id,
+              reference.evidence_ref_id::text AS evidence_reference_id,
+              reference.report_revision_id,
+              reference.permitted_text_hash,
+              reference.span_start,
+              reference.span_end,
+              reference.offset_unit,
+              reference.relation,
+              revision.report_revision_id AS revision_report_revision_id,
+              revision.permitted_text_hash AS revision_permitted_text_hash,
+              revision.revision_status,
+              char_length(revision.permitted_text) AS report_code_points,
+              CASE
+                WHEN reference.report_revision_id = $4::text
+                 AND reference.permitted_text_hash = $5::text
+                 AND revision.report_revision_id = $4::text
+                 AND revision.permitted_text_hash = $5::text
+                 AND reference.span_start = $6::integer
+                 AND reference.span_end = $7::integer
+                 AND reference.offset_unit = $8::text
+                 AND reference.relation = $9::text
+                 AND reference.span_end <= char_length(revision.permitted_text)
+                 AND reference.span_end - reference.span_start <= $10::integer
+                THEN substring(
+                  revision.permitted_text
+                  FROM reference.span_start + 1
+                  FOR reference.span_end - reference.span_start
+                )
+                ELSE NULL
+              END AS exact_span_text
+       FROM waspada.evidence_references AS reference
+       JOIN waspada.extraction_evidence AS link
+         ON link.dataset_kind = reference.dataset_kind
+        AND link.evidence_ref_id = reference.evidence_ref_id
+        AND link.candidate_id = $3::text
+       JOIN waspada.report_revisions AS revision
+         ON revision.dataset_kind = reference.dataset_kind
+        AND revision.report_revision_id = reference.report_revision_id
+       WHERE reference.dataset_kind = $1::text
+         AND reference.evidence_ref_id = $2::bigint
+       LIMIT 2`,
+      [
+        request.datasetKind,
+        request.evidenceReferenceId,
+        request.candidateId,
+        request.reportRevisionId,
+        request.permittedTextHash,
+        request.spanStart,
+        request.spanEnd,
+        request.offsetUnit,
+        request.relation,
+        MAX_EXACT_EVIDENCE_SPAN_CODE_POINTS,
+      ],
+    );
+
+    if (result.rows.length === 0) throw new ExactEvidenceSpanReadError('not_found');
+    if (result.rows.length !== 1) throw new ExactEvidenceSpanReadError('identity_mismatch');
+    const row = result.rows[0]!;
+    if (row.dataset_kind !== request.datasetKind
+      || row.candidate_id !== request.candidateId
+      || row.evidence_reference_id !== request.evidenceReferenceId
+      || row.report_revision_id !== request.reportRevisionId
+      || row.revision_report_revision_id !== request.reportRevisionId
+      || row.permitted_text_hash !== request.permittedTextHash
+      || row.revision_permitted_text_hash !== request.permittedTextHash
+      || row.span_start !== request.spanStart
+      || row.span_end !== request.spanEnd
+      || row.offset_unit !== request.offsetUnit
+      || row.relation !== request.relation
+      || row.revision_status !== request.revisionStatus
+      || row.report_code_points < request.spanEnd
+      || row.exact_span_text === null
+      || codePointCount(row.exact_span_text) !== request.spanEnd - request.spanStart) {
+      throw new ExactEvidenceSpanReadError('identity_mismatch');
+    }
+
+    return {
+      datasetKind: request.datasetKind,
+      candidateId: request.candidateId,
+      evidenceReferenceId: request.evidenceReferenceId,
+      reportRevisionId: request.reportRevisionId,
+      permittedTextHash: request.permittedTextHash,
+      spanStart: request.spanStart,
+      spanEnd: request.spanEnd,
+      offsetUnit: request.offsetUnit,
+      relation: request.relation,
+      revisionStatus: request.revisionStatus,
+      text: row.exact_span_text,
+    };
+  }
+}
+
+interface ExactEvidenceSpanRow {
+  readonly dataset_kind: DatasetKind;
+  readonly candidate_id: string;
+  readonly evidence_reference_id: string;
+  readonly report_revision_id: string;
+  readonly permitted_text_hash: string;
+  readonly span_start: number;
+  readonly span_end: number;
+  readonly offset_unit: string;
+  readonly relation: string;
+  readonly revision_report_revision_id: string;
+  readonly revision_permitted_text_hash: string;
+  readonly revision_status: string | null;
+  readonly report_code_points: number;
+  readonly exact_span_text: string | null;
+}
+
+function validateExactEvidenceSpanRequest(request: ExactEvidenceSpanRequest): void {
+  if (!request || !['live', 'historical', 'synthetic'].includes(request.datasetKind)
+    || !ID_PATTERN.test(request.candidateId)
+    || !ID_PATTERN.test(request.reportRevisionId)
+    || !/^[a-f0-9]{64}$/.test(request.permittedTextHash)
+    || request.offsetUnit !== 'unicode_code_points'
+    || !['supports', 'contradicts', 'updates', 'context'].includes(request.relation)
+    || !['unreviewed', 'eligible', 'quarantined', 'superseded', 'retracted'].includes(request.revisionStatus)
+    || !Number.isSafeInteger(request.spanStart)
+    || !Number.isSafeInteger(request.spanEnd)
+    || request.spanStart < 0
+    || request.spanEnd <= request.spanStart
+    || request.spanEnd > 2_147_483_647
+    || !/^[1-9][0-9]{0,18}$/.test(request.evidenceReferenceId)) {
+    throw new ExactEvidenceSpanReadError('invalid_identity');
+  }
+
+  let evidenceReferenceNumber: bigint;
+  try {
+    evidenceReferenceNumber = BigInt(request.evidenceReferenceId);
+  } catch {
+    throw new ExactEvidenceSpanReadError('invalid_identity');
+  }
+  if (evidenceReferenceNumber > 9_223_372_036_854_775_807n
+    || evidenceReferenceNumber.toString() !== request.evidenceReferenceId) {
+    throw new ExactEvidenceSpanReadError('invalid_identity');
+  }
+
+  if (request.spanEnd - request.spanStart > MAX_EXACT_EVIDENCE_SPAN_CODE_POINTS) {
+    throw new ExactEvidenceSpanReadError('span_too_large');
+  }
 }
 
 class SqlEvidenceRetrievalRepository implements EvidenceRetrievalRepository {
