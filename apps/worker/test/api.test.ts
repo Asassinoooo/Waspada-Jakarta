@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.js";
-import type { EventDetail, EventPage } from "../src/contracts/public-api.js";
+import type { EventDetail, EventPage, HistoryPage } from "../src/contracts/public-api.js";
 import {
   handlePublicApiRequest,
   type WorkerEnvironment,
@@ -16,6 +16,7 @@ import {
   type PublicEventListPageService,
 } from "../src/layers/l4-application-integration/public-event-list-page-service.js";
 import type { PublicEventDetailProjectionService } from "../src/layers/l4-application-integration/public-event-detail-projection-service.js";
+import type { PublicEventHistoryProjectionService } from "../src/layers/l4-application-integration/public-event-history-projection-service.js";
 import {
   API_REQUEST_EVENT_NAME,
   consoleTelemetry,
@@ -400,6 +401,66 @@ test("exact live detail uses its injected projection while demo and other route 
   assert.equal(listCalls, 1);
 });
 
+test("exact live history uses its injected reviewed projection and leaves demo history intact", async () => {
+  const page: HistoryPage = {
+    data: [{
+      event_id: "event-synthetic-live-history-01",
+      version: 2,
+      change_type: "corrected",
+      changed_at: "2026-09-26T03:01:00Z",
+      summary: "Authored fictional moderator-reviewed change.",
+    }],
+    page: { next_cursor: "2", cursor_expires_at: null },
+  };
+  let calls = 0;
+  let receivedId: unknown;
+  let receivedQuery: unknown;
+  const historyService: PublicEventHistoryProjectionService = {
+    async read(eventId, query) {
+      calls += 1;
+      receivedId = eventId;
+      receivedQuery = query;
+      return { kind: "found", page };
+    },
+  };
+
+  const response = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/event-synthetic-live-history-01/history?cursor=1&limit=7"),
+    { DATASET_MODE: "live" },
+    undefined,
+    undefined,
+    undefined,
+    historyService,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await readJson<HistoryPage>(response), page);
+  assert.equal(calls, 1);
+  assert.equal(receivedId, "event-synthetic-live-history-01");
+  assert.ok(receivedQuery instanceof URLSearchParams);
+  assert.equal(receivedQuery.get("cursor"), "1");
+  assert.equal(receivedQuery.get("limit"), "7");
+
+  const unavailable = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/event-synthetic-live-history-01/history"),
+    { DATASET_MODE: "live" },
+  );
+  assert.equal(unavailable.status, 503);
+  assert.equal((await readJson<{ code: string }>(unavailable)).code, "TEMPORARILY_UNAVAILABLE");
+  assert.equal(calls, 1);
+
+  const demo = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01/history?cursor=0&limit=20"),
+    demoEnvironment,
+    undefined,
+    undefined,
+    undefined,
+    historyService,
+  );
+  assert.equal(demo.status, 200);
+  assert.equal((await readJson<HistoryPage>(demo)).data[0]?.event_id, "synthetic-demo-01");
+  assert.equal(calls, 1);
+});
+
 test("injected event-list service errors map to fixed redacted API responses", async () => {
   const marker = "private-query-cursor-key-sql-source-exception-marker";
   const cases: Array<{
@@ -699,12 +760,7 @@ test("explicit non-demo mode blocks detail and history before a fixture read", a
       const body = await readJson<{ code: string; message: string }>(response);
       assert.equal(response.status, 503);
       assert.equal(body.code, "TEMPORARILY_UNAVAILABLE");
-      assert.equal(
-        body.message,
-        path.endsWith("/history")
-          ? "This runtime only contains the synthetic demo dataset."
-          : "The public read could not be completed.",
-      );
+      assert.equal(body.message, "The public read could not be completed.");
     }
   } finally {
     PublicReadModel.prototype.detail = originalDetail;

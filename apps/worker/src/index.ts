@@ -1,8 +1,10 @@
 import { createPublicEventListRuntime } from "./runtime/public-event-list-runtime.js";
 import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-runtime.js";
+import { createPublicEventHistoryRuntime } from "./runtime/public-event-history-runtime.js";
 import {
   handlePublicApiRequest,
   isPublicEventDetailPath,
+  isPublicEventHistoryPath,
   type WorkerEnvironment,
 } from "./layers/l4-application-integration/api.js";
 import { consoleTelemetry } from "./layers/l5-evaluation-monitoring/telemetry.js";
@@ -29,6 +31,15 @@ export default {
           connectionString: env.HYPERDRIVE?.connectionString,
         })
         : undefined;
+    const eventHistoryProjectionService =
+      env.DATASET_MODE === "live"
+        && request.method === "GET"
+        && isPublicEventHistoryPath(url.pathname)
+        ? createPublicEventHistoryRuntime({
+          datasetMode: env.DATASET_MODE,
+          connectionString: env.HYPERDRIVE?.connectionString,
+        })
+        : undefined;
 
     return handlePublicApiRequest(
       request,
@@ -36,6 +47,7 @@ export default {
       consoleTelemetry,
       eventListPageService,
       eventDetailProjectionService,
+      eventHistoryProjectionService,
     );
   },
 };

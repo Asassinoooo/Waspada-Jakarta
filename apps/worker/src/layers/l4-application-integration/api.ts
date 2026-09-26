@@ -21,6 +21,10 @@ import {
   PublicEventDetailProjectionServiceError,
   type PublicEventDetailProjectionService,
 } from "./public-event-detail-projection-service.js";
+import {
+  PublicEventHistoryProjectionServiceError,
+  type PublicEventHistoryProjectionService,
+} from "./public-event-history-projection-service.js";
 
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
@@ -70,6 +74,10 @@ export function isPublicEventDetailPath(pathname: string): boolean {
   return eventRoute(pathname)?.kind === "detail";
 }
 
+export function isPublicEventHistoryPath(pathname: string): boolean {
+  return eventRoute(pathname)?.kind === "history";
+}
+
 function decodeEventId(encodedId: string): string {
   let eventId: string;
   try {
@@ -97,6 +105,7 @@ export async function handlePublicApiRequest(
   telemetry: TelemetrySink = noOpTelemetry,
   eventListPageService?: PublicEventListPageService,
   eventDetailProjectionService?: PublicEventDetailProjectionService,
+  eventHistoryProjectionService?: PublicEventHistoryProjectionService,
 ) {
   const startedAt = Date.now();
   const url = new URL(request.url);
@@ -115,6 +124,8 @@ export async function handlePublicApiRequest(
       env.DATASET_MODE === "live" && url.pathname === "/api/v1/events";
     const exactLiveDetailRoute =
       env.DATASET_MODE === "live" && selectedEventRoute?.kind === "detail";
+    const exactLiveHistoryRoute =
+      env.DATASET_MODE === "live" && selectedEventRoute?.kind === "history";
     if (request.method !== "GET") {
       response = apiError("INVALID_REQUEST", "Only read-only GET requests are available.", 405);
     } else if (env.DATASET_MODE
@@ -125,7 +136,10 @@ export async function handlePublicApiRequest(
         "This runtime only contains the synthetic demo dataset.",
         503,
       );
-    } else if (env.DATASET_MODE === "live" && !exactLiveListRoute && !exactLiveDetailRoute) {
+    } else if (env.DATASET_MODE === "live"
+      && !exactLiveListRoute
+      && !exactLiveDetailRoute
+      && !exactLiveHistoryRoute) {
       response = apiError(
         "TEMPORARILY_UNAVAILABLE",
         "This runtime only contains the synthetic demo dataset.",
@@ -134,6 +148,8 @@ export async function handlePublicApiRequest(
     } else if (exactLiveListRoute && !eventListPageService) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
     } else if (exactLiveDetailRoute && !eventDetailProjectionService) {
+      response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
+    } else if (exactLiveHistoryRoute && !eventHistoryProjectionService) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
     } else if (route === "context") {
       const context: PublicContext = readModel.context("demo");
@@ -165,6 +181,11 @@ export async function handlePublicApiRequest(
               ? jsonResponse(detail)
               : apiError("NOT_FOUND", "The requested public route was not found.", 404);
           }
+        } else if (env.DATASET_MODE === "live") {
+          const result = await eventHistoryProjectionService!.read(eventId, url.searchParams);
+          response = result.kind === "found"
+            ? jsonResponse(result.page)
+            : apiError("NOT_FOUND", "The requested public route was not found.", 404);
         } else {
           const history: HistoryPage | null = readModel.history(eventId, url.searchParams);
           response = history
@@ -181,7 +202,13 @@ export async function handlePublicApiRequest(
     response = error instanceof PublicEventDetailProjectionServiceError
       && error.code === "INVALID_EVENT_ID"
       ? apiError("INVALID_REQUEST", "event_id is invalid", 400)
-      : error instanceof PublicEventListPageServiceError
+      : error instanceof PublicEventHistoryProjectionServiceError
+        ? error.code === "INVALID_EVENT_ID"
+          ? apiError("INVALID_REQUEST", "event_id is invalid", 400)
+          : error.code === "INVALID_PAGE"
+            ? apiError("INVALID_REQUEST", "The public event history request is invalid.", 400)
+            : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500)
+        : error instanceof PublicEventListPageServiceError
         ? error.code === "INVALID_REQUEST"
           ? apiError("INVALID_REQUEST", "The public event list request is invalid.", 400)
           : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500)
