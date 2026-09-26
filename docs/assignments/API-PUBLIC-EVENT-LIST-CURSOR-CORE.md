@@ -47,4 +47,3 @@ Stop and ask root if the existing `CryptoKey`/Web Crypto types are unavailable i
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, actual WSL checks, limitations, configuration impact, and remaining decisions here. Do not merge or push.
-

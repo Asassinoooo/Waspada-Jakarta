@@ -25,4 +25,3 @@ The codec accepts its `CryptoKey` and clock through injection. It does not read 
 - Stateless verification works on Cloudflare Workers without a database lookup or paid service.
 - The later runtime-composition task must provide a secret `CryptoKey` and must map codec failures to the documented list error response.
 - The existing demo offset cursor remains independent until an explicitly assigned route change.
-
