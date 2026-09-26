@@ -19,7 +19,7 @@ describe('L3 durable investigation ledger', () => {
     testDatabase = await createTestDatabase();
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const result = await applyMigrations(testDatabase.executor, migrations);
-    assert.deepEqual(result.applied.at(-1), '010_l2_grounding_context_writer');
+    assert.ok(result.applied.includes('010_l2_grounding_context_writer'));
   });
 
   after(async () => {

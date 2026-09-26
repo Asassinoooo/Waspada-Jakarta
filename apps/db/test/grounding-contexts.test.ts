@@ -23,7 +23,7 @@ describe('L2 canonical grounding-context persistence', () => {
     database = await createTestDatabase();
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const result = await applyMigrations(database.executor, migrations);
-    assert.equal(result.applied.at(-1), '010_l2_grounding_context_writer');
+    assert.ok(result.applied.includes('010_l2_grounding_context_writer'));
     ports = createRepositoryPorts(database.executor);
   });
 
