@@ -19,14 +19,14 @@ Read `AGENTS.md`, `SOFTWARE_DEVELOPMENT_PLAN.md`, `docs/IMPLEMENTATION_BACKLOG.m
 2. Support the current OpenAPI list query names only: `cursor`, `limit`, `category`, `lifecycle`, `freshness`, `from`, `to`, `q`, and `place_id`. Reject unknown parameters and duplicate occurrences rather than selecting an ambiguous value.
 3. Parse `limit` as a base-10 integer within 1–100; reject blank, non-integer, unsafe, zero, negative, or over-maximum values. Do not bind the page size into the cursor.
 4. Preserve a supplied cursor string without decoding it here. Reject a blank cursor or one longer than 2,048 characters. The accepted cursor codec remains responsible for authenticity, expiry and filter binding.
-5. Accept only the existing category, lifecycle and freshness enums. Preserve `from` and `to` as supplied strings so the accepted Layer 4 list service and cursor codec remain the semantic RFC-3339/range validators. Trim `q` and `place_id`, omit blank values, lowercase nonblank `q` using the established Indonesian locale, and enforce the existing 120/128-character limits after trimming.
+5. Accept only the existing category, lifecycle and freshness enums. Preserve `from` and `to` as supplied strings so the accepted Layer 4 list service and cursor codec remain the semantic RFC-3339/range validators. Trim `q` and `place_id`, omit blank values, and enforce the existing 120/128-character limits after trimming. Preserve the case of nonblank `q` in this parser; the accepted Layer 4 list service and cursor codec apply Indonesian-locale lowercase normalization exactly once. This avoids Unicode lowercase expansions being counted against the raw query limit a second time.
 6. Return fixed, bounded parser errors that do not echo raw query values, search terms, or cursor tokens. Do not log request parameters.
 7. Tests use synthetic query strings only. Parsing has no database, model, source, key, clock, network, or side effect.
 
 ## Acceptance criteria
 
 - Empty queries produce limit 20, no cursor and no effective filters.
-- Each supported parameter parses to the intended typed field; dates remain byte-for-byte unchanged; text fields normalize consistently with the accepted filter and cursor services.
+- Each supported parameter parses to the intended typed field; dates remain byte-for-byte unchanged; text fields are trimmed here and are normalized consistently by the accepted filter and cursor services.
 - Unknown and duplicate parameters, malformed limits, invalid enums, blank/oversized cursors, and overlong text/place inputs fail with a stable redacted error.
 - The parser does not decode cursor contents, call the list service, access a key or change the existing demo route.
 - No public contract, runtime configuration, dependency, route or fixture changes.
