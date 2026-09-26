@@ -47,3 +47,16 @@ Stop and report if the stored contract cannot preserve moderator review provenan
 ## Implementation handoff
 
 Append the exact branch/worktree, commit(s), changed paths, behavior, actual WSL checks, limitations and remaining decisions here. Do not merge or push.
+
+### Implementation handoff - 2026-09-26
+
+- **Branch:** `work/API-PUBLIC-HISTORY-REVIEW-METADATA-CORE`
+- **Worktree:** `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`)
+- **Implementation commit:** `9b2ab2adb09cfb60446d4f2853aa2e1b023822cf` - `feat(db): add reviewed public history metadata reader`
+- **Changed paths:** `apps/db/migrations/014_public_event_history_review_metadata.sql`; `apps/db/src/public-event-history-disclosure.ts`; `apps/db/test/public-event-history-disclosure.test.ts`; `apps/db/test/migrations.test.ts`; this handoff.
+
+Migration 014 adds append-only, exact-version review decisions and a security-barrier view that selects the newest decision before exposing only approved metadata joined to `public_event_history_versions`. The public-reader role can SELECT the filtered view only; it has no review-table or sequence access. The injected repository performs bounded, parameterized keyset reads, validates exact live event/version keys and metadata, redacts failures, and reports missing approvals as explicit per-version nulls with `coverageComplete: false`. It never selects record JSON. The tests cover approved, held, and revoked revisions; multiple versions; non-UTC offset `+07:30`; invalid timezone and bounds; tab/newline-only summaries; withdrawals; non-live rows; parameterization and page bounds; malformed, duplicate, or mismatched IDs; append-only enforcement; and grants.
+
+**Checks run in WSL Ubuntu-26.04:** focused test passed (7/7); `npm run db:test` passed (15/15 DB test files); `npm test` passed (22 web, 183 Worker, 15 DB, and 12 eval tests); `npm run typecheck` passed; `npm run build` passed, including the Wrangler dry run; `git diff --check` passed. Runtime/tool versions were Node `v24.21.0`, npm `11.19.0`, Git `2.53.0`; relevant packages were PGlite `0.5.8`, pgvector adapter `0.0.9`, PostGIS adapter `0.2.8`, tsx `4.23.15`, TypeScript `7.0.2`, Vite `8.3.0`, and Wrangler `4.137.0`.
+
+No dependencies or runtime configuration changed. Validation used authored synthetic PGlite rows; hosted Neon behavior and real moderator decisions were not tested. MOD-01 must supply authenticated review writes, and a future public projection must check complete coverage and keep internal reviewer metadata out of public serialization. No policy change or further decision was needed for this slice; root review and integration remain pending.
