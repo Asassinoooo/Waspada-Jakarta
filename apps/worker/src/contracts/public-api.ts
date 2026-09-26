@@ -166,6 +166,22 @@ export interface EventPage {
   };
 }
 
+export interface HistoryEntry {
+  event_id: string;
+  version: number;
+  change_type: "published" | "corrected" | "impact_changed" | "retracted";
+  changed_at: string;
+  summary: string;
+}
+
+export interface HistoryPage {
+  data: HistoryEntry[];
+  page: {
+    next_cursor: string | null;
+    cursor_expires_at: string | null;
+  };
+}
+
 export interface PublicContext {
   dataset_mode: "live" | "demo";
   dataset_label: "live" | "historical" | "synthetic";

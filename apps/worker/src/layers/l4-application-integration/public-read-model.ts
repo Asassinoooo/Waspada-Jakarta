@@ -1,4 +1,10 @@
-import type { EventPage, PublicContext } from "../../contracts/public-api.js";
+import type {
+  EventDetail,
+  EventPage,
+  HistoryEntry,
+  HistoryPage,
+  PublicContext,
+} from "../../contracts/public-api.js";
 import type { SourceStatusProvider } from "../l1-data-knowledge/source-status.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
 
@@ -74,6 +80,61 @@ export class PublicReadModel {
         cursor_expires_at: cursorExpiry,
       },
     };
+  }
+
+  detail(eventId: string): EventDetail | null {
+    const event = this.findFixture(eventId);
+    if (!event) return null;
+
+    return {
+      event_id: event.event_id,
+      version: event.version,
+      title: event.title,
+      summary: event.summary,
+      category: event.category,
+      tags: event.tags,
+      lifecycle: event.lifecycle,
+      freshness: event.freshness,
+      event_time: event.event_time,
+      validity: event.validity,
+      scope: event.scope,
+      claims: event.claims,
+      impacts: event.impacts,
+      published_at: event.published_at,
+      geometries: [],
+    };
+  }
+
+  history(eventId: string, search: URLSearchParams): HistoryPage | null {
+    const limit = this.readInteger(search.get("limit"), 20, 1, maximumPageSize, "limit");
+    const offset = this.readCursor(search.get("cursor"));
+    const event = this.findFixture(eventId);
+    if (!event) return null;
+
+    const versions: HistoryEntry[] = [
+      {
+        event_id: event.event_id,
+        version: event.version,
+        change_type: "published",
+        changed_at: event.published_at,
+        summary: "Versi contoh sintetis dimuat untuk demonstrasi antarmuka.",
+      },
+    ];
+    const data = versions.slice(offset, offset + limit);
+    const nextOffset = offset + data.length;
+    const hasMore = nextOffset < versions.length;
+
+    return {
+      data,
+      page: {
+        next_cursor: hasMore ? String(nextOffset) : null,
+        cursor_expires_at: hasMore ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null,
+      },
+    };
+  }
+
+  private findFixture(eventId: string) {
+    return this.fixtures.find((event) => event.event_id === eventId) ?? null;
   }
 
   private readFilters(search: URLSearchParams) {

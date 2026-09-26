@@ -5,6 +5,7 @@ import {
   handlePublicApiRequest,
   type WorkerEnvironment,
 } from "../src/layers/l4-application-integration/api.js";
+import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
 import {
   API_REQUEST_EVENT_NAME,
   consoleTelemetry,
@@ -15,6 +16,10 @@ const demoEnvironment: WorkerEnvironment = { DATASET_MODE: "demo" };
 
 async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
+}
+
+function assertKeys(value: object, expected: string[]) {
+  assert.deepEqual(Object.keys(value).sort(), [...expected].sort());
 }
 
 test("context reports a server-selected synthetic dataset with no live sources", async () => {
@@ -70,6 +75,167 @@ test("event pages use the OpenAPI projection and bounded read filters", async ()
   assert.deepEqual(emptyPage.page, { next_cursor: null, cursor_expires_at: null });
 });
 
+test("event detail returns the exact synthetic fixture projection without added evidence or geometry", async () => {
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01?dataset_mode=live", {
+      headers: { "x-dataset-mode": "live" },
+    }),
+    demoEnvironment,
+  );
+  const body = await readJson<{
+    event_id: string;
+    version: number;
+    title: string;
+    summary: string;
+    category: string;
+    tags: Array<Record<string, unknown>>;
+    lifecycle: string;
+    freshness: Record<string, unknown>;
+    event_time: Record<string, unknown>;
+    validity: Record<string, unknown>;
+    scope: Record<string, unknown>;
+    claims: unknown[];
+    impacts: unknown[];
+    published_at: string;
+    geometries: unknown[];
+  }>(response);
+
+  assert.equal(response.status, 200);
+  assertKeys(body, [
+    "event_id", "version", "title", "summary", "category", "tags", "lifecycle",
+    "freshness", "event_time", "validity", "scope", "claims", "impacts", "published_at",
+    "geometries",
+  ]);
+  assert.equal(body.event_id, "synthetic-demo-01");
+  assert.match(body.title, /^Contoh fiktif:/);
+  assert.match(body.summary, /Data contoh/);
+  assertKeys(body.freshness, ["status", "evaluated_at", "review_due_at", "basis"]);
+  assertKeys(body.event_time, ["start", "end", "precision"]);
+  assertKeys(body.validity, ["valid_from", "valid_until"]);
+  assertKeys(body.scope, ["places", "services", "institutions", "audiences"]);
+  assertKeys(body.tags[0] ?? {}, ["namespace", "value"]);
+  assert.deepEqual(body.claims, []);
+  assert.deepEqual(body.impacts, []);
+  assert.deepEqual(body.geometries, []);
+  assert.deepEqual(body.scope, { places: [], services: [], institutions: [], audiences: [] });
+  assert.equal(JSON.stringify(body).includes("source"), false);
+  assert.equal(JSON.stringify(body).includes("safety"), false);
+});
+
+test("event history exposes only the single synthetic fixture version with stable bounded pagination", async () => {
+  const defaultResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01/history"),
+    demoEnvironment,
+  );
+  const defaultPage = await readJson<{
+    data: Array<Record<string, unknown>>;
+    page: { next_cursor: string | null; cursor_expires_at: string | null };
+  }>(defaultResponse);
+
+  assert.equal(defaultResponse.status, 200);
+  assertKeys(defaultPage, ["data", "page"]);
+  assertKeys(defaultPage.page, ["next_cursor", "cursor_expires_at"]);
+  assert.equal(defaultPage.data.length, 1);
+  const [entry] = defaultPage.data;
+  assert.ok(entry);
+  assertKeys(entry, ["event_id", "version", "change_type", "changed_at", "summary"]);
+  assert.equal(entry.event_id, "synthetic-demo-01");
+  assert.equal(entry.version, 1);
+  assert.equal(entry.change_type, "published");
+  assert.equal(entry.changed_at, "2026-09-24T00:00:00.000Z");
+  assert.match(String(entry.summary), /sintetis.*demonstrasi/i);
+  assert.deepEqual(defaultPage.page, { next_cursor: null, cursor_expires_at: null });
+
+  const maxPageResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01/history?limit=100"),
+    demoEnvironment,
+  );
+  assert.deepEqual(await readJson(maxPageResponse), defaultPage);
+
+  const emptyPageResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01/history?cursor=1&limit=1"),
+    demoEnvironment,
+  );
+  const emptyPage = await readJson<typeof defaultPage>(emptyPageResponse);
+  assert.equal(emptyPageResponse.status, 200);
+  assert.deepEqual(emptyPage, {
+    data: [],
+    page: { next_cursor: null, cursor_expires_at: null },
+  });
+
+  const secondFixtureResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-02/history?limit=1"),
+    demoEnvironment,
+  );
+  const secondFixturePage = await readJson<typeof defaultPage>(secondFixtureResponse);
+  assert.equal(secondFixtureResponse.status, 200);
+  assert.equal(secondFixturePage.data[0]?.event_id, "synthetic-demo-02");
+  assert.equal(secondFixturePage.data[0]?.changed_at, "2026-09-24T00:00:00.000Z");
+});
+
+test("detail and history reject malformed IDs and return the documented not-found envelope", async () => {
+  const knownButAbsent = await worker.fetch(
+    new Request("http://localhost/api/v1/events/not-a-fixture"),
+    demoEnvironment,
+  );
+  const absentHistory = await worker.fetch(
+    new Request("http://localhost/api/v1/events/not-a-fixture/history"),
+    demoEnvironment,
+  );
+  for (const response of [knownButAbsent, absentHistory]) {
+    const error = await readJson<{ code: string; message: string; request_id: string }>(response);
+    assert.equal(response.status, 404);
+    assertKeys(error, ["code", "message", "request_id"]);
+    assert.equal(error.code, "NOT_FOUND");
+    assert.match(error.request_id, /^[0-9a-f-]{36}$/i);
+  }
+
+  const malformedUrls = [
+    "http://localhost/api/v1/events/",
+    "http://localhost/api/v1/events//history",
+    "http://localhost/api/v1/events/%2F",
+    "http://localhost/api/v1/events/%E0%A4%A",
+    `http://localhost/api/v1/events/${"x".repeat(129)}`,
+  ];
+  for (const url of malformedUrls) {
+    const response = await worker.fetch(new Request(url), demoEnvironment);
+    const error = await readJson<{ code: string; message: string; request_id: string }>(response);
+    assert.equal(response.status, 400, url);
+    assert.equal(error.code, "INVALID_REQUEST");
+    assertKeys(error, ["code", "message", "request_id"]);
+    assert.equal(error.message.includes("x".repeat(129)), false);
+  }
+});
+
+test("history query bounds follow the existing page convention", async () => {
+  const invalidQueries = [
+    "limit=0",
+    "limit=101",
+    "limit=1.5",
+    "cursor=01",
+    "cursor=-1",
+    "cursor=1.0",
+    `cursor=${"1".repeat(2049)}`,
+  ];
+  for (const query of invalidQueries) {
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/v1/events/synthetic-demo-01/history?${query}`),
+      demoEnvironment,
+    );
+    const body = await readJson<{ code: string }>(response);
+    assert.equal(response.status, 400, query.slice(0, 40));
+    assert.equal(body.code, "INVALID_REQUEST");
+  }
+
+  for (const query of ["limit=1", "limit=100", "cursor=0&limit=20"]) {
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/v1/events/synthetic-demo-01/history?${query}`),
+      demoEnvironment,
+    );
+    assert.equal(response.status, 200, query);
+  }
+});
+
 test("browser input cannot select a live dataset", async () => {
   const queryAttempt = await worker.fetch(
     new Request("http://localhost/api/v1/context?dataset_mode=live", {
@@ -88,6 +254,40 @@ test("browser input cannot select a live dataset", async () => {
   );
   assert.equal(wrongRuntime.status, 503);
   assert.match((await readJson<{ message: string }>(wrongRuntime)).message, /synthetic demo dataset/);
+});
+
+test("explicit non-demo mode blocks detail and history before a fixture read", async () => {
+  const originalDetail = PublicReadModel.prototype.detail;
+  const originalHistory = PublicReadModel.prototype.history;
+  let fixtureReads = 0;
+  PublicReadModel.prototype.detail = function () {
+    fixtureReads += 1;
+    throw new Error("fixture detail must not be read");
+  };
+  PublicReadModel.prototype.history = function () {
+    fixtureReads += 1;
+    throw new Error("fixture history must not be read");
+  };
+
+  try {
+    for (const path of [
+      "/api/v1/events/synthetic-demo-01",
+      "/api/v1/events/synthetic-demo-01/history",
+    ]) {
+      const response = await worker.fetch(new Request(`http://localhost${path}`), {
+        DATASET_MODE: "live",
+      });
+      const body = await readJson<{ code: string; message: string }>(response);
+      assert.equal(response.status, 503);
+      assert.equal(body.code, "TEMPORARILY_UNAVAILABLE");
+      assert.match(body.message, /synthetic demo dataset/);
+    }
+  } finally {
+    PublicReadModel.prototype.detail = originalDetail;
+    PublicReadModel.prototype.history = originalHistory;
+  }
+
+  assert.equal(fixtureReads, 0);
 });
 
 test("invalid filters are rejected and writes cannot mutate the fixture", async () => {
@@ -115,6 +315,40 @@ test("invalid filters are rejected and writes cannot mutate the fixture", async 
     demoEnvironment,
   );
   assert.equal(await after.text(), beforeBody);
+
+  const detailBefore = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01"),
+    demoEnvironment,
+  );
+  const historyBefore = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01/history"),
+    demoEnvironment,
+  );
+  const detailBeforeBody = await detailBefore.text();
+  const historyBeforeBody = await historyBefore.text();
+
+  for (const [path, method] of [
+    ["/api/v1/events/synthetic-demo-01", "POST"],
+    ["/api/v1/events/synthetic-demo-01/history", "PUT"],
+    ["/api/v1/events/synthetic-demo-01/history", "DELETE"],
+  ]) {
+    const response = await worker.fetch(
+      new Request(`http://localhost${path}`, { method }),
+      demoEnvironment,
+    );
+    assert.equal(response.status, 405, `${method} ${path}`);
+  }
+
+  const detailAfter = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01"),
+    demoEnvironment,
+  );
+  const historyAfter = await worker.fetch(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01/history"),
+    demoEnvironment,
+  );
+  assert.equal(await detailAfter.text(), detailBeforeBody);
+  assert.equal(await historyAfter.text(), historyBeforeBody);
 });
 
 test("injected telemetry records only bounded route, status, and duration across API outcomes", async () => {
@@ -136,6 +370,18 @@ test("injected telemetry records only bounded route, status, and duration across
       env: demoEnvironment,
       route: "events",
       status: 400,
+    },
+    {
+      request: new Request(`http://localhost/api/v1/events/synthetic-demo-01?cursor=0&token=${marker}`),
+      env: demoEnvironment,
+      route: "events",
+      status: 200,
+    },
+    {
+      request: new Request(`http://localhost/api/v1/events/synthetic-demo-01/history?limit=1&token=${marker}`),
+      env: demoEnvironment,
+      route: "events",
+      status: 200,
     },
     {
       request: new Request(`http://localhost/api/v1/events?token=${marker}`, { method: "POST" }),
@@ -202,6 +448,29 @@ test("telemetry sink exceptions leave the original API error response intact", a
   assert.equal(body.message, "limit must be between 1 and 100");
   assert.match(body.request_id, /^[0-9a-f-]{36}$/i);
   assert.deepEqual(Object.keys(body).sort(), ["code", "message", "request_id"]);
+});
+
+test("unexpected detail read errors are generic and do not expose exception text", async () => {
+  const marker = "private fixture read failure detail";
+  const originalDetail = PublicReadModel.prototype.detail;
+  PublicReadModel.prototype.detail = function () {
+    throw new Error(marker);
+  };
+
+  let response: Response;
+  try {
+    response = await worker.fetch(
+      new Request("http://localhost/api/v1/events/synthetic-demo-01"),
+      demoEnvironment,
+    );
+  } finally {
+    PublicReadModel.prototype.detail = originalDetail;
+  }
+
+  const body = await response!.text();
+  assert.equal(response!.status, 500);
+  assert.ok(!body.includes(marker));
+  assert.ok(body.includes("The public read could not be completed."));
 });
 
 test("console telemetry writes only the stable allowlisted structured fields", () => {

@@ -1,4 +1,4 @@
-import type { EventPage, PublicContext } from "../../contracts/public-api.js";
+import type { EventDetail, EventPage, HistoryPage, PublicContext } from "../../contracts/public-api.js";
 import { noConfiguredSources } from "../l1-data-knowledge/source-status.js";
 import {
   API_REQUEST_EVENT_NAME,
@@ -28,6 +28,37 @@ function apiError(code: string, message: string, status: number) {
   return jsonResponse({ code, message, request_id: crypto.randomUUID() }, status);
 }
 
+function eventRoute(pathname: string): { kind: "detail" | "history"; encodedId: string } | null {
+  const historyMatch = /^\/api\/v1\/events\/([^/]*)\/history$/.exec(pathname);
+  if (historyMatch) return { kind: "history", encodedId: historyMatch[1] ?? "" };
+
+  const detailMatch = /^\/api\/v1\/events\/([^/]*)$/.exec(pathname);
+  if (detailMatch) return { kind: "detail", encodedId: detailMatch[1] ?? "" };
+
+  return null;
+}
+
+function decodeEventId(encodedId: string): string {
+  let eventId: string;
+  try {
+    eventId = decodeURIComponent(encodedId);
+  } catch {
+    throw new QueryValidationError("event_id is invalid");
+  }
+
+  const length = Array.from(eventId).length;
+  if (
+    length < 1 ||
+    length > 128 ||
+    eventId.includes("/") ||
+    eventId.includes("\\") ||
+    /[\u0000-\u001f\u007f]/u.test(eventId)
+  ) {
+    throw new QueryValidationError("event_id is invalid");
+  }
+  return eventId;
+}
+
 export async function handlePublicApiRequest(
   request: Request,
   env: WorkerEnvironment,
@@ -35,10 +66,11 @@ export async function handlePublicApiRequest(
 ) {
   const startedAt = Date.now();
   const url = new URL(request.url);
+  const selectedEventRoute = eventRoute(url.pathname);
   const route =
     url.pathname === "/api/v1/context"
       ? "context"
-      : url.pathname === "/api/v1/events"
+      : url.pathname === "/api/v1/events" || selectedEventRoute !== null
         ? "events"
         : "other";
   let response: Response | undefined;
@@ -56,8 +88,25 @@ export async function handlePublicApiRequest(
       const context: PublicContext = readModel.context("demo");
       response = jsonResponse(context);
     } else if (route === "events") {
-      const page: EventPage = readModel.events(url.searchParams);
-      response = jsonResponse(page);
+      if (url.pathname === "/api/v1/events") {
+        const page: EventPage = readModel.events(url.searchParams);
+        response = jsonResponse(page);
+      } else if (selectedEventRoute) {
+        const eventId = decodeEventId(selectedEventRoute.encodedId);
+        if (selectedEventRoute.kind === "detail") {
+          const detail: EventDetail | null = readModel.detail(eventId);
+          response = detail
+            ? jsonResponse(detail)
+            : apiError("NOT_FOUND", "The requested public route was not found.", 404);
+        } else {
+          const history: HistoryPage | null = readModel.history(eventId, url.searchParams);
+          response = history
+            ? jsonResponse(history)
+            : apiError("NOT_FOUND", "The requested public route was not found.", 404);
+        }
+      } else {
+        response = apiError("NOT_FOUND", "The requested public route was not found.", 404);
+      }
     } else {
       response = apiError("NOT_FOUND", "The requested public route was not found.", 404);
     }
