@@ -78,3 +78,11 @@ Append exact branch/worktree, commit SHAs and messages, changed paths, behavior,
 - **Limitations:** The ports are not wired to an HTTP route or Worker runtime. This does not verify hosted PostgreSQL/Neon behavior and does not connect live data.
 - **Migration/configuration impact:** None. No DTO, OpenAPI, migration, grant, binding, dependency, or lockfile changes.
 - **Remaining decisions:** None within this bounded service slice; root review and integration remain pending.
+
+### Root review and acceptance — 26 September 2026
+
+- **Accepted branch:** `work/API-PUBLIC-PROJECTION-SERVICE-CORE`; fast-forwarded to local `main` at `eae394bf44bdb2d6e7116deef0437dedb327364b`.
+- **Reviewed implementation commits:** `3adcc0106cec34bf77a4e794f125bfb656a36098` (`feat(API-PUBLIC-PROJECTION-SERVICE-CORE): compose public event projection`), `58727dd08080ca760842a351de7dc9b88e59e77f` (`fix(API-PUBLIC-PROJECTION-SERVICE-CORE): suppress lookup excerpts`); handoff commit `a17b8a3f2bc0a8fed9b48e4cc67370c3c2f76c68` and excerpt-review handoff `eae394bf44bdb2d6e7116deef0437dedb327364b`.
+- **Root review:** Confirmed event and impact identity/version checks run before lookups; lookup keys are bounded and derive from event/claim/impact scopes plus claim `support` references only; geometry IDs are not sent to scope-name lookup; excerpt-bearing lookup results fail closed before projection; final response passes through the existing allowlist. Tests are authored, fictional fixtures only.
+- **Independent WSL checks:** Ubuntu-26.04, Node.js `v24.21.0`, npm `11.19.0`, Git `2.53.0`. Focused test passed 38/38; `npm test` passed 309/309 (web 22, Worker 183, DB 92 across 12 files, evaluation 12); `npm run typecheck`, `npm run build` (Vite production and Wrangler `4.137.0` dry-run), and `git diff --check` passed.
+- **Acceptance limits:** Hosted Neon/PostgreSQL behavior and Worker HTTP/runtime integration remain unverified. No migration, route, DTO, binding, dependency, live source, or external service changed. The implementation is accepted for its bounded service scope; API-01 remains in progress.
