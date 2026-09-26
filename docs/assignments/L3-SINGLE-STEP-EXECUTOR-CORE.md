@@ -1,6 +1,6 @@
 # L3-SINGLE-STEP-EXECUTOR-CORE — reserve and execute one registered investigation action
 
-- **Status:** Assigned on `work/L3-SINGLE-STEP-EXECUTOR-CORE`
+- **Status:** Accepted on `main` at handoff `22b1f10`; root acceptance recorded in [delivery log](../DELIVERY_LOG.md)
 - **Depends on:** ADR-014, ADR-017, L3-LEDGER-CORE, L3-INSUFFICIENT-CONTEXT-ENTRY-CORE, OBS-01-L3-LEDGER-TELEMETRY-CORE
 - **Requirements:** FR-07; NFR-01/02/05/07
 - **Layer:** L3 — bounded action execution
