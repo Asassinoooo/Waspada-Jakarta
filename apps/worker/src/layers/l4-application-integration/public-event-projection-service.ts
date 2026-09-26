@@ -69,6 +69,7 @@ export type PublicEventProjectionServiceErrorCode =
   | "SNAPSHOT_INVALID"
   | "LOOKUP_LIMIT_EXCEEDED"
   | "LOOKUP_READ_FAILED"
+  | "LOOKUP_RESULT_INVALID"
   | "PROJECTION_FAILED";
 
 const errorMessages: Record<PublicEventProjectionServiceErrorCode, string> = {
@@ -77,6 +78,7 @@ const errorMessages: Record<PublicEventProjectionServiceErrorCode, string> = {
   SNAPSHOT_INVALID: "The current public event snapshot is invalid.",
   LOOKUP_LIMIT_EXCEEDED: "The public projection exceeds its lookup limit.",
   LOOKUP_READ_FAILED: "The public projection lookups could not be read.",
+  LOOKUP_RESULT_INVALID: "The public projection lookup result is invalid.",
   PROJECTION_FAILED: "The event cannot be projected to a public view.",
 };
 
@@ -147,11 +149,18 @@ export function createPublicEventProjectionService(ports: {
         fail("LOOKUP_READ_FAILED");
       }
 
+      let validatedLookupResult: PublicEventProjectionLookupResult;
+      try {
+        validatedLookupResult = validateLookupResult(lookupResult);
+      } catch {
+        fail("LOOKUP_RESULT_INVALID");
+      }
+
       let event: EventView;
       try {
         event = projectPublicEvent(prepared.eventRecord, {
-          scopeNames: lookupResult.scopeNames,
-          publicAttributions: lookupResult.publicAttributions,
+          scopeNames: validatedLookupResult.scopeNames,
+          publicAttributions: validatedLookupResult.publicAttributions,
           impacts: prepared.impactRecords,
         });
       } catch {
@@ -160,6 +169,23 @@ export function createPublicEventProjectionService(ports: {
 
       return { kind: "found", event };
     },
+  };
+}
+
+function validateLookupResult(value: unknown): PublicEventProjectionLookupResult {
+  if (!isRecord(value) || !Array.isArray(value.scopeNames) || !Array.isArray(value.publicAttributions)) {
+    fail("LOOKUP_RESULT_INVALID");
+  }
+  for (const attribution of value.publicAttributions) {
+    if (!isRecord(attribution)
+      || attribution.excerpt_public_use_approved !== false
+      || attribution.excerpt !== null) {
+      fail("LOOKUP_RESULT_INVALID");
+    }
+  }
+  return {
+    scopeNames: value.scopeNames,
+    publicAttributions: value.publicAttributions,
   };
 }
 

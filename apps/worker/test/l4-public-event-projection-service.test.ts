@@ -291,6 +291,7 @@ test("reads one current snapshot, requests only deduplicated public keys, and re
   assert.deepEqual(result.event.claims[0]?.scope.services, ["Synthetic name service-synthetic-claim"]);
   assert.equal(result.event.claims[0]?.sources[0]?.published_at, "2026-09-25T20:00:00Z");
   assert.equal(result.event.claims[0]?.sources[0]?.observed_at, "2026-09-26T03:10:00+07:00");
+  assert.equal(result.event.claims[0]?.sources[0]?.excerpt, null);
   assert.equal(result.event.claims[1]?.sources.length, 2);
   assert.deepEqual(Object.keys(result.event.claims[0]!.sources[0]!).sort(), [
     "display_name", "excerpt", "observed_at", "published_at", "url",
@@ -507,6 +508,61 @@ test("fails closed on missing or ambiguous reviewed names and support attributio
       const harness = makeHarness({ kind: "found", snapshot: makeSnapshot() }, scenario.resolve);
       await assert.rejects(harness.service.read(eventId), (error: unknown) => {
         assertServiceError(error, "PROJECTION_FAILED");
+        return true;
+      });
+      assert.equal(harness.lookupCalls.length, 1);
+    });
+  }
+});
+
+test("rejects every lookup attribution row that is not excerpt-free", async (t) => {
+  const scenarios: Array<{
+    name: string;
+    resolve: (query: PublicEventProjectionLookupQuery) => unknown;
+  }> = [
+    {
+      name: "approved excerpt",
+      resolve: (query) => {
+        const result = defaultLookupResult(query);
+        const first = result.publicAttributions[0] as Record<string, unknown>;
+        return {
+          ...result,
+          publicAttributions: [
+            { ...first, excerpt_public_use_approved: true, excerpt: "PRIVATE_EXCERPT_CONTENT_MARKER" },
+            ...result.publicAttributions.slice(1),
+          ],
+        };
+      },
+    },
+    {
+      name: "non-null excerpt without approval",
+      resolve: (query) => {
+        const result = defaultLookupResult(query);
+        const first = result.publicAttributions[0] as Record<string, unknown>;
+        return {
+          ...result,
+          publicAttributions: [
+            { ...first, excerpt_public_use_approved: false, excerpt: "PRIVATE_EXCERPT_CONTENT_MARKER" },
+            ...result.publicAttributions.slice(1),
+          ],
+        };
+      },
+    },
+    {
+      name: "non-record attribution row",
+      resolve: (query) => {
+        const result = defaultLookupResult(query);
+        return { ...result, publicAttributions: [null, ...result.publicAttributions.slice(1)] };
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      const harness = makeHarness({ kind: "found", snapshot: makeSnapshot() }, scenario.resolve);
+      await assert.rejects(harness.service.read(eventId), (error: unknown) => {
+        assertServiceError(error, "LOOKUP_RESULT_INVALID", "PRIVATE_EXCERPT_CONTENT_MARKER");
+        assert.equal(String(error).includes("PRIVATE_EXCERPT_CONTENT_MARKER"), false);
         return true;
       });
       assert.equal(harness.lookupCalls.length, 1);
