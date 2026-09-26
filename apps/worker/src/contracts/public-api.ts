@@ -107,6 +107,57 @@ export interface EventView {
   published_at: string;
 }
 
+export type PublicGeoJSONPosition = [longitude: number, latitude: number];
+
+export type PublicGeoJSONGeometry =
+  | { type: "Point"; coordinates: PublicGeoJSONPosition }
+  | { type: "MultiPoint"; coordinates: PublicGeoJSONPosition[] }
+  | { type: "LineString"; coordinates: PublicGeoJSONPosition[] }
+  | { type: "MultiLineString"; coordinates: PublicGeoJSONPosition[][] }
+  | { type: "Polygon"; coordinates: PublicGeoJSONPosition[][] }
+  | { type: "MultiPolygon"; coordinates: PublicGeoJSONPosition[][][] };
+
+export interface PublicGeometry {
+  geometry_id: string;
+  role:
+    | "incident_scene"
+    | "affected_area"
+    | "warning_boundary"
+    | "route_segment"
+    | "service_stop"
+    | "facility"
+    | "venue"
+    | "service_area"
+    | "approximate_place";
+  geometry: PublicGeoJSONGeometry;
+  precision_m: number | null;
+  label: string | null;
+}
+
+export interface EventDetail extends EventView {
+  geometries: PublicGeometry[];
+}
+
+export interface PublicFeature {
+  type: "Feature";
+  id: string;
+  geometry: PublicGeoJSONGeometry;
+  properties: {
+    event_id: string;
+    version: number;
+    title: string;
+    category: Category;
+    lifecycle: Lifecycle;
+    freshness: FreshnessStatus;
+    geometry_role: PublicGeometry["role"];
+  };
+}
+
+export interface PublicFeatureCollection {
+  type: "FeatureCollection";
+  features: PublicFeature[];
+}
+
 export interface EventPage {
   data: EventView[];
   page: {

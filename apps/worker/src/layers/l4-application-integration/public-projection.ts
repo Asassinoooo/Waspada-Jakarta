@@ -10,6 +10,30 @@ export interface PublicProjectionLookups {
   readonly impacts: readonly unknown[];
 }
 
+export interface PublicGeometrySupportReference {
+  readonly reportRevisionId: string;
+  readonly permittedTextHash: string;
+  readonly spanStart: number;
+  readonly spanEnd: number;
+  readonly offsetUnit: "unicode_code_points";
+  readonly relation: "supports";
+}
+
+/**
+ * A validated internal snapshot needed by the geometry projection. It keeps
+ * event/claim geometry links and exact support references out of public DTOs.
+ */
+export interface PublicEventGeometryProjectionContext {
+  readonly eventView: EventView;
+  readonly eventId: string;
+  readonly version: number;
+  readonly geometryIds: readonly string[];
+  readonly claims: readonly {
+    readonly geometryIds: readonly string[];
+    readonly supports: readonly PublicGeometrySupportReference[];
+  }[];
+}
+
 export type PublicProjectionErrorCode =
   | "INVALID_EVENT"
   | "EVENT_NOT_PUBLIC"
@@ -155,6 +179,39 @@ const impactTypes = new Set<ImpactType>([
 export function projectPublicEvent(eventValue: unknown, lookupsValue: PublicProjectionLookups): EventView {
   const lookups = validateLookups(lookupsValue);
   const event = validateEvent(eventValue);
+  return projectValidatedEvent(event, lookups);
+}
+
+/** Reuses the same fail-closed Event boundary while retaining private geometry links for L4. */
+export function projectPublicEventForGeometry(
+  eventValue: unknown,
+  lookupsValue: PublicProjectionLookups,
+): PublicEventGeometryProjectionContext {
+  const lookups = validateLookups(lookupsValue);
+  const event = validateEvent(eventValue);
+  return {
+    eventView: projectValidatedEvent(event, lookups),
+    eventId: event.eventId,
+    version: event.version,
+    geometryIds: [...event.scope.geometryIds],
+    claims: event.claims.map((claim) => ({
+      geometryIds: [...claim.scope.geometryIds],
+      supports: claim.support.map((reference) => ({
+        reportRevisionId: reference.reportRevisionId,
+        permittedTextHash: reference.permittedTextHash,
+        spanStart: reference.spanStart,
+        spanEnd: reference.spanEnd,
+        offsetUnit: reference.offsetUnit,
+        relation: "supports",
+      })),
+    })),
+  };
+}
+
+function projectValidatedEvent(
+  event: ValidatedEvent & { readonly datasetKind: "live" },
+  lookups: ReturnType<typeof validateLookups>,
+): EventView {
   const eventScope = projectScope(event.scope, lookups.scopeNames);
   const projectedClaims: PublicClaim[] = [];
 
