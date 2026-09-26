@@ -18,6 +18,8 @@ Tokens expire 15 minutes after issue, matching the current demo list's advertise
 
 The codec accepts its `CryptoKey` and clock through injection. It does not read an environment variable, create/store a production secret, or add a dependency. Secret provisioning, key rotation policy, URL parsing, route wiring, and Worker/database runtime composition remain separate tasks. Rotating the signing key invalidates outstanding tokens. HMAC authenticates the cursor but does not encrypt it; the keyset fields are already part of public event pagination.
 
+The first Worker runtime-composition slice accepts the secret as `PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX`: exactly 64 hexadecimal characters representing 32 random bytes. Runtime code imports it as a non-extractable HMAC-SHA-256 key for `sign` and `verify`. This names and validates the configuration interface only; it does not create a key, configure a Cloudflare secret, or change the deployment.
+
 ## Consequences
 
 - Clients cannot alter a keyset position or continue a cursor under a different normalized filter set without invalidating the signature.
