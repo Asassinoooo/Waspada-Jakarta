@@ -5,7 +5,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next task:** Root will assign the bounded Layer 4 public event-list projection after this acceptance checkpoint is pushed. It must preserve the existing `EventPage` contract and keep list filtering/pagination semantics explicit; it will not wire a live route or database connection without a separate assignment.
+**Next assigned task:** `API-PUBLIC-EVENT-LIST-PROJECTION-CORE`, assigned on `main` in this checkpoint. It composes a bounded candidate page through the existing strict `EventView` projection service, preserves order/cursor progress, and caps projector concurrency. Public filters, cursor token serialization, routes, and Worker/database runtime wiring remain separate work.
 
 ## Repository state
 
@@ -22,6 +22,10 @@ The accepted work list now includes L1-FIXTURE-RUNNER-CORE, API-PUBLIC-LOOKUPS-C
 ### API-PUBLIC-EVENT-LIST-CANDIDATE-CORE — accepted — 27 September 2026
 
 Root reviewed agent commits `369694a` (`feat(API-PUBLIC-EVENT-LIST-CANDIDATE-CORE): read bounded live event candidates`), `67f27da` (handoff), and `96b4f4b` (invalid-result bounds follow-up) on the dedicated branch. It cherry-picked them to `main` as `5f14f2a`, `4a0001e`, and `58d0a27`. The repository reads current published live candidates through the existing safe views, anchors pages to version 1's immutable `published_at`, orders timestamp ties by event ID, validates closed cursors and row identity, and rejects duplicate or over-probe results with redacted failures. Current withdrawals and synthetic rows are excluded. Root independently passed the focused WSL PGlite tests 2/2 and commit/diff checks. The implementation commit passed `npm run db:test` (16 files), full `npm test` (web 22, Worker 183, DB 16, evaluation 12), typecheck and build; the later test-only follow-up passed focused 2/2. No migration, grant, runtime binding, filter, route, DTO or dependency was added. The tests use authored fictional data; hosted Neon and live records remain unverified. See the [assignment and handoff](assignments/API-PUBLIC-EVENT-LIST-CANDIDATE-CORE.md).
+
+### API-PUBLIC-EVENT-LIST-PROJECTION-CORE — assigned — 27 September 2026
+
+Root assigned a bounded Layer 4 list composition over the accepted candidate reader and existing `PublicEventProjectionService`. The service will return only strict `EventView`s and the internal candidate cursor, preserve candidate order, use at most four concurrent projection calls, omit candidates that disappear between reads, and fail closed on identity/version mismatches or port errors. It does not implement query filters, public cursor serialization, route handling or runtime DB wiring. See the [assignment](assignments/API-PUBLIC-EVENT-LIST-PROJECTION-CORE.md).
 
 ### API-PUBLIC-HISTORY-PROJECTION-CORE — accepted — 27 September 2026
 
