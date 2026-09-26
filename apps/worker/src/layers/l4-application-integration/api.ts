@@ -20,6 +20,8 @@ import { readPublicGeoJSONQuery } from "./public-geojson-query.js";
 
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
+  HYPERDRIVE?: { readonly connectionString?: string };
+  PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
 }
 
 const readModel = new PublicReadModel(noConfiguredSources);
@@ -100,14 +102,26 @@ export async function handlePublicApiRequest(
   let response: Response | undefined;
 
   try {
+    const exactLiveListRoute =
+      env.DATASET_MODE === "live" && url.pathname === "/api/v1/events";
     if (request.method !== "GET") {
       response = apiError("INVALID_REQUEST", "Only read-only GET requests are available.", 405);
-    } else if (env.DATASET_MODE && env.DATASET_MODE !== "demo") {
+    } else if (env.DATASET_MODE
+      && env.DATASET_MODE !== "demo"
+      && env.DATASET_MODE !== "live") {
       response = apiError(
         "TEMPORARILY_UNAVAILABLE",
         "This runtime only contains the synthetic demo dataset.",
         503,
       );
+    } else if (env.DATASET_MODE === "live" && !exactLiveListRoute) {
+      response = apiError(
+        "TEMPORARILY_UNAVAILABLE",
+        "This runtime only contains the synthetic demo dataset.",
+        503,
+      );
+    } else if (exactLiveListRoute && !eventListPageService) {
+      response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
     } else if (route === "context") {
       const context: PublicContext = readModel.context("demo");
       response = jsonResponse(context);

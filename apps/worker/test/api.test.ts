@@ -350,7 +350,7 @@ test("injected event-list service errors map to fixed redacted API responses", a
   assert.ok(!JSON.stringify(unrelatedBody).includes(marker));
 });
 
-test("event-list page service injection cannot bypass a non-demo runtime gate", async () => {
+test("event-list page service injection cannot bypass an unsupported runtime mode", async () => {
   let calls = 0;
   const service: PublicEventListPageService = {
     async read() {
@@ -360,7 +360,7 @@ test("event-list page service injection cannot bypass a non-demo runtime gate", 
   };
   const response = await handlePublicApiRequest(
     new Request("http://localhost/api/v1/events?q=private-query-marker&cursor=private-cursor-marker"),
-    { DATASET_MODE: "live" },
+    { DATASET_MODE: "staging" },
     undefined,
     service,
   );
