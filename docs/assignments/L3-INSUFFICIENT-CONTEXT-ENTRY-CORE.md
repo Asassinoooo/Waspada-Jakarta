@@ -1,6 +1,6 @@
 # L3-INSUFFICIENT-CONTEXT-ENTRY-CORE — open bounded cases from insufficient L2 context
 
-- **Status:** Assigned on `work/L3-INSUFFICIENT-CONTEXT-ENTRY-CORE`
+- **Status:** Accepted on `main` at handoff `c8c16c5` after root review and independent WSL verification
 - **Depends on:** L2-DIRECT-REASONING-CORE, RAG-CONTEXT-ASSEMBLY-CORE, L2-CONTEXT-PERSIST-CORE, L3-LEDGER-CORE, OBS-01-L3-LEDGER-TELEMETRY-CORE
 - **Requirements:** FR-05/06/07/14; NFR-01/02/05/07
 - **Layer:** L3 — bounded investigation entry

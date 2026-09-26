@@ -5,7 +5,7 @@
 - **Branch:** `work/L3-INSUFFICIENT-CONTEXT-ENTRY-CORE`
 - **Worktree:** `D:\Projects\RPL\.codex-build\worktrees\l3-insufficient-context-entry-core` (WSL: `/mnt/d/Projects/RPL/.codex-build/worktrees/l3-insufficient-context-entry-core`)
 - **Implementation commit:** `9bf540736e3cbf8cc1e9e1ac73e096b124ce1fe9` — `feat(L3-INSUFFICIENT-CONTEXT-ENTRY-CORE): open cases from insufficient context`
-- **Handoff commit:** recorded by the agent after committing this file.
+- **Handoff commit:** `c8c16c53924377e2450573a51cc4ce910ca92f19` — `docs(L3-INSUFFICIENT-CONTEXT-ENTRY-CORE): record implementation handoff`
 
 ## Behavior implemented
 
