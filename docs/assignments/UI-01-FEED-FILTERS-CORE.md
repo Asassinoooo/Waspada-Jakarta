@@ -1,6 +1,6 @@
 # UI-01-FEED-FILTERS-CORE — accessible feed filters
 
-- **Status:** Assigned; bounded UI-only slice
+- **Status:** Accepted on `main` at handoff `76aba84` after root review
 - **Parent work package:** UI-01 — Map, feed and event detail
 - **Requirements:** US-01; FR-09/10/15; NFR-03/07/08
 - **Dependencies:** BOOT-01, UI-00, SPEC-03
@@ -74,4 +74,11 @@ Append the implementation report here. Root independently reviews and verifies t
 - **Behavior:** Added labelled native category, lifecycle, and freshness selects with all-values defaults. Search and all filters apply with AND semantics to the loaded API page, whose matching/loaded count and non-census scope are stated explicitly. Filtered-empty results include a neutral no-safety inference and clear-all action. Search/filter changes and clear-all reset map selection. Existing demo labels, time/evidence display, loading/API-empty/unavailable states, map safeguards, and mobile list/map switch remain in place.
 - **Checks (WSL Ubuntu 26.04 LTS; Linux Node v24.21.0; npm v11.19.0):** focused UI tests passed 9/9; full `npm test` passed 249/249 (web 22, Worker 137, DB 78, casebook 12); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry-run); `git diff --check` passed. The temporary `node_modules` link to the existing repository dependencies was removed.
 - **Visual QA:** No screenshot captured. No preinstalled headless browser or Playwright/Puppeteer package was available in WSL, and no browser was installed.
-- **Migration/configuration impact and remaining decisions:** None. No API/DTO, dependency, configuration, or migration changed. Root review and acceptance remain pending.
+- **Migration/configuration impact and remaining decisions:** None. No API/DTO, dependency, configuration, or migration changed.
+
+### Root review and acceptance — 26 September 2026
+
+- Root reviewed the complete task diff on `work/UI-01-FEED-FILTERS-CORE` and fast-forwarded it to local `main` at handoff commit `76aba84577a1be1a0bb4ed5e678f572f31779f6a` (`docs(UI-01): record feed filter handoff`), following implementation commit `3d00b29c6fa144e2f7304da4af245c60d253562b` (`feat(UI-01): add loaded-page feed filters`). Changed paths are limited to the four UI/test paths above and this task handoff.
+- Root independently passed focused UI tests (9/9), full `npm test` (249/249: web 22, Worker 137, DB 78, casebook 12), `npm run typecheck`, `npm run build` (Vite production build and Wrangler dry-run), and WSL `git diff --check`.
+- Screenshot review could not be completed: WSL has no preinstalled headless browser or Playwright/Puppeteer package. No browser or dependency was installed; the existing UI tests were used as the available verification.
+- Acceptance is limited to local loaded-page filtering over synthetic demo API records. It does not establish current conditions, completeness, safety, backend filtering, live GeoJSON, or data-source rights.
