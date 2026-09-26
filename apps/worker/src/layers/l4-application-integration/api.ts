@@ -7,6 +7,10 @@ import type {
 } from "../../contracts/public-api.js";
 import { noConfiguredSources } from "../l1-data-knowledge/source-status.js";
 import {
+  PublicEventListPageServiceError,
+  type PublicEventListPageService,
+} from "./public-event-list-page-service.js";
+import {
   API_REQUEST_EVENT_NAME,
   noOpTelemetry,
   type TelemetrySink,
@@ -81,6 +85,7 @@ export async function handlePublicApiRequest(
   request: Request,
   env: WorkerEnvironment,
   telemetry: TelemetrySink = noOpTelemetry,
+  eventListPageService?: PublicEventListPageService,
 ) {
   const startedAt = Date.now();
   const url = new URL(request.url);
@@ -112,7 +117,9 @@ export async function handlePublicApiRequest(
         const featureCollection: PublicFeatureCollection = readModel.geoJSON();
         response = geoJSONResponse(featureCollection);
       } else if (url.pathname === "/api/v1/events") {
-        const page: EventPage = readModel.events(url.searchParams);
+        const page: EventPage = eventListPageService
+          ? await eventListPageService.read(url.searchParams)
+          : readModel.events(url.searchParams);
         response = jsonResponse(page);
       } else if (selectedEventRoute) {
         const eventId = decodeEventId(selectedEventRoute.encodedId);
@@ -135,9 +142,13 @@ export async function handlePublicApiRequest(
     }
   } catch (error) {
     response =
-      error instanceof QueryValidationError
-        ? apiError("INVALID_REQUEST", error.message, 400)
-        : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500);
+      error instanceof PublicEventListPageServiceError
+        ? error.code === "INVALID_REQUEST"
+          ? apiError("INVALID_REQUEST", "The public event list request is invalid.", 400)
+          : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500)
+        : error instanceof QueryValidationError
+          ? apiError("INVALID_REQUEST", error.message, 400)
+          : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500);
   } finally {
     try {
       const elapsedMs = Date.now() - startedAt;

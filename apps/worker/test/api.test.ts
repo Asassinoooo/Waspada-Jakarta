@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.js";
+import type { EventPage } from "../src/contracts/public-api.js";
 import {
   handlePublicApiRequest,
   type WorkerEnvironment,
@@ -10,6 +11,10 @@ import {
   readPublicGeoJSONQuery,
 } from "../src/layers/l4-application-integration/public-geojson-query.js";
 import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
+import {
+  PublicEventListPageServiceError,
+  type PublicEventListPageService,
+} from "../src/layers/l4-application-integration/public-event-list-page-service.js";
 import {
   API_REQUEST_EVENT_NAME,
   consoleTelemetry,
@@ -223,6 +228,151 @@ test("event pages use the OpenAPI projection and bounded read filters", async ()
   const emptyPage = await readJson<typeof firstPage>(emptyResponse);
   assert.deepEqual(emptyPage.data, []);
   assert.deepEqual(emptyPage.page, { next_cursor: null, cursor_expires_at: null });
+});
+
+test("injected event-list page service receives route query and returns its exact public page", async () => {
+  const page: EventPage = {
+    data: [],
+    page: {
+      next_cursor: "synthetic-cursor-token",
+      cursor_expires_at: "2026-09-27T01:15:00.000Z",
+    },
+  };
+  const query = "limit=7&q=Canal%20Barat&category=disasters_weather&cursor=opaque%2Fcursor";
+  let calls = 0;
+  let receivedQuery: URLSearchParams | undefined;
+  const service: PublicEventListPageService = {
+    async read(search) {
+      calls += 1;
+      receivedQuery = search;
+      return page;
+    },
+  };
+
+  const response = await handlePublicApiRequest(
+    new Request(`http://localhost/api/v1/events?${query}`),
+    demoEnvironment,
+    undefined,
+    service,
+  );
+  const body = await readJson<EventPage>(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(calls, 1);
+  assert.ok(receivedQuery);
+  assert.equal(receivedQuery.get("limit"), "7");
+  assert.equal(receivedQuery.get("q"), "Canal Barat");
+  assert.equal(receivedQuery.get("category"), "disasters_weather");
+  assert.equal(receivedQuery.get("cursor"), "opaque/cursor");
+  assert.deepEqual(body, page);
+  assert.deepEqual(Object.keys(body).sort(), ["data", "page"]);
+  assert.deepEqual(Object.keys(body.page).sort(), ["cursor_expires_at", "next_cursor"]);
+  assert.equal(response.headers.get("content-type"), "application/json; charset=utf-8");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+
+  const detailResponse = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01"),
+    demoEnvironment,
+    undefined,
+    service,
+  );
+  assert.equal(detailResponse.status, 200);
+  assert.equal(calls, 1);
+});
+
+test("injected event-list service errors map to fixed redacted API responses", async () => {
+  const marker = "private-query-cursor-key-sql-source-exception-marker";
+  const cases: Array<{
+    code: "INVALID_REQUEST" | "PUBLIC_EVENT_LIST_READ_FAILED";
+    status: number;
+    apiCode: string;
+    message: string;
+  }> = [
+    {
+      code: "INVALID_REQUEST",
+      status: 400,
+      apiCode: "INVALID_REQUEST",
+      message: "The public event list request is invalid.",
+    },
+    {
+      code: "PUBLIC_EVENT_LIST_READ_FAILED",
+      status: 500,
+      apiCode: "TEMPORARILY_UNAVAILABLE",
+      message: "The public read could not be completed.",
+    },
+  ];
+
+  for (const outcome of cases) {
+    let calls = 0;
+    const service: PublicEventListPageService = {
+      async read() {
+        calls += 1;
+        const error = new PublicEventListPageServiceError(outcome.code);
+        error.message = marker;
+        throw error;
+      },
+    };
+    const response = await handlePublicApiRequest(
+      new Request(`http://localhost/api/v1/events?q=${marker}&cursor=${marker}`),
+      demoEnvironment,
+      undefined,
+      service,
+    );
+    const body = await readJson<{ code: string; message: string; request_id: string }>(response);
+
+    assert.equal(calls, 1);
+    assert.equal(response.status, outcome.status);
+    assert.deepEqual(Object.keys(body).sort(), ["code", "message", "request_id"]);
+    assert.equal(body.code, outcome.apiCode);
+    assert.equal(body.message, outcome.message);
+    assert.match(body.request_id, /^[0-9a-f-]{36}$/i);
+    assert.ok(!JSON.stringify(body).includes(marker));
+  }
+
+  const unrelatedMarker = `unrelated-${marker}`;
+  const unrelatedService: PublicEventListPageService = {
+    async read() {
+      throw new Error(unrelatedMarker);
+    },
+  };
+  const unrelatedResponse = await handlePublicApiRequest(
+    new Request(`http://localhost/api/v1/events?q=${marker}`),
+    demoEnvironment,
+    undefined,
+    unrelatedService,
+  );
+  const unrelatedBody = await readJson<{ code: string; message: string; request_id: string }>(unrelatedResponse);
+  assert.equal(unrelatedResponse.status, 500);
+  assert.deepEqual(Object.keys(unrelatedBody).sort(), ["code", "message", "request_id"]);
+  assert.equal(unrelatedBody.code, "TEMPORARILY_UNAVAILABLE");
+  assert.equal(unrelatedBody.message, "The public read could not be completed.");
+  assert.ok(!JSON.stringify(unrelatedBody).includes(marker));
+});
+
+test("event-list page service injection cannot bypass a non-demo runtime gate", async () => {
+  let calls = 0;
+  const service: PublicEventListPageService = {
+    async read() {
+      calls += 1;
+      return { data: [], page: { next_cursor: null, cursor_expires_at: null } };
+    },
+  };
+  const response = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events?q=private-query-marker&cursor=private-cursor-marker"),
+    { DATASET_MODE: "live" },
+    undefined,
+    service,
+  );
+  const body = await readJson<{ code: string; message: string; request_id: string }>(response);
+
+  assert.equal(calls, 0);
+  assert.equal(response.status, 503);
+  assert.deepEqual(Object.keys(body).sort(), ["code", "message", "request_id"]);
+  assert.equal(body.code, "TEMPORARILY_UNAVAILABLE");
+  assert.match(body.message, /synthetic demo dataset/);
+  assert.ok(!JSON.stringify(body).includes("private-query-marker"));
+  assert.ok(!JSON.stringify(body).includes("private-cursor-marker"));
 });
 
 test("event detail returns the exact synthetic fixture projection without added evidence or geometry", async () => {
@@ -508,6 +658,7 @@ test("injected telemetry records only bounded route, status, and duration across
     env: WorkerEnvironment;
     route: "context" | "events" | "other";
     status: number;
+    pageService?: PublicEventListPageService;
   }> = [
     {
       request: new Request(`http://localhost/api/v1/context?label=${marker}`),
@@ -546,6 +697,28 @@ test("injected telemetry records only bounded route, status, and duration across
       status: 405,
     },
     {
+      request: new Request(`http://localhost/api/v1/events?q=${marker}&cursor=${marker}`),
+      env: demoEnvironment,
+      route: "events",
+      status: 200,
+      pageService: {
+        async read() {
+          return { data: [], page: { next_cursor: null, cursor_expires_at: null } };
+        },
+      },
+    },
+    {
+      request: new Request(`http://localhost/api/v1/events?q=${marker}&cursor=${marker}`),
+      env: demoEnvironment,
+      route: "events",
+      status: 500,
+      pageService: {
+        async read() {
+          throw new Error(marker);
+        },
+      },
+    },
+    {
       request: new Request(`http://localhost/api/v1/context?token=${marker}`),
       env: { DATASET_MODE: "live" },
       route: "context",
@@ -565,7 +738,7 @@ test("injected telemetry records only bounded route, status, and duration across
       record(record) {
         records.push(record);
       },
-    });
+    }, outcome.pageService);
 
     assert.equal(response.status, outcome.status);
     assert.equal(records.length, 1);
