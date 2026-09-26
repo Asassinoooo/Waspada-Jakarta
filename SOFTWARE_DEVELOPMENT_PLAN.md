@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Planning baselines and synthetic local implementation slices through UI-API-DETAIL-HISTORY-CORE are accepted. Root independently passed focused web/API tests (9), the full workspace suite (230), typecheck, Vite production build, Wrangler dry-run and WSL diff checks. The L4 geometry projection enforces exact event/claim/support links and bounded CRS84 output; synthetic detail/history routes now feed the UI with independent loading, error and retry states. There is still no database-backed public reader or GeoJSON HTTP route. Telemetry sinks remain opt-in because Worker/database runtime composition is not implemented. Source/data rights, human-adjudicated evaluation, model/provider selection, hosted service behavior and the complete prototype remain gated or in progress.
+**Status:** Planning baselines and synthetic local implementation slices through UI-02-LOCAL-PREFERENCES-CORE are accepted. Root independently passed focused preferences tests (20), the full workspace suite (241), typecheck, Vite production build, Wrangler dry-run and WSL diff checks. The preferences screen saves only in browser storage and makes no relevance or safety claims; personal briefings and updates remain unimplemented. The application GeoJSON query envelope is now recorded in ADR-018 and OpenAPI. There is still no database-backed public reader or GeoJSON HTTP route. Telemetry sinks remain opt-in because Worker/database runtime composition is not implemented. Source/data rights, human-adjudicated evaluation, model/provider selection, hosted service behavior and the complete prototype remain gated or in progress.
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
@@ -152,6 +152,8 @@ API-GEOMETRY-CORE adds a pure L4 projection for source-linked event detail and G
 API-DETAIL-HISTORY-ROUTES-CORE composes the existing L4 HTTP handler with synthetic-only detail and one-version history reads. It preserves the existing OpenAPI 3.1 response shapes, labels the fixtures as fictional, returns no invented geometry, and blocks explicitly non-demo mode. It adds no live reader, source attribution, or publication behavior.
 
 UI-API-DETAIL-HISTORY-CORE connects the existing detail screen to those typed GET routes. Detail and history load independently, with route-safe stale-response handling, retry and explicit unavailable states; empty fixture evidence and geometry remain absent. Desktop/mobile screenshots retain the UI-00 visual direction. This does not add a database reader, GeoJSON route, or live safety data.
+
+UI-02-LOCAL-PREFERENCES-CORE adds browser-local, contract-bounded editing for places, services, institutions, audiences, and categories. Saved interests stay in the browser; the briefing/update service remains disconnected and no synthetic event is treated as relevant.
 
 ## 6. Data lifecycle and status model
 

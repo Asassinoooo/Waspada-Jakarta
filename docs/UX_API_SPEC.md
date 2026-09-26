@@ -1,6 +1,6 @@
 # Waspada Jakarta — UI flows and API contract
 
-**Status:** SPEC-03 design baseline accepted on 24 September 2026. The local Worker serves synthetic `GET /api/v1/context`, `/api/v1/events`, `/api/v1/events/{event_id}`, and `/api/v1/events/{event_id}/history`. API-PROJECT-CORE and API-GEOMETRY-CORE provide pure Layer 4 allowlists for `EventView`, `EventDetail`, and GeoJSON; the new detail/history handlers read only fictional demo fixtures and do not wire those projectors to a database. GeoJSON HTTP reads, a live public reader, and the broader public and moderator flows remain unimplemented; API-01/MOD-01 must implement and test them. The OpenAPI 3.1 contract remains unchanged.
+**Status:** SPEC-03 design baseline accepted on 24 September 2026. The local Worker serves synthetic `GET /api/v1/context`, `/api/v1/events`, `/api/v1/events/{event_id}`, and `/api/v1/events/{event_id}/history`. API-PROJECT-CORE and API-GEOMETRY-CORE provide pure Layer 4 allowlists for `EventView`, `EventDetail`, and GeoJSON; the detail/history handlers read only fictional demo fixtures and do not wire those projectors to a database. GeoJSON HTTP reads, a live public reader, and the broader public and moderator flows remain unimplemented; API-01/MOD-01 must implement and test them. The optional GeoJSON `bbox` uses the application envelope in [ADR-018](decisions/ADR-018-jakarta-geojson-query-envelope.md); it is a query bound, not an official boundary or event warning area.
 
 ## 1. Product and interaction rules
 

@@ -1,7 +1,7 @@
 # UI-02-LOCAL-PREFERENCES-CORE — Assignment
 
 **Parent work package:** UI-02 — Preferences, briefing and update centre  
-**Status:** Ready for implementation as a bounded local-only foundation  
+**Status:** Accepted on `main` at handoff `b469a02` (implementation `be4c34d`)
 **Requirement coverage:** US-02; FR-11; NFR-03; NFR-07  
 **Dependencies:** UI-00 and UI-API-DETAIL-HISTORY-CORE accepted; SPEC-03 accepted  
 **Contract baseline:** Existing `BriefingRequest.interests` in OpenAPI 3.1 (`places`, `services`, `institutions`, `audiences`, `categories`). No contract change is assigned.
@@ -64,6 +64,10 @@ git diff --check
 ```
 
 Use the repository's existing locked runtime/dependencies. No live sources, paid APIs, external providers, cloud resources or secrets are in scope.
+
+## Root acceptance — 26 September 2026
+
+Root independently reviewed the task branch and fast-forwarded the implementation and handoff commits onto local `main`. In WSL Ubuntu-26.04, root reran focused web tests (20/20), the full workspace suite (241/241: web 20, Worker 131, DB 78, evaluation casebook 12), `npm run typecheck`, `npm run build` (Vite production build and Wrangler dry-run), and `git diff --check`; all passed. Root inspected the recorded headless screenshots at desktop 1440×900 and mobile 390×844 and confirmed the layout and no horizontal overflow; the agent also measured the document/body scroll widths at 390 and 320 pixels. No contract, dependency, server, database, or configuration changed. Preferences remain browser-local and the briefing/update service remains disconnected.
 
 ## Handoff and stop conditions
 

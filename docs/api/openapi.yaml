@@ -138,8 +138,12 @@ paths:
         - { $ref: '#/components/parameters/Freshness' }
         - name: bbox
           in: query
-          description: CRS84 west,south,east,north bounds inside the configured Jakarta viewport.
-          schema: { type: string, maxLength: 100 }
+          description: >-
+            Optional CRS84 west,south,east,north viewport. Every requested bound must
+            stay inside the inclusive application query envelope
+            [106.32,-6.40,106.98,-5.16]. If omitted, the full envelope is used.
+            This query limit is not an administrative boundary or event warning area.
+          schema: { type: string, maxLength: 100, example: '106.70,-6.30,106.90,-6.10' }
       responses:
         '200':
           description: GeoJSON collection; feed remains the accessible fallback
