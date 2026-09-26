@@ -250,6 +250,13 @@ describe('API-PUBLIC-HISTORY-REVIEW-METADATA-CORE', () => {
 
   it('rejects duplicate, mismatched and malformed rows with stable redacted errors', async () => {
     const base = makeRow();
+    const offsetResult = await createPublicEventHistoryDisclosureRepository(
+      fixedRowsExecutor([{ ...base, reviewed_at: '2026-09-26T10:00:00+07:30' }]),
+    ).read('event-requested');
+    assert.equal(offsetResult.kind, 'found');
+    if (offsetResult.kind === 'found') {
+      assert.equal(offsetResult.page.versions[0]?.disclosure?.reviewedAt, '2026-09-26T10:00:00+07:30');
+    }
     await assert.rejects(
       createPublicEventHistoryDisclosureRepository(fixedRowsExecutor([base, base])).read('event-requested'),
       (error: unknown) => isDisclosureError(error, 'RESULT_INVALID'),
@@ -270,6 +277,7 @@ describe('API-PUBLIC-HISTORY-REVIEW-METADATA-CORE', () => {
       { ...base, summary: '  ' },
       { ...base, reviewer_id: 'secret reviewer id' },
       { ...base, reviewed_at: 'not-a-time' },
+      { ...base, reviewed_at: '2026-09-26T10:00:00+07:90' },
       { ...base, review_dataset_kind: 'synthetic' },
     ]) {
       await assert.rejects(
