@@ -1,6 +1,6 @@
 # UI-API-DETAIL-HISTORY-CORE — connect synthetic detail and history routes
 
-- **Status:** Assigned; UI/API integration using synthetic demo data only
+- **Status:** Accepted on `main` at handoff `e53caf5`; synthetic demo UI/API integration only. Root review and independent checks are recorded in [the delivery log](../DELIVERY_LOG.md).
 - **Depends on:** UI-00, API-DETAIL-HISTORY-ROUTES-CORE, SPEC-03
 - **Requirements:** US-01; FR-09/10/15; NFR-03/07/08
 - **Contract:** Existing OpenAPI 3.1 `EventDetail` and `HistoryPage`; unchanged
