@@ -1,6 +1,6 @@
 # L2-DIRECT-REASONING-CORE — persist grounded context before direct reasoning
 
-- **Status:** Assigned on `work/L2-DIRECT-REASONING-CORE`
+- **Status:** Accepted on `main` at `c3e2005` (`42afe02` implementation; `c3e2005` handoff)
 - **Depends on:** L2-ADAPTER-01, L2-CONTEXT-BRIDGE-CORE, RAG-CONTEXT-ASSEMBLY-CORE, OBS-01
 - **Requirements:** FR-05/06/07/14; NFR-01/02/07
 - **Layer:** L2 — model grounding and direct reasoning
@@ -54,3 +54,9 @@ Do not change model or public API contracts, OpenAPI, the schema/validator, retr
 ## Handoff
 
 Record branch/worktree, implementation/handoff SHAs and messages, behavior, exact test results, telemetry fields, and limitations. State explicitly that no live provider, L3 coordinator, application route, publication, deployment, or model-quality claim was added.
+
+## Root review and acceptance
+
+Root reviewed the clean branch and fast-forwarded it to `main` at `c3e2005`. The service validates/persists through the existing refs-only bridge before branching, returns a typed investigation handoff without reasoning when the caller supplied `sufficient: false`, and calls the injected adapter exactly once when it is true. Adapter outcomes and thrown validation/persistence errors retain their identity. The L5 telemetry type and console sink expose only a closed outcome and finite duration; the default remains no-op and sink failures do not affect the service.
+
+Root independently ran WSL Ubuntu-26.04 using Node.js `v24.21.0` and npm `11.19.0`: focused tests passed 9/9, `npm test` passed 188/188 (web 5, Worker 93, DB 78 across 10 files, evaluation 12), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and `git diff main...HEAD --check` passed. Tests use synthetic requests and a scripted provider double. No live provider, L3 coordinator, application route, publication path, deployment, or model-quality claim was added; hosted provider and database/runtime wiring remain unverified.

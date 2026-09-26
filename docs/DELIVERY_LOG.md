@@ -415,3 +415,9 @@ Root independently ran WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0
 ### L2-DIRECT-REASONING-CORE assigned — 26 September 2026
 
 After accepting exact-span grounding, root assigned a local L2 composition slice. It must persist a validated refs-only context first, return `investigation_required` without a reasoner call when the caller's explicit `sufficient` value is false, and invoke the injected `ModelCapabilityAdapter.reason` once only when it is true. Typed provider-unavailable/errors remain visible. A closed, opt-in L5 telemetry record may report outcome and duration only. Synthetic provider doubles are test-only; no real provider, L3 coordinator, API route or publication path is included. See [assignment](assignments/L2-DIRECT-REASONING-CORE.md).
+
+### L2-DIRECT-REASONING-CORE accepted — 26 September 2026
+
+Root reviewed and fast-forwarded `work/L2-DIRECT-REASONING-CORE` on `main` at `c3e2005` (`42afe02` implementation, `c3e2005` handoff). The service validates and persists the refs-only context before branching; caller-insufficient context returns `investigation_required` without a reasoner call, while sufficient context reaches the injected reasoner once and returns its typed outcome unchanged. Validation/persistence errors retain object identity. L2 telemetry emits a closed outcome and finite duration only, defaults to no-op, and fails open.
+
+Root independently ran WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0`: focused direct-reasoning tests passed 9/9; `npm test` passed 188/188 (web 5, Worker 93, DB 78 across 10 files, evaluation 12); typecheck, Vite/Wrangler build and diff checks passed. No provider, coordinator, route, publication, or deployment was added. Tests use synthetic requests and scripted provider doubles only; hosted provider/database runtime remains unverified.
