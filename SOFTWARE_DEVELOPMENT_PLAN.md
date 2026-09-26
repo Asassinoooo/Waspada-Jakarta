@@ -151,6 +151,8 @@ L1-FIXTURE-RUNNER-CORE composes the scoped queue claim with the exact-catalog pr
 
 API-GEOMETRY-CORE adds a pure L4 projection for source-linked event detail and GeoJSON. It validates exact event/claim geometry and support-span links, emits only the existing OpenAPI allowlists, and does not connect a database or HTTP route.
 
+The database-backed public reader depends on reviewed scope-name and exact-span source-attribution lookups. ADR-019 separates those append-only disclosure approvals from event publication, source acquisition approval, lifecycle, freshness, and user relevance. API-PUBLIC-LOOKUPS-CORE establishes only the local schema/read-view foundation with authored synthetic tests; no real approval records, excerpts, API route, or source-rights claim are created until MOD-01 and data permissions are in place.
+
 API-DETAIL-HISTORY-ROUTES-CORE composes the existing L4 HTTP handler with synthetic-only detail and one-version history reads. It preserves the existing OpenAPI 3.1 response shapes, labels the fixtures as fictional, returns no invented geometry, and blocks explicitly non-demo mode. It adds no live reader, source attribution, or publication behavior.
 
 UI-API-DETAIL-HISTORY-CORE connects the existing detail screen to those typed GET routes. Detail and history load independently, with route-safe stale-response handling, retry and explicit unavailable states; empty fixture evidence and geometry remain absent. Desktop/mobile screenshots retain the UI-00 visual direction. This does not add a database reader, GeoJSON route, or live safety data.

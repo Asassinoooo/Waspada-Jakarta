@@ -21,6 +21,8 @@ The DATA-01 views `waspada.public_event_versions` and `waspada.public_event_impa
 
 The existing views may remain useful as server-side read sources, but `record_json` is not a public DTO. The pure projector can be tested with authored, live-shaped in-memory values; those tests prove field filtering and fail-closed behavior only. Source/data rights remain pending, so no actual attribution record, excerpt, or human label is authorized or created. Database read wiring and HTTP route integration remain later tasks.
 
+The storage and read-view foundation for scope-name and exact source-attribution lookup inputs is specified in [ADR-019](ADR-019-public-projection-lookups.md). Its test-only records do not create public rights or authorize an HTTP read path.
+
 ## Affected requirements
 
 FR-09/10/12/15; NFR-01/07.
