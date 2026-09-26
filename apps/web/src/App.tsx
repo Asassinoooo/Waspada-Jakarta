@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { EventView, PublicContext } from "@waspada/worker/public-contracts";
-import { getPublicContext, listEvents } from "./api-client.js";
+import type { EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
+import { ApiHttpError, getEventDetail, getEventHistory, getPublicContext, listEvents, type ApiReadState } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
 import { EventFeed, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
@@ -11,6 +11,13 @@ type Route =
   | { screen: "review" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
+
+function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
+  return {
+    eventId,
+    status: error instanceof ApiHttpError && error.status === 404 ? "not-found" : "unavailable",
+  };
+}
 
 function routeFromHash(hash: string): Route {
   if (hash === "#tinjau-bukti") return { screen: "review" };
@@ -56,6 +63,10 @@ export function App() {
   const [events, setEvents] = useState<EventView[]>([]);
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
   const [retryKey, setRetryKey] = useState(0);
+  const [detailRetryKey, setDetailRetryKey] = useState(0);
+  const [historyRetryKey, setHistoryRetryKey] = useState(0);
+  const [detailState, setDetailState] = useState<ApiReadState<EventDetailRecord> | null>(null);
+  const [historyState, setHistoryState] = useState<ApiReadState<HistoryPage> | null>(null);
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
   const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>(() =>
     new URLSearchParams(window.location.search).get("panel") === "map" ? "map" : "list",
@@ -98,8 +109,49 @@ export function App() {
     };
   }, [retryKey]);
 
-  const selectedApiEvent = route.screen === "detail-api"
-    ? events.find((event) => event.event_id === route.eventId)
+  const detailEventId = route.screen === "detail-api" ? route.eventId : null;
+
+  useEffect(() => {
+    if (detailEventId === null) return;
+    let cancelled = false;
+    setDetailState({ eventId: detailEventId, status: "loading" });
+    getEventDetail(detailEventId)
+      .then((data) => {
+        if (!cancelled) setDetailState({ eventId: detailEventId, status: "loaded", data });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setDetailState(apiFailure(detailEventId, error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detailEventId, detailRetryKey]);
+
+  useEffect(() => {
+    if (detailEventId === null) return;
+    let cancelled = false;
+    setHistoryState({ eventId: detailEventId, status: "loading" });
+    getEventHistory(detailEventId)
+      .then((data) => {
+        if (!cancelled) setHistoryState({ eventId: detailEventId, status: "loaded", data });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setHistoryState(apiFailure(detailEventId, error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detailEventId, historyRetryKey]);
+
+  const currentDetailState = route.screen === "detail-api"
+    ? detailState?.eventId === route.eventId
+      ? detailState
+      : { eventId: route.eventId, status: "loading" as const }
+    : undefined;
+  const currentHistoryState = route.screen === "detail-api"
+    ? historyState?.eventId === route.eventId
+      ? historyState
+      : { eventId: route.eventId, status: "loading" as const }
     : undefined;
 
   return (
@@ -123,10 +175,19 @@ export function App() {
           onMobilePanelChange={setMobilePanel}
         />
       )}
-      {(route.screen === "detail-api" || route.screen === "detail-presentation") && (
+      {route.screen === "detail-api" && currentDetailState && currentHistoryState && (
         <EventDetail
-          mode={route.screen === "detail-presentation" ? "presentation" : "api-event"}
-          event={selectedApiEvent}
+          mode="api-event"
+          apiDetail={currentDetailState}
+          apiHistory={currentHistoryState}
+          onRetryDetail={() => setDetailRetryKey((current) => current + 1)}
+          onRetryHistory={() => setHistoryRetryKey((current) => current + 1)}
+          context={context}
+        />
+      )}
+      {route.screen === "detail-presentation" && (
+        <EventDetail
+          mode="presentation"
           context={context}
         />
       )}

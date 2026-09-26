@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { EventView, PublicContext } from "@waspada/worker/public-contracts";
+import type { EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
 import { SiteHeader } from "../src/App.js";
 import { EventDetail } from "../src/EventDetail.js";
 import { EventFeed } from "../src/EventFeed.js";
@@ -35,6 +35,19 @@ const sampleEvent: EventView = {
   claims: [],
   impacts: [],
   published_at: "2026-09-24T00:00:00.000Z",
+};
+
+const sampleDetail: EventDetailRecord = { ...sampleEvent, geometries: [] };
+
+const sampleHistory: HistoryPage = {
+  data: [{
+    event_id: sampleEvent.event_id,
+    version: sampleEvent.version,
+    change_type: "published",
+    changed_at: sampleEvent.published_at,
+    summary: "Versi contoh sintetis dimuat untuk demonstrasi antarmuka.",
+  }],
+  page: { next_cursor: null, cursor_expires_at: null },
 };
 
 function renderFeed(options: { status?: "loading" | "loaded" | "unavailable"; events?: EventView[]; query?: string; selection?: MapSelection } = {}) {
@@ -110,14 +123,92 @@ test("documented detail keeps evidence times distinct and does not invent histor
 
 test("API detail preserves unknown fields as unknown and has no invented geometry", () => {
   const markup = renderToStaticMarkup(
-    <EventDetail mode="api-event" event={sampleEvent} context={demoContext} />,
+    <EventDetail
+      mode="api-event"
+      apiDetail={{ eventId: sampleEvent.event_id, status: "loaded", data: sampleDetail }}
+      apiHistory={{ eventId: sampleEvent.event_id, status: "loaded", data: sampleHistory }}
+      onRetryDetail={() => {}}
+      onRetryHistory={() => {}}
+      context={demoContext}
+    />,
   );
 
   assert.match(markup, /Detail dari API lokal/);
   assert.match(markup, /Waktu kejadian tidak diketahui/);
-  assert.match(markup, /Tidak tersedia pada record/);
-  assert.match(markup, /API lokal belum menyediakan klaim, geometri, atau riwayat/);
-  assert.match(markup, /Riwayat perubahan belum tersedia/);
+  assert.match(markup, /Tidak tersedia pada fixture/);
+  assert.match(markup, /Bukti tidak tersedia pada fixture demo ini/);
+  assert.match(markup, /Versi contoh sintetis dimuat untuk demonstrasi antarmuka\./);
+  assert.match(markup, /fixture demo/);
+  assert.match(markup, /Record API ini tidak menyertakan geometri/);
+  assert.doesNotMatch(markup, /route-diagram|Didukung laporan independen|Buka sumber publik|example\.invalid/);
+});
+
+test("detail stays visible when history is unavailable and exposes history retry", () => {
+  const markup = renderToStaticMarkup(
+    <EventDetail
+      mode="api-event"
+      apiDetail={{ eventId: sampleEvent.event_id, status: "loaded", data: sampleDetail }}
+      apiHistory={{ eventId: sampleEvent.event_id, status: "unavailable" }}
+      onRetryDetail={() => {}}
+      onRetryHistory={() => {}}
+      context={demoContext}
+    />,
+  );
+
+  assert.match(markup, /Contoh fiktif: pemberitahuan kelompok/);
+  assert.match(markup, /Riwayat belum dapat dimuat/);
+  assert.match(markup, /Detail event tetap dapat dibaca/);
+  assert.match(markup, /role="alert"/);
+  assert.match(markup, />Coba lagi memuat riwayat</);
+});
+
+test("detail not-found, unavailable, loading, and empty-history states are explicit", () => {
+  const notFound = renderToStaticMarkup(
+    <EventDetail
+      mode="api-event"
+      apiDetail={{ eventId: "missing", status: "not-found" }}
+      apiHistory={{ eventId: "missing", status: "not-found" }}
+      context={demoContext}
+    />,
+  );
+  const unavailable = renderToStaticMarkup(
+    <EventDetail
+      mode="api-event"
+      apiDetail={{ eventId: "temporary", status: "unavailable" }}
+      apiHistory={{ eventId: "temporary", status: "loading" }}
+      onRetryDetail={() => {}}
+      onRetryHistory={() => {}}
+      context={demoContext}
+    />,
+  );
+  const loading = renderToStaticMarkup(
+    <EventDetail
+      mode="api-event"
+      apiDetail={{ eventId: sampleEvent.event_id, status: "loading" }}
+      apiHistory={{ eventId: sampleEvent.event_id, status: "loading" }}
+      context={demoContext}
+    />,
+  );
+  const emptyHistory = renderToStaticMarkup(
+    <EventDetail
+      mode="api-event"
+      apiDetail={{ eventId: sampleEvent.event_id, status: "loaded", data: sampleDetail }}
+      apiHistory={{ eventId: sampleEvent.event_id, status: "loaded", data: { ...sampleHistory, data: [] } }}
+      context={demoContext}
+    />,
+  );
+
+  assert.match(notFound, /Record contoh tidak ditemukan/);
+  assert.match(notFound, /Riwayat record tidak ditemukan/);
+  assert.doesNotMatch(notFound, /Contoh fiktif: pemberitahuan kelompok/);
+  assert.match(unavailable, /Detail contoh belum dapat dimuat/);
+  assert.match(unavailable, /Keadaan keselamatan tidak diketahui/);
+  assert.match(unavailable, />Coba lagi memuat detail</);
+  assert.match(loading, /Memuat record sintetis dari API lokal/);
+  assert.match(loading, /Memuat riwayat fixture/);
+  assert.match(loading, /role="status"/);
+  assert.match(emptyHistory, /Tidak ada entri riwayat pada fixture ini/);
+  assert.match(emptyHistory, /tidak menunjukkan keselamatan atau penyelesaian event/);
 });
 
 test("moderator presentation is explicitly read-only and has no decision controls", () => {
