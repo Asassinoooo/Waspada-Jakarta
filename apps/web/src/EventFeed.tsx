@@ -1,4 +1,4 @@
-import type { EventView, PublicContext } from "@waspada/worker/public-contracts";
+import type { Category, EventView, FreshnessStatus, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
 import { MapPanel, type MapSelection } from "./MapPanel.js";
@@ -6,12 +6,57 @@ import { MapPanel, type MapSelection } from "./MapPanel.js";
 export type FeedStatus = "loading" | "loaded" | "unavailable";
 export type MobileDiscoveryPanel = "list" | "map";
 
+export interface FeedFilters {
+  category: Category | "all";
+  lifecycle: Lifecycle | "all";
+  freshness: FreshnessStatus | "all";
+}
+
+export const DEFAULT_FEED_FILTERS: FeedFilters = {
+  category: "all",
+  lifecycle: "all",
+  freshness: "all",
+};
+
+const categories: readonly Category[] = [
+  "crime_personal_security",
+  "demonstrations_public_gatherings",
+  "crowds_major_events",
+  "violence_immediate_threats",
+  "disasters_weather",
+  "fires_infrastructure_hazards",
+  "transport_road_incidents",
+  "utilities_essential_services",
+  "health_environmental_advisories",
+  "group_specific_critical_notices",
+];
+
+const lifecycles: readonly Lifecycle[] = ["planned", "ongoing", "resolved", "cancelled", "unknown"];
+const freshnessStatuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
+
+export function filterEvents(events: EventView[], query: string, filters: FeedFilters): EventView[] {
+  const search = query.trim().toLocaleLowerCase("id");
+  return events.filter((event) => {
+    const matchesSearch = search.length === 0 ||
+      (event.title + " " + event.summary + " " + event.category).toLocaleLowerCase("id").includes(search);
+    return matchesSearch &&
+      (filters.category === "all" || event.category === filters.category) &&
+      (filters.lifecycle === "all" || event.lifecycle === filters.lifecycle) &&
+      (filters.freshness === "all" || event.freshness.status === filters.freshness);
+  });
+}
+
 interface EventFeedProps {
   status: FeedStatus;
   events: EventView[];
   context: PublicContext | null;
   query: string;
   onQueryChange: (value: string) => void;
+  filters?: FeedFilters;
+  onCategoryChange?: (value: FeedFilters["category"]) => void;
+  onLifecycleChange?: (value: FeedFilters["lifecycle"]) => void;
+  onFreshnessChange?: (value: FeedFilters["freshness"]) => void;
+  onClearFilters?: () => void;
   onRetry: () => void;
   mapSelection: MapSelection;
   onSelectApiEvent: (event: EventView) => void;
@@ -38,6 +83,11 @@ export function EventFeed({
   context,
   query,
   onQueryChange,
+  filters = DEFAULT_FEED_FILTERS,
+  onCategoryChange = () => {},
+  onLifecycleChange = () => {},
+  onFreshnessChange = () => {},
+  onClearFilters = () => {},
   onRetry,
   mapSelection,
   onSelectApiEvent,
@@ -45,10 +95,8 @@ export function EventFeed({
   mobilePanel,
   onMobilePanelChange,
 }: EventFeedProps) {
-  const search = query.trim().toLocaleLowerCase("id");
-  const matchingEvents = events.filter((event) =>
-    (event.title + " " + event.summary + " " + event.category).toLocaleLowerCase("id").includes(search),
-  );
+  const matchingEvents = filterEvents(events, query, filters);
+  const hasActiveFilters = query.length > 0 || filters.category !== "all" || filters.lifecycle !== "all" || filters.freshness !== "all";
   const presentationSelected = mapSelection.kind === "presentation";
 
   return (
@@ -96,7 +144,55 @@ export function EventFeed({
             </button>
           )}
         </div>
-        <p className="search-help">Pencarian hanya menyaring dua record yang sudah dimuat; tidak mengubah dataset.</p>
+        <fieldset className="feed-filters" aria-describedby="feed-filter-help">
+          <legend>Filter daftar</legend>
+          <div className="feed-filters__fields">
+            <div className="feed-filter">
+              <label htmlFor="event-category">Kategori</label>
+              <select
+                id="event-category"
+                name="category"
+                value={filters.category}
+                onChange={(event) => onCategoryChange(event.currentTarget.value as FeedFilters["category"])}
+              >
+                <option value="all">Semua kategori</option>
+                {categories.map((category) => <option key={category} value={category}>{categoryLabel(category)}</option>)}
+              </select>
+            </div>
+            <div className="feed-filter">
+              <label htmlFor="event-lifecycle">Siklus</label>
+              <select
+                id="event-lifecycle"
+                name="lifecycle"
+                value={filters.lifecycle}
+                onChange={(event) => onLifecycleChange(event.currentTarget.value as FeedFilters["lifecycle"])}
+              >
+                <option value="all">Semua siklus</option>
+                {lifecycles.map((lifecycle) => <option key={lifecycle} value={lifecycle}>{lifecycleLabel(lifecycle)}</option>)}
+              </select>
+            </div>
+            <div className="feed-filter">
+              <label htmlFor="event-freshness">Kesegaran</label>
+              <select
+                id="event-freshness"
+                name="freshness"
+                value={filters.freshness}
+                onChange={(event) => onFreshnessChange(event.currentTarget.value as FeedFilters["freshness"])}
+              >
+                <option value="all">Semua status kesegaran</option>
+                {freshnessStatuses.map((freshness) => <option key={freshness} value={freshness}>{freshnessLabel(freshness)}</option>)}
+              </select>
+            </div>
+          </div>
+          <button className="button button--quiet feed-filters__clear" type="button" onClick={onClearFilters} disabled={!hasActiveFilters}>
+            Hapus semua filter dan pencarian
+          </button>
+        </fieldset>
+        <p className="search-help" id="feed-filter-help">
+          {status === "loaded"
+            ? "Pencarian dan filter hanya berlaku pada " + events.length + " record yang sudah dimuat dari halaman API ini. Ini bukan hitungan seluruh insiden di Jakarta."
+            : "Pencarian dan filter hanya berlaku pada record yang sudah dimuat dari halaman API ini."}
+        </p>
       </section>
 
       <div className="mobile-view-switch" role="group" aria-label="Tampilan jelajah">
@@ -123,7 +219,11 @@ export function EventFeed({
               <p className="section-kicker">Data API lokal</p>
               <h2 id="feed-title">Daftar contoh</h2>
             </div>
-            {status === "loaded" && <span className="count-chip">{matchingEvents.length} dari {events.length}</span>}
+            {status === "loaded" && (
+              <span className="count-chip" aria-live="polite">
+                {matchingEvents.length} cocok dari {events.length} record dimuat
+              </span>
+            )}
           </header>
 
           {status === "loading" && (
@@ -151,9 +251,9 @@ export function EventFeed({
 
           {status === "loaded" && events.length > 0 && matchingEvents.length === 0 && (
             <div className="state-panel" role="status">
-              <strong>Tidak ada laporan yang cocok.</strong>
-              <p>Hapus atau ubah pencarian. Hasil kosong bukan pernyataan bahwa area aman.</p>
-              <button className="button button--quiet" type="button" onClick={() => onQueryChange("")}>Hapus pencarian</button>
+              <strong>Tidak ada laporan yang cocok dengan pencarian dan filter ini.</strong>
+              <p>Hasil kosong bukan pernyataan bahwa area aman.</p>
+              <button className="button button--quiet" type="button" onClick={onClearFilters}>Hapus semua filter dan pencarian</button>
             </div>
           )}
 

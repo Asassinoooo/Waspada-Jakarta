@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import type { EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
+import { useEffect, useReducer, useState } from "react";
+import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { ApiHttpError, getEventDetail, getEventHistory, getPublicContext, listEvents, type ApiReadState } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
-import { EventFeed, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
+import { DEFAULT_FEED_FILTERS, EventFeed, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
 import { Preferences } from "./Preferences.js";
 import type { MapSelection } from "./MapPanel.js";
@@ -13,6 +13,65 @@ type Route =
   | { screen: "review" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
+
+export interface DiscoveryState {
+  query: string;
+  filters: FeedFilters;
+  mapSelection: MapSelection;
+}
+
+export type DiscoveryAction =
+  | { type: "query-changed"; query: string }
+  | { type: "category-changed"; value: Category | "all" }
+  | { type: "lifecycle-changed"; value: Lifecycle | "all" }
+  | { type: "freshness-changed"; value: FreshnessStatus | "all" }
+  | { type: "filters-cleared" }
+  | { type: "map-selection-changed"; selection: MapSelection };
+
+export function discoveryStateReducer(state: DiscoveryState, action: DiscoveryAction): DiscoveryState {
+  switch (action.type) {
+    case "query-changed":
+      return state.query === action.query
+        ? state
+        : { ...state, query: action.query, mapSelection: { kind: "none" } };
+    case "category-changed":
+      return state.filters.category === action.value
+        ? state
+        : {
+            ...state,
+            filters: { ...state.filters, category: action.value },
+            mapSelection: { kind: "none" },
+          };
+    case "lifecycle-changed":
+      return state.filters.lifecycle === action.value
+        ? state
+        : {
+            ...state,
+            filters: { ...state.filters, lifecycle: action.value },
+            mapSelection: { kind: "none" },
+          };
+    case "freshness-changed":
+      return state.filters.freshness === action.value
+        ? state
+        : {
+            ...state,
+            filters: { ...state.filters, freshness: action.value },
+            mapSelection: { kind: "none" },
+          };
+    case "filters-cleared":
+      return { query: "", filters: { ...DEFAULT_FEED_FILTERS }, mapSelection: { kind: "none" } };
+    case "map-selection-changed":
+      return { ...state, mapSelection: action.selection };
+  }
+}
+
+function initialDiscoveryState(): DiscoveryState {
+  return {
+    query: new URLSearchParams(window.location.search).get("q") ?? "",
+    filters: { ...DEFAULT_FEED_FILTERS },
+    mapSelection: { kind: "none" },
+  };
+}
 
 function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
   return {
@@ -71,11 +130,10 @@ export function App() {
   const [historyRetryKey, setHistoryRetryKey] = useState(0);
   const [detailState, setDetailState] = useState<ApiReadState<EventDetailRecord> | null>(null);
   const [historyState, setHistoryState] = useState<ApiReadState<HistoryPage> | null>(null);
-  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
+  const [discovery, dispatchDiscovery] = useReducer(discoveryStateReducer, undefined, initialDiscoveryState);
   const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>(() =>
     new URLSearchParams(window.location.search).get("panel") === "map" ? "map" : "list",
   );
-  const [mapSelection, setMapSelection] = useState<MapSelection>({ kind: "none" });
 
   useEffect(() => {
     const updateRoute = () => setRoute(routeFromHash(window.location.hash));
@@ -86,12 +144,12 @@ export function App() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (query) url.searchParams.set("q", query);
+    if (discovery.query) url.searchParams.set("q", discovery.query);
     else url.searchParams.delete("q");
     if (mobilePanel === "map") url.searchParams.set("panel", "map");
     else url.searchParams.delete("panel");
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-  }, [query, mobilePanel]);
+  }, [discovery.query, mobilePanel]);
 
   useEffect(() => {
     if (route.screen === "preferences") return;
@@ -167,13 +225,18 @@ export function App() {
           status={status}
           events={events}
           context={context}
-          query={query}
-          onQueryChange={setQuery}
+          query={discovery.query}
+          onQueryChange={(query) => dispatchDiscovery({ type: "query-changed", query })}
+          filters={discovery.filters}
+          onCategoryChange={(value) => dispatchDiscovery({ type: "category-changed", value })}
+          onLifecycleChange={(value) => dispatchDiscovery({ type: "lifecycle-changed", value })}
+          onFreshnessChange={(value) => dispatchDiscovery({ type: "freshness-changed", value })}
+          onClearFilters={() => dispatchDiscovery({ type: "filters-cleared" })}
           onRetry={() => setRetryKey((current) => current + 1)}
-          mapSelection={mapSelection}
-          onSelectApiEvent={(event) => setMapSelection({ kind: "api-event", event })}
+          mapSelection={discovery.mapSelection}
+          onSelectApiEvent={(event) => dispatchDiscovery({ type: "map-selection-changed", selection: { kind: "api-event", event } })}
           onSelectPresentation={() => {
-            setMapSelection({ kind: "presentation" });
+            dispatchDiscovery({ type: "map-selection-changed", selection: { kind: "presentation" } });
             setMobilePanel("map");
           }}
           mobilePanel={mobilePanel}

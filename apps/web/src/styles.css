@@ -63,7 +63,8 @@ button {
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 3px solid var(--kali-teal);
   outline-offset: 3px;
 }
@@ -605,7 +606,7 @@ time,
   display: grid;
   grid-template-columns: minmax(15rem, 1fr);
   gap: 0.35rem;
-  max-width: 39rem;
+  max-width: 58rem;
   margin-bottom: 1rem;
 }
 
@@ -653,6 +654,48 @@ time,
 .search-control input::placeholder {
   color: #637779;
   opacity: 1;
+}
+
+.feed-filters {
+  min-width: 0;
+  border: 1px solid var(--beton);
+  border-radius: 0.3rem;
+  background: var(--surface);
+  margin: 0.35rem 0 0;
+  padding: 0.75rem;
+}
+
+.feed-filters legend {
+  padding: 0 0.3rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.feed-filters__fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.feed-filter {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.feed-filter select {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.8rem;
+  border: 1px solid #849590;
+  border-radius: 0.25rem;
+  background: var(--surface);
+  color: var(--tinta-kota);
+  padding: 0.45rem 2rem 0.45rem 0.55rem;
+}
+
+.feed-filters__clear {
+  margin-top: 0.75rem;
 }
 
 .search-clear {
@@ -1728,6 +1771,10 @@ time,
 
   .discovery-controls {
     max-width: none;
+  }
+
+  .feed-filters__fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .feed-panel,

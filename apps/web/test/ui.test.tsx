@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
-import { SiteHeader } from "../src/App.js";
+import { discoveryStateReducer, SiteHeader } from "../src/App.js";
 import { EventDetail } from "../src/EventDetail.js";
-import { EventFeed } from "../src/EventFeed.js";
+import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from "../src/EventFeed.js";
 import { ModeratorReview } from "../src/ModeratorReview.js";
 import type { MapSelection } from "../src/MapPanel.js";
 
@@ -39,6 +39,41 @@ const sampleEvent: EventView = {
 
 const sampleDetail: EventDetailRecord = { ...sampleEvent, geometries: [] };
 
+const testOnlyEvents: EventView[] = [
+  {
+    ...sampleEvent,
+    event_id: "test-weather-current",
+    title: "Uji cuaca saat ini",
+    category: "disasters_weather",
+    lifecycle: "ongoing",
+    freshness: { ...sampleEvent.freshness, status: "current" },
+  },
+  {
+    ...sampleEvent,
+    event_id: "test-transport-expired",
+    title: "Uji transportasi selesai",
+    category: "transport_road_incidents",
+    lifecycle: "resolved",
+    freshness: { ...sampleEvent.freshness, status: "expired" },
+  },
+  {
+    ...sampleEvent,
+    event_id: "test-weather-expired",
+    title: "Uji cuaca lewat tinjau",
+    category: "disasters_weather",
+    lifecycle: "ongoing",
+    freshness: { ...sampleEvent.freshness, status: "expired" },
+  },
+  {
+    ...sampleEvent,
+    event_id: "test-crowd-needs-update",
+    title: "Uji kerumunan perlu diperbarui",
+    category: "crowds_major_events",
+    lifecycle: "cancelled",
+    freshness: { ...sampleEvent.freshness, status: "needs_update" },
+  },
+];
+
 const sampleHistory: HistoryPage = {
   data: [{
     event_id: sampleEvent.event_id,
@@ -50,7 +85,13 @@ const sampleHistory: HistoryPage = {
   page: { next_cursor: null, cursor_expires_at: null },
 };
 
-function renderFeed(options: { status?: "loading" | "loaded" | "unavailable"; events?: EventView[]; query?: string; selection?: MapSelection } = {}) {
+function renderFeed(options: {
+  status?: "loading" | "loaded" | "unavailable";
+  events?: EventView[];
+  query?: string;
+  filters?: FeedFilters;
+  selection?: MapSelection;
+} = {}) {
   return renderToStaticMarkup(
     <EventFeed
       status={options.status ?? "loaded"}
@@ -58,6 +99,11 @@ function renderFeed(options: { status?: "loading" | "loaded" | "unavailable"; ev
       context={demoContext}
       query={options.query ?? ""}
       onQueryChange={() => {}}
+      filters={options.filters ?? DEFAULT_FEED_FILTERS}
+      onCategoryChange={() => {}}
+      onLifecycleChange={() => {}}
+      onFreshnessChange={() => {}}
+      onClearFilters={() => {}}
       onRetry={() => {}}
       mapSelection={options.selection ?? { kind: "none" }}
       onSelectApiEvent={() => {}}
@@ -102,9 +148,88 @@ test("loading, empty, and unavailable states give honest next steps", () => {
 
   assert.match(loading, /Memuat record sintetis/);
   assert.match(empty, /bukan pernyataan bahwa area aman/);
-  assert.match(noMatch, /Tidak ada laporan yang cocok/);
+  assert.match(noMatch, /Tidak ada laporan yang cocok dengan pencarian dan filter ini/);
+  assert.match(noMatch, /Hapus semua filter dan pencarian/);
   assert.match(unavailable, /keadaan keselamatan tidak diketahui/);
   assert.match(unavailable, />Coba lagi</);
+});
+
+test("loaded-page filters use contract values, preserve search, and combine with AND semantics", () => {
+  assert.deepEqual(filterEvents(testOnlyEvents, "", DEFAULT_FEED_FILTERS), testOnlyEvents);
+  assert.deepEqual(filterEvents(testOnlyEvents, "", { ...DEFAULT_FEED_FILTERS, category: "disasters_weather" }).map((event) => event.event_id), [
+    "test-weather-current",
+    "test-weather-expired",
+  ]);
+  assert.deepEqual(filterEvents(testOnlyEvents, "", { ...DEFAULT_FEED_FILTERS, lifecycle: "resolved" }).map((event) => event.event_id), [
+    "test-transport-expired",
+  ]);
+  assert.deepEqual(filterEvents(testOnlyEvents, "", { ...DEFAULT_FEED_FILTERS, freshness: "expired" }).map((event) => event.event_id), [
+    "test-transport-expired",
+    "test-weather-expired",
+  ]);
+  assert.deepEqual(filterEvents(testOnlyEvents, "cuaca", {
+    category: "disasters_weather",
+    lifecycle: "ongoing",
+    freshness: "current",
+  }).map((event) => event.event_id), ["test-weather-current"]);
+  assert.deepEqual(filterEvents(testOnlyEvents, "uji", {
+    category: "disasters_weather",
+    lifecycle: "ongoing",
+    freshness: "current",
+  }).map((event) => event.event_id), ["test-weather-current"]);
+
+  const defaultPage = renderFeed({ events: testOnlyEvents });
+  assert.match(defaultPage, /4 cocok dari 4 record dimuat/);
+  assert.match(defaultPage, /hanya berlaku pada 4 record yang sudah dimuat dari halaman API ini/);
+  assert.match(defaultPage, /bukan hitungan seluruh insiden di Jakarta/);
+  assert.match(defaultPage, /name="category"/);
+  assert.match(defaultPage, /name="lifecycle"/);
+  assert.match(defaultPage, /name="freshness"/);
+  assert.match(defaultPage, /Semua kategori/);
+  assert.match(defaultPage, /Semua siklus/);
+  assert.match(defaultPage, /Semua status kesegaran/);
+  assert.match(defaultPage, /<option value="all" selected="">Semua kategori<\/option>/);
+  assert.match(defaultPage, /<option value="all" selected="">Semua siklus<\/option>/);
+  assert.match(defaultPage, /<option value="all" selected="">Semua status kesegaran<\/option>/);
+
+  const filteredPage = renderFeed({
+    events: testOnlyEvents,
+    query: "cuaca",
+    filters: { category: "disasters_weather", lifecycle: "ongoing", freshness: "current" },
+  });
+  assert.match(filteredPage, /1 cocok dari 4 record dimuat/);
+  assert.match(filteredPage, /Uji cuaca saat ini/);
+  assert.doesNotMatch(filteredPage, /Uji transportasi selesai|Uji cuaca lewat tinjau|Uji kerumunan perlu diperbarui/);
+});
+
+test("filtered-empty state stays neutral and clear-all resets filters, search, and map selection", () => {
+  const filteredEmpty = renderFeed({
+    events: testOnlyEvents,
+    filters: { category: "health_environmental_advisories", lifecycle: "all", freshness: "all" },
+  });
+  assert.match(filteredEmpty, /0 cocok dari 4 record dimuat/);
+  assert.match(filteredEmpty, /Tidak ada laporan yang cocok dengan pencarian dan filter ini/);
+  assert.match(filteredEmpty, /Hasil kosong bukan pernyataan bahwa area aman\./);
+  assert.match(filteredEmpty, /Hapus semua filter dan pencarian/);
+  assert.doesNotMatch(filteredEmpty, /Belum ada record untuk ditampilkan/);
+
+  const state = {
+    query: "cuaca",
+    filters: { category: "disasters_weather", lifecycle: "ongoing", freshness: "expired" } as FeedFilters,
+    mapSelection: { kind: "api-event", event: testOnlyEvents[2] } as MapSelection,
+  };
+  const afterSearchChange = discoveryStateReducer(state, { type: "query-changed", query: "transportasi" });
+  assert.equal(afterSearchChange.query, "transportasi");
+  assert.deepEqual(afterSearchChange.mapSelection, { kind: "none" });
+
+  const afterFilterChange = discoveryStateReducer(state, { type: "category-changed", value: "crowds_major_events" });
+  assert.equal(afterFilterChange.filters.category, "crowds_major_events");
+  assert.deepEqual(afterFilterChange.mapSelection, { kind: "none" });
+
+  const afterClear = discoveryStateReducer(state, { type: "filters-cleared" });
+  assert.equal(afterClear.query, "");
+  assert.deepEqual(afterClear.filters, DEFAULT_FEED_FILTERS);
+  assert.deepEqual(afterClear.mapSelection, { kind: "none" });
 });
 
 test("documented detail keeps evidence times distinct and does not invent history", () => {
