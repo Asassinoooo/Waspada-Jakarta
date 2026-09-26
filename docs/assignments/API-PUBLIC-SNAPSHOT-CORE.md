@@ -63,3 +63,15 @@ Stop and report if the existing safe views cannot satisfy the task without chang
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs and messages, changed paths, behavior, actual checks, limitations, migration/configuration impact, and remaining decisions. Root independently reviews and verifies before acceptance.
+
+
+### Implementer handoff - 26 September 2026
+
+- **Branch/worktree:** `work/API-PUBLIC-SNAPSHOT-CORE`; Windows path `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL`; WSL path `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`.
+- **Code commit:** `6a355bc24f00bbdb37fba34520cb2176df03531a` - `feat(API-PUBLIC-SNAPSHOT-CORE): add bounded published-event reader`.
+- **Changed paths:** `apps/db/src/public-event-snapshot.ts`; `apps/db/test/public-event-snapshot.test.ts`; this implementation handoff.
+- **Behavior:** Added a typed internal read port with explicit `found` / `missing` results. It reads only `waspada.public_event_versions` and `waspada.public_event_impacts`, requires `dataset_kind = 'live'` in both parameterized queries, and relies on the existing views for current published/tombstone selection. Impact reads are bound to the exact returned event ID/version, ordered deterministically, and probe at most 101 rows to fail with a generic error when more than 100 match. Event and impact row identities/shapes are validated; `record_json` remains `unknown` in the internal snapshot for the next L4 validation boundary. Database and validation errors omit query values and record content.
+- **Fixture note:** Every DB row is authored fictional test data. Test rows with `dataset_kind = 'live'` are only live-shaped values used to exercise the live-only predicate; they do not represent a live source, reviewed fact, publication authorization, source-rights decision, or human evaluation.
+- **WSL tools:** Ubuntu-26.04; Node.js `v24.21.0`; npm `11.19.0`; Git `2.53.0`; TypeScript `7.0.2`; tsx `4.23.15`; PGlite `0.5.8`; PGlite PostGIS `0.2.8`; PGlite pgvector `0.0.9`; Vite `8.3.0`; Wrangler `4.137.0`. The configured WSL Node path was used. Existing dependencies were reused through a temporary symlink to the root `node_modules` and the symlink was removed after verification.
+- **Checks:** Focused `node --import tsx --test apps/db/test/public-event-snapshot.test.ts` passed 6/6. `npm run db:test` passed 12/12 files (92 tests). `npm test` passed 271 total (web 22, Worker 145, DB 92, evaluation 12); the run included this task's six DB tests. `npm run typecheck` passed. `npm run build` passed, including the Vite production build and Wrangler dry-run. `git diff --check` and staged diff checks passed.
+- **Limitations / remaining decisions:** PGlite proves local view and role behavior; hosted PostgreSQL/Neon behavior remains unverified. No route, public DTO, projection composition, runtime DB wiring, migration, grant, dependency, provider setting, source acquisition, publication action, or public response was added. No contract or scope gap was found; no migration or configuration change is required.
