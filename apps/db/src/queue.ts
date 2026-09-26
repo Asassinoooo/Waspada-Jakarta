@@ -77,6 +77,11 @@ export interface AcquisitionJobRepository {
   enqueueModeratorSubmission(input: EnqueueModeratorSubmissionInput): Promise<ModeratorSubmissionEnqueueResult>;
   findById(datasetKind: DatasetKind, jobId: string): Promise<AcquisitionJobRecord | null>;
   claimDueJob(now: string, leaseDurationMs?: number): Promise<AcquisitionJobRecord | null>;
+  /** Claim one due synthetic moderator submission without leasing other queue work. */
+  claimDueSyntheticModeratorSubmission(
+    now: string,
+    leaseDurationMs?: number,
+  ): Promise<AcquisitionJobRecord | null>;
   renewLease(
     datasetKind: DatasetKind,
     jobId: string,
@@ -257,9 +262,27 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
     nowInput: string,
     leaseDurationMs = JOB_QUEUE_POLICY.defaultLeaseDurationMs,
   ): Promise<AcquisitionJobRecord | null> {
+    return this.claimDueJobInScope(nowInput, leaseDurationMs, 'any');
+  }
+
+  async claimDueSyntheticModeratorSubmission(
+    nowInput: string,
+    leaseDurationMs = JOB_QUEUE_POLICY.defaultLeaseDurationMs,
+  ): Promise<AcquisitionJobRecord | null> {
+    return this.claimDueJobInScope(nowInput, leaseDurationMs, 'synthetic_moderator_submission');
+  }
+
+  private async claimDueJobInScope(
+    nowInput: string,
+    leaseDurationMs: number,
+    scope: 'any' | 'synthetic_moderator_submission',
+  ): Promise<AcquisitionJobRecord | null> {
     const now = normalizeTimestamp(nowInput, 'now');
     validateLeaseDuration(leaseDurationMs);
     const leaseExpiresAt = addMilliseconds(now, leaseDurationMs);
+    const scopePredicate = scope === 'synthetic_moderator_submission'
+      ? "AND job.dataset_kind = 'synthetic' AND job.job_kind = 'moderator_submission'"
+      : '';
     const result = await this.executor.query<AcquisitionJobRow>(
       `WITH due_job AS (
          SELECT job.job_id
@@ -273,6 +296,7 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
              AND source.auto_acquisition_enabled
              AND source.polling_interval_seconds IS NOT NULL
            ))
+           ${scopePredicate}
          ORDER BY job.available_at, job.created_at, job.job_id
          FOR UPDATE OF job SKIP LOCKED
          LIMIT 1

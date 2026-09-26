@@ -11,6 +11,7 @@ import {
   type SyntheticFixture,
   type SyntheticReportManifest,
 } from "../../worker/src/layers/l1-data-knowledge/synthetic-fixture-pipeline.js";
+import { runSyntheticFixtureJob } from "../../worker/src/layers/l1-data-knowledge/synthetic-fixture-runner.js";
 
 const fixtureUrl = "https://synthetic.invalid/moderator/fixture-pipeline";
 const retrievedAt = "2026-09-25T03:00:00.000Z";
@@ -23,6 +24,9 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
   let pipelinePorts: FixturePipelinePorts;
   const fixtureTrace = "trace-fixture-pipeline-first";
   const emptyTrace = "trace-fixture-pipeline-empty";
+  const runnerTrace = "trace-fixture-runner-synthetic";
+  const runnerHistoricalTrace = "trace-fixture-runner-historical";
+  const runnerLiveTrace = "trace-fixture-runner-live";
 
   before(async () => {
     database = await createTestDatabase();
@@ -39,6 +43,9 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     await ports.tracesAndAudit.createTrace(makeTrace("trace-fixture-catalog", null));
     await ports.tracesAndAudit.createTrace(makeTrace(fixtureTrace, "synthetic"));
     await ports.tracesAndAudit.createTrace(makeTrace(emptyTrace, "synthetic"));
+    await ports.tracesAndAudit.createTrace(makeTrace(runnerTrace, "synthetic"));
+    await ports.tracesAndAudit.createTrace(makeTrace(runnerHistoricalTrace, "historical"));
+    await ports.tracesAndAudit.createTrace(makeTrace(runnerLiveTrace, "live"));
     await database.executor.query(
       `INSERT INTO waspada.source_registry
          (source_id, trace_id, registry_version, display_name, source_kind, remit,
@@ -48,6 +55,17 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
           'Synthetic manual fixture', 'other', ARRAY['authored fixture tests'], 'manual_fixture',
           ARRAY[]::text[], ARRAY['synthetic fixture only'], ARRAY['authored fixture'],
           'active', 'approved', 'unknown', false, 'never')`,
+    );
+    await database.executor.query(
+      `INSERT INTO waspada.source_registry
+         (source_id, trace_id, registry_version, display_name, source_kind, remit,
+          access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+          approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
+          polling_interval_seconds)
+       VALUES ('source-fixture-runner-poll', 'trace-fixture-catalog', 1,
+          'Synthetic queue poll fixture', 'authority', ARRAY['authored fixture tests'], 'api',
+          ARRAY['synthetic.invalid'], ARRAY['synthetic fixture only'], ARRAY['authored fixture'],
+          'active', 'approved', 'unknown', true, 'never', 300)`,
     );
   });
 
@@ -247,6 +265,86 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     const emptyJob = await ports.acquisitionJobs.findById("synthetic", emptyClaim.jobId);
     assert.equal(emptyJob?.status, "completed");
   });
+
+  it("claims only one due synthetic moderator fixture while leaving live and other jobs unleased", async () => {
+    const runnerUrl = "https://synthetic.invalid/moderator/fixture-runner";
+    const runnerTime = "2026-09-25T04:00:00.000Z";
+    const livePoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "live", idempotencyKey: "fixture-runner:live-poll",
+      traceId: runnerLiveTrace, sourceId: "source-fixture-runner-poll", requestedAt: runnerTime,
+    });
+    const historicalSubmission = await ports.acquisitionJobs.enqueueModeratorSubmission({
+      datasetKind: "historical", idempotencyKey: "fixture-runner:historical-submission",
+      traceId: runnerHistoricalTrace, requestedBy: "fixture-runner-test",
+      submittedUrl: runnerUrl, requestedAt: runnerTime,
+    });
+    const syntheticPoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "synthetic", idempotencyKey: "fixture-runner:synthetic-poll",
+      traceId: runnerTrace, sourceId: "source-fixture-runner-poll", requestedAt: runnerTime,
+    });
+    const syntheticSubmission = await ports.acquisitionJobs.enqueueModeratorSubmission({
+      datasetKind: "synthetic", idempotencyKey: "fixture-runner:synthetic-submission",
+      traceId: runnerTrace, requestedBy: "fixture-runner-test",
+      submittedUrl: runnerUrl, requestedAt: runnerTime,
+    });
+    assert.equal(livePoll.outcome, "enqueued");
+    assert.equal(historicalSubmission.outcome, "enqueued");
+    assert.equal(syntheticPoll.outcome, "enqueued");
+    assert.equal(syntheticSubmission.outcome, "enqueued");
+    if (livePoll.outcome !== "enqueued" || historicalSubmission.outcome !== "enqueued"
+      || syntheticPoll.outcome !== "enqueued" || syntheticSubmission.outcome !== "enqueued") return;
+
+    const result = await runAsL1(database, () => runSyntheticFixtureJob({
+      now: runnerTime,
+      queue: ports.acquisitionJobs,
+      catalog: new InMemorySyntheticFixtureCatalog([makeFixture({
+        url: runnerUrl,
+        reportRevisionId: "revision-fixture-runner-1",
+        geometryId: "geometry-fixture-runner-1",
+      })]),
+      pipelinePorts,
+    }));
+    assert.deepEqual(result, {
+      outcome: "completed", empty: false, reportCount: 1,
+      evidenceReferenceCount: 1, chunkCount: 1, geometryCount: 1,
+    });
+    assert.equal(JSON.stringify(result).includes(runnerUrl), false);
+
+    for (const [datasetKind, jobId] of [
+      ["live", livePoll.job.jobId],
+      ["historical", historicalSubmission.job.jobId],
+      ["synthetic", syntheticPoll.job.jobId],
+    ] as const) {
+      const untouched = await ports.acquisitionJobs.findById(datasetKind, jobId);
+      assert.equal(untouched?.status, "pending");
+      assert.equal(untouched?.attemptCount, 0);
+      assert.equal(untouched?.leaseToken, null);
+    }
+    const completed = await ports.acquisitionJobs.findById("synthetic", syntheticSubmission.job.jobId);
+    assert.equal(completed?.status, "completed");
+    assert.equal(completed?.attemptCount, 1);
+
+    const persisted = await database.executor.query<{ revisions: string; events: string; publications: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM waspada.report_revisions WHERE trace_id = $1) AS revisions,
+         (SELECT count(*)::text FROM waspada.event_versions WHERE trace_id = $1) AS events,
+         (SELECT count(*)::text FROM waspada.publication_decisions WHERE trace_id = $1) AS publications`,
+      [runnerTrace],
+    );
+    assert.deepEqual(persisted.rows[0], { revisions: "1", events: "0", publications: "0" });
+    const pollSource = await database.executor.query<{
+      health_status: string;
+      last_checked_at: string | null;
+      last_success_at: string | null;
+    }>(
+      `SELECT health_status, last_checked_at::text AS last_checked_at,
+              last_success_at::text AS last_success_at
+       FROM waspada.source_registry WHERE source_id = 'source-fixture-runner-poll'`,
+    );
+    assert.deepEqual(pollSource.rows[0], {
+      health_status: "unknown", last_checked_at: null, last_success_at: null,
+    });
+  });
 });
 
 async function runAsL1<Result>(database: TestDatabase, work: () => Promise<Result>): Promise<Result> {
@@ -258,7 +356,7 @@ async function runAsL1<Result>(database: TestDatabase, work: () => Promise<Resul
   }
 }
 
-function makeTrace(traceId: string, datasetKind: "synthetic" | null) {
+function makeTrace(traceId: string, datasetKind: "live" | "historical" | "synthetic" | null) {
   return {
     traceId,
     datasetKind,
@@ -269,11 +367,16 @@ function makeTrace(traceId: string, datasetKind: "synthetic" | null) {
   };
 }
 
-function makeFixture(): SyntheticFixture {
+function makeFixture(input: {
+  readonly url?: string;
+  readonly reportRevisionId?: string;
+  readonly geometryId?: string;
+} = {}): SyntheticFixture {
+  const url = input.url ?? fixtureUrl;
   const manifest: SyntheticReportManifest = {
-    reportRevisionId: "revision-fixture-pipeline-1",
+    reportRevisionId: input.reportRevisionId ?? "revision-fixture-pipeline-1",
     sourceId: "source-fixture-pipeline",
-    canonicalUrl: fixtureUrl,
+    canonicalUrl: url,
     contentHash: "b".repeat(64),
     permittedText,
     publishedAt: null,
@@ -283,7 +386,7 @@ function makeFixture(): SyntheticFixture {
     supersedesId: null,
     supportSpans: [{ spanStart: 0, spanEnd: Array.from(permittedText).length }],
     geometry: {
-      geometryId: "geometry-fixture-pipeline-1",
+      geometryId: input.geometryId ?? "geometry-fixture-pipeline-1",
       role: "approximate_place",
       precisionM: null,
       precisionBasis: "moderator_generalization",
@@ -292,7 +395,7 @@ function makeFixture(): SyntheticFixture {
     },
   };
   return {
-    url: fixtureUrl,
+    url,
     geoJson: JSON.stringify({
       type: "FeatureCollection",
       features: [{

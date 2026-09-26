@@ -9,6 +9,7 @@ import { createTestDatabase, type TestDatabase } from './harness.js';
 const catalogTraceId = 'trace-queue-catalog';
 const syntheticTraceId = 'trace-queue-synthetic';
 const historicalTraceId = 'trace-queue-historical';
+const liveTraceId = 'trace-queue-live';
 const t0 = '2026-09-25T12:00:00.000Z';
 const dedupeTime = '2030-01-01T00:00:00.000Z';
 
@@ -24,6 +25,7 @@ describe('JOB-01 durable acquisition queue', () => {
     await insertTrace(catalogTraceId, null);
     await insertTrace(syntheticTraceId, 'synthetic');
     await insertTrace(historicalTraceId, 'historical');
+    await insertTrace(liveTraceId, 'live');
     await insertSource('source-queue-active', {
       registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
       pollingIntervalSeconds: 300,
@@ -188,6 +190,54 @@ describe('JOB-01 durable acquisition queue', () => {
     );
     assert.equal(stored.rows[0]?.job_count, '1');
     assert.doesNotMatch(stored.rows[0]?.columns ?? '', /permitted_text|excerpt|content_body|raw_error/);
+  });
+
+  it('scopes the fixture claim to synthetic moderator submissions before leasing', async () => {
+    const livePoll = await ports.acquisitionJobs.enqueueSourcePoll(sourcePollInput(
+      'live', 'fixture-runner:live-poll', 'source-queue-active', t0, liveTraceId,
+    ));
+    const historicalSubmission = await ports.acquisitionJobs.enqueueModeratorSubmission({
+      datasetKind: 'historical', idempotencyKey: 'fixture-runner:historical-submission',
+      traceId: historicalTraceId, requestedBy: 'fixture-runner-test',
+      submittedUrl: 'https://example.org/historical', requestedAt: t0,
+    });
+    const syntheticPoll = await ports.acquisitionJobs.enqueueSourcePoll(sourcePollInput(
+      'synthetic', 'fixture-runner:synthetic-poll', 'source-queue-active', t0,
+    ));
+    const syntheticSubmission = await ports.acquisitionJobs.enqueueModeratorSubmission({
+      datasetKind: 'synthetic', idempotencyKey: 'fixture-runner:synthetic-submission',
+      traceId: syntheticTraceId, requestedBy: 'fixture-runner-test',
+      submittedUrl: 'https://example.org/synthetic', requestedAt: t0,
+    });
+
+    assert.equal(livePoll.outcome, 'enqueued');
+    assert.equal(historicalSubmission.outcome, 'enqueued');
+    assert.equal(syntheticPoll.outcome, 'enqueued');
+    assert.equal(syntheticSubmission.outcome, 'enqueued');
+    if (livePoll.outcome !== 'enqueued' || historicalSubmission.outcome !== 'enqueued'
+      || syntheticPoll.outcome !== 'enqueued' || syntheticSubmission.outcome !== 'enqueued') return;
+
+    const claimed = await ports.acquisitionJobs.claimDueSyntheticModeratorSubmission(t0, 30_000);
+    assert.equal(claimed?.jobId, syntheticSubmission.job.jobId);
+    assert.equal(claimed?.datasetKind, 'synthetic');
+    assert.equal(claimed?.jobKind, 'moderator_submission');
+    assert.equal(claimed?.status, 'leased');
+    assert.equal(claimed?.attemptCount, 1);
+
+    for (const [datasetKind, jobId] of [
+      ['live', livePoll.job.jobId],
+      ['historical', historicalSubmission.job.jobId],
+      ['synthetic', syntheticPoll.job.jobId],
+    ] as const) {
+      const untouched = await ports.acquisitionJobs.findById(datasetKind, jobId);
+      assert.equal(untouched?.status, 'pending');
+      assert.equal(untouched?.attemptCount, 0);
+      assert.equal(untouched?.leaseToken, null);
+    }
+    assert.equal(await ports.acquisitionJobs.claimDueSyntheticModeratorSubmission(t0), null);
+    await database.executor.query(
+      "DELETE FROM waspada.acquisition_jobs WHERE idempotency_key LIKE 'fixture-runner:%'",
+    );
   });
 
   it('atomically leases a due job once and rejects stale or wrong lease tokens', async () => {
