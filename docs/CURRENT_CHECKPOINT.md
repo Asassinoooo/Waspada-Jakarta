@@ -5,6 +5,8 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
+**Next assigned task:** `UI-01-FEED-FILTERS-CORE` adds category, lifecycle, and freshness filters over only the currently loaded feed page. It preserves synthetic-data labels and the rule that an empty filtered result does not imply safety. The task is UI-only, uses existing contracts, and is assigned on `work/UI-01-FEED-FILTERS-CORE` in the reusable managed worktree `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL`.
+
 ## Repository state
 
 The latest accepted task is API-GEOJSON-ROUTE-CORE at handoff `29aa6b4` (`84b4607` implementation), fast-forwarded to local `main`. Root independently passed focused Worker API tests 19/19, the full WSL `npm test` suite including all 10 isolated DB files, typecheck, Vite/Wrangler build, and WSL diff checks. The GET route validates default and supplied CRS84 bounds, enum filters and safe error cases, preserves read-only demo gating and privacy-safe telemetry, and emits an empty FeatureCollection under the current synthetic data. No supported event geometry exists, so the route creates no map features. The previous accepted UI-02-LOCAL-PREFERENCES-CORE task remains at `b469a02` (`be4c34d`); its public `#ringkasan-saya` route stores bounded interests in browser local storage and makes no network, relevance, or safety claims. Root passed its focused web tests 20/20, full workspace suite 241/241, typecheck, build and WSL diff checks and reviewed headless desktop/mobile screenshots. No server, database, dependency, migration, or external resource changed in either slice; briefing/update matching remains unimplemented.

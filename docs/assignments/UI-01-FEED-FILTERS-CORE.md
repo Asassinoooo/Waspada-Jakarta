@@ -1,0 +1,67 @@
+# UI-01-FEED-FILTERS-CORE — accessible feed filters
+
+- **Status:** Assigned; bounded UI-only slice
+- **Parent work package:** UI-01 — Map, feed and event detail
+- **Requirements:** US-01; FR-09/10/15; NFR-03/07/08
+- **Dependencies:** BOOT-01, UI-00, SPEC-03
+- **Layer:** L4 application integration / frontend presentation
+- **Contract baseline:** Existing `EventView` and `EventPage`; no API or DTO change
+- **Implementation model:** GPT-6 Luna, max reasoning
+- **Branch:** `work/UI-01-FEED-FILTERS-CORE`
+- **Worktree:** `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (reuse the completed, clean managed checkout; verify clean state and branch before editing)
+- **Owner:** Luna Max implementation agent; root plans, reviews, accepts, integrates, and pushes
+
+## Objective
+
+Add accessible category, lifecycle, and freshness filters to the existing civic incident feed. Apply all selected filters together to the `EventView` records already loaded by the existing demo API request. Keep the feed and its text search useful without the map. Make clear that filtering the loaded page is not a complete incident census and that no matching records do not mean an area is safe.
+
+This is a frontend-only slice over the current synthetic demo response. Do not add events or claim the demo values represent Jakarta conditions.
+
+## Read first
+
+- `AGENTS.md`
+- `SOFTWARE_DEVELOPMENT_PLAN.md` (first repository document), then `docs/IMPLEMENTATION_BACKLOG.md`
+- `docs/UX_API_SPEC.md`
+- `apps/worker/src/contracts/public-api.ts`
+- `apps/web/src/App.tsx`, `apps/web/src/EventFeed.tsx`, `apps/web/src/display.ts`, `apps/web/src/MapPanel.tsx`, `apps/web/src/styles.css`, and `apps/web/test/ui.test.tsx`
+
+## Required behavior
+
+1. Add labelled native controls for category, lifecycle, and freshness using only the existing public-contract enum values and existing Indonesian display labels. Each control includes an explicit all-values choice. Multiple selected filters combine with AND semantics.
+2. Keep the existing text search. Clearly state that search and filters apply to records already loaded from the API page. Show the matching count against the loaded-record count; do not call it the total number of Jakarta incidents.
+3. When filters produce no matches, show an accessible neutral empty state, a clear-filters action, and a short statement that an empty result does not mean the area is safe. Distinguish this from an empty API page and the existing loading/unavailable states.
+4. A filter change must not leave a filtered-out event appearing as the current map selection. Reset the selection when filter/search state changes; preserve the existing map and no-geometry safeguards.
+5. A clear-filters action resets category, lifecycle, freshness, and text search. Keep keyboard access, visible focus, current responsive layout, dataset/demo labels, time distinctions, evidence labels, and current empty/error behavior.
+6. Do not add query-string/API parameters or refetches for local filtering. Do not change route, DTO, API, geometry, evidence, source, publication, or event lifecycle behavior.
+
+## Explicitly out of scope
+
+- Live or historical data, new/modified synthetic event fixtures, source access, backend filtering, server pagination, GeoJSON fetching/rendering, basemap or map geometry changes.
+- Changes to the OpenAPI/domain contract, other UI routes, moderation/authentication, dependencies, Cloudflare/Neon configuration, or external services.
+- Claims about report completeness, current conditions, safety, or user-specific relevance.
+
+## Allowed paths
+
+- `apps/web/src/App.tsx`
+- `apps/web/src/EventFeed.tsx`
+- `apps/web/src/styles.css`
+- `apps/web/test/ui.test.tsx`
+- This assignment's implementation handoff only
+
+Root owns shared contracts, API behavior, plans/backlog, source decisions, and architecture. Ask root about contract/scope conflicts; otherwise complete the bounded UI slice.
+
+## Acceptance and checks
+
+- Tests use explicit test-only `EventView` variants to prove each individual filter and combined AND behavior without changing checked-in demo fixtures.
+- Tests cover default/all-values behavior, result counts, clear-filters, a neutral filtered-empty state, explicit safety wording, and selection reset. Existing loading/unavailable/empty API and mobile view-switch behavior remains intact.
+- Inspect the filter layout at desktop and mobile sizes with an available headless browser workflow. Do not use computer-use/visible desktop controls or install a browser/dependency; if no existing headless browser is available, record that limitation and rely on the existing UI tests.
+- In WSL Ubuntu-26.04 run the focused UI tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check`; record tool versions and actual results.
+- Commit implementation and handoff in coherent descriptive commits on the assigned branch. Do not merge or push. Leave the worktree clean and report exact branch/path, SHAs/messages, changed paths, behavior, checks/results, limitations, and migration/configuration impact.
+
+## Stop/escalation conditions
+
+Stop and report if completion requires changing the API contract, inventing data or geometry, enabling a source, or changing UI-00's civic design direction. Escalate to GPT-6 Astra xhigh only after a substantive technical difficulty was attempted and remains unresolved by GPT-6 Luna max.
+
+## Implementation handoff
+
+Append the implementation report here. Root independently reviews and verifies the branch before acceptance or integration.
