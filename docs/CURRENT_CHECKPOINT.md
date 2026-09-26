@@ -1,11 +1,11 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** Root accepted UI-01-FEED-FILTERS-CORE on local `main` at handoff `76aba84` (implementation `3d00b29`) after independent review and WSL verification. Category, lifecycle, freshness, and text search combine over already-loaded synthetic demo records; matching counts show the loaded-page scope, and the empty filtered state does not imply safety. The existing GeoJSON demo route returns an empty FeatureCollection because fixtures contain no source-supported geometry; UI-02 preferences remain browser-local without briefing/update matching. No live DB reader, live spatial filtering, or live safety data is available. Source/data rights, human-adjudicated labels, model/provider selection, moderator authorization, hosted Neon behavior, and runtime integration remain gated.
+**Reason:** After accepting UI-01-FEED-FILTERS-CORE at handoff `76aba84` (`3d00b29` implementation), root assigned L1-FIXTURE-RUNNER-CORE to close the local queue-to-processor gap using only synthetic moderator-submission fixtures. The new task filters before leasing and processes at most one job; it adds no URL fetch, Cron trigger, runtime database binding, or live source. The existing GeoJSON demo route returns an empty FeatureCollection because fixtures contain no source-supported geometry; UI-02 preferences remain browser-local without briefing/update matching. No live DB reader, live spatial filtering, or live safety data is available. Source/data rights, human-adjudicated labels, model/provider selection, moderator authorization, hosted Neon behavior, and runtime integration remain gated.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next ready task:** None assigned. Remaining live-source, human-evaluation, moderator-publication, and hosted-reader work depends on rights, authorization, evaluation, or provider gates documented in the backlog. No source or external service was enabled to bypass them.
+**Next assigned task:** `L1-FIXTURE-RUNNER-CORE`, on a dedicated branch/worktree after this assignment is pushed. It composes the filtered synthetic queue claim with the existing exact-catalog L1 processor.
 
 ## Repository state
 
