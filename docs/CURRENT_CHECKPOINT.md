@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** Root accepted UI-API-DETAIL-HISTORY-CORE on local `main` at handoff `e53caf5` (implementation `113e032`) after reviewing the branch, independently passing focused web/API tests 9/9 and the full 230/230 workspace suite, and passing typecheck, build, and WSL diff checks. The existing demo detail UI now reads synthetic detail/history routes with independent retry and error states; screenshots were reviewed at desktop 1440×900 and mobile 390×844. No API contract, CSS, live reader, database, or GeoJSON route changed. The earlier uncommitted OpenAPI edit was restored from `main` as requested. Source/data rights, human labels, model/provider selection, moderator authorization, hosted Neon behavior, and complete runtime integration remain gated.
+**Reason:** Root accepted UI-API-DETAIL-HISTORY-CORE on local and remote `main` at handoff `e53caf5` (implementation `113e032`) after reviewing the branch, independently passing focused web/API tests 9/9 and the full 230/230 workspace suite, and passing typecheck, build, and WSL diff checks. The existing demo detail UI now reads synthetic detail/history routes with independent retry and error states; screenshots were reviewed at desktop 1440×900 and mobile 390×844. No API contract, CSS, live reader, database, or GeoJSON route changed. The earlier uncommitted OpenAPI edit was restored from `main` as requested. Source/data rights, human labels, model/provider selection, moderator authorization, hosted Neon behavior, and complete runtime integration remain gated.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
