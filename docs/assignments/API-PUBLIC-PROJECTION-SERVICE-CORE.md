@@ -65,3 +65,16 @@ Stop and report if implementation requires a contract change, permissive project
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs and messages, changed paths, behavior, actual checks, limitations, migration/configuration impact, and remaining decisions. Root independently reviews and verifies before acceptance.
+
+### Implementer handoff — 26 September 2026
+
+- **Branch/worktree:** `work/API-PUBLIC-PROJECTION-SERVICE-CORE`; Windows path `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL`; WSL path `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`.
+- **Implementation commit:** `3adcc0106cec34bf77a4e794f125bfb656a36098` — `feat(API-PUBLIC-PROJECTION-SERVICE-CORE): compose public event projection`.
+- **Changed paths:** `apps/worker/src/layers/l4-application-integration/public-event-projection-service.ts`; `apps/worker/test/l4-public-event-projection-service.test.ts`; `apps/worker/package.json` (Worker test script only); this handoff.
+- **Behavior:** Added injected snapshot and reviewed-lookup read ports with no database client dependency. The service reads one live snapshot, verifies the requested event ID and version against its record, and verifies every impact envelope and record against that same event version before lookup. It derives sorted, deduplicated name keys from event, claim, and impact scopes while excluding geometry IDs, and attribution keys only from exact claim `support` references. It rejects malformed extracted keys and more than 100 unique keys in either class before lookup, composes the lookup rows and impact records through `projectPublicEvent`, and returns only `missing` or the existing `EventView`. Port and projector failures are mapped to short stable errors without input or exception content.
+- **Fixture note:** Tests use authored fictional live-shaped records and fake ports. They do not represent live records, facts, publication approval, source rights, or human review.
+- **WSL tools:** Ubuntu-26.04; Node.js `v24.21.0`; npm `11.19.0`; Git `2.53.0`; TypeScript `7.0.2`; tsx `4.23.15`; Vite `8.3.0`; Wrangler `4.137.0`. Existing dependencies were reused through a temporary symlink to the root `node_modules`; it was removed after checks.
+- **Checks:** `node --import tsx --test apps/worker/test/l4-public-event-projection-service.test.ts` passed 34/34. `npm test` passed 305 total tests (web 22, Worker 179 including this file, DB 92 across 12/12 files, evaluation 12). `npm run typecheck` passed. `npm run build` passed, including Vite production output and Wrangler dry-run. `git diff --check` and the final staged diff check passed.
+- **Limitations:** The ports are not wired to an HTTP route or Worker runtime. This does not verify hosted PostgreSQL/Neon behavior and does not connect live data.
+- **Migration/configuration impact:** None. No DTO, OpenAPI, migration, grant, binding, dependency, or lockfile changes.
+- **Remaining decisions:** None within this bounded service slice; root review and integration remain pending.
