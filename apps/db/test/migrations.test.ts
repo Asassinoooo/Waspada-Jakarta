@@ -16,7 +16,8 @@ describe('DATA-01 migrations', () => {
       && version !== '008_l3_investigation_ledger'
       && version !== '009_evidence_reference_updates_relation'
       && version !== '010_l2_grounding_context_writer'
-      && version !== '011_public_projection_lookups');
+      && version !== '011_public_projection_lookups'
+      && version !== '012_public_geometry_reader');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -38,7 +39,8 @@ describe('DATA-01 migrations', () => {
       const beforeRelationMigration = migrations.filter(({ version }) =>
         version !== '009_evidence_reference_updates_relation'
         && version !== '010_l2_grounding_context_writer'
-        && version !== '011_public_projection_lookups');
+        && version !== '011_public_projection_lookups'
+        && version !== '012_public_geometry_reader');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -148,6 +150,7 @@ describe('DATA-01 migrations', () => {
         '009_evidence_reference_updates_relation',
         '010_l2_grounding_context_writer',
         '011_public_projection_lookups',
+        '012_public_geometry_reader',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -276,6 +279,7 @@ describe('DATA-01 migrations', () => {
       '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
       '010_l2_grounding_context_writer', '011_public_projection_lookups',
+      '012_public_geometry_reader',
     ]);
   });
 
@@ -288,12 +292,13 @@ describe('DATA-01 migrations', () => {
       '007_l1_write_idempotency',
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
       '010_l2_grounding_context_writer', '011_public_projection_lookups',
+      '012_public_geometry_reader',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '11');
+    assert.equal(count.rows[0]?.count, '12');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -312,7 +317,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 011_public_projection_lookups/,
+      /Cannot apply migration 000_late_backfill before already applied migration 012_public_geometry_reader/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -330,6 +335,7 @@ describe('DATA-01 migrations', () => {
       { version: '009_evidence_reference_updates_relation' },
       { version: '010_l2_grounding_context_writer' },
       { version: '011_public_projection_lookups' },
+      { version: '012_public_geometry_reader' },
     ]);
   });
 
@@ -339,6 +345,7 @@ describe('DATA-01 migrations', () => {
       '005_publication_write_receipts_outbox', '006_l1_geometry_evidence_reads', '007_l1_write_idempotency',
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
       '010_l2_grounding_context_writer', '011_public_projection_lookups',
+      '012_public_geometry_reader',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
