@@ -509,3 +509,13 @@ Root independently verified in WSL Ubuntu-26.04 with Node.js `v24.21.0`, npm `11
 ### API-PUBLIC-SNAPSHOT-CORE assigned — 26 September 2026
 
 With reviewed lookup views in place, root assigned a bounded read-only database port for one current live published-event snapshot and its exact referenced impacts. It reads only the existing `public_event_versions` and `public_event_impacts` views, filters the live dataset explicitly, and uses authored PGlite rows. The slice adds no API route, public DTO, database migration, Worker/database runtime wiring, history, or geometry behavior. See [assignment](assignments/API-PUBLIC-SNAPSHOT-CORE.md).
+
+### API-PUBLIC-SNAPSHOT-CORE accepted — 26 September 2026
+
+Root reviewed and fast-forwarded `work/API-PUBLIC-SNAPSHOT-CORE` to local `main` at handoff `cac9e2aedb9361f351e2cf379291503eac81f78f` (`6a355bc24f00bbdb37fba34520cb2176df03531a` implementation). The reader accesses only the existing safe public event and impact views, explicitly filters current live rows, ties impacts to the exact event version, validates returned rows, and rejects result overflow. Its internal result is bounded to `found` or `missing`; it is not yet connected to an HTTP or public projection path.
+
+Root independently verified in WSL Ubuntu-26.04 with Node.js `v24.21.0`, npm `11.19.0`, and Git `2.53.0`: focused PGlite tests passed 6/6; `npm run db:test` passed 12/12 isolated files (92 tests); full `npm test` passed 271/271 (web 22, Worker 145, DB 92, evaluation 12); `npm run typecheck`, `npm run build` (Vite production and Wrangler `4.137.0` dry-run), and `git diff --check` passed. Hosted Neon/PostgreSQL behavior remains unverified. No migration, route, DTO, Worker runtime DB binding, live source, provider setting, or external service changed. See [assignment and root review](assignments/API-PUBLIC-SNAPSHOT-CORE.md).
+
+### API-PUBLIC-PROJECTION-SERVICE-CORE assigned — 26 September 2026
+
+Root assigned a bounded Layer 4 composition service for the accepted snapshot and reviewed lookup readers. It derives and caps exact scope and claim-support lookup keys, sends only those keys to the lookup port, and passes the assembled internal snapshot through the existing strict `projectPublicEvent` allowlist. The service must return only `EventView` or `missing`, fail closed on missing/ambiguous lookups, and use authored fictional fixtures. No route, public contract, database adapter/runtime binding, migration, source, or provider behavior is in scope. See [assignment](assignments/API-PUBLIC-PROJECTION-SERVICE-CORE.md).
