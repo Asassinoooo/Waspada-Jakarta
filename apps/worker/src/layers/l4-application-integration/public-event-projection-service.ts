@@ -106,7 +106,7 @@ const scopeFields = [
   { field: "audience_ids", entityType: "audience" },
 ] as const;
 
-interface PreparedSnapshot {
+export interface PreparedPublicEventProjectionSnapshot {
   readonly eventRecord: Record<string, unknown>;
   readonly impactRecords: readonly unknown[];
   readonly query: PublicEventProjectionLookupQuery;
@@ -131,12 +131,12 @@ export function createPublicEventProjectionService(ports: {
         fail("SNAPSHOT_READ_FAILED");
       }
 
-      let prepared: PreparedSnapshot;
+      let prepared: PreparedPublicEventProjectionSnapshot;
       try {
         if (!isRecord(readResult)) fail("SNAPSHOT_INVALID");
         if (readResult.kind === "missing") return { kind: "missing" };
         if (readResult.kind !== "found") fail("SNAPSHOT_INVALID");
-        prepared = prepareSnapshot(readResult.snapshot, eventId);
+        prepared = preparePublicEventProjectionSnapshot(readResult.snapshot, eventId);
       } catch (error) {
         if (error instanceof PublicEventProjectionServiceError) throw error;
         fail("SNAPSHOT_INVALID");
@@ -189,7 +189,7 @@ function validateLookupResult(value: unknown): PublicEventProjectionLookupResult
   };
 }
 
-function prepareSnapshot(value: unknown, requestedEventId: string): PreparedSnapshot {
+export function preparePublicEventProjectionSnapshot(value: unknown, requestedEventId: string): PreparedPublicEventProjectionSnapshot {
   if (!isRecord(value)
     || value.datasetKind !== "live"
     || !isIdentifier(value.eventId)
