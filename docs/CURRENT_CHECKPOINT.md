@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** L2-DIRECT-REASONING-CORE is accepted on local `main` at `c3e2005` after root review and independent WSL verification. The direct path persists validated context before reasoning; insufficient context returns `investigation_required`, and sufficient context invokes the injected reasoner once. Full suite passed 188/188, focused tests 9/9, typecheck, build and diff checks. The next priority is the bounded Layer 3 coordinator that will consume insufficient contexts; model/provider, tool and runtime integration remain synthetic or unconfigured. Source/data rights, human-labelled evaluation, real model selection, moderator authorization, hosted Neon behavior, and full-stack monitoring remain pending.
+**Reason:** L2-DIRECT-REASONING-CORE is accepted on local and remote `main` at `c3e2005`; the root acceptance record is pushed at `9a6e09d`. The direct path persists validated context before reasoning; insufficient context returns `investigation_required`, and sufficient context invokes the injected reasoner once. Full suite passed 188/188, focused tests 9/9, typecheck, build and diff checks. The next task, L3-INSUFFICIENT-CONTEXT-ENTRY-CORE, is assigned on `work/L3-INSUFFICIENT-CONTEXT-ENTRY-CORE`: open a ledger case from the exact persisted insufficient context, store only stable bounded question labels, and hand ambiguous cases to review. It adds no tool or model execution. Source/data rights, human-labelled evaluation, real model selection, moderator authorization, hosted Neon behavior, and full-stack monitoring remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
