@@ -55,7 +55,7 @@ test("parses each supported parameter without changing date or cursor strings", 
       freshness: "needs_update",
       from,
       to,
-      q: "banjir i\u0307nan",
+      q: "BANJIR İNAN",
       place_id: "jakarta-place-01",
     },
   });
@@ -132,9 +132,16 @@ test("preserves opaque cursors and rejects blank or oversized tokens", () => {
   assert.equal(parsePublicEventListQuery(new URLSearchParams({ cursor: "x".repeat(2048) })).cursorToken?.length, 2048);
 });
 
-test("normalizes trimmed text by Indonesian lowercase and enforces post-trim lengths", () => {
+test("preserves a 120-character capital dotted-I query within the Layer 4 raw-query limit", () => {
+  const query = "İ".repeat(120);
+  const parsed = parsePublicEventListQuery(new URLSearchParams({ q: query }));
+
+  assert.equal(parsed.filters.q, query);
+  assert.equal(parsed.filters.q?.length, 120);
+});
+test("trims text, preserves q casing for Layer 4, and enforces post-trim lengths", () => {
   assert.deepEqual(parsePublicEventListQuery(new URLSearchParams({ q: "   İSTANBUL   ", place_id: "  RW-01  " })).filters, {
-    q: "i\u0307stanbul",
+    q: "İSTANBUL",
     place_id: "RW-01",
   });
   assert.equal(parsePublicEventListQuery(new URLSearchParams({ q: `${"a".repeat(120)}  ` })).filters.q?.length, 120);

@@ -132,7 +132,7 @@ export function parsePublicEventListQuery(search: URLSearchParams): PublicEventL
   if (rawQuery !== null) {
     const query = rawQuery.trim();
     if (query.length > maxQueryLength) fail();
-    if (query.length > 0) filters.q = query.toLocaleLowerCase("id");
+    if (query.length > 0) filters.q = query;
   }
 
   const rawPlaceId = search.get("place_id");
