@@ -199,6 +199,16 @@ test("rejects closed request violations before calling either injected port", as
     { limit: 1.5 },
     { limit: "2" },
     { unexpected: true },
+    { filters: null },
+    { filters: { unexpected: true } },
+    { filters: { category: "not-a-category" } },
+    { filters: { lifecycle: "unsafe" } },
+    { filters: { freshness: "stale" } },
+    { filters: { from: "2026-02-30T03:00:00Z" } },
+    { filters: { from: "2026-01-01T00:00:00Z", to: "2025-12-31T23:59:59Z" } },
+    { filters: { from: "2026-01-01T00:00:00Z", to: "2026-04-01T00:00:00.000001Z" } },
+    { filters: { q: "x".repeat(121) } },
+    { filters: { place_id: "x".repeat(129) } },
     { cursor: null },
     { cursor: { firstPublishedAt: firstTime, eventId: eventA, extra: true } },
     { cursor: { firstPublishedAt: "2026-02-30T03:00:00.000000Z", eventId: eventA } },
@@ -210,6 +220,52 @@ test("rejects closed request violations before calling either injected port", as
   }
   assert.equal(candidateCalls, 0);
   assert.equal(projectionCalls, 0);
+});
+
+test("normalizes valid filters before candidate reads and treats blank text filters as absent", async () => {
+  const candidate = makeCandidate(eventA, firstTime, 1);
+  let readerOptions: PublicEventListCandidateReadOptions | undefined;
+  const service = createService(
+    makePage([candidate]),
+    (eventId) => ({ kind: "found", event: makeEventView(String(eventId)) }),
+    (options) => { readerOptions = options; },
+  );
+
+  const result = await service.read({
+    filters: {
+      category: "disasters_weather",
+      lifecycle: "ongoing",
+      freshness: "needs_update",
+      from: "2026-01-01T00:00:00Z",
+      to: "2026-04-01T00:00:00Z",
+      q: "  STORM Notice  ",
+      place_id: " place-alpha ",
+    },
+  });
+  assert.deepEqual(readerOptions, {
+    limit: 20,
+    filters: {
+      category: "disasters_weather",
+      lifecycle: "ongoing",
+      freshness: "needs_update",
+      from: "2026-01-01T00:00:00Z",
+      to: "2026-04-01T00:00:00Z",
+      q: "storm notice",
+      place_id: "place-alpha",
+    },
+  });
+  assert.deepEqual(result.events.map(({ version }) => version), [1],
+    "an exact 90-day interval is valid at the Layer 4 boundary");
+
+  const blankReaderOptions: PublicEventListCandidateReadOptions[] = [];
+  const blankResult = await createService(
+    makePage([candidate]),
+    (eventId) => ({ kind: "found", event: makeEventView(String(eventId), 2) }),
+    (options) => { blankReaderOptions.push(options); },
+  ).read({ filters: { q: "   ", place_id: "  " } });
+  assert.deepEqual(blankReaderOptions, [{ limit: 20 }]);
+  assert.deepEqual(blankResult.events.map(({ version }) => version), [2],
+    "blank query/place filters are absent and do not trigger version-race rejection");
 });
 
 test("rejects malformed candidate pages before starting projection calls", async () => {
@@ -325,6 +381,20 @@ test("rejects mismatched, stale, or expanded projection results", async () => {
       "PROJECTION_RESULT_INVALID",
     );
   }
+});
+
+test("fails a filtered page when a current projection advances beyond its candidate version", async () => {
+  const candidate = makeCandidate(eventA, firstTime, 1);
+  const service = createService(
+    makePage([candidate]),
+    (eventId) => ({ kind: "found", event: makeEventView(String(eventId), 2) }),
+  );
+
+  await assertServiceError(
+    service.read({ filters: { place_id: "place-alpha" } }),
+    "FILTERED_RESULT_CHANGED",
+    [eventA],
+  );
 });
 
 test("caps projector fan-out at four while retaining original candidate order", async () => {
