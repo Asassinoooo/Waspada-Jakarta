@@ -45,4 +45,16 @@ Stop and report if typed service failures cannot be mapped without changing the 
 
 ## Implementation handoff
 
-Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, actual WSL checks, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+### Handoff 1 — 27 September 2026
+
+- **Branch/worktree:** `work/API-PUBLIC-EVENT-LIST-ROUTE-CORE`; `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`).
+- **Implementation commit:** `6c6e48cd27a2dbe089d7e00df99da21b35a0b768` — `feat(API-PUBLIC-EVENT-LIST-ROUTE-CORE): inject page service into events route`.
+- **Changed implementation paths:** `apps/worker/src/layers/l4-application-integration/api.ts`; `apps/worker/test/api.test.ts`.
+- **Behavior:** `handlePublicApiRequest` accepts a trailing optional `PublicEventListPageService`. The injected reader handles only `GET /api/v1/events`, receives the route's `URLSearchParams`, and returns the unchanged `EventPage` via the existing response helper. The non-demo gate runs before the injected reader. Typed invalid requests map to `400 INVALID_REQUEST` with a fixed safe message; typed page-read failures and unrelated exceptions use the existing generic temporary-failure envelope. With no injection, the synthetic demo reader keeps its existing offset cursor and filtering behavior. Request telemetry remains limited to route, status, and duration.
+- **WSL runtime/dependency versions:** Ubuntu-26.04; Node.js `v24.21.0`; npm `11.19.0`; Git `2.53.0`; TypeScript `7.0.2`; tsx `4.23.15`; Wrangler `4.137.0`; PGlite `0.5.8`.
+- **Checks actually run:** focused `tsx --test apps/worker/test/api.test.ts` passed 22/22; `npm test` passed (web 22/22, Worker 186/186, DB 16/16 test files, evaluation 12/12); `npm run typecheck` passed; `npm run build` passed (web production build and Wrangler Worker dry-run); WSL `git diff --check` passed. The initial unscoped diff check printed existing CRLF conversion warnings for unrelated tracked files; the final scoped check of the two implementation paths was clean. The temporary `node_modules` symlink used to reuse WSL dependencies was removed before commit.
+- **Limitations:** verification used synthetic fixtures and fake injected services. The Worker entrypoint does not inject this service, and no hosted database, live dataset, production cursor key, or Worker binding was configured or tested; those remain outside this route task.
+- **Migration/configuration impact:** none. No dependency, lockfile, migration, `WorkerEnvironment`, route contract, or deployment configuration changed.
+- **Remaining decisions:** none for this assigned slice. Future runtime composition still needs its separately assigned database and cursor-key decisions.
+
+Do not merge or push.
