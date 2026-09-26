@@ -47,3 +47,15 @@ Stop and report if correct composition requires a public-contract change, route/
 ## Implementation handoff
 
 Append the exact branch/worktree, commit(s), changed paths, behavior, actual WSL checks, limitations and remaining decisions here. Do not merge or push.
+
+### Implementation handoff
+
+- **Branch/worktree:** work/API-PUBLIC-DETAIL-PROJECTION-CORE at C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL (WSL: /mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL), based on 876fe6fa8fe129ae68d61c05b9b76c29ddd855f1.
+- **Implementation commit:** efed7c22208c3740dff971eb9ec4febe07f3c98f — feat(API-PUBLIC-DETAIL-PROJECTION-CORE): compose live EventDetail projection.
+- **Changed implementation paths:** apps/worker/src/layers/l4-application-integration/public-event-detail-projection-service.ts; apps/worker/src/layers/l4-application-integration/public-event-projection-service.ts (shared snapshot preparation export only); apps/worker/test/l4-public-event-detail-projection-service.test.ts.
+- **Behavior:** Added a read-only injected service that binds one live snapshot to the request and its event/impact versions, validates exact reviewed lookup results, derives only unique geometry IDs from event and claim scopes, enforces the 500-geometry limit, and reads no geometries for an empty reference set. It passes validated records and untrusted geometry payloads through the existing strict EventDetail projector; errors are stable and redacted. The existing EventView service continues through the same snapshot preparation logic.
+- **Checks actually run in WSL Ubuntu-26.04:** Node v24.21.0, npm 11.19.0, Git 2.53.0, TypeScript 7.0.2, tsx 4.23.15, Wrangler 4.137.0, Vite 8.3.0. Focused detail service test: 32/32 passed. npm test: 317/317 passed (web 22, Worker 183, DB 100 across 13 files, evaluation 12). npm run typecheck: passed. npm run build: passed, including Vite production build and Wrangler dry-run. git diff --cached --check: passed. The focused file was run directly because the existing Worker test script enumerates test files and this assignment forbids changing package configuration.
+- **Limitations:** Fixtures are fictional and live-shaped only. No actual source permission, factual support, hosted Neon behavior, Worker database binding, HTTP route, live geometry, publication action, or runtime integration was tested or added.
+- **Migration/configuration impact:** None. No dependency added.
+- **Remaining decisions:** No decision is required within this assignment. A later route/runtime integration needs a separate assignment and remains subject to the documented moderator authorization, source-rights, and runtime-role gates.
+- **Handoff commit message:** docs(API-PUBLIC-DETAIL-PROJECTION-CORE): record implementation handoff (its SHA is included in the task report).
