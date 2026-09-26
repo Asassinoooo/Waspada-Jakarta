@@ -46,3 +46,16 @@ Stop and report if the current `SqlExecutor` contract cannot be implemented with
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, actual WSL checks, limitations, dependency/configuration impact, and remaining decisions here. Do not merge or push.
+
+## Implementation handoff — 27 September 2026
+
+- **Branch/worktree:** `work/DB-HYPERDRIVE-SQL-EXECUTOR-CORE`; `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`).
+- **Implementation commit:** `61fc47fa11ab4a6fc2697419e28c5f204a6ee542` — `feat(DB-HYPERDRIVE-SQL-EXECUTOR-CORE): add request-scoped pg adapter`.
+- **Implementation paths:** `apps/db/package.json`, `package-lock.json`, `apps/db/src/postgres-sql-executor.ts`, `apps/db/test/postgres-sql-executor.test.ts`.
+- **Behavior:** `withPostgresSqlExecutor` takes an explicit connection string, creates/connects one client for one async operation, adapts only the existing `SqlExecutor` query/execute methods, copies readonly parameters without changing values, and always awaits client closure. It returns query rows only, discards execute metadata, propagates close errors after successful work, and keeps the original connection/operation error if cleanup also fails. Tests inject a fake client factory; no network or provider connection is used.
+- **Dependency/tool versions from WSL Ubuntu-26.04:** Node `v24.21.0`; npm `11.19.0`; Git `2.53.0`; TypeScript `7.0.2`; `pg` `8.16.3` (Cloudflare's documented minimum); `@types/pg` `8.23.1`; PGlite `0.5.8`, PostGIS extension `0.2.8`, pgvector extension `0.0.9`; Wrangler `4.137.0`.
+- **Checks actually run:** focused adapter test passed `6/6`; `npm run db:test` passed `17/17` test files; `npm test` passed web `22/22`, Worker `186/186`, DB `17/17` files, evaluation `12/12`; `npm run typecheck` passed all workspaces and evaluation; `npm run build` passed typecheck, Vite build, and Wrangler deploy dry-run; `git diff --check` passed.
+- **Wrangler detail:** dry-run completed with a `33.59 KiB` bundle (`8.42 KiB` gzip) and reported the existing `DATASET_MODE="demo"` binding only. The DB adapter is not wired into the Worker in this task, so the dry-run does not exercise or bundle it.
+- **Configuration/migration impact:** adds exact `pg` runtime and `@types/pg` development dependencies to the DB workspace and updates the lockfile. No migration, schema, Worker binding/configuration, API route, or transaction runner was added.
+- **Limitations and remaining work:** hosted Hyperdrive/Neon connectivity, deployed Worker Node compatibility, TLS/pooling behavior, and provider query/cost behavior remain unverified. A later runtime-composition assignment must inject the Hyperdrive connection string and decide how the read services use the request-scoped adapter.
+- **Handoff commit:** this implementation handoff is being recorded in the following commit; its exact SHA and message are returned to the orchestrator with the final branch status.
