@@ -47,3 +47,15 @@ Stop and ask root if the existing `CryptoKey`/Web Crypto types are unavailable i
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, actual WSL checks, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+
+### Implementer handoff — 27 September 2026
+
+- **Branch/worktree:** `work/API-PUBLIC-EVENT-LIST-CURSOR-CORE`; WSL path `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL` (Windows path `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL`). The task-worktree Git metadata is shared with the root repository; all project verification ran inside WSL Ubuntu-26.04.
+- **Implementation commit:** `f4de80f16082f7fe853e85aac9acb63b042d7e29` — `feat(API-PUBLIC-EVENT-LIST-CURSOR-CORE): add authenticated public cursors`.
+- **Changed paths:** `apps/worker/src/layers/l4-application-integration/public-event-list-cursor.ts`; `apps/worker/test/l4-public-event-list-cursor.test.ts`; this assignment handoff.
+- **Behavior:** Added an injected `CryptoKey`/clock codec for `PublicEventListCursor` and the accepted closed filters. It issues `v1` base64url HMAC-SHA-256 tokens with separate domain-separated filter-binding and full-token signatures, a 15-minute expiry, and a 2,048-character limit. Decoding authenticates before parsing payload values, checks exact canonical keys/keyset/expiry/binding, rejects `expires_at <= now`, and returns bounded redacted error codes. Filter binding follows deterministic closed-key order, lowercases trimmed `q`, trims `place_id`, omits blank text filters, and does not accept/bind page size. Raw filter values are absent from the payload. The focused tests use generated in-memory keys, authored fictional cursors, and a deterministic clock.
+- **WSL tools/packages:** Ubuntu-26.04; Node.js `v24.21.0`, npm `11.19.0`, Git `2.53.0`; TypeScript `7.0.2`, tsx `4.23.15`, Wrangler `4.137.0`. A temporary `node_modules` symlink was used only after confirming its target was exactly `/mnt/d/Projects/RPL/node_modules`; it was removed before handoff.
+- **Checks:** Direct focused test `node --import tsx --test apps/worker/test/l4-public-event-list-cursor.test.ts` — exit 0, 8/8. `npm test` — exit 0 (web 22/22, Worker 183/183, DB 16/16 files, evaluation 12/12); the new focused cursor test is not registered in the Worker aggregate and was run separately. `npm run typecheck` — exit 0. `npm run build` — exit 0, including Vite production output and Wrangler Worker dry-run. `git diff --check` and staged diff checks — exit 0.
+- **Limitations:** Tests exercise Node's standard Web Crypto implementation with ephemeral keys. Wrangler dry-run passed, but no deployed Cloudflare Worker, production key, route, database, live data, or hosted service was configured or exercised.
+- **Migration/configuration impact:** None. No OpenAPI/DTO, package script, dependency/lockfile, migration, runtime binding, deployment setting, or production secret changed.
+- **Remaining decisions:** None for this bounded codec. Root review and integration remain outstanding.
