@@ -17,6 +17,10 @@ import {
 } from "../l5-evaluation-monitoring/telemetry.js";
 import { PublicReadModel, QueryValidationError } from "./public-read-model.js";
 import { readPublicGeoJSONQuery } from "./public-geojson-query.js";
+import {
+  PublicEventDetailProjectionServiceError,
+  type PublicEventDetailProjectionService,
+} from "./public-event-detail-projection-service.js";
 
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
@@ -62,6 +66,10 @@ function eventRoute(pathname: string): { kind: "detail" | "history"; encodedId: 
   return null;
 }
 
+export function isPublicEventDetailPath(pathname: string): boolean {
+  return eventRoute(pathname)?.kind === "detail";
+}
+
 function decodeEventId(encodedId: string): string {
   let eventId: string;
   try {
@@ -88,6 +96,7 @@ export async function handlePublicApiRequest(
   env: WorkerEnvironment,
   telemetry: TelemetrySink = noOpTelemetry,
   eventListPageService?: PublicEventListPageService,
+  eventDetailProjectionService?: PublicEventDetailProjectionService,
 ) {
   const startedAt = Date.now();
   const url = new URL(request.url);
@@ -104,6 +113,8 @@ export async function handlePublicApiRequest(
   try {
     const exactLiveListRoute =
       env.DATASET_MODE === "live" && url.pathname === "/api/v1/events";
+    const exactLiveDetailRoute =
+      env.DATASET_MODE === "live" && selectedEventRoute?.kind === "detail";
     if (request.method !== "GET") {
       response = apiError("INVALID_REQUEST", "Only read-only GET requests are available.", 405);
     } else if (env.DATASET_MODE
@@ -114,13 +125,15 @@ export async function handlePublicApiRequest(
         "This runtime only contains the synthetic demo dataset.",
         503,
       );
-    } else if (env.DATASET_MODE === "live" && !exactLiveListRoute) {
+    } else if (env.DATASET_MODE === "live" && !exactLiveListRoute && !exactLiveDetailRoute) {
       response = apiError(
         "TEMPORARILY_UNAVAILABLE",
         "This runtime only contains the synthetic demo dataset.",
         503,
       );
     } else if (exactLiveListRoute && !eventListPageService) {
+      response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
+    } else if (exactLiveDetailRoute && !eventDetailProjectionService) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
     } else if (route === "context") {
       const context: PublicContext = readModel.context("demo");
@@ -138,10 +151,20 @@ export async function handlePublicApiRequest(
       } else if (selectedEventRoute) {
         const eventId = decodeEventId(selectedEventRoute.encodedId);
         if (selectedEventRoute.kind === "detail") {
-          const detail: EventDetail | null = readModel.detail(eventId);
-          response = detail
-            ? jsonResponse(detail)
-            : apiError("NOT_FOUND", "The requested public route was not found.", 404);
+          if (env.DATASET_MODE === "live") {
+            if (!isValidLiveDetailEventId(eventId)) {
+              throw new QueryValidationError("event_id is invalid");
+            }
+            const result = await eventDetailProjectionService!.read(eventId);
+            response = result.kind === "found"
+              ? jsonResponse(result.detail)
+              : apiError("NOT_FOUND", "The requested public route was not found.", 404);
+          } else {
+            const detail: EventDetail | null = readModel.detail(eventId);
+            response = detail
+              ? jsonResponse(detail)
+              : apiError("NOT_FOUND", "The requested public route was not found.", 404);
+          }
         } else {
           const history: HistoryPage | null = readModel.history(eventId, url.searchParams);
           response = history
@@ -155,8 +178,10 @@ export async function handlePublicApiRequest(
       response = apiError("NOT_FOUND", "The requested public route was not found.", 404);
     }
   } catch (error) {
-    response =
-      error instanceof PublicEventListPageServiceError
+    response = error instanceof PublicEventDetailProjectionServiceError
+      && error.code === "INVALID_EVENT_ID"
+      ? apiError("INVALID_REQUEST", "event_id is invalid", 400)
+      : error instanceof PublicEventListPageServiceError
         ? error.code === "INVALID_REQUEST"
           ? apiError("INVALID_REQUEST", "The public event list request is invalid.", 400)
           : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500)
@@ -178,4 +203,8 @@ export async function handlePublicApiRequest(
   }
 
   return response ?? apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 500);
+}
+
+function isValidLiveDetailEventId(value: string): boolean {
+  return value.length <= 128 && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(value);
 }

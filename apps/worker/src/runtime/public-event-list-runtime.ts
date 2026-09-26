@@ -44,7 +44,7 @@ export async function createPublicEventListRuntime(
   dependencies: PublicEventListRuntimeDependencies = {},
 ): Promise<PublicEventListPageService | undefined> {
   if (configuration.datasetMode !== "live"
-    || !isValidConnectionString(configuration.connectionString)
+    || !isValidHyperdriveConnectionString(configuration.connectionString)
     || !isValidCursorSecret(configuration.cursorHmacKeyHex)) {
     return undefined;
   }
@@ -87,7 +87,7 @@ export async function createPublicEventListRuntime(
   return createPublicEventListPageService({ projection, cursorCodec });
 }
 
-function isValidConnectionString(value: unknown): value is string {
+export function isValidHyperdriveConnectionString(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0
     || value.length > maxConnectionStringLength || value.trim() !== value) {
     return false;

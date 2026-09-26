@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.js";
-import type { EventPage } from "../src/contracts/public-api.js";
+import type { EventDetail, EventPage } from "../src/contracts/public-api.js";
 import {
   handlePublicApiRequest,
   type WorkerEnvironment,
@@ -15,6 +15,7 @@ import {
   PublicEventListPageServiceError,
   type PublicEventListPageService,
 } from "../src/layers/l4-application-integration/public-event-list-page-service.js";
+import type { PublicEventDetailProjectionService } from "../src/layers/l4-application-integration/public-event-detail-projection-service.js";
 import {
   API_REQUEST_EVENT_NAME,
   consoleTelemetry,
@@ -279,6 +280,124 @@ test("injected event-list page service receives route query and returns its exac
   );
   assert.equal(detailResponse.status, 200);
   assert.equal(calls, 1);
+});
+
+test("exact live detail uses its injected projection while demo and other route gates stay intact", async () => {
+  const detail: EventDetail = {
+    event_id: "event-synthetic-live-01",
+    version: 1,
+    title: "Synthetic live-shaped detail",
+    summary: "An authored fictional detail response.",
+    category: "transport_road_incidents",
+    tags: [],
+    lifecycle: "unknown",
+    freshness: {
+      status: "current",
+      evaluated_at: "2026-09-26T03:00:00Z",
+      review_due_at: null,
+      basis: "manual_review",
+    },
+    event_time: { start: null, end: null, precision: "unknown" },
+    validity: { valid_from: null, valid_until: null },
+    scope: { places: [], services: [], institutions: [], audiences: [] },
+    claims: [],
+    impacts: [],
+    published_at: "2026-09-26T03:01:00Z",
+    geometries: [],
+  };
+  let detailCalls = 0;
+  let receivedId: unknown;
+  const detailService: PublicEventDetailProjectionService = {
+    async read(eventId) {
+      detailCalls += 1;
+      receivedId = eventId;
+      return { kind: "found", detail };
+    },
+  };
+  let listCalls = 0;
+  const page: EventPage = {
+    data: [],
+    page: { next_cursor: null, cursor_expires_at: null },
+  };
+  const listService: PublicEventListPageService = {
+    async read() {
+      listCalls += 1;
+      return page;
+    },
+  };
+
+  const detailResponse = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/event-synthetic-live-01"),
+    { DATASET_MODE: "live" },
+    undefined,
+    listService,
+    detailService,
+  );
+  assert.equal(detailResponse.status, 200);
+  assert.deepEqual(await readJson<EventDetail>(detailResponse), detail);
+  assert.equal(detailCalls, 1);
+  assert.equal(receivedId, "event-synthetic-live-01");
+  assert.equal(listCalls, 0);
+
+  const listResponse = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events?limit=1"),
+    { DATASET_MODE: "live" },
+    undefined,
+    listService,
+    detailService,
+  );
+  assert.equal(listResponse.status, 200);
+  assert.deepEqual(await readJson<EventPage>(listResponse), page);
+  assert.equal(listCalls, 1);
+  assert.equal(detailCalls, 1);
+
+  const demoDetail = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/synthetic-demo-01"),
+    demoEnvironment,
+    undefined,
+    listService,
+    detailService,
+  );
+  assert.equal(demoDetail.status, 200);
+  assert.equal((await readJson<EventDetail>(demoDetail)).event_id, "synthetic-demo-01");
+  assert.equal(detailCalls, 1);
+
+  const invalidLiveId = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/bad%20id"),
+    { DATASET_MODE: "live" },
+    undefined,
+    listService,
+    detailService,
+  );
+  assert.equal(invalidLiveId.status, 400);
+  assert.equal((await readJson<{ code: string }>(invalidLiveId)).code, "INVALID_REQUEST");
+  assert.equal(detailCalls, 1);
+
+  const unavailableDetail = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events/event-synthetic-live-01"),
+    { DATASET_MODE: "live" },
+  );
+  assert.equal(unavailableDetail.status, 503);
+  assert.equal((await readJson<{ code: string }>(unavailableDetail)).code, "TEMPORARILY_UNAVAILABLE");
+
+  for (const path of [
+    "/api/v1/events/event-synthetic-live-01/history",
+    "/api/v1/events.geojson",
+    "/api/v1/context",
+    "/api/v1/unknown",
+  ]) {
+    const response = await handlePublicApiRequest(
+      new Request(`http://localhost${path}`),
+      { DATASET_MODE: "live" },
+      undefined,
+      listService,
+      detailService,
+    );
+    assert.equal(response.status, 503, path);
+    assert.equal((await readJson<{ code: string }>(response)).code, "TEMPORARILY_UNAVAILABLE");
+  }
+  assert.equal(detailCalls, 1);
+  assert.equal(listCalls, 1);
 });
 
 test("injected event-list service errors map to fixed redacted API responses", async () => {
@@ -580,7 +699,12 @@ test("explicit non-demo mode blocks detail and history before a fixture read", a
       const body = await readJson<{ code: string; message: string }>(response);
       assert.equal(response.status, 503);
       assert.equal(body.code, "TEMPORARILY_UNAVAILABLE");
-      assert.match(body.message, /synthetic demo dataset/);
+      assert.equal(
+        body.message,
+        path.endsWith("/history")
+          ? "This runtime only contains the synthetic demo dataset."
+          : "The public read could not be completed.",
+      );
     }
   } finally {
     PublicReadModel.prototype.detail = originalDetail;

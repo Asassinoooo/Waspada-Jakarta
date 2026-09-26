@@ -1,5 +1,10 @@
 import { createPublicEventListRuntime } from "./runtime/public-event-list-runtime.js";
-import { handlePublicApiRequest, type WorkerEnvironment } from "./layers/l4-application-integration/api.js";
+import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-runtime.js";
+import {
+  handlePublicApiRequest,
+  isPublicEventDetailPath,
+  type WorkerEnvironment,
+} from "./layers/l4-application-integration/api.js";
 import { consoleTelemetry } from "./layers/l5-evaluation-monitoring/telemetry.js";
 
 export default {
@@ -15,7 +20,22 @@ export default {
           cursorHmacKeyHex: env.PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX,
         })
         : undefined;
+    const eventDetailProjectionService =
+      env.DATASET_MODE === "live"
+        && request.method === "GET"
+        && isPublicEventDetailPath(url.pathname)
+        ? createPublicEventDetailRuntime({
+          datasetMode: env.DATASET_MODE,
+          connectionString: env.HYPERDRIVE?.connectionString,
+        })
+        : undefined;
 
-    return handlePublicApiRequest(request, env, consoleTelemetry, eventListPageService);
+    return handlePublicApiRequest(
+      request,
+      env,
+      consoleTelemetry,
+      eventListPageService,
+      eventDetailProjectionService,
+    );
   },
 };
