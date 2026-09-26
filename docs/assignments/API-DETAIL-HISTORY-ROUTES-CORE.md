@@ -1,6 +1,7 @@
 # API-DETAIL-HISTORY-ROUTES-CORE — synthetic public detail and history routes
 
-- **Status:** Assigned; local demo-only HTTP route slice
+- **Status:** Accepted on `main` at handoff `48c7f73`; local demo-only HTTP route slice. Root acceptance and independent checks are recorded in [the delivery log](../DELIVERY_LOG.md).
+- **Contract:** Existing OpenAPI 3.1 at `docs/api/openapi.yaml`; unchanged
 - **Depends on:** API-PROJECT-CORE, API-GEOMETRY-CORE, SPEC-03
 - **Requirements:** FR-09/10; NFR-01/07
 - **Layer:** L4 — application integration
@@ -53,6 +54,10 @@ This is demo route composition only. The accepted projectors reject synthetic re
 - This assignment's implementation handoff only
 
 Root owns API/OpenAPI contracts, database and runtime composition, future live readers, GeoJSON viewport decisions, architecture and backlog acceptance. If a contract cannot be followed safely within these paths, report the exact gap rather than broadening scope.
+
+## Stop/escalation conditions
+
+Stop and ask root to resolve any conflict between the existing OpenAPI 3.1 response shapes and the synthetic-only data; do not invent source attribution, history, locations, or live-publication behavior to fill a gap. Stop if completing a route would require database access, a new API contract, external data rights, or the unassigned GeoJSON viewport. Escalate to Astra only if Luna Max first attempts a substantive technical issue and remains unable to resolve it; a missing external permission or undecided product contract is not an escalation reason.
 
 ## Acceptance and checks
 
