@@ -4,10 +4,12 @@ import { ApiHttpError, getEventDetail, getEventHistory, getPublicContext, listEv
 import { EventDetail } from "./EventDetail.js";
 import { EventFeed, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
+import { Preferences } from "./Preferences.js";
 import type { MapSelection } from "./MapPanel.js";
 
 type Route =
   | { screen: "discover" }
+  | { screen: "preferences" }
   | { screen: "review" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
@@ -19,7 +21,8 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
   };
 }
 
-function routeFromHash(hash: string): Route {
+export function routeFromHash(hash: string): Route {
+  if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
@@ -44,6 +47,7 @@ export function SiteHeader({ route }: { route: Route }) {
         </a>
         <nav className="primary-nav" aria-label="Navigasi utama">
           <a href="#jelajah" aria-current={onDiscover ? "page" : undefined}>Jelajah</a>
+          <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Ringkasan saya</a>
           <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
         </nav>
         <span className="mode-chip">Mode demo</span>
@@ -90,6 +94,7 @@ export function App() {
   }, [query, mobilePanel]);
 
   useEffect(() => {
+    if (route.screen === "preferences") return;
     let cancelled = false;
     setStatus("loading");
 
@@ -107,7 +112,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [retryKey]);
+  }, [retryKey, route.screen]);
 
   const detailEventId = route.screen === "detail-api" ? route.eventId : null;
 
@@ -191,6 +196,7 @@ export function App() {
           context={context}
         />
       )}
+      {route.screen === "preferences" && <Preferences />}
       {route.screen === "review" && <ModeratorReview />}
       <footer className="site-footer">
         <span>Demo lokal · semua record dan segmen contoh bersifat sintetis.</span>
