@@ -41,7 +41,7 @@ This is demo route composition only. The accepted projectors reject synthetic re
 
 ## Explicitly out of scope
 
-- `/api/v1/events.geojson` and `bbox` validation. OpenAPI describes a configured Jakarta viewport but the project has not selected/recorded its bounds; do not invent them.
+- `/api/v1/events.geojson` and `bbox` validation were outside this assignment. ADR-018 and the separate [API-GEOJSON-ROUTE-CORE](API-GEOJSON-ROUTE-CORE.md) assignment now define and implement the synthetic route; live database reads remain out of scope.
 - Database, Neon, public-reader database roles, SQL/views, migrations, auth, publication, source/model calls, credentials, new dependencies, Cloudflare configuration, deployment, or human-evaluation claims.
 - Changes to response schemas, OpenAPI, UI, the event-list contract, or public projector semantics.
 

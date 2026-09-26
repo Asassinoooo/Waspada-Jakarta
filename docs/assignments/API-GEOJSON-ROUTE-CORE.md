@@ -1,6 +1,6 @@
 # API-GEOJSON-ROUTE-CORE — synthetic public GeoJSON route
 
-- **Status:** Assigned; synthetic route only
+- **Status:** Accepted on `main` at handoff `29aa6b4`; synthetic route only
 - **Parent work package:** API-01 — Public published-event endpoints
 - **Requirements:** FR-09/10; NFR-01/07
 - **Dependencies:** API-GEOMETRY-CORE, API-DETAIL-HISTORY-ROUTES-CORE, SPEC-03, ADR-018
@@ -82,3 +82,7 @@ Append the completed implementation report here. Root independently reviews and 
 - **WSL verification:** Ubuntu-26.04 with Node.js `v24.21.0`, npm `11.19.0`, TypeScript `7.0.2`, tsx `4.23.15`, Wrangler `4.137.0`, and Vite `8.3.0`. Focused Worker API tests passed `19/19`; full `npm test` exited successfully (including all 10 isolated DB test files); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry-run); `git diff --check` and `git diff --cached --check` passed. The initial Windows worktree's `.git` pointer required explicit WSL `GIT_DIR` and `GIT_WORK_TREE`; a temporary WSL `node_modules` symlink to the existing root dependency cache was removed before staging.
 - **Migration/configuration/dependency impact:** None. No dependency, lockfile, database, OpenAPI, domain contract, Worker binding, or Cloudflare configuration changed.
 - **Limitations and remaining decisions:** This is demo-only and always returns an empty FeatureCollection. It adds no database/live reader, source-backed geometry, or spatial filtering. The envelope limits queries only; it does not establish an administrative boundary or danger area. Validated filters currently do not alter the empty result. No unresolved decision remains within this assignment.
+
+### Root review and acceptance — 26 September 2026
+
+Root independently reviewed the branch diff, exact allowlisted response, routing, bbox/filter validation, privacy-safe errors and telemetry behavior. Root fast-forwarded the branch to `main` at handoff `29aa6b4` after independently passing the focused Worker API tests `19/19`, full WSL `npm test` (including all 10 isolated DB test files), `npm run typecheck`, `npm run build` (Vite production build and Wrangler `4.137.0` dry-run), and `git diff --check`. The temporary dependency symlink was removed and the task worktree is clean. No migration, dependency, contract, binding, or external-service change was made. Acceptance is limited to the synthetic demo route; it does not complete API-01's live public reader or spatial filtering.
