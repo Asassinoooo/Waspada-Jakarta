@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** RAG-CONTEXT-ASSEMBLY-CORE is accepted on local `main` at `f4ca0dc` after root review and independent WSL verification. Layer 2 now rehydrates exact selected evidence spans under the existing reader role and assembles a validated schema 2.0 reasoning request while preserving explicit, unevaluated caller assessment. The full WSL suite passed 179/179, plus typecheck, Vite/Wrangler build and diff checks. This component does not invoke a model or L3, and no Worker was deployed. Source/data rights, human-labelled evaluation, model selection, moderator authorization, hosted Neon behavior, and full-stack monitoring remain pending.
+**Reason:** RAG-CONTEXT-ASSEMBLY-CORE is accepted on local and remote `main` at `f4ca0dc`, and its root acceptance record is pushed at `3c5a8ef`. Layer 2 now rehydrates exact selected evidence spans and assembles a validated schema 2.0 reasoning request; the full WSL suite passed 179/179 plus typecheck/build/diff checks. The next local task, L2-DIRECT-REASONING-CORE, is assigned on `work/L2-DIRECT-REASONING-CORE`: persist validated context first, route caller-insufficient contexts away from the model, and call only the injected reasoner for sufficient context. The task uses synthetic provider doubles, does not create a live provider or L3/L4 path, and adds only safe opt-in telemetry. Source/data rights, human-labelled evaluation, real model selection, moderator authorization, hosted Neon behavior, and full-stack monitoring remain pending.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
