@@ -130,6 +130,42 @@ test('rejects malformed, unknown, disabled, and action-invalid proposals before 
   }
 });
 
+test('bounds total input code units and object key length at their exact limits', async () => {
+  const execute = async (value: unknown) => {
+    const ledger = makeLedger();
+    let handlerCalls = 0;
+    const executor = makeExecutor({
+      ledger: ledger.repository,
+      parseInput: (input) => ({ ok: true, value: input }),
+      handler() {
+        handlerCalls += 1;
+        return { status: 'succeeded' };
+      },
+    });
+    const result = await executor.execute(makeProposal(value));
+    return { result, ledger, handlerCalls };
+  };
+
+  const atTotalLimit = await execute({ a: 'a'.repeat(16_383), b: 'b'.repeat(16_383) });
+  assert.equal(atTotalLimit.result.status, 'executed');
+  assert.equal(atTotalLimit.handlerCalls, 1);
+  assert.deepEqual(atTotalLimit.ledger.calls, ['reserve', 'start', 'reconcile']);
+
+  const overTotalLimit = await execute({ a: 'a'.repeat(16_384), b: 'b'.repeat(16_383) });
+  assert.deepEqual(overTotalLimit.result, { status: 'review_required', reason: 'invalid_proposal' });
+  assert.equal(overTotalLimit.handlerCalls, 0);
+  assert.deepEqual(overTotalLimit.ledger.calls, []);
+
+  const atKeyLimit = await execute({ ['k'.repeat(128)]: 'x' });
+  assert.equal(atKeyLimit.result.status, 'executed');
+  assert.equal(atKeyLimit.handlerCalls, 1);
+
+  const overKeyLimit = await execute({ ['k'.repeat(129)]: 'x' });
+  assert.deepEqual(overKeyLimit.result, { status: 'review_required', reason: 'invalid_proposal' });
+  assert.equal(overKeyLimit.handlerCalls, 0);
+  assert.deepEqual(overKeyLimit.ledger.calls, []);
+});
+
 test('ledger expected denials return closed review results without invoking the handler', async () => {
   const scenarios: Array<{
     readonly name: string;

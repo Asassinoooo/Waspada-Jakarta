@@ -18,6 +18,8 @@ const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+
 const MAX_INPUT_DEPTH = 16;
 const MAX_INPUT_NODES = 1_000;
 const MAX_INPUT_STRING_LENGTH = 16_384;
+const MAX_INPUT_KEY_LENGTH = 128;
+const MAX_INPUT_TOTAL_CODE_UNITS = 32_768;
 const MAX_OUTPUT_REFERENCES = 8;
 
 export interface InvestigationActionInputParseResult {
@@ -625,13 +627,22 @@ type CloneResult = { readonly ok: true; readonly value: unknown } | { readonly o
 function cloneJsonValue(value: unknown): CloneResult {
   const seen = new WeakSet<object>();
   let nodeCount = 0;
+  let totalCodeUnits = 0;
+
+  const addCodeUnits = (length: number): boolean => {
+    if (length > MAX_INPUT_TOTAL_CODE_UNITS - totalCodeUnits) return false;
+    totalCodeUnits += length;
+    return true;
+  };
 
   const clone = (current: unknown, depth: number): CloneResult => {
     nodeCount += 1;
     if (nodeCount > MAX_INPUT_NODES || depth > MAX_INPUT_DEPTH) return { ok: false };
     if (current === null || typeof current === 'boolean') return { ok: true, value: current };
     if (typeof current === 'string') {
-      return current.length <= MAX_INPUT_STRING_LENGTH ? { ok: true, value: current } : { ok: false };
+      return current.length <= MAX_INPUT_STRING_LENGTH && addCodeUnits(current.length)
+        ? { ok: true, value: current }
+        : { ok: false };
     }
     if (typeof current === 'number') return Number.isFinite(current) ? { ok: true, value: current } : { ok: false };
     if (typeof current !== 'object') return { ok: false };
@@ -662,6 +673,7 @@ function cloneJsonValue(value: unknown): CloneResult {
     if (keys.length > MAX_INPUT_NODES || keys.some((key) => typeof key !== 'string')) return { ok: false };
     const output: Record<string, unknown> = {};
     for (const key of keys as string[]) {
+      if (key.length > MAX_INPUT_KEY_LENGTH || !addCodeUnits(key.length)) return { ok: false };
       const descriptor = Object.getOwnPropertyDescriptor(current, key);
       if (!descriptor || !('value' in descriptor) || !descriptor.enumerable) return { ok: false };
       const property = clone(descriptor.value, depth + 1);
