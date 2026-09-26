@@ -45,4 +45,26 @@ Stop and report if safe history visibility requires exposing withdrawn events, c
 
 ## Implementation handoff
 
-Append the exact branch/worktree, commit(s), changed paths, behavior, actual WSL checks, limitations and remaining decisions here. Do not merge or push.
+Implemented on branch `work/API-PUBLIC-HISTORY-READER-CORE` in worktree `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`). The implementation commit is `9401191664b28d81df3ef629000982730d17658f` (`feat(db): add bounded public event history reader`).
+
+Changed paths:
+
+- `apps/db/migrations/013_public_event_history_reader.sql`
+- `apps/db/src/public-event-history.ts`
+- `apps/db/test/public-event-history.test.ts`
+- `apps/db/test/migrations.test.ts` (migration-sequence expectations only)
+
+The additive migration creates the security-barrier `waspada.public_event_history_versions` view. It selects only stored `published` versions in the `live` dataset whose event remains in `public_event_versions` as a current public event, bounds each candidate at that current version, and filters mismatched or non-closed schema 2.0 Event envelopes. A latest withdrawn tombstone, historical/synthetic dataset, malformed envelope, or unrelated event therefore has no history row. `waspada_public_reader` receives SELECT on the new view and no direct privileges on event/version publication tables or private source tables.
+
+`createPublicEventHistoryRepository` takes an injected SQL executor and exact validated event ID. It reads the current-public row and a bounded history page in one parameterized statement, uses a validated version keyset with a `limit + 1` probe, checks stable order, exact event/dataset/version identity and the closed Event envelope, and returns `missing` when no current public live event exists. Invalid, duplicate, unexpected or mismatched rows and SQL failures produce stable redacted errors. Returned `recordJson` remains untrusted internal input for a later L4 projection; this package does not infer public change types, summaries, retraction messages or freshness meaning.
+
+WSL verification used Node `v24.21.0`, npm `11.19.0`, Git `2.53.0`, `@electric-sql/pglite` `0.5.8`, `@electric-sql/pglite-pgvector` `0.0.9`, `@electric-sql/pglite-postgis` `0.2.8`, `tsx` `4.23.15`, TypeScript `7.0.2`, and `@types/node` `24.13.6`. Existing dependencies were reused; no package or configuration changed.
+
+- Focused `public-event-history.test.ts`: 7/7 passed.
+- `npm run db:test`: all 14 DB test files passed.
+- `npm test`: exit 0; web 22/22, Worker 183/183, DB 14/14 files, evaluation 12/12 passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed, including Vite production build and Wrangler dry-run.
+- `git diff --check`: passed after the implementation and handoff edits.
+
+Hosted Neon behavior, Worker/runtime composition, a public history projection, source-backed records and any public correction/retraction visibility remain unverified or separate decisions. Migration 013 is additive and requires no runtime configuration change. The implementation was not merged or pushed.
