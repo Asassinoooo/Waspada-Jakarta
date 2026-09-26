@@ -4,7 +4,7 @@
 
 **Baseline:** 0.1 — 24 September 2026
 
-**Status:** Planning baselines and partial local implementations accepted, including OBS-01 privacy-safe API and L2 retrieval telemetry; the full local workspace suite (166 tests), typecheck and build pass with sequential per-file DB test processes. Retrieval telemetry is injected and defaults to no-op because Worker/database runtime composition is not yet implemented. Source/model integration, live-source rights, human-adjudicated evaluation, hosted service behavior and the complete prototype remain in progress.
+**Status:** Planning baselines and partial local implementations accepted, including OBS-01 privacy-safe API, L2 retrieval, and L3 ledger telemetry; the full local workspace suite (172 tests), typecheck and build pass with sequential per-file DB test processes. Telemetry sinks are injected and default to no-op because Worker/database runtime composition is not yet implemented. Source/model integration, live-source rights, human-adjudicated evaluation, hosted service behavior and the complete prototype remain in progress.
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 

@@ -1,7 +1,7 @@
 # OBS-01-L3-LEDGER-TELEMETRY-CORE — privacy-safe investigation ledger metrics
 
 **Parent package:** OBS-01 (Layer 5 evaluation and monitoring)
-**Status:** Assigned; local synthetic module only
+**Status:** Accepted on `main` at `408de10`; local synthetic module only
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/OBS-01-L3-LEDGER-TELEMETRY-CORE`
 **Worktree:** `.codex-build/worktrees/obs-01-l3-ledger-telemetry-core`
