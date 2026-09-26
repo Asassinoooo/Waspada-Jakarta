@@ -65,3 +65,13 @@ Stop and report if completion requires changing the API contract, inventing data
 ## Implementation handoff
 
 Append the implementation report here. Root independently reviews and verifies the branch before acceptance or integration.
+
+### Implemented handoff — 26 September 2026
+
+- **Branch/worktree:** `work/UI-01-FEED-FILTERS-CORE`; `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`).
+- **Implementation commit:** `3d00b29c6fa144e2f7304da4af245c60d253562b` — `feat(UI-01): add loaded-page feed filters`.
+- **Changed paths:** `apps/web/src/App.tsx`, `apps/web/src/EventFeed.tsx`, `apps/web/src/styles.css`, and `apps/web/test/ui.test.tsx`.
+- **Behavior:** Added labelled native category, lifecycle, and freshness selects with all-values defaults. Search and all filters apply with AND semantics to the loaded API page, whose matching/loaded count and non-census scope are stated explicitly. Filtered-empty results include a neutral no-safety inference and clear-all action. Search/filter changes and clear-all reset map selection. Existing demo labels, time/evidence display, loading/API-empty/unavailable states, map safeguards, and mobile list/map switch remain in place.
+- **Checks (WSL Ubuntu 26.04 LTS; Linux Node v24.21.0; npm v11.19.0):** focused UI tests passed 9/9; full `npm test` passed 249/249 (web 22, Worker 137, DB 78, casebook 12); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry-run); `git diff --check` passed. The temporary `node_modules` link to the existing repository dependencies was removed.
+- **Visual QA:** No screenshot captured. No preinstalled headless browser or Playwright/Puppeteer package was available in WSL, and no browser was installed.
+- **Migration/configuration impact and remaining decisions:** None. No API/DTO, dependency, configuration, or migration changed. Root review and acceptance remain pending.
