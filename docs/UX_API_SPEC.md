@@ -1,6 +1,6 @@
 # Waspada Jakarta — UI flows and API contract
 
-**Status:** SPEC-03 design baseline accepted on 24 September 2026. The BOOT-01 local shell implements only synthetic `GET /api/v1/context` and `GET /api/v1/events` projections. The broader public and moderator flows and routes remain design proposals; API-01/MOD-01 must implement and test them. The OpenAPI 3.1 contract remains unchanged.
+**Status:** SPEC-03 design baseline accepted on 24 September 2026. The BOOT-01 local shell implements only synthetic `GET /api/v1/context` and `GET /api/v1/events` projections. API-PROJECT-CORE and API-GEOMETRY-CORE add pure Layer 4 allowlists for `EventView`, `EventDetail`, and GeoJSON; they do not provide database reads or HTTP routes. The broader public and moderator flows and routes remain design proposals; API-01/MOD-01 must implement and test them. The OpenAPI 3.1 contract remains unchanged.
 
 ## 1. Product and interaction rules
 
