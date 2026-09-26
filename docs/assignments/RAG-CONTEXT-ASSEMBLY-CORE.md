@@ -1,6 +1,6 @@
 # RAG-CONTEXT-ASSEMBLY-CORE — assemble exact evidence into a grounded reasoning request
 
-- **Status:** Assigned on `work/RAG-CONTEXT-ASSEMBLY-CORE`
+- **Status:** Accepted on `main` at `f4ca0dc` (`6a2ee3b` implementation; `f4ca0dc` handoff)
 - **Depends on:** RAG-CORE, RAG-ACCESS-01, L2-ADAPTER-01, L2-CONTEXT-PERSIST-CORE, L2-CONTEXT-BRIDGE-CORE
 - **Requirements:** FR-05/06/07; NFR-01/05/07
 - **Layer:** L2 — grounding and model input preparation
@@ -51,3 +51,9 @@ Do not edit API/OpenAPI contracts, schema examples, migration files, DB grants, 
 - No model, source, L3, L4, API, publication or cloud action occurs.
 - In WSL Ubuntu-26.04 run focused DB/Worker tests, `npm run db:test`, `npm test`, `npm run typecheck`, `npm run build` and `git diff --check`. Record exact results and limitations in the handoff.
 - Commit implementation and handoff separately on the assigned branch. Do not merge or push; root reviews and integrates.
+
+## Root review and acceptance
+
+Root reviewed and fast-forwarded the clean branch to `main` at `f4ca0dc`. The SQL reader runs under the existing L2 reader privileges and returns only the exact selected substring after rechecking dataset, candidate, reference, revision, hash, offsets, unit, relation and current revision status. The Worker assembler rejects incomplete retrieval and invalid or mixed identity sets, preserves the selected evidence's relations, timestamps, revision status and known origin lineage, copies explicit caller fields without assessing sufficiency, and validates the finished schema 2.0 request. The OpenAPI file was restored from `main` as requested; no contract, migration, grants, provider, source, L3/L4 behavior, dependency or publication path changed.
+
+Root independently verified in WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0`: focused database/Worker tests passed 14/14 and 6/6; `npm run db:test` passed 78/78 across 10 files; `npm test` passed 179/179 (web 5, Worker 84, DB 78, casebook 12); `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and `git diff main...HEAD --check` passed. PGlite and synthetic fixtures verify the local boundary only; hosted Neon permissions/concurrency and runtime/model-provider integration remain unverified.
