@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** Root accepted API-DETAIL-HISTORY-ROUTES-CORE on local `main` at handoff `48c7f73` (implementation `c66bdc1`) after reviewing the branch and independently passing focused API tests 13/13, the full 226/226 workspace suite, typecheck, build, and WSL diff checks. It adds synthetic-only GET detail/history routes; no live reader, database, GeoJSON route, publication, or OpenAPI change. The acceptance record and verification summary follow in this checkpoint and the delivery log. Source/data rights, human labels, model/provider selection, moderator authorization, hosted Neon behavior, and complete runtime integration remain gated.
+**Reason:** Root accepted API-DETAIL-HISTORY-ROUTES-CORE on local and remote `main` at handoff `48c7f73` (implementation `c66bdc1`) after reviewing the branch and independently passing focused API tests 13/13, the full 226/226 workspace suite, typecheck, build, and WSL diff checks. It adds synthetic-only GET detail/history routes; no live reader, database, GeoJSON route, publication, or OpenAPI change. Root has assigned UI-API-DETAIL-HISTORY-CORE to connect those routes to the existing demo detail view; that implementation is pending. Source/data rights, human labels, model/provider selection, moderator authorization, hosted Neon behavior, and complete runtime integration remain gated.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -215,7 +215,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 
 ## Resume point
 
-Select and document the Jakarta viewport bounds before assigning the GeoJSON `bbox` route. Continue local synthetic API work where safe; keep database-backed public attribution/read roles, source acquisition, model/sufficiency quality claims, and live publication gated on their missing rights, contracts, and human evaluation. Do not enable live sources, providers, or cloud services.
+Implement UI-API-DETAIL-HISTORY-CORE on its assigned branch while the GeoJSON viewport decision is pending. Before assigning the GeoJSON `bbox` route, record the selected Jakarta bounds and their basis. Keep database-backed public attribution/read roles, source acquisition, model/sufficiency quality claims, and live publication gated on their missing rights, contracts, and human evaluation. Do not enable live sources, providers, or cloud services.
 
 ## Autonomous development resumed — 25 September 2026
 
