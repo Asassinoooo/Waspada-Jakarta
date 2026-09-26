@@ -615,3 +615,13 @@ Root independently passed the focused WSL test 10/10 and `git diff --check`. The
 ### API-PUBLIC-EVENT-LIST-PAGE-CORE assigned — 27 September 2026
 
 Root assigned an injected Layer 4 page service to compose the accepted URL parser, HMAC cursor codec and public list projection into the unchanged `EventPage`. It will decode the incoming token before any list read, issue a signed continuation only when the projection returns an internal keyset, and return null cursor/expiry when no further page exists. It changes no route, Worker environment binding, public contract, production key, database connection or dependency. See the [assignment](assignments/API-PUBLIC-EVENT-LIST-PAGE-CORE.md).
+
+### API-PUBLIC-EVENT-LIST-PAGE-CORE accepted — 27 September 2026
+
+Root reviewed the service and focused cases on `work/API-PUBLIC-EVENT-LIST-PAGE-CORE`, then cherry-picked agent implementation `325d8cc` and handoff `a1c2f19` to `main` as `f5d4f61` and `676b0a4`. The injected Layer 4 service composes the existing parser, HMAC cursor codec and public list projection. It verifies continuations before list reads, forwards only the internal keyset, returns the unchanged `EventPage`, preserves exact cursor expiry, and separates redacted invalid-request errors from internal read failures.
+
+Root independently passed the focused WSL test **5/5** and diff checks. The agent passed `npm test` (web 22/22, Worker 183/183, DB 16/16 files, evaluation 12/12), typecheck, build including Wrangler dry-run, and focused tests 5/5. The new focused file is not included in the Worker aggregate and was run separately. No route, Worker binding, production key, database connection, public contract, dependency or migration changed; tests use generated keys and fictional data. See the [assignment and handoff](assignments/API-PUBLIC-EVENT-LIST-PAGE-CORE.md).
+
+### API-PUBLIC-EVENT-LIST-ROUTE-CORE assigned — 27 September 2026
+
+Root assigned a narrow Worker route adapter for `GET /api/v1/events`. The handler will accept an injected page service, use it only when provided, map typed service errors to the existing API error envelope, and keep the current synthetic `PublicReadModel` path as the default. The slice will not add a Worker environment binding, production key, database connection, deployment configuration, contract or dependency. See the [assignment](assignments/API-PUBLIC-EVENT-LIST-ROUTE-CORE.md).
