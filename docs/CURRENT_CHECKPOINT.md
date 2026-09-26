@@ -5,7 +5,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next planning item:** Define the bounded public event-list reader/projection slice under API-01. Preserve the existing filter vocabulary and OpenAPI response contract; resolve stable pagination behavior before assigning implementation. No task branch is assigned yet. Live route/runtime composition remains later work.
+**Next assigned task:** `API-PUBLIC-EVENT-LIST-CANDIDATE-CORE`, assigned on `main` in this checkpoint. It will begin on its own task branch/worktree after the assignment checkpoint is pushed. The DB-only candidate reader uses version-1 initial publication time descending and event ID ascending for stable keyset ordering. It adds no filters, L4 projection, route, DTO, or runtime wiring. This is the recommended default ordering; the user may still correct it before implementation.
 
 ## Repository state
 
@@ -18,6 +18,10 @@ Local `main` includes root-reviewed GEO-STORE-CORE at merge `3207800`, L1-WRITE-
 The accepted work list now includes L1-FIXTURE-RUNNER-CORE, API-PUBLIC-LOOKUPS-CORE, API-PUBLIC-SNAPSHOT-CORE, API-PUBLIC-PROJECTION-SERVICE-CORE, API-PUBLIC-GEOMETRY-READER-CORE, API-PUBLIC-DETAIL-PROJECTION-CORE, API-PUBLIC-HISTORY-REVIEW-METADATA-CORE, and API-PUBLIC-HISTORY-PROJECTION-CORE. Their scope, limitations and checks are recorded in the [L1 assignment](assignments/L1-FIXTURE-RUNNER-CORE.md), [lookup assignment](assignments/API-PUBLIC-LOOKUPS-CORE.md), [snapshot assignment](assignments/API-PUBLIC-SNAPSHOT-CORE.md), [projection service assignment](assignments/API-PUBLIC-PROJECTION-SERVICE-CORE.md), [geometry reader assignment](assignments/API-PUBLIC-GEOMETRY-READER-CORE.md), [detail projection assignment](assignments/API-PUBLIC-DETAIL-PROJECTION-CORE.md), [history metadata assignment](assignments/API-PUBLIC-HISTORY-REVIEW-METADATA-CORE.md), and [history projection assignment](assignments/API-PUBLIC-HISTORY-PROJECTION-CORE.md).
 
 ## Latest work and files
+
+### API-PUBLIC-EVENT-LIST-CANDIDATE-CORE — assigned — 27 September 2026
+
+Root created [the assignment](assignments/API-PUBLIC-EVENT-LIST-CANDIDATE-CORE.md) for a DB-only reader over existing safe public views. It will return bounded current-public live event candidates, ordered by the event's version-1 `published_at` descending and `event_id` ascending. That anchor remains fixed when later versions change; current withdrawals still remove events. Filters, the L4 list projection, HTTP route, DTO, and runtime binding are outside this slice. The initial-publication ordering is the recommended default; it can be changed before implementation if the user steers otherwise.
 
 ### API-PUBLIC-HISTORY-PROJECTION-CORE — accepted — 27 September 2026
 
