@@ -29,11 +29,11 @@ Compose an injected current-event snapshot reader with the reviewed lookup reade
 ## Required behavior
 
 1. Define narrow injected interfaces for the snapshot and reviewed-lookup read ports. Keep Worker/L4 independent of database clients and do not import or create a concrete database connection.
-2. Read exactly one requested event snapshot. If it is missing, return an explicit missing result without calling the lookup port. Never fall back to demo, synthetic, historical, proposal, unreviewed, or previous-version records.
+2. Read exactly one requested event snapshot. If it is missing, return an explicit missing result without calling the lookup port. Before lookup, validate that the snapshot's event ID and version agree with the requested ID and the event `recordJson`; validate that each impact envelope agrees with the snapshot and its impact `recordJson`. Any mismatch is an invalid snapshot and fails closed without lookup. Never fall back to demo, synthetic, historical, proposal, unreviewed, or previous-version records.
 3. Before calling the lookup port, extract scope IDs from the event, every claim, and every impact because the projector resolves names for all three record types. Exclude geometry IDs, which are not public scope-name lookups. Extract source-attribution keys only from each claim's exact `support` references; do not request attribution for contradiction, context, or update evidence. Validate extracted values, deterministically deduplicate them, and cap scope keys and support references at 100 each before any lookup call.
 4. Pass only the bounded exact keys to the injected lookup port. Compose its scope-name and approved-attribution results with the snapshot's impact `recordJson` values, then pass the complete input through the existing `projectPublicEvent` validator/projector. That existing function remains the final authority for schema validation and output allowlisting; missing or ambiguous required lookup rows fail closed.
 5. Return only `{ kind: 'found', event: EventView }` or `{ kind: 'missing' }`. Map unexpected port/projection failures to stable bounded errors without event IDs, source text, SQL details, or exception content. Never partially return an event with unresolved scope names or support attributions.
-6. Tests use authored fictional, live-shaped records and injected fake ports. Prove exact key derivation/deduplication across event, claim, and impact scopes; claim-support-only attribution lookup; rejection before either lookup when a cap is exceeded; no lookup on missing events; strict final DTO allowlisting; correct source timestamps/attributions; impact projection; fail-closed missing/duplicate lookups; malformed records; and redacted errors. Test markers do not represent source rights, facts, human review, or live records.
+6. Tests use authored fictional, live-shaped records and injected fake ports. Prove requested/event/impact envelope identity checks before lookup; exact key derivation/deduplication across event, claim, and impact scopes; claim-support-only attribution lookup; rejection before either lookup when a cap is exceeded; no lookup on missing or malformed snapshots; strict final DTO allowlisting; correct source timestamps/attributions; impact projection; fail-closed missing/duplicate lookups; malformed records; and redacted errors. Test markers do not represent source rights, facts, human review, or live records.
 
 ## Explicit boundaries
 
@@ -53,7 +53,7 @@ Root owns the backlog, SDP, architecture, contracts, source-rights decisions, AP
 
 ## Acceptance and checks
 
-- Focused Worker tests cover the required data boundary, event/claim/impact scope-key derivation, claim-support-only attribution keys, bounded lookups, failure behavior, and final `EventView` allowlist.
+- Focused Worker tests cover requested/event/impact identity binding before lookup, the required data boundary, event/claim/impact scope-key derivation, claim-support-only attribution keys, bounded lookups, failure behavior, and final `EventView` allowlist.
 - Test fixtures are authored and fictional; all live-shaped fields are test inputs only and no test result is described as factual or source-rights evidence.
 - In WSL Ubuntu-26.04 run the focused test, `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check`; record exact tool versions and actual results.
 - Commit implementation and handoff as coherent descriptive commits on the assigned branch. Leave the task worktree clean. Do not merge or push.
