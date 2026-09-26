@@ -46,3 +46,22 @@ Stop and report if the accepted readers or projector cannot preserve the hidden-
 ## Implementation handoff
 
 Append the exact branch/worktree, commits, changed paths, behavior, actual WSL checks, limitations and remaining decisions here. Do not merge or push.
+
+
+### Completed implementation handoff
+
+- Branch/worktree: work/API-PUBLIC-HISTORY-RUNTIME-CORE in C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL (WSL: /mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL).
+- Implementation commit: 86787469c2030c9d3d1a29825ac21ca84a391a61 - feat(API-PUBLIC-HISTORY-RUNTIME-CORE): wire reviewed live history route.
+- Changed paths: apps/worker/package.json; apps/worker/src/index.ts; apps/worker/src/layers/l4-application-integration/api.ts; apps/worker/src/runtime/public-event-history-runtime.ts; apps/worker/test/api.test.ts; apps/worker/test/public-event-history-runtime.test.ts.
+- Behavior: exact-live GET history requests validate the decoded event ID and only the cursor/limit query before opening SQL, accept canonical positive database-version cursors, and pass an explicit default limit of 20. Candidate and exact-version disclosure readers are composed with the strict existing HistoryPage projector inside one request-scoped SQL operation. Missing current-public events, including a latest-withdrawn event, return not-found without prior-version fallback. Missing or held review coverage and read/projection failures return a fixed redacted unavailable response. Demo history keeps its existing offset pagination and DTO; other live routes remain gated.
+- Checks run in WSL Ubuntu-26.04 with Node v24.21.0, npm 11.19.0, Git 2.53.0, TypeScript 7.0.2, pg 8.16.3, @types/pg 8.23.1, @electric-sql/pglite 0.5.8, and Wrangler 4.137.0:
+  - Focused runtime test: npx tsx --test test/public-event-history-runtime.test.ts - passed 5/5.
+  - API route test: npx tsx --test test/api.test.ts - passed 24/24.
+  - npm test - passed: web 22/22, Worker 206/206, DB 17/17 test files, evaluation 12/12.
+  - npm run typecheck - passed.
+  - npm run build - passed.
+  - git diff --check and git diff --cached --check - passed.
+- Wrangler dry-run output: total upload 393.03 KiB (77.33 KiB gzip); only env.DATASET_MODE="demo" is present. The dry-run exited successfully and did not deploy.
+- Configuration and migration impact: none. No schema, contract, migration, dependency, binding, secret, provider resource, live record, or deployment configuration changed.
+- Limitations: all runtime rows and SQL executor behavior were authored fictional test data. Hosted Hyperdrive/Neon connectivity and real moderator-review records were not tested.
+- Remaining decisions: no new contract or architecture decision is required for this slice. Root review/integration remains pending; real review-derived history and authenticated review writes remain gated on MOD-01 and source/data rights.
