@@ -1,6 +1,6 @@
 # L1-FIXTURE-RUNNER-CORE — bounded synthetic fixture job runner
 
-- **Status:** Assigned; local-only coordinator slice
+- **Status:** Accepted on `main` at handoff `bb96f0a` (implementation `a9dcde6`); synthetic-only composition
 - **Parent work package:** L1 fixture ingestion and JOB-01 scheduling
 - **Requirements:** FR-02/03/13; NFR-05/07/08
 - **Dependencies:** JOB-01, L1-FIXTURE-PIPE-CORE, DATA-01, DB-TEST-RUNNER-ISOLATION
@@ -82,4 +82,8 @@ Append exact branch/worktree, commit SHAs and messages, changed paths, behavior,
 - **Checks:** Focused runner tests passed **8/8**; focused queue tests passed **11/11**; focused PGlite pipeline/runner composition passed **2/2**. `npm run db:test` passed **10/10** isolated DB test files. `npm test` completed with Web **22/22**, Worker **145/145**, DB **80** tests across 10 files, and evaluation **12/12**. `npm run typecheck` passed. `npm run build` passed typecheck, Vite production build, and Wrangler deploy dry-run. WSL `git diff --check HEAD` and `git diff --cached --check` passed.
 - **Limitations:** The integration uses local single-session PGlite and does not establish hosted PostgreSQL/Neon locking or Worker behavior. No source was fetched and no Cron binding, runtime DB/provider connection, route, publication, or deployment was added.
 - **Migration/configuration impact:** None. No migration, runtime configuration, dependency, lockfile, API contract, or deployment setting changed; the Worker package change only registers the runner test.
-- **Remaining decisions:** Root review and acceptance. Hosted database behavior remains unverified as specified by the assignment.
+- **Remaining decisions:** None within this local assignment. Hosted database behavior remains unverified as specified by the assignment.
+
+### Root review and acceptance — 26 September 2026
+
+Root reviewed the SQL candidate filter, bounded runner outcomes, exact-fixture-only processing, queue retry/lost-lease behavior, and PGlite role-scoped composition. Root fast-forwarded `work/L1-FIXTURE-RUNNER-CORE` to `main` at handoff `bb96f0a182d09064d67817439196e8b153a3d1a3`, preserving implementation commit `a9dcde633b9bde0bed06680df5035dd13bbe2ac4`. In WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0`, root independently passed focused queue/runner/pipeline tests **21/21**, `npm run db:test` (**10/10** isolated files), full `npm test` (**259/259**: web 22, Worker 145, DB 80, evaluation 12), `npm run typecheck`, `npm run build` (Vite production build and Wrangler `4.137.0` dry-run), and `git diff --check`. No source, runtime database binding, Cron, publication, migration, dependency, or external service was added. Local single-session PGlite does not establish Neon or hosted Worker behavior; live acquisition remains unimplemented.
