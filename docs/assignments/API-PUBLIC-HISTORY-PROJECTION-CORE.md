@@ -50,3 +50,22 @@ Stop and report if existing internal readers cannot be composed without a public
 ## Implementation handoff
 
 Append the exact branch/worktree, commits, changed paths, behavior, actual WSL checks, limitations and remaining decisions here. Do not merge or push.
+
+### Implementation handoff - 2026-09-27
+
+- Branch: work/API-PUBLIC-HISTORY-PROJECTION-CORE
+- Worktree: C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL (WSL: /mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL)
+- Implementation commit: f3d7e08fa79235d2c91ac00c6af5d9e5ecd2391b — feat(worker): project reviewed public event history
+- Changed paths: apps/worker/src/layers/l4-application-integration/public-event-history-projection-service.ts; apps/worker/test/l4-public-event-history-projection-service.test.ts; this assignment handoff.
+
+The new injected Layer 4 service composes bounded event-version candidates and exact-version disclosure pages without importing apps/db. It passes the same event ID, page limit, and version keyset to both readers; validates closed result envelopes, live event/version identities, ascending unique sequences, page bounds, cursor agreement, published status and RFC 3339 published_at; and fails closed when review coverage is missing or mismatched. Every entry is built from exactly event_id, version, moderator-reviewed change_type, the exact version published_at as changed_at, and moderator-authored summary. Reviewer IDs and raw records stay internal. A next version is serialized as its decimal string in page.next_cursor; cursor_expires_at is null. No route, DTO, runtime, database adapter, migration, writer, dependency, or configuration changed.
+
+WSL Ubuntu-26.04 checks used Node v24.21.0, npm 11.19.0, and Git 2.53.0. Relevant installed packages were tsx 4.23.15, TypeScript 7.0.2, @types/node 24.13.6, Vite 8.3.0, Wrangler 4.137.0, PGlite 0.5.8, @electric-sql/pglite-pgvector 0.0.9, and @electric-sql/pglite-postgis 0.2.8. Existing dependencies were reused through the verified temporary junction to D:\Projects\RPL\node_modules; the junction was removed after checks.
+
+- Focused projection test: 11/11 passed.
+- Full npm test: passed (web 22, Worker 183, database 15/15 files, evaluation 12).
+- npm run typecheck: passed.
+- npm run build: passed, including Vite production build and Wrangler dry-run.
+- git diff --check: passed.
+
+All records in the focused test are authored fictional fixtures. Hosted Neon behavior, real moderator approvals, source/data rights, public route behavior, and Worker/runtime composition remain unverified and outside this slice. No dependency, migration, or runtime configuration impact. No new policy decision is required; MOD-01 and later route/runtime integration remain separate prerequisites. Root review and integration are pending.
