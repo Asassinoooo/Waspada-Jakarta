@@ -47,3 +47,14 @@ Stop and report if the existing public repositories cannot be composed without c
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, actual WSL checks, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+
+### Completed implementation handoff
+
+- **Branch/worktree:** work/API-PUBLIC-EVENT-LIST-RUNTIME-CORE — C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL (/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL in WSL).
+- **Implementation commit:** 4df8d0fc4500b3ad3c4da52f8909bb09fda5a55f — feat(API-PUBLIC-EVENT-LIST-RUNTIME-CORE): wire optional live event list runtime.
+- **Changed paths:** apps/worker/package.json; apps/worker/src/index.ts; apps/worker/src/layers/l4-application-integration/api.ts; apps/worker/src/runtime/public-event-list-runtime.ts; apps/worker/test/api.test.ts; apps/worker/test/public-event-list-runtime.test.ts; this handoff.
+- **Behavior:** The Worker builds a live page service only for exact DATASET_MODE=live GET /api/v1/events requests. It requires a structurally valid injected PostgreSQL/Hyperdrive connection string and exactly 64 hex characters for PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX, imported as a non-extractable HMAC-SHA-256 key for signing and verification. The accepted page service validates query parameters and cursors before opening the adapter; all candidate, snapshot, and lookup repositories are created inside one request-scoped withPostgresSqlExecutor operation. The existing strict public projection, SQL views, cursor rules, EventPage, and redacted error envelope remain in use. Missing/invalid configuration fails closed. Demo remains the default and other live routes remain unavailable.
+- **WSL versions:** Ubuntu-26.04; Node.js v24.21.0; npm 11.19.0; Git 2.53.0; TypeScript 7.0.2; Wrangler 4.137.0; pg 8.16.3; @types/pg 8.23.1; PGlite 0.5.8.
+- **Checks actually run:** npx tsx --test test/public-event-list-runtime.test.ts passed 8/8; npm test passed (web 22, Worker 194, DB 17 test files, evaluation 12); npm run typecheck passed; npm run build passed. Wrangler dry-run reported 328.62 KiB total upload / 66.76 KiB gzip and only the checked-in env.DATASET_MODE ("demo") binding. git diff --check and the staged diff check passed.
+- **Limitations/configuration impact:** Tests use generated test-only HMAC keys and fake executor ports; no TCP, Neon/Hyperdrive account, live rows, secret, binding ID, or provider resource was used or configured. No migration or dependency was added, and wrangler.toml remains unchanged. Hosted connectivity and production binding/secret provisioning remain unverified and require a later explicit assignment.
+- **Remaining decisions:** None within this slice. Live provider configuration and hosted connectivity remain future gated work.
