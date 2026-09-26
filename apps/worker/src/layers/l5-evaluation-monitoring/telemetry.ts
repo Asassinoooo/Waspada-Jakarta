@@ -1,5 +1,6 @@
 export const API_REQUEST_EVENT_NAME = "api_request" as const;
 export const L2_RETRIEVAL_EVENT_NAME = "l2_retrieval" as const;
+export const L2_DIRECT_REASONING_EVENT_NAME = "l2_direct_reasoning" as const;
 export const L3_LEDGER_OPERATION_EVENT_NAME = "l3_ledger_operation" as const;
 
 export type L3LedgerOperation =
@@ -29,6 +30,15 @@ export type L2RetrievalSemanticStatus =
   | "matched"
   | "no_compatible_vector";
 
+export type L2DirectReasoningOutcome =
+  | "investigation_required"
+  | "succeeded"
+  | "not_configured"
+  | "invalid_request"
+  | "invalid_output"
+  | "provider_error"
+  | "error";
+
 export interface ApiTelemetryRecord {
   eventName: typeof API_REQUEST_EVENT_NAME;
   route: "context" | "events" | "other";
@@ -57,6 +67,12 @@ export type L2RetrievalTelemetryRecord =
   | L2RetrievalSuccessTelemetryRecord
   | L2RetrievalErrorTelemetryRecord;
 
+export interface L2DirectReasoningTelemetryRecord {
+  eventName: typeof L2_DIRECT_REASONING_EVENT_NAME;
+  outcome: L2DirectReasoningOutcome;
+  durationMs: number;
+}
+
 export interface L3LedgerOperationSuccessTelemetryRecord {
   eventName: typeof L3_LEDGER_OPERATION_EVENT_NAME;
   operation: L3LedgerOperation;
@@ -84,6 +100,7 @@ export type L3LedgerTelemetryRecord =
 export type TelemetryRecord =
   | ApiTelemetryRecord
   | L2RetrievalTelemetryRecord
+  | L2DirectReasoningTelemetryRecord
   | L3LedgerTelemetryRecord;
 
 export interface TelemetrySink {
@@ -138,6 +155,16 @@ export const consoleTelemetry: TelemetrySink = {
       return;
     }
 
+    if (input.eventName === L2_DIRECT_REASONING_EVENT_NAME) {
+      if (!isL2DirectReasoningRecord(input)) return;
+      console.log({
+        event_name: L2_DIRECT_REASONING_EVENT_NAME,
+        outcome: input.outcome,
+        duration_ms: input.durationMs,
+      });
+      return;
+    }
+
     if (input.eventName !== L3_LEDGER_OPERATION_EVENT_NAME) return;
 
     if (input.outcome === "success") {
@@ -174,6 +201,15 @@ const L2_SEMANTIC_STATUSES = new Set<L2RetrievalSemanticStatus>([
   "query_vector_missing",
   "matched",
   "no_compatible_vector",
+]);
+const L2_DIRECT_REASONING_OUTCOMES = new Set<L2DirectReasoningOutcome>([
+  "investigation_required",
+  "succeeded",
+  "not_configured",
+  "invalid_request",
+  "invalid_output",
+  "provider_error",
+  "error",
 ]);
 const L3_OPERATIONS = new Set<L3LedgerOperation>([
   "create",
@@ -232,6 +268,11 @@ function isL2RetrievalSuccessRecord(value: Record<string, unknown>): boolean {
 
 function isL2RetrievalErrorRecord(value: Record<string, unknown>): boolean {
   return isFiniteNonNegative(value.durationMs);
+}
+
+function isL2DirectReasoningRecord(value: Record<string, unknown>): boolean {
+  return L2_DIRECT_REASONING_OUTCOMES.has(value.outcome as L2DirectReasoningOutcome)
+    && isFiniteNonNegative(value.durationMs);
 }
 
 function isL3LedgerOperationSuccessRecord(value: Record<string, unknown>): boolean {
