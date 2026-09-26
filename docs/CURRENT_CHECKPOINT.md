@@ -1,7 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 26 September 2026
-**Reason:** API-GEOMETRY-CORE is accepted on local `main` at handoff `c0d6ade` (implementation `ac30df2`); root independently passed its focused 8/8 geometry suite, full workspace 220/220, typecheck, build, and diff checks in WSL Ubuntu-26.04. This adds a pure L4 EventDetail/GeoJSON projection with exact event/claim/support matching and bounded coordinates, not a database or HTTP integration. Continue local mock-backed API work; source/data rights, human labels, model/provider selection, moderator authorization, hosted Neon behavior, and complete runtime integration remain gated.
+**Reason:** API-GEOMETRY-CORE is accepted on local and remote `main` at handoff `c0d6ade` (implementation `ac30df2`); root independently passed its focused 8/8 geometry suite, full workspace 220/220, typecheck, build, and diff checks in WSL Ubuntu-26.04. Acceptance docs were pushed at `0ca6409`. Root assigned API-DETAIL-HISTORY-ROUTES-CORE for synthetic-only GET detail/history route behavior; implementation is pending. The route slice does not add database reads or live publication. Source/data rights, human labels, model/provider selection, moderator authorization, hosted Neon behavior, and complete runtime integration remain gated.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
@@ -209,7 +209,7 @@ These checks do not cover a live source, model provider, hosted Neon database, C
 
 ## Resume point
 
-Proceed with the next dependency-safe API slice: compose the unchanged public read routes over an injected, fail-closed read port and the accepted L4 projectors, testing against synthetic fixtures. Keep database/role wiring, public source attribution, and live publication gated on their separate contracts and permissions. Keep source acquisition and model/sufficiency quality claims gated on rights-cleared human evaluation; do not enable live sources, providers, or cloud services.
+Implement API-DETAIL-HISTORY-ROUTES-CORE on its assigned branch using only explicitly synthetic fixtures. After review, continue with separately scoped API work; GeoJSON `bbox` handling needs a documented Jakarta viewport before implementation. Keep source acquisition and model/sufficiency quality claims gated on rights-cleared human evaluation; do not enable live sources, providers, or cloud services.
 
 ## Autonomous development resumed — 25 September 2026
 
