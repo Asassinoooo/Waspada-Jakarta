@@ -537,3 +537,13 @@ Root independently verified the focused geometry test (8/8), full WSL suite (317
 ### API-PUBLIC-DETAIL-PROJECTION-CORE assigned — 26 September 2026
 
 Root assigned the next bounded Layer 4 slice to compose the accepted current-event snapshot, reviewed lookup and geometry-reader ports into the existing `EventDetail` allowlist. It derives only bounded event/claim geometry references and delegates schema, CRS84 and exact evidence-support validation to `projectPublicEventDetail`. This remains an injected read-only service with authored fictional tests; it adds no route, public contract, database/runtime binding, source or migration. See [assignment](assignments/API-PUBLIC-DETAIL-PROJECTION-CORE.md).
+
+### API-PUBLIC-DETAIL-PROJECTION-CORE accepted — 26 September 2026
+
+Root reviewed and fast-forwarded `work/API-PUBLIC-DETAIL-PROJECTION-CORE` to local `main` at handoff `58edcf1d07630011c67f679adad5b8896b1b19d9` (`efed7c22208c3740dff971eb9ec4febe07f3c98f` implementation). The injected read-only Layer 4 service validates the current snapshot and exact reviewed lookups, collects only unique event/claim geometry IDs, applies the 500-reference cap, skips geometry I/O for empty references, and passes untrusted records through the strict `EventDetail` projector. The existing EventView service retains the same behavior through a shared snapshot preparation helper.
+
+Root independently passed focused tests 32/32, full suite 317/317 (web 22, Worker 183, DB 100 across 13 files, evaluation 12), `npm run typecheck`, `npm run build` (Vite production and Wrangler dry-run), and WSL `git diff --check`. The agent also passed those checks. The focused test is run separately because the existing Worker test script enumerates paths and package-script edits were outside the assignment. No migration, dependency, public contract, route, Worker binding or source was added. Fixtures are authored fiction; hosted Neon, source rights, runtime binding and live geometry remain unverified. See the [assignment and handoff](assignments/API-PUBLIC-DETAIL-PROJECTION-CORE.md).
+
+### API-PUBLIC-HISTORY-READER-CORE assigned — 26 September 2026
+
+Root assigned a bounded DB foundation for reading published versions only while an event has a current public version. The view and keyset reader will expose internal schema 2.0 records to the public-reader role through one filtered view; later L4 work must construct safe history summaries. The task explicitly excludes withdrawn events, public retraction semantics, route/runtime wiring, and source data. See [assignment](assignments/API-PUBLIC-HISTORY-READER-CORE.md).
