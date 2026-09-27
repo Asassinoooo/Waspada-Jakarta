@@ -5,7 +5,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next implementation:** `L2-INVESTIGATION-PLAN-CORE` is accepted: Layer 2 can make one typed, bounded proposal or abstain after receiving already-retrieved insufficient context; Layer 3 retains registry validation, budgets, execution, stopping, and review escalation. The larger `AGENT-01` composition remains gated on `RAG-01`, `JOB-01`, `ING-02`, and `PUB-01`. Source/data rights and human-labelled cases also gate live ingestion, model/provider and retrieval evaluation, and publication. Identity/session integration and operator provisioning remain open for moderator writes. The public update feed hides withdrawn versions and every version of an event whose latest version is withdrawn.
+**Next implementation:** `L2-INVESTIGATION-PLAN-CORE` is accepted: Layer 2 can make one typed, bounded proposal or abstain after receiving already-retrieved insufficient context; Layer 3 retains registry validation, budgets, execution, stopping, and review escalation. `AGENT-01` now lists that planner as a prerequisite and remains gated on `RAG-01`, `JOB-01`, `ING-02`, and `PUB-01`. Source/data rights and human-labelled cases also gate live ingestion, model/provider and retrieval evaluation, and publication. Identity/session integration and operator provisioning remain open for moderator writes. The public update feed hides withdrawn versions and every version of an event whose latest version is withdrawn.
 
 ## Repository state
 
