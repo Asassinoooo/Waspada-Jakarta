@@ -7,6 +7,7 @@ import type {
   PublicGeometry,
 } from "../../contracts/public-api.js";
 import {
+  PublicProjectionError,
   projectPublicEventForGeometry,
   type PublicEventGeometryProjectionContext,
   type PublicGeometrySupportReference,
@@ -18,6 +19,22 @@ const MAX_SUPPORT_REFERENCES = 32;
 const MAX_PUBLIC_GEOMETRIES = 500;
 const MAX_FEATURES = 500;
 const MAX_DETAIL_POSITIONS = 100_000;
+const MAX_LOOKUP_ENTRIES_PER_BATCH = 500;
+const MAX_TOTAL_LOOKUP_ENTRIES = 10_000;
+const MAX_EVENT_ARRAY_ITEMS = 500;
+const MAX_EVENT_ARRAY_ITEMS_PER_GROUP = 10_000;
+const MAX_TOTAL_EVENT_ARRAY_ITEMS = 50_000;
+const MAX_EVENT_COMPARE_NODES = 500_000;
+const MAX_EVENT_COMPARE_STRING_UNITS = 50_000_000;
+const MAX_JSON_DEPTH = 32;
+
+const candidateRowKeys = [
+  "datasetKind", "eventId", "eventVersion", "category", "lifecycle", "freshness",
+  "geometryId", "eventRecordJson", "geometryRecordJson",
+] as const;
+const candidateLookupBatchKeys = [
+  "eventId", "eventVersion", "scopeNames", "publicAttributions", "impacts",
+] as const;
 
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const hashPattern = /^[a-f0-9]{64}$/u;
@@ -51,7 +68,8 @@ export type PublicGeometryProjectionErrorCode =
   | "INVALID_GEOMETRY"
   | "GEOMETRY_RESOLUTION_FAILED"
   | "GEOMETRY_LIMIT_EXCEEDED"
-  | "INVALID_EVENT_DETAIL";
+  | "INVALID_EVENT_DETAIL"
+  | "INVALID_GEOJSON_CANDIDATES";
 
 const errorMessages: Record<PublicGeometryProjectionErrorCode, string> = {
   INVALID_GEOMETRIES: "The event geometry inputs are invalid.",
@@ -59,6 +77,7 @@ const errorMessages: Record<PublicGeometryProjectionErrorCode, string> = {
   GEOMETRY_RESOLUTION_FAILED: "The event geometry references could not be resolved.",
   GEOMETRY_LIMIT_EXCEEDED: "The public geometry limit was exceeded.",
   INVALID_EVENT_DETAIL: "The projected event details cannot be mapped.",
+  INVALID_GEOJSON_CANDIDATES: "The public GeoJSON candidates cannot be projected.",
 };
 
 /** A bounded projection error that does not expose input geometry or evidence. */
@@ -148,6 +167,527 @@ export function projectPublicFeatureCollection(
   return { type: "FeatureCollection", features };
 }
 
+export interface PublicGeoJSONCandidateLookupBatch extends PublicProjectionLookups {
+  readonly eventId: string;
+  readonly eventVersion: number;
+}
+
+export interface PublicGeoJSONCandidateProjectionEnvelope {
+  readonly candidates: readonly unknown[];
+  readonly lookupBatches: readonly PublicGeoJSONCandidateLookupBatch[];
+}
+
+interface ValidatedGeoJSONCandidate {
+  readonly datasetKind: "live";
+  readonly eventId: string;
+  readonly eventVersion: number;
+  readonly category: EventDetail["category"];
+  readonly lifecycle: EventDetail["lifecycle"];
+  readonly freshness: EventDetail["freshness"]["status"];
+  readonly geometryId: string;
+  readonly eventRecordJson: unknown;
+  readonly geometryRecordJson: unknown;
+}
+
+interface CandidateGroup {
+  readonly eventId: string;
+  readonly eventVersion: number;
+  readonly category: EventDetail["category"];
+  readonly lifecycle: EventDetail["lifecycle"];
+  readonly freshness: EventDetail["freshness"]["status"];
+  readonly eventRecordJson: unknown;
+  readonly candidates: ValidatedGeoJSONCandidate[];
+  lookupBatch?: PublicProjectionLookups;
+}
+
+interface CandidateWorkBudget {
+  lookupEntries: number;
+  eventArrayItems: number;
+  eventCompareNodes: number;
+  eventCompareStringUnits: number;
+}
+
+interface EventArrayBudget {
+  count: number;
+}
+
+type ScopeNameKey = readonly [kind: "place" | "service" | "institution" | "audience", id: string];
+
+const scopeNameKinds = new Set<ScopeNameKey[0]>(["place", "service", "institution", "audience"]);
+
+/**
+ * Projects only the bounded candidate rows selected by the accepted public
+ * GeoJSON reader. It validates each Event through the strict L4 boundary but
+ * intentionally does not resolve geometry references outside the selected set.
+ */
+export function projectPublicGeoJSONCandidateCollection(input: unknown): PublicFeatureCollection {
+  try {
+    return projectPublicGeoJSONCandidateCollectionUnchecked(input);
+  } catch (error) {
+    if (error instanceof PublicGeometryProjectionError || error instanceof PublicProjectionError) throw error;
+    fail("INVALID_GEOJSON_CANDIDATES");
+  }
+}
+
+function projectPublicGeoJSONCandidateCollectionUnchecked(input: unknown): PublicFeatureCollection {
+  if (!isPlainRecord(input)
+    || !hasExactKeys(input, ["candidates", "lookupBatches"])) {
+    fail("INVALID_GEOJSON_CANDIDATES");
+  }
+
+  const candidateValues = readArray(input.candidates, 0, MAX_FEATURES, "GEOMETRY_LIMIT_EXCEEDED");
+  const lookupBatchValues = readArray(input.lookupBatches, 0, MAX_FEATURES, "GEOMETRY_LIMIT_EXCEEDED");
+  if (candidateValues.length === 0) {
+    if (lookupBatchValues.length !== 0) fail("INVALID_GEOJSON_CANDIDATES");
+    return { type: "FeatureCollection", features: [] };
+  }
+
+  const budget: CandidateWorkBudget = {
+    lookupEntries: 0,
+    eventArrayItems: 0,
+    eventCompareNodes: 0,
+    eventCompareStringUnits: 0,
+  };
+  const groups = new Map<string, CandidateGroup>();
+  const versionByEvent = new Map<string, number>();
+  const candidateIdentities = new Set<string>();
+  const geometryIdsByEvent = new Map<string, Set<string>>();
+
+  for (const candidateValue of candidateValues) {
+    const candidate = readCandidate(candidateValue);
+    const groupKey = publicVersionKey(candidate.eventId, candidate.eventVersion);
+    const identity = JSON.stringify([candidate.eventId, candidate.eventVersion, candidate.geometryId]);
+    if (candidateIdentities.has(identity)) fail("GEOMETRY_RESOLUTION_FAILED");
+    candidateIdentities.add(identity);
+
+    const priorVersion = versionByEvent.get(candidate.eventId);
+    if (priorVersion !== undefined && priorVersion !== candidate.eventVersion) {
+      fail("GEOMETRY_RESOLUTION_FAILED");
+    }
+    versionByEvent.set(candidate.eventId, candidate.eventVersion);
+
+    const eventGeometryIds = geometryIdsByEvent.get(candidate.eventId) ?? new Set<string>();
+    if (eventGeometryIds.has(candidate.geometryId)) fail("GEOMETRY_RESOLUTION_FAILED");
+    eventGeometryIds.add(candidate.geometryId);
+    geometryIdsByEvent.set(candidate.eventId, eventGeometryIds);
+
+    const existing = groups.get(groupKey);
+    if (existing === undefined) {
+      groups.set(groupKey, {
+        eventId: candidate.eventId,
+        eventVersion: candidate.eventVersion,
+        category: candidate.category,
+        lifecycle: candidate.lifecycle,
+        freshness: candidate.freshness,
+        eventRecordJson: candidate.eventRecordJson,
+        candidates: [candidate],
+      });
+      continue;
+    }
+
+    if (existing.category !== candidate.category
+      || existing.lifecycle !== candidate.lifecycle
+      || existing.freshness !== candidate.freshness
+      || !sameJSONValue(existing.eventRecordJson, candidate.eventRecordJson, budget, 0)) {
+      fail("GEOMETRY_RESOLUTION_FAILED");
+    }
+    existing.candidates.push(candidate);
+  }
+
+  const lookupGroups = new Set<string>();
+  if (lookupBatchValues.length !== groups.size) fail("GEOMETRY_RESOLUTION_FAILED");
+  for (const batchValue of lookupBatchValues) {
+    const batch = readCandidateLookupBatch(batchValue, budget);
+    const key = publicVersionKey(batch.eventId, batch.eventVersion);
+    const group = groups.get(key);
+    if (group === undefined || lookupGroups.has(key)) fail("GEOMETRY_RESOLUTION_FAILED");
+    lookupGroups.add(key);
+    group.lookupBatch = batch.lookups;
+  }
+  if (lookupGroups.size !== groups.size) fail("GEOMETRY_RESOLUTION_FAILED");
+
+  const detailBudget: PositionBudget = { count: 0 };
+  const projectedDetails: EventDetail[] = [];
+  for (const group of groups.values()) {
+    const lookups = group.lookupBatch;
+    if (lookups === undefined) fail("GEOMETRY_RESOLUTION_FAILED");
+
+    const impacts = preflightEventWork(group.eventRecordJson, lookups.impacts, budget);
+    validateExactScopeNameBatch(group.eventRecordJson, impacts, lookups.scopeNames);
+    const context = projectPublicEventForGeometry(group.eventRecordJson, lookups);
+    if (context.eventId !== group.eventId
+      || context.version !== group.eventVersion
+      || context.eventView.event_id !== group.eventId
+      || context.eventView.version !== group.eventVersion
+      || context.eventView.category !== group.category
+      || context.eventView.lifecycle !== group.lifecycle
+      || context.eventView.freshness.status !== group.freshness) {
+      fail("GEOMETRY_RESOLUTION_FAILED");
+    }
+    validateExactAttributionBatch(lookups.publicAttributions, context);
+
+    const geometries: PublicGeometry[] = [];
+    for (const candidate of group.candidates) {
+      preflightKnownStrings(candidate.geometryRecordJson, [["display_label", 400]]);
+      const geometry = readGeometryRecord(candidate.geometryRecordJson, detailBudget);
+      if (candidate.datasetKind !== "live"
+        || candidate.eventId !== context.eventId
+        || candidate.eventVersion !== context.version
+        || candidate.category !== context.eventView.category
+        || candidate.lifecycle !== context.eventView.lifecycle
+        || candidate.freshness !== context.eventView.freshness.status
+        || candidate.geometryId !== geometry.geometry_id
+        || geometry.datasetKind !== "live") {
+        fail("GEOMETRY_RESOLUTION_FAILED");
+      }
+
+      const supportedBySameClaim = context.claims.some((claim) =>
+        claim.geometryIds.includes(geometry.geometry_id)
+        && claim.supports.some((claimSupport) =>
+          geometry.sourceEvidence.some((geometrySupport) => supportsMatch(claimSupport, geometrySupport))));
+      if (!supportedBySameClaim) fail("GEOMETRY_RESOLUTION_FAILED");
+
+      geometries.push({
+        geometry_id: geometry.geometry_id,
+        role: geometry.role,
+        geometry: geometry.geometry,
+        precision_m: geometry.precision_m,
+        label: geometry.label,
+      });
+    }
+    projectedDetails.push({ ...context.eventView, geometries });
+  }
+
+  return projectPublicFeatureCollection(projectedDetails);
+}
+
+function readCandidate(value: unknown): ValidatedGeoJSONCandidate {
+  if (!isRecord(value) || !hasExactKeys(value, candidateRowKeys)
+    || value.datasetKind !== "live"
+    || !isId(value.eventId)
+    || !isPositiveInteger(value.eventVersion)
+    || !isCategory(value.category)
+    || !isLifecycle(value.lifecycle)
+    || !isFreshness(value.freshness)
+    || !isId(value.geometryId)
+    || !isCandidateEventRecord(value.eventRecordJson, value)) {
+    fail("INVALID_GEOJSON_CANDIDATES");
+  }
+  return {
+    datasetKind: "live",
+    eventId: value.eventId,
+    eventVersion: value.eventVersion,
+    category: value.category,
+    lifecycle: value.lifecycle,
+    freshness: value.freshness,
+    geometryId: value.geometryId,
+    eventRecordJson: value.eventRecordJson,
+    geometryRecordJson: value.geometryRecordJson,
+  };
+}
+
+function isCandidateEventRecord(
+  value: unknown,
+  candidate: Record<string, unknown>,
+): boolean {
+  return isRecord(value)
+    && value.schema_version === "2.0"
+    && value.record_type === "Event"
+    && value.dataset_kind === "live"
+    && value.event_id === candidate.eventId
+    && value.version === candidate.eventVersion
+    && value.category === candidate.category
+    && value.lifecycle === candidate.lifecycle
+    && isRecord(value.freshness)
+    && value.freshness.status === candidate.freshness;
+}
+
+function readCandidateLookupBatch(
+  value: unknown,
+  budget: CandidateWorkBudget,
+): { readonly eventId: string; readonly eventVersion: number; readonly lookups: PublicProjectionLookups } {
+  if (!isRecord(value) || !hasExactKeys(value, candidateLookupBatchKeys)
+    || !isId(value.eventId) || !isPositiveInteger(value.eventVersion)) {
+    fail("INVALID_GEOJSON_CANDIDATES");
+  }
+
+  const scopeNames = readArray(value.scopeNames, 0, MAX_LOOKUP_ENTRIES_PER_BATCH, "GEOMETRY_LIMIT_EXCEEDED");
+  const publicAttributions = readArray(value.publicAttributions, 0, MAX_LOOKUP_ENTRIES_PER_BATCH, "GEOMETRY_LIMIT_EXCEEDED");
+  const impacts = readArray(value.impacts, 0, MAX_LOOKUP_ENTRIES_PER_BATCH, "GEOMETRY_LIMIT_EXCEEDED");
+  for (const scopeName of scopeNames) preflightKnownStrings(scopeName, [["display_name", 400]]);
+  for (const attribution of publicAttributions) {
+    preflightKnownStrings(attribution, [
+      ["display_name", 400], ["url", 2048], ["published_at", 64], ["observed_at", 64],
+    ]);
+    if (isRecord(attribution) && attribution.excerpt_public_use_approved === true) {
+      preflightKnownStrings(attribution, [["excerpt", 600]]);
+    }
+    if (isRecord(attribution) && typeof attribution.permitted_text_hash === "string"
+      && attribution.permitted_text_hash.length > 64) {
+      fail("GEOMETRY_LIMIT_EXCEEDED");
+    }
+  }
+  budget.lookupEntries += scopeNames.length + publicAttributions.length + impacts.length;
+  if (budget.lookupEntries > MAX_TOTAL_LOOKUP_ENTRIES) fail("GEOMETRY_LIMIT_EXCEEDED");
+
+  return {
+    eventId: value.eventId,
+    eventVersion: value.eventVersion,
+    lookups: { scopeNames, publicAttributions, impacts },
+  };
+}
+
+function preflightEventWork(
+  eventValue: unknown,
+  impactValues: readonly unknown[],
+  budget: CandidateWorkBudget,
+): readonly unknown[] {
+  if (!isRecord(eventValue)) fail("INVALID_GEOJSON_CANDIDATES");
+  const eventBudget: EventArrayBudget = { count: 0 };
+  const readBounded = (value: unknown, minimum = 0): unknown[] =>
+    readBoundedEventArray(value, minimum, eventBudget, budget);
+
+  preflightKnownStrings(eventValue, [["title", 480], ["summary", 4_000], ["published_at", 64]]);
+  preflightDateInputs(eventValue.event_time);
+  preflightDateInputs(eventValue.validity);
+  preflightDateInputs(eventValue.freshness);
+  const tags = readBounded(eventValue.tags);
+  for (const tagValue of tags) preflightKnownStrings(tagValue, [["value", 128]]);
+  const claims = readBounded(eventValue.claims, 1);
+  readBounded(eventValue.impact_refs);
+  preflightScopeArrays(eventValue.scope, readBounded);
+
+  for (const claimValue of claims) {
+    if (!isRecord(claimValue)) fail("INVALID_GEOJSON_CANDIDATES");
+    preflightKnownStrings(claimValue, [["text", 8_000]]);
+    preflightDateInputs(claimValue.event_time);
+    preflightDateInputs(claimValue.validity);
+    preflightScopeArrays(claimValue.scope, readBounded);
+    const qualifiers = readBounded(claimValue.qualifiers);
+    for (const qualifier of qualifiers) preflightStringLength(qualifier, 1_000);
+    const support = readBounded(claimValue.support, 1);
+    const contradictions = readBounded(claimValue.contradictions);
+    const contextEvidence = readBounded(claimValue.context_evidence);
+    for (const reference of [...support, ...contradictions, ...contextEvidence]) {
+      preflightKnownStrings(reference, [["permitted_text_hash", 64]]);
+    }
+    readBounded(claimValue.origin_ids, 1);
+  }
+
+  for (const impactValue of impactValues) {
+    if (!isRecord(impactValue)) fail("INVALID_GEOJSON_CANDIDATES");
+    preflightKnownStrings(impactValue, [["title", 480], ["description", 4_000], ["published_at", 64]]);
+    preflightDateInputs(impactValue.event_time);
+    preflightDateInputs(impactValue.validity);
+    preflightDateInputs(impactValue.freshness);
+    preflightScopeArrays(impactValue.scope, readBounded);
+    readBounded(impactValue.supporting_claim_ids, 1);
+  }
+
+  if (eventBudget.count > MAX_EVENT_ARRAY_ITEMS_PER_GROUP) fail("GEOMETRY_LIMIT_EXCEEDED");
+  return impactValues;
+}
+
+function preflightKnownStrings(value: unknown, fields: readonly (readonly [string, number])[]): void {
+  if (!isRecord(value)) return;
+  for (const [field, maximum] of fields) preflightStringLength(value[field], maximum);
+}
+
+function preflightStringLength(value: unknown, maximum: number): void {
+  if (typeof value === "string" && value.length > maximum) fail("GEOMETRY_LIMIT_EXCEEDED");
+}
+
+function preflightDateInputs(value: unknown): void {
+  preflightKnownStrings(value, [
+    ["start", 64], ["end", 64], ["valid_from", 64], ["valid_until", 64],
+    ["evaluated_at", 64], ["review_due_at", 64], ["published_at", 64],
+  ]);
+}
+function readBoundedEventArray(
+  value: unknown,
+  minimum: number,
+  eventBudget: EventArrayBudget,
+  requestBudget: CandidateWorkBudget,
+): unknown[] {
+  if (!Array.isArray(value) || value.length < minimum) fail("INVALID_GEOJSON_CANDIDATES");
+  if (value.length > MAX_EVENT_ARRAY_ITEMS) fail("GEOMETRY_LIMIT_EXCEEDED");
+  const values = readArray(value, minimum, MAX_EVENT_ARRAY_ITEMS, "INVALID_GEOJSON_CANDIDATES");
+  eventBudget.count += values.length;
+  if (eventBudget.count > MAX_EVENT_ARRAY_ITEMS_PER_GROUP) fail("GEOMETRY_LIMIT_EXCEEDED");
+  requestBudget.eventArrayItems += values.length;
+  if (requestBudget.eventArrayItems > MAX_TOTAL_EVENT_ARRAY_ITEMS) fail("GEOMETRY_LIMIT_EXCEEDED");
+  return values;
+}
+
+function preflightScopeArrays(
+  value: unknown,
+  readBounded: (value: unknown, minimum?: number) => unknown[],
+): void {
+  if (!isRecord(value)) fail("INVALID_GEOJSON_CANDIDATES");
+  readBounded(value.place_ids);
+  readBounded(value.service_ids);
+  readBounded(value.institution_ids);
+  readBounded(value.audience_ids);
+  readBounded(value.geometry_ids);
+}
+
+function validateExactScopeNameBatch(
+  eventValue: unknown,
+  impactValues: readonly unknown[],
+  values: readonly unknown[],
+): void {
+  if (!isRecord(eventValue)) fail("INVALID_GEOJSON_CANDIDATES");
+  const expected = new Set<string>();
+  collectScopeNameKeys(eventValue.scope, expected);
+  const claims = readArray(eventValue.claims, 1, MAX_EVENT_ARRAY_ITEMS, "INVALID_GEOJSON_CANDIDATES");
+  for (const claimValue of claims) {
+    if (!isRecord(claimValue)) fail("INVALID_GEOJSON_CANDIDATES");
+    collectScopeNameKeys(claimValue.scope, expected);
+  }
+  for (const impactValue of impactValues) {
+    if (!isRecord(impactValue)) fail("INVALID_GEOJSON_CANDIDATES");
+    collectScopeNameKeys(impactValue.scope, expected);
+  }
+
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!isRecord(value)
+      || typeof value.entity_type !== "string"
+      || !scopeNameKinds.has(value.entity_type as ScopeNameKey[0])
+      || !isId(value.id)) {
+      fail("INVALID_GEOJSON_CANDIDATES");
+    }
+    const key = JSON.stringify([value.entity_type, value.id]);
+    if (!expected.has(key) || seen.has(key)) fail("GEOMETRY_RESOLUTION_FAILED");
+    seen.add(key);
+  }
+  if (seen.size !== expected.size) fail("GEOMETRY_RESOLUTION_FAILED");
+}
+
+function collectScopeNameKeys(value: unknown, output: Set<string>): void {
+  if (!isRecord(value)) fail("INVALID_GEOJSON_CANDIDATES");
+  const fields: ReadonlyArray<readonly [ScopeNameKey[0], unknown]> = [
+    ["place", value.place_ids],
+    ["service", value.service_ids],
+    ["institution", value.institution_ids],
+    ["audience", value.audience_ids],
+  ];
+  for (const [kind, idsValue] of fields) {
+    const ids = readArray(idsValue, 0, MAX_EVENT_ARRAY_ITEMS, "INVALID_GEOJSON_CANDIDATES");
+    for (const idValue of ids) {
+      if (!isId(idValue)) fail("INVALID_GEOJSON_CANDIDATES");
+      output.add(JSON.stringify([kind, idValue]));
+    }
+  }
+}
+
+function validateExactAttributionBatch(
+  values: readonly unknown[],
+  context: PublicEventGeometryProjectionContext,
+): void {
+  const expected = new Set<string>();
+  for (const claim of context.claims) {
+    for (const support of claim.supports) expected.add(supportKey(support));
+  }
+
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!isRecord(value)
+      || value.dataset_kind !== "live"
+      || value.offset_unit !== "unicode_code_points"
+      || value.relation !== "supports"
+      || !isId(value.report_revision_id)
+      || typeof value.permitted_text_hash !== "string"
+      || !hashPattern.test(value.permitted_text_hash)) {
+      fail("INVALID_GEOJSON_CANDIDATES");
+    }
+    const spanStart = readInteger(value.span_start, 0, 10_000_000, "INVALID_GEOJSON_CANDIDATES");
+    const spanEnd = readInteger(value.span_end, 1, 10_000_000, "INVALID_GEOJSON_CANDIDATES");
+    if (spanEnd <= spanStart) fail("INVALID_GEOJSON_CANDIDATES");
+    const key = supportKey({
+      reportRevisionId: value.report_revision_id,
+      permittedTextHash: value.permitted_text_hash,
+      spanStart,
+      spanEnd,
+      offsetUnit: "unicode_code_points",
+      relation: "supports",
+    });
+    if (!expected.has(key) || seen.has(key)) fail("GEOMETRY_RESOLUTION_FAILED");
+    seen.add(key);
+  }
+  if (seen.size !== expected.size) fail("GEOMETRY_RESOLUTION_FAILED");
+}
+
+function sameJSONValue(
+  left: unknown,
+  right: unknown,
+  budget: CandidateWorkBudget,
+  depth: number,
+): boolean {
+  if (typeof left === "string" && typeof right === "string") {
+    budget.eventCompareStringUnits += left.length + right.length;
+    if (budget.eventCompareStringUnits > MAX_EVENT_COMPARE_STRING_UNITS) fail("GEOMETRY_LIMIT_EXCEEDED");
+    return left === right;
+  }
+  if (typeof left === "number" && typeof right === "number") return Object.is(left, right);
+  if (left === right && (left === null || typeof left !== "object")) return true;
+  budget.eventCompareNodes += 1;
+  if (budget.eventCompareNodes > MAX_EVENT_COMPARE_NODES || depth > MAX_JSON_DEPTH) {
+    fail("GEOMETRY_LIMIT_EXCEEDED");
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    const leftValues = readArray(left, 0, MAX_EVENT_ARRAY_ITEMS, "INVALID_GEOJSON_CANDIDATES");
+    const rightValues = readArray(right, 0, MAX_EVENT_ARRAY_ITEMS, "INVALID_GEOJSON_CANDIDATES");
+    for (let index = 0; index < leftValues.length; index += 1) {
+      if (!sameJSONValue(leftValues[index], rightValues[index], budget, depth + 1)) return false;
+    }
+    return true;
+  }
+
+  if (!isRecord(left) || !isRecord(right)) return false;
+  const leftKeys = jsonRecordKeys(left);
+  const rightKeys = jsonRecordKeys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (let index = 0; index < leftKeys.length; index += 1) {
+    if (leftKeys[index] !== rightKeys[index]) return false;
+    const leftDescriptor = Object.getOwnPropertyDescriptor(left, leftKeys[index]!);
+    const rightDescriptor = Object.getOwnPropertyDescriptor(right, rightKeys[index]!);
+    if (leftDescriptor === undefined || rightDescriptor === undefined
+      || !("value" in leftDescriptor) || !("value" in rightDescriptor)
+      || !sameJSONValue(leftDescriptor.value, rightDescriptor.value, budget, depth + 1)) return false;
+  }
+  return true;
+}
+
+function jsonRecordKeys(value: Record<string, unknown>): string[] {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) fail("INVALID_GEOJSON_CANDIDATES");
+  const keys = Reflect.ownKeys(value);
+  if (keys.length > 256 || keys.some((key) => typeof key !== "string")) {
+    fail("GEOMETRY_LIMIT_EXCEEDED");
+  }
+  const result = keys as string[];
+  result.sort(compareStrings);
+  for (const key of result) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) {
+      fail("INVALID_GEOJSON_CANDIDATES");
+    }
+  }
+  return result;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function publicVersionKey(eventId: string, version: number): string {
+  return JSON.stringify([eventId, version]);
+}
 function projectReferencedGeometries(
   values: unknown,
   context: PublicEventGeometryProjectionContext,
@@ -256,7 +796,7 @@ function readSourceEvidence(value: unknown): SupportReference[] {
     if (!isRecord(referenceValue)) fail("INVALID_GEOMETRY");
     const revisionId = readId(referenceValue.report_revision_id, "INVALID_GEOMETRY");
     const hash = referenceValue.permitted_text_hash;
-    if (typeof hash !== "string" || !hashPattern.test(hash)) fail("INVALID_GEOMETRY");
+    if (typeof hash !== "string" || hash.length !== 64 || !hashPattern.test(hash)) fail("INVALID_GEOMETRY");
     const spanStart = readInteger(referenceValue.span_start, 0, 10_000_000, "INVALID_GEOMETRY");
     const spanEnd = readInteger(referenceValue.span_end, 1, 10_000_000, "INVALID_GEOMETRY");
     if (spanEnd <= spanStart
