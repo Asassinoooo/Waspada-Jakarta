@@ -47,4 +47,42 @@ Commit implementation and the implementation handoff on the assigned branch in s
 
 ## Handoff
 
-Append the implementer's exact handoff here after committing the completed work package.
+### Delivery
+
+- **Branch:** `work/L2-INVESTIGATION-PLAN-CORE`
+- **Worktree:** `C:\Users\perry\.codex\worktrees\l1-fixture-runner-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/l1-fixture-runner-core/RPL`)
+- **Base:** `07421620f976ecd58433e0e683f4230f0ff46f48`
+- **Implementation commit:** `49b5c15bcc48e4745e6a040943c1358d0cc4dcd9` — `feat(L2-INVESTIGATION-PLAN-CORE): add typed action planner`
+- **Handoff commit:** recorded separately with message `docs(L2-INVESTIGATION-PLAN-CORE): record implementation handoff`; its SHA is in the task handoff.
+
+### Behavior implemented
+
+`createInvestigationPlanner` accepts a new internal `InvestigationPlanRequest` version `1.0`, validates its schema 2.0 `GroundingContext` with the existing Layer 2 validator, and rejects sufficient context. It requires the `questions` array to exactly match the existing L3 position-label projection from missing-field and conflict counts. The trusted action menu has 1–16 unique bounded names with non-empty descriptions up to 256 Unicode code points. A provider is injected explicitly; no default provider is configured, and each valid proposal call invokes it at most once.
+
+The adapter returns closed typed outcomes for missing provider, malformed request, malformed result, and provider failure. A successful result is either one action name present in the supplied menu with a cloned plain JSON object input or one of the three fixed abstentions. Action input is limited to 8 KiB UTF-8, depth 8, 32 properties/items per object or array, 64-code-point keys, and 2,048-code-point strings. Extra result fields, unknown actions, accessors, non-JSON values, prototype-bearing objects, sparse or extended arrays, and cycles fail closed. The request and accepted input copies are frozen before leaving their respective boundaries. No raw error or provider output is returned in failure outcomes, and this adapter emits no telemetry.
+
+The result is only an L3 proposal. The trusted registry, action-specific parser, investigation checkpoint and budget checks, ledger reservation, and single-step executor retain execution authority.
+
+### Changed paths
+
+- `apps/worker/src/layers/l2-model-grounding/investigation-planner.ts` — internal versioned request/result contracts, injected provider boundary, and closed validation outcomes.
+- `apps/worker/test/l2-investigation-planner.test.ts` — synthetic fake-provider coverage for request validation, action/abstention results, bounds, output closure, provider errors, and data redaction.
+- `apps/worker/package.json` — focused test discovery only.
+- `docs/assignments/L2-INVESTIGATION-PLAN-CORE.md` — this handoff.
+
+No shared contract, schema, migration, database, route, telemetry, provider SDK, dependency, credential, or runtime configuration changed. There is no migration or configuration impact.
+
+### Verification
+
+Checks ran in WSL Ubuntu-26.04 with Node.js `v24.21.0`, npm `11.19.0`, tsx `4.23.15`, TypeScript `7.0.2`, Wrangler `4.137.0`, and Vite `8.3.0`. Existing dependencies were reused.
+
+- `node_modules/.bin/tsx --test apps/worker/test/l2-investigation-planner.test.ts` — passed 11/11.
+- `npm test --workspace=@waspada/worker` — passed 293/293.
+- `npm test` — exited 0; web and Worker suites passed, all 20 DB test files passed, and the evaluation casebook passed 12/12.
+- `npm run typecheck` — passed for web, Worker, database, and evaluation.
+- `npm run build` — passed typecheck, Vite production build, and Wrangler `4.137.0` Worker dry-run.
+- WSL `git diff --cached --check` and `git diff --check` — passed with explicit `GIT_DIR` and `GIT_WORK_TREE` for the Windows-created worktree metadata.
+
+### Limitations and remaining decisions
+
+This is synthetic provider-injected groundwork only. There is no model provider, prompt construction, registered action, L3 coordinator loop, runtime composition, route, acquisition, or publication behavior. The tests prove structural validation and redaction, not model quality, hosted-provider behavior, or prompt-injection resistance. No contract gap or migration decision remains. Root review and integration are pending.
