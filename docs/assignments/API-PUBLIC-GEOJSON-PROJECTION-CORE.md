@@ -66,3 +66,14 @@ Stop and report the exact gap if the existing schema 2.0 Event/Geometry/Evidence
 ## Implementation handoff
 
 Append exact branch/worktree, commits, changed paths, behavior, actual WSL checks/results, limitations and remaining decisions here. The root independently reviews and integrates accepted commits.
+
+### Implementation handoff — 2026-09-27
+
+- **Branch/worktree:** `work/API-PUBLIC-GEOJSON-PROJECTION-CORE` — `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL` in WSL Ubuntu-26.04).
+- **Implementation commit:** `8ded4c96b7fa3f11b0ba7e0c14f5dcb21f7df168` — `feat(API-PUBLIC-GEOJSON-PROJECTION-CORE): project selected public geometry candidates`.
+- **Changed paths:** `apps/worker/src/layers/l4-application-integration/public-geometry-projection.ts`; `apps/worker/test/l4-public-geojson-candidate-projection.test.ts`; `apps/worker/package.json`; this assignment handoff.
+- **Behavior:** Added a pure candidate-set projection with a closed envelope, 500-candidate bound, bounded lookup batches and work, exact repeated Event/version consistency, strict reuse of the current live published Event and impact/scope/attribution validation, and Geometry CRS84/role/coordinate validation. Every selected Geometry must match a geometry ID and complete `supports` EvidenceRef on the same published claim. The output reuses the existing FeatureCollection allowlist, stable IDs/order, and exact source coordinates; it contains selected geometries only. Empty input returns the exact empty collection. Withdrawn direct input fails closed without version fallback. Existing full-detail validation and the public DTO/OpenAPI are unchanged.
+- **Runtime versions recorded in WSL:** Ubuntu-26.04; Node `v24.21.0`; npm `11.19.0`; Git `2.53.0`; TypeScript `7.0.2`; tsx `4.23.15`; Wrangler `4.137.0`. No dependencies were installed.
+- **Checks actually run:** Focused `tsx --test apps/worker/test/l4-public-geojson-candidate-projection.test.ts` passed 10/10. `npm test` passed: Web 22/22, Worker 216/216, all 18 DB test files, and evaluation 12/12. `npm run typecheck` passed for the workspaces and evaluation package. `npm run build` passed for the Vite web build and Wrangler Worker dry-run. WSL `git diff --check` passed with no whitespace errors; Git printed only CRLF conversion warnings for unchanged repository files.
+- **Limitations/configuration:** This is an injected-input projector only; it does not add runtime wiring, database reads, route behavior, or repeat bbox selection. Fixtures are authored live-shaped structures and do not establish factual support or safety. No migration or configuration impact. No remaining design decision identified in this slice; root review and acceptance remain outstanding.
+- **Handoff commit:** The documentation commit containing this handoff follows the implementation commit; its exact SHA and message are returned to the root with the final handoff.
