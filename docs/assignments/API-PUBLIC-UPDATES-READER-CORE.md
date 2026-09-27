@@ -1,6 +1,6 @@
 # API-PUBLIC-UPDATES-READER-CORE assignment
 
-- **Status:** Assigned
+- **Status:** Accepted
 - **Backlog ID:** `API-PUBLIC-UPDATES-READER-CORE`
 - **Baseline:** `main` at `f653c36` plus the root planning commit that adds this assignment and ADR-026
 - **Branch:** `work/API-PUBLIC-UPDATES-READER-CORE`
