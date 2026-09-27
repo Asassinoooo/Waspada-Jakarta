@@ -62,4 +62,15 @@ Stop and report the precise gap if implementing the response requires a schema/c
 
 ## Implementation handoff
 
-Append branch/worktree, commit SHAs and exact messages, changed paths, behavior, actual WSL checks and results, limitations, configuration impact, and remaining decisions here. The implementation agent must commit its changes on its task branch; root independently reviews and integrates.
+Implemented on branch `work/API-PUBLIC-CONTEXT-RUNTIME-CORE` in `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL` in WSL).
+
+- Implementation commit: `ba629841ab5a46284808aa895beef736cb25a491` — `feat(API-PUBLIC-CONTEXT-RUNTIME-CORE): expose exact live public context`.
+- Changed paths: `apps/worker/src/layers/l4-application-integration/api.ts`, `apps/worker/src/layers/l4-application-integration/public-read-model.ts`, `apps/worker/test/api.test.ts`, and `apps/worker/test/public-event-list-runtime.test.ts`.
+- Behavior: exact server-configured `DATASET_MODE=live` now allows only `GET /api/v1/context` through the existing mode gate and returns the unchanged `PublicContext` with `dataset_mode` and `dataset_label` set to `live`. It uses the current `noConfiguredSources` provider and returns an empty `sources` list. Demo and omitted modes remain synthetic; query/header inputs do not choose mode; unknown modes and writes remain unavailable. Tests assert the exact public field allowlist, generated timestamp, empty source status, and that context does not read Hyperdrive.
+- Runtime/dependency versions at implementation start: Ubuntu 26.04 WSL, Node `v24.21.0`, npm `11.19.0`, TypeScript `7.0.2`, tsx `4.23.15`, and Wrangler `4.137.0` (`npm ls --depth=0`). No dependency versions changed.
+- Checks: `npm test --workspace=@waspada/worker` passed, 224/224 tests; `npm test` passed with Worker 224/224, DB 18/18 test files, and evaluation 12/12; `npm run typecheck` passed; `npm run build` passed, including Vite production build and Wrangler dry run. The full workspace suite ran before a test-only explicit TypeScript return annotation was added to the Hyperdrive spy; the Worker suite, typecheck, and build were rerun afterward and passed. `git diff --check` passed on the final handoff diff.
+- Limitations: no connectors are registered, so `sources: []` reports no configured source status; this response does not measure health, freshness, event availability, completeness, or safety. Hosted Neon and live source behavior remain unverified and out of scope.
+- Migration/configuration impact: none. No database, Hyperdrive binding, secret, provider resource, source access, contract, OpenAPI, dependency, migration, or configuration was added or changed.
+- Remaining decisions: none for this slice; root review and acceptance remain pending.
+
+The handoff record is committed separately on this task branch. Root independently reviews and integrates both commits.
