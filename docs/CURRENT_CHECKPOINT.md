@@ -5,7 +5,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next planning step:** Resolve the moderator identity path and operator provisioning procedure for MOD-01 against accepted [ADR-006](decisions/ADR-006-moderator-auth.md), then prepare its bounded implementation assignment. The implementation must keep server-side role and dataset checks, CSRF defenses, audit, version/idempotency checks, and a dedicated least-privilege database role ahead of any protected write route. Do not configure an identity provider, provision accounts, or enable a hosted service until the team selects that path. PUB-01/EVAL-01 remain gated on rights-cleared human-adjudicated data; continue synthetic-only work where dependencies permit.
+**Next implementation:** `MOD-01-AUTHZ-POLICY-CORE` is a provider-independent Layer 4 role/action/dataset authorization kernel. It will only evaluate a server-resolved moderator principal and will not authenticate users, expose routes, or touch a provider/database. Identity integration and operator provisioning remain open under [ADR-006](decisions/ADR-006-moderator-auth.md); a separate decision is pending before that work. PUB-01/EVAL-01 remain gated on rights-cleared human-adjudicated data; continue synthetic-only work where dependencies permit.
 
 ## Repository state
 
