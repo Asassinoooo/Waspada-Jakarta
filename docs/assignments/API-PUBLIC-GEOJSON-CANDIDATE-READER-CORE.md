@@ -69,3 +69,20 @@ Stop and report if the exact published-claim relationship cannot be enforced thr
 ## Implementation handoff
 
 Append the exact branch/worktree, commits, changed paths, behavior, actual WSL checks, limitations and remaining decisions here. Do not merge or push.
+
+### Completed implementation
+
+- Branch: `work/API-PUBLIC-GEOJSON-CANDIDATE-READER-CORE`
+- Worktree: `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`)
+- Implementation commit: `b080f2443a5880334e4182cbc9969a3a53657e9e` — `feat(db): add bounded public GeoJSON candidate reader`
+- Changed paths:
+  - `apps/db/migrations/015_public_geojson_candidates.sql`
+  - `apps/db/src/public-event-geojson-candidates.ts`
+  - `apps/db/test/public-event-geojson-candidates.test.ts`
+  - `apps/db/test/migrations.test.ts` (root-authorized narrow migration discovery/order expectation update)
+
+Migration 015 adds a security-barrier view for exact current, published, live Event 2.0 records joined to their exact stored published claim and claim-geometry link. It only includes claim-linked live geometries and grants the public reader `SELECT` on this view; the reader role has no direct event, claim, geometry, source, or evidence table reads. The TypeScript reader validates the closed bbox/filter query within ADR-018 bounds, applies parameterized bbox intersection and enum filters, checks row identity and deterministic ordering, and probes 501 candidates so a 501st match returns a stable overflow error instead of a partial result. It omits `shape`; the returned event and geometry JSON remain `unknown` internal inputs for later Layer 4 validation. An empty candidate result carries no safety or all-clear meaning.
+
+Checks were run in WSL Ubuntu-26.04 with Node.js `v24.21.0`, npm `11.19.0`, Git `2.53.0`, TypeScript `7.0.2`, `@electric-sql/pglite` `0.5.8`, `@electric-sql/pglite-postgis` `0.2.8`, `@electric-sql/pglite-pgvector` `0.0.9`, and Wrangler `4.137.0`. Focused candidate-reader PGlite tests passed 8/8; focused migration tests passed 9/9. `npm run db:test` passed all 18 DB test files. After the final type-only guard and fixture typing edits, `npm test` passed across web (22), worker (206), DB (18/18 files), and evaluation casebook (12). `npm run typecheck` passed. `npm run build` passed, including Vite production output and Wrangler dry-run. WSL `git diff --cached --check` passed for the implementation commit. All PGlite rows were authored fictional fixtures; no Neon, Hyperdrive, provider, or live-source access was used.
+
+The only migration impact is applying migration 015 before a later route consumes this reader. No package dependency, provider configuration, secret, contract, OpenAPI, or Worker/API wiring changed. Hosted Neon behavior was not exercised. Layer 4 projection/serialization and Worker/HTTP wiring remain downstream work; no additional design decision was required for this database-only slice.
