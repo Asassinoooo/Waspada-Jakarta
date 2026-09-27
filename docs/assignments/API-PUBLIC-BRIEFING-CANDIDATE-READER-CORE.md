@@ -30,3 +30,16 @@ Stop if the required exact locale matching cannot be implemented with existing D
 ## Implementation handoff
 
 Append branch/worktree, exact commit SHA(s) and messages, paths, behavior, actual checks/results, runtime versions, limitations, migration/configuration impact, and remaining decisions. Commit code and handoff on the assigned branch; do not merge or push. Root independently reviews and integrates.
+
+
+### Completed implementation handoff
+
+- **Branch/worktree:** work/API-PUBLIC-BRIEFING-CANDIDATE-READER-CORE; C:/Users/perry/.codex/worktrees/api-geojson-route-core/RPL (/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL).
+- **Implementation commit:** b238d018532453a558f4db4947b3d8ec31aadaf3 — feat(db): add public briefing candidate reader.
+- **Changed paths:** apps/db/src/public-briefing-candidates.ts, apps/db/test/public-briefing-candidates.test.ts, and this handoff section. apps/db/package.json is unchanged because the DB runner discovers the new *.test.ts file.
+- **Behavior:** Adds an injected SqlExecutor reader with closed request validation, exact category matching, and NFC/ECMAScript-trim/Indonesian-locale case-insensitive exact scope matching against approved names for current event, claim, and linked-impact scopes. It reads only the existing safe public views and current published live rows, deduplicates, orders by immutable version-1 publication time descending then event ID ascending, and asks SQL for at most 101 rows. It returns all 100 or fewer candidates and raises a stable redacted overflow error at 101. Empty normalized interests skip SQL; malformed inputs, rows, and driver errors are bounded and redacted.
+- **Actual checks:** The final focused command node --import tsx --test apps/db/test/public-briefing-candidates.test.ts passed all 7 tests after the final edits. Final npm run typecheck passed. Final npm run build passed (typecheck, Vite web build, and Wrangler worker dry-run). git diff --check and git diff --cached --check passed before this handoff edit; they are rerun for the completed commit below. Earlier in the sequence, npm run db:test passed all 19/19 DB test files and npm test passed the web, worker, DB, and evaluation suites. Those broad runs preceded only the defensive result-row plain-object guard and the additional descending-order fixture; focused tests, typecheck, and build passed again on the final implementation.
+- **Runtime/package versions:** WSL Ubuntu-26.04; Node.js v24.21.0; npm 11.19.0; @electric-sql/pglite 0.5.8; @electric-sql/pglite-pgvector 0.0.9; @electric-sql/pglite-postgis 0.2.8; pg 8.16.3; tsx 4.23.15; TypeScript 7.0.2; Vite 8.3.0; Wrangler 4.137.0.
+- **Limitations:** Locale matching was exercised with PGlite's PostgreSQL/ICU support, including dotted capital I, contextual Greek sigma, NFC, and ECMAScript whitespace. No hosted Neon connection or query-plan/physical-cost check was run. SQL returns no more than the 101-row probe; hosted scan/sort cost against a larger production corpus remains unmeasured.
+- **Migration/configuration impact:** None. No migration, index, grant, role, dependency, environment, or OpenAPI change was made.
+- **Remaining decisions:** None within this DB reader slice. Independent review and integration remain with the root planner.
