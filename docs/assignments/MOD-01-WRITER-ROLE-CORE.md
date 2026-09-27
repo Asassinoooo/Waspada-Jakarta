@@ -57,3 +57,16 @@ Root owns ADR updates, architecture/backlog/checkpoint acceptance, runtime wirin
 ## Implementation handoff
 
 Root review and acceptance pending.
+
+### Implementer handoff — 27 September 2026
+
+- **Branch/worktree:** `work/MOD-01-WRITER-ROLE-CORE`; `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL` in WSL).
+- **Implementation commit:** `b29af725ab0d552dc55a146b1214ade24336fd61` — `feat(MOD-01-WRITER-ROLE-CORE): add least-privilege publication writer`.
+- **Handoff commit message:** `docs(MOD-01-WRITER-ROLE-CORE): record implementation handoff`.
+- **Changed paths:** `apps/db/migrations/017_moderator_publication_writer_role.sql`, `apps/db/test/migrations.test.ts`, `apps/db/test/public-event-updates.test.ts`, `apps/db/test/publication-writer.test.ts`, and this implementation handoff.
+- **Behavior:** migration 017 creates `waspada_l4_moderator_publication_writer` with `NOLOGIN`, `NOINHERIT`, no superuser/database/role/replication/RLS-bypass powers, no role memberships, and schema `USAGE` only. Column grants match the writer's namespace/trace, proposal/evidence/geometry/version/replay reads and decision/event/claim/impact/audit/receipt/outbox inserts. It grants no broad reads, source-policy edits, trace writes, queue access, publication updates/deletes, or sequence access. The original `waspada_l4_publication_writer` grants remain unchanged and are checked for source-policy, trace/audit, queue and publication-write duties.
+- **Writer evidence:** the real create/update, replay, idempotency/version conflicts, concurrent duplicate, and rollback paths execute under `SET ROLE waspada_l4_moderator_publication_writer`. Tests also deny unrelated source-registry, trace, queue, receipt, and publication operations. Migration assertions compare every table column privilege with the allowlist and check role flags, memberships, schema privileges, table-level privileges, and sequence access.
+- **Checks in WSL Ubuntu-26.04** with Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` passed all 20 DB test files; `npm test` passed (web 60, Worker 267, DB 20 files, evaluation 12); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry-run); `git diff --check` passed. No dependencies were installed.
+- **Limitations:** records are synthetic/live-shaped test fixtures only and assert no real source, reviewer, or data rights. PGlite cannot establish hosted PostgreSQL/Neon role, migration, transaction, or credential semantics. The capability has no login/member and no caller is wired to it; a future authenticated runtime must obtain trusted identity/authorization and separately receive the appropriate membership needed to `SET ROLE`.
+- **Migration/configuration impact:** forward-only migration 017 creates one database role. No login, membership, credential, Worker route/wiring, deployment configuration, API/DTO/contract, or dependency change was made. Hosted Neon migration permissions and `SET ROLE` integration remain unverified.
+- **Remaining decisions:** root review/acceptance is pending. ADR-006 identity/session selection, operator provisioning, and the runtime caller/membership integration remain outside this assignment.
