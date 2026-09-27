@@ -74,3 +74,10 @@ Append the exact branch/worktree, commit SHAs and messages, changed paths, behav
 - **Behavior:** Current detail validation now rejects reversed bounds for exact instants, dates, and comparable same-kind ranges, matching the Worker reader. A successful 410 baseline leaves the current-event snapshot refresh pending until it succeeds; retries complete that refresh before issuing cursor-based update requests.
 - **Checks (WSL Ubuntu-26.04):** Focused update-centre/API/UI tests passed (37/37); web typecheck passed; full `npm test` exited 0 (runtime report 261/261, DB suites 20/20, evaluation casebook 12/12); root `npm run typecheck` passed for web, worker, db, and evaluation; root `npm run build` passed (Vite production build and Wrangler dry-run); `git diff --check` passed before and after staging. Runtime versions are unchanged from the handoff above. The temporary dependency symlink was removed after checks.
 - **Remaining decisions:** None identified; root review and integration remain pending.
+
+### Final reset-storage review fix
+
+- **Commit:** `936b9a8a5ca365e84eb2ee3ffb85c6681359dc0a` — `fix(UI-02-UPDATE-CENTER-CORE): clear cards before cursor storage reset`.
+- **Changed paths:** `apps/web/src/UpdatesCenter.tsx`; `apps/web/test/updates-center.test.tsx`; this handoff entry.
+- **Behavior:** A 410 immediately clears in-memory cards and records the reset state before browser storage removal. The poller also switches its in-memory cursor to baseline first, so if storage removal fails the UI reports a storage failure without stale cards, and a retry does not reuse the expired cursor.
+- **Checks (WSL Ubuntu-26.04):** Focused update-centre/API/UI tests passed (38/38); web typecheck passed; `git diff --check` passed before and after staging. The existing temporary dependency symlink was removed after checks. No other paths changed.
