@@ -703,4 +703,16 @@ Root reviewed agent commits `f652f45b99abaadaadfad658dca8143d33553d51` (`feat(UI
 
 Root independently passed WSL Ubuntu-26.04 focused web tests 33/33, full `npm test` (web 33, Worker 223, DB 18 files, evaluation 12), `npm run typecheck`, `npm run build`, and `git diff --check`. Screenshot review could not run because the WSL environment has no browser or browser automation tooling; nothing was installed or automated. No API/DTO/OpenAPI, dependency, migration, source/provider, secret, binding, configuration, or live-data change. The checked-in Worker remains demo-only and demo GeoJSON has no supported geometry. See [the assignment and handoff](assignments/UI-01-GEOJSON-MAP-CORE.md).
 
-The next assigned slice is `API-PUBLIC-CONTEXT-RUNTIME-CORE`, a read-only live-mode projection for the existing deployment-context contract. It preserves an empty source list when no connectors are configured and does not connect to a database or source.
+### API-PUBLIC-CONTEXT-RUNTIME-CORE assigned — 27 September 2026
+
+Root assigned a bounded exact-live projection for the existing public context contract. The endpoint reports only the server-selected mode and existing source-status provider output; with no connectors configured, `sources: []` is the honest state. No database, source acquisition, live source-status claim or contract change was authorized. See [the assignment](assignments/API-PUBLIC-CONTEXT-RUNTIME-CORE.md).
+
+### API-PUBLIC-CONTEXT-RUNTIME-CORE accepted — 27 September 2026
+
+Root reviewed agent implementation `ba629841ab5a46284808aa895beef736cb25a491` and handoff `2c79bfa856a9f98c500999030416283e31563601` on `work/API-PUBLIC-CONTEXT-RUNTIME-CORE`, then fast-forwarded them to `main`. Exact server-configured `DATASET_MODE=live` now allows the unchanged `GET /api/v1/context` response through the existing mode gate. It reports the live dataset label and current source-status provider; the list is empty because no connectors are registered. Demo/omitted mode remains synthetic, request input cannot switch modes, and the endpoint does not read SQL or Hyperdrive. No source, model, contract, migration, dependency, binding or provider resource was added.
+
+Root independently passed WSL Ubuntu-26.04 Worker tests 224/224, full `npm test` (DB tests in 18 files and evaluation 12), typecheck, build/Wrangler dry run, and `git diff --check`, with Node `v24.21.0` and npm `11.19.0`. The checked-in Worker remains demo-only; hosted Neon and live source health are unverified. The user’s rule that withdrawn events and their entire public history remain hidden is preserved. See [the assignment and handoff](assignments/API-PUBLIC-CONTEXT-RUNTIME-CORE.md).
+
+### API-BRIEFING-PROJECTION-CORE assigned — 27 September 2026
+
+Root assigned a pure deterministic match projection over already projected live `EventView`s and the existing briefing contract. It matches exact categories and scope names case-insensitively, emits fixed Bahasa Indonesia reasons without echoing preference strings, and preserves event order/status. No semantic or model ranking, storage, route, contract change, or external data access is included. See [the assignment](assignments/API-BRIEFING-PROJECTION-CORE.md).
