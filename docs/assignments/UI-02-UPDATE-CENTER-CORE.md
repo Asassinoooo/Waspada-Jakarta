@@ -66,3 +66,11 @@ Append the exact branch/worktree, commit SHAs and messages, changed paths, behav
 - **Limitations:** No headless browser or Playwright/Puppeteer modules were present, so no screenshot or browser-driven visual review was performed. UI behavior was verified through deterministic tests with authored fixtures and fakes. Hosted services and live data were not exercised.
 - **Storage/configuration impact:** Uses the existing versioned browser-local preference store as input and persists only the opaque update cursor under the existing update cursor key. No new dependency, secret, binding, configuration, backend, API, or database change.
 - **Remaining decisions:** None identified in the assigned scope; root review and integration remain pending.
+
+### Follow-up review fixes
+
+- **Commit:** `6c962e7c6d262a276a126274ff2fce3e0f6c3735` — `fix(UI-02-UPDATE-CENTER-CORE): retry reset snapshot before polling`.
+- **Changed paths:** `apps/web/src/UpdatesCenter.tsx`; `apps/web/test/updates-center.test.tsx`; this follow-up entry.
+- **Behavior:** Current detail validation now rejects reversed bounds for exact instants, dates, and comparable same-kind ranges, matching the Worker reader. A successful 410 baseline leaves the current-event snapshot refresh pending until it succeeds; retries complete that refresh before issuing cursor-based update requests.
+- **Checks (WSL Ubuntu-26.04):** Focused update-centre/API/UI tests passed (37/37); web typecheck passed; full `npm test` exited 0 (runtime report 261/261, DB suites 20/20, evaluation casebook 12/12); root `npm run typecheck` passed for web, worker, db, and evaluation; root `npm run build` passed (Vite production build and Wrangler dry-run); `git diff --check` passed before and after staging. Runtime versions are unchanged from the handoff above. The temporary dependency symlink was removed after checks.
+- **Remaining decisions:** None identified; root review and integration remain pending.
