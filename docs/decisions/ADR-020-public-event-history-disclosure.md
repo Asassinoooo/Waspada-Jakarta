@@ -19,7 +19,7 @@ The public `HistoryEntry` contract requires a `change_type`, `changed_at`, and a
 
 ## Consequences
 
-A future database foundation may store append-only, version-bound disclosure decisions and expose only the latest approved row through a least-privilege view. The public history projector must join every candidate version to its exact reviewed metadata and construct the existing `HistoryEntry` allowlist. No public history route or Worker database binding is enabled by this decision. Source rights, current-public checks, and the normal Layer 4 publication gate continue to apply.
+The database stores append-only, version-bound disclosure decisions and exposes only the latest approved row through a least-privilege view. The public history projector joins every candidate version to its exact reviewed metadata and constructs the existing `HistoryEntry` allowlist. The later exact-live history reader/runtime composes those approved records only when the event remains current-public; withdrawn events and all their history stay hidden. This decision itself does not enable a Worker database binding or hosted deployment. Source rights, current-public checks, and the normal Layer 4 publication gate continue to apply.
 
 ## Affected requirements
 
