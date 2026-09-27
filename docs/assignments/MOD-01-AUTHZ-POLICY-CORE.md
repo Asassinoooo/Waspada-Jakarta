@@ -1,6 +1,6 @@
 # MOD-01-AUTHZ-POLICY-CORE — server-side moderator authorization kernel
 
-- **Status:** Assigned; implementation pending.
+- **Status:** Accepted on `main` at implementation `e415750` and handoff `84fe591`.
 - **Backlog:** [MOD-01-AUTHZ-POLICY-CORE](../IMPLEMENTATION_BACKLOG.md).
 - **Implementation agent:** `gpt-6-luna` / `max`; root reviews and accepts.
 - **Branch:** `work/MOD-01-AUTHZ-POLICY-CORE`.
@@ -77,4 +77,10 @@ The implementer must commit coherent changes on the assigned branch with descrip
 - **Limitations:** tests use authored in-memory synthetic principals only. They do not implement or verify authentication, account state resolution, real moderators, routes, publication writes, source rights, or hosted behavior. The future caller must obtain principal role/activity/scope from trusted server-side state and pass the dataset from server configuration.
 - **Migration/configuration impact:** none.
 - **Remaining decisions:** identity/session integration and restricted account provisioning remain unresolved under ADR-006 and are outside this policy assignment. No login, CSRF, session, credentials, provider, route, SQL, or write integration was added.
-- Root review and acceptance remain outstanding.
+## Root review and acceptance — 27 September 2026
+
+Root independently reviewed the implementation and handoff commits on the assigned branch. The action matrix follows ADR-006; dataset checks require exact agreement among the resolved principal scope, operation target and server-selected dataset. Unknown or malformed inputs deny with bounded results, and authorization does not replace the publication evidence gate. The fast-forward integration to `main` preserves the agent commits `e415750622d2b0f30009562e32a1948563c578af` and `84fe591fcb7e8cc9a5547c7f3f121a1f373802a5`.
+
+Root independently passed `npm test --workspace=@waspada/worker` (267/267), `npm run typecheck --workspace=@waspada/worker`, the complete `npm test` workspace run (web passed; Worker 267/267; DB 20/20 files; evaluation 12/12), the full `npm run typecheck`, and `git diff --check main...work/MOD-01-AUTHZ-POLICY-CORE` in WSL Ubuntu-26.04 using Node `v24.21.0` and npm `11.19.0`. The task worktree had no `node_modules`; root temporarily linked the existing main-checkout dependency tree for WSL verification and removed the link afterward. No dependency install was performed.
+
+**Acceptance limitations:** the module is not called by an HTTP route and does not authenticate or resolve accounts. Identity integration, CSRF/session handling, source rights, real accounts, DB writer-role separation, and hosted behavior remain unverified or pending. No migration/configuration impact.
