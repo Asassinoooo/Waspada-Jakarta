@@ -66,3 +66,15 @@ Stop and ask root if the existing ADRs/contracts imply an action permission not 
 ## Handoff
 
 The implementer must commit coherent changes on the assigned branch with descriptive messages, including an implementation handoff in this file. Report branch/worktree, commit SHA(s) and exact messages, changed paths, behavior, actual checks/results, limitations, migration/configuration impact, and remaining decisions. Do not push, merge or deploy. Root reviews before acceptance.
+
+### Implementation handoff — 27 September 2026
+
+- **Branch/worktree:** `work/MOD-01-AUTHZ-POLICY-CORE` / `C:\Users\perry\.codex\worktrees\ui-02-pref-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/ui-02-pref-core/RPL` in WSL).
+- **Implementation commit:** `e415750622d2b0f30009562e32a1948563c578af` — `feat(MOD-01): add moderator authorization policy`.
+- **Changed paths:** `apps/worker/src/layers/l4-application-integration/moderator-authorization.ts`, `apps/worker/test/l4-moderator-authorization.test.ts`, `apps/worker/package.json` (registers the new test), and this handoff. No API, identity, database, migration, dependency, lockfile, provider, or configuration path changed.
+- **Behavior:** adds closed role/action/dataset types and a pure authorization function for a principal already resolved by a future trusted boundary. Moderators may review evidence, approve supported publication attempts, submit eligible corrections, and retract information; admins may also approve sources and manage moderator access. Every allow requires an active, bounded principal whose dataset scope equals both the operation target and server-selected dataset. Missing, malformed, inactive, unknown, or cross-dataset inputs return only a bounded stable reason code. Results contain no actor or request content. An allow authorizes an action attempt only; evidence assessment, the existing publication gate, and writes remain separate. The role matrix agrees with ADR-006; no contract conflict was found.
+- **Checks in WSL Ubuntu-26.04** with Node.js `v24.21.0` and npm `11.19.0`: `npm test --workspace=@waspada/worker` passed (267/267); `npm run typecheck --workspace=@waspada/worker` passed; `git diff --cached --check` passed for the implementation commit. The test worktree temporarily linked the existing `/mnt/d/Projects/RPL/node_modules`; that symlink was removed after checks. No dependencies were installed.
+- **Limitations:** tests use authored in-memory synthetic principals only. They do not implement or verify authentication, account state resolution, real moderators, routes, publication writes, source rights, or hosted behavior. The future caller must obtain principal role/activity/scope from trusted server-side state and pass the dataset from server configuration.
+- **Migration/configuration impact:** none.
+- **Remaining decisions:** identity/session integration and restricted account provisioning remain unresolved under ADR-006 and are outside this policy assignment. No login, CSRF, session, credentials, provider, route, SQL, or write integration was added.
+- Root review and acceptance remain outstanding.
