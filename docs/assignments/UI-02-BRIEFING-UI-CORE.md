@@ -30,3 +30,15 @@ Stop if the current API response cannot be rendered without changing its contrac
 ## Implementation handoff
 
 Append branch/worktree, exact commit SHA(s) and messages, changed paths, behavior, actual checks/results, runtime versions, limitations, visual-review result, configuration impact, and remaining decisions. Commit on the assigned branch; do not merge or push. Root independently reviews and integrates.
+
+### Completed implementation handoff
+
+- **Branch/worktree:** `work/UI-02-BRIEFING-UI-CORE` at `/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL`, based on `13b3e3abd1782398a2dc24b5e89abfb1a9a44dba`.
+- **Implementation commit:** `bf249e86bc681808d8503ca3f40a4129efb14196` — `feat(web): add explicit live briefings`.
+- **Changed paths:** `apps/web/src/App.tsx`, `apps/web/src/Preferences.tsx`, `apps/web/src/BriefingResults.tsx`, `apps/web/src/api-client.ts`, `apps/web/src/styles.css`, `apps/web/test/api-client.test.ts`, `apps/web/test/preferences.test.tsx`, and `apps/web/test/ui.test.tsx`.
+- **Behavior:** Preferences now receives the server `PublicContext` for its active route and keeps briefing controls unavailable until exact `live` is confirmed. A user must explicitly request a briefing, and the client sends only normalized interests in the existing JSON `POST /api/v1/briefings` body. Demo, unknown, and empty-interest states make no request. Results render server reasons, an encoded link to current API detail, category, lifecycle, freshness, event time and publication time separately. Interest/context snapshots invalidate old results and suppress late responses. Errors stay generic and leave local interests available. No update polling or local/demo matching was added.
+- **Checks:** `npm test --workspace=@waspada/web` passed 41/41 after the final client change. Full `npm test` passed: web 41, Worker 251, DB 19/19 test files, evaluation 12. Root `npm run typecheck` passed. Root `npm run build` passed, including Vite production build and Wrangler dry run. `git diff --check` exited 0; Git printed only CRLF-to-LF normalization warnings for existing Windows-format files.
+- **Runtime/packages:** WSL Ubuntu-26.04; Node.js `v24.21.0`; npm `11.19.0`; React and React DOM `19.3.0`; Vite `8.3.0`; Wrangler `4.137.0`.
+- **Limitations and visual review:** No browser screenshots were captured because this task was explicitly run without browser/UI automation while the user was using the computer. No live service or live data was used. The current checked-in Worker remains demo-only without a Hyperdrive binding, so the live briefing remains unavailable until the existing server context reports exact `live` and the existing route is configured.
+- **Migration/configuration impact:** None. No dependency, lockfile, API/DTO, Worker, binding, source, data, or migration changes.
+- **Remaining decisions:** None within this assigned UI slice. The update centre remains future work.
