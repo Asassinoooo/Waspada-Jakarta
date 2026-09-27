@@ -53,3 +53,15 @@ Stop and report if the XML parser cannot enforce the exact namespace, hard resou
 ## Implementation handoff
 
 Append the implementer's exact handoff here after committing the completed work package.
+
+### Implementer handoff — 2026-09-27
+
+- **Branch/worktree:** `work/ING-CAP-PARSE-CORE`, `C:\Users\perry\.codex\worktrees\l1-fixture-runner-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/l1-fixture-runner-core/RPL`), based on `568f7248f1fc1e2db8089f38be6b993a11a2b1c1`.
+- **Implementation commits:** `cd110bfa0a3b56f9dbbfe961dc1b7122809ed038` — `feat(ingest): add bounded CAP 1.2 parser`; `1277466c95136c0f5a42e21afee6a9629fc76cf3` — `fix(ingest): align CAP identifiers and bound retrieval time`.
+- **Changed paths:** `apps/worker/src/layers/l1-data-knowledge/bmkg-cap.ts`, `apps/worker/test/bmkg-cap.test.ts`, `apps/worker/package.json`, and `package-lock.json`. This handoff is the only additional path changed.
+- **Behavior:** Added pure parsing of already-buffered XML in the exact CAP 1.2 namespace with `saxes@6.0.0`. It preserves CAP status, message type, scope, linkage, multilingual info and source-described area fields; keeps `sent`, `effective`, `onset`, `expires`, and caller `retrievedAt` separate; validates only source-provided polygons and reorders their coordinate pairs to CRS84. It rejects all DOCTYPE declarations, does not resolve external entities, applies configured bounds (including 64 characters for caller `retrievedAt`), returns fixed redacted errors, and never returns partial output. CAP identifiers allow `>` while still rejecting whitespace, comma, `<`, and `&`.
+- **Synthetic tests:** 15 focused CAP tests pass. Fixtures are authored and labeled synthetic; they contain no copied OASIS or BMKG sample content.
+- **Checks:** In WSL Ubuntu-26.04 using the native Linux runtime, `npx --no-install tsx --test apps/worker/test/bmkg-cap.test.ts` passed 15/15; `npm test --workspace=@waspada/worker` passed 282/282; full `npm test` exited 0, including 20/20 database test files and 12/12 evaluation casebook tests; `npm run typecheck` exited 0; `npm run build` exited 0 (Vite production build and Wrangler dry-run); and `git diff --check` exited 0.
+- **Versions:** Node.js `v24.21.0`; npm `11.19.0`; `saxes` `6.0.0`; TypeScript `7.0.2`; Vite `8.3.0`; Wrangler `4.137.0`.
+- **Limitations and decisions remaining:** Parsing establishes syntax and field extraction only. It does not establish issuer identity, source rights, truth, Jakarta relevance, freshness, current danger, or signature authenticity. No BMKG field mapping or source activation is established; the connector remains disabled pending source registry and rights gates. Missing `xml:lang` stays `null`; missing CAP times stay `null`; no time or geometry is inferred. Root review and integration remain outstanding.
+- **Dependency/configuration impact:** Added the exact `saxes@6.0.0` direct Worker dependency and lockfile entries, and registered the Worker test file. No database/domain schema, migration, public API, model/provider, deployment, or runtime-binding configuration changed.
