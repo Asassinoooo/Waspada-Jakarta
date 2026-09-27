@@ -124,4 +124,8 @@ Append branch/worktree, commit SHAs/messages, changed paths, behavior, actual WS
 - **Screenshot review:** Not available. WSL has no Chromium, Chrome, Firefox, Playwright, or Puppeteer executable/module installed. No browser or dependency was installed, and no desktop automation was used.
 - **UI guideline review:** Reviewed the latest [Vercel Web Interface Guidelines](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md). Addressed findings at `apps/web/src/App.tsx:51` and `:173` (filter URL state and demo-only fixture route), `apps/web/src/MapPanel.tsx:123` and `:179` (keyboard selection and exact visible-version guard), `apps/web/src/styles.css:1019` and `:1072` (geometry sizing and visible interaction focus), and `apps/web/src/EventFeed.tsx:149` (labelled search with an example placeholder). No remaining actionable guideline findings.
 - **Configuration/migration impact:** None. No dependency was added; the package change only registers the focused test. No API/DTO/OpenAPI, backend, lockfile, source/provider, secret, binding, deployment, or migration file changed.
-- **Remaining decisions:** None identified. Root review and integration remain pending.
+- **Remaining decisions:** None identified.
+
+### Root review and acceptance — 27 September 2026
+
+Root independently reviewed the implementation and handoff commits listed above, then cherry-picked them to `main` as `029c6ac` and `a1f6b78`. Root passed focused WSL web tests 33/33, the full suite (web 33, Worker 223, DB 18 files, evaluation 12), typecheck, build, and diff checks. The screenshot review limitation and no-install decision are recorded above. No migration, dependency, API/DTO/OpenAPI change, source/provider, secret, binding, deployment, or live data changed. The task is accepted; its parent UI-01 remains in progress for the other planned application flows.
