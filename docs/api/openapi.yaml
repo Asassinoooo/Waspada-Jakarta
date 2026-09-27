@@ -182,16 +182,17 @@ paths:
     get:
       tags: [Public]
       operationId: pollPublishedUpdates
-      summary: Poll material published changes from an opaque cursor
+      summary: Bootstrap or poll material published changes from an opaque cursor
       parameters:
         - name: cursor
           in: query
-          required: true
-          description: On 410, fetch a new event-list snapshot before restarting the update poll.
+          required: false
+          description: Omit to establish a baseline with no earlier items. On 410, discard this cursor, establish a new baseline without a cursor, refresh the event-list snapshot, then resume polling.
           schema: { type: string, minLength: 1, maxLength: 2048 }
+        - { $ref: '#/components/parameters/PageSize' }
       responses:
         '200':
-          description: Change summaries and next cursor
+          description: Omitted cursor returns an empty bootstrap page. A valid cursor returns current, moderator-reviewed changes after its sequence and an authenticated continuation cursor.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UpdatePage' }
@@ -201,11 +202,11 @@ paths:
                 cursor_expires_at: '2026-09-24T10:00:00+07:00'
                 checked_at: '2026-09-24T09:00:00+07:00'
         '410':
-          description: Cursor expired; refresh event list and restart polling
+          description: Cursor expired or ahead of the current feed watermark; bootstrap without a cursor, refresh the event-list snapshot, then resume polling.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApiError' }
-              example: { code: CURSOR_EXPIRED, message: Cursor expired., request_id: demo-trace-1 }
+              example: { code: CURSOR_RESTART_REQUIRED, message: Restart update polling from the current public snapshot., request_id: demo-trace-1 }
         '429': { $ref: '#/components/responses/RateLimited' }
         default: { $ref: '#/components/responses/UnexpectedError' }
   /moderation/csrf:
@@ -852,7 +853,7 @@ components:
       additionalProperties: false
       required: [items, next_cursor, cursor_expires_at, checked_at]
       properties:
-        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/HistoryEntry' } }
+        items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/HistoryEntry' } }
         next_cursor: { type: string, minLength: 1, maxLength: 2048 }
         cursor_expires_at: { type: string, format: date-time }
         checked_at: { type: string, format: date-time }
