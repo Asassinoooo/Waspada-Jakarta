@@ -192,3 +192,27 @@ export interface PublicContext {
     last_success_at: string | null;
   }>;
 }
+
+export interface BriefingInterests {
+  places: string[];
+  services: string[];
+  institutions: string[];
+  audiences: string[];
+  categories: Category[];
+}
+
+/** Mirrors the closed BriefingRequest object in the public OpenAPI contract. */
+export interface BriefingRequest {
+  interests: BriefingInterests;
+}
+
+export interface BriefingItem {
+  event: EventView;
+  relevance_reasons: string[];
+}
+
+/** Mirrors the closed BriefingResponse object in the public OpenAPI contract. */
+export interface BriefingResponse {
+  items: BriefingItem[];
+  generated_at: string;
+}
