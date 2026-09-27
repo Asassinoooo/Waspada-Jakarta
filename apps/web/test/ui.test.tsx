@@ -1,18 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
+import type { BriefingResponse, EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
 import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, SiteHeader } from "../src/App.js";
+import { BriefingResultsView, isCurrentBriefingRequest } from "../src/BriefingResults.js";
 import { EventDetail } from "../src/EventDetail.js";
 import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from "../src/EventFeed.js";
 import { ModeratorReview } from "../src/ModeratorReview.js";
 import type { GeoJSONMapState, MapSelection } from "../src/MapPanel.js";
+import { emptyInterests } from "../src/preferences-store.js";
 
 const demoContext: PublicContext = {
   dataset_mode: "demo",
   dataset_label: "synthetic",
   generated_at: "2026-09-24T10:00:00.000Z",
   sources: [],
+};
+
+const liveContext: PublicContext = {
+  ...demoContext,
+  dataset_mode: "live",
+  dataset_label: "live",
 };
 
 const sampleEvent: EventView = {
@@ -85,6 +93,22 @@ const sampleHistory: HistoryPage = {
   page: { next_cursor: null, cursor_expires_at: null },
 };
 
+const briefingEvent: EventView = {
+  ...sampleEvent,
+  event_id: "public/id?# &",
+  title: "Peristiwa fiktif untuk uji briefing",
+  category: "disasters_weather",
+  lifecycle: "ongoing",
+  freshness: { ...sampleEvent.freshness, status: "current" },
+  event_time: { start: "2026-09-25T04:00:00.000Z", end: null, precision: "exact" },
+  published_at: "2026-09-25T04:05:00.000Z",
+};
+
+const sampleBriefing: BriefingResponse = {
+  items: [{ event: briefingEvent, relevance_reasons: ["Cocok dengan kategori yang Anda pilih."] }],
+  generated_at: "2026-09-25T04:06:00.000Z",
+};
+
 function renderFeed(options: {
   status?: "loading" | "loaded" | "unavailable";
   events?: EventView[];
@@ -142,6 +166,91 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
   assert.match(selectedPresentation, /route-diagram/);
   assert.match(selectedPresentation, /aria-pressed="true">Segmen dipilih/);
   assert.match(selectedPresentation, /106\.8, -6\.2 → 106\.81, -6\.21/);
+});
+
+test("briefing gates unknown, demo, and empty-interest contexts without enabling a request", () => {
+  const interests = { ...emptyInterests(), places: ["Pondok Labu"] };
+  const unknown = renderToStaticMarkup(
+    <BriefingResultsView context={null} interests={interests} state={{ status: "idle" }} onRequest={() => {}} />,
+  );
+  const demo = renderToStaticMarkup(
+    <BriefingResultsView context={demoContext} interests={interests} state={{ status: "idle" }} onRequest={() => {}} />,
+  );
+  const empty = renderToStaticMarkup(
+    <BriefingResultsView context={liveContext} interests={emptyInterests()} state={{ status: "idle" }} onRequest={() => {}} />,
+  );
+  const idle = renderToStaticMarkup(
+    <BriefingResultsView context={liveContext} interests={interests} state={{ status: "idle" }} onRequest={() => {}} />,
+  );
+
+  assert.match(unknown, /status dataset belum dapat diverifikasi/);
+  assert.doesNotMatch(unknown, /Tampilkan ringkasan|Perbarui ringkasan|Coba lagi/);
+  assert.match(demo, /mode demo/);
+  assert.match(demo, /Data demo tidak digunakan untuk mencocokkan minat/);
+  assert.doesNotMatch(demo, /Tampilkan ringkasan|Perbarui ringkasan|Coba lagi/);
+  assert.match(empty, /Pilih setidaknya satu tempat/);
+  assert.doesNotMatch(empty, /Tampilkan ringkasan|Perbarui ringkasan|Coba lagi/);
+  assert.match(idle, /Briefing belum diminta/);
+  assert.match(idle, />Tampilkan ringkasan</);
+});
+
+test("briefing renders loading, unavailable, and exact no-match states accessibly", () => {
+  const interests = { ...emptyInterests(), categories: ["disasters_weather" as const] };
+  const loading = renderToStaticMarkup(
+    <BriefingResultsView context={liveContext} interests={interests} state={{ status: "loading" }} onRequest={() => {}} />,
+  );
+  const unavailable = renderToStaticMarkup(
+    <BriefingResultsView context={liveContext} interests={interests} state={{ status: "unavailable" }} onRequest={() => {}} />,
+  );
+  const noMatch = renderToStaticMarkup(
+    <BriefingResultsView
+      context={liveContext}
+      interests={interests}
+      state={{ status: "loaded", data: { items: [], generated_at: sampleBriefing.generated_at } }}
+      onRequest={() => {}}
+    />,
+  );
+
+  assert.match(loading, /aria-busy="true"/);
+  assert.match(loading, /Memuat briefing live/);
+  assert.match(unavailable, /role="alert"/);
+  assert.match(unavailable, /Briefing belum dapat dimuat/);
+  assert.match(unavailable, />Coba lagi</);
+  assert.match(noMatch, /Belum ada informasi terbit yang cocok dengan minat Anda\./);
+  assert.doesNotMatch(noMatch, /semua area aman|semua aman/);
+});
+
+test("briefing cards keep category, lifecycle, freshness, event time, and publication time distinct", () => {
+  const markup = renderToStaticMarkup(
+    <BriefingResultsView
+      context={liveContext}
+      interests={{ ...emptyInterests(), places: ["Pondok Labu"] }}
+      state={{ status: "loaded", data: sampleBriefing }}
+      onRequest={() => {}}
+    />,
+  );
+  const eventTime = markup.match(/<dt>Waktu kejadian<\/dt><dd>(.*?)<\/dd>/)?.[1];
+  const publishedTime = markup.match(/<dt>Waktu terbit<\/dt><dd>(.*?)<\/dd>/)?.[1];
+
+  assert.match(markup, /Bencana dan cuaca/);
+  assert.match(markup, /<dt>Siklus<\/dt><dd>Berlangsung<\/dd>/);
+  assert.match(markup, /<dt>Kesegaran<\/dt><dd>Dalam batas tinjau<\/dd>/);
+  assert.match(markup, /Mengapa muncul/);
+  assert.match(markup, /Cocok dengan kategori yang Anda pilih\./);
+  assert.match(markup, /href="#detail\/api\/public%2Fid%3F%23%20%26"/);
+  assert.ok(eventTime);
+  assert.ok(publishedTime);
+  assert.notEqual(eventTime, publishedTime);
+  assert.match(markup, /Pembaruan otomatis belum tersedia/);
+  assert.doesNotMatch(markup, /fixture|Tidak dinilai/);
+});
+
+test("late briefing responses are rejected after the interest or request snapshot changes", () => {
+  const original = { sequence: 4, snapshotKey: "live:interest-a" };
+  assert.equal(isCurrentBriefingRequest(original, original), true);
+  assert.equal(isCurrentBriefingRequest(original, { sequence: 4, snapshotKey: "live:interest-b" }), false);
+  assert.equal(isCurrentBriefingRequest(original, { sequence: 5, snapshotKey: "live:interest-a" }), false);
+  assert.equal(isCurrentBriefingRequest(original, null), false);
 });
 
 test("presentation detail is visible only after the API confirms demo mode", () => {

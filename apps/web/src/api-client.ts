@@ -1,5 +1,7 @@
 import type {
   Category,
+  BriefingInterests,
+  BriefingResponse,
   EventDetail,
   EventPage,
   FreshnessStatus,
@@ -63,6 +65,8 @@ const categories: readonly Category[] = [
 ];
 const lifecycles: readonly Lifecycle[] = ["planned", "ongoing", "resolved", "cancelled", "unknown"];
 const freshnessStatuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
+const MAX_BRIEFING_ITEMS = 100;
+const MAX_BRIEFING_REASONS = 10;
 const geometryRoles: readonly PublicGeometry["role"][] = [
   "incident_scene",
   "affected_area",
@@ -81,6 +85,52 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isMember<T extends string>(value: unknown, allowed: readonly T[]): value is T {
   return typeof value === "string" && allowed.includes(value as T);
+}
+
+function isInstant(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 100 && !Number.isNaN(Date.parse(value));
+}
+
+function isSafePublicEventId(value: unknown): value is string {
+  if (typeof value !== "string" || value.length < 1 || value.length > MAX_PUBLIC_ID_LENGTH) return false;
+  try {
+    encodeURIComponent(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseBriefingResponse(value: unknown): BriefingResponse {
+  if (!isRecord(value) || !isInstant(value.generated_at) || !Array.isArray(value.items) || value.items.length > MAX_BRIEFING_ITEMS) {
+    throw new ApiPayloadError();
+  }
+
+  for (const item of value.items) {
+    if (!isRecord(item) || !isRecord(item.event) || !Array.isArray(item.relevance_reasons)) {
+      throw new ApiPayloadError();
+    }
+    const event = item.event;
+    const eventTime = event.event_time;
+    const freshness = event.freshness;
+    if (
+      !isSafePublicEventId(event.event_id) ||
+      !Number.isSafeInteger(event.version) || (event.version as number) < 1 ||
+      typeof event.title !== "string" || event.title.length < 1 || event.title.length > MAX_PUBLIC_TITLE_LENGTH ||
+      !isMember(event.category, categories) || !isMember(event.lifecycle, lifecycles) ||
+      !isRecord(eventTime) || !isMember(eventTime.precision, ["exact", "date", "range", "unknown"] as const) ||
+      !(eventTime.start === null || isInstant(eventTime.start)) ||
+      !(eventTime.end === null || isInstant(eventTime.end)) ||
+      !isRecord(freshness) || !isMember(freshness.status, freshnessStatuses) ||
+      !isInstant(event.published_at) ||
+      item.relevance_reasons.length < 1 || item.relevance_reasons.length > MAX_BRIEFING_REASONS ||
+      item.relevance_reasons.some((reason) => typeof reason !== "string" || reason.length > 200)
+    ) {
+      throw new ApiPayloadError();
+    }
+  }
+
+  return value as unknown as BriefingResponse;
 }
 
 async function readBoundedResponseText(response: Response): Promise<string> {
@@ -273,6 +323,30 @@ async function getJson<T>(path: string): Promise<T> {
 
 export function getPublicContext() {
   return getJson<PublicContext>("/api/v1/context");
+}
+
+export async function requestBriefing(interests: BriefingInterests): Promise<BriefingResponse> {
+  const response = await fetch("/api/v1/briefings", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    cache: "no-store",
+    body: JSON.stringify({ interests }),
+  });
+  if (!response.ok) throw new ApiHttpError(response.status);
+
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") throw new ApiPayloadError();
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new ApiPayloadError();
+  }
+  return parseBriefingResponse(body);
 }
 
 export function listEvents() {

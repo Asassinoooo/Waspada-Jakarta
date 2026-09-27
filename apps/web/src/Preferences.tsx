@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
+import type { PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel } from "./display.js";
+import { BriefingResults } from "./BriefingResults.js";
 import {
   addInterestValue,
   browserPreferencesStorage,
@@ -20,6 +22,8 @@ import {
 
 interface PreferencesProps {
   storage?: PreferencesStorage | null;
+  context?: PublicContext | null;
+  contextSnapshotId?: string;
 }
 
 type Feedback = { kind: "status" | "error"; text: string };
@@ -67,7 +71,7 @@ function feedbackAfterEdit(text: string): Feedback {
   return { kind: "status", text };
 }
 
-export function Preferences({ storage }: PreferencesProps) {
+export function Preferences({ storage, context = null, contextSnapshotId }: PreferencesProps) {
   const [activeStorage] = useState<PreferencesStorage | null>(() =>
     storage === undefined ? browserPreferencesStorage() : storage,
   );
@@ -188,21 +192,15 @@ export function Preferences({ storage }: PreferencesProps) {
       <section className="preferences-privacy" aria-label="Penyimpanan minat">
         <strong>Minat tetap di browser ini.</strong>
         <p>
-          Minat tidak dikirim ke layanan. Menghapus data browser juga menghapus minat tersimpan di sini.
+          Minat dikirim ke layanan hanya saat Anda meminta briefing dan tidak disimpan oleh layanan. Menghapus data browser juga menghapus minat tersimpan di sini.
         </p>
       </section>
 
-      <section className="preferences-briefing" aria-labelledby="briefing-status-title">
-        <p className="section-kicker">Pembaruan pribadi</p>
-        <h2 id="briefing-status-title">Briefing dan pembaruan belum terhubung</h2>
-        <p>
-          Layar ini hanya menyimpan pilihan Anda. Belum ada hasil kecocokan atau pembaruan pribadi yang tersedia;
-          keadaan ini tidak menunjukkan bahwa semua area aman.
-        </p>
-        <p>
-          Record contoh di Jelajah tidak digunakan sebagai kecocokan. Relevansi setiap event tetap “Tidak dinilai”.
-        </p>
-      </section>
+      <BriefingResults
+        context={context}
+        interests={state.interests}
+        contextSnapshotId={contextSnapshotId}
+      />
 
       {state.feedback && (
         <p className="preferences-feedback" role={state.feedback.kind === "error" ? "alert" : "status"}>

@@ -191,12 +191,14 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
 }
 
 export function App() {
-  const [status, setStatus] = useState<FeedStatus>("loading");
-  const [context, setContext] = useState<PublicContext | null>(null);
-  const [events, setEvents] = useState<EventView[]>([]);
-  const [geoJSONState, setGeoJSONState] = useState<GeoJSONMapState>({ status: "idle" });
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
   const [retryKey, setRetryKey] = useState(0);
+  const contextRequestKey = route.screen + ":" + retryKey;
+  const [contextResult, setContextResult] = useState<{ requestKey: string; value: PublicContext | null } | null>(null);
+  const context = contextResult?.requestKey === contextRequestKey ? contextResult.value : null;
+  const [status, setStatus] = useState<FeedStatus>("loading");
+  const [events, setEvents] = useState<EventView[]>([]);
+  const [geoJSONState, setGeoJSONState] = useState<GeoJSONMapState>({ status: "idle" });
   const [mapRetryKey, setMapRetryKey] = useState(0);
   const [detailRetryKey, setDetailRetryKey] = useState(0);
   const [historyRetryKey, setHistoryRetryKey] = useState(0);
@@ -248,22 +250,20 @@ export function App() {
   }, [retryKey, route.screen]);
 
   useEffect(() => {
-    if (route.screen === "preferences") return;
     let cancelled = false;
-    setContext(null);
 
     getPublicContext()
       .then((nextContext) => {
-        if (!cancelled) setContext(nextContext);
+        if (!cancelled) setContextResult({ requestKey: contextRequestKey, value: nextContext });
       })
       .catch(() => {
-        if (!cancelled) setContext(null);
+        if (!cancelled) setContextResult({ requestKey: contextRequestKey, value: null });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [retryKey, route.screen]);
+  }, [contextRequestKey]);
 
   const { category, lifecycle, freshness } = discovery.filters;
   useEffect(() => {
@@ -384,7 +384,7 @@ export function App() {
       {route.screen === "detail-presentation" && (
         <PresentationRoute context={context} />
       )}
-      {route.screen === "preferences" && <Preferences />}
+      {route.screen === "preferences" && <Preferences context={context} contextSnapshotId={contextRequestKey} />}
       {route.screen === "review" && <ModeratorReview />}
       <footer className="site-footer">
         <span>

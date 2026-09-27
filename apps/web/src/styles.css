@@ -330,8 +330,8 @@ time,
 }
 
 .preferences-briefing {
-  border-left: 3px solid var(--kuning-perhatian);
-  background: #FBF5E8;
+  border-left: 3px solid var(--kali-teal);
+  background: #F3F7F5;
   margin-bottom: 1rem;
 }
 
@@ -346,6 +346,109 @@ time,
 .preferences-briefing p {
   max-width: 74ch;
   margin-bottom: 0.45rem;
+}
+
+.briefing-intro,
+.briefing-status,
+.briefing-updates-note {
+  color: var(--quiet-ink);
+}
+
+.briefing-status {
+  margin-top: 0.75rem;
+}
+
+.briefing-error {
+  border-left: 3px solid var(--merah-tanda);
+  background: #FDF0EF;
+  padding: 0.7rem 0.85rem;
+}
+
+.briefing-error p {
+  margin: 0 0 0.6rem;
+  color: var(--tinta-kota);
+}
+
+.briefing-results {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.9rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.briefing-result {
+  min-width: 0;
+  border: 1px solid var(--beton);
+  background: var(--surface);
+  padding: 0.9rem;
+}
+
+.briefing-result__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.briefing-result__category {
+  margin: 0 0 0.2rem;
+  color: var(--quiet-ink);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.briefing-result h3 {
+  margin: 0;
+  color: var(--tinta-kota);
+  font-size: 1.12rem;
+  overflow-wrap: anywhere;
+}
+
+.briefing-result__heading .text-link {
+  flex: 0 0 auto;
+  padding: 0.15rem 0;
+}
+
+.briefing-result__relevance {
+  margin-top: 0.8rem;
+}
+
+.briefing-result__relevance strong {
+  font-size: 0.9rem;
+}
+
+.briefing-result__relevance ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.briefing-result__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--beton);
+}
+
+.briefing-result__facts div {
+  min-width: 0;
+}
+
+.briefing-result__facts dt {
+  color: var(--quiet-ink);
+  font-size: 0.82rem;
+}
+
+.briefing-result__facts dd {
+  margin: 0.1rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.briefing-updates-note {
+  margin-top: 1rem;
+  font-size: 0.875rem;
 }
 
 .preferences-feedback {
@@ -1964,6 +2067,15 @@ time,
 
   .preferences-recovery {
     flex-direction: column;
+  }
+
+  .briefing-result__heading {
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .briefing-result__facts {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .preferences-actions {
