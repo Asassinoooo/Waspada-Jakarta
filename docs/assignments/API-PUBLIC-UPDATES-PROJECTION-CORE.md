@@ -51,3 +51,33 @@ Stop and report if the unchanged OpenAPI response cannot be represented without 
 ## Implementation handoff
 
 Append exact branch/worktree, commit SHAs/messages, changed paths, behavior, actual WSL checks, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+
+### Delivery record
+
+- **Branch:** `work/API-PUBLIC-UPDATES-PROJECTION-CORE`
+- **Worktree:** `C:\Users\perry\.codex\worktrees\api-updates-reader-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/api-updates-reader-core/RPL`)
+- **Implementation commit:** `d45d583b8f600b8c0b998c41a3b13eaab408c3b9` - `feat(worker): add public update projection and cursor`
+- **Changed paths:**
+  - `apps/worker/src/layers/l4-application-integration/public-event-updates-cursor.ts`
+  - `apps/worker/src/layers/l4-application-integration/public-event-updates-service.ts`
+  - `apps/worker/test/l4-public-event-updates-cursor.test.ts`
+  - `apps/worker/test/l4-public-event-updates-service.test.ts`
+  - `docs/assignments/API-PUBLIC-UPDATES-PROJECTION-CORE.md` (this handoff)
+
+The injected reader port has typed bounded candidate options and returns untrusted results for exact-shape validation. The service validates the request before reads; omitted cursors return an empty baseline page at the committed watermark. Valid cursors read strictly after their decimal-string sequence through the observed watermark. Full pages with `hasMore` continue from the last returned candidate; completed pages advance to the watermark across held/revoked sequence gaps. Candidate rows are validated for exact identity, dataset, order, bounds, review label, Unicode summary length, and publication time before the service constructs exactly the existing five-field `HistoryEntry`. No withdrawal entry is synthesized; the accepted reader's current-public/latest-approved filtering remains authoritative.
+
+The cursor is a versioned base64url HMAC-SHA-256 token for only `dataset`, `sequence`, and `expires_at`, signed under a domain distinct from the event-list cursor. It uses an injected `CryptoKey` and clock, expires after 30 days, and is capped at 2,048 characters. Service errors have fixed messages and distinguish invalid requests, cursor restart, reader failure, invalid reader results, and cursor issue failure.
+
+- **Verification environment:** WSL Ubuntu-26.04; Node.js `v24.21.0`; npm `11.19.0`; Git `2.53.0`; tsx `4.23.15`; Vite `8.3.0`; Wrangler `4.137.0`. A temporary symlink to the existing root `node_modules` tree enabled checks; it was removed before commit. No packages were installed.
+- **Focused cursor test:** `npm exec -- tsx --test apps/worker/test/l4-public-event-updates-cursor.test.ts` - passed, 5/5.
+- **Focused service test:** `npm exec -- tsx --test apps/worker/test/l4-public-event-updates-service.test.ts` - passed, 9/9.
+- **Full test suite:** `npm test` - passed, exit 0; web 41/41, Worker 251/251, DB 20/20 test files, evaluation 12/12. The two new focused files are run by their explicit commands above because the Worker package script enumerates its existing tests.
+- **Typecheck:** `npm run typecheck` - passed, exit 0.
+- **Build:** `npm run build` - passed, exit 0; Vite production build and Wrangler dry-run completed.
+- **Whitespace:** `git diff --check` and staged diff check - passed, exit 0.
+
+**Limitations:** No route or runtime transaction wrapper was added, so no HTTP mapping or deployed behavior was exercised. The future runtime must call the watermark and candidates through a single request-scoped repeatable-read snapshot and map the typed service errors. No hosted Cloudflare or database behavior was tested.
+
+**Configuration impact:** None. No package, binding, secret, migration, provider resource, or live data changed. Runtime construction requires the existing list-cursor secret to be imported as an injected `CryptoKey`; this task creates no secret or binding.
+
+**Remaining decisions:** None within this bounded projection task. Route error mapping and transaction snapshot wiring remain assigned to later runtime integration.
