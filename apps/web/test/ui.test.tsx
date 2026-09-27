@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { BriefingResponse, EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
-import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, SiteHeader } from "../src/App.js";
+import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, routeFromHash, SiteHeader } from "../src/App.js";
 import { BriefingResultsView, isCurrentBriefingRequest } from "../src/BriefingResults.js";
 import { EventDetail } from "../src/EventDetail.js";
 import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from "../src/EventFeed.js";
@@ -166,6 +166,13 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
   assert.match(selectedPresentation, /route-diagram/);
   assert.match(selectedPresentation, /aria-pressed="true">Segmen dipilih/);
   assert.match(selectedPresentation, /106\.8, -6\.2 → 106\.81, -6\.21/);
+});
+
+test("update centre has direct hash navigation and an accessible current navigation item", () => {
+  assert.deepEqual(routeFromHash("#pembaruan"), { screen: "updates" });
+  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "updates" }} context={liveContext} />);
+  assert.match(header, /href="#pembaruan" aria-current="page">Pembaruan<\/a>/);
+  assert.match(header, /href="#ringkasan-saya"[^>]*>Ringkasan saya<\/a>/);
 });
 
 test("briefing gates unknown, demo, and empty-interest contexts without enabling a request", () => {

@@ -5,6 +5,7 @@ import type {
   EventDetail,
   EventPage,
   FreshnessStatus,
+  HistoryEntry,
   HistoryPage,
   Lifecycle,
   PublicContext,
@@ -39,6 +40,13 @@ export interface PublicGeoJSONFilters {
   freshness?: FreshnessStatus;
 }
 
+export interface PublicUpdatePage {
+  items: HistoryEntry[];
+  next_cursor: string;
+  cursor_expires_at: string;
+  checked_at: string;
+}
+
 const MAX_GEOJSON_BYTES = 2 * 1024 * 1024;
 const MAX_GEOJSON_FEATURES = 500;
 const MAX_GEOJSON_POSITIONS = 50_000;
@@ -67,6 +75,11 @@ const lifecycles: readonly Lifecycle[] = ["planned", "ongoing", "resolved", "can
 const freshnessStatuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
 const MAX_BRIEFING_ITEMS = 100;
 const MAX_BRIEFING_REASONS = 10;
+const MAX_UPDATE_PAGE_ITEMS = 20;
+const MAX_UPDATE_CURSOR_LENGTH = 2_048;
+const MAX_UPDATE_RESPONSE_BYTES = 128 * 1024;
+const MAX_UPDATE_SUMMARY_LENGTH = 500;
+const instantPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
 const geometryRoles: readonly PublicGeometry["role"][] = [
   "incident_scene",
   "affected_area",
@@ -89,6 +102,13 @@ function isMember<T extends string>(value: unknown, allowed: readonly T[]): valu
 
 function isInstant(value: unknown): value is string {
   return typeof value === "string" && value.length <= 100 && !Number.isNaN(Date.parse(value));
+}
+
+function isStrictInstant(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length <= 100
+    && instantPattern.test(value)
+    && !Number.isNaN(Date.parse(value));
 }
 
 function isSafePublicEventId(value: unknown): value is string {
@@ -133,9 +153,9 @@ function parseBriefingResponse(value: unknown): BriefingResponse {
   return value as unknown as BriefingResponse;
 }
 
-async function readBoundedResponseText(response: Response): Promise<string> {
+async function readBoundedResponseText(response: Response, maximumBytes = MAX_GEOJSON_BYTES): Promise<string> {
   const contentLength = response.headers.get("content-length");
-  if (contentLength !== null && /^\d+$/.test(contentLength) && Number(contentLength) > MAX_GEOJSON_BYTES) {
+  if (contentLength !== null && /^\d+$/.test(contentLength) && Number(contentLength) > maximumBytes) {
     throw new ApiPayloadError();
   }
 
@@ -150,7 +170,7 @@ async function readBoundedResponseText(response: Response): Promise<string> {
       if (done) break;
       if (!value) continue;
       totalBytes += value.byteLength;
-      if (totalBytes > MAX_GEOJSON_BYTES) {
+      if (totalBytes > maximumBytes) {
         await reader.cancel().catch(() => {});
         throw new ApiPayloadError();
       }
@@ -315,8 +335,11 @@ export function parsePublicGeoJSON(value: unknown): PublicFeatureCollection {
   };
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { accept: "application/json" } });
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, {
+    headers: { accept: "application/json" },
+    ...(signal === undefined ? {} : { signal }),
+  });
   if (!response.ok) throw new ApiHttpError(response.status);
   return (await response.json()) as T;
 }
@@ -357,8 +380,78 @@ export function getEventDetail(eventId: string) {
   return getJson<EventDetail>("/api/v1/events/" + encodeURIComponent(eventId));
 }
 
+export function getEventDetailWithSignal(eventId: string, signal: AbortSignal) {
+  return getJson<EventDetail>("/api/v1/events/" + encodeURIComponent(eventId), signal);
+}
+
 export function getEventHistory(eventId: string) {
   return getJson<HistoryPage>("/api/v1/events/" + encodeURIComponent(eventId) + "/history");
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function parsePublicUpdatePage(value: unknown): PublicUpdatePage {
+  if (!isRecord(value) || !hasExactKeys(value, ["items", "next_cursor", "cursor_expires_at", "checked_at"])
+    || !Array.isArray(value.items) || value.items.length > MAX_UPDATE_PAGE_ITEMS
+    || typeof value.next_cursor !== "string" || value.next_cursor.length < 1 || value.next_cursor.length > MAX_UPDATE_CURSOR_LENGTH
+    || !isStrictInstant(value.cursor_expires_at) || !isStrictInstant(value.checked_at)) {
+    throw new ApiPayloadError();
+  }
+
+  const items: HistoryEntry[] = value.items.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["event_id", "version", "change_type", "changed_at", "summary"])
+      || !isSafePublicEventId(item.event_id)
+      || !Number.isSafeInteger(item.version) || (item.version as number) < 1
+      || !isMember(item.change_type, ["published", "corrected", "impact_changed", "retracted"] as const)
+      || !isStrictInstant(item.changed_at)
+      || typeof item.summary !== "string" || item.summary.length > MAX_UPDATE_SUMMARY_LENGTH) {
+      throw new ApiPayloadError();
+    }
+    return {
+      event_id: item.event_id,
+      version: item.version as number,
+      change_type: item.change_type,
+      changed_at: item.changed_at,
+      summary: item.summary,
+    };
+  });
+
+  return {
+    items,
+    next_cursor: value.next_cursor,
+    cursor_expires_at: value.cursor_expires_at,
+    checked_at: value.checked_at,
+  };
+}
+
+export async function getPublicUpdates(cursor?: string, signal?: AbortSignal): Promise<PublicUpdatePage> {
+  if (cursor !== undefined && (typeof cursor !== "string" || cursor.length < 1 || cursor.length > MAX_UPDATE_CURSOR_LENGTH)) {
+    throw new ApiPayloadError();
+  }
+
+  const query = new URLSearchParams();
+  if (cursor !== undefined) query.set("cursor", cursor);
+  query.set("limit", String(MAX_UPDATE_PAGE_ITEMS));
+  const response = await fetch("/api/v1/updates?" + query.toString(), {
+    headers: { accept: "application/json" },
+    cache: "no-store",
+    ...(signal === undefined ? {} : { signal }),
+  });
+  if (!response.ok) throw new ApiHttpError(response.status);
+
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") throw new ApiPayloadError();
+
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBoundedResponseText(response, MAX_UPDATE_RESPONSE_BYTES));
+  } catch (error) {
+    if (error instanceof ApiPayloadError) throw error;
+    throw new ApiPayloadError();
+  }
+  return parsePublicUpdatePage(body);
 }
 
 export async function getEventGeoJSON(filters: PublicGeoJSONFilters = {}): Promise<PublicFeatureCollection> {
