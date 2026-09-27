@@ -18,6 +18,7 @@ This working file keeps the sources for the Waspada Jakarta report while the fin
 - **PostGIS.** [PostGIS documentation](https://postgis.net/). Use for spatial storage and queries.
 - **pgvector maintainers.** [pgvector documentation](https://github.com/pgvector/pgvector). Reviewed 18 September 2026. Supports the proposed vector storage and semantic retrieval capability; exact search and approximate-index filtering tradeoffs require workload evaluation.
 - **PostGIS.** [ST_Intersects](https://postgis.net/docs/ST_Intersects.html). Reviewed 18 September 2026. Supports spatial intersection filtering. Geographic overlap is only a retrieval feature in this design, not proof of incident truth.
+- **SAXES maintainers.** [SAXES XML parser](https://www.npmjs.com/package/saxes). Reviewed 27 September 2026 for the assigned bounded CAP parser; intended for namespace-aware well-formed XML parsing with authored fixtures, with DTDs rejected by application policy. This dependency does not validate CAP schema conformance or source authenticity.
 
 ## Cloudflare and Neon Free-tier deployment target — reviewed 24 September 2026
 

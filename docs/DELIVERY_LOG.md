@@ -820,3 +820,7 @@ Root independently passed in WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `1
 ### MOD-01 backlog row consolidated — 27 September 2026
 
 The backlog contained two rows with the stable `MOD-01` ID. Root merged the protected review scope, dependencies, requirement coverage, and current accepted/pending status into the existing moderator identity and authorization row, then removed the duplicate authentication/API row. The stable ID remains unchanged, and implementation remains gated on identity/session and operator-provisioning decisions. This documentation correction does not add routes, authentication, or review-write behavior.
+
+### ING-CAP-PARSE-CORE assigned — 27 September 2026
+
+The current backlog has no model, rights-cleared dataset, source credential, or hosted service available for the remaining evaluation/provider/connector tasks. To continue the L1 stack without crossing those gates, root assigned a pure CAP 1.2 parser over authored synthetic XML. The task preserves status/type/reference and message/event/validity/retrieval timestamps, validates only source-described geographic values, rejects DTDs, and adds no ingestion, database, API, or publication runtime. It uses a strict namespace-aware SAX parser as an ordinary Worker dependency; no external service or source content is acquired. BMKG activation remains disabled until its terms and fields are verified. See [the assignment](assignments/ING-CAP-PARSE-CORE.md) and [OASIS CAP 1.2](https://docs.oasis-open.org/emergency/cap/v1.2/CAP-v1.2-os.html).

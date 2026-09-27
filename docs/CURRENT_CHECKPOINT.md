@@ -5,7 +5,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next implementation:** The local authorization kernel and DB publication capability are accepted. Moderator login/session integration and restricted operator provisioning remain open under [ADR-006](decisions/ADR-006-moderator-auth.md), with the user's identity-path decision still pending; do not configure a provider, provision accounts, or expose a protected write route before that decision. The remaining planned ingestion, evaluation, retrieval, publication, and end-to-end tasks depend on approved source/data rights or those downstream tasks; the backlog has no additional assigned synthetic implementation slice ready now. Resume with the next bounded task when a pending identity/source-rights decision unlocks it. The public update feed continues hiding withdrawn versions and the full event history for a latest-withdrawn event.
+**Next implementation:** `ING-CAP-PARSE-CORE` is assigned as a local, synthetic-only Layer 1 parser task. It handles authored CAP 1.2 fixtures without acquiring, persisting, or publishing source data. Its acceptance will not approve BMKG reuse or enable a connector. The moderator identity/session choice still gates protected writes under [ADR-006](decisions/ADR-006-moderator-auth.md); source/data rights and human-labelled cases still gate live ingestion, model/provider evaluation, retrieval evaluation, and publication. The public update feed continues hiding withdrawn versions and the full event history for a latest-withdrawn event.
 
 ## Repository state
 
