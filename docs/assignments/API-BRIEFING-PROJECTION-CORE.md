@@ -56,4 +56,37 @@ Stop and report the precise gap if implementation requires an OpenAPI/request/re
 
 ## Implementation handoff
 
-Append the branch/worktree, commit SHA(s) and exact messages, changed paths, behavior, actual checks/results, runtime versions, limitations, migration/configuration impact, and remaining decisions after completing the implementation. Commit code and handoff in coherent commits on the assigned task branch. Root reviews and accepts the work independently.
+### Branch and implementation commit
+
+- Branch: `work/API-BRIEFING-PROJECTION-CORE`
+- Worktree: `C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL` in WSL Ubuntu-26.04)
+- Implementation commit: `f03fbc17bf40dfd336f1cbf7009132cfba37355b` — `feat(API-BRIEFING-PROJECTION-CORE): add exact-live briefing projection`
+- Handoff commit message: `docs(API-BRIEFING-PROJECTION-CORE): record implementation handoff`
+
+### Changed paths and behavior
+
+- `apps/worker/src/contracts/public-api.ts` adds TypeScript `BriefingRequest`, `BriefingInterests`, `BriefingItem`, and `BriefingResponse` types matching the existing closed OpenAPI shapes.
+- `apps/worker/src/layers/l4-application-integration/public-briefing-projection.ts` adds a pure Layer 4 projector that accepts only exact `live` mode, validates the closed interest request and projected event inputs, and applies case-insensitive exact matching after NFC normalization, trimming, and `toLocaleLowerCase("id")`. Categories compare by exact enum value. Scope names are read only from event, published claim, and published impact scopes. The projector preserves event order and returns each original `EventView` unchanged with at most one fixed Indonesian reason per matched dimension. It rejects malformed requests/events, invalid timestamps, duplicate event IDs, and pages over 100 items with stable generic errors.
+- `apps/worker/test/l4-public-briefing-projection.test.ts` covers all five dimensions, event/claim/impact scope matching, exact and mixed-case behavior, substring misses, deduplicated reasons, empty/no matches, preserved order/status/object identity, non-live modes, malformed/oversized inputs, duplicates, timestamps, response allowlists/bounds, and fixed reasons without interest-text interpolation. Fixtures are authored fictional values only.
+- `apps/worker/package.json` registers the focused test in the Worker suite.
+- This assignment file records the handoff.
+
+No briefing route, preference persistence, history read, or withdrawn-version read was added. The projector trusts its caller to provide exact-live, current-public `EventView`s from the existing L4 event projection; the `EventView` contract does not carry withdrawal state, so upstream current-public selection remains responsible for keeping a withdrawn latest version and its public history hidden.
+
+### Checks and runtime versions
+
+All checks ran in WSL Ubuntu 26.04 LTS using Node `v24.21.0` and npm `11.19.0`; the local tools were tsx `v4.23.15`, TypeScript `7.0.2`, and Wrangler `4.137.0`. No dependency was installed.
+
+- `npm exec --workspace=@waspada/worker -- tsx --test test/l4-public-briefing-projection.test.ts` — passed, 10 tests.
+- `npm test --workspace=@waspada/worker` — passed, 234 tests.
+- `npm run typecheck` — passed for web, Worker, DB, and evaluation TypeScript projects.
+- `npm run build` — passed; Vite production build and Wrangler Worker dry-run completed.
+- `git --git-dir=/mnt/d/Projects/RPL/.git/worktrees/RPL1 --work-tree=/mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL diff --check` and the corresponding `diff --cached --check` — passed with no whitespace errors.
+
+### Limitations and remaining decisions
+
+- This slice is not connected to an HTTP route or browser UI. It accepts only the supplied projected page and caller-generated timestamp; it performs no network, database, model, source-provider, or persistence work.
+- No migration, runtime configuration, binding, or dependency change is required. The package script change only registers the focused test.
+- No design decision remains for this core. Route integration remains outside this assignment and must continue to supply current-public exact-live event projections.
+
+The root orchestrator reviews and accepts this work independently.
