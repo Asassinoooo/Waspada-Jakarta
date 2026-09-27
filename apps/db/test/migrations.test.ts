@@ -19,7 +19,8 @@ describe('DATA-01 migrations', () => {
       && version !== '011_public_projection_lookups'
       && version !== '012_public_geometry_reader'
       && version !== '013_public_event_history_reader'
-      && version !== '014_public_event_history_review_metadata');
+      && version !== '014_public_event_history_review_metadata'
+      && version !== '015_public_geojson_candidates');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -44,7 +45,8 @@ describe('DATA-01 migrations', () => {
         && version !== '011_public_projection_lookups'
         && version !== '012_public_geometry_reader'
         && version !== '013_public_event_history_reader'
-      && version !== '014_public_event_history_review_metadata');
+        && version !== '014_public_event_history_review_metadata'
+        && version !== '015_public_geojson_candidates');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -156,7 +158,8 @@ describe('DATA-01 migrations', () => {
         '011_public_projection_lookups',
         '012_public_geometry_reader',
         '013_public_event_history_reader',
-      '014_public_event_history_review_metadata',
+        '014_public_event_history_review_metadata',
+        '015_public_geojson_candidates',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -286,7 +289,7 @@ describe('DATA-01 migrations', () => {
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
       '010_l2_grounding_context_writer', '011_public_projection_lookups',
       '012_public_geometry_reader', '013_public_event_history_reader',
-      '014_public_event_history_review_metadata',
+      '014_public_event_history_review_metadata', '015_public_geojson_candidates',
     ]);
   });
 
@@ -300,13 +303,13 @@ describe('DATA-01 migrations', () => {
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
       '010_l2_grounding_context_writer', '011_public_projection_lookups',
       '012_public_geometry_reader', '013_public_event_history_reader',
-      '014_public_event_history_review_metadata',
+      '014_public_event_history_review_metadata', '015_public_geojson_candidates',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '14');
+    assert.equal(count.rows[0]?.count, '15');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -325,7 +328,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 014_public_event_history_review_metadata/,
+      /Cannot apply migration 000_late_backfill before already applied migration 015_public_geojson_candidates/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -346,6 +349,7 @@ describe('DATA-01 migrations', () => {
       { version: '012_public_geometry_reader' },
       { version: '013_public_event_history_reader' },
       { version: '014_public_event_history_review_metadata' },
+      { version: '015_public_geojson_candidates' },
     ]);
   });
 
@@ -356,7 +360,7 @@ describe('DATA-01 migrations', () => {
       '008_l3_investigation_ledger', '009_evidence_reference_updates_relation',
       '010_l2_grounding_context_writer', '011_public_projection_lookups',
       '012_public_geometry_reader', '013_public_event_history_reader',
-      '014_public_event_history_review_metadata',
+      '014_public_event_history_review_metadata', '015_public_geojson_candidates',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
