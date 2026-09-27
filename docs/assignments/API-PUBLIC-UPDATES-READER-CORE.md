@@ -29,7 +29,7 @@ Run from WSL Ubuntu-26.04 at the repository root:
 
 ```sh
 npm run db:test
-npm run db:typecheck
+npm run typecheck --workspace=@waspada/db
 git diff --check
 ```
 
