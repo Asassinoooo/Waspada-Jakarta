@@ -41,4 +41,4 @@ Append branch/worktree, exact commit SHA(s) and messages, changed paths, behavio
 - **Runtime/packages:** WSL Ubuntu-26.04; Node.js `v24.21.0`; npm `11.19.0`; React and React DOM `19.3.0`; Vite `8.3.0`; Wrangler `4.137.0`.
 - **Limitations and visual review:** No browser screenshots were captured because this task was explicitly run without browser/UI automation while the user was using the computer. No live service or live data was used. The current checked-in Worker remains demo-only without a Hyperdrive binding, so the live briefing remains unavailable until the existing server context reports exact `live` and the existing route is configured.
 - **Migration/configuration impact:** None. No dependency, lockfile, API/DTO, Worker, binding, source, data, or migration changes.
-- **Remaining decisions:** None within this assigned UI slice. The update centre remains future work.
+- **Remaining decisions:** None within this assigned UI slice. At this handoff, the update centre remained future work; it was subsequently implemented under [UI-02-UPDATE-CENTER-CORE](UI-02-UPDATE-CENTER-CORE.md).
