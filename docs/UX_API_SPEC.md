@@ -1,6 +1,6 @@
 # Waspada Jakarta — UI flows and API contract
 
-**Status:** SPEC-03 design baseline accepted on 24 September 2026. The checked-in Worker remains in synthetic demo mode: it serves demo context, event pages, detail/history fixtures, and an empty GeoJSON collection because fixtures have no source-supported geometry. Exact-live runtimes are implemented for event lists, current-public detail, reviewed history, and GeoJSON, using request-scoped SQL and strict Layer 4 projections, but are not activated in the checked-in configuration. `GET /api/v1/context` also supports the exact server-selected live mode through the existing source-status provider; no connectors are registered, so the response reports an empty source list. The pure exact-match briefing projection and bounded current-public candidate reader are implemented; the `/briefings` route and browser integration are not yet wired. The browser consumes only API-returned GeoJSON and keeps its synthetic presentation fixture separate. Broader moderator flows and other public API operations remain unimplemented. The optional GeoJSON `bbox` uses the application envelope in [ADR-018](decisions/ADR-018-jakarta-geojson-query-envelope.md); it is a query bound, not an official boundary or event warning area.
+**Status:** SPEC-03 design baseline accepted on 24 September 2026. The checked-in Worker remains in synthetic demo mode: it serves demo context, event pages, detail/history fixtures, and an empty GeoJSON collection because fixtures have no source-supported geometry. Exact-live runtimes are implemented for event lists, current-public detail, reviewed history, GeoJSON, and transient briefings, using request-scoped SQL and strict Layer 4 projections, but are not activated in the checked-in configuration. `GET /api/v1/context` also supports exact server-selected live mode through the existing source-status provider; no connectors are registered, so the response reports an empty source list. The exact-match briefing projector, bounded current-public candidate reader, and `POST /api/v1/briefings` route are implemented. Browser briefing display and update polling are not yet wired. The browser consumes only API-returned GeoJSON and keeps its synthetic presentation fixture separate. Broader moderator flows and other public API operations remain unimplemented. The optional GeoJSON `bbox` uses the application envelope in [ADR-018](decisions/ADR-018-jakarta-geojson-query-envelope.md); it is a query bound, not an official boundary or event warning area.
 
 ## 1. Product and interaction rules
 
@@ -130,16 +130,17 @@ Ringkasan saya
 ├ Kategori yang diikuti: [pilih kategori]
 └ [Simpan di perangkat ini] [Hapus semua minat]
 
-Yang mungkin relevan • disusun dari informasi terbit
+Yang mungkin relevan • informasi terbit yang cocok
+└ [Tampilkan ringkasan]  (minat dikirim hanya setelah tindakan ini)
 ├ [Kartu ringkas event]  Mengapa muncul: cocok dengan layanan yang Anda ikuti
 ├ Perubahan sejak kunjungan terakhir • 09.30 WIB
 │  Rute Bus X: status diperbarui oleh operator • [Lihat sumber/perubahan]
-└ [Periksa pembaruan]
+└ Pembaruan otomatis: belum tersedia
 ```
 
-Preferences are stored locally in the browser for the MVP; public users do not register or create a server account. Explain that clearing browser data removes the saved interests. Place/service/group names may be sent as the minimum request data needed to build a briefing, but are not persisted server-side by this contract; never send precise device location or infer a user's identity. The user can inspect and clear their interests.
+Preferences are stored locally in the browser for the MVP; public users do not register or create a server account. Explain that clearing browser data removes the saved interests. Place/service/group names may be sent as the minimum request data needed to build a briefing, but are not persisted server-side by this contract; never send precise device location or infer a user's identity. The user can inspect and clear their interests. The browser briefing task sends interests only after the user explicitly requests a briefing; page load, editing, and local save do not send them. It calls the route only when the server-reported dataset mode is exactly `live`; demo and unknown modes show a clear unavailable explanation and never match synthetic records.
 
-The briefing contains only published claims and links to their event details. Each item explains the match, and event updates are deduplicated by event/impact version so repeated coverage does not create duplicate cards. Show material changes with prior/new values where public history permits. Poll in-site updates while the page is open; show the time of the last successful check and a manual refresh. No browser push is in MVP. If there are no matches, say **“Belum ada informasi terbit yang cocok dengan minat Anda.”** Do not phrase that as “semua aman”. If the system is offline, keep already loaded published information labelled with its known source times and state that it may be out of date.
+The briefing contains only published claims and links to their event details. Each item explains the match and keeps lifecycle, freshness, reported event time, and publication time distinct. An interest change or dataset-mode change invalidates the displayed result so an old match is not shown as current. Event updates are a separate future slice: deduplicate by event/impact version, show material changes with prior/new values where public history permits, poll while the page is open, and show the last successful check and a manual refresh. No browser push is in MVP. If there are no matches, say **“Belum ada informasi terbit yang cocok dengan minat Anda.”** Do not phrase that as “semua aman”. If the briefing route is unavailable, preserve locally saved interests and provide a generic retry state without displaying a partial response.
 
 ## 4. Moderator workspace
 
