@@ -223,9 +223,8 @@ test("database failures map to a bounded unavailable response", async () => {
   assert.equal(operations, 1);
 });
 
-test("all non-list routes remain unavailable in live mode without synthetic fallback", async () => {
+test("other non-list routes remain unavailable in live mode without synthetic fallback", async () => {
   const paths = [
-    "/api/v1/context",
     "/api/v1/events.geojson",
     "/api/v1/events/synthetic-demo-01",
     "/api/v1/events/synthetic-demo-01/history",

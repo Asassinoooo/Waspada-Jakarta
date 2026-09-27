@@ -41,10 +41,10 @@ export class PublicReadModel {
     private readonly fixtures = syntheticEventFixtures,
   ) {}
 
-  context(datasetMode: "demo"): PublicContext {
+  context(datasetMode: "demo" | "live"): PublicContext {
     return {
       dataset_mode: datasetMode,
-      dataset_label: "synthetic",
+      dataset_label: datasetMode === "live" ? "live" : "synthetic",
       generated_at: new Date().toISOString(),
       sources: this.sourceStatus.listPublicSourceStatus(),
     };

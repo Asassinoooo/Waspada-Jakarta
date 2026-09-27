@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.js";
-import type { EventDetail, EventPage, HistoryPage } from "../src/contracts/public-api.js";
+import type {
+  EventDetail,
+  EventPage,
+  HistoryPage,
+  PublicContext,
+} from "../src/contracts/public-api.js";
 import {
   handlePublicApiRequest,
   type WorkerEnvironment,
@@ -245,21 +250,63 @@ test("live GeoJSON without a configured runtime does not read the demo model", a
   assert.equal(readCount, 0);
 });
 
-test("context reports a server-selected synthetic dataset with no live sources", async () => {
+test("context reports the server-selected synthetic dataset in demo and omitted modes", async () => {
+  for (const environment of [demoEnvironment, {}]) {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/context"),
+      environment,
+    );
+    const body = await readJson<PublicContext>(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.dataset_mode, "demo");
+    assert.equal(body.dataset_label, "synthetic");
+    assert.equal(new Date(body.generated_at).toISOString(), body.generated_at);
+    assert.deepEqual(body.sources, []);
+    assertKeys(body, ["dataset_mode", "dataset_label", "generated_at", "sources"]);
+  }
+});
+
+test("exact live context uses bounded public source status without initializing SQL", async () => {
+  let hyperdriveReads = 0;
+  const environment: WorkerEnvironment = {
+    DATASET_MODE: "live",
+    get HYPERDRIVE(): { readonly connectionString?: string } {
+      hyperdriveReads += 1;
+      throw new Error("context must not initialize a database connection");
+    },
+  };
   const response = await worker.fetch(
-    new Request("http://localhost/api/v1/context"),
-    demoEnvironment,
+    new Request("http://localhost/api/v1/context?dataset_mode=demo&token=private-query-marker", {
+      headers: { "x-dataset-mode": "demo" },
+    }),
+    environment,
   );
-  const body = await readJson<{
-    dataset_mode: string;
-    dataset_label: string;
-    sources: unknown[];
-  }>(response);
+  const body = await readJson<PublicContext>(response);
+  const serialized = JSON.stringify(body);
 
   assert.equal(response.status, 200);
-  assert.equal(body.dataset_mode, "demo");
-  assert.equal(body.dataset_label, "synthetic");
+  assert.equal(body.dataset_mode, "live");
+  assert.equal(body.dataset_label, "live");
+  assert.equal(new Date(body.generated_at).toISOString(), body.generated_at);
   assert.deepEqual(body.sources, []);
+  assertKeys(body, ["dataset_mode", "dataset_label", "generated_at", "sources"]);
+  assert.ok(!serialized.includes("private-query-marker"));
+  assert.equal(hyperdriveReads, 0);
+
+  const write = await worker.fetch(
+    new Request("http://localhost/api/v1/context", { method: "POST" }),
+    { DATASET_MODE: "live" },
+  );
+  assert.equal(write.status, 405);
+  assert.equal((await readJson<{ code: string }>(write)).code, "INVALID_REQUEST");
+
+  const unknownMode = await worker.fetch(
+    new Request("http://localhost/api/v1/context"),
+    { DATASET_MODE: "staging" },
+  );
+  assert.equal(unknownMode.status, 503);
+  assert.equal((await readJson<{ code: string }>(unknownMode)).code, "TEMPORARILY_UNAVAILABLE");
 });
 
 test("event pages use the OpenAPI projection and bounded read filters", async () => {
@@ -450,7 +497,6 @@ test("exact live detail uses its injected projection while demo and other route 
   for (const path of [
     "/api/v1/events/event-synthetic-live-01/history",
     "/api/v1/events.geojson",
-    "/api/v1/context",
     "/api/v1/unknown",
   ]) {
     const response = await handlePublicApiRequest(
@@ -782,7 +828,7 @@ test("history query bounds follow the existing page convention", async () => {
   }
 });
 
-test("browser input cannot select a live dataset", async () => {
+test("browser input cannot select the server context dataset", async () => {
   const queryAttempt = await worker.fetch(
     new Request("http://localhost/api/v1/context?dataset_mode=live", {
       headers: { "x-dataset-mode": "live" },
@@ -794,12 +840,16 @@ test("browser input cannot select a live dataset", async () => {
   assert.equal(body.dataset_mode, "demo");
   assert.equal(body.dataset_label, "synthetic");
 
-  const wrongRuntime = await worker.fetch(
-    new Request("http://localhost/api/v1/context"),
+  const liveRequest = await worker.fetch(
+    new Request("http://localhost/api/v1/context?dataset_mode=demo", {
+      headers: { "x-dataset-mode": "demo" },
+    }),
     { DATASET_MODE: "live" },
   );
-  assert.equal(wrongRuntime.status, 503);
-  assert.match((await readJson<{ message: string }>(wrongRuntime)).message, /synthetic demo dataset/);
+  const liveBody = await readJson<PublicContext>(liveRequest);
+  assert.equal(liveRequest.status, 200);
+  assert.equal(liveBody.dataset_mode, "live");
+  assert.equal(liveBody.dataset_label, "live");
 });
 
 test("explicit non-demo mode blocks detail and history before a fixture read", async () => {
@@ -968,7 +1018,7 @@ test("injected telemetry records only bounded route, status, and duration across
       request: new Request(`http://localhost/api/v1/context?token=${marker}`),
       env: { DATASET_MODE: "live" },
       route: "context",
-      status: 503,
+      status: 200,
     },
     {
       request: new Request(`http://localhost/private-route?token=${marker}`),

@@ -122,6 +122,8 @@ export async function handlePublicApiRequest(
   let response: Response | undefined;
 
   try {
+    const exactLiveContextRoute =
+      env.DATASET_MODE === "live" && url.pathname === "/api/v1/context";
     const exactLiveListRoute =
       env.DATASET_MODE === "live" && url.pathname === "/api/v1/events";
     const exactLiveDetailRoute =
@@ -140,6 +142,7 @@ export async function handlePublicApiRequest(
         503,
       );
     } else if (env.DATASET_MODE === "live"
+      && !exactLiveContextRoute
       && !exactLiveListRoute
       && !exactLiveDetailRoute
       && !exactLiveHistoryRoute
@@ -156,7 +159,9 @@ export async function handlePublicApiRequest(
     } else if (exactLiveHistoryRoute && !eventHistoryProjectionService) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
     } else if (route === "context") {
-      const context: PublicContext = readModel.context("demo");
+      const context: PublicContext = readModel.context(
+        env.DATASET_MODE === "live" ? "live" : "demo",
+      );
       response = jsonResponse(context);
     } else if (route === "events") {
       if (selectedGeoJSONRoute) {
