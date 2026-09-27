@@ -476,6 +476,58 @@ test("failed 410 snapshot refresh stays pending and is retried before cursor pol
   assert.equal(captured.states.at(-1)?.resetNotice, true);
 });
 
+test("410 clears in-memory cards before storage removal failure and retries from a fresh baseline", async (t) => {
+  const storage = new MemoryStorage();
+  storage.values.set(UPDATE_CURSOR_STORAGE_KEY, "expired-cursor");
+  const scheduler = new FakeScheduler();
+  const captured = captureStates();
+  const calls: string[] = [];
+  const poller = createUpdateCenterPoller({
+    interests: interests({ categories: ["disasters_weather"] }),
+    storage,
+    scheduler,
+    onState: captured.onState,
+    refreshCurrentEvents: async () => { calls.push("events"); },
+    getUpdates: async (cursor) => {
+      calls.push("updates:" + (cursor ?? "baseline"));
+      if (cursor === "expired-cursor") return page([change("fictional-existing")], "cursor-before-reset");
+      if (cursor === "cursor-before-reset") throw new ApiHttpError(410);
+      if (cursor === undefined) return page([], "cursor-rebased");
+      if (cursor === "cursor-rebased") return page([], "cursor-resumed");
+      throw new Error("unexpected synthetic cursor");
+    },
+    getDetail: async (eventId) => detail(eventId),
+  });
+  t.after(() => poller.stop());
+
+  poller.start(true);
+  await poller.refresh();
+  assert.equal(captured.states.at(-1)?.items.length, 1);
+  assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), "cursor-before-reset");
+
+  storage.removeFailure = true;
+  await poller.refresh();
+  assert.equal(captured.states.at(-1)?.status, "unavailable");
+  assert.equal(captured.states.at(-1)?.failure, "storage");
+  assert.equal(captured.states.at(-1)?.resetNotice, true);
+  assert.deepEqual(captured.states.at(-1)?.items, []);
+  assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), "cursor-before-reset");
+  assert.deepEqual(calls, ["updates:expired-cursor", "updates:cursor-before-reset"]);
+
+  storage.removeFailure = false;
+  await poller.refresh();
+  assert.deepEqual(calls, [
+    "updates:expired-cursor",
+    "updates:cursor-before-reset",
+    "updates:baseline",
+    "events",
+    "updates:cursor-rebased",
+  ]);
+  assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), "cursor-resumed");
+  assert.equal(captured.states.at(-1)?.status, "ready");
+  assert.deepEqual(captured.states.at(-1)?.items, []);
+});
+
 test("page budget stops after five full pages and continues from the fifth cursor next cycle", async (t) => {
   const storage = new MemoryStorage();
   storage.values.set(UPDATE_CURSOR_STORAGE_KEY, "cursor-0");

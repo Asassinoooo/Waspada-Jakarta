@@ -344,13 +344,15 @@ export function createUpdateCenterPoller(options: UpdateCenterPollerOptions): Up
     cursor = nextCursor;
   };
   const clearCursor = () => {
+    // Treat the reset as active in memory before touching browser storage. If
+    // removal fails, the current session must still avoid the expired cursor.
+    cursor = null;
+    cursorInitialized = true;
     try {
       options.storage.removeItem(UPDATE_CURSOR_STORAGE_KEY);
     } catch {
       throw new UpdateCenterStorageError();
     }
-    cursor = null;
-    cursorInitialized = true;
   };
   const initializeCursor = () => {
     let stored: string | null;
@@ -446,7 +448,6 @@ export function createUpdateCenterPoller(options: UpdateCenterPollerOptions): Up
         } catch (error) {
           if (!isCurrent(ticket)) return false;
           if (error instanceof ApiHttpError && error.status === 410) {
-            clearCursor();
             displayedItems.clear();
             needsSnapshotRefresh = true;
             resetNotice = true;
@@ -458,6 +459,7 @@ export function createUpdateCenterPoller(options: UpdateCenterPollerOptions): Up
               resetNotice: true,
               failure: null,
             });
+            clearCursor();
             continue;
           }
           throw error;
