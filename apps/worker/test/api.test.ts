@@ -24,6 +24,11 @@ import type { PublicEventDetailProjectionService } from "../src/layers/l4-applic
 import type { PublicEventHistoryProjectionService } from "../src/layers/l4-application-integration/public-event-history-projection-service.js";
 import type { PublicEventGeoJSONRuntime } from "../src/runtime/public-event-geojson-runtime.js";
 import {
+  PublicEventUpdatesRuntimeError,
+  type PublicEventUpdatesRuntime,
+} from "../src/runtime/public-event-updates-runtime.js";
+import type { PublicEventUpdatesPage } from "../src/layers/l4-application-integration/public-event-updates-service.js";
+import {
   API_REQUEST_EVENT_NAME,
   consoleTelemetry,
   type TelemetryRecord,
@@ -38,6 +43,93 @@ async function readJson<T>(response: Response): Promise<T> {
 function assertKeys(value: object, expected: string[]) {
   assert.deepEqual(Object.keys(value).sort(), [...expected].sort());
 }
+
+test("updates remain unavailable in demo and unset modes without synthetic fallback", async () => {
+  for (const environment of [{}, demoEnvironment]) {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/updates"),
+      environment,
+    );
+    const body = await readJson<{ code: string; message: string; request_id: string }>(response);
+    assert.equal(response.status, 503);
+    assert.equal(body.code, "TEMPORARILY_UNAVAILABLE");
+    assert.equal(body.message, "The public read could not be completed.");
+    assert.match(body.request_id, /^[0-9a-f-]{36}$/iu);
+  }
+
+  const write = await worker.fetch(
+    new Request("http://localhost/api/v1/updates", { method: "POST" }),
+    demoEnvironment,
+  );
+  assert.equal(write.status, 405);
+});
+
+test("exact-live updates validates query shape and preserves the UpdatePage and error envelopes", async () => {
+  let calls = 0;
+  let received: unknown;
+  const page: PublicEventUpdatesPage = {
+    items: [{
+      event_id: "event-fictional-update-api-01",
+      version: 2,
+      change_type: "corrected",
+      changed_at: "2026-09-26T23:59:00.000Z",
+      summary: "Authored fictional reviewed summary.",
+    }],
+    next_cursor: "fictional-next-cursor",
+    cursor_expires_at: "2026-10-27T00:00:00.000Z",
+    checked_at: "2026-09-27T00:00:00.000Z",
+  };
+  const runtime: PublicEventUpdatesRuntime = {
+    async read(request) {
+      calls += 1;
+      received = request;
+      return page;
+    },
+  };
+  const makeRequest = (query = "") => new Request("http://localhost/api/v1/updates" + query);
+  for (const query of ["?unknown=private-marker", "?limit=01", "?limit=1&limit=2", "?cursor="]) {
+    const invalid = await handlePublicApiRequest(makeRequest(query), { DATASET_MODE: "live" }, undefined,
+      undefined, undefined, undefined, undefined, undefined, runtime);
+    const body = await readJson<{ code: string; message: string }>(invalid);
+    assert.equal(invalid.status, 400, query);
+    assert.equal(body.code, "INVALID_REQUEST");
+    assert.equal(body.message, "The public update request is invalid.");
+    assert.ok(!JSON.stringify(body).includes("private-marker"));
+  }
+  assert.equal(calls, 0, "invalid requests do not reach the update runtime");
+
+  const live = await handlePublicApiRequest(makeRequest("?limit=2"), { DATASET_MODE: "live" }, undefined,
+    undefined, undefined, undefined, undefined, undefined, runtime);
+  assert.equal(live.status, 200);
+  assert.equal(live.headers.get("cache-control"), "no-store");
+  assert.equal(live.headers.get("x-content-type-options"), "nosniff");
+  assert.deepEqual(await readJson(live), page);
+  assert.deepEqual(received, { cursor: undefined, limit: 2 });
+  assert.equal(calls, 1);
+
+  const expiredRuntime: PublicEventUpdatesRuntime = {
+    async read() { throw new PublicEventUpdatesRuntimeError("CURSOR_RESTART_REQUIRED"); },
+  };
+  const expired = await handlePublicApiRequest(makeRequest("?cursor=synthetic-expired"), { DATASET_MODE: "live" }, undefined,
+    undefined, undefined, undefined, undefined, undefined, expiredRuntime);
+  const expiredBody = await readJson<{ code: string; message: string; request_id: string }>(expired);
+  assert.equal(expired.status, 410);
+  assert.equal(expiredBody.code, "CURSOR_RESTART_REQUIRED");
+  assert.equal(expiredBody.message, "Update polling must restart from the current public snapshot.");
+  assert.ok(!JSON.stringify(expiredBody).includes("synthetic-expired"));
+
+  const failedRuntime: PublicEventUpdatesRuntime = {
+    async read() { throw new Error("private-summary-marker and postgres://private-connection"); },
+  };
+  const failed = await handlePublicApiRequest(makeRequest(), { DATASET_MODE: "live" }, undefined,
+    undefined, undefined, undefined, undefined, undefined, failedRuntime);
+  const failedBody = await readJson<{ code: string; message: string; request_id: string }>(failed);
+  assert.equal(failed.status, 503);
+  assert.equal(failedBody.code, "TEMPORARILY_UNAVAILABLE");
+  assert.equal(failedBody.message, "The public read could not be completed.");
+  assert.ok(!JSON.stringify(failedBody).includes("private-summary-marker"));
+  assert.ok(!JSON.stringify(failedBody).includes("private-connection"));
+});
 
 test("GeoJSON query defaults to the inclusive application envelope and accepts contained bounds", () => {
   assert.deepEqual(readPublicGeoJSONQuery(new URLSearchParams()), {

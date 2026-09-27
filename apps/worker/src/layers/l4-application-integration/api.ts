@@ -31,6 +31,11 @@ import {
   PublicBriefingRuntimeError,
   type PublicBriefingRuntime,
 } from "../../runtime/public-briefing-runtime.js";
+import {
+  PublicEventUpdatesRuntimeError,
+  readPublicEventUpdatesQuery,
+  type PublicEventUpdatesRuntime,
+} from "../../runtime/public-event-updates-runtime.js";
 
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
@@ -122,16 +127,19 @@ export async function handlePublicApiRequest(
   eventHistoryProjectionService?: PublicEventHistoryProjectionService,
   eventGeoJSONRuntime?: PublicEventGeoJSONRuntime,
   publicBriefingRuntime?: PublicBriefingRuntime,
+  publicEventUpdatesRuntime?: PublicEventUpdatesRuntime,
 ) {
   const startedAt = Date.now();
   const url = new URL(request.url);
   const selectedEventRoute = eventRoute(url.pathname);
   const selectedGeoJSONRoute = url.pathname === "/api/v1/events.geojson";
   const selectedBriefingRoute = url.pathname === "/api/v1/briefings";
+  const selectedUpdatesRoute = url.pathname === "/api/v1/updates";
   const route =
     url.pathname === "/api/v1/context"
       ? "context"
-      : url.pathname === "/api/v1/events" || selectedEventRoute !== null || selectedGeoJSONRoute
+      : url.pathname === "/api/v1/events" || selectedEventRoute !== null
+        || selectedGeoJSONRoute || selectedUpdatesRoute
         ? "events"
         : "other";
   let response: Response | undefined;
@@ -146,6 +154,7 @@ export async function handlePublicApiRequest(
     const exactLiveHistoryRoute =
       env.DATASET_MODE === "live" && selectedEventRoute?.kind === "history";
     const exactLiveGeoJSONRoute = env.DATASET_MODE === "live" && selectedGeoJSONRoute;
+    const exactLiveUpdatesRoute = env.DATASET_MODE === "live" && selectedUpdatesRoute;
     const exactLiveBriefingRoute = env.DATASET_MODE === "live"
       && selectedBriefingRoute
       && request.method === "POST";
@@ -172,7 +181,8 @@ export async function handlePublicApiRequest(
       && !exactLiveDetailRoute
       && !exactLiveHistoryRoute
       && !exactLiveGeoJSONRoute
-      && !exactLiveBriefingRoute) {
+      && !exactLiveBriefingRoute
+      && !exactLiveUpdatesRoute) {
       response = apiError(
         "TEMPORARILY_UNAVAILABLE",
         "This runtime only contains the synthetic demo dataset.",
@@ -200,6 +210,22 @@ export async function handlePublicApiRequest(
           throw new PublicBriefingRuntimeError("READ_FAILED");
         }
         response = jsonResponse(briefing);
+      }
+    } else if (selectedUpdatesRoute) {
+      if (env.DATASET_MODE !== "live") {
+        response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
+      } else {
+        const updatesRequest = readPublicEventUpdatesQuery(url.searchParams);
+        if (!publicEventUpdatesRuntime) {
+          response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
+        } else {
+          try {
+            response = jsonResponse(await publicEventUpdatesRuntime.read(updatesRequest));
+          } catch (error) {
+            if (error instanceof PublicEventUpdatesRuntimeError) throw error;
+            throw new PublicEventUpdatesRuntimeError("READ_FAILED");
+          }
+        }
       }
     } else if (route === "context") {
       const context: PublicContext = readModel.context(
@@ -259,7 +285,13 @@ export async function handlePublicApiRequest(
       response = apiError("NOT_FOUND", "The requested public route was not found.", 404);
     }
   } catch (error) {
-    response = error instanceof BriefingRequestBodyError
+    response = error instanceof PublicEventUpdatesRuntimeError
+      ? error.code === "INVALID_REQUEST"
+        ? apiError("INVALID_REQUEST", "The public update request is invalid.", 400)
+        : error.code === "CURSOR_RESTART_REQUIRED"
+          ? apiError("CURSOR_RESTART_REQUIRED", "Update polling must restart from the current public snapshot.", 410)
+          : apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503)
+      : error instanceof BriefingRequestBodyError
       || (error instanceof PublicBriefingRuntimeError && error.code === "INVALID_REQUEST")
       ? apiError("INVALID_REQUEST", "The briefing request is invalid.", 400)
       : error instanceof PublicBriefingRuntimeError

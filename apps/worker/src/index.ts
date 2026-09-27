@@ -3,6 +3,7 @@ import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-ru
 import { createPublicEventHistoryRuntime } from "./runtime/public-event-history-runtime.js";
 import { createPublicEventGeoJSONRuntime } from "./runtime/public-event-geojson-runtime.js";
 import { createPublicBriefingRuntime } from "./runtime/public-briefing-runtime.js";
+import { createPublicEventUpdatesRuntime } from "./runtime/public-event-updates-runtime.js";
 import {
   handlePublicApiRequest,
   isPublicEventDetailPath,
@@ -60,6 +61,20 @@ export default {
           connectionString: env.HYPERDRIVE?.connectionString,
         })
         : undefined;
+    let publicEventUpdatesRuntime;
+    if (env.DATASET_MODE === "live"
+      && request.method === "GET"
+      && url.pathname === "/api/v1/updates") {
+      try {
+        publicEventUpdatesRuntime = await createPublicEventUpdatesRuntime({
+          datasetMode: env.DATASET_MODE,
+          connectionString: env.HYPERDRIVE?.connectionString,
+          cursorHmacKeyHex: env.PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX,
+        });
+      } catch {
+        publicEventUpdatesRuntime = undefined;
+      }
+    }
 
     return handlePublicApiRequest(
       request,
@@ -70,6 +85,7 @@ export default {
       eventHistoryProjectionService,
       eventGeoJSONRuntime,
       publicBriefingRuntime,
+      publicEventUpdatesRuntime,
     );
   },
 };
