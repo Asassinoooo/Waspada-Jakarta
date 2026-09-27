@@ -53,7 +53,7 @@ Commit implementation and the implementation handoff on the assigned branch in s
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l1-fixture-runner-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/l1-fixture-runner-core/RPL`)
 - **Base:** `07421620f976ecd58433e0e683f4230f0ff46f48`
 - **Implementation commit:** `49b5c15bcc48e4745e6a040943c1358d0cc4dcd9` — `feat(L2-INVESTIGATION-PLAN-CORE): add typed action planner`
-- **Handoff commit:** recorded separately with message `docs(L2-INVESTIGATION-PLAN-CORE): record implementation handoff`; its SHA is in the task handoff.
+- **Handoff commit:** `843da62c6fa0993a51fcff8bda9164836a07c7c6` — `docs(L2-INVESTIGATION-PLAN-CORE): record implementation handoff`.
 
 ### Behavior implemented
 
@@ -85,4 +85,8 @@ Checks ran in WSL Ubuntu-26.04 with Node.js `v24.21.0`, npm `11.19.0`, tsx `4.23
 
 ### Limitations and remaining decisions
 
-This is synthetic provider-injected groundwork only. There is no model provider, prompt construction, registered action, L3 coordinator loop, runtime composition, route, acquisition, or publication behavior. The tests prove structural validation and redaction, not model quality, hosted-provider behavior, or prompt-injection resistance. No contract gap or migration decision remains. Root review and integration are pending.
+This is synthetic provider-injected groundwork only. There is no model provider, prompt construction, registered action, L3 coordinator loop, runtime composition, route, acquisition, or publication behavior. The tests prove structural validation and redaction, not model quality, hosted-provider behavior, or prompt-injection resistance. No contract gap or migration decision remains.
+
+### Root review and integration
+
+Root accepted the branch after reviewing the implementation and handoff and independently passing the focused planner test (11/11), Worker suite (293/293), workspace typecheck, production build/Wrangler dry-run, and WSL branch diff check. The agent's final WSL full `npm test` exited 0 with all web/Worker suites, 20/20 DB test files, and evaluation casebook 12/12. The commits were cherry-picked to `main` as `bb8ed74` (implementation) and `8be89de` (handoff). No provider, database, API, or runtime composition was added.
