@@ -55,7 +55,8 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     const updateMigration = migrations.find(({ version }) => version === '016_public_update_feed_order');
     assert.ok(updateMigration, 'migration 016 is loaded');
     await applyMigrations(database.executor, migrations.filter(({ version }) =>
-      version !== '016_public_update_feed_order'));
+      version !== '016_public_update_feed_order'
+      && version !== '017_moderator_publication_writer_role'));
     await database.executor.query(
       "INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')",
     );
@@ -78,7 +79,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     await seedReviewBeforeMigration({ eventId: 'event-page', eventVersion: 2, status: 'approved', changeType: 'corrected', summary: 'Authored fictional page two.' });
 
     const applied = await applyMigrations(database.executor, migrations);
-    assert.deepEqual(applied.applied, ['016_public_update_feed_order']);
+    assert.deepEqual(applied.applied, ['016_public_update_feed_order', '017_moderator_publication_writer_role']);
   });
 
   after(async () => {

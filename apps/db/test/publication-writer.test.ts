@@ -141,15 +141,15 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
     await database.close();
   });
 
-  it('writes a complete event and impact set under the L4 role, preserves evidence relations, and safely replays', async () => {
+  it('writes and replays a complete event and impact set under the dedicated capability role', async () => {
     const command = makeCommand({ idempotencyKey: 'pub-write-create-key' });
-    const first = await runAsWriter(database, () => writer.publish(command));
+    const first = await runAsModeratorPublicationWriter(database, () => writer.publish(command));
     assert.deepEqual(first, {
       outcome: 'written', decisionId: command.decisionId,
       eventId: command.event.event_id, eventVersion: 1,
     });
 
-    const replay = await runAsWriter(database, () => writer.publish(command));
+    const replay = await runAsModeratorPublicationWriter(database, () => writer.publish(command));
     assert.deepEqual(replay, {
       outcome: 'replayed', decisionId: command.decisionId,
       eventId: command.event.event_id, eventVersion: 1,
@@ -223,7 +223,7 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
       impact: impactDraft(2, 2),
       expectedTarget: { event_id: fixtureEventId, base_event_version: 1 },
     });
-    const result = await runAsWriter(database, () => writer.publish(command));
+    const result = await runAsModeratorPublicationWriter(database, () => writer.publish(command));
     assert.deepEqual(result, {
       outcome: 'written', decisionId: command.decisionId,
       eventId: fixtureEventId, eventVersion: 2,
@@ -262,13 +262,13 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
       impact: impactDraft(1, 1, 'event-pub-write-conflict', 'impact-pub-write-conflict'),
     });
     await seedProposal(database, created.proposalId, null);
-    assert.equal((await writer.publish(created)).outcome, 'written');
+    assert.equal((await runAsModeratorPublicationWriter(database, () => writer.publish(created))).outcome, 'written');
 
     const changedPayload = { ...created, event: { ...created.event, title: 'Different approved title' } };
-    assert.deepEqual(await writer.publish(changedPayload), { outcome: 'conflict', code: 'idempotency_key_reused' });
+    assert.deepEqual(await runAsModeratorPublicationWriter(database, () => writer.publish(changedPayload)), { outcome: 'conflict', code: 'idempotency_key_reused' });
 
     const duplicateCreate = { ...created, idempotencyKey: 'pub-write-duplicate-event-key' };
-    assert.deepEqual(await writer.publish(duplicateCreate), { outcome: 'conflict', code: 'event_version_exists' });
+    assert.deepEqual(await runAsModeratorPublicationWriter(database, () => writer.publish(duplicateCreate)), { outcome: 'conflict', code: 'event_version_exists' });
 
     const staleProposalId = 'proposal-pub-write-stale';
     await seedProposal(database, staleProposalId, { eventId: fixtureEventId, baseVersion: 1 });
@@ -280,7 +280,7 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
       event: eventDraft(2, 1),
       impact: impactDraft(3, 2),
     });
-    assert.deepEqual(await writer.publish(stale), { outcome: 'conflict', code: 'stale_event_version' });
+    assert.deepEqual(await runAsModeratorPublicationWriter(database, () => writer.publish(stale)), { outcome: 'conflict', code: 'stale_event_version' });
     const staleRows = await database.executor.query<{ count: string }>(
       `SELECT count(*)::text AS count FROM waspada.publication_decisions
        WHERE dataset_kind = 'live' AND decision_id = 'decision-pub-write-stale'`,
@@ -308,7 +308,7 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
       event: eventDraft(1, null, eventId),
       impact: impactDraft(1, 1, eventId, 'impact-pub-write-concurrent-right'),
     });
-    const results = await Promise.all([writer.publish(left), writer.publish(right)]);
+    const results = await runAsModeratorPublicationWriter(database, () => Promise.all([writer.publish(left), writer.publish(right)]));
     assert.deepEqual(results.map((result) => result.outcome).sort(), ['conflict', 'written']);
     assert.deepEqual(results.filter((result) => result.outcome === 'conflict'), [
       { outcome: 'conflict', code: 'event_version_exists' },
@@ -441,14 +441,14 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
     await database.executor.query("UPDATE waspada.dataset_namespace_config SET dataset_kind = 'synthetic' WHERE singleton = true");
     try {
       await assert.rejects(
-        writer.publish(makeCommand({
+        runAsModeratorPublicationWriter(database, () => writer.publish(makeCommand({
           idempotencyKey: 'pub-write-synthetic-namespace-key',
           proposalId: 'proposal-pub-write-synthetic-namespace',
-        })),
+        }))),
         (error: unknown) => error instanceof PublicationWriteError && error.code === 'live_dataset_namespace_required',
       );
       await assert.rejects(
-        writer.publish(makeCommand({ idempotencyKey: 'pub-write-create-key' })),
+        runAsModeratorPublicationWriter(database, () => writer.publish(makeCommand({ idempotencyKey: 'pub-write-create-key' }))),
         (error: unknown) => error instanceof PublicationWriteError && error.code === 'live_dataset_namespace_required',
       );
     } finally {
@@ -475,7 +475,7 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
     });
     await seedProposal(database, command.proposalId, null);
     try {
-      await assert.rejects(writer.publish(command), /fixture outbox failure/);
+      await assert.rejects(runAsModeratorPublicationWriter(database, () => writer.publish(command)), /fixture outbox failure/);
     } finally {
       await database.executor.execute('DROP TRIGGER test_reject_publication_outbox_insert ON waspada.publication_outbox');
       await database.executor.execute('DROP FUNCTION waspada.test_reject_publication_outbox_insert()');
@@ -495,7 +495,47 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
     }
   });
 
-  it('denies unrelated reads and mutations under SET ROLE while retaining the existing narrow source lookup', async () => {
+  it('denies unrelated reads and writes under the dedicated publication capability role', async () => {
+    await runAsModeratorPublicationWriter(database, async () => {
+      await assert.rejects(
+        database.executor.query('SELECT * FROM waspada.source_registry LIMIT 1'),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query("UPDATE waspada.source_registry SET auto_publication_policy = 'never'"),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query('SELECT * FROM waspada.traces LIMIT 1'),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query("INSERT INTO waspada.traces (trace_id, dataset_kind, started_at) VALUES ('trace-role-denial', 'live', now())"),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query('SELECT * FROM waspada.acquisition_jobs LIMIT 1'),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query("UPDATE waspada.acquisition_jobs SET status = 'cancelled'"),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query('SELECT * FROM waspada.publication_write_receipts LIMIT 1'),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query("UPDATE waspada.event_versions SET title = 'changed' WHERE dataset_kind = 'live'"),
+        /permission denied/,
+      );
+      await assert.rejects(
+        database.executor.query("DELETE FROM waspada.publication_outbox"),
+        /permission denied/,
+      );
+    });
+  });
+  it('preserves the existing shared L4 source lookup and denies unrelated reads and mutations', async () => {
     const ports = createRepositoryPorts(database.executor);
     await runAsWriter(database, async () => {
       const source = await ports.sourceRegistry.findById('source-pub-write-fixture');
@@ -535,7 +575,7 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
       /append-only/,
     );
     await assert.rejects(
-      database.executor.query("DELETE FROM waspada.publication_outbox WHERE dataset_kind = 'live'"),
+      database.executor.query("DELETE FROM waspada.publication_outbox"),
       /append-only/,
     );
     await assert.rejects(
@@ -768,6 +808,17 @@ function impactDraft(
     supporting_claim_ids: [fixtureClaimId],
     published_at: '2026-09-25T05:00:00Z',
   };
+}
+
+async function runAsModeratorPublicationWriter<Result>(database: TestDatabase, operation: () => Promise<Result>): Promise<Result> {
+  await database.executor.execute('SET ROLE waspada_l4_moderator_publication_writer');
+  try {
+    const activeRole = await database.executor.query<{ current_user: string }>('SELECT current_user');
+    assert.equal(activeRole.rows[0]?.current_user, 'waspada_l4_moderator_publication_writer');
+    return await operation();
+  } finally {
+    await database.executor.execute('RESET ROLE');
+  }
 }
 
 async function runAsWriter<Result>(database: TestDatabase, operation: () => Promise<Result>): Promise<Result> {

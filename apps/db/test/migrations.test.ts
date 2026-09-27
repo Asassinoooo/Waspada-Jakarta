@@ -21,7 +21,8 @@ describe('DATA-01 migrations', () => {
       && version !== '013_public_event_history_reader'
       && version !== '014_public_event_history_review_metadata'
       && version !== '015_public_geojson_candidates'
-      && version !== '016_public_update_feed_order');
+      && version !== '016_public_update_feed_order'
+      && version !== '017_moderator_publication_writer_role');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -48,7 +49,8 @@ describe('DATA-01 migrations', () => {
         && version !== '013_public_event_history_reader'
         && version !== '014_public_event_history_review_metadata'
         && version !== '015_public_geojson_candidates'
-        && version !== '016_public_update_feed_order');
+        && version !== '016_public_update_feed_order'
+        && version !== '017_moderator_publication_writer_role');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -163,6 +165,7 @@ describe('DATA-01 migrations', () => {
         '014_public_event_history_review_metadata',
         '015_public_geojson_candidates',
         '016_public_update_feed_order',
+        '017_moderator_publication_writer_role',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -294,6 +297,7 @@ describe('DATA-01 migrations', () => {
       '012_public_geometry_reader', '013_public_event_history_reader',
       '014_public_event_history_review_metadata', '015_public_geojson_candidates',
       '016_public_update_feed_order',
+      '017_moderator_publication_writer_role',
     ]);
   });
 
@@ -309,12 +313,13 @@ describe('DATA-01 migrations', () => {
       '012_public_geometry_reader', '013_public_event_history_reader',
       '014_public_event_history_review_metadata', '015_public_geojson_candidates',
       '016_public_update_feed_order',
+      '017_moderator_publication_writer_role',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '16');
+    assert.equal(count.rows[0]?.count, '17');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -333,7 +338,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 016_public_update_feed_order/,
+      /Cannot apply migration 000_late_backfill before already applied migration 017_moderator_publication_writer_role/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -356,6 +361,7 @@ describe('DATA-01 migrations', () => {
       { version: '014_public_event_history_review_metadata' },
       { version: '015_public_geojson_candidates' },
       { version: '016_public_update_feed_order' },
+      { version: '017_moderator_publication_writer_role' },
     ]);
   });
 
@@ -368,6 +374,7 @@ describe('DATA-01 migrations', () => {
       '012_public_geometry_reader', '013_public_event_history_reader',
       '014_public_event_history_review_metadata', '015_public_geojson_candidates',
       '016_public_update_feed_order',
+      '017_moderator_publication_writer_role',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -376,6 +383,189 @@ describe('DATA-01 migrations', () => {
     assert.match(version.rows[0]?.server_version ?? '', /^\d+/);
   });
 
+  it('creates the isolated publication capability with its exact operation grants', async () => {
+    const role = await testDatabase.executor.query<{
+      rolcanlogin: boolean;
+      rolsuper: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolinherit: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+    }>(
+      `SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit,
+              rolreplication, rolbypassrls
+       FROM pg_roles WHERE rolname = 'waspada_l4_moderator_publication_writer'`,
+    );
+    assert.deepEqual(role.rows[0], {
+      rolcanlogin: false, rolsuper: false, rolcreatedb: false, rolcreaterole: false,
+      rolinherit: false, rolreplication: false, rolbypassrls: false,
+    });
+
+    const membership = await testDatabase.executor.query<{ count: number }>(
+      `SELECT count(*)::integer AS count FROM pg_auth_members
+       WHERE member = (SELECT oid FROM pg_roles WHERE rolname = 'waspada_l4_moderator_publication_writer')
+          OR roleid = (SELECT oid FROM pg_roles WHERE rolname = 'waspada_l4_moderator_publication_writer')`,
+    );
+    assert.equal(membership.rows[0]?.count, 0, 'the capability has no role memberships in either direction');
+
+    const schema = await testDatabase.executor.query<{ can_use: boolean; can_create: boolean }>(
+      `SELECT has_schema_privilege('waspada_l4_moderator_publication_writer', 'waspada', 'USAGE') AS can_use,
+              has_schema_privilege('waspada_l4_moderator_publication_writer', 'waspada', 'CREATE') AS can_create`,
+    );
+    assert.deepEqual(schema.rows[0], { can_use: true, can_create: false });
+
+    const columns = await testDatabase.executor.query<{
+      table_name: string;
+      column_name: string;
+      can_select: boolean;
+      can_insert: boolean;
+      can_update: boolean;
+    }>(
+      `SELECT table_class.relname AS table_name, column_meta.attname AS column_name,
+              has_column_privilege('waspada_l4_moderator_publication_writer', table_class.oid, column_meta.attnum, 'SELECT') AS can_select,
+              has_column_privilege('waspada_l4_moderator_publication_writer', table_class.oid, column_meta.attnum, 'INSERT') AS can_insert,
+              has_column_privilege('waspada_l4_moderator_publication_writer', table_class.oid, column_meta.attnum, 'UPDATE') AS can_update
+       FROM pg_class AS table_class
+       JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+       JOIN pg_attribute AS column_meta ON column_meta.attrelid = table_class.oid
+       WHERE table_schema.nspname = 'waspada' AND table_class.relkind IN ('r', 'p')
+         AND column_meta.attnum > 0 AND NOT column_meta.attisdropped
+       ORDER BY table_class.relname, column_meta.attname`,
+    );
+    const expected = new Set<string>();
+    const expect = (table: string, privilege: 'select' | 'insert', names: readonly string[]) => {
+      for (const name of names) expected.add(`${table}.${name}.${privilege}`);
+    };
+    expect('dataset_namespace_config', 'select', ['dataset_kind']);
+    expect('traces', 'select', ['trace_id', 'dataset_kind']);
+    expect('event_proposals', 'select', [
+      'dataset_kind', 'proposal_id', 'trace_id', 'candidate_id', 'context_id',
+      'event_id', 'base_event_version', 'record_json',
+    ]);
+    expect('proposal_claims', 'select', [
+      'dataset_kind', 'proposal_id', 'claim_id', 'support_assessment', 'evidence_label', 'claim_text', 'record_json',
+    ]);
+    expect('proposal_claim_evidence', 'select', [
+      'dataset_kind', 'proposal_id', 'claim_id', 'evidence_kind', 'evidence_ref_id',
+    ]);
+    expect('proposal_claim_origins', 'select', ['dataset_kind', 'proposal_id', 'claim_id', 'origin_id']);
+    expect('grounding_evidence', 'select', ['dataset_kind', 'context_id', 'evidence_ref_id']);
+    expect('evidence_references', 'select', [
+      'dataset_kind', 'evidence_ref_id', 'report_revision_id', 'permitted_text_hash',
+      'span_start', 'span_end', 'offset_unit', 'relation',
+    ]);
+    expect('geometry_evidence', 'select', ['dataset_kind', 'geometry_id', 'evidence_ref_id']);
+    expect('geometries', 'select', ['dataset_kind', 'geometry_id']);
+    expect('event_versions', 'select', ['dataset_kind', 'event_id', 'version']);
+    expect('impact_versions', 'select', ['dataset_kind', 'impact_id', 'version']);
+    expect('publication_write_receipts', 'select', [
+      'dataset_kind', 'idempotency_key', 'request_fingerprint', 'decision_id', 'event_id', 'event_version',
+    ]);
+    expect('publication_decisions', 'insert', [
+      'dataset_kind', 'decision_id', 'trace_id', 'proposal_id', 'policy_version',
+      'event_id', 'event_version', 'reviewer_id', 'decided_at', 'record_json',
+    ]);
+    expect('publication_claim_decisions', 'insert', [
+      'dataset_kind', 'decision_id', 'proposal_id', 'claim_id', 'disposition', 'reason_codes',
+    ]);
+    expect('publication_decision_evidence', 'insert', ['dataset_kind', 'decision_id', 'claim_id', 'evidence_ref_id']);
+    expect('event_versions', 'insert', [
+      'dataset_kind', 'event_id', 'version', 'trace_id', 'supersedes_version', 'title', 'summary',
+      'category', 'lifecycle', 'publication_status', 'withdrawal_reason', 'publication_decision_id',
+      'published_at', 'withdrawn_at', 'record_json',
+    ]);
+    expect('event_claims', 'insert', [
+      'dataset_kind', 'event_id', 'event_version', 'claim_id', 'publication_status',
+      'claim_text', 'evidence_label', 'record_json',
+    ]);
+    expect('event_claim_evidence', 'insert', [
+      'dataset_kind', 'event_id', 'event_version', 'claim_id', 'evidence_kind', 'evidence_ref_id',
+    ]);
+    expect('event_claim_origins', 'insert', ['dataset_kind', 'event_id', 'event_version', 'claim_id', 'origin_id']);
+    expect('event_claim_geometries', 'insert', ['dataset_kind', 'event_id', 'event_version', 'claim_id', 'geometry_id']);
+    expect('impact_versions', 'insert', [
+      'dataset_kind', 'impact_id', 'version', 'trace_id', 'event_id', 'event_version',
+      'impact_type', 'lifecycle', 'published_at', 'record_json',
+    ]);
+    expect('impact_claim_support', 'insert', [
+      'dataset_kind', 'impact_id', 'impact_version', 'event_id', 'event_version', 'claim_id',
+    ]);
+    expect('event_impact_refs', 'insert', [
+      'dataset_kind', 'event_id', 'event_version', 'impact_id', 'impact_version',
+    ]);
+    expect('audit_records', 'insert', [
+      'dataset_kind', 'audit_id', 'trace_id', 'occurred_at', 'actor_id', 'action',
+      'entity_type', 'entity_id', 'reason', 'details',
+    ]);
+    expect('publication_outbox', 'insert', [
+      'outbox_id', 'dataset_kind', 'event_id', 'event_version', 'event_kind', 'trace_id', 'occurred_at',
+    ]);
+    expect('publication_write_receipts', 'insert', [
+      'dataset_kind', 'idempotency_key', 'request_fingerprint', 'decision_id', 'event_id', 'event_version',
+    ]);
+
+    const granted = new Set<string>();
+    for (const row of columns.rows) {
+      if (row.can_select) granted.add(`${row.table_name}.${row.column_name}.select`);
+      if (row.can_insert) granted.add(`${row.table_name}.${row.column_name}.insert`);
+      if (row.can_update) granted.add(`${row.table_name}.${row.column_name}.update`);
+    }
+    assert.deepEqual([...granted].sort(), [...expected].sort(),
+      'the role may read and insert only the writer SQL columns');
+
+    const tablePrivileges = await testDatabase.executor.query<{
+      can_select: boolean;
+      can_insert: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+      can_truncate: boolean;
+      can_references: boolean;
+      can_trigger: boolean;
+    }>(
+      `SELECT has_table_privilege('waspada_l4_moderator_publication_writer', table_class.oid, 'SELECT') AS can_select,
+              has_table_privilege('waspada_l4_moderator_publication_writer', table_class.oid, 'INSERT') AS can_insert,
+              has_table_privilege('waspada_l4_moderator_publication_writer', table_class.oid, 'UPDATE') AS can_update,
+              has_table_privilege('waspada_l4_moderator_publication_writer', table_class.oid, 'DELETE') AS can_delete,
+              has_table_privilege('waspada_l4_moderator_publication_writer', table_class.oid, 'TRUNCATE') AS can_truncate,
+              has_table_privilege('waspada_l4_moderator_publication_writer', table_class.oid, 'REFERENCES') AS can_references,
+              has_table_privilege('waspada_l4_moderator_publication_writer', table_class.oid, 'TRIGGER') AS can_trigger
+       FROM pg_class AS table_class JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+       WHERE table_schema.nspname = 'waspada' AND table_class.relkind IN ('r', 'p')`,
+    );
+    assert.equal(tablePrivileges.rows.some((row) => Object.values(row).some(Boolean)), false,
+      'no whole-table privileges are granted');
+
+    const sequences = await testDatabase.executor.query<{ can_usage: boolean; can_select: boolean; can_update: boolean }>(
+      `SELECT has_sequence_privilege('waspada_l4_moderator_publication_writer', sequence_class.oid, 'USAGE') AS can_usage,
+              has_sequence_privilege('waspada_l4_moderator_publication_writer', sequence_class.oid, 'SELECT') AS can_select,
+              has_sequence_privilege('waspada_l4_moderator_publication_writer', sequence_class.oid, 'UPDATE') AS can_update
+       FROM pg_class AS sequence_class JOIN pg_namespace AS sequence_schema ON sequence_schema.oid = sequence_class.relnamespace
+       WHERE sequence_schema.nspname = 'waspada' AND sequence_class.relkind = 'S'`,
+    );
+    assert.equal(sequences.rows.some((row) => row.can_usage || row.can_select || row.can_update), false,
+      'the role has no sequence privileges');
+
+    const sharedRole = await testDatabase.executor.query<{
+      can_update_policy: boolean;
+      can_write_trace: boolean;
+      can_write_audit: boolean;
+      can_read_queue_key: boolean;
+      can_insert_queue_url: boolean;
+      can_insert_event_version: boolean;
+    }>(
+      `SELECT has_column_privilege('waspada_l4_publication_writer', 'waspada.source_registry', 'auto_publication_policy', 'UPDATE') AS can_update_policy,
+              has_table_privilege('waspada_l4_publication_writer', 'waspada.traces', 'INSERT') AS can_write_trace,
+              has_table_privilege('waspada_l4_publication_writer', 'waspada.audit_records', 'INSERT') AS can_write_audit,
+              has_column_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'request_fingerprint', 'SELECT') AS can_read_queue_key,
+              has_column_privilege('waspada_l4_publication_writer', 'waspada.acquisition_jobs', 'submitted_url', 'INSERT') AS can_insert_queue_url,
+              has_column_privilege('waspada_l4_publication_writer', 'waspada.event_versions', 'dataset_kind', 'INSERT') AS can_insert_event_version`,
+    );
+    assert.deepEqual(sharedRole.rows[0], {
+      can_update_policy: true, can_write_trace: true, can_write_audit: true,
+      can_read_queue_key: true, can_insert_queue_url: true, can_insert_event_version: true,
+    }, 'the accepted shared L4 responsibilities remain available');
+  });
   it('grants the L1 pipeline only the chunk and embedding metadata columns it reads', async () => {
     const privileges = await testDatabase.executor.query<{
       table_name: string;
