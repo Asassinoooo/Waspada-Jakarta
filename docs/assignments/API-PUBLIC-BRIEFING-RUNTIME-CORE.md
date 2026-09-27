@@ -31,3 +31,15 @@ Stop if the required exact request/response shape cannot be implemented without 
 ## Implementation handoff
 
 Append branch/worktree, exact commit SHA(s) and messages, changed paths, behavior, actual checks/results, runtime versions, limitations, configuration impact, and remaining decisions. Commit on the assigned branch; do not merge or push. Root independently reviews, accepts, and integrates.
+
+### Completed implementation handoff
+
+- **Branch/worktree:** work/API-PUBLIC-BRIEFING-RUNTIME-CORE; Windows C:\Users\perry\.codex\worktrees\api-geojson-route-core\RPL; WSL /mnt/c/Users/perry/.codex/worktrees/api-geojson-route-core/RPL.
+- **Implementation commit:** 4153b5d8cf0cd649b32698f2f0866a8d10944905 — feat(api): add exact-live public briefing runtime.
+- **Changed paths:** apps/worker/package.json; apps/worker/src/index.ts; apps/worker/src/layers/l4-application-integration/api.ts; apps/worker/src/runtime/public-briefing-runtime.ts; apps/worker/test/public-briefing-runtime.test.ts; this assignment handoff section.
+- **Behavior:** Added the transient exact-live POST /api/v1/briefings route with a 256 KiB streamed request bound, strict JSON/UTF-8 and closed-request validation, empty-interest projection without SQL, and one read-only repeatable-read request snapshot. The runtime composes the accepted candidate reader, strict current public event projections, and pure briefing projector; checks candidate order and exact versions, preserves order across bounded concurrent projections, waits for all siblings before rollback, and returns only complete responses. Failures are generic and telemetry contains only the existing fixed route bucket, status, and duration. Withdrawn events and their history remain hidden.
+- **Checks:** Focused API/runtime tests 43/43 passed; Worker suite 251/251 passed; full npm test exited 0 (web 33 tests, Worker 251 tests, DB suite 19/19 files, evaluation 12 tests); full npm run typecheck passed; npm run build passed including Wrangler dry run; git diff --check passed. All checks ran in WSL Ubuntu-26.04.
+- **Runtime/package versions:** Node v24.21.0; npm 11.19.0; tsx 4.23.15; TypeScript 7.0.2; Wrangler 4.137.0.
+- **Limitations:** Tests use fake executors and authored fictional fixtures. Hosted Neon behavior, collation, latency, and physical query cost were not measured. Briefing telemetry remains in the existing coarse other route bucket because the telemetry route-label implementation is outside the task allowed paths.
+- **Configuration/migration impact:** None. No migration, schema, grant, index, binding, deployment, or dependency changes. Existing exact DATASET_MODE=live and valid Hyperdrive configuration are required; demo remains unavailable for briefing relevance.
+- **Remaining decisions:** None for this implementation. Independent root review and integration remain pending.
