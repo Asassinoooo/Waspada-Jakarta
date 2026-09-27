@@ -1,6 +1,6 @@
 # MOD-01-WRITER-ROLE-CORE — least-privilege publication capability role
 
-- **Status:** Assigned; implementation pending.
+- **Status:** Accepted on `main` at implementation `b29af72` and handoff `0a5e4a3`.
 - **Backlog:** [MOD-01-WRITER-ROLE-CORE](../IMPLEMENTATION_BACKLOG.md).
 - **Depends on:** MOD-01-AUTHZ-POLICY-CORE, PUB-WRITE-CORE, ADR-006, ADR-013.
 - **Requirements:** FR-08/12/13; NFR-01/05/07.
@@ -69,4 +69,12 @@ Root review and acceptance pending.
 - **Checks in WSL Ubuntu-26.04** with Node.js `v24.21.0` and npm `11.19.0`: `npm run db:test` passed all 20 DB test files; `npm test` passed (web 60, Worker 267, DB 20 files, evaluation 12); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry-run); `git diff --check` passed. No dependencies were installed.
 - **Limitations:** records are synthetic/live-shaped test fixtures only and assert no real source, reviewer, or data rights. PGlite cannot establish hosted PostgreSQL/Neon role, migration, transaction, or credential semantics. The capability has no login/member and no caller is wired to it; a future authenticated runtime must obtain trusted identity/authorization and separately receive the appropriate membership needed to `SET ROLE`.
 - **Migration/configuration impact:** forward-only migration 017 creates one database role. No login, membership, credential, Worker route/wiring, deployment configuration, API/DTO/contract, or dependency change was made. Hosted Neon migration permissions and `SET ROLE` integration remain unverified.
-- **Remaining decisions:** root review/acceptance is pending. ADR-006 identity/session selection, operator provisioning, and the runtime caller/membership integration remain outside this assignment.
+- **Remaining decisions:** ADR-006 identity/session selection, restricted operator provisioning, and trusted runtime caller/membership integration remain open and outside this database-only assignment. Hosted Neon role/migration behavior is unverified.
+
+## Root review and acceptance — 27 September 2026
+
+Root reviewed the migration's complete SELECT/INSERT column allowlist against every SQL statement in `SqlPublicationWriter`. It creates a non-login, non-inheriting, non-superuser capability role without membership, grants no whole-table or sequence privileges, preserves the existing shared L4 role, and adds no runtime wiring. The database tests exercise the actual writer under `SET ROLE` and independently demonstrate denied unrelated operations. The implementation and handoff commits were fast-forwarded intact from `work/MOD-01-WRITER-ROLE-CORE` to `main`.
+
+Root independently passed `npm run db:test` (20/20 test files), full `npm test` (web 60, Worker 267, DB 20 test files, evaluation 12), `npm run typecheck`, `npm run build` (Vite production build and Wrangler dry-run), and `git diff --check main...work/MOD-01-WRITER-ROLE-CORE` in WSL Ubuntu-26.04 using Node.js `v24.21.0` and npm `11.19.0`. No dependency install occurred. PGlite tests do not establish hosted PostgreSQL/Neon role or credential behavior.
+
+**Acceptance limits:** migration 017 creates the capability role but grants it no login or membership, and no authenticated caller, route, Worker, cloud binding, or live review record uses it. The future runtime must resolve an authorized moderator on the trusted server boundary and explicitly obtain the separate role membership needed to `SET ROLE`.

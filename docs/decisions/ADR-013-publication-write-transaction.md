@@ -1,6 +1,6 @@
 # ADR-013 — Manual publication write transaction
 
-- **Status:** Accepted for local implementation
+- **Status:** Accepted for local implementation; least-privilege publication capability role implemented locally
 - **Date:** 25 September 2026
 - **Owners:** Root planner/reviewer
 
@@ -21,7 +21,7 @@ Layer 4 has a pure manual publication assessment and a separate safe public proj
 
 ## Consequences
 
-The local writer uses transaction-scoped advisory locks for idempotency, event and impact identities, and column-level reads on publication inputs. It can fail atomically and safely replay within the PGlite design. The shared L4 role retains pre-existing source-policy, trace/audit, acquisition-queue, and public-projection privileges; the publication writer must use a distinct least-privilege capability role when MOD-01 is wired. That role is a `NOLOGIN` capability, not an application identity; credentials, membership, route wiring, and provider transaction adaptation remain separate decisions. This work does not establish source rights, factual support, moderator identity, or hosted PostgreSQL/Neon concurrency behavior. Raw `record_json` remains internal and must pass through ADR-012's public projection before serialization.
+The local writer uses transaction-scoped advisory locks for idempotency, event and impact identities, and column-level reads on publication inputs. Migration 017 creates `waspada_l4_moderator_publication_writer` as a `NOLOGIN`/`NOINHERIT` capability with only the writer's required column-level reads and inserts; PGlite verifies the real transaction under `SET ROLE`. The shared L4 role retains pre-existing source-policy, trace/audit, acquisition-queue, and public-projection privileges and is not revoked or repurposed. The new role is not an application identity; credentials, role membership, route wiring, and provider transaction adaptation remain separate decisions. Tests do not establish source rights, factual support, moderator identity, or hosted PostgreSQL/Neon migration, role, credential or concurrency behavior. Raw `record_json` remains internal and must pass through ADR-012's public projection before serialization.
 
 ## Affected requirements
 
