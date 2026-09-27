@@ -5,7 +5,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next implementation:** The pure `MOD-01-AUTHZ-POLICY-CORE` is accepted; the remaining login/session integration and restricted operator provisioning are still open under [ADR-006](decisions/ADR-006-moderator-auth.md). A user decision is pending on Cloudflare Access versus app-managed sessions. Do not configure an identity provider, provision accounts, or expose a protected write route before resolving that choice. Continue only independent, synthetic work while PUB-01/EVAL-01 remain gated on rights-cleared human-adjudicated data.
+**Next implementation:** `MOD-01-WRITER-ROLE-CORE` is an independent database-only task to create a dedicated `NOLOGIN`/`NOINHERIT` publication capability role with exact grants. The existing shared L4 role remains intact for its other accepted responsibilities. The remaining login/session integration and restricted operator provisioning are still open under [ADR-006](decisions/ADR-006-moderator-auth.md), and a user decision is pending on Cloudflare Access versus app-managed sessions. This work does not configure an identity provider, provision accounts, or expose a protected write route. PUB-01/EVAL-01 remain gated on rights-cleared human-adjudicated data.
 
 ## Repository state
 
