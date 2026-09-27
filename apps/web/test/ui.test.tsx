@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
-import { discoveryStateReducer, SiteHeader } from "../src/App.js";
+import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, SiteHeader } from "../src/App.js";
 import { EventDetail } from "../src/EventDetail.js";
 import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from "../src/EventFeed.js";
 import { ModeratorReview } from "../src/ModeratorReview.js";
-import type { MapSelection } from "../src/MapPanel.js";
+import type { GeoJSONMapState, MapSelection } from "../src/MapPanel.js";
 
 const demoContext: PublicContext = {
   dataset_mode: "demo",
@@ -91,6 +91,8 @@ function renderFeed(options: {
   query?: string;
   filters?: FeedFilters;
   selection?: MapSelection;
+  context?: PublicContext | null;
+  geoJSONState?: GeoJSONMapState;
 } = {}) {
   return renderToStaticMarkup(
     <EventFeed
@@ -106,7 +108,9 @@ function renderFeed(options: {
       onClearFilters={() => {}}
       onRetry={() => {}}
       mapSelection={options.selection ?? { kind: "none" }}
+      geoJSONState={options.geoJSONState ?? { status: "loaded", data: { type: "FeatureCollection", features: [] } }}
       onSelectApiEvent={() => {}}
+      onRetryMap={() => {}}
       onSelectPresentation={() => {}}
       mobilePanel="list"
       onMobilePanelChange={() => {}}
@@ -115,11 +119,11 @@ function renderFeed(options: {
 }
 
 test("persistent shell and discovery expose synthetic dataset and linked list/map controls", () => {
-  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} />);
+  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={demoContext} />);
   const page = renderFeed();
 
   assert.match(header, /DEMO — data sintetis; bukan peringatan langsung/);
-  assert.match(header, /Tidak ada sumber live yang terhubung/);
+  assert.match(page, /Tidak ada sumber live yang tersambung/);
   assert.match(header, /Lewati ke konten utama/);
   assert.match(page, /Contoh fiktif: pemberitahuan kelompok/);
   assert.match(page, /aria-label="Tampilan jelajah"/);
@@ -129,8 +133,8 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
   assert.match(page, /Kesegaran/);
   assert.match(page, /Bukti/);
   assert.match(page, /Relevansi/);
-  assert.match(page, /Belum ada segmen dipilih/);
-  assert.match(page, /aria-pressed="false">Tampilkan segmen/);
+  assert.match(page, /Tidak ada geometri yang cocok pada halaman ini/);
+  assert.match(page, /aria-pressed="false">Tampilkan fixture/);
   assert.doesNotMatch(page, /route-diagram/);
   const selectedApi = renderFeed({ selection: { kind: "api-event", event: sampleEvent } });
   assert.match(selectedApi, /Tidak dipetakan/);
@@ -140,13 +144,26 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
   assert.match(selectedPresentation, /106\.8, -6\.2 → 106\.81, -6\.21/);
 });
 
+test("presentation detail is visible only after the API confirms demo mode", () => {
+  const demoDetail = renderToStaticMarkup(<PresentationRoute context={demoContext} />);
+  const liveDetail = renderToStaticMarkup(<PresentationRoute context={{ ...demoContext, dataset_mode: "live", dataset_label: "live" }} />);
+  const unknownDetail = renderToStaticMarkup(<PresentationRoute context={null} />);
+
+  assert.match(demoDetail, /Bus 12 diversion \(synthetic demo\)/);
+  assert.match(liveDetail, /Fixture presentasi hanya tersedia pada dataset demo/);
+  assert.doesNotMatch(liveDetail, /Bus 12 diversion|route-diagram/);
+  assert.match(unknownDetail, /Status dataset tidak tersedia/);
+  assert.match(unknownDetail, /disembunyikan sampai status dataset tersedia/);
+  assert.doesNotMatch(unknownDetail, /dataset live|Bus 12 diversion|route-diagram/);
+});
+
 test("loading, empty, and unavailable states give honest next steps", () => {
   const loading = renderFeed({ status: "loading", events: [] });
   const empty = renderFeed({ events: [] });
   const noMatch = renderFeed({ query: "tidak-ada" });
   const unavailable = renderFeed({ status: "unavailable", events: [] });
 
-  assert.match(loading, /Memuat record sintetis/);
+  assert.match(loading, /Memuat record dari API/);
   assert.match(empty, /bukan pernyataan bahwa area aman/);
   assert.match(noMatch, /Tidak ada laporan yang cocok dengan pencarian dan filter ini/);
   assert.match(noMatch, /Hapus semua filter dan pencarian/);
@@ -200,6 +217,19 @@ test("loaded-page filters use contract values, preserve search, and combine with
   assert.match(filteredPage, /1 cocok dari 4 record dimuat/);
   assert.match(filteredPage, /Uji cuaca saat ini/);
   assert.doesNotMatch(filteredPage, /Uji transportasi selesai|Uji cuaca lewat tinjau|Uji kerumunan perlu diperbarui/);
+});
+
+test("discovery initializes supported feed filters from the URL and ignores unknown values", () => {
+  assert.deepEqual(discoveryStateFromSearch("?q=banjir&category=disasters_weather&lifecycle=ongoing&freshness=current"), {
+    query: "banjir",
+    filters: { category: "disasters_weather", lifecycle: "ongoing", freshness: "current" },
+    mapSelection: { kind: "none" },
+  });
+  assert.deepEqual(discoveryStateFromSearch("?category=unsafe&lifecycle=unknown&freshness=expired"), {
+    query: "",
+    filters: { category: "all", lifecycle: "unknown", freshness: "expired" },
+    mapSelection: { kind: "none" },
+  });
 });
 
 test("filtered-empty state stays neutral and clear-all resets filters, search, and map selection", () => {

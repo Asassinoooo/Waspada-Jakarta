@@ -1,7 +1,7 @@
 import type { Category, EventView, FreshnessStatus, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
-import { MapPanel, type MapSelection } from "./MapPanel.js";
+import { MapPanel, type GeoJSONMapState, type MapSelection } from "./MapPanel.js";
 
 export type FeedStatus = "loading" | "loaded" | "unavailable";
 export type MobileDiscoveryPanel = "list" | "map";
@@ -59,8 +59,10 @@ interface EventFeedProps {
   onClearFilters?: () => void;
   onRetry: () => void;
   mapSelection: MapSelection;
-  onSelectApiEvent: (event: EventView) => void;
+  geoJSONState?: GeoJSONMapState;
+  onSelectApiEvent: (event: EventView, featureId?: string) => void;
   onSelectPresentation: () => void;
+  onRetryMap?: () => void;
   mobilePanel: MobileDiscoveryPanel;
   onMobilePanelChange: (panel: MobileDiscoveryPanel) => void;
 }
@@ -77,6 +79,11 @@ function apiEventDetailHref(eventId: string) {
   return "#detail/api/" + encodeURIComponent(eventId);
 }
 
+function datasetLabel(context: PublicContext | null) {
+  if (!context) return "Status dataset tidak tersedia";
+  return context.dataset_mode === "demo" ? "Record sintetis dari API" : "Record dari dataset live API";
+}
+
 export function EventFeed({
   status,
   events,
@@ -90,14 +97,18 @@ export function EventFeed({
   onClearFilters = () => {},
   onRetry,
   mapSelection,
+  geoJSONState,
   onSelectApiEvent,
   onSelectPresentation,
+  onRetryMap,
   mobilePanel,
   onMobilePanelChange,
 }: EventFeedProps) {
   const matchingEvents = filterEvents(events, query, filters);
+  const visibleEvents = status === "loaded" ? matchingEvents : [];
   const hasActiveFilters = query.length > 0 || filters.category !== "all" || filters.lifecycle !== "all" || filters.freshness !== "all";
   const presentationSelected = mapSelection.kind === "presentation";
+  const isDemo = context?.dataset_mode === "demo";
 
   return (
     <main id="main-content" className="main-shell">
@@ -115,7 +126,13 @@ export function EventFeed({
         <div className="dataset-status__main">
           <span className="status-marker" aria-hidden="true" />
           <div>
-            <strong>{context?.dataset_label === "synthetic" ? "Dataset sintetis" : "Dataset demo"}</strong>
+            <strong>
+              {context?.dataset_mode === "demo"
+                ? "Dataset demo sintetis"
+                : context?.dataset_mode === "live"
+                  ? "Dataset mode live"
+                  : "Status dataset tidak tersedia"}
+            </strong>
             <span>{sourceSummary(context)}</span>
           </div>
         </div>
@@ -125,8 +142,8 @@ export function EventFeed({
         </div>
       </section>
 
-      <section className="discovery-controls" aria-label="Pencarian daftar lokal">
-        <label htmlFor="event-search">Cari dalam contoh API lokal</label>
+      <section className="discovery-controls" aria-label="Pencarian dan filter daftar API yang dimuat">
+        <label htmlFor="event-search">Cari dalam daftar API yang dimuat</label>
         <div className="search-control">
           <span aria-hidden="true" className="search-glyph">⌕</span>
           <input
@@ -136,7 +153,7 @@ export function EventFeed({
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.currentTarget.value)}
-            placeholder="contoh: pemberitahuan…"
+            placeholder="Contoh: banjir di Jakarta…"
           />
           {query.length > 0 && (
             <button className="search-clear" type="button" onClick={() => onQueryChange("")}>
@@ -216,8 +233,8 @@ export function EventFeed({
         <section className="feed-panel" aria-labelledby="feed-title">
           <header className="panel-heading">
             <div>
-              <p className="section-kicker">Data API lokal</p>
-              <h2 id="feed-title">Daftar contoh</h2>
+              <p className="section-kicker">Halaman data dari API</p>
+              <h2 id="feed-title">Daftar record</h2>
             </div>
             {status === "loaded" && (
               <span className="count-chip" aria-live="polite">
@@ -229,14 +246,14 @@ export function EventFeed({
           {status === "loading" && (
             <div className="state-panel state-panel--loading" role="status">
               <span className="loading-rule" aria-hidden="true" />
-              <strong>Memuat record sintetis…</strong>
-              <span>Data yang tersedia tetap diberi label demo.</span>
+              <strong>Memuat record dari API…</strong>
+              <span>Status dataset ditampilkan setelah konteks API tersedia.</span>
             </div>
           )}
 
           {status === "unavailable" && (
             <div className="state-panel state-panel--error" role="alert">
-              <strong>API lokal tidak dapat dijangkau.</strong>
+              <strong>API daftar tidak dapat dijangkau.</strong>
               <p>Daftar belum tersedia; keadaan keselamatan tidak diketahui.</p>
               <button className="button button--primary" type="button" onClick={onRetry}>Coba lagi</button>
             </div>
@@ -244,7 +261,7 @@ export function EventFeed({
 
           {status === "loaded" && events.length === 0 && (
             <div className="state-panel" role="status">
-              <strong>Belum ada record untuk ditampilkan.</strong>
+              <strong>Belum ada record pada halaman API ini.</strong>
               <p>Tidak ada laporan yang cocok bukan pernyataan bahwa area aman.</p>
             </div>
           )}
@@ -258,14 +275,16 @@ export function EventFeed({
           )}
 
           {status === "loaded" && matchingEvents.length > 0 && (
-            <ul className="event-list" aria-label="Record event dari API lokal">
+            <ul className="event-list" aria-label="Record event dari halaman API yang dimuat">
               {matchingEvents.map((event) => {
-                const selected = mapSelection.kind === "api-event" && mapSelection.event.event_id === event.event_id;
+                const selected = mapSelection.kind === "api-event" &&
+                  mapSelection.event.event_id === event.event_id &&
+                  mapSelection.event.version === event.version;
                 return (
-                  <li key={event.event_id}>
+                  <li key={event.event_id + ":" + event.version}>
                     <article className={"event-card" + (selected ? " event-card--selected" : "")}>
                       <div className="event-card__topline">
-                        <span className="synthetic-label">Contoh sintetis dari API</span>
+                        <span className="event-card__dataset-label">{datasetLabel(context)}</span>
                         <span className="event-card__version">v{event.version}</span>
                       </div>
                       <button
@@ -293,35 +312,43 @@ export function EventFeed({
             </ul>
           )}
 
-          <section className={"presentation-card" + (presentationSelected ? " presentation-card--selected" : "")} aria-labelledby="presentation-title">
-            <div className="presentation-card__rule" aria-hidden="true" />
-            <p className="section-kicker">Contoh terpisah dari API</p>
-            <h3 id="presentation-title">{presentation.event.title}</h3>
-            <p>Detail, bukti, dan satu segmen geometri yang tercatat pada fixture dokumentasi.</p>
-            <div className="presentation-card__actions">
-              <button
-                className="button button--quiet"
-                type="button"
-                aria-pressed={presentationSelected}
-                onClick={onSelectPresentation}
-              >
-                {presentationSelected ? "Segmen dipilih" : "Tampilkan segmen"}
-              </button>
-              <a className="text-link" href="#detail/presentation">Buka detail fixture</a>
-            </div>
-          </section>
+          {isDemo && (
+            <section className={"presentation-card" + (presentationSelected ? " presentation-card--selected" : "")} aria-labelledby="presentation-title">
+              <div className="presentation-card__rule" aria-hidden="true" />
+              <p className="section-kicker">Fixture presentasi terpisah dari API</p>
+              <h3 id="presentation-title">{presentation.event.title}</h3>
+              <p>Fixture dokumentasi sintetis dengan satu segmen terpisah dari geometri yang dikembalikan API.</p>
+              <div className="presentation-card__actions">
+                <button
+                  className="button button--quiet"
+                  type="button"
+                  aria-pressed={presentationSelected}
+                  onClick={onSelectPresentation}
+                >
+                  {presentationSelected ? "Segmen dipilih" : "Tampilkan fixture"}
+                </button>
+                <a className="text-link" href="#detail/presentation">Buka detail fixture</a>
+              </div>
+            </section>
+          )}
         </section>
 
         <div className="map-column">
           <MapPanel
             selection={mapSelection}
+            mapState={geoJSONState}
+            context={context}
+            feedStatus={status}
+            visibleEvents={visibleEvents}
+            onSelectApiEvent={onSelectApiEvent}
+            onRetryMap={onRetryMap}
             onReturnToList={() => onMobilePanelChange("list")}
           />
         </div>
       </div>
 
       <p className="safety-note">
-        Kekosongan data, peta, atau sumber tidak memastikan kondisi aman. Contoh ini tidak memberi peringatan langsung.
+        Kekosongan data, peta, atau sumber tidak memastikan kondisi aman. Halaman mengikuti hasil API yang dimuat dan tidak menyatakan cakupan lengkap.
       </p>
     </main>
   );

@@ -216,5 +216,5 @@ test("preferences have a direct hash route and public navigation link", () => {
   assert.deepEqual(routeFromHash("#ringkasan-saya"), { screen: "preferences" });
   const markup = renderToStaticMarkup(<SiteHeader route={{ screen: "preferences" }} />);
   assert.match(markup, /href="#ringkasan-saya" aria-current="page">Ringkasan saya/);
-  assert.match(markup, /DEMO — data sintetis; bukan peringatan langsung/);
+  assert.match(markup, /Status dataset tidak tersedia/);
 });

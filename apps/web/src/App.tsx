@@ -1,11 +1,11 @@
 import { useEffect, useReducer, useState } from "react";
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
-import { ApiHttpError, getEventDetail, getEventHistory, getPublicContext, listEvents, type ApiReadState } from "./api-client.js";
+import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPublicContext, listEvents, type ApiReadState, type PublicGeoJSONFilters } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
 import { DEFAULT_FEED_FILTERS, EventFeed, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
 import { Preferences } from "./Preferences.js";
-import type { MapSelection } from "./MapPanel.js";
+import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
 
 type Route =
   | { screen: "discover" }
@@ -27,6 +27,39 @@ export type DiscoveryAction =
   | { type: "freshness-changed"; value: FreshnessStatus | "all" }
   | { type: "filters-cleared" }
   | { type: "map-selection-changed"; selection: MapSelection };
+
+const feedCategories: readonly Category[] = [
+  "crime_personal_security",
+  "demonstrations_public_gatherings",
+  "crowds_major_events",
+  "violence_immediate_threats",
+  "disasters_weather",
+  "fires_infrastructure_hazards",
+  "transport_road_incidents",
+  "utilities_essential_services",
+  "health_environmental_advisories",
+  "group_specific_critical_notices",
+];
+const feedLifecycles: readonly Lifecycle[] = ["planned", "ongoing", "resolved", "cancelled", "unknown"];
+const feedFreshnessStatuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
+
+function queryFilter<T extends string>(params: URLSearchParams, name: string, allowed: readonly T[]): T | "all" {
+  const value = params.get(name);
+  return value !== null && allowed.includes(value as T) ? value as T : "all";
+}
+
+export function discoveryStateFromSearch(search: string): DiscoveryState {
+  const params = new URLSearchParams(search);
+  return {
+    query: params.get("q") ?? "",
+    filters: {
+      category: queryFilter(params, "category", feedCategories),
+      lifecycle: queryFilter(params, "lifecycle", feedLifecycles),
+      freshness: queryFilter(params, "freshness", feedFreshnessStatuses),
+    },
+    mapSelection: { kind: "none" },
+  };
+}
 
 export function discoveryStateReducer(state: DiscoveryState, action: DiscoveryAction): DiscoveryState {
   switch (action.type) {
@@ -66,11 +99,7 @@ export function discoveryStateReducer(state: DiscoveryState, action: DiscoveryAc
 }
 
 function initialDiscoveryState(): DiscoveryState {
-  return {
-    query: new URLSearchParams(window.location.search).get("q") ?? "",
-    filters: { ...DEFAULT_FEED_FILTERS },
-    mapSelection: { kind: "none" },
-  };
+  return discoveryStateFromSearch(window.location.search);
 }
 
 function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
@@ -94,8 +123,26 @@ export function routeFromHash(hash: string): Route {
   return { screen: "discover" };
 }
 
-export function SiteHeader({ route }: { route: Route }) {
+export function SiteHeader({ route, context = null }: { route: Route; context?: PublicContext | null }) {
   const onDiscover = route.screen === "discover" || route.screen.startsWith("detail");
+  const datasetMode = context?.dataset_mode;
+  const modeText = datasetMode === "demo"
+    ? "Mode demo"
+    : datasetMode === "live"
+      ? "Mode live"
+      : "Status dataset tidak tersedia";
+  const bannerLabel = datasetMode === "demo" ? "DEMO" : datasetMode === "live" ? "LIVE" : "—";
+  const bannerTitle = datasetMode === "demo"
+    ? "DEMO — data sintetis; bukan peringatan langsung"
+    : datasetMode === "live"
+      ? "LIVE — record berasal dari dataset live API"
+      : "Status dataset tidak tersedia.";
+  const bannerDetail = datasetMode === "demo"
+    ? "Fixture presentasi tetap terpisah dari record API."
+    : datasetMode === "live"
+      ? "Waktu dan kesegaran tercantum per record; cakupan mengikuti data API yang dimuat."
+      : "Jenis dataset belum dapat diverifikasi.";
+
   return (
     <>
       <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
@@ -109,14 +156,37 @@ export function SiteHeader({ route }: { route: Route }) {
           <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Ringkasan saya</a>
           <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
         </nav>
-        <span className="mode-chip">Mode demo</span>
+        <span className="mode-chip">{modeText}</span>
       </header>
-      <section className="demo-banner" aria-label="Peringatan mode demo">
-        <span className="demo-banner__mark" aria-hidden="true">DEMO</span>
-        <strong>DEMO — data sintetis; bukan peringatan langsung</strong>
-        <span className="demo-banner__detail">Tidak ada sumber live yang terhubung.</span>
+      <section
+        className={"demo-banner" + (datasetMode === "live" ? " demo-banner--live" : datasetMode === undefined ? " demo-banner--unknown" : "")}
+        aria-label="Status dataset"
+      >
+        <span className="demo-banner__mark" aria-hidden="true">{bannerLabel}</span>
+        <strong>{bannerTitle}</strong>
+        <span className="demo-banner__detail">{bannerDetail}</span>
       </section>
     </>
+  );
+}
+
+export function PresentationRoute({ context }: { context: PublicContext | null }) {
+  if (context?.dataset_mode === "demo") {
+    return <EventDetail mode="presentation" context={context} />;
+  }
+
+  return (
+    <main id="main-content" className="main-shell">
+      <section className="state-panel" role="status">
+        <strong>{context === null ? "Status dataset tidak tersedia." : "Fixture presentasi hanya tersedia pada dataset demo."}</strong>
+        <p>
+          {context === null
+            ? "Fixture presentasi disembunyikan sampai status dataset tersedia."
+            : "Record presentasi tidak ditampilkan pada dataset live."}
+        </p>
+        <a className="text-link" href="#jelajah">Kembali ke jelajah</a>
+      </section>
+    </main>
   );
 }
 
@@ -124,8 +194,10 @@ export function App() {
   const [status, setStatus] = useState<FeedStatus>("loading");
   const [context, setContext] = useState<PublicContext | null>(null);
   const [events, setEvents] = useState<EventView[]>([]);
+  const [geoJSONState, setGeoJSONState] = useState<GeoJSONMapState>({ status: "idle" });
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
   const [retryKey, setRetryKey] = useState(0);
+  const [mapRetryKey, setMapRetryKey] = useState(0);
   const [detailRetryKey, setDetailRetryKey] = useState(0);
   const [historyRetryKey, setHistoryRetryKey] = useState(0);
   const [detailState, setDetailState] = useState<ApiReadState<EventDetailRecord> | null>(null);
@@ -146,20 +218,23 @@ export function App() {
     const url = new URL(window.location.href);
     if (discovery.query) url.searchParams.set("q", discovery.query);
     else url.searchParams.delete("q");
+    for (const [name, value] of Object.entries(discovery.filters)) {
+      if (value === "all") url.searchParams.delete(name);
+      else url.searchParams.set(name, value);
+    }
     if (mobilePanel === "map") url.searchParams.set("panel", "map");
     else url.searchParams.delete("panel");
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-  }, [discovery.query, mobilePanel]);
+  }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
   useEffect(() => {
     if (route.screen === "preferences") return;
     let cancelled = false;
     setStatus("loading");
 
-    Promise.all([getPublicContext(), listEvents()])
-      .then(([nextContext, page]) => {
+    listEvents()
+      .then((page) => {
         if (cancelled) return;
-        setContext(nextContext);
         setEvents(page.data);
         setStatus("loaded");
       })
@@ -171,6 +246,52 @@ export function App() {
       cancelled = true;
     };
   }, [retryKey, route.screen]);
+
+  useEffect(() => {
+    if (route.screen === "preferences") return;
+    let cancelled = false;
+    setContext(null);
+
+    getPublicContext()
+      .then((nextContext) => {
+        if (!cancelled) setContext(nextContext);
+      })
+      .catch(() => {
+        if (!cancelled) setContext(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [retryKey, route.screen]);
+
+  const { category, lifecycle, freshness } = discovery.filters;
+  useEffect(() => {
+    if (route.screen !== "discover" || status !== "loaded" || context === null) {
+      setGeoJSONState({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setGeoJSONState({ status: "loading" });
+    const filters: PublicGeoJSONFilters = {
+      ...(category === "all" ? {} : { category }),
+      ...(lifecycle === "all" ? {} : { lifecycle }),
+      ...(freshness === "all" ? {} : { freshness }),
+    };
+
+    getEventGeoJSON(filters)
+      .then((data) => {
+        if (!cancelled) setGeoJSONState({ status: "loaded", data });
+      })
+      .catch(() => {
+        if (!cancelled) setGeoJSONState({ status: "unavailable" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [category, context?.dataset_mode, context, freshness, lifecycle, mapRetryKey, route.screen, status]);
 
   const detailEventId = route.screen === "detail-api" ? route.eventId : null;
 
@@ -219,7 +340,7 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <SiteHeader route={route} />
+      <SiteHeader route={route} context={context} />
       {route.screen === "discover" && (
         <EventFeed
           status={status}
@@ -234,11 +355,18 @@ export function App() {
           onClearFilters={() => dispatchDiscovery({ type: "filters-cleared" })}
           onRetry={() => setRetryKey((current) => current + 1)}
           mapSelection={discovery.mapSelection}
-          onSelectApiEvent={(event) => dispatchDiscovery({ type: "map-selection-changed", selection: { kind: "api-event", event } })}
+          geoJSONState={geoJSONState}
+          onSelectApiEvent={(event, featureId) => dispatchDiscovery({
+            type: "map-selection-changed",
+            selection: featureId === undefined
+              ? { kind: "api-event", event }
+              : { kind: "api-event", event, featureId },
+          })}
           onSelectPresentation={() => {
             dispatchDiscovery({ type: "map-selection-changed", selection: { kind: "presentation" } });
             setMobilePanel("map");
           }}
+          onRetryMap={() => setMapRetryKey((current) => current + 1)}
           mobilePanel={mobilePanel}
           onMobilePanelChange={setMobilePanel}
         />
@@ -254,15 +382,18 @@ export function App() {
         />
       )}
       {route.screen === "detail-presentation" && (
-        <EventDetail
-          mode="presentation"
-          context={context}
-        />
+        <PresentationRoute context={context} />
       )}
       {route.screen === "preferences" && <Preferences />}
       {route.screen === "review" && <ModeratorReview />}
       <footer className="site-footer">
-        <span>Demo lokal · semua record dan segmen contoh bersifat sintetis.</span>
+        <span>
+          {context?.dataset_mode === "demo"
+            ? "Mode demo · record API sintetis dan fixture presentasi ditandai terpisah."
+            : context?.dataset_mode === "live"
+              ? "Mode live · data berasal dari API; cakupan sesuai halaman yang dimuat."
+              : "Status dataset tidak tersedia."}
+        </span>
         <a href="#jelajah">Kembali ke jelajah</a>
       </footer>
     </div>
