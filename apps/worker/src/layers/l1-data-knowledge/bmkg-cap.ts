@@ -20,6 +20,8 @@ export const BMKG_CAP_LIMITS = {
   maxFieldCharacters: 8_192,
   maxPolygonCharacters: 400_000,
   maxIdentifierCharacters: 256,
+  /** Maximum length for the caller-supplied retrieval timestamp, including any fraction. */
+  maxRetrievedAtCharacters: 64,
   maxInfoBlocks: 16,
   maxCategoriesPerInfo: 12,
   maxAreasPerInfo: 32,
@@ -612,7 +614,7 @@ function requiredField<Fields extends string>(fields: Map<Fields, string>, field
 }
 
 function isCapIdentifier(value: string): boolean {
-  return value.length > 0 && !/[\s,<>&]/u.test(value);
+  return value.length > 0 && !/[\s,&<]/u.test(value);
 }
 
 function isValidReferences(value: string): boolean {
@@ -666,7 +668,8 @@ function isCapDateTime(value: string): boolean {
 }
 
 function isValidRetrievedAt(value: string): boolean {
-  return isValidCalendarDateTime(value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u);
+  return value.length <= BMKG_CAP_LIMITS.maxRetrievedAtCharacters
+    && isValidCalendarDateTime(value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u);
 }
 
 function isValidCalendarDateTime(value: string, pattern: RegExp): boolean {

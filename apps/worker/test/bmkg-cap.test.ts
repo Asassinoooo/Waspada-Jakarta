@@ -198,6 +198,22 @@ test("Alert, Update, and Cancel keep their source linkage without applying it", 
   assert.equal(alert.message.identifier, "synthetic-cap-001");
 });
 
+test("CAP identifiers preserve permitted greater-than characters after XML decoding", () => {
+  const references = "fixture&gt;.invalid,synthetic&gt;cap-001,2001-02-03T10:00:00+07:00";
+  const result = parse(syntheticXml("", {
+    fields: alertFields("default", {
+      identifier: "synthetic&gt;cap-001",
+      sender: "fixture&gt;.invalid",
+      references,
+    }),
+  }));
+  assert.equal(result.kind, "message");
+  if (result.kind !== "message") return;
+  assert.equal(result.message.identifier, "synthetic>cap-001");
+  assert.equal(result.message.sender, "fixture>.invalid");
+  assert.equal(result.message.references, "fixture>.invalid,synthetic>cap-001,2001-02-03T10:00:00+07:00");
+});
+
 test("sent, effective, onset, expires, and caller retrieval time stay separate", () => {
   const result = parse(syntheticXml(syntheticInfo({ effective: EFFECTIVE, onset: ONSET, expires: EXPIRES })));
   assert.equal(result.kind, "message");
@@ -232,6 +248,9 @@ test("CAP timestamps require valid calendar dates and explicit numeric offsets",
     assert.equal(errorOf(parse(syntheticXml(invalid))).error.code, "invalid_datetime");
   }
   assert.equal(errorOf(parse(syntheticXml(), "2001-02-30T14:00:00Z")).error.code, "invalid_retrieved_at");
+  const oversizedFraction = `2001-02-03T14:00:00.${"1".repeat(44)}Z`;
+  assert.equal(oversizedFraction.length, BMKG_CAP_LIMITS.maxRetrievedAtCharacters + 1);
+  assert.equal(errorOf(parse(syntheticXml(), oversizedFraction)).error.code, "invalid_retrieved_at");
   assert.equal(parse(syntheticXml(), "2001-02-03T14:00:00+07:00").kind, "message");
 });
 
