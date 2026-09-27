@@ -215,6 +215,18 @@ test("current detail validation accepts date-only time and rejects malformed ide
   assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", { version: 1 }), "synthetic-event", 2));
   assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", { category: "unsafe" }), "synthetic-event", 2));
   assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", { event_time: { start: "2026-09-25T00:00:00Z", end: null, precision: "date" } }), "synthetic-event", 2));
+  assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", {
+    event_time: { start: "2026-09-26T00:00:00Z", end: "2026-09-25T00:00:00Z", precision: "exact" },
+  }), "synthetic-event", 2));
+  assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", {
+    event_time: { start: "2026-09-26", end: "2026-09-25", precision: "date" },
+  }), "synthetic-event", 2));
+  assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", {
+    event_time: { start: "2026-09-26", end: "2026-09-25", precision: "range" },
+  }), "synthetic-event", 2));
+  assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", {
+    event_time: { start: "2026-09-26T00:00:00Z", end: "2026-09-25T00:00:00Z", precision: "range" },
+  }), "synthetic-event", 2));
   assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", { scope: { places: ["Pondok"], services: [], institutions: [] } }), "synthetic-event", 2));
 });
 
@@ -414,6 +426,53 @@ test("cursor restart clears displayed history, baselines before snapshot refresh
   await poller.refresh();
   assert.deepEqual(calls.slice(-3), ["updates:baseline", "events", "updates:cursor-rebased"]);
   assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), "cursor-resumed");
+  assert.equal(captured.states.at(-1)?.resetNotice, true);
+});
+
+test("failed 410 snapshot refresh stays pending and is retried before cursor polling", async (t) => {
+  const storage = new MemoryStorage();
+  storage.values.set(UPDATE_CURSOR_STORAGE_KEY, "expired-cursor");
+  const scheduler = new FakeScheduler();
+  const captured = captureStates();
+  const calls: string[] = [];
+  let snapshotAttempts = 0;
+  const poller = createUpdateCenterPoller({
+    interests: interests({ categories: ["disasters_weather"] }),
+    storage,
+    scheduler,
+    onState: captured.onState,
+    refreshCurrentEvents: async () => {
+      snapshotAttempts += 1;
+      calls.push("events:" + snapshotAttempts);
+      if (snapshotAttempts === 1) throw new Error("synthetic snapshot refresh failure");
+    },
+    getUpdates: async (cursor) => {
+      calls.push("updates:" + (cursor ?? "baseline"));
+      if (cursor === "expired-cursor") throw new ApiHttpError(410);
+      if (cursor === undefined) return page([], "rebased-cursor");
+      if (cursor === "rebased-cursor") return page([], "resumed-cursor");
+      throw new Error("unexpected synthetic cursor");
+    },
+  });
+  t.after(() => poller.stop());
+
+  poller.start(true);
+  await poller.refresh();
+  assert.deepEqual(calls, ["updates:expired-cursor", "updates:baseline", "events:1"]);
+  assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), "rebased-cursor");
+  assert.equal(captured.states.at(-1)?.status, "retry");
+  assert.equal(captured.states.at(-1)?.failure, "snapshot");
+
+  await poller.refresh();
+  assert.deepEqual(calls, [
+    "updates:expired-cursor",
+    "updates:baseline",
+    "events:1",
+    "events:2",
+    "updates:rebased-cursor",
+  ]);
+  assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), "resumed-cursor");
+  assert.equal(captured.states.at(-1)?.status, "ready");
   assert.equal(captured.states.at(-1)?.resetNotice, true);
 });
 

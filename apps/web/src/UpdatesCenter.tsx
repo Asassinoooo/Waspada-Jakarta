@@ -162,8 +162,20 @@ function parseTimeScope(value: unknown): TimeScope {
       : value.precision === "range"
         ? (isInstant(value.start) || isDateOnly(value.start))
           && (isInstant(value.end) || isDateOnly(value.end))
-        : value.start === null && value.end === null;
+      : value.start === null && value.end === null;
   if (!valid) throw new ApiPayloadError();
+  if (value.end !== null) {
+    const start = value.start as string;
+    const end = value.end as string;
+    if (value.precision === "exact" && Date.parse(end) < Date.parse(start)) throw new ApiPayloadError();
+    if (value.precision === "date" && end < start) throw new ApiPayloadError();
+    if (value.precision === "range") {
+      const startIsDate = isDateOnly(start);
+      const endIsDate = isDateOnly(end);
+      if (startIsDate && endIsDate && end < start) throw new ApiPayloadError();
+      if (!startIsDate && !endIsDate && Date.parse(end) < Date.parse(start)) throw new ApiPayloadError();
+    }
+  }
   return {
     start: value.start as string | null,
     end: value.end as string | null,
@@ -372,9 +384,26 @@ export function createUpdateCenterPoller(options: UpdateCenterPollerOptions): Up
       if (!cursorInitialized) initializeCursor();
       publish(ticket, {
         status: "loading",
-        phase: cursor === null ? "baseline" : "updates",
+        phase: needsSnapshotRefresh ? "snapshot" : cursor === null ? "baseline" : "updates",
         failure: null,
       });
+
+      // A completed baseline is persisted before refreshing the current-event
+      // snapshot. If that refresh failed previously, keep it pending and finish
+      // it before making any cursor-based update request on this retry.
+      if (needsSnapshotRefresh && cursor !== null) {
+        phase = "snapshot";
+        publish(ticket, { status: "loading", phase, failure: null });
+        try {
+          await options.refreshCurrentEvents();
+        } catch {
+          if (!isCurrent(ticket)) return false;
+          throw Object.assign(new Error("snapshot"), { updateFailure: "snapshot" as const });
+        }
+        if (!isCurrent(ticket)) return false;
+        needsSnapshotRefresh = false;
+        publish(ticket, { status: "ready", phase: "updates", failure: null });
+      }
 
       while (pagesRequested < UPDATE_MAX_PAGES_PER_CYCLE && isCurrent(ticket)) {
         if (cursor === null) {
