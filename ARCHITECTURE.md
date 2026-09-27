@@ -4,6 +4,8 @@ Delivery scope, requirements and work sequencing are maintained in [SOFTWARE_DEV
 
 Status: target architecture with partial local implementation. The local code includes L1 synthetic GeoJSON parsing, deterministic text preparation/chunk persistence, source-supported geometry, immutable revision/evidence writers and a fixture-only queue pipeline; L2 typed model contracts, hybrid retrieval, a least-privilege reader, canonical refs-only context persistence and injected reasoning-context assembly; L3 a durable gap-investigation ledger, insufficient-context case entry and single-step action executor; and L4 fail-closed publication policy, a manual transaction writer, strict public projections, and database-backed public list/detail/history/GeoJSON readers and runtimes gated to exact live mode. The checked-in Worker remains in demo mode, and no hosted live database binding or source/provider has been enabled. Demo APIs and the UI use synthetic fixtures; GeoJSON returns an empty collection because fixtures do not supply source-supported geometry. There is no complete L3 planner/coordinator or authenticated moderator session route. These tests establish local component behavior, not live-data safety.
 
+L1 also contains an accepted, pure CAP 1.2 XML parser over caller-buffered synthetic input. It enforces the CAP namespace and parser bounds, rejects DTDs, preserves source-declared fields and separate timestamps, and validates only source-described polygons. This does not provide BMKG source approval, field mapping, source acquisition, signature verification, evidence validation, or event publication; the connector remains disabled.
+
 ## 1. Architecture and boundaries
 
 | Layer | Owns | Produces | Must not own |
@@ -23,7 +25,9 @@ flowchart TD
   G --> C{Evidence sufficient?}
   C -->|yes| P[Typed event proposal]
   C -->|missing or conflicting facts| A["L3 Inference & Orchestration\nbounded investigation coordinator"]
-  A -->|approved acquisition request| D
+  A -->|bounded request after gap check| M["L2 investigation planner\none action proposal or abstention"]
+  M -->|proposal only; L3 revalidates| A
+  A -->|registered and budgeted acquisition| D
   G -->|refreshed context for open case| A
   A -->|supported claims and unresolved fields| P
   P --> B["L4 Application Integration\npublication policy and moderator review"]
@@ -63,6 +67,9 @@ Keep unreviewed reports, eligible claims and public event versions logically sep
 | Category and entity extraction | Small low-latency model or classifier | Fixed ExtractionResult schema, evidence offsets, explicit unknowns; no browsing/tools |
 | Semantic lookup | Dedicated embedding model | Versioned vectors for permitted evidence chunks; evaluate Indonesian place names and aliases |
 | Synthesis and conflicting accounts | Reasoning-capable model | GroundingContext in, EventProposal or missing-fact assessment out; source-linked claims only |
+| Next investigation step | Separate typed planner adapter (ADR-027) | An already retrieved insufficient context plus a bounded trusted action menu in; one bounded action proposal or fixed abstention out; no execution authority |
+
+The Layer 2 investigation planner is separate from event-claim synthesis. It is called only after initial retrieval has found an evidence gap and Layer 3 has opened a case. It can propose one item from a server-supplied action menu, but the Layer 3 registry, ledger, and executor independently validate the action, check the remaining budget, and authorize at most one invocation. A successful Layer 2 response is not evidence sufficiency, a stop decision, or permission to publish. The local planner adapter is assigned for synthetic implementation under [ADR-027](docs/decisions/ADR-027-l2-investigation-action-proposals.md); no real provider or tools are enabled.
 
 Choose provider/model versions after benchmarking the labelled Jakarta cases. Extraction, embedding and reasoning are separate capability configurations even if one provider supplies them. Fine-tuning is deferred until there is enough labelled data and a measured need. Record model version, prompt version, schema version, latency and token usage per call.
 

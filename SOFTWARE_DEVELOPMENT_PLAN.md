@@ -10,6 +10,8 @@
 
 This Software Development Plan (SDP) is the project's main engineering document. It combines the release scope, a requirements baseline, work breakdown, delivery process and acceptance gates. The detailed architecture and source-verification specifications remain linked supporting documents. A separate Software Requirements Specification (SRS) can later be extracted from the requirements here if the course requires it; duplicating the same requirements now would create competing versions.
 
+The accepted `ING-CAP-PARSE-CORE` adds bounded, namespace-aware CAP 1.2 parsing for authored synthetic XML in Layer 1. It extracts source-declared fields only; it does not fetch or persist source records, verify issuer authenticity, infer event meaning, or enable the BMKG connector. Source terms and field mapping remain activation gates.
+
 ## 1. Document ownership and change control
 
 | Document | Owns |

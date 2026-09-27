@@ -1,6 +1,6 @@
 # ING-CAP-PARSE-CORE — bounded Common Alerting Protocol 1.2 fixture parser
 
-- **Status:** Assigned for local implementation
+- **Status:** Accepted on `main` at root handoff commit `0cfca1a`; root review and WSL verification recorded in [delivery log](../DELIVERY_LOG.md)
 - **Backlog ID:** `ING-CAP-PARSE-CORE`
 - **Objective:** Add a deterministic Layer 1 parser for CAP 1.2 messages using authored synthetic XML only. Preserve source-described facts and time fields while keeping retrieval time separate. This is parser groundwork, not a collector, source approval, verification result, or publication path.
 - **Dependencies:** `SPEC-01`, `DATA-01`, `ING-PARSE-01`.
