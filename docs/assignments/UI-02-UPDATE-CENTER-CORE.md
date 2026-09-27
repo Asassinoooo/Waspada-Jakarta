@@ -54,3 +54,15 @@ Stop and report if the existing public detail response cannot support the docume
 ## Implementation handoff
 
 Append the exact branch/worktree, commit SHAs and messages, changed paths, behavior, actual WSL checks/results, runtime versions, limitations, storage/configuration impact, and remaining decisions here. Do not merge or push.
+
+### Implementation handoff
+
+- **Branch/worktree:** `work/UI-02-UPDATE-CENTER-CORE` in `/mnt/c/Users/perry/.codex/worktrees/api-updates-reader-core/RPL` (Windows: `C:\Users\perry\.codex\worktrees\api-updates-reader-core\RPL`).
+- **Implementation commit:** `a5ef2d5ff87bed38740cb97fc10ee9b742df400a` — `feat(UI-02-UPDATE-CENTER-CORE): add user-controlled update centre`.
+- **Changed paths:** `apps/web/package.json`; `apps/web/src/App.tsx`; `apps/web/src/UpdatesCenter.tsx`; `apps/web/src/api-client.ts`; `apps/web/src/styles.css`; `apps/web/test/api-client.test.ts`; `apps/web/test/ui.test.tsx`; `apps/web/test/updates-center.test.tsx`; `docs/assignments/UI-02-UPDATE-CENTER-CORE.md`.
+- **Behavior:** Adds a directly navigable Indonesian-language update centre that is gated on exact-live mode, valid readable local interests, and visible/active view state. It validates bounded update pages, sends no interests, hydrates current details with concurrency capped at four, exact-matches only category and event/claim/impact scopes, and displays current-event status/time separately from reviewed-change and checked-at times. The poller keeps only its opaque cursor in browser storage, commits pages atomically after detail hydration, suppresses stale responses, caps each cycle at five pages, and re-baselines plus refreshes current events in order after HTTP 410.
+- **Checks (WSL Ubuntu-26.04):** Focused `npm exec --workspace=@waspada/web -- tsx --test test/updates-center.test.tsx test/api-client.test.ts test/ui.test.tsx` passed (36/36). `npm test` exited 0; workspace tests included the 261/261 runtime test report, all 20/20 DB test files, and the evaluation casebook (12/12). `npm run typecheck` passed for web, worker, db, and evaluation. `npm run build` passed, including the Vite production build and Wrangler dry-run. `git diff --check` passed before the implementation commit; the staged diff check also passed. The temporary `node_modules` symlink to `/mnt/d/Projects/RPL/node_modules` was removed after checks.
+- **Runtime/tool versions:** Node `v24.21.0`; npm `11.19.0`; Git `2.53.0`; TypeScript `7.0.2`; Vite `8.3.0`; tsx `4.23.15`; Wrangler `4.137.0`.
+- **Limitations:** No headless browser or Playwright/Puppeteer modules were present, so no screenshot or browser-driven visual review was performed. UI behavior was verified through deterministic tests with authored fixtures and fakes. Hosted services and live data were not exercised.
+- **Storage/configuration impact:** Uses the existing versioned browser-local preference store as input and persists only the opaque update cursor under the existing update cursor key. No new dependency, secret, binding, configuration, backend, API, or database change.
+- **Remaining decisions:** None identified in the assigned scope; root review and integration remain pending.
