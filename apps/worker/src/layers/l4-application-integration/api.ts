@@ -25,6 +25,7 @@ import {
   PublicEventHistoryProjectionServiceError,
   type PublicEventHistoryProjectionService,
 } from "./public-event-history-projection-service.js";
+import type { PublicEventGeoJSONRuntime } from "../../runtime/public-event-geojson-runtime.js";
 
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
@@ -106,6 +107,7 @@ export async function handlePublicApiRequest(
   eventListPageService?: PublicEventListPageService,
   eventDetailProjectionService?: PublicEventDetailProjectionService,
   eventHistoryProjectionService?: PublicEventHistoryProjectionService,
+  eventGeoJSONRuntime?: PublicEventGeoJSONRuntime,
 ) {
   const startedAt = Date.now();
   const url = new URL(request.url);
@@ -126,6 +128,7 @@ export async function handlePublicApiRequest(
       env.DATASET_MODE === "live" && selectedEventRoute?.kind === "detail";
     const exactLiveHistoryRoute =
       env.DATASET_MODE === "live" && selectedEventRoute?.kind === "history";
+    const exactLiveGeoJSONRoute = env.DATASET_MODE === "live" && selectedGeoJSONRoute;
     if (request.method !== "GET") {
       response = apiError("INVALID_REQUEST", "Only read-only GET requests are available.", 405);
     } else if (env.DATASET_MODE
@@ -139,7 +142,8 @@ export async function handlePublicApiRequest(
     } else if (env.DATASET_MODE === "live"
       && !exactLiveListRoute
       && !exactLiveDetailRoute
-      && !exactLiveHistoryRoute) {
+      && !exactLiveHistoryRoute
+      && !exactLiveGeoJSONRoute) {
       response = apiError(
         "TEMPORARILY_UNAVAILABLE",
         "This runtime only contains the synthetic demo dataset.",
@@ -157,8 +161,16 @@ export async function handlePublicApiRequest(
     } else if (route === "events") {
       if (selectedGeoJSONRoute) {
         readPublicGeoJSONQuery(url.searchParams);
-        const featureCollection: PublicFeatureCollection = readModel.geoJSON();
-        response = geoJSONResponse(featureCollection);
+        if (env.DATASET_MODE === "live") {
+          if (!eventGeoJSONRuntime) {
+            response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
+          } else {
+            response = geoJSONResponse(await eventGeoJSONRuntime.read(url.searchParams));
+          }
+        } else {
+          const featureCollection: PublicFeatureCollection = readModel.geoJSON();
+          response = geoJSONResponse(featureCollection);
+        }
       } else if (url.pathname === "/api/v1/events") {
         const page: EventPage = eventListPageService
           ? await eventListPageService.read(url.searchParams)

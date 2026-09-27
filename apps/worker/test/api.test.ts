@@ -17,6 +17,7 @@ import {
 } from "../src/layers/l4-application-integration/public-event-list-page-service.js";
 import type { PublicEventDetailProjectionService } from "../src/layers/l4-application-integration/public-event-detail-projection-service.js";
 import type { PublicEventHistoryProjectionService } from "../src/layers/l4-application-integration/public-event-history-projection-service.js";
+import type { PublicEventGeoJSONRuntime } from "../src/runtime/public-event-geojson-runtime.js";
 import {
   API_REQUEST_EVENT_NAME,
   consoleTelemetry,
@@ -69,6 +70,71 @@ test("GeoJSON route returns the exact empty FeatureCollection for the current de
     demoEnvironment,
   );
   assert.equal(write.status, 405);
+});
+
+test("only the exact live GeoJSON route uses its injected runtime after query validation", async () => {
+  let calls = 0;
+  let receivedQuery: URLSearchParams | undefined;
+  const runtime: PublicEventGeoJSONRuntime = {
+    async read(query) {
+      calls += 1;
+      receivedQuery = query;
+      return {
+        type: "FeatureCollection",
+        features: [],
+      };
+    },
+  };
+
+  const invalid = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events.geojson?bbox=106.70,-6.30,106.90,-6.10&unknown=x"),
+    { DATASET_MODE: "live" },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    runtime,
+  );
+  assert.equal(invalid.status, 400);
+  assert.equal(calls, 0, "query validation runs before the runtime");
+
+  const live = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events.geojson?bbox=106.70,-6.30,106.90,-6.10"),
+    { DATASET_MODE: "live" },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    runtime,
+  );
+  assert.equal(live.status, 200);
+  assert.equal(live.headers.get("content-type"), "application/geo+json");
+  assert.equal(live.headers.get("cache-control"), "no-store");
+  assert.equal(live.headers.get("x-content-type-options"), "nosniff");
+  assert.deepEqual(await readJson(live), { type: "FeatureCollection", features: [] });
+  assert.equal(calls, 1);
+  assert.ok(receivedQuery instanceof URLSearchParams);
+  assert.equal(receivedQuery.get("bbox"), "106.70,-6.30,106.90,-6.10");
+
+  const unavailable = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events.geojson"),
+    { DATASET_MODE: "live" },
+  );
+  assert.equal(unavailable.status, 503);
+  assert.equal(calls, 1);
+
+  const demo = await handlePublicApiRequest(
+    new Request("http://localhost/api/v1/events.geojson"),
+    demoEnvironment,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    runtime,
+  );
+  assert.equal(demo.status, 200);
+  assert.deepEqual(await readJson(demo), { type: "FeatureCollection", features: [] });
+  assert.equal(calls, 1, "an injected live runtime does not replace the demo path");
 });
 
 test("GeoJSON rejects malformed, reversed, overlong, non-finite, and out-of-envelope bounds safely", async () => {
@@ -154,7 +220,7 @@ test("GeoJSON validates only its documented category, lifecycle, and freshness e
   }
 });
 
-test("explicit non-demo mode blocks GeoJSON before the read model is accessed", async () => {
+test("live GeoJSON without a configured runtime does not read the demo model", async () => {
   const originalGeoJSON = PublicReadModel.prototype.geoJSON;
   let readCount = 0;
   PublicReadModel.prototype.geoJSON = function () {
@@ -165,7 +231,7 @@ test("explicit non-demo mode blocks GeoJSON before the read model is accessed", 
   let response: Response;
   try {
     response = await worker.fetch(
-      new Request("http://localhost/api/v1/events.geojson?bbox=malformed"),
+      new Request("http://localhost/api/v1/events.geojson"),
       { DATASET_MODE: "live" },
     );
   } finally {
@@ -175,7 +241,7 @@ test("explicit non-demo mode blocks GeoJSON before the read model is accessed", 
   const body = await readJson<{ code: string; message: string }>(response!);
   assert.equal(response!.status, 503);
   assert.equal(body.code, "TEMPORARILY_UNAVAILABLE");
-  assert.match(body.message, /synthetic demo dataset/);
+  assert.equal(body.message, "The public read could not be completed.");
   assert.equal(readCount, 0);
 });
 

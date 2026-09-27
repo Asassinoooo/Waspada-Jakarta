@@ -1,6 +1,7 @@
 import { createPublicEventListRuntime } from "./runtime/public-event-list-runtime.js";
 import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-runtime.js";
 import { createPublicEventHistoryRuntime } from "./runtime/public-event-history-runtime.js";
+import { createPublicEventGeoJSONRuntime } from "./runtime/public-event-geojson-runtime.js";
 import {
   handlePublicApiRequest,
   isPublicEventDetailPath,
@@ -40,6 +41,15 @@ export default {
           connectionString: env.HYPERDRIVE?.connectionString,
         })
         : undefined;
+    const eventGeoJSONRuntime =
+      env.DATASET_MODE === "live"
+        && request.method === "GET"
+        && url.pathname === "/api/v1/events.geojson"
+        ? createPublicEventGeoJSONRuntime({
+          datasetMode: env.DATASET_MODE,
+          connectionString: env.HYPERDRIVE?.connectionString,
+        })
+        : undefined;
 
     return handlePublicApiRequest(
       request,
@@ -48,6 +58,7 @@ export default {
       eventListPageService,
       eventDetailProjectionService,
       eventHistoryProjectionService,
+      eventGeoJSONRuntime,
     );
   },
 };

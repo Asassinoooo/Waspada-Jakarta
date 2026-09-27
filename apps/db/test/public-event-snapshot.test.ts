@@ -125,6 +125,93 @@ describe('public event snapshot repository', () => {
     assert.deepEqual(await repository.read('event-not-present'), { kind: 'missing' });
   });
 
+  it('reads distinct current snapshots in one bounded set operation and omits latest withdrawals', async () => {
+    const calls: { statement: string; parameters: readonly unknown[] }[] = [];
+    const repository = createPublicEventSnapshotRepository(recordQueries(testDatabase.executor, calls));
+    const result = await repository.readMany(['event-withdrawn', 'event-current']);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.eventId, 'event-current');
+    assert.equal(result[0]?.eventVersion, 2);
+    assert.deepEqual(result[0]?.impacts.map(({ impactId, impactVersion }) => [impactId, impactVersion]), [
+      ['impact-a', 1],
+      ['impact-shared', 2],
+      ['impact-z', 1],
+    ]);
+    assert.equal(calls.length, 2, 'bulk snapshots use one event and one impact query');
+    assert.match(calls[0]?.statement ?? '', /event_id\s*=\s*ANY\(\$1::text\[\]\)/iu);
+    assert.match(calls[0]?.statement ?? '', /LIMIT\s+\$2/u);
+    assert.deepEqual(calls[0]?.parameters, [['event-current', 'event-withdrawn'], 501]);
+    assert.match(calls[1]?.statement ?? '', /JOIN\s+unnest\(\$1::text\[\],\s*\$2::integer\[\]\)/iu);
+    assert.match(calls[1]?.statement ?? '', /LIMIT\s+\$3/u);
+    assert.deepEqual(calls[1]?.parameters, [['event-current'], [2], 10_001]);
+    assert.ok(calls.every(({ statement }) =>
+      !/FROM waspada\.(?:event_versions|impact_versions|event_impact_refs)\b/iu.test(statement)));
+  });
+
+  it('rejects per-event and request-wide bulk impact overflow without returning partial snapshots', async () => {
+    const repository = createPublicEventSnapshotRepository(testDatabase.executor);
+    await assert.rejects(
+      repository.readMany(['event-many']),
+      (error: unknown) => error instanceof PublicEventSnapshotError
+        && error.code === 'IMPACT_LIMIT_EXCEEDED'
+        && !error.message.includes('event-many'),
+    );
+
+    const tooManyImpacts = Array.from({ length: 10_001 }, (_, index) => ({
+      dataset_kind: 'live',
+      event_id: 'event-requested',
+      event_version: 1,
+      impact_id: 'impact-' + String(index).padStart(5, '0'),
+      impact_version: 1,
+      record_json: {},
+    }));
+    let queryCount = 0;
+    const overflowingExecutor: SqlExecutor = {
+      async query<Row extends object>(statement: string) {
+        queryCount += 1;
+        const rows = queryCount === 1
+          ? [{ dataset_kind: 'live', event_id: 'event-requested', version: 1, record_json: {} }]
+          : tooManyImpacts;
+        if (queryCount === 2) assert.match(statement, /LIMIT\s+\$3/u);
+        return { rows: rows as Row[] };
+      },
+      async execute() {},
+    };
+    await assert.rejects(
+      createPublicEventSnapshotRepository(overflowingExecutor).readMany(['event-requested']),
+      (error: unknown) => error instanceof PublicEventSnapshotError
+        && error.code === 'TOTAL_IMPACT_LIMIT_EXCEEDED'
+        && !error.message.includes('impact-10000'),
+    );
+    assert.equal(queryCount, 2);
+  });
+
+  it('validates and bounds the bulk event ID set before opening SQL', async () => {
+    let queryCount = 0;
+    const executor: SqlExecutor = {
+      async query<Row extends object>() {
+        queryCount += 1;
+        return { rows: [] as Row[] };
+      },
+      async execute() {},
+    };
+    const repository = createPublicEventSnapshotRepository(executor);
+    assert.deepEqual(await repository.readMany([]), []);
+    for (const invalid of [
+      'event-one',
+      ['event-one', 'event-one'],
+      ['event with space'],
+      Array.from({ length: PUBLIC_EVENT_SNAPSHOT_LIMITS.events + 1 }, (_, index) => 'event-' + index),
+    ]) {
+      await assert.rejects(
+        repository.readMany(invalid),
+        (error: unknown) => error instanceof PublicEventSnapshotError && error.code === 'INVALID_EVENT_ID',
+      );
+    }
+    assert.equal(queryCount, 0);
+  });
+
   it('requires live data when the configured view exposes a synthetic namespace', async () => {
     const repository = createPublicEventSnapshotRepository(testDatabase.executor);
     await testDatabase.executor.query(
