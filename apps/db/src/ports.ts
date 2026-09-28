@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createSqlExtractionResultRepository, type ExtractionResultRepository } from './extraction-results.js';
 import {
   createSqlGroundingContextRepository,
   type GroundingContextRepository,
@@ -129,6 +130,7 @@ export interface TraceAuditRepository {
 export interface RepositoryPorts {
   readonly sourceRegistry: SourceRegistryRepository;
   readonly reportRevisions: ReportRevisionRepository;
+  readonly extractionResults: ExtractionResultRepository;
   readonly groundingContexts: GroundingContextRepository;
   readonly evidenceChunks: EvidenceChunkRepository;
   readonly evidenceRetrieval: EvidenceRetrievalRepository;
@@ -140,6 +142,7 @@ export function createRepositoryPorts(executor: TransactionalSqlExecutor): Repos
   return {
     sourceRegistry: new SqlSourceRegistryRepository(executor),
     reportRevisions: new SqlReportRevisionRepository(executor),
+    extractionResults: createSqlExtractionResultRepository(executor),
     groundingContexts: createSqlGroundingContextRepository(executor),
     evidenceChunks: createSqlEvidenceChunkRepository(executor),
     evidenceRetrieval: createSqlEvidenceRetrievalRepository(executor),
