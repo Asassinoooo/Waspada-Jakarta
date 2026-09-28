@@ -39,8 +39,13 @@
 
 - `apps/worker/src/layers/l1-data-knowledge/synthetic-fixture-pipeline.ts`
 - `apps/worker/test/synthetic-fixture-pipeline.test.ts`
+- `apps/worker/test/synthetic-fixture-runner.test.ts` — root-authorized, narrowly scoped fixture and mock updates required by the new non-empty extraction contract; no runner behavior expansion.
 - `apps/db/test/synthetic-fixture-pipeline.test.ts`
 - This assignment's implementation handoff only
+
+### Root-authorized scope adjustment
+
+On 28 September 2026, root authorized updating `apps/worker/test/synthetic-fixture-runner.test.ts` because its typed fixture and port mocks construct non-empty `SyntheticReportManifest` and `FixturePipelinePorts` values. The required stable candidate ID and injected extraction/persistence ports make those values invalid without this test-only adjustment. Keep the change limited to fixture IDs, fake adapter/repository behavior, and assertions needed to retain the existing runner behavior; do not add runner functionality.
 
 Do not modify database migrations or repository implementation, model prompts/provider selection, public contracts/API/OpenAPI, Worker routes or bindings, queue schema, other tasks' files, dependency manifests/lockfiles or deployment configuration. Add no dependencies. Do not use live source or model services.
 
