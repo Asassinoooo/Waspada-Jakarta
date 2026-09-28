@@ -6,6 +6,16 @@ import {
   type InvestigationPlanProvider,
 } from '../src/layers/l2-model-grounding/investigation-planner.js';
 
+const testMetadata = { modelVersion: 'synthetic-model-v1', promptVersion: 'synthetic-prompt-v1' };
+
+function planCall(maxTotalTokens = 100) {
+  return { signal: new AbortController().signal, maxTotalTokens };
+}
+
+function configuredPlanner(provider?: InvestigationPlanProvider) {
+  return createInvestigationPlanner(provider, testMetadata);
+}
+
 const baseMenu = [
   { name: 'synthetic_search', description: 'Search the synthetic source index.' },
   { name: 'gazetteer_lookup', description: 'Resolve a synthetic place name.' },
@@ -77,20 +87,24 @@ function abstained(reason: string) {
 
 function scriptedProvider(reply: unknown | (() => unknown | Promise<unknown>), onPlan?: (value: unknown) => void) {
   const calls: unknown[] = [];
+  const callOptions: unknown[] = [];
   const provider: InvestigationPlanProvider = {
-    async plan(value) {
+    async plan(value, options) {
       calls.push(value);
+      callOptions.push(options);
       onPlan?.(value);
-      if (typeof reply === 'function') return await (reply as () => unknown | Promise<unknown>)();
-      return reply;
+      const result = typeof reply === 'function'
+        ? await (reply as () => unknown | Promise<unknown>)()
+        : reply;
+      return { result, inputTokens: 14, outputTokens: 6 };
     },
   };
-  return { provider, calls };
+  return { provider, calls, callOptions };
 }
 
 function plannerResult(reply: unknown) {
   const scripted = scriptedProvider(reply);
-  return { planner: createInvestigationPlanner(scripted.provider), calls: scripted.calls };
+  return { planner: configuredPlanner(scripted.provider), calls: scripted.calls, callOptions: scripted.callOptions };
 }
 
 function inputByteLength(value: unknown): number {
@@ -120,7 +134,7 @@ function nestedObject(depth: number): Record<string, unknown> {
 
 test('rejects malformed and sufficient contexts before calling the provider', async () => {
   const scripted = scriptedProvider(proposed());
-  const planner = createInvestigationPlanner(scripted.provider);
+  const planner = configuredPlanner(scripted.provider);
   const cases = [
     request({ questions: ['private source text'] }),
     request({ context: groundingContext({ sufficient: true }) }),
@@ -130,7 +144,7 @@ test('rejects malformed and sufficient contexts before calling the provider', as
   ];
 
   for (const invalid of cases) {
-    const result = await planner.propose(invalid);
+    const result = await planner.propose(invalid, planCall());
     assert.equal(result.status, 'invalid_request');
     assert.equal(JSON.stringify(result).includes('private source text'), false);
   }
@@ -147,8 +161,8 @@ test('enforces question projection and its one-to-twenty bound', async () => {
     questions: labelsFor(10, 10),
   });
   const { planner, calls } = plannerResult(proposed());
-  assert.equal((await planner.propose(validOne)).status, 'succeeded');
-  assert.equal((await planner.propose(validTwenty)).status, 'succeeded');
+  assert.equal((await planner.propose(validOne, planCall())).status, 'succeeded');
+  assert.equal((await planner.propose(validTwenty, planCall())).status, 'succeeded');
 
   const invalidRequests = [
     request({ context: groundingContext({ missingFields: [], conflicts: [] }), questions: [] }),
@@ -157,7 +171,7 @@ test('enforces question projection and its one-to-twenty bound', async () => {
     request({ questions: ['missing_field_1', 'conflict_1', 'conflict_1'] }),
   ];
   for (const invalid of invalidRequests) {
-    const result = await planner.propose(invalid);
+    const result = await planner.propose(invalid, planCall());
     assert.deepEqual(result, {
       status: 'invalid_request',
       capability: INVESTIGATION_PLAN_CAPABILITY,
@@ -169,7 +183,7 @@ test('enforces question projection and its one-to-twenty bound', async () => {
 
 test('requires a bounded unique action menu before provider invocation', async () => {
   const scripted = scriptedProvider(proposed());
-  const planner = createInvestigationPlanner(scripted.provider);
+  const planner = configuredPlanner(scripted.provider);
   const invalidMenus = [
     [],
     Array.from({ length: 17 }, (_, index) => ({ name: `action_${index}`, description: 'Synthetic action.' })),
@@ -180,7 +194,7 @@ test('requires a bounded unique action menu before provider invocation', async (
     [{ name: 'synthetic_search', description: 'Synthetic action.', host: 'example.invalid' }],
   ];
   for (const actionMenu of invalidMenus) {
-    const result = await planner.propose(request({ actionMenu }));
+    const result = await planner.propose(request({ actionMenu }), planCall());
     assert.equal(result.status, 'invalid_request');
     if (result.status === 'invalid_request') assert.equal(result.reason, 'invalid_action_menu');
   }
@@ -195,7 +209,7 @@ test('requires a bounded unique action menu before provider invocation', async (
       ? proposed({}, 'single_action')
       : proposed({}, 'action_15');
     const boundaryProvider = scriptedProvider(output);
-    const result = await createInvestigationPlanner(boundaryProvider.provider).propose(request({ actionMenu }));
+    const result = await configuredPlanner(boundaryProvider.provider).propose(request({ actionMenu }), planCall());
     assert.equal(result.status, 'succeeded');
     assert.equal(boundaryProvider.calls.length, 1);
   }
@@ -205,12 +219,19 @@ test('accepts one menu action as a frozen, copied proposal without execution aut
   const originalInput = { query: 'synthetic query', filters: ['synthetic'] };
   let providerRequest: unknown;
   const scripted = scriptedProvider(proposed(originalInput), (value) => { providerRequest = value; });
-  const planner = createInvestigationPlanner(scripted.provider);
-  const result = await planner.propose(request());
+  const planner = configuredPlanner(scripted.provider);
+  const result = await planner.propose(request(), planCall());
 
   assert.deepEqual(result, {
     status: 'succeeded',
     capability: INVESTIGATION_PLAN_CAPABILITY,
+    usage: {
+      inputTokens: 14,
+      outputTokens: 6,
+      totalTokens: 20,
+      modelVersion: 'synthetic-model-v1',
+      promptVersion: 'synthetic-prompt-v1',
+    },
     value: {
       schemaVersion: '1.0',
       recordType: 'InvestigationPlanResult',
@@ -236,10 +257,17 @@ test('accepts one menu action as a frozen, copied proposal without execution aut
 test('accepts only one of the fixed abstention outcomes', async () => {
   for (const reason of ['no_available_action', 'ambiguous_context', 'cannot_form_valid_input']) {
     const { planner, calls } = plannerResult(abstained(reason));
-    const result = await planner.propose(request());
+    const result = await planner.propose(request(), planCall());
     assert.deepEqual(result, {
       status: 'succeeded',
       capability: INVESTIGATION_PLAN_CAPABILITY,
+      usage: {
+        inputTokens: 14,
+        outputTokens: 6,
+        totalTokens: 20,
+        modelVersion: 'synthetic-model-v1',
+        promptVersion: 'synthetic-prompt-v1',
+      },
       value: {
         schemaVersion: '1.0',
         recordType: 'InvestigationPlanResult',
@@ -252,11 +280,64 @@ test('accepts only one of the fixed abstention outcomes', async () => {
 });
 
 test('provider absence is a typed closed outcome', async () => {
-  const result = await createInvestigationPlanner().propose(request());
+  const result = await createInvestigationPlanner().propose(request(), planCall());
   assert.deepEqual(result, {
     status: 'not_configured',
     capability: INVESTIGATION_PLAN_CAPABILITY,
     reason: 'provider_not_configured',
+  });
+});
+
+test('preflight validates and freezes the request without invoking the provider, then passes the reserved cap and signal', async () => {
+  const scripted = scriptedProvider(proposed());
+  const planner = configuredPlanner(scripted.provider);
+  const checked = await planner.preflight(request());
+  assert.equal(checked.status, 'ready');
+  assert.equal(scripted.calls.length, 0);
+  assert.ok(checked.status === 'ready' && Object.isFrozen(checked.request));
+
+  const signal = new AbortController().signal;
+  const result = await planner.propose(checked.status === 'ready' ? checked.request : request(), {
+    signal,
+    maxTotalTokens: 40,
+  });
+  assert.equal(result.status, 'succeeded');
+  assert.deepEqual(scripted.callOptions, [{ signal, maxTotalTokens: 40 }]);
+  assert.equal(scripted.calls.length, 1);
+
+  const invalid = await planner.preflight(request({ questions: ['source excerpt must stay private'] }));
+  assert.equal(invalid.status, 'invalid_request');
+  assert.equal(scripted.calls.length, 1);
+  assert.equal(JSON.stringify(invalid).includes('source excerpt'), false);
+});
+
+test('rejects missing, invalid, over-cap, and provider-supplied version usage envelopes', async () => {
+  const invalidEnvelopes = [
+    { result: proposed(), inputTokens: 10 },
+    { result: proposed(), inputTokens: -1, outputTokens: 2 },
+    { result: proposed(), inputTokens: 1.5, outputTokens: 2 },
+    { result: proposed(), inputTokens: 18, outputTokens: 3 },
+    { result: proposed(), inputTokens: 1, outputTokens: 2, modelVersion: 'untrusted-provider-version' },
+  ];
+  for (const envelope of invalidEnvelopes) {
+    const planner = configuredPlanner({ async plan() { return envelope; } });
+    const result = await planner.propose(request(), planCall(20));
+    assert.deepEqual(result, {
+      status: 'invalid_output',
+      capability: INVESTIGATION_PLAN_CAPABILITY,
+      reason: 'invalid_output',
+    });
+    assert.equal(JSON.stringify(result).includes('untrusted-provider-version'), false);
+  }
+
+  const valid = plannerResult(proposed());
+  const result = await valid.planner.propose(request(), planCall(20));
+  assert.deepEqual(result.status === 'succeeded' ? result.usage : null, {
+    inputTokens: 14,
+    outputTokens: 6,
+    totalTokens: 20,
+    modelVersion: 'synthetic-model-v1',
+    promptVersion: 'synthetic-prompt-v1',
   });
 });
 
@@ -274,7 +355,7 @@ test('calls the provider once and rejects unknown actions, extra fields, and aut
   ];
   for (const output of invalidOutputs) {
     const { planner, calls } = plannerResult(output);
-    const result = await planner.propose(request());
+    const result = await planner.propose(request(), planCall());
     assert.deepEqual(result, {
       status: 'invalid_output',
       capability: INVESTIGATION_PLAN_CAPABILITY,
@@ -288,13 +369,13 @@ test('calls the provider once and rejects unknown actions, extra fields, and aut
 test('accepts the exact UTF-8 byte bound and rejects input one byte over it', async () => {
   const atLimit = objectWithExactByteLength(8 * 1024);
   const withinLimit = plannerResult(proposed(atLimit));
-  assert.equal((await withinLimit.planner.propose(request())).status, 'succeeded');
+  assert.equal((await withinLimit.planner.propose(request(), planCall())).status, 'succeeded');
   assert.equal(withinLimit.calls.length, 1);
 
   const overLimit = { ...atLimit, k5: `${atLimit.k5}x` };
   assert.equal(inputByteLength(overLimit), 8 * 1024 + 1);
   const oversized = plannerResult(proposed(overLimit));
-  assert.deepEqual(await oversized.planner.propose(request()), {
+  assert.deepEqual(await oversized.planner.propose(request(), planCall()), {
     status: 'invalid_output',
     capability: INVESTIGATION_PLAN_CAPABILITY,
     reason: 'invalid_output',
@@ -303,7 +384,7 @@ test('accepts the exact UTF-8 byte bound and rejects input one byte over it', as
 
   const multibyte = plannerResult(proposed({ value: 'é'.repeat(2_048), second: 'é'.repeat(2_048) }));
   assert.ok(inputByteLength({ value: 'é'.repeat(2_048), second: 'é'.repeat(2_048) }) > 8 * 1024);
-  assert.equal((await multibyte.planner.propose(request())).status, 'invalid_output');
+  assert.equal((await multibyte.planner.propose(request(), planCall())).status, 'invalid_output');
 });
 
 test('enforces nesting, key, item, and string bounds', async () => {
@@ -324,7 +405,7 @@ test('enforces nesting, key, item, and string bounds', async () => {
 
   for (const { input, valid } of cases) {
     const { planner } = plannerResult(proposed(input));
-    assert.equal((await planner.propose(request())).status === 'succeeded', valid);
+    assert.equal((await planner.propose(request(), planCall())).status === 'succeeded', valid);
   }
 });
 
@@ -358,7 +439,7 @@ test('rejects prototype-bearing, cyclic, accessor, sparse, and non-JSON action i
 
   for (const input of invalidInputs) {
     const { planner } = plannerResult(proposed(input));
-    const result = await planner.propose(request());
+    const result = await planner.propose(request(), planCall());
     assert.deepEqual(result, {
       status: 'invalid_output',
       capability: INVESTIGATION_PLAN_CAPABILITY,
@@ -371,7 +452,7 @@ test('rejects prototype-bearing, cyclic, accessor, sparse, and non-JSON action i
 test('provider failures are reduced to a generic typed outcome', async () => {
   const rawMessage = 'private source text and provider diagnostic';
   const scripted = scriptedProvider(() => { throw new Error(rawMessage); });
-  const result = await createInvestigationPlanner(scripted.provider).propose(request());
+  const result = await configuredPlanner(scripted.provider).propose(request(), planCall());
   assert.deepEqual(result, {
     status: 'provider_error',
     capability: INVESTIGATION_PLAN_CAPABILITY,

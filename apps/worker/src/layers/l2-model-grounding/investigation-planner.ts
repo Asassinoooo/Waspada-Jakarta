@@ -61,7 +61,26 @@ export type InvestigationPlanResult = ProposedInvestigationAction | AbstainedInv
 
 export interface InvestigationPlanProvider {
   /** Implementations are injected; this repository includes no live provider. */
-  plan(request: InvestigationPlanRequest): Promise<unknown>;
+  plan(request: InvestigationPlanRequest, options: InvestigationPlanProviderCallOptions): Promise<unknown>;
+}
+
+export interface InvestigationPlanProviderCallOptions {
+  readonly signal: AbortSignal;
+  readonly maxTotalTokens: number;
+}
+
+/** Values are supplied by trusted adapter configuration, never provider output. */
+export interface InvestigationPlannerMetadata {
+  readonly modelVersion: string;
+  readonly promptVersion: string;
+}
+
+export interface InvestigationPlanUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly totalTokens: number;
+  readonly modelVersion: string;
+  readonly promptVersion: string;
 }
 
 export type InvestigationPlannerOutcome =
@@ -69,11 +88,12 @@ export type InvestigationPlannerOutcome =
       readonly status: 'succeeded';
       readonly capability: typeof INVESTIGATION_PLAN_CAPABILITY;
       readonly value: InvestigationPlanResult;
+      readonly usage: InvestigationPlanUsage;
     }
   | {
       readonly status: 'not_configured';
       readonly capability: typeof INVESTIGATION_PLAN_CAPABILITY;
-      readonly reason: 'provider_not_configured';
+      readonly reason: 'provider_not_configured' | 'model_metadata_not_configured';
     }
   | {
       readonly status: 'invalid_request';
@@ -90,53 +110,120 @@ export type InvestigationPlannerOutcome =
       readonly capability: typeof INVESTIGATION_PLAN_CAPABILITY;
     };
 
+export type InvestigationPlannerPreflightOutcome =
+  | {
+      readonly status: 'ready';
+      readonly capability: typeof INVESTIGATION_PLAN_CAPABILITY;
+      readonly request: InvestigationPlanRequest;
+    }
+  | Exclude<InvestigationPlannerOutcome, { readonly status: 'succeeded' }>;
+
+export interface InvestigationPlannerCallOptions {
+  readonly signal: AbortSignal;
+  readonly maxTotalTokens: number;
+}
+
 export interface InvestigationPlanner {
-  propose(request: unknown): Promise<InvestigationPlannerOutcome>;
+  /** Pure request/provider readiness check. It never invokes the provider. */
+  preflight(request: unknown): Promise<InvestigationPlannerPreflightOutcome>;
+  propose(request: unknown, options: InvestigationPlannerCallOptions): Promise<InvestigationPlannerOutcome>;
 }
 
 type RequestFailure = Extract<InvestigationPlannerOutcome, { readonly status: 'invalid_request' }>;
 type JsonObject = { readonly [key: string]: InvestigationPlanJsonValue };
 
+const MODEL_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const PROMPT_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
 /**
  * Creates a provider-injected proposal boundary. It validates retrieved context
  * and the trusted menu, then validates one provider result without executing it.
  */
-export function createInvestigationPlanner(provider?: InvestigationPlanProvider): InvestigationPlanner {
-  return {
-    async propose(rawRequest): Promise<InvestigationPlannerOutcome> {
-      const parsed = await parseRequest(rawRequest);
-      if (!parsed.ok) {
-        return {
-          status: 'invalid_request',
-          capability: INVESTIGATION_PLAN_CAPABILITY,
-          reason: parsed.reason,
-        };
-      }
-      let planProvider: InvestigationPlanProvider['plan'] | undefined;
-      try {
-        const candidate = provider?.plan;
-        if (typeof candidate === 'function') planProvider = candidate;
-      } catch {
-        return { status: 'provider_error', capability: INVESTIGATION_PLAN_CAPABILITY };
-      }
-      if (!provider || !planProvider) {
+export function createInvestigationPlanner(
+  provider?: InvestigationPlanProvider,
+  metadata?: InvestigationPlannerMetadata,
+): InvestigationPlanner {
+  const configuredMetadata = metadata && isTrustedMetadata(metadata)
+    ? { modelVersion: metadata.modelVersion, promptVersion: metadata.promptVersion }
+    : undefined;
+
+  const preflight = async (rawRequest: unknown): Promise<InvestigationPlannerPreflightOutcome> => {
+    const parsed = await parseRequest(rawRequest);
+    if (!parsed.ok) {
+      return {
+        status: 'invalid_request',
+        capability: INVESTIGATION_PLAN_CAPABILITY,
+        reason: parsed.reason,
+      };
+    }
+    if (!provider) {
+      return {
+        status: 'not_configured',
+        capability: INVESTIGATION_PLAN_CAPABILITY,
+        reason: 'provider_not_configured',
+      };
+    }
+    if (!configuredMetadata) {
+      return {
+        status: 'not_configured',
+        capability: INVESTIGATION_PLAN_CAPABILITY,
+        reason: 'model_metadata_not_configured',
+      };
+    }
+    try {
+      if (typeof provider.plan !== 'function') {
         return {
           status: 'not_configured',
           capability: INVESTIGATION_PLAN_CAPABILITY,
           reason: 'provider_not_configured',
         };
       }
+    } catch {
+      return { status: 'provider_error', capability: INVESTIGATION_PLAN_CAPABILITY };
+    }
+    return {
+      status: 'ready',
+      capability: INVESTIGATION_PLAN_CAPABILITY,
+      request: parsed.request,
+    };
+  };
 
-      let rawOutput: unknown;
+  return {
+    preflight,
+    async propose(rawRequest, callOptions): Promise<InvestigationPlannerOutcome> {
+      const ready = await preflight(rawRequest);
+      if (ready.status !== 'ready') return ready;
+      if (!provider || !configuredMetadata || !isCallOptions(callOptions)) {
+        return { status: 'provider_error', capability: INVESTIGATION_PLAN_CAPABILITY };
+      }
+
+      let envelope: unknown;
       try {
-        rawOutput = await planProvider.call(provider, parsed.request);
+        if (callOptions.signal.aborted) {
+          return { status: 'provider_error', capability: INVESTIGATION_PLAN_CAPABILITY };
+        }
+        envelope = await provider.plan(ready.request, {
+          signal: callOptions.signal,
+          maxTotalTokens: callOptions.maxTotalTokens,
+        });
       } catch {
         return { status: 'provider_error', capability: INVESTIGATION_PLAN_CAPABILITY };
       }
 
       try {
-        const value = parseResult(rawOutput, parsed.allowedActionNames);
-        return { status: 'succeeded', capability: INVESTIGATION_PLAN_CAPABILITY, value };
+        const parsedEnvelope = parseProviderEnvelope(envelope, ready.request, callOptions.maxTotalTokens);
+        return {
+          status: 'succeeded',
+          capability: INVESTIGATION_PLAN_CAPABILITY,
+          value: parsedEnvelope.value,
+          usage: {
+            inputTokens: parsedEnvelope.inputTokens,
+            outputTokens: parsedEnvelope.outputTokens,
+            totalTokens: parsedEnvelope.inputTokens + parsedEnvelope.outputTokens,
+            modelVersion: configuredMetadata.modelVersion,
+            promptVersion: configuredMetadata.promptVersion,
+          },
+        };
       } catch {
         return {
           status: 'invalid_output',
@@ -146,6 +233,63 @@ export function createInvestigationPlanner(provider?: InvestigationPlanProvider)
       }
     },
   };
+}
+
+function parseProviderEnvelope(
+  value: unknown,
+  request: InvestigationPlanRequest,
+  maxTotalTokens: number,
+): { readonly value: InvestigationPlanResult; readonly inputTokens: number; readonly outputTokens: number } {
+  const envelope = exactRecord(value, ['result', 'inputTokens', 'outputTokens']);
+  if (!isNonNegativeInteger(envelope.inputTokens) || !isNonNegativeInteger(envelope.outputTokens)) {
+    throw new Error('invalid_usage');
+  }
+  const totalTokens = envelope.inputTokens + envelope.outputTokens;
+  if (!Number.isSafeInteger(totalTokens) || totalTokens > maxTotalTokens) throw new Error('invalid_usage');
+  const result = parseResult(envelope.result, actionNamesFor(request));
+  return {
+    value: result,
+    inputTokens: envelope.inputTokens,
+    outputTokens: envelope.outputTokens,
+  };
+}
+
+function actionNamesFor(request: InvestigationPlanRequest): ReadonlySet<string> {
+  return new Set(request.actionMenu.map(({ name }) => name));
+}
+
+function isTrustedMetadata(value: unknown): value is InvestigationPlannerMetadata {
+  try {
+    const metadataRecord = exactRecord(value, ['modelVersion', 'promptVersion']);
+    return typeof metadataRecord.modelVersion === 'string'
+      && MODEL_VERSION_PATTERN.test(metadataRecord.modelVersion)
+      && typeof metadataRecord.promptVersion === 'string'
+      && PROMPT_VERSION_PATTERN.test(metadataRecord.promptVersion);
+  } catch {
+    return false;
+  }
+}
+
+function isCallOptions(value: unknown): value is InvestigationPlannerCallOptions {
+  try {
+    const options = exactRecord(value, ['signal', 'maxTotalTokens']);
+    const signal = options.signal;
+    return signal !== null
+      && typeof signal === 'object'
+      && typeof (signal as AbortSignal).aborted === 'boolean'
+      && typeof (signal as AbortSignal).addEventListener === 'function'
+      && isIntegerIn(options.maxTotalTokens, 1, 12_000);
+  } catch {
+    return false;
+  }
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isIntegerIn(value: unknown, minimum: number, maximum: number): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
 }
 
 async function parseRequest(
