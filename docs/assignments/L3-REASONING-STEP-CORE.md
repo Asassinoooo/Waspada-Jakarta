@@ -1,7 +1,7 @@
 # L3-REASONING-STEP-CORE — durable budget wrapper for one L2 planner call
 
 **Parent package:** AGENT-01 / FR-07 bounded investigation
-**Status:** Assigned; design accepted by [ADR-029](../decisions/ADR-029-l3-budgeted-planner-call.md)
+**Status:** Accepted on `main`; design is recorded in [ADR-029](../decisions/ADR-029-l3-budgeted-planner-call.md). Implementation review and verification are recorded in the [handoff](L3-REASONING-STEP-CORE-HANDOFF.md).
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/L3-REASONING-STEP-CORE`
 **Worktree:** Dedicated task worktree based on the assignment commit; do not edit the root checkout.
