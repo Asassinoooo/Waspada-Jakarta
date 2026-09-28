@@ -70,3 +70,29 @@ Stop and report the exact contract or package-boundary issue if the existing L2 
 ## Implementation handoff
 
 Commit implementation and handoff separately on this task branch. The handoff must include branch/worktree, both commit SHAs and exact messages, changed paths, behavior, actual WSL checks, schema/dependency/configuration impact, limitations and unresolved decisions. Leave the worktree clean; do not push or merge.
+
+### Implementation result — 2026-09-28
+
+- Branch/worktree: `work/L1-FIXTURE-EXTRACTION-CORE`, `C:\Users\perry\.codex\worktrees\l1-fixture-runner-core\RPL` (WSL: `/mnt/c/Users/perry/.codex/worktrees/l1-fixture-runner-core/RPL`), based on `3f02ed4a632c96cef78215e825680886f6aafb04`.
+- Root-authorized scope update was cherry-picked before editing the runner fixture test: `d1365161580bbd14d6daa9a3de047c2b7a86ca9f` — `docs(L1-FIXTURE-EXTRACTION-CORE): authorize fixture test updates`.
+- Implementation commit: `6186397de26e66e7868624a53a7df2b81f487ef3` — `feat(L1-FIXTURE-EXTRACTION-CORE): persist extraction candidates`.
+- Changed paths: `apps/worker/src/layers/l1-data-knowledge/synthetic-fixture-pipeline.ts`, `apps/worker/test/synthetic-fixture-pipeline.test.ts`, `apps/worker/test/synthetic-fixture-runner.test.ts` (root-authorized fixture and mock adjustment only), and `apps/db/test/synthetic-fixture-pipeline.test.ts`.
+- The processor now accepts an explicit authored candidate ID and only the injected L2 `extract` method and structural `createOrVerify` port. It passes the exact prepared report identity/text to L2, persists every validated evidence identity and relation, maps the validated result to the closed schema 2.0 envelope without `provider`, and acknowledges only after all writes succeed. Fixed retryable/permanent failure codes keep adapter errors redacted. PGlite replay verifies one candidate and four links survive an uncertain completion acknowledgement and lease recovery.
+- No schema/API, migration, dependency, manifest, or configuration change. No real provider, fetching, scheduler, Worker route, Event, investigation, or publication was added.
+
+### Verification results
+
+All project commands ran in WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`. Relevant installed packages: TypeScript `7.0.2`, tsx `4.23.15`, Wrangler `4.137.0`, pg `8.16.3`, PGlite `0.5.8`, PGlite PostGIS `0.2.8`, and PGlite pgvector `0.0.9`.
+
+- Focused Worker pipeline + PGlite tests: `15/15` passed, including four evidence relations, L1-role composition, and uncertain-ack replay convergence.
+- Focused Worker pipeline + runner tests after provider-error coverage: `22/22` passed.
+- `npm test --workspace=@waspada/worker`: `297/297` passed.
+- `npm run db:test`: all `21/21` DB test files passed.
+- `npm test`: exited successfully; web, Worker, all 21 DB files, and 12 evaluation casebook tests passed. This aggregate run preceded the final Worker-only provider-exception test; that test and the complete Worker suite were rerun successfully afterward.
+- `npm run typecheck`: passed across web, Worker, DB, and evaluation TypeScript projects.
+- `npm run build`: passed typecheck, Vite production build, and Wrangler Worker dry-run.
+- `git diff --check`: passed after the final source/test edits.
+
+### Limitations and decisions
+
+Hosted Neon multi-session behavior and real provider/network behavior remain unverified. Tests use authored synthetic fixtures and injected provider doubles. No unresolved schema or contract decision remains. This handoff section is committed separately with message `docs(L1-FIXTURE-EXTRACTION-CORE): record fixture extraction handoff`; its SHA is reported in the task handoff because a commit cannot contain its own SHA.
