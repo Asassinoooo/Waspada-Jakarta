@@ -2,6 +2,12 @@ export const API_REQUEST_EVENT_NAME = "api_request" as const;
 export const L2_RETRIEVAL_EVENT_NAME = "l2_retrieval" as const;
 export const L2_DIRECT_REASONING_EVENT_NAME = "l2_direct_reasoning" as const;
 export const L3_LEDGER_OPERATION_EVENT_NAME = "l3_ledger_operation" as const;
+export const L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME = "l1_synthetic_fixture_job" as const;
+
+export const L1_SYNTHETIC_FIXTURE_TELEMETRY_MAX_COUNT = 1_000_000;
+
+const L1_SYNTHETIC_FIXTURE_MAX_REPORTS = 500;
+const L1_SYNTHETIC_FIXTURE_MAX_CHUNKS_PER_REPORT = 1_024;
 
 export type L3LedgerOperation =
   | "create"
@@ -23,6 +29,13 @@ export type L3LedgerStopReason =
   | "tool_unavailable"
   | "awaiting_moderator"
   | "completed";
+
+export type L1SyntheticFixtureJobOutcome =
+  | "idle"
+  | "completed"
+  | "not_eligible"
+  | "lost_lease"
+  | "failed";
 
 export type L2RetrievalSemanticStatus =
   | "not_requested"
@@ -93,6 +106,27 @@ export interface L3LedgerOperationErrorTelemetryRecord {
   durationMs: number;
 }
 
+export interface L1SyntheticFixtureJobCompletedTelemetryRecord {
+  eventName: typeof L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME;
+  outcome: "completed";
+  durationMs: number;
+  empty: boolean;
+  reportCount: number;
+  evidenceReferenceCount: number;
+  chunkCount: number;
+  geometryCount: number;
+}
+
+export interface L1SyntheticFixtureJobOtherTelemetryRecord {
+  eventName: typeof L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME;
+  outcome: Exclude<L1SyntheticFixtureJobOutcome, "completed">;
+  durationMs: number;
+}
+
+export type L1SyntheticFixtureJobTelemetryRecord =
+  | L1SyntheticFixtureJobCompletedTelemetryRecord
+  | L1SyntheticFixtureJobOtherTelemetryRecord;
+
 export type L3LedgerTelemetryRecord =
   | L3LedgerOperationSuccessTelemetryRecord
   | L3LedgerOperationErrorTelemetryRecord;
@@ -101,7 +135,8 @@ export type TelemetryRecord =
   | ApiTelemetryRecord
   | L2RetrievalTelemetryRecord
   | L2DirectReasoningTelemetryRecord
-  | L3LedgerTelemetryRecord;
+  | L3LedgerTelemetryRecord
+  | L1SyntheticFixtureJobTelemetryRecord;
 
 export interface TelemetrySink {
   record(record: TelemetryRecord): void;
@@ -115,85 +150,116 @@ export const noOpTelemetry: TelemetrySink = {
 // Keep each structured JSON shape stable and limited to its safe allowlist.
 export const consoleTelemetry: TelemetrySink = {
   record(record) {
-    const input: unknown = record;
-    if (!isRecord(input)) return;
-
-    if (input.eventName === API_REQUEST_EVENT_NAME) {
-      if (!isApiTelemetryRecord(input)) return;
-      console.log({
-        event_name: API_REQUEST_EVENT_NAME,
-        route: input.route,
-        http_status: input.status,
-        duration_ms: input.durationMs,
-      });
-      return;
+    try {
+      recordConsoleTelemetry(record);
+    } catch {
+      // Console telemetry must not throw for forged or malformed runtime values.
     }
+  },
+};
 
-    if (input.eventName === L2_RETRIEVAL_EVENT_NAME) {
-      if (input.outcome === "success") {
-        if (!isL2RetrievalSuccessRecord(input)) return;
-        console.log({
-          event_name: L2_RETRIEVAL_EVENT_NAME,
-          outcome: "success",
-          duration_ms: input.durationMs,
-          candidate_count: input.candidateCount,
-          rows_examined: input.rowsExamined,
-          scan_truncated: input.scanTruncated,
-          result_truncated: input.resultTruncated,
-          semantic_status: input.semanticStatus,
-        });
-        return;
-      }
+function recordConsoleTelemetry(record: TelemetryRecord): void {
+  const input: unknown = record;
+  if (!isRecord(input)) return;
 
-      if (input.outcome === "error" && isL2RetrievalErrorRecord(input)) {
-        console.log({
-          event_name: L2_RETRIEVAL_EVENT_NAME,
-          outcome: "error",
-          duration_ms: input.durationMs,
-        });
-      }
-      return;
-    }
+  if (input.eventName === API_REQUEST_EVENT_NAME) {
+    if (!isApiTelemetryRecord(input)) return;
+    console.log({
+      event_name: API_REQUEST_EVENT_NAME,
+      route: input.route,
+      http_status: input.status,
+      duration_ms: input.durationMs,
+    });
+    return;
+  }
 
-    if (input.eventName === L2_DIRECT_REASONING_EVENT_NAME) {
-      if (!isL2DirectReasoningRecord(input)) return;
-      console.log({
-        event_name: L2_DIRECT_REASONING_EVENT_NAME,
-        outcome: input.outcome,
-        duration_ms: input.durationMs,
-      });
-      return;
-    }
-
-    if (input.eventName !== L3_LEDGER_OPERATION_EVENT_NAME) return;
-
+  if (input.eventName === L2_RETRIEVAL_EVENT_NAME) {
     if (input.outcome === "success") {
-      if (!isL3LedgerOperationSuccessRecord(input)) return;
+      if (!isL2RetrievalSuccessRecord(input)) return;
       console.log({
-        event_name: L3_LEDGER_OPERATION_EVENT_NAME,
-        operation: input.operation,
+        event_name: L2_RETRIEVAL_EVENT_NAME,
         outcome: "success",
         duration_ms: input.durationMs,
-        case_status: input.caseStatus,
-        stop_reason: input.stopReason,
-        consumed_tool_attempts: input.consumedToolAttempts,
-        consumed_reasoning_turns: input.consumedReasoningTurns,
-        consumed_active_seconds: input.consumedActiveSeconds,
-        consumed_model_tokens: input.consumedModelTokens,
+        candidate_count: input.candidateCount,
+        rows_examined: input.rowsExamined,
+        scan_truncated: input.scanTruncated,
+        result_truncated: input.resultTruncated,
+        semantic_status: input.semanticStatus,
       });
       return;
     }
 
-    if (input.outcome === "error" && isL3LedgerOperationErrorRecord(input)) {
+    if (input.outcome === "error" && isL2RetrievalErrorRecord(input)) {
       console.log({
-        event_name: L3_LEDGER_OPERATION_EVENT_NAME,
-        operation: input.operation,
+        event_name: L2_RETRIEVAL_EVENT_NAME,
         outcome: "error",
         duration_ms: input.durationMs,
       });
     }
-  },
-};
+    return;
+  }
+
+  if (input.eventName === L2_DIRECT_REASONING_EVENT_NAME) {
+    if (!isL2DirectReasoningRecord(input)) return;
+    console.log({
+      event_name: L2_DIRECT_REASONING_EVENT_NAME,
+      outcome: input.outcome,
+      duration_ms: input.durationMs,
+    });
+    return;
+  }
+
+  if (input.eventName === L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME) {
+    if (!isL1SyntheticFixtureJobRecord(input)) return;
+    if (input.outcome === "completed") {
+      console.log({
+        event_name: L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME,
+        outcome: "completed",
+        duration_ms: input.durationMs,
+        empty: input.empty,
+        report_count: input.reportCount,
+        evidence_reference_count: input.evidenceReferenceCount,
+        chunk_count: input.chunkCount,
+        geometry_count: input.geometryCount,
+      });
+      return;
+    }
+    console.log({
+      event_name: L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME,
+      outcome: input.outcome,
+      duration_ms: input.durationMs,
+    });
+    return;
+  }
+
+  if (input.eventName !== L3_LEDGER_OPERATION_EVENT_NAME) return;
+
+  if (input.outcome === "success") {
+    if (!isL3LedgerOperationSuccessRecord(input)) return;
+    console.log({
+      event_name: L3_LEDGER_OPERATION_EVENT_NAME,
+      operation: input.operation,
+      outcome: "success",
+      duration_ms: input.durationMs,
+      case_status: input.caseStatus,
+      stop_reason: input.stopReason,
+      consumed_tool_attempts: input.consumedToolAttempts,
+      consumed_reasoning_turns: input.consumedReasoningTurns,
+      consumed_active_seconds: input.consumedActiveSeconds,
+      consumed_model_tokens: input.consumedModelTokens,
+    });
+    return;
+  }
+
+  if (input.outcome === "error" && isL3LedgerOperationErrorRecord(input)) {
+    console.log({
+      event_name: L3_LEDGER_OPERATION_EVENT_NAME,
+      operation: input.operation,
+      outcome: "error",
+      duration_ms: input.durationMs,
+    });
+  }
+}
 
 const API_ROUTES = new Set<ApiTelemetryRecord["route"]>(["context", "events", "other"]);
 const L2_SEMANTIC_STATUSES = new Set<L2RetrievalSemanticStatus>([
@@ -289,4 +355,43 @@ function isL3LedgerOperationSuccessRecord(value: Record<string, unknown>): boole
 function isL3LedgerOperationErrorRecord(value: Record<string, unknown>): boolean {
   return L3_OPERATIONS.has(value.operation as L3LedgerOperation)
     && isFiniteNonNegative(value.durationMs);
+}
+
+function isL1SyntheticFixtureJobRecord(value: Record<string, unknown>): boolean {
+  if (!isFiniteNonNegative(value.durationMs)
+    || !["idle", "completed", "not_eligible", "lost_lease", "failed"]
+      .includes(value.outcome as L1SyntheticFixtureJobOutcome)) {
+    return false;
+  }
+
+  if (value.outcome !== "completed") {
+    return !hasOwn(value, "empty")
+      && !hasOwn(value, "reportCount")
+      && !hasOwn(value, "evidenceReferenceCount")
+      && !hasOwn(value, "chunkCount")
+      && !hasOwn(value, "geometryCount");
+  }
+
+  return typeof value.empty === "boolean"
+    && isBoundedCount(value.reportCount)
+    && value.reportCount <= L1_SYNTHETIC_FIXTURE_MAX_REPORTS
+    && isBoundedCount(value.evidenceReferenceCount)
+    && isBoundedCount(value.chunkCount)
+    && value.chunkCount <= value.reportCount * L1_SYNTHETIC_FIXTURE_MAX_CHUNKS_PER_REPORT
+    && isBoundedCount(value.geometryCount)
+    && value.geometryCount <= value.reportCount
+    && (value.empty
+      ? value.reportCount === 0
+        && value.evidenceReferenceCount === 0
+        && value.chunkCount === 0
+        && value.geometryCount === 0
+      : value.reportCount > 0);
+}
+
+function isBoundedCount(value: unknown): value is number {
+  return isCounter(value) && value <= L1_SYNTHETIC_FIXTURE_TELEMETRY_MAX_COUNT;
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }

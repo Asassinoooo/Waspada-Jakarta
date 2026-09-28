@@ -5,6 +5,13 @@ import {
   type SyntheticFixtureCatalog,
   type SyntheticFixturePipelineResult,
 } from "./synthetic-fixture-pipeline.js";
+import {
+  L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME,
+  L1_SYNTHETIC_FIXTURE_TELEMETRY_MAX_COUNT,
+  noOpTelemetry,
+  type L1SyntheticFixtureJobTelemetryRecord,
+  type TelemetrySink,
+} from "../l5-evaluation-monitoring/telemetry.js";
 
 export interface SyntheticFixtureClaimPort {
   /** The repository applies both fixture scope predicates before leasing a row. */
@@ -16,6 +23,7 @@ export interface RunSyntheticFixtureJobInput {
   readonly queue: SyntheticFixtureClaimPort;
   readonly catalog: SyntheticFixtureCatalog;
   readonly pipelinePorts: FixturePipelinePorts;
+  readonly telemetry?: TelemetrySink;
 }
 
 type PipelineFailureCode = Extract<
@@ -53,6 +61,21 @@ const PIPELINE_FAILURE_CODES: ReadonlySet<PipelineFailureCode> = new Set([
 export async function runSyntheticFixtureJob(
   input: RunSyntheticFixtureJobInput,
 ): Promise<SyntheticFixtureRunnerResult> {
+  const startedAt = monotonicNow();
+  let result: SyntheticFixtureRunnerResult;
+  try {
+    result = await runSyntheticFixtureJobWithoutTelemetry(input);
+  } catch {
+    result = { outcome: "failed", code: "runner_failed", queueOutcome: "not_acknowledged" };
+  }
+
+  recordRunnerTelemetry(input, result, elapsedSince(startedAt));
+  return result;
+}
+
+async function runSyntheticFixtureJobWithoutTelemetry(
+  input: RunSyntheticFixtureJobInput,
+): Promise<SyntheticFixtureRunnerResult> {
   const now = (input as RunSyntheticFixtureJobInput | null | undefined)?.now;
   if (!isRfc3339Timestamp(now)) {
     return { outcome: "failed", code: "invalid_timestamp", queueOutcome: "not_claimed" };
@@ -76,6 +99,80 @@ export async function runSyntheticFixtureJob(
   } catch {
     return { outcome: "failed", code: "runner_failed", queueOutcome: "not_acknowledged" };
   }
+}
+
+function recordRunnerTelemetry(
+  input: RunSyntheticFixtureJobInput,
+  result: SyntheticFixtureRunnerResult,
+  durationMs: number,
+): void {
+  const record = makeTelemetryRecord(result, durationMs);
+  let sink: unknown;
+  try {
+    sink = input?.telemetry ?? noOpTelemetry;
+  } catch {
+    sink = noOpTelemetry;
+  }
+
+  let recordMethod: unknown;
+  try {
+    recordMethod = (sink as TelemetrySink).record;
+  } catch {
+    return;
+  }
+  if (typeof recordMethod !== "function") return;
+
+  try {
+    recordMethod.call(sink, record);
+  } catch {
+    // Telemetry is best-effort and must never affect the runner result.
+  }
+}
+
+function makeTelemetryRecord(
+  result: SyntheticFixtureRunnerResult,
+  durationMs: number,
+): L1SyntheticFixtureJobTelemetryRecord {
+  if (result.outcome !== "completed") {
+    return {
+      eventName: L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME,
+      outcome: result.outcome,
+      durationMs,
+    };
+  }
+
+  return {
+    eventName: L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME,
+    outcome: "completed",
+    durationMs,
+    empty: result.empty,
+    reportCount: boundedCount(result.reportCount),
+    evidenceReferenceCount: boundedCount(result.evidenceReferenceCount),
+    chunkCount: boundedCount(result.chunkCount),
+    geometryCount: boundedCount(result.geometryCount),
+  };
+}
+
+function boundedCount(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) return 0;
+  return Math.min(value, L1_SYNTHETIC_FIXTURE_TELEMETRY_MAX_COUNT);
+}
+
+function monotonicNow(): number | null {
+  try {
+    const value = globalThis.performance?.now();
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function elapsedSince(startedAt: number | null): number {
+  if (startedAt === null) return 0;
+  const endedAt = monotonicNow();
+  if (endedAt === null || endedAt < startedAt) return 0;
+  const durationMs = endedAt - startedAt;
+  return Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : 0;
 }
 
 function safePipelineResult(result: SyntheticFixturePipelineResult): SyntheticFixtureRunnerResult {
