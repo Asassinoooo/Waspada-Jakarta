@@ -56,7 +56,7 @@ Validate needs with 6–8 interviews. The initial usability target is at least 8
 
 - Responsive map and linked feed, category/time/status filters, place search, event details, evidence links and change history.
 - Locally stored place/service/group preferences, a personal briefing and in-site update centre. Reading public information requires no account.
-- Authenticated moderator workspace for source registration, submitted URLs, review, correction, candidate merging and retraction.
+- Read-only moderator evidence review for the course demo, using UI-00 and labelled synthetic fixtures; no sign-in or review mutations. Source registration, publication, correction, merging and retraction are deferred to a later authenticated release.
 - Scheduled BMKG, PetaBencana and ANTARA acquisition as initial connector candidates; add a permitted traffic/operator source for the demonstration. Each connector needs a fresh feasibility check before activation.
 - Ten supported category labels; four complete scenarios: historical crime, gathering plus transport impact, weather warning plus flood observation, and a non-geographic group notice.
 - Versioned evidence storage, extraction, hybrid retrieval, a direct grounded proposal path, bounded investigation, deterministic publication, freshness jobs and monitoring.

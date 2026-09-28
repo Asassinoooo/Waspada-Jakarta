@@ -60,7 +60,7 @@ Use clearly labelled historical or synthetic demonstration records where suitabl
 - **Event detail:** Present a concise summary, affected places and groups, documented effects, event time, latest source update, citations, source-provided guidance, and a development timeline.
 - **Places and interests:** Allow people to follow neighbourhoods, campuses, destinations, services, and optional roles such as student, parent, or public transport user. Explain why each personalised item appears.
 - **Personal briefing and update centre:** Summarise relevant events and highlight material changes, including revised effects, cancellations, and corrections. Deduplicate repeated coverage.
-- **Moderator dashboard:** Inspect evidence and exceptions; correct records, merge duplicates, approve publications, and retract errors. Retain an audit history.
+- **Moderator evidence review:** Inspect evidence and exceptions through the course demo's read-only UI-00 view with labelled fixtures. Corrections, merging, publication/source approval, retraction and audit writes remain future authenticated-release capabilities under [ADR-028](docs/decisions/ADR-028-read-only-moderator-demo.md).
 
 Choose map representations according to the evidence:
 

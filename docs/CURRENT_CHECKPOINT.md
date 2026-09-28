@@ -7,7 +7,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next implementation:** The source terms review changes no source approval. No source-backed ingestion, model-provider, evaluated RAG, or publication integration is ready while source/data rights and human-adjudicated evaluation cases remain pending. Keep acquisition and providers synthetic-only. `EVAL-01` is the next gated milestone once the team documents permission to collect, retain and label a suitable dataset; `ING-01`, `AI-01`, `RAG-01`, and `PUB-01` depend on that evidence. MOD-01 identity/session integration also needs a team choice before protected write routes. No currently planned implementation has both its dependency chain and external-data authorization ready; do not provision external services or activate live sources.
+**Next implementation:** The source terms review changes no source approval. No source-backed ingestion, model-provider, evaluated RAG, or publication integration is ready while source/data rights and human-adjudicated evaluation cases remain pending. Keep acquisition and providers synthetic-only. `EVAL-01` is the next gated milestone once the team documents permission to collect, retain and label a suitable dataset; `ING-01`, `AI-01`, `RAG-01`, and `PUB-01` depend on that evidence. Per ADR-028, the course demo keeps moderator review read-only; MOD-01 identity/session and write integration are deferred to a later authenticated release, so a provider choice is not a current demo blocker. No currently planned implementation has both its dependency chain and external-data authorization ready; do not provision external services or activate live sources.
 
 ## Repository state
 

@@ -1,6 +1,6 @@
 # ADR-006 — Moderator authentication and authorization
 
-- **Status:** Accepted as SPEC-03 design; runtime authentication remains unimplemented.
+- **Status:** Retained as a future authenticated-release design; runtime authentication is unimplemented and out of course-demo scope under [ADR-028](ADR-028-read-only-moderator-demo.md).
 - **Date:** 24 September 2026
 - **Owners:** Backend/API and moderator UX
 
@@ -25,7 +25,7 @@ Use a same-origin, server-side session for moderator access. Do not put bearer t
 
 The browser can authenticate without storing a reusable token in JavaScript-accessible storage, and the server can revoke sessions and enforce role/dataset changes promptly. The API and operator runbook must provide protected account provisioning, credential rotation/disablement, session cleanup and audit retention. Multi-instance deployment requires shared server-side session storage. HTTPS and same-origin routing are deployment requirements.
 
-The selected deployment has a same-origin Cloudflare Worker and Neon-backed server-side session store; sessions and roles stay on the server and all moderators are scoped to the configured dataset. The proposed idle and absolute timeouts, password-hash implementation/parameters, operator provisioning workflow, MFA decision and audit retention period remain implementation decisions. They must be resolved before real moderator accounts are provisioned; this ADR does not claim an auth service exists.
+For a later authenticated release, the target deployment may use a same-origin Cloudflare Worker and Neon-backed server-side session store; sessions and roles stay on the server and all moderators are scoped to the configured dataset. The proposed idle and absolute timeouts, password-hash implementation/parameters, operator provisioning workflow, MFA decision and audit retention period remain implementation decisions. They must be resolved before real moderator accounts are provisioned; this ADR does not claim an auth service exists. The current course demo instead exposes only read-only evidence review with labelled fixtures, no sign-in, and no moderator mutations. No identity provider is selected or configured.
 
 ## References
 
