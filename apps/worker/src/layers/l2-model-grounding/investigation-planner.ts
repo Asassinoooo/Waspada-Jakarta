@@ -132,8 +132,8 @@ export interface InvestigationPlanner {
 type RequestFailure = Extract<InvestigationPlannerOutcome, { readonly status: 'invalid_request' }>;
 type JsonObject = { readonly [key: string]: InvestigationPlanJsonValue };
 
-const MODEL_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const PROMPT_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const MODEL_VERSION_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._:\/-]{0,127}$/;
+const PROMPT_VERSION_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._:\/-]{0,127}$/;
 
 /**
  * Creates a provider-injected proposal boundary. It validates retrieved context

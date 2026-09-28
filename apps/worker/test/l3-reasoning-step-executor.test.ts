@@ -574,6 +574,27 @@ test('valid abstention reconciles usage before stopping the case for moderator r
   });
 });
 
+test('accepts bounded trusted provider identifiers without normalizing the ModelRun metadata', async () => {
+  const trustedUsage: InvestigationPlanUsage = {
+    ...usage,
+    modelVersion: '@cf/meta/llama-3.1-8b-instruct',
+    promptVersion: 'prompts/investigation@v1',
+  };
+  const ledger = makeLedger();
+  const planner = makePlanner({ result: successfulOutcome(proposedPlan(), trustedUsage) });
+  const result = await makeExecutor({ ledger: ledger.repository, planner: planner.planner }).executor.plan(makeProposal());
+
+  assert.equal(result.status, 'proposed');
+  assert.deepEqual(ledger.reconcileInputs[0]?.modelRun, {
+    capability: 'reasoning',
+    model_version: trustedUsage.modelVersion,
+    prompt_version: trustedUsage.promptVersion,
+    input_tokens: trustedUsage.inputTokens,
+    output_tokens: trustedUsage.outputTokens,
+  });
+  assert.deepEqual(result.status === 'proposed' ? result.usage : null, trustedUsage);
+});
+
 test('provider errors, malformed plans and invalid usage reconcile full reserved budgets without retry', async () => {
   const malformedUsage = { inputTokens: 80, outputTokens: 1, totalTokens: 81, modelVersion: usage.modelVersion, promptVersion: usage.promptVersion };
   const cases = [
@@ -581,6 +602,8 @@ test('provider errors, malformed plans and invalid usage reconcile full reserved
     { name: 'typed provider error', planner: makePlanner({ result: { status: 'provider_error', capability: INVESTIGATION_PLAN_CAPABILITY } }) },
     { name: 'missing usage', planner: makePlanner({ result: { status: 'succeeded', capability: INVESTIGATION_PLAN_CAPABILITY, value: proposedPlan(), usage: undefined } }) },
     { name: 'over-cap usage', planner: makePlanner({ result: successfulOutcome(proposedPlan(), malformedUsage) }) },
+    { name: 'unsafe model identifier', planner: makePlanner({ result: successfulOutcome(proposedPlan(), { ...usage, modelVersion: 'model with spaces' }) }) },
+    { name: 'overlong prompt identifier', planner: makePlanner({ result: successfulOutcome(proposedPlan(), { ...usage, promptVersion: 'p'.repeat(129) }) }) },
     { name: 'invalid plan', planner: makePlanner({ result: successfulOutcome({ ...proposedPlan(), actionName: 'unregistered_action' }) }) },
   ];
   for (const scenario of cases) {

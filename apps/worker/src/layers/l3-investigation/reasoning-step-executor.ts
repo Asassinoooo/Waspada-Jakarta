@@ -27,7 +27,7 @@ import type { TelemetrySink } from '../l5-evaluation-monitoring/telemetry.js';
 const RESERVATION_ACTION_NAME = 'l2_investigation_planning';
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-const MODEL_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const MODEL_VERSION_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._:\/-]{0,127}$/;
 
 export interface ReasoningStepProposal {
   readonly datasetKind: DatasetKind;

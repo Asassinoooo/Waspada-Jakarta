@@ -311,6 +311,40 @@ test('preflight validates and freezes the request without invoking the provider,
   assert.equal(JSON.stringify(invalid).includes('source excerpt'), false);
 });
 
+test('preserves bounded trusted provider identifiers and rejects malformed or overlong metadata', async () => {
+  const metadata = {
+    modelVersion: '@cf/meta/llama-3.1-8b-instruct',
+    promptVersion: 'prompts/investigation@v1',
+  };
+  const provider: InvestigationPlanProvider = {
+    async plan() { return { result: proposed(), inputTokens: 3, outputTokens: 2 }; },
+  };
+  const planner = createInvestigationPlanner(provider, metadata);
+  const result = await planner.propose(request(), planCall(10));
+  assert.deepEqual(result.status === 'succeeded' ? result.usage : null, {
+    inputTokens: 3,
+    outputTokens: 2,
+    totalTokens: 5,
+    ...metadata,
+  });
+
+  const invalidMetadata = [
+    { modelVersion: '', promptVersion: 'valid-prompt' },
+    { modelVersion: 'model with spaces', promptVersion: 'valid-prompt' },
+    { modelVersion: 'model\\name', promptVersion: 'valid-prompt' },
+    { modelVersion: 'm'.repeat(129), promptVersion: 'valid-prompt' },
+    { modelVersion: 'valid-model', promptVersion: 'p'.repeat(129) },
+  ];
+  for (const invalid of invalidMetadata) {
+    const unconfigured = createInvestigationPlanner(provider, invalid);
+    assert.deepEqual(await unconfigured.preflight(request()), {
+      status: 'not_configured',
+      capability: INVESTIGATION_PLAN_CAPABILITY,
+      reason: 'model_metadata_not_configured',
+    });
+  }
+});
+
 test('rejects missing, invalid, over-cap, and provider-supplied version usage envelopes', async () => {
   const invalidEnvelopes = [
     { result: proposed(), inputTokens: 10 },
