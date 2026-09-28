@@ -24,7 +24,7 @@
 4. Enforce the existing extraction contract's support invariant: if the extraction proposes a category, tags, known event time, or non-empty scope, at least one exact linked reference must have relation `supports`. The repository records candidate extraction only; it does not mark evidence true, establish source independence, create an Event, or authorize publication.
 5. Implement transactional create-or-verify semantics. An identical retry returns success without duplicate evidence links. Reuse of a candidate ID with any record or link drift returns a stable typed conflict. Missing parent/evidence references return typed errors; failures roll back the parent and every link.
 6. Add a forward-only migration that grants `waspada_l1_pipeline` only the column-level `SELECT` needed to verify existing extraction rows and their evidence links on retry. Preserve existing insert grants and deny update/delete and unrelated-column reads. Test the real repository with `SET ROLE waspada_l1_pipeline` and assert the privilege boundary.
-   Update the migration-history expectations in `apps/db/test/migrations.test.ts` to account for version 018 while preserving its earlier-version and ordering assertions.
+   Update migration-history expectations in `apps/db/test/migrations.test.ts` and `apps/db/test/public-event-updates.test.ts` to account for version 018 while preserving their earlier-version and ordering assertions.
 7. Use authored synthetic PGlite fixtures only. No live source text, real model calls, acquisition, Worker route, HTTP, scheduler, or event/publication writes.
 
 ## Allowed paths
@@ -34,9 +34,10 @@
 - `apps/db/migrations/018_l1_extraction_result_verification.sql` (new)
 - `apps/db/test/extraction-results.test.ts` (new)
 - `apps/db/test/migrations.test.ts` (migration-history expectations for 018 only)
+- `apps/db/test/public-event-updates.test.ts` (018 history expectation for the version-016 ordering scenario only)
 - This assignment's implementation handoff only
 
-Do not edit L2 model behavior, extraction prompts/provider selection, API/OpenAPI/DTOs, Worker runtime, public contracts, other migrations, source/provider settings, deployment configuration, package manifests/lockfiles, or unrelated task documentation. Keep changes to `migrations.test.ts` limited to migration-history fixture filters, expected ordered version lists/counts, and later-version assertions required by migration 018. Add no dependency or cloud configuration.
+Do not edit L2 model behavior, extraction prompts/provider selection, API/OpenAPI/DTOs, Worker runtime, public contracts, other migrations, source/provider settings, deployment configuration, package manifests/lockfiles, or unrelated task documentation. Keep changes to the two named migration test files limited to migration-history fixture filters, expected ordered version lists/counts, and later-version assertions required by migration 018. Add no dependency or cloud configuration.
 
 ## Verification
 
