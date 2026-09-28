@@ -73,6 +73,32 @@ export interface ExtractionResultRecord {
 
 export interface ExtractionResultRepository {
   createOrVerify(record: ExtractionResultRecord): Promise<ExtractionResultRecord>;
+  findByCandidateId(datasetKind: DatasetKind, candidateId: string): Promise<ExtractionResultLookup>;
+}
+
+export type ExtractionResultLookup =
+  | { readonly outcome: 'found'; readonly record: ExtractionResultRecord }
+  | { readonly outcome: 'not_found' }
+  | { readonly outcome: 'invalid_record' }
+  | { readonly outcome: 'identity_conflict' };
+
+interface StoredExtractionResultRow {
+  readonly dataset_kind: unknown;
+  readonly candidate_id: unknown;
+  readonly trace_id: unknown;
+  readonly report_revision_id: unknown;
+  readonly category: unknown;
+  readonly record_json: unknown;
+}
+
+interface StoredExtractionEvidenceRow {
+  readonly dataset_kind: unknown;
+  readonly report_revision_id: unknown;
+  readonly permitted_text_hash: unknown;
+  readonly span_start: unknown;
+  readonly span_end: unknown;
+  readonly offset_unit: unknown;
+  readonly relation: unknown;
 }
 
 export type ExtractionResultReferenceKind = 'trace' | 'report_revision' | 'evidence';
@@ -144,6 +170,13 @@ export function createSqlExtractionResultRepository(
 
 class SqlExtractionResultRepository implements ExtractionResultRepository {
   constructor(private readonly executor: TransactionalSqlExecutor) {}
+
+  async findByCandidateId(datasetKind: DatasetKind, candidateId: string): Promise<ExtractionResultLookup> {
+    const requestedDataset = enumValue(datasetKind, DATASET_KINDS, 'lookup.dataset_kind');
+    const requestedCandidate = id(candidateId, 'lookup.candidate_id');
+    return this.executor.transaction((transaction) =>
+      findExistingExtraction(transaction, requestedDataset, requestedCandidate));
+  }
 
   async createOrVerify(input: ExtractionResultRecord): Promise<ExtractionResultRecord> {
     const record = validateExtractionResult(input);
@@ -512,6 +545,59 @@ async function verifyExistingExtraction(
   return true;
 }
 
+async function findExistingExtraction(
+  executor: SqlExecutor,
+  datasetKind: DatasetKind,
+  candidateId: string,
+): Promise<ExtractionResultLookup> {
+  const parent = await executor.query<StoredExtractionResultRow>(
+    'SELECT dataset_kind, candidate_id, trace_id, report_revision_id, category, record_json ' +
+      'FROM waspada.extraction_results WHERE dataset_kind = $1 AND candidate_id = $2',
+    [datasetKind, candidateId],
+  );
+  if (parent.rows.length === 0) return { outcome: 'not_found' };
+  if (parent.rows.length !== 1) return { outcome: 'identity_conflict' };
+
+  const row = parent.rows[0]!;
+  let record: ExtractionResultRecord;
+  try {
+    record = validateExtractionResult(row.record_json);
+  } catch (error) {
+    if (error instanceof ExtractionResultValidationError) return { outcome: 'invalid_record' };
+    throw error;
+  }
+
+  if (row.dataset_kind !== record.dataset_kind || row.dataset_kind !== datasetKind
+    || row.candidate_id !== record.candidate_id || row.candidate_id !== candidateId
+    || row.trace_id !== record.trace_id || row.report_revision_id !== record.report_revision_id
+    || row.category !== record.category) {
+    return { outcome: 'identity_conflict' };
+  }
+
+  const linkedEvidence = await executor.query<StoredExtractionEvidenceRow>(
+    'SELECT reference.dataset_kind, reference.report_revision_id, reference.permitted_text_hash, ' +
+      'reference.span_start, reference.span_end, reference.offset_unit, reference.relation ' +
+      'FROM waspada.extraction_evidence AS link ' +
+      'JOIN waspada.evidence_references AS reference ' +
+      'ON reference.dataset_kind = link.dataset_kind AND reference.evidence_ref_id = link.evidence_ref_id ' +
+      'WHERE link.dataset_kind = $1 AND link.candidate_id = $2',
+    [datasetKind, candidateId],
+  );
+  const linkedReferences = linkedEvidence.rows.map((reference) => ({
+    report_revision_id: reference.report_revision_id as string,
+    permitted_text_hash: reference.permitted_text_hash as string,
+    span_start: reference.span_start as number,
+    span_end: reference.span_end as number,
+    offset_unit: reference.offset_unit as 'unicode_code_points',
+    relation: reference.relation as EvidenceRelation,
+  }));
+  if (linkedEvidence.rows.some((reference) => reference.dataset_kind !== datasetKind)
+    || !sameSet(record.evidence.map(evidenceKey), linkedReferences.map(evidenceKey))) {
+    return { outcome: 'identity_conflict' };
+  }
+  return { outcome: 'found', record };
+}
+
 async function requireTrace(executor: SqlExecutor, record: ExtractionResultRecord): Promise<void> {
   const result = await executor.query<{ trace_id: string }>(
     'SELECT trace_id FROM waspada.traces WHERE dataset_kind = $1 AND trace_id = $2',
@@ -560,13 +646,15 @@ async function resolveEvidenceReferences(
 }
 
 function assertSameSet(expected: readonly string[], actual: readonly string[]): void {
+  if (!sameSet(expected, actual)) throw new ExtractionResultConflictError();
+}
+
+function sameSet(expected: readonly string[], actual: readonly string[]): boolean {
   const expectedSet = new Set(expected);
   const actualSet = new Set(actual);
-  if (expected.length !== actual.length || expectedSet.size !== expected.length
-    || actualSet.size !== actual.length
-    || [...expectedSet].some((value) => !actualSet.has(value))) {
-    throw new ExtractionResultConflictError();
-  }
+  return expected.length === actual.length && expectedSet.size === expected.length
+    && actualSet.size === actual.length
+    && [...expectedSet].every((value) => actualSet.has(value));
 }
 
 function invalid(path: string, reason: string): never {

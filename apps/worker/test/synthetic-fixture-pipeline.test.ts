@@ -10,6 +10,7 @@ import {
   InMemorySyntheticFixtureCatalog,
   processSyntheticFixtureJob,
   type FixturePipelinePorts,
+  type FixtureExtractionResultRecord,
   type FixtureJobRecord,
   type SyntheticFixture,
   type SyntheticGeometryManifest,
@@ -102,6 +103,106 @@ test("resolves exact URL and persists caller-authored schema 2.0 data before com
     type: "Point", coordinates: [106.8272, -6.1754],
   });
   assert.equal(events.includes("claim"), false);
+});
+
+test("verifies report identity before lookup and reuses a stored result without another extraction call", async () => {
+  const events: string[] = [];
+  const observed: { evidence: unknown[]; extraction?: unknown } = { evidence: [] };
+  const baseAdapter = mockModelAdapter(events, undefined);
+  let extractionCalls = 0;
+  const changingAdapter: Pick<ModelCapabilityAdapter, "extract"> = {
+    async extract(request) {
+      extractionCalls += 1;
+      const result = await baseAdapter.extract(request);
+      if (extractionCalls !== 2 || result.status !== "succeeded") return result;
+      return { ...result, value: { ...result.value, category: "crime_personal_security" } };
+    },
+  };
+  const ports = mockPorts(events, observed, changingAdapter);
+  let stored: FixtureExtractionResultRecord | null = null;
+  ports.extractionResults.findByCandidateId = async (datasetKind, candidateId) => {
+    events.push("lookup");
+    assert.equal(datasetKind, "synthetic");
+    assert.equal(candidateId, "candidate-fixture-authored-1");
+    return stored ? { outcome: "found", record: stored } : { outcome: "not_found" };
+  };
+  ports.extractionResults.createOrVerify = async (record) => {
+    events.push("extraction");
+    stored = record;
+    observed.extraction = record;
+    return record;
+  };
+  const catalog = new InMemorySyntheticFixtureCatalog([makeFixture()]);
+
+  const first = await processSyntheticFixtureJob({ job: makeJob(), catalog, ports, transitionAt });
+  assert.equal(first.outcome, "completed");
+  assert.deepEqual(events.slice(0, 4), ["source", "revision", "lookup", "extract"]);
+  assert.equal(extractionCalls, 1);
+
+  events.length = 0;
+  const replay = await processSyntheticFixtureJob({ job: makeJob(), catalog, ports, transitionAt });
+  assert.equal(replay.outcome, "completed");
+  assert.deepEqual(events.slice(0, 3), ["source", "revision", "lookup"]);
+  assert.equal(events.includes("extract"), false);
+  assert.equal(extractionCalls, 1);
+  assert.equal((observed.extraction as FixtureExtractionResultRecord).category, "transport_road_incidents");
+  assert.deepEqual(new Set(observed.evidence.map((item) => (item as { relation: string }).relation)),
+    new Set(["supports", "contradicts", "updates", "context"]));
+});
+
+test("keeps persisted-result lookup outages retryable and stored corruption or identity drift permanent", async () => {
+  const cases = [
+    { lookup: { outcome: "invalid_record" as const }, code: "fixture_extraction_invalid", disposition: "permanent" },
+    { lookup: { outcome: "identity_conflict" as const }, code: "fixture_extraction_conflict", disposition: "permanent" },
+    { lookupError: true, code: "fixture_persistence_failed", disposition: "retryable" },
+  ] as const;
+
+  for (const testCase of cases) {
+    const events: string[] = [];
+    const ports = mockPorts(events);
+    ports.extractionResults.findByCandidateId = async () => {
+      if ("lookupError" in testCase) throw new Error(`${fixtureUrl} ${permittedText}`);
+      return testCase.lookup;
+    };
+    const result = await processSyntheticFixtureJob({
+      job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+    });
+
+    assert.deepEqual(result, {
+      outcome: "failed", code: testCase.code,
+      queueOutcome: testCase.disposition === "permanent" ? "terminal" : "retry",
+    });
+    assert.equal(events.includes("extract"), false);
+    assert.equal(JSON.stringify(result).includes(fixtureUrl), false);
+  }
+
+  const events: string[] = [];
+  const ports = mockPorts(events);
+  ports.extractionResults.findByCandidateId = async () => ({
+    outcome: "found", record: makeStoredRecord({ candidate_id: "candidate-different" }),
+  });
+  const conflict = await processSyntheticFixtureJob({
+    job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+  });
+  assert.deepEqual(conflict, {
+    outcome: "failed", code: "fixture_extraction_conflict", queueOutcome: "terminal",
+  });
+  assert.equal(events.includes("extract"), false);
+});
+
+test("fails report identity drift permanently before candidate lookup or extraction", async () => {
+  const events: string[] = [];
+  const ports = mockPorts(events);
+  ports.reportRevisions.create = async () => {
+    events.push("revision");
+    throw Object.assign(new Error(`${fixtureUrl} ${permittedText}`), { code: "report_revision_conflict" });
+  };
+  const result = await processSyntheticFixtureJob({
+    job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+  });
+
+  assert.deepEqual(result, { outcome: "failed", code: "fixture_report_conflict", queueOutcome: "terminal" });
+  assert.deepEqual(events, ["source", "revision", "fail:fixture_report_conflict:permanent"]);
 });
 
 test("fixture lookup is exact and an unknown URL fails with a redacted bounded code", async () => {
@@ -472,7 +573,37 @@ function mockPorts(
         observed.extraction = record;
         return record;
       },
+      async findByCandidateId() {
+        return { outcome: "not_found" };
+      },
     },
+  };
+}
+
+function makeStoredRecord(
+  overrides: Partial<FixtureExtractionResultRecord> = {},
+): FixtureExtractionResultRecord {
+  return {
+    schema_version: "2.0",
+    trace_id: "trace-fixture-job",
+    record_type: "ExtractionResult",
+    dataset_kind: "synthetic",
+    candidate_id: "candidate-fixture-authored-1",
+    report_revision_id: "revision-authored-stable-1",
+    category: null,
+    tags: [],
+    event_time: { start: null, end: null, precision: "unknown" },
+    scope: { place_ids: [], service_ids: [], institution_ids: [], audience_ids: [], geometry_ids: [] },
+    evidence: [],
+    unknown_fields: ["category", "event_time"],
+    model_run: {
+      capability: "extraction",
+      model_version: "synthetic-extractor-v1",
+      prompt_version: "fixture-extraction-v1",
+      input_tokens: 0,
+      output_tokens: 0,
+    },
+    ...overrides,
   };
 }
 

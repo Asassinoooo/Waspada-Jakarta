@@ -136,6 +136,10 @@ describe('L1 typed extraction-result persistence', () => {
       record_json: record,
     });
     assert.equal(Object.hasOwn(record, 'provider'), false);
+    assert.deepEqual(
+      await ports.extractionResults.findByCandidateId(record.dataset_kind, record.candidate_id),
+      { outcome: 'found', record },
+    );
 
     const linked = await readLinks(record.candidate_id);
     assert.deepEqual(linked, record.evidence.map(evidenceKey).sort());
@@ -145,8 +149,44 @@ describe('L1 typed extraction-result persistence', () => {
   it('persists an empty unknown extraction without inventing claims or evidence', async () => {
     const record = makeUnknownRecord('empty-unknown');
     assert.deepEqual(await ports.extractionResults.createOrVerify(record), record);
+    assert.deepEqual(
+      await ports.extractionResults.findByCandidateId(record.dataset_kind, record.candidate_id),
+      { outcome: 'found', record },
+    );
     const linked = await readLinks(record.candidate_id);
     assert.deepEqual(linked, []);
+  });
+
+  it('distinguishes an absent candidate from malformed storage and parent identity drift', async () => {
+    assert.deepEqual(
+      await ports.extractionResults.findByCandidateId('synthetic', 'candidate-lookup-absent'),
+      { outcome: 'not_found' },
+    );
+
+    await database.executor.query(
+      'INSERT INTO waspada.extraction_results ' +
+        '(dataset_kind, candidate_id, trace_id, report_revision_id, category, record_json) ' +
+        'VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
+      ['synthetic', 'candidate-lookup-malformed', TRACE_ID, REVISION_ID, null,
+        JSON.stringify({ schema_version: '1.0' })],
+    );
+    assert.deepEqual(
+      await ports.extractionResults.findByCandidateId('synthetic', 'candidate-lookup-malformed'),
+      { outcome: 'invalid_record' },
+    );
+
+    const mismatchedRecord = makeRecord('lookup-json-candidate');
+    await database.executor.query(
+      'INSERT INTO waspada.extraction_results ' +
+        '(dataset_kind, candidate_id, trace_id, report_revision_id, category, record_json) ' +
+        'VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
+      ['synthetic', 'candidate-lookup-row-candidate', TRACE_ID, REVISION_ID,
+        mismatchedRecord.category, JSON.stringify(mismatchedRecord)],
+    );
+    assert.deepEqual(
+      await ports.extractionResults.findByCandidateId('synthetic', 'candidate-lookup-row-candidate'),
+      { outcome: 'identity_conflict' },
+    );
   });
 
   it('requires one exact supports reference whenever an extraction proposes fields', async () => {
@@ -287,6 +327,10 @@ describe('L1 typed extraction-result persistence', () => {
         'VALUES ($1, $2, $3)',
       ['synthetic', linkDrift.candidate_id, evidenceIds.contradicts],
     );
+    assert.deepEqual(
+      await ports.extractionResults.findByCandidateId(linkDrift.dataset_kind, linkDrift.candidate_id),
+      { outcome: 'identity_conflict' },
+    );
     await assert.rejects(
       ports.extractionResults.createOrVerify(linkDrift),
       ExtractionResultConflictError,
@@ -361,6 +405,14 @@ describe('L1 typed extraction-result persistence', () => {
     try {
       assert.deepEqual(await ports.extractionResults.createOrVerify(record), record);
       assert.deepEqual(await ports.extractionResults.createOrVerify(record), record);
+      assert.deepEqual(
+        await ports.extractionResults.findByCandidateId(record.dataset_kind, record.candidate_id),
+        { outcome: 'found', record },
+      );
+      assert.deepEqual(
+        await ports.extractionResults.findByCandidateId('synthetic', 'candidate-l1-role-absent'),
+        { outcome: 'not_found' },
+      );
       await assertPermissionDenied(
         database,
         'SELECT record_json FROM waspada.grounding_contexts LIMIT 1',

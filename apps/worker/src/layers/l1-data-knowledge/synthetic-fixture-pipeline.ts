@@ -148,7 +148,7 @@ export interface FixtureExtractionResultRecord {
   readonly schema_version: "2.0";
   readonly trace_id: string;
   readonly record_type: "ExtractionResult";
-  readonly dataset_kind: "synthetic";
+  readonly dataset_kind: "live" | "historical" | "synthetic";
   readonly candidate_id: string;
   readonly report_revision_id: string;
   readonly category: ModelExtractionResult["category"];
@@ -176,6 +176,12 @@ export interface FixtureExtractionResultRecord {
   };
 }
 
+export type FixtureExtractionResultLookup =
+  | { readonly outcome: "found"; readonly record: FixtureExtractionResultRecord }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "invalid_record" }
+  | { readonly outcome: "identity_conflict" };
+
 export interface FixtureJobRepository {
   complete(datasetKind: "synthetic", jobId: string, leaseToken: string, now: string): Promise<{ readonly outcome: "updated" | "not_owned" }>;
   fail(
@@ -197,6 +203,7 @@ export interface FixturePipelinePorts {
   };
   readonly extractionResults: {
     createOrVerify(record: FixtureExtractionResultRecord): Promise<unknown>;
+    findByCandidateId(datasetKind: "synthetic", candidateId: string): Promise<FixtureExtractionResultLookup>;
   };
   readonly evidenceChunks: {
     persist(input: {
@@ -220,6 +227,8 @@ export type SyntheticFixtureFailureCode =
   | "fixture_text_invalid"
   | "fixture_extraction_unavailable"
   | "fixture_extraction_invalid"
+  | "fixture_extraction_conflict"
+  | "fixture_report_conflict"
   | "fixture_persistence_failed"
   | "queue_acknowledgement_failed";
 
@@ -330,12 +339,16 @@ export async function processSyntheticFixtureJob(
 
       try {
         await ports.reportRevisions.create(revisionInput);
-      } catch {
+      } catch (error) {
+        if (hasErrorCode(error, "report_revision_conflict")) {
+          throw new FixtureFailure("fixture_report_conflict", "permanent");
+        }
         throw new FixtureFailure("fixture_persistence_failed", "retryable");
       }
 
-      const extraction = await extractFixtureCandidate(ports.modelAdapter, manifest, prepared);
-      const extractionRecord = makeExtractionResultRecord(job.traceId, extraction);
+      const extractionRecord = await findOrExtractFixtureCandidate(
+        ports, job, manifest, prepared,
+      );
       const allSpans = uniqueSpans([
         ...manifest.supportSpans,
         ...(geometryManifest?.supportSpans ?? []),
@@ -350,13 +363,13 @@ export async function processSyntheticFixtureJob(
           spanEnd: span.spanEnd,
           relation: "supports",
         })),
-        ...extraction.evidence.map((reference): FixtureEvidenceReferenceInput => ({
+        ...extractionRecord.evidence.map((reference): FixtureEvidenceReferenceInput => ({
           datasetKind: "synthetic",
           traceId: job.traceId,
-          reportRevisionId: reference.reportRevisionId,
-          permittedTextHash: reference.permittedTextHash,
-          spanStart: reference.spanStart,
-          spanEnd: reference.spanEnd,
+          reportRevisionId: reference.report_revision_id,
+          permittedTextHash: reference.permitted_text_hash,
+          spanStart: reference.span_start,
+          spanEnd: reference.span_end,
           relation: reference.relation,
         })),
       ]);
@@ -382,7 +395,10 @@ export async function processSyntheticFixtureJob(
           geometryCount += 1;
         }
         await ports.extractionResults.createOrVerify(extractionRecord);
-      } catch {
+      } catch (error) {
+        if (hasErrorCode(error, "extraction_result_conflict")) {
+          throw new FixtureFailure("fixture_extraction_conflict", "permanent");
+        }
         throw new FixtureFailure("fixture_persistence_failed", "retryable");
       }
     }
@@ -414,6 +430,69 @@ export async function processSyntheticFixtureJob(
       return { outcome: "failed", code: failure.code, queueOutcome: "not_acknowledged" };
     }
   }
+}
+
+async function findOrExtractFixtureCandidate(
+  ports: FixturePipelinePorts,
+  job: FixtureJobRecord,
+  manifest: SyntheticReportManifest,
+  prepared: Awaited<ReturnType<typeof preparePermittedText>>,
+): Promise<FixtureExtractionResultRecord> {
+  let lookup: FixtureExtractionResultLookup;
+  try {
+    lookup = await ports.extractionResults.findByCandidateId("synthetic", manifest.candidateId);
+  } catch {
+    throw new FixtureFailure("fixture_persistence_failed", "retryable");
+  }
+
+  if (!isRecord(lookup) || typeof lookup.outcome !== "string") {
+    throw new FixtureFailure("fixture_extraction_invalid", "permanent");
+  }
+  if (lookup.outcome === "not_found") {
+    const extraction = await extractFixtureCandidate(ports.modelAdapter, manifest, prepared);
+    return makeExtractionResultRecord(job.traceId, extraction);
+  }
+  if (lookup.outcome === "invalid_record") {
+    throw new FixtureFailure("fixture_extraction_invalid", "permanent");
+  }
+  if (lookup.outcome === "identity_conflict") {
+    throw new FixtureFailure("fixture_extraction_conflict", "permanent");
+  }
+  if (lookup.outcome !== "found") {
+    throw new FixtureFailure("fixture_extraction_invalid", "permanent");
+  }
+
+  const identity = checkPersistedExtractionIdentity(lookup.record, job, manifest);
+  if (identity === "invalid") throw new FixtureFailure("fixture_extraction_invalid", "permanent");
+  if (identity === "conflict") throw new FixtureFailure("fixture_extraction_conflict", "permanent");
+  return lookup.record;
+}
+
+function checkPersistedExtractionIdentity(
+  value: unknown,
+  job: FixtureJobRecord,
+  manifest: SyntheticReportManifest,
+): "valid" | "invalid" | "conflict" {
+  if (!isRecord(value)
+    || value.schema_version !== "2.0"
+    || value.record_type !== "ExtractionResult"
+    || typeof value.dataset_kind !== "string"
+    || typeof value.candidate_id !== "string"
+    || typeof value.trace_id !== "string"
+    || typeof value.report_revision_id !== "string") {
+    return "invalid";
+  }
+  if (value.dataset_kind !== "synthetic"
+    || value.candidate_id !== manifest.candidateId
+    || value.trace_id !== job.traceId
+    || value.report_revision_id !== manifest.reportRevisionId) {
+    return "conflict";
+  }
+  return "valid";
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return isRecord(error) && error.code === code;
 }
 
 async function complete(

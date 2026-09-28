@@ -103,8 +103,18 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     const catalog = new InMemorySyntheticFixtureCatalog([makeFixture()]);
     const expiredTime = "2026-09-25T03:00:02.000Z";
     let uncertainAcknowledgementCalls = 0;
+    let extractionAdapterCalls = 0;
+    const changingAdapter: FixturePipelinePorts["modelAdapter"] = {
+      async extract(request) {
+        extractionAdapterCalls += 1;
+        const result = await pipelinePorts.modelAdapter.extract(request);
+        if (extractionAdapterCalls === 1 || result.status !== "succeeded") return result;
+        return { ...result, value: { ...result.value, category: "crime_personal_security" } };
+      },
+    };
+    const replayPipelinePorts: FixturePipelinePorts = { ...pipelinePorts, modelAdapter: changingAdapter };
     const interruptedPipelinePorts: FixturePipelinePorts = {
-      ...pipelinePorts,
+      ...replayPipelinePorts,
       acquisitionJobs: new Proxy(pipelinePorts.acquisitionJobs, {
         get(target, property, receiver) {
           if (property === "complete") {
@@ -128,6 +138,7 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
       outcome: "failed", code: "queue_acknowledgement_failed", queueOutcome: "not_acknowledged",
     });
     assert.equal(uncertainAcknowledgementCalls, 1);
+    assert.equal(extractionAdapterCalls, 1);
     const stillLeased = await ports.acquisitionJobs.findById("synthetic", claimed.jobId);
     assert.equal(stillLeased?.status, "leased");
     assert.equal(stillLeased?.leaseToken, claimed.leaseToken);
@@ -151,13 +162,14 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     const replayResult = await runAsL1(database, () => processSyntheticFixtureJob({
       job: retryClaim,
       catalog,
-      ports: pipelinePorts,
+      ports: replayPipelinePorts,
       transitionAt: "2026-09-25T03:00:33.000Z",
     }));
     assert.deepEqual(replayResult, {
       outcome: "completed", empty: false, reportCount: 1,
       evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 1,
     });
+    assert.equal(extractionAdapterCalls, 1);
     const convergedCandidate = await database.executor.query<{ candidates: string; links: string }>(
       `SELECT
          (SELECT count(*)::text FROM waspada.extraction_results
@@ -166,6 +178,16 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
           WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-pipeline-1') AS links`,
     );
     assert.deepEqual(convergedCandidate.rows[0], { candidates: "1", links: "4" });
+    const persistedRelations = await database.executor.query<{ relation: string }>(
+      `SELECT reference.relation
+       FROM waspada.extraction_evidence AS link
+       JOIN waspada.evidence_references AS reference
+         ON reference.dataset_kind = link.dataset_kind AND reference.evidence_ref_id = link.evidence_ref_id
+       WHERE link.dataset_kind = 'synthetic' AND link.candidate_id = 'candidate-fixture-pipeline-1'
+       ORDER BY reference.relation`,
+    );
+    assert.deepEqual(persistedRelations.rows.map((row) => row.relation),
+      ["context", "contradicts", "supports", "updates"]);
 
     const revision = await database.executor.query<{
       trace_id: string;

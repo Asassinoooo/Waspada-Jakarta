@@ -224,6 +224,7 @@ function mockPipelinePorts(
         events.push("extraction");
         return record;
       },
+      async findByCandidateId() { return { outcome: "not_found" }; },
     },
     evidenceChunks: { async persist() { events.push("chunks"); } },
     geometryWriter: { async persist() { events.push("geometry"); } },
