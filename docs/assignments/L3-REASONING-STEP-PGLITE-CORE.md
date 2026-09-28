@@ -1,11 +1,11 @@
 # L3-REASONING-STEP-PGLITE-CORE — verify planner budgeting with the durable ledger
 
 **Parent package:** AGENT-01 / FR-07 bounded investigation
-**Status:** Assigned on `main` at `d8779f8`
+**Status:** Assigned on `main` at `ced0c1a`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/L3-REASONING-STEP-PGLITE-CORE`
 **Worktree:** Reuse `C:\Users\perry\.codex\worktrees\obs-01-l1-fixture-telemetry\RPL` only after creating the new task branch from `main`; do not edit the root checkout.
-**Base commit:** `d8779f8214001b800c684a4ad7b40cc8fe04c2f3`
+**Base commit:** `ced0c1af39a96ce248a756e141a7d3264413214d`
 **Contract baseline:** L2 investigation-plan 1.0; schema 2.0 grounding context and L3 ledger; no runtime or public API changes.
 
 ## Objective
