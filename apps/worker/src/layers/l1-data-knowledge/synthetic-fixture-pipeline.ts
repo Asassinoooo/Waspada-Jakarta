@@ -7,6 +7,7 @@ import {
 import { chunkPreparedText, type EvidenceChunkInput } from "./evidence-chunking.js";
 import { preparePermittedText } from "./text-preparation.js";
 import type {
+  DatasetKind,
   EvidenceReference as ModelEvidenceReference,
   ExtractionResult as ModelExtractionResult,
   ModelCapabilityAdapter,
@@ -143,12 +144,12 @@ export interface FixtureExtractionEvidenceRecord {
   readonly relation: ModelEvidenceReference["relation"];
 }
 
-/** Structural mirror of the closed schema 2.0 DB port; the Worker imports no DB runtime. */
+/** Synthetic-only write shape for this fixture workflow. */
 export interface FixtureExtractionResultRecord {
   readonly schema_version: "2.0";
   readonly trace_id: string;
   readonly record_type: "ExtractionResult";
-  readonly dataset_kind: "live" | "historical" | "synthetic";
+  readonly dataset_kind: "synthetic";
   readonly candidate_id: string;
   readonly report_revision_id: string;
   readonly category: ModelExtractionResult["category"];
@@ -176,8 +177,12 @@ export interface FixtureExtractionResultRecord {
   };
 }
 
+/** Structural mirror of a persisted closed schema 2.0 DB lookup; no DB runtime is imported. */
+export type FixturePersistedExtractionResultRecord =
+  Omit<FixtureExtractionResultRecord, "dataset_kind"> & { readonly dataset_kind: DatasetKind };
+
 export type FixtureExtractionResultLookup =
-  | { readonly outcome: "found"; readonly record: FixtureExtractionResultRecord }
+  | { readonly outcome: "found"; readonly record: FixturePersistedExtractionResultRecord }
   | { readonly outcome: "not_found" }
   | { readonly outcome: "invalid_record" }
   | { readonly outcome: "identity_conflict" };
@@ -465,7 +470,7 @@ async function findOrExtractFixtureCandidate(
   const identity = checkPersistedExtractionIdentity(lookup.record, job, manifest);
   if (identity === "invalid") throw new FixtureFailure("fixture_extraction_invalid", "permanent");
   if (identity === "conflict") throw new FixtureFailure("fixture_extraction_conflict", "permanent");
-  return lookup.record;
+  return { ...lookup.record, dataset_kind: "synthetic" };
 }
 
 function checkPersistedExtractionIdentity(

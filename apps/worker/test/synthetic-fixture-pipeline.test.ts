@@ -11,6 +11,7 @@ import {
   processSyntheticFixtureJob,
   type FixturePipelinePorts,
   type FixtureExtractionResultRecord,
+  type FixturePersistedExtractionResultRecord,
   type FixtureJobRecord,
   type SyntheticFixture,
   type SyntheticGeometryManifest,
@@ -188,6 +189,26 @@ test("keeps persisted-result lookup outages retryable and stored corruption or i
     outcome: "failed", code: "fixture_extraction_conflict", queueOutcome: "terminal",
   });
   assert.equal(events.includes("extract"), false);
+});
+
+test("rejects a persisted result from another DatasetKind before synthetic reuse", async () => {
+  const events: string[] = [];
+  const ports = mockPorts(events);
+  const liveRecord: FixturePersistedExtractionResultRecord = {
+    ...makeStoredRecord(),
+    dataset_kind: "live",
+  };
+  ports.extractionResults.findByCandidateId = async () => ({ outcome: "found", record: liveRecord });
+
+  const result = await processSyntheticFixtureJob({
+    job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+  });
+
+  assert.deepEqual(result, {
+    outcome: "failed", code: "fixture_extraction_conflict", queueOutcome: "terminal",
+  });
+  assert.equal(events.includes("extract"), false);
+  assert.equal(events.includes("extraction"), false);
 });
 
 test("fails report identity drift permanently before candidate lookup or extraction", async () => {
