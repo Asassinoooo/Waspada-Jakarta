@@ -7,6 +7,11 @@ import {
   type SyntheticFixture,
   type SyntheticReportManifest,
 } from "../src/layers/l1-data-knowledge/synthetic-fixture-pipeline.js";
+import { createModelCapabilityAdapter } from "../src/layers/l2-model-grounding/adapter.js";
+import type {
+  ExtractionRequest,
+  UntrustedModelProvider,
+} from "../src/layers/l2-model-grounding/contracts.js";
 import {
   runSyntheticFixtureJob,
   type SyntheticFixtureClaimPort,
@@ -30,11 +35,12 @@ test("claims once, passes the same time through, and persists before acknowledgi
 
   assert.deepEqual(result, {
     outcome: "completed", empty: false, reportCount: 1,
-    evidenceReferenceCount: 1, chunkCount: 1, geometryCount: 0,
+    evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 0,
   });
   assert.deepEqual(claims, [transitionAt]);
   assert.deepEqual(events, [
-    "claim", "source", "revision", "evidence", "chunks", `complete:${transitionAt}`,
+    "claim", "source", "revision", "extract", "evidence", "evidence", "evidence", "evidence", "evidence",
+    "chunks", "extraction", `complete:${transitionAt}`,
   ]);
   assert.deepEqual(Object.keys(result).sort(), [
     "chunkCount", "empty", "evidenceReferenceCount", "geometryCount", "outcome", "reportCount",
@@ -208,9 +214,16 @@ function mockPipelinePorts(
         };
       },
     },
+    modelAdapter: createRunnerTestModelAdapter(events),
     reportRevisions: {
       async create() { events.push("revision"); },
       async createEvidenceReference() { events.push("evidence"); return "evidence-runner"; },
+    },
+    extractionResults: {
+      async createOrVerify(record) {
+        events.push("extraction");
+        return record;
+      },
     },
     evidenceChunks: { async persist() { events.push("chunks"); } },
     geometryWriter: { async persist() { events.push("geometry"); } },
@@ -233,6 +246,7 @@ function makeJob(overrides: Partial<FixtureJobRecord> = {}): FixtureJobRecord {
 
 function makeFixture(): SyntheticFixture {
   const manifest: SyntheticReportManifest = {
+    candidateId: "candidate-runner-authored-1",
     reportRevisionId: "revision-runner-1",
     sourceId: "source-runner-fixture",
     canonicalUrl: fixtureUrl,
@@ -255,4 +269,42 @@ function makeFixture(): SyntheticFixture {
     sourceId: "source-runner-fixture",
     manifests: new Map([["runner-feature-1", manifest]]),
   };
+}
+
+function createRunnerTestModelAdapter(events: string[]) {
+  const provider: UntrustedModelProvider = {
+    async classify() { throw new Error("unused synthetic classification"); },
+    async extract(request: ExtractionRequest) {
+      events.push("extract");
+      const report = request.data.report;
+      const relations = ["supports", "contradicts", "updates", "context"] as const;
+      return {
+        output: {
+          category: "transport_road_incidents",
+          tags: [],
+          eventTime: { start: null, end: null, precision: "unknown" },
+          scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
+          evidence: relations.map((relation, index) => ({
+            reportRevisionId: report.reportRevisionId,
+            permittedTextHash: report.permittedTextHash,
+            spanStart: index * 5,
+            spanEnd: index * 5 + 4,
+            offsetUnit: "unicode_code_points",
+            relation,
+          })),
+          unknownFields: ["event_time"],
+        },
+        usage: { inputTokens: 10, outputTokens: 6 },
+      };
+    },
+    async embed() { throw new Error("unused synthetic embedding"); },
+    async reason() { throw new Error("unused synthetic reasoning"); },
+  };
+  return createModelCapabilityAdapter(provider, {
+    extraction: {
+      provider: "synthetic-runner-test-provider",
+      modelVersion: "synthetic-extractor-v1",
+      promptVersion: "fixture-extraction-v1",
+    },
+  });
 }

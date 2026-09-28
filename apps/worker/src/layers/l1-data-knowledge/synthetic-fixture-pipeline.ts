@@ -6,6 +6,11 @@ import {
 } from "./petabencana-geojson.js";
 import { chunkPreparedText, type EvidenceChunkInput } from "./evidence-chunking.js";
 import { preparePermittedText } from "./text-preparation.js";
+import type {
+  EvidenceReference as ModelEvidenceReference,
+  ExtractionResult as ModelExtractionResult,
+  ModelCapabilityAdapter,
+} from "../l2-model-grounding/contracts.js";
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
@@ -29,6 +34,8 @@ export interface SyntheticGeometryManifest {
 }
 
 export interface SyntheticReportManifest {
+  /** Stable caller-authored candidate identity; never derived from parser, source, URL, or model values. */
+  readonly candidateId: string;
   /** Stable, caller-authored schema 2.0 identity; never derived from the provider feature ID. */
   readonly reportRevisionId: string;
   readonly sourceId: string;
@@ -124,7 +131,49 @@ export interface FixtureEvidenceReferenceInput {
   readonly permittedTextHash: string;
   readonly spanStart: number;
   readonly spanEnd: number;
-  readonly relation: "supports";
+  readonly relation: ModelEvidenceReference["relation"];
+}
+
+export interface FixtureExtractionEvidenceRecord {
+  readonly report_revision_id: string;
+  readonly permitted_text_hash: string;
+  readonly span_start: number;
+  readonly span_end: number;
+  readonly offset_unit: "unicode_code_points";
+  readonly relation: ModelEvidenceReference["relation"];
+}
+
+/** Structural mirror of the closed schema 2.0 DB port; the Worker imports no DB runtime. */
+export interface FixtureExtractionResultRecord {
+  readonly schema_version: "2.0";
+  readonly trace_id: string;
+  readonly record_type: "ExtractionResult";
+  readonly dataset_kind: "synthetic";
+  readonly candidate_id: string;
+  readonly report_revision_id: string;
+  readonly category: ModelExtractionResult["category"];
+  readonly tags: ModelExtractionResult["tags"];
+  readonly event_time: {
+    readonly start: string | null;
+    readonly end: string | null;
+    readonly precision: ModelExtractionResult["eventTime"]["precision"];
+  };
+  readonly scope: {
+    readonly place_ids: readonly string[];
+    readonly service_ids: readonly string[];
+    readonly institution_ids: readonly string[];
+    readonly audience_ids: readonly string[];
+    readonly geometry_ids: readonly string[];
+  };
+  readonly evidence: readonly FixtureExtractionEvidenceRecord[];
+  readonly unknown_fields: ModelExtractionResult["unknownFields"];
+  readonly model_run: {
+    readonly capability: "extraction";
+    readonly model_version: string;
+    readonly prompt_version: string;
+    readonly input_tokens: number;
+    readonly output_tokens: number;
+  };
 }
 
 export interface FixtureJobRepository {
@@ -140,9 +189,14 @@ export interface FixtureJobRepository {
 export interface FixturePipelinePorts {
   readonly acquisitionJobs: FixtureJobRepository;
   readonly sourceRegistry: { findById(sourceId: string): Promise<FixtureSourceRecord | null> };
+  /** Only the fixed L2 extraction method is visible to this Layer 1 workflow. */
+  readonly modelAdapter: Pick<ModelCapabilityAdapter, "extract">;
   readonly reportRevisions: {
     create(input: FixtureRevisionInput): Promise<void>;
     createEvidenceReference(input: FixtureEvidenceReferenceInput): Promise<string>;
+  };
+  readonly extractionResults: {
+    createOrVerify(record: FixtureExtractionResultRecord): Promise<unknown>;
   };
   readonly evidenceChunks: {
     persist(input: {
@@ -164,6 +218,8 @@ export type SyntheticFixtureFailureCode =
   | "fixture_manifest_invalid"
   | "fixture_source_invalid"
   | "fixture_text_invalid"
+  | "fixture_extraction_unavailable"
+  | "fixture_extraction_invalid"
   | "fixture_persistence_failed"
   | "queue_acknowledgement_failed";
 
@@ -274,22 +330,42 @@ export async function processSyntheticFixtureJob(
 
       try {
         await ports.reportRevisions.create(revisionInput);
-        const allSpans = uniqueSpans([
-          ...manifest.supportSpans,
-          ...(geometryManifest?.supportSpans ?? []),
-        ]);
-        for (const span of allSpans) {
-          await ports.reportRevisions.createEvidenceReference({
-            datasetKind: "synthetic",
-            traceId: job.traceId,
-            reportRevisionId: manifest.reportRevisionId,
-            permittedTextHash: prepared.permittedTextHash,
-            spanStart: span.spanStart,
-            spanEnd: span.spanEnd,
-            relation: "supports",
-          });
-          evidenceReferenceCount += 1;
+      } catch {
+        throw new FixtureFailure("fixture_persistence_failed", "retryable");
+      }
+
+      const extraction = await extractFixtureCandidate(ports.modelAdapter, manifest, prepared);
+      const extractionRecord = makeExtractionResultRecord(job.traceId, extraction);
+      const allSpans = uniqueSpans([
+        ...manifest.supportSpans,
+        ...(geometryManifest?.supportSpans ?? []),
+      ]);
+      const evidenceReferences = uniqueEvidenceReferences([
+        ...allSpans.map((span): FixtureEvidenceReferenceInput => ({
+          datasetKind: "synthetic",
+          traceId: job.traceId,
+          reportRevisionId: manifest.reportRevisionId,
+          permittedTextHash: prepared.permittedTextHash,
+          spanStart: span.spanStart,
+          spanEnd: span.spanEnd,
+          relation: "supports",
+        })),
+        ...extraction.evidence.map((reference): FixtureEvidenceReferenceInput => ({
+          datasetKind: "synthetic",
+          traceId: job.traceId,
+          reportRevisionId: reference.reportRevisionId,
+          permittedTextHash: reference.permittedTextHash,
+          spanStart: reference.spanStart,
+          spanEnd: reference.spanEnd,
+          relation: reference.relation,
+        })),
+      ]);
+
+      try {
+        for (const reference of evidenceReferences) {
+          await ports.reportRevisions.createEvidenceReference(reference);
         }
+        evidenceReferenceCount += evidenceReferences.length;
         await ports.evidenceChunks.persist({
           datasetKind: "synthetic",
           traceId: job.traceId,
@@ -305,6 +381,7 @@ export async function processSyntheticFixtureJob(
           ));
           geometryCount += 1;
         }
+        await ports.extractionResults.createOrVerify(extractionRecord);
       } catch {
         throw new FixtureFailure("fixture_persistence_failed", "retryable");
       }
@@ -405,6 +482,157 @@ function makeRevisionInput(
   };
 }
 
+async function extractFixtureCandidate(
+  adapter: Pick<ModelCapabilityAdapter, "extract">,
+  manifest: SyntheticReportManifest,
+  prepared: Awaited<ReturnType<typeof preparePermittedText>>,
+): Promise<ModelExtractionResult> {
+  const request = {
+    data: {
+      candidateId: manifest.candidateId,
+      report: {
+        reportRevisionId: manifest.reportRevisionId,
+        permittedTextHash: prepared.permittedTextHash,
+        normalizationVersion: prepared.normalizationVersion,
+        permittedText: prepared.permittedText,
+      },
+    },
+  };
+  let outcome: Awaited<ReturnType<ModelCapabilityAdapter["extract"]>>;
+  try {
+    outcome = await adapter.extract(request);
+  } catch {
+    throw new FixtureFailure("fixture_extraction_unavailable", "retryable");
+  }
+
+  if (!isRecord(outcome)) throw new FixtureFailure("fixture_extraction_invalid", "permanent");
+  if (outcome.status === "not_configured" || outcome.status === "provider_error") {
+    throw new FixtureFailure("fixture_extraction_unavailable", "retryable");
+  }
+  if (outcome.status !== "succeeded" || outcome.capability !== "extraction"
+    || !isBoundExtractionResult(outcome.value, manifest, prepared)) {
+    throw new FixtureFailure("fixture_extraction_invalid", "permanent");
+  }
+  return outcome.value;
+}
+
+function isBoundExtractionResult(
+  value: unknown,
+  manifest: SyntheticReportManifest,
+  prepared: Awaited<ReturnType<typeof preparePermittedText>>,
+): value is ModelExtractionResult {
+  if (!isRecord(value)
+    || value.candidateId !== manifest.candidateId
+    || value.reportRevisionId !== manifest.reportRevisionId
+    || value.permittedTextHash !== prepared.permittedTextHash
+    || typeof value.provider !== "string"
+    || !(value.category === null || typeof value.category === "string")
+    || !Array.isArray(value.tags) || !value.tags.every((tag) =>
+      isRecord(tag) && typeof tag.namespace === "string" && typeof tag.value === "string")
+    || !isRecord(value.eventTime)
+    || !(value.eventTime.start === null || typeof value.eventTime.start === "string")
+    || !(value.eventTime.end === null || typeof value.eventTime.end === "string")
+    || !["exact", "date", "range", "unknown"].includes(String(value.eventTime.precision))
+    || !isRecord(value.scope)
+    || !Array.isArray(value.unknownFields) || !value.unknownFields.every((field) => typeof field === "string")
+    || !isRecord(value.modelRun) || value.modelRun.capability !== "extraction"
+    || typeof value.modelRun.modelVersion !== "string" || typeof value.modelRun.promptVersion !== "string"
+    || !Number.isSafeInteger(value.modelRun.inputTokens) || Number(value.modelRun.inputTokens) < 0
+    || !Number.isSafeInteger(value.modelRun.outputTokens) || Number(value.modelRun.outputTokens) < 0
+    || Number(value.modelRun.inputTokens) + Number(value.modelRun.outputTokens) > 12_000
+    || !Array.isArray(value.evidence)) {
+    return false;
+  }
+
+  const scope = value.scope;
+  for (const key of ["placeIds", "serviceIds", "institutionIds", "audienceIds", "geometryIds"]) {
+    const ids = scope[key];
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) return false;
+  }
+  const codePointLength = Array.from(prepared.permittedText).length;
+  return value.evidence.every((reference) => isRecord(reference)
+    && reference.reportRevisionId === manifest.reportRevisionId
+    && reference.permittedTextHash === prepared.permittedTextHash
+    && Number.isSafeInteger(reference.spanStart)
+    && Number(reference.spanStart) >= 0
+    && Number.isSafeInteger(reference.spanEnd)
+    && Number(reference.spanEnd) > Number(reference.spanStart)
+    && Number(reference.spanEnd) <= codePointLength
+    && reference.offsetUnit === "unicode_code_points"
+    && isEvidenceRelation(reference.relation));
+}
+
+function makeExtractionResultRecord(
+  traceId: string,
+  result: ModelExtractionResult,
+): FixtureExtractionResultRecord {
+  return {
+    schema_version: "2.0",
+    trace_id: traceId,
+    record_type: "ExtractionResult",
+    dataset_kind: "synthetic",
+    candidate_id: result.candidateId,
+    report_revision_id: result.reportRevisionId,
+    category: result.category,
+    tags: result.tags.map((tag) => ({ namespace: tag.namespace, value: tag.value })),
+    event_time: {
+      start: result.eventTime.start,
+      end: result.eventTime.end,
+      precision: result.eventTime.precision,
+    },
+    scope: {
+      place_ids: [...result.scope.placeIds],
+      service_ids: [...result.scope.serviceIds],
+      institution_ids: [...result.scope.institutionIds],
+      audience_ids: [...result.scope.audienceIds],
+      geometry_ids: [...result.scope.geometryIds],
+    },
+    evidence: result.evidence.map((reference) => ({
+      report_revision_id: reference.reportRevisionId,
+      permitted_text_hash: reference.permittedTextHash,
+      span_start: reference.spanStart,
+      span_end: reference.spanEnd,
+      offset_unit: "unicode_code_points",
+      relation: reference.relation,
+    })),
+    unknown_fields: [...result.unknownFields],
+    model_run: {
+      capability: "extraction",
+      model_version: result.modelRun.modelVersion,
+      prompt_version: result.modelRun.promptVersion,
+      input_tokens: result.modelRun.inputTokens,
+      output_tokens: result.modelRun.outputTokens,
+    },
+  };
+}
+
+function uniqueEvidenceReferences(
+  references: readonly FixtureEvidenceReferenceInput[],
+): readonly FixtureEvidenceReferenceInput[] {
+  const unique = new Map<string, FixtureEvidenceReferenceInput>();
+  for (const reference of references) {
+    const key = JSON.stringify([
+      reference.datasetKind,
+      reference.reportRevisionId,
+      reference.permittedTextHash,
+      reference.spanStart,
+      reference.spanEnd,
+      "unicode_code_points",
+      reference.relation,
+    ]);
+    unique.set(key, reference);
+  }
+  return [...unique.values()];
+}
+
+function isEvidenceRelation(value: unknown): value is ModelEvidenceReference["relation"] {
+  return value === "supports" || value === "contradicts" || value === "updates" || value === "context";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function makeGeometryRecord(
   job: FixtureJobRecord,
   manifest: SyntheticReportManifest,
@@ -457,7 +685,8 @@ function to2dGeometry(geometry: PetabencanaGeometry): Readonly<Record<string, un
 }
 
 function isValidManifest(manifest: SyntheticReportManifest, fixture: SyntheticFixture): boolean {
-  return isId(manifest.reportRevisionId)
+  return isId(manifest.candidateId)
+    && isId(manifest.reportRevisionId)
     && manifest.sourceId === fixture.sourceId && isId(manifest.sourceId)
     && manifest.canonicalUrl === fixture.url
     && (manifest.sourceRevisionKey === undefined || manifest.sourceRevisionKey === null

@@ -12,6 +12,11 @@ import {
   type SyntheticReportManifest,
 } from "../../worker/src/layers/l1-data-knowledge/synthetic-fixture-pipeline.js";
 import { runSyntheticFixtureJob } from "../../worker/src/layers/l1-data-knowledge/synthetic-fixture-runner.js";
+import { createModelCapabilityAdapter } from "../../worker/src/layers/l2-model-grounding/adapter.js";
+import type {
+  ExtractionRequest,
+  UntrustedModelProvider,
+} from "../../worker/src/layers/l2-model-grounding/contracts.js";
 
 const fixtureUrl = "https://synthetic.invalid/moderator/fixture-pipeline";
 const retrievedAt = "2026-09-25T03:00:00.000Z";
@@ -34,7 +39,9 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     pipelinePorts = {
       acquisitionJobs: ports.acquisitionJobs,
       sourceRegistry: ports.sourceRegistry,
+      modelAdapter: createFixtureModelAdapter(),
       reportRevisions: ports.reportRevisions,
+      extractionResults: ports.extractionResults,
       evidenceChunks: ports.evidenceChunks,
       geometryWriter: createSqlGeometryWriter(database.executor),
     };
@@ -73,7 +80,7 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     await database.close();
   });
 
-  it("replays expired work under L1 role, preserves first trace and exact IDs, and completes empty input without writes", async () => {
+  it("converges after an uncertain queue acknowledgement under L1 role and completes empty input without writes", async () => {
     const queued = await ports.acquisitionJobs.enqueueModeratorSubmission({
       datasetKind: "synthetic",
       idempotencyKey: "fixture-pipeline:one",
@@ -95,16 +102,44 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
 
     const catalog = new InMemorySyntheticFixtureCatalog([makeFixture()]);
     const expiredTime = "2026-09-25T03:00:02.000Z";
-    const staleResult = await runAsL1(database, () => processSyntheticFixtureJob({
+    let uncertainAcknowledgementCalls = 0;
+    const interruptedPipelinePorts: FixturePipelinePorts = {
+      ...pipelinePorts,
+      acquisitionJobs: new Proxy(pipelinePorts.acquisitionJobs, {
+        get(target, property, receiver) {
+          if (property === "complete") {
+            return async () => {
+              uncertainAcknowledgementCalls += 1;
+              throw new Error("synthetic uncertain acknowledgement");
+            };
+          }
+          const value: unknown = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }),
+    };
+    const interruptedResult = await runAsL1(database, () => processSyntheticFixtureJob({
       job: claimed,
       catalog,
-      ports: pipelinePorts,
-      transitionAt: expiredTime,
+      ports: interruptedPipelinePorts,
+      transitionAt: "2026-09-25T03:00:00.500Z",
     }));
-    assert.deepEqual(staleResult, { outcome: "lost_lease", code: "lease_not_owned" });
+    assert.deepEqual(interruptedResult, {
+      outcome: "failed", code: "queue_acknowledgement_failed", queueOutcome: "not_acknowledged",
+    });
+    assert.equal(uncertainAcknowledgementCalls, 1);
     const stillLeased = await ports.acquisitionJobs.findById("synthetic", claimed.jobId);
     assert.equal(stillLeased?.status, "leased");
     assert.equal(stillLeased?.leaseToken, claimed.leaseToken);
+
+    const persistedBeforeRecovery = await database.executor.query<{ candidates: string; links: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM waspada.extraction_results
+          WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-pipeline-1') AS candidates,
+         (SELECT count(*)::text FROM waspada.extraction_evidence
+          WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-pipeline-1') AS links`,
+    );
+    assert.deepEqual(persistedBeforeRecovery.rows[0], { candidates: "1", links: "4" });
 
     assert.equal(await ports.acquisitionJobs.recoverExpiredLeases(expiredTime), 1);
     const retryClaimTime = "2026-09-25T03:00:32.000Z";
@@ -121,8 +156,16 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     }));
     assert.deepEqual(replayResult, {
       outcome: "completed", empty: false, reportCount: 1,
-      evidenceReferenceCount: 1, chunkCount: 1, geometryCount: 1,
+      evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 1,
     });
+    const convergedCandidate = await database.executor.query<{ candidates: string; links: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM waspada.extraction_results
+          WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-pipeline-1') AS candidates,
+         (SELECT count(*)::text FROM waspada.extraction_evidence
+          WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-pipeline-1') AS links`,
+    );
+    assert.deepEqual(convergedCandidate.rows[0], { candidates: "1", links: "4" });
 
     const revision = await database.executor.query<{
       trace_id: string;
@@ -157,11 +200,49 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
        FROM waspada.evidence_references
        WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-pipeline-1'`,
     );
-    assert.equal(evidence.rows.length, 1);
+    assert.equal(evidence.rows.length, 5);
     assert.equal(evidence.rows[0]?.trace_id, fixtureTrace);
-    assert.equal(evidence.rows[0]?.relation, "supports");
+    assert.deepEqual(new Set(evidence.rows.map((row) => row.relation)),
+      new Set(["supports", "contradicts", "updates", "context"]));
     const cpLength = Array.from(permittedText).length;
-    assert.deepEqual([evidence.rows[0]?.span_start, evidence.rows[0]?.span_end], [0, cpLength]);
+    assert.ok(evidence.rows.some((row) => row.span_start === 0 && row.span_end === cpLength));
+
+    const extraction = await database.executor.query<{
+      candidate_id: string;
+      trace_id: string;
+      report_revision_id: string;
+      category: string;
+      record_json: Record<string, unknown>;
+    }>(
+      `SELECT candidate_id, trace_id, report_revision_id, category, record_json
+       FROM waspada.extraction_results
+       WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-pipeline-1'`,
+    );
+    assert.equal(extraction.rows.length, 1);
+    assert.equal(extraction.rows[0]?.trace_id, fixtureTrace);
+    assert.equal(extraction.rows[0]?.report_revision_id, "revision-fixture-pipeline-1");
+    assert.equal(extraction.rows[0]?.category, "transport_road_incidents");
+    assert.equal(extraction.rows[0]?.record_json.schema_version, "2.0");
+    assert.equal(extraction.rows[0]?.record_json.record_type, "ExtractionResult");
+    assert.equal(extraction.rows[0]?.record_json.trace_id, fixtureTrace);
+    assert.equal(extraction.rows[0]?.record_json.dataset_kind, "synthetic");
+    assert.equal(extraction.rows[0]?.record_json.provider, undefined);
+    assert.deepEqual(
+      ((extraction.rows[0]?.record_json.evidence as { relation: string }[]) ?? []).map(({ relation }) => relation),
+      ["supports", "contradicts", "updates", "context"],
+    );
+    const extractionLinks = await database.executor.query<{ candidate_id: string; relation: string }>(
+      `SELECT link.candidate_id, reference.relation
+       FROM waspada.extraction_evidence AS link
+       JOIN waspada.evidence_references AS reference
+         ON reference.dataset_kind = link.dataset_kind
+        AND reference.evidence_ref_id = link.evidence_ref_id
+       WHERE link.dataset_kind = 'synthetic' AND link.candidate_id = 'candidate-fixture-pipeline-1'
+       ORDER BY reference.relation`,
+    );
+    assert.equal(extractionLinks.rows.length, 4);
+    assert.deepEqual(extractionLinks.rows.map((row) => row.relation),
+      ["context", "contradicts", "supports", "updates"]);
 
     const chunks = await database.executor.query<{ count: string; first_trace: string }>(
       `SELECT count(*)::text AS count, min(trace_id) AS first_trace
@@ -260,7 +341,7 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
          (SELECT count(*)::text FROM waspada.publication_decisions WHERE dataset_kind = 'synthetic') AS publications`,
     );
     assert.deepEqual(counts.rows[0], {
-      revisions: "1", evidence: "1", chunks: "1", geometries: "1", events: "0", publications: "0",
+      revisions: "1", evidence: "5", chunks: "1", geometries: "1", events: "0", publications: "0",
     });
     const emptyJob = await ports.acquisitionJobs.findById("synthetic", emptyClaim.jobId);
     assert.equal(emptyJob?.status, "completed");
@@ -299,6 +380,7 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
       queue: ports.acquisitionJobs,
       catalog: new InMemorySyntheticFixtureCatalog([makeFixture({
         url: runnerUrl,
+        candidateId: "candidate-fixture-runner-1",
         reportRevisionId: "revision-fixture-runner-1",
         geometryId: "geometry-fixture-runner-1",
       })]),
@@ -306,7 +388,7 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     }));
     assert.deepEqual(result, {
       outcome: "completed", empty: false, reportCount: 1,
-      evidenceReferenceCount: 1, chunkCount: 1, geometryCount: 1,
+      evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 1,
     });
     assert.equal(JSON.stringify(result).includes(runnerUrl), false);
 
@@ -369,11 +451,13 @@ function makeTrace(traceId: string, datasetKind: "live" | "historical" | "synthe
 
 function makeFixture(input: {
   readonly url?: string;
+  readonly candidateId?: string;
   readonly reportRevisionId?: string;
   readonly geometryId?: string;
 } = {}): SyntheticFixture {
   const url = input.url ?? fixtureUrl;
   const manifest: SyntheticReportManifest = {
+    candidateId: input.candidateId ?? "candidate-fixture-pipeline-1",
     reportRevisionId: input.reportRevisionId ?? "revision-fixture-pipeline-1",
     sourceId: "source-fixture-pipeline",
     canonicalUrl: url,
@@ -413,4 +497,41 @@ function makeFixture(input: {
     sourceId: "source-fixture-pipeline",
     manifests: new Map([["parser-feature-id", manifest]]),
   };
+}
+
+function createFixtureModelAdapter() {
+  const provider: UntrustedModelProvider = {
+    async classify() { throw new Error("unused synthetic classification"); },
+    async extract(request: ExtractionRequest) {
+      const report = request.data.report;
+      const relations = ["supports", "contradicts", "updates", "context"] as const;
+      return {
+        output: {
+          category: "transport_road_incidents",
+          tags: [],
+          eventTime: { start: null, end: null, precision: "unknown" },
+          scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
+          evidence: relations.map((relation, index) => ({
+            reportRevisionId: report.reportRevisionId,
+            permittedTextHash: report.permittedTextHash,
+            spanStart: index * 5,
+            spanEnd: index * 5 + 4,
+            offsetUnit: "unicode_code_points",
+            relation,
+          })),
+          unknownFields: ["event_time"],
+        },
+        usage: { inputTokens: 16, outputTokens: 9 },
+      };
+    },
+    async embed() { throw new Error("unused synthetic embedding"); },
+    async reason() { throw new Error("unused synthetic reasoning"); },
+  };
+  return createModelCapabilityAdapter(provider, {
+    extraction: {
+      provider: "synthetic-pglite-provider",
+      modelVersion: "synthetic-extractor-v1",
+      promptVersion: "fixture-extraction-v1",
+    },
+  });
 }

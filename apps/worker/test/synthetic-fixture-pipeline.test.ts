@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createModelCapabilityAdapter } from "../src/layers/l2-model-grounding/adapter.js";
+import type {
+  ExtractionRequest,
+  ModelCapabilityAdapter,
+  UntrustedModelProvider,
+} from "../src/layers/l2-model-grounding/contracts.js";
 import {
   InMemorySyntheticFixtureCatalog,
   processSyntheticFixtureJob,
@@ -14,10 +20,22 @@ const fixtureUrl = "https://synthetic.invalid/moderator/station-1";
 const retrievedAt = "2026-09-25T03:00:00.000Z";
 const transitionAt = "2026-09-25T03:01:00.000Z";
 const permittedText = "Station entrance on Merdeka Street 🚉.";
+const extractionIdentity = {
+  provider: "synthetic-test-provider",
+  modelVersion: "synthetic-extractor-v1",
+  promptVersion: "fixture-extraction-v1",
+} as const;
 
 test("resolves exact URL and persists caller-authored schema 2.0 data before completing", async () => {
   const events: string[] = [];
-  const observed: { revision?: unknown; evidence: unknown[]; chunks?: unknown; geometry?: unknown } = { evidence: [] };
+  const observed: {
+    revision?: unknown;
+    request?: ExtractionRequest;
+    extraction?: unknown;
+    evidence: unknown[];
+    chunks?: unknown;
+    geometry?: unknown;
+  } = { evidence: [] };
   const fixture = makeFixture();
   const ports = mockPorts(events, observed);
 
@@ -32,11 +50,17 @@ test("resolves exact URL and persists caller-authored schema 2.0 data before com
     outcome: "completed",
     empty: false,
     reportCount: 1,
-    evidenceReferenceCount: 1,
+    evidenceReferenceCount: 5,
     chunkCount: 1,
     geometryCount: 1,
   });
-  assert.deepEqual(events, ["source", "revision", "evidence", "chunks", "geometry", "complete"]);
+  assert.deepEqual(events, [
+    "source", "revision", "extract", "evidence", "evidence", "evidence", "evidence", "evidence",
+    "chunks", "geometry", "extraction", "complete",
+  ]);
+  assert.equal((observed.request?.data.candidateId), "candidate-fixture-authored-1");
+  assert.equal(observed.request?.data.report.reportRevisionId, "revision-authored-stable-1");
+  assert.equal(observed.request?.data.report.permittedText, permittedText);
   const revision = observed.revision as Record<string, unknown>;
   assert.equal(revision.datasetKind, "synthetic");
   assert.equal(revision.revisionStatus, "unreviewed");
@@ -57,7 +81,22 @@ test("resolves exact URL and persists caller-authored schema 2.0 data before com
   assert.equal(recordJson.source_revision_key, null);
   assert.equal(recordJson.observed_at, null);
   assert.equal(recordJson.retrieved_at, retrievedAt);
-  assert.equal((observed.evidence[0] as { spanStart: number }).spanStart, 0);
+  assert.equal(observed.evidence.length, 5);
+  assert.deepEqual(new Set(observed.evidence.map((item) => (item as { relation: string }).relation)),
+    new Set(["supports", "contradicts", "updates", "context"]));
+  const extraction = observed.extraction as Record<string, unknown>;
+  assert.deepEqual(Object.keys(extraction), [
+    "schema_version", "trace_id", "record_type", "dataset_kind", "candidate_id", "report_revision_id",
+    "category", "tags", "event_time", "scope", "evidence", "unknown_fields", "model_run",
+  ]);
+  assert.equal(extraction.schema_version, "2.0");
+  assert.equal(extraction.trace_id, "trace-fixture-job");
+  assert.equal(extraction.dataset_kind, "synthetic");
+  assert.equal(extraction.candidate_id, "candidate-fixture-authored-1");
+  assert.equal(extraction.provider, undefined);
+  assert.deepEqual((extraction.evidence as { relation: string }[]).map(({ relation }) => relation),
+    ["supports", "contradicts", "updates", "context"]);
+  assert.deepEqual(events.slice(-4), ["chunks", "geometry", "extraction", "complete"]);
   assert.equal((observed.geometry as { role: string }).role, "approximate_place");
   assert.deepEqual((observed.geometry as { geojson: unknown }).geojson, {
     type: "Point", coordinates: [106.8272, -6.1754],
@@ -137,7 +176,7 @@ test("does not infer geometry when the parser has coordinates but the authored m
 
   assert.deepEqual(result, {
     outcome: "completed", empty: false, reportCount: 1,
-    evidenceReferenceCount: 1, chunkCount: 1, geometryCount: 0,
+    evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 0,
   });
   assert.equal(events.includes("geometry"), false);
 });
@@ -198,7 +237,77 @@ test("fails persistence with a stable retryable code and does not acknowledge co
   });
 
   assert.deepEqual(result, { outcome: "failed", code: "fixture_persistence_failed", queueOutcome: "retry" });
-  assert.deepEqual(events, ["source", "revision", "evidence", "chunks", "fail:fixture_persistence_failed:retryable"]);
+  assert.deepEqual(events, [
+    "source", "revision", "extract", "evidence", "evidence", "evidence", "evidence", "evidence",
+    "chunks", "fail:fixture_persistence_failed:retryable",
+  ]);
+  assert.equal(JSON.stringify(result).includes(fixtureUrl), false);
+});
+
+test("retries unavailable extraction and never completes the leased job", async () => {
+  const events: string[] = [];
+  const ports = mockPorts(events, undefined, createModelCapabilityAdapter(undefined, {
+    extraction: extractionIdentity,
+  }));
+  const result = await processSyntheticFixtureJob({
+    job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+  });
+
+  assert.deepEqual(result, {
+    outcome: "failed", code: "fixture_extraction_unavailable", queueOutcome: "retry",
+  });
+  assert.deepEqual(events, ["source", "revision", "fail:fixture_extraction_unavailable:retryable"]);
+  assert.equal(JSON.stringify(result).includes(fixtureUrl), false);
+});
+
+test("maps a configured provider exception to a bounded retryable failure", async () => {
+  const events: string[] = [];
+  const sensitive = `${fixtureUrl} ${permittedText}`;
+  const ports = mockPorts(events, undefined, mockModelAdapter(events, undefined, {
+    throwMessage: sensitive,
+  }));
+  const result = await processSyntheticFixtureJob({
+    job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+  });
+
+  assert.deepEqual(result, {
+    outcome: "failed", code: "fixture_extraction_unavailable", queueOutcome: "retry",
+  });
+  assert.deepEqual(events, ["source", "revision", "extract", "fail:fixture_extraction_unavailable:retryable"]);
+  assert.equal(JSON.stringify(result).includes(sensitive), false);
+});
+
+test("permanently fails malformed extraction output without exposing provider data", async () => {
+  const events: string[] = [];
+  const sensitive = `${fixtureUrl} ${permittedText}`;
+  const ports = mockPorts(events, undefined, mockModelAdapter(events, undefined, {
+    response: () => ({ output: { private: sensitive }, usage: { inputTokens: 1, outputTokens: 1 } }),
+  }));
+  const result = await processSyntheticFixtureJob({
+    job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+  });
+
+  assert.deepEqual(result, {
+    outcome: "failed", code: "fixture_extraction_invalid", queueOutcome: "terminal",
+  });
+  assert.deepEqual(events, ["source", "revision", "extract", "fail:fixture_extraction_invalid:permanent"]);
+  assert.equal(JSON.stringify(result).includes(sensitive), false);
+});
+
+test("keeps a candidate retryable when its create-or-verify write fails", async () => {
+  const events: string[] = [];
+  const ports = mockPorts(events);
+  ports.extractionResults.createOrVerify = async () => {
+    events.push("extraction");
+    throw new Error(`${fixtureUrl} ${permittedText}`);
+  };
+  const result = await processSyntheticFixtureJob({
+    job: makeJob(), catalog: new InMemorySyntheticFixtureCatalog([makeFixture()]), ports, transitionAt,
+  });
+
+  assert.deepEqual(result, { outcome: "failed", code: "fixture_persistence_failed", queueOutcome: "retry" });
+  assert.equal(events.at(-1), "fail:fixture_persistence_failed:retryable");
+  assert.equal(events.includes("complete"), false);
   assert.equal(JSON.stringify(result).includes(fixtureUrl), false);
 });
 
@@ -269,6 +378,7 @@ function makeFixture(input: {
   });
   const end = Array.from(permittedText).length;
   const manifest: SyntheticReportManifest = {
+    candidateId: "candidate-fixture-authored-1",
     reportRevisionId: "revision-authored-stable-1",
     sourceId: "source-fixture-manual",
     canonicalUrl: fixtureUrl,
@@ -300,7 +410,15 @@ function makeFixture(input: {
 
 function mockPorts(
   events: string[],
-  observed: { revision?: unknown; evidence: unknown[]; chunks?: unknown; geometry?: unknown } = { evidence: [] },
+  observed: {
+    revision?: unknown;
+    request?: ExtractionRequest;
+    extraction?: unknown;
+    evidence: unknown[];
+    chunks?: unknown;
+    geometry?: unknown;
+  } = { evidence: [] },
+  modelAdapter: Pick<ModelCapabilityAdapter, "extract"> = mockModelAdapter(events, observed),
 ): FixturePipelinePorts {
   return {
     acquisitionJobs: {
@@ -324,6 +442,7 @@ function mockPorts(
         };
       },
     },
+    modelAdapter,
     reportRevisions: {
       async create(input) {
         events.push("revision");
@@ -347,5 +466,57 @@ function mockPorts(
         observed.geometry = input;
       },
     },
+    extractionResults: {
+      async createOrVerify(record) {
+        events.push("extraction");
+        observed.extraction = record;
+        return record;
+      },
+    },
+  };
+}
+
+function mockModelAdapter(
+  events: string[],
+  observed?: { request?: ExtractionRequest },
+  options: {
+    readonly response?: (request: ExtractionRequest) => unknown;
+    readonly throwMessage?: string;
+  } = {},
+): Pick<ModelCapabilityAdapter, "extract"> {
+  const provider: UntrustedModelProvider = {
+    async classify() { throw new Error("unused synthetic classification"); },
+    async extract(request) {
+      events.push("extract");
+      if (observed) observed.request = request;
+      if (options.throwMessage !== undefined) throw new Error(options.throwMessage);
+      return options.response?.(request) ?? makeProviderExtractionResponse(request);
+    },
+    async embed() { throw new Error("unused synthetic embedding"); },
+    async reason() { throw new Error("unused synthetic reasoning"); },
+  };
+  return createModelCapabilityAdapter(provider, { extraction: extractionIdentity });
+}
+
+function makeProviderExtractionResponse(request: ExtractionRequest): unknown {
+  const report = request.data.report;
+  const relations = ["supports", "contradicts", "updates", "context"] as const;
+  return {
+    output: {
+      category: "transport_road_incidents",
+      tags: [],
+      eventTime: { start: null, end: null, precision: "unknown" },
+      scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
+      evidence: relations.map((relation, index) => ({
+        reportRevisionId: report.reportRevisionId,
+        permittedTextHash: report.permittedTextHash,
+        spanStart: index * 5,
+        spanEnd: index * 5 + 4,
+        offsetUnit: "unicode_code_points",
+        relation,
+      })),
+      unknownFields: ["event_time"],
+    },
+    usage: { inputTokens: 12, outputTokens: 8 },
   };
 }
