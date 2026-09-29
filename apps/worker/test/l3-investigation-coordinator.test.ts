@@ -250,6 +250,31 @@ test('uncertain action results and invalid or stale case identities cannot reach
     assert.equal(harness.planningCalls.length, 1);
     assert.equal(harness.refreshCalls.length, 1);
   });
+  await t.test('same-case sufficient context must match the checkpoint context ID', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness();
+    const first = await harness.coordinator.advance(openInput(context));
+    assert.equal(first.status, 'continue');
+    if (first.status !== 'continue') assert.fail('expected a checkpointed continuation');
+    const substitute = makeContext({
+      ...first.context,
+      contextId: 'context-coordinator-sufficient-substitute',
+      sufficient: true,
+    });
+
+    const result = await harness.coordinator.advance({
+      ...resumeInput(first, 'sufficient-substitute'),
+      context: substitute,
+      persistedRecord: persisted(substitute),
+    });
+
+    assert.equal(result.status, 'review_required');
+    assert.equal(result.reason, 'context_identity_mismatch');
+    assert.equal(result.checkpoint?.context_id, first.checkpoint.context_id);
+    assert.equal(harness.planningCalls.length, 1);
+    assert.equal(harness.actionCalls.length, 1);
+    assert.equal(harness.refreshCalls.length, 1);
+  });
   await t.test('stale checkpoint', async () => {
     const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
     const harness = makeHarness({ refreshResults: [context] });

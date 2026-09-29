@@ -116,6 +116,9 @@ export function createInvestigationCoordinator(
           if (!sameCaseIdentity(checkpoint, contextPair.context)) {
             return review('context_identity_mismatch', checkpoint);
           }
+          if (checkpoint.context_id !== contextPair.context.contextId) {
+            return review('context_identity_mismatch', checkpoint);
+          }
           if (contextPair.context.sufficient) {
             return {
               status: 'sufficient_context',
