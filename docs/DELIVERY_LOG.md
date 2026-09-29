@@ -972,3 +972,7 @@ Because source/data rights remain pending and the accepted coordinator has only 
 ### Architecture status correction — 29 September 2026
 
 After accepting `L3-COORDINATOR-CORE`, root found stale status text in [ARCHITECTURE.md](../ARCHITECTURE.md) that said no complete coordinator existed. The architecture now records the accepted stateless bounded composition and separately identifies the still-missing production source-to-L1/L2 dispatch, Worker/database and Cloudflare Workflow runtime, production tools, and key configuration. This is a documentation correction only; WSL `git diff --check` passed. No code, contract, source, provider, or runtime setting changed.
+
+### L2 timestamp boundary issue and fix assigned — 29 September 2026
+
+While extending `L3-SYNTHETIC-L1L2-ROUNDTRIP-CORE`, the implementer exercised the real PGlite retrieval repository and found that PostgreSQL `timestamptz::text` values use a space-separated form (for example `2026-09-23 01:02:03+00`), while the existing Layer 2 reasoning validator requires RFC3339 with `T`. Exact-span retrieval succeeds, but context assembly rejects the timestamp before persistence. The assigned test-only scope correctly stopped rather than relaxing the validator or mocking the read. Root created [RAG-RETRIEVAL-TIMESTAMP-RFC3339-CORE](assignments/RAG-RETRIEVAL-TIMESTAMP-RFC3339-CORE.md), limited to canonicalizing database-reader output and focused tests. The public/persisted contracts and strict L2 validation remain unchanged. No source, provider, or external service is involved.
