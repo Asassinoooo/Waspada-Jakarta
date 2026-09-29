@@ -47,9 +47,11 @@ The local WSL Ubuntu-26.04 prototype passed typecheck, all 9 tests, smoke, and b
 
 The report [PLATFORM_COMPATIBILITY.md](../PLATFORM_COMPATIBILITY.md) records the source-backed limits, arithmetic sensitivity scenarios, failure actions, and untested items. Neon’s current plan table and FAQ, updated 17 and 23 September respectively, confirm 100 CU-hours/project/month; the 50-CU figure in its older 2025 pricing article is superseded by the provider’s November 2025 update. Neon documentation lists PostGIS and pgvector support by PostgreSQL major version, with pgvector available on every plan. No Free resource was created, so extension activation, Hyperdrive behavior, Neon cold starts, Workflow budgets, and Workers AI access remain untested.
 
-## Cloudflare Workflows Free-tier re-check — 29 September 2026
+## Cloudflare Workflows and Neon Free-tier re-check — 29 September 2026
 
 The current official [Workflows pricing](https://developers.cloudflare.com/workflows/reference/pricing/) and [limits](https://developers.cloudflare.com/workflows/reference/limits/) pages confirm that Workflows is included in Workers Free. The documented ceilings include 3,000 steps/day, 1,024 steps per workflow instance, 10 ms CPU per step, 100,000 executions/day shared with Workers requests, 1 GB-month of storage, 100 MB persisted state per instance, and three-day retention of completed state. Free Workers retain the 50 external subrequest limit. This supports a low-volume prototype design on paper; it is not a measured capacity guarantee. Keep Neon’s durable ledger authoritative because Workflow state retention is only three days. The coordinator must stop before quotas, and hosted Workflow/Neon behavior remains untested. See the dated source record in [REFERENCES.md](../../REFERENCES.md).
+
+Neon’s official [Free plan limits and quotas](https://github.com/neondatabase/website/blob/main/content/faqs/free-plan-limits-and-quotas.md) page, updated 23 September 2026 and rechecked 29 September, continues to document 100 CU-hours, 0.5 GB database storage and 5 GB public network transfer per project/month, with scale-to-zero after five idle minutes. These are per-project ceilings; hitting compute or transfer limits suspends compute, and storage-cap growth writes fail. The values match the 24 September source review. The target remains plausible only for a bounded prototype; actual query, index, vector and audit growth has not been measured.
 
 ## Acceptance gates and unresolved decisions
 

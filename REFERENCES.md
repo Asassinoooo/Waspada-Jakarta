@@ -101,3 +101,5 @@ These notes inform conservative engineering gates and are not a legal determinat
 - [Workflows limits](https://developers.cloudflare.com/workflows/reference/limits/), official Cloudflare documentation, page last updated 21 September 2026 and accessed 29 September 2026. Confirms per-instance step/state ceilings, three-day Free retention and inherited Workers subrequest limits.
 
 These are provider-published ceilings, not measurements or guarantees for Waspada. No Workflow or Neon resource was configured or deployed during this review. See [ADR-010](docs/decisions/ADR-010-cloudflare-neon-free.md).
+
+The official [Neon Free plan limits and quotas](https://github.com/neondatabase/website/blob/main/content/faqs/free-plan-limits-and-quotas.md) page (updated 23 September 2026) was rechecked on 29 September. It still lists 100 CU-hours, 0.5 GB database storage, and 5 GB public network transfer per project/month, plus scale-to-zero after five idle minutes. These match the previously dated deployment-target review above; no Neon project was created or queried.
