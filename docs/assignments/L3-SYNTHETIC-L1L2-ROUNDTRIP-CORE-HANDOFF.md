@@ -23,7 +23,8 @@ The attempted action used an exact synthetic report reference and completed the 
 - **Runtime:** WSL Ubuntu-26.04, Node.js `v24.21.0`, npm `11.19.0`.
 - `node_modules/.bin/tsx --test apps/db/test/investigation-ledger.test.ts` — **failed 11/12** because the new composition attempt returned `review_required: refresh_failed` at the timestamp validation described above; the other 11 existing tests passed.
 - `node_modules/.bin/tsx --test --test-name-pattern='composes one coordinator advance' apps/db/test/investigation-ledger.test.ts` — **failed 0/1** for the same concrete boundary mismatch and captured the SQL display-form timestamps.
-- `npm run db:test`, `npm test`, `npm run typecheck`, `npm run build`, and the assigned-base `git diff --check` were **not run** because the integration could not proceed within the test-only scope. Do not treat these as passing.
+- `npm run db:test`, `npm test`, `npm run typecheck`, and `npm run build` were **not run** because the integration could not proceed within the test-only scope. Do not treat these as passing.
+- `git diff --check ae81f65a434c71ae9bdb8703ac9e4744f1743575..HEAD` — **passed** on the initial handoff commit; it will be rerun after this documentation update.
 
 ## Limits and remaining decisions
 
