@@ -11,6 +11,8 @@ import {
   createTelemetryInvestigationLedgerRepository,
 } from './telemetry.js';
 import type { TelemetrySink } from '../l5-evaluation-monitoring/telemetry.js';
+import { L3FingerprintError } from './progress-fingerprint.js';
+import type { L3FingerprintService } from './progress-fingerprint.js';
 
 const ACTION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -75,7 +77,10 @@ export type SingleStepReviewReason =
   | 'reservation_in_flight'
   | 'reservation_state_uncertain'
   | 'reservation_result_uncertain'
-  | 'start_not_authorized';
+  | 'start_not_authorized'
+  | 'duplicate_action'
+  | 'fingerprint_unavailable'
+  | 'fingerprint_key_mismatch';
 
 export type SingleStepExecutorResult =
   | {
@@ -102,6 +107,7 @@ export type SingleStepExecutorResult =
 
 export interface SingleStepExecutorOptions {
   readonly ledger: InvestigationLedgerRepository;
+  readonly fingerprints: L3FingerprintService;
   readonly registry: readonly InvestigationActionRegistration[];
   readonly clock: SingleStepExecutorClock;
   readonly timer: SingleStepExecutorTimer;
@@ -159,12 +165,42 @@ export function createSingleStepExecutor(options: SingleStepExecutorOptions): Si
       const parsedActionInput = parseInputResult(parsedInput);
       if (!parsedActionInput.ok) return { status: 'review_required', reason: 'invalid_action_input' };
 
+      let fingerprintKeyId: string | null;
+      try {
+        fingerprintKeyId = await ledger.getFingerprintKeyId(proposal.datasetKind, proposal.investigationId);
+      } catch {
+        return { status: 'review_required', reason: 'fingerprint_unavailable' };
+      }
+      if (fingerprintKeyId === null) {
+        return { status: 'review_required', reason: 'fingerprint_unavailable' };
+      }
+
+      let actionFingerprint;
+      try {
+        options.fingerprints.assertCaseKeyId(fingerprintKeyId);
+        actionFingerprint = await options.fingerprints.fingerprintAction({
+          datasetKind: proposal.datasetKind,
+          investigationId: proposal.investigationId,
+          keyId: fingerprintKeyId,
+          actionName: action.name,
+          parsedInput: parsedActionInput.value,
+        });
+      } catch (error) {
+        return {
+          status: 'review_required',
+          reason: error instanceof L3FingerprintError && error.code === 'fingerprint_key_mismatch'
+            ? 'fingerprint_key_mismatch'
+            : 'fingerprint_unavailable',
+        };
+      }
+
       const reserveInput: ReserveActionInput = {
         datasetKind: proposal.datasetKind,
         investigationId: proposal.investigationId,
         reservationId: proposal.reservationId,
         expectedCheckpointVersion: proposal.expectedCheckpointVersion,
         actionKind: 'tool',
+        actionFingerprint,
         actionName: action.name,
         reservedActiveSeconds: action.maxActiveSeconds,
         reservedModelTokens: 0,
@@ -302,6 +338,12 @@ function reserveDenialReason(error: unknown): SingleStepReviewReason | undefined
       return 'stale_checkpoint';
     case 'reservation_in_flight':
       return 'reservation_in_flight';
+    case 'duplicate_action':
+      return 'duplicate_action';
+    case 'fingerprint_unavailable':
+      return 'fingerprint_unavailable';
+    case 'fingerprint_key_mismatch':
+      return 'fingerprint_key_mismatch';
     default:
       return undefined;
   }

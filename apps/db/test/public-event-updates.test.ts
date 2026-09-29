@@ -57,7 +57,8 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     await applyMigrations(database.executor, migrations.filter(({ version }) =>
       version !== '016_public_update_feed_order'
       && version !== '017_moderator_publication_writer_role'
-      && version !== '018_l1_extraction_result_verification'));
+      && version !== '018_l1_extraction_result_verification'
+      && version !== '019_l3_progress_fingerprints'));
     await database.executor.query(
       "INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')",
     );
@@ -82,7 +83,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     const applied = await applyMigrations(database.executor, migrations);
     assert.deepEqual(applied.applied, [
       '016_public_update_feed_order', '017_moderator_publication_writer_role',
-      '018_l1_extraction_result_verification',
+      '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
     ]);
   });
 

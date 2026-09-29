@@ -23,6 +23,8 @@ import {
   createTelemetryInvestigationLedgerRepository,
 } from './telemetry.js';
 import type { TelemetrySink } from '../l5-evaluation-monitoring/telemetry.js';
+import { L3FingerprintError } from './progress-fingerprint.js';
+import type { L3FingerprintService } from './progress-fingerprint.js';
 
 const RESERVATION_ACTION_NAME = 'l2_investigation_planning';
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -68,7 +70,9 @@ export type ReasoningStepReviewReason =
   | 'planner_timed_out'
   | 'planner_abstained'
   | 'reconciliation_uncertain'
-  | 'escalation_uncertain';
+  | 'escalation_uncertain'
+  | 'fingerprint_unavailable'
+  | 'fingerprint_key_mismatch';
 
 export type ReasoningStepExecutorResult =
   | {
@@ -90,6 +94,7 @@ export type ReasoningStepExecutorResult =
 
 export interface ReasoningStepExecutorOptions {
   readonly ledger: InvestigationLedgerRepository;
+  readonly fingerprints: L3FingerprintService;
   readonly planner: InvestigationPlanner;
   /** Trusted maximum active seconds reserved for one L2 planning call. */
   readonly maxActiveSeconds: number;
@@ -150,6 +155,24 @@ export function createReasoningStepExecutor(options: ReasoningStepExecutorOption
       }
       if (!checkpoint) return reviewRequired('investigation_not_found');
       if (checkpoint.case_status !== 'open') return reviewRequired('investigation_not_open', checkpoint);
+
+      let fingerprintKeyId: string | null;
+      try {
+        fingerprintKeyId = await ledger.getFingerprintKeyId(proposal.datasetKind, proposal.investigationId);
+      } catch {
+        return reviewRequired('fingerprint_unavailable', checkpoint);
+      }
+      if (fingerprintKeyId === null) return reviewRequired('fingerprint_unavailable', checkpoint);
+      try {
+        options.fingerprints.assertCaseKeyId(fingerprintKeyId);
+      } catch (error) {
+        return reviewRequired(
+          error instanceof L3FingerprintError && error.code === 'fingerprint_key_mismatch'
+            ? 'fingerprint_key_mismatch'
+            : 'fingerprint_unavailable',
+          checkpoint,
+        );
+      }
       if (checkpoint.checkpoint_version !== proposal.expectedCheckpointVersion) {
         return reviewRequired('stale_checkpoint', checkpoint);
       }
@@ -612,6 +635,10 @@ function ledgerErrorReason(error: unknown): ReasoningStepReviewReason {
       return 'reservation_in_flight';
     case 'budget_exhausted':
       return 'budget_exhausted';
+    case 'fingerprint_unavailable':
+      return 'fingerprint_unavailable';
+    case 'fingerprint_key_mismatch':
+      return 'fingerprint_key_mismatch';
     case 'context_mismatch':
     case 'sufficient_context':
       return 'context_identity_mismatch';

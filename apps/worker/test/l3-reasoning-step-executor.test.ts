@@ -19,6 +19,7 @@ import {
   type InvestigationPlannerPreflightOutcome,
   type InvestigationPlanRequest,
 } from '../src/layers/l2-model-grounding/investigation-planner.js';
+import { createL3FingerprintService } from '../src/layers/l3-investigation/progress-fingerprint.js';
 import {
   createReasoningStepExecutor,
   type ReasoningStepExecutorClock,
@@ -27,6 +28,10 @@ import {
 import type { TelemetryRecord, TelemetrySink } from '../src/layers/l5-evaluation-monitoring/telemetry.js';
 
 const timestamp = '2026-09-28T12:00:00.000Z';
+const TEST_FINGERPRINTS = createL3FingerprintService({
+  keyId: 'fixture-hmac-v1',
+  keyMaterial: new Uint8Array(32).fill(47),
+});
 const requestBase: InvestigationPlanRequest = {
   schemaVersion: '1.0',
   recordType: 'InvestigationPlanRequest',
@@ -147,6 +152,7 @@ function makeExecutor(input: {
   const timer = input.timer ?? new FakeTimer();
   const executor = createReasoningStepExecutor({
     ledger: input.ledger,
+    fingerprints: TEST_FINGERPRINTS,
     planner: input.planner,
     maxActiveSeconds: input.maxActiveSeconds ?? 9,
     maxModelTokens: input.maxModelTokens ?? 80,
@@ -188,6 +194,12 @@ function makeLedger(config: {
       calls.push('getLatest');
       if (config.latestError) throw config.latestError;
       return latestCheckpoint;
+    },
+    async getFingerprintKeyId() {
+      return 'fixture-hmac-v1';
+    },
+    async refreshGroundingProgress() {
+      throw new Error('unexpected progress refresh');
     },
     async getInFlightReservation() {
       calls.push('getInFlight');
@@ -501,6 +513,7 @@ test('invalid proposal, invalid trusted limits, and failed L2 preflight do not r
     const planner = makePlanner();
     const executor = createReasoningStepExecutor({
       ledger: ledger.repository,
+      fingerprints: TEST_FINGERPRINTS,
       planner: planner.planner,
       maxActiveSeconds: input.maxActiveSeconds,
       maxModelTokens: input.maxModelTokens,
