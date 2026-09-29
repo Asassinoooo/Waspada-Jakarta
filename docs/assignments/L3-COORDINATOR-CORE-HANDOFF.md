@@ -18,7 +18,7 @@
 
 ## Behavior implemented
 
-The placeholder has been replaced by a typed, stateless coordinator that accepts an insufficient-context L2 handoff or an exact checkpoint/context pair for resume. It validates the schema 2.0 context against its persisted record and the durable investigation identity before building the internal planner 1.0 request. Sufficient context bypasses investigation work and is returned to the L2 caller for synthesis.
+The placeholder has been replaced by a typed, stateless coordinator that accepts an insufficient-context L2 handoff or an exact checkpoint/context pair for resume. It validates the schema 2.0 context against its persisted record and the durable investigation identity before building the internal planner 1.0 request. On resume, it also requires the context ID to equal the checkpoint context ID before returning sufficient context to the L2 caller for synthesis.
 
 One advance makes at most one budgeted planner call, one registered action, and one injected L1/L2 refresh. Only a fresh `proposed` planner result can authorize the action. Both planner and action reservation IDs are distinct, and their timestamps are required replay keys that are passed unchanged to the executors. Replayed planner or action results return a fixed review outcome and attempt an `awaiting_moderator` ledger stop; if the ledger refuses a stop while work is in flight, the coordinator returns the bounded review result without retrying or invoking another step.
 
@@ -28,7 +28,18 @@ Checkpoint version checks follow the durable executor transitions: the planner a
 
 The PGlite composition test uses only synthetic L1/L2 and planner/action ports. It verifies action reservation replay with the identical ID and timestamp returns `replayed` without a second handler call, and an outer retry after the planner has advanced does not invoke either executor again. Persisted ledger and context records exclude the synthetic planner/action input and action output reference.
 
+## Review follow-up
+
+Root review identified that a same-case context with a different context ID could be returned as sufficient before the resume checkpoint ID was checked. Commit 76957df0428c593c1a8cdfffaf114e8bdc58375c adds the checkpoint-context ID guard and a regression where the alternate context has a matching persisted record. The coordinator returns bounded context_identity_mismatch review, with no additional planner, action, or refresh calls.
+
 ## Verification
+
+Checks ran under WSL Ubuntu-26.04 with Node v24.21.0 and npm 11.19.0.
+
+- Latest focused command: tsx --test apps/worker/test/l3-investigation-coordinator.test.ts — passed, 18/18.
+- Latest npm run typecheck passed.
+- Earlier full-task checks below passed before this bounded follow-up.
+- Initial coordinator test run passed, 17/17.
 
 Checks ran under WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`.
 
