@@ -968,3 +968,7 @@ The accepted stateless coordinator composes at most one L2 planning call, one re
 ### L3-SYNTHETIC-L1L2-ROUNDTRIP-CORE assigned — 29 September 2026
 
 Because source/data rights remain pending and the accepted coordinator has only an injected refresh port, root assigned a local integration-test slice to verify the layer boundary with authored synthetic data. The test must exercise a bounded coordinator advance, the existing L1 synthetic fixture pipeline backed by real PGlite repositories, and L2 persisted retrieval/exact-span grounding/context assembly. It does not implement production source dispatch or any live connector, provider, route, migration, API or Workflow runtime. The acceptance rule is fail-closed: if the current contracts cannot prove exact report/context identity without production contract changes, stop and report the interface gap rather than weakening the boundary. See the [assignment](assignments/L3-SYNTHETIC-L1L2-ROUNDTRIP-CORE.md).
+
+### Architecture status correction — 29 September 2026
+
+After accepting `L3-COORDINATOR-CORE`, root found stale status text in [ARCHITECTURE.md](../ARCHITECTURE.md) that said no complete coordinator existed. The architecture now records the accepted stateless bounded composition and separately identifies the still-missing production source-to-L1/L2 dispatch, Worker/database and Cloudflare Workflow runtime, production tools, and key configuration. This is a documentation correction only; WSL `git diff --check` passed. No code, contract, source, provider, or runtime setting changed.
