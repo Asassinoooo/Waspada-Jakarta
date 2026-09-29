@@ -7,21 +7,30 @@ import {
   InvestigationLedgerError,
   type CreateInvestigationInput,
 } from '../src/investigation-ledger.js';
+import { createSqlGroundingContextRepository } from '../src/grounding-contexts.js';
 import type { DatasetKind } from '../src/ports.js';
 import {
   INVESTIGATION_PLAN_CAPABILITY,
+  createInvestigationPlanner,
   type InvestigationPlanRequest,
   type InvestigationPlanner,
+  type InvestigationPlanProvider,
   type InvestigationPlannerOutcome,
   type InvestigationPlannerPreflightOutcome,
 } from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
+import { createDirectReasoningService } from '../../worker/src/layers/l2-model-grounding/direct-reasoning.js';
+import { createReasoningContextPersister } from '../../worker/src/layers/l2-model-grounding/context-persistence.js';
 import { validateReasoningRequest } from '../../worker/src/layers/l2-model-grounding/validation.js';
 import { createL3FingerprintService } from '../../worker/src/layers/l3-investigation/progress-fingerprint.js';
+import { createInvestigationCoordinator } from '../../worker/src/layers/l3-investigation/coordinator.js';
+import { createInsufficientContextEntryService } from '../../worker/src/layers/l3-investigation/entry.js';
 import {
   createReasoningStepExecutor,
   type ReasoningStepExecutorClock,
   type ReasoningStepExecutorTimer,
 } from '../../worker/src/layers/l3-investigation/reasoning-step-executor.js';
+import { createSingleStepExecutor } from '../../worker/src/layers/l3-investigation/single-step-executor.js';
+import type { InvestigationActionMenuEntry } from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const TEST_TIME = '2026-09-25T10:00:00Z';
@@ -701,6 +710,267 @@ describe('L3 durable investigation ledger', () => {
     }));
   });
 
+  it('composes one coordinator advance through PGlite and the injected L1/L2 refresh boundary', async () => {
+    const fixture = await seedFixture(testDatabase, 'coordinator-composition', {
+      sufficient: false,
+      seedContext: false,
+    });
+    const contextPersister = createReasoningContextPersister(
+      createSqlGroundingContextRepository(testDatabase.executor),
+    );
+    const directReasoning = createDirectReasoningService(contextPersister, {
+      async reason() {
+        assert.fail('insufficient context must be returned to L3 before direct model synthesis');
+      },
+    });
+    const initialContextId = fixture.contextId;
+    const refreshedContextId = 'context-l3-coordinator-composition-refreshed';
+    const directOutcome = await directReasoning.reason(makeCoordinatorReasoningRequest(
+      fixture,
+      initialContextId,
+      ['synthetic_status'],
+    ));
+    assert.equal(directOutcome.status, 'investigation_required');
+    if (directOutcome.status !== 'investigation_required') {
+      assert.fail('expected the persisted insufficient-context handoff');
+    }
+
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const entry = createInsufficientContextEntryService(repository, TEST_FINGERPRINTS);
+    const modelTokens = 100;
+    let monotonicMilliseconds = 0;
+    const wallTimes = [
+      '2026-09-25T10:01:00Z',
+      '2026-09-25T10:02:00Z',
+      '2026-09-25T10:04:00Z',
+      '2026-09-25T10:05:00Z',
+      '2026-09-25T10:06:00Z',
+    ];
+    let wallTimeIndex = 0;
+    const wallNow = (): string => wallTimes[wallTimeIndex++] ?? wallTimes.at(-1)!;
+    const clock = {
+      wallNow,
+      monotonicNow: () => monotonicMilliseconds,
+    };
+    const timer = {
+      setTimeout(_callback: () => void, _delayMs: number): unknown {
+        return Symbol('synthetic-deadline');
+      },
+      clearTimeout(_handle: unknown): void {},
+    };
+    const events: string[] = [];
+    const privateActionInput = 'ephemeral planner action input marker';
+    const outputReferenceId = 'output-synthetic-reference-coordinator';
+    const actionMenu: readonly InvestigationActionMenuEntry[] = [
+      { name: 'synthetic_search', description: 'Search one synthetic test fixture.' },
+    ];
+    const provider: InvestigationPlanProvider = {
+      async plan(request, options) {
+        events.push('planner');
+        assert.equal(request.questions.length, 1);
+        assert.equal(options.maxTotalTokens, modelTokens);
+        monotonicMilliseconds += 1_200;
+        return {
+          result: {
+            schemaVersion: '1.0',
+            recordType: 'InvestigationPlanResult',
+            outcome: 'proposed',
+            actionName: 'synthetic_search',
+            input: { query: privateActionInput },
+          },
+          inputTokens: 7,
+          outputTokens: 2,
+        };
+      },
+    };
+    const planner = createInvestigationPlanner(provider, {
+      modelVersion: '@synthetic/coordinator-planner-v1',
+      promptVersion: 'synthetic/coordinator-prompt-v1',
+    });
+    const reasoningStep = createReasoningStepExecutor({
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      planner,
+      maxActiveSeconds: 10,
+      maxModelTokens: modelTokens,
+      clock,
+      timer,
+    });
+    let actionInputSeen: unknown;
+    const singleStep = createSingleStepExecutor({
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      registry: [{
+        name: 'synthetic_search',
+        enabled: true,
+        maxActiveSeconds: 5,
+        parseInput: (input) => ({ ok: true, value: input }),
+        async handler(input) {
+          events.push('action');
+          actionInputSeen = input;
+          monotonicMilliseconds += 600;
+          return { status: 'succeeded', outputReferenceIds: [outputReferenceId] };
+        },
+      }],
+      clock,
+      timer,
+    });
+    const refreshPort = {
+      async refresh(input: {
+        readonly datasetKind: DatasetKind;
+        readonly investigationId: string;
+        readonly previousContextId: string;
+        readonly outputReferenceIds: readonly string[];
+      }) {
+        events.push('refresh');
+        assert.equal(input.previousContextId, initialContextId);
+        assert.deepEqual(input.outputReferenceIds, [outputReferenceId]);
+        const beforeProgress = await repository.getLatest(input.datasetKind, input.investigationId);
+        assert.ok(beforeProgress);
+        assert.equal(beforeProgress.context_id, initialContextId);
+        assert.equal(beforeProgress.checkpoint_version, 5);
+        const pendingSnapshot = await testDatabase.executor.query<{
+          checkpoint_version: number;
+          context_id: string;
+        }>(
+          'SELECT checkpoint_version, context_id FROM waspada.investigation_progress_snapshots '
+            + 'WHERE dataset_kind = $1 AND investigation_id = $2',
+          [input.datasetKind, input.investigationId],
+        );
+        assert.deepEqual(pendingSnapshot.rows, [{ checkpoint_version: 1, context_id: initialContextId }]);
+        const persisted = await contextPersister.persist(makeCoordinatorReasoningRequest(
+          fixture,
+          refreshedContextId,
+          ['synthetic_followup', 'second_synthetic_gap'],
+        ));
+        const contextRow = await testDatabase.executor.query<{ context_id: string }>(
+          'SELECT context_id FROM waspada.grounding_contexts WHERE dataset_kind = $1 AND context_id = $2',
+          [fixture.datasetKind, refreshedContextId],
+        );
+        assert.deepEqual(contextRow.rows, [{ context_id: refreshedContextId }]);
+        return {
+          context: persisted.reasoningRequest.data.groundingContext,
+          persistedRecord: persisted.persistedRecord,
+        };
+      },
+    };
+    const coordinator = createInvestigationCoordinator({
+      entry,
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      reasoningStep,
+      singleStep,
+      refreshPort,
+      actionMenu,
+      wallNow,
+    });
+    const advanceInput = {
+      kind: 'open',
+      outcome: directOutcome,
+      callerValues: {
+        investigationId: 'investigation-l3-coordinator-composition',
+        requestedAt: TEST_TIME,
+        policyVersion: 'synthetic-coordinator-policy-v1',
+        limits: { toolAttempts: 2, reasoningTurns: 2, activeSeconds: 60, modelTokens: 500 },
+      },
+      reasoningReservationId: 'reservation-coordinator-composition-plan',
+      reasoningReservedAt: '2026-09-25T10:00:01Z',
+      actionReservationId: 'reservation-coordinator-composition-action',
+      actionReservedAt: '2026-09-25T10:03:00Z',
+    } as const;
+    const result = await coordinator.advance(advanceInput);
+
+    assert.equal(result.status, 'continue', JSON.stringify({ result, events }));
+    if (result.status !== 'continue') assert.fail('expected the changed insufficient context to continue');
+    assert.deepEqual(events, ['planner', 'action', 'refresh']);
+    assert.deepEqual(actionInputSeen, { query: privateActionInput });
+    assert.equal(result.context.contextId, refreshedContextId);
+    assert.deepEqual(result.context.missingFields, ['synthetic_followup', 'second_synthetic_gap']);
+    assert.equal(result.checkpoint.context_id, refreshedContextId);
+    assert.equal(result.checkpoint.checkpoint_version, 6);
+    assert.equal(result.checkpoint.budget.consumed.reasoning_turns, 1);
+    assert.equal(result.checkpoint.budget.consumed.tool_attempts, 1);
+    assert.equal(result.checkpoint.budget.consumed.model_tokens, 9);
+    assert.deepEqual(result.checkpoint.budget.reserved, zeroCounters());
+    const repeatedAction = await singleStep.execute({
+      datasetKind: fixture.datasetKind,
+      investigationId: result.checkpoint.investigation_id,
+      expectedCheckpointVersion: 3,
+      reservationId: advanceInput.actionReservationId,
+      reservedAt: advanceInput.actionReservedAt,
+      actionName: 'synthetic_search',
+      input: { query: privateActionInput },
+    });
+    assert.equal(repeatedAction.status, 'replayed');
+    assert.deepEqual(events, ['planner', 'action', 'refresh']);
+    const outerRetry = await coordinator.advance(advanceInput);
+    assert.equal(outerRetry.status, 'review_required');
+    if (outerRetry.status !== 'review_required') assert.fail('expected stale checkpoint after outer replay');
+    assert.equal(outerRetry.reason, 'stale_checkpoint');
+    assert.deepEqual(events, ['planner', 'action', 'refresh']);
+
+    const finalSnapshot = await testDatabase.executor.query<{
+      checkpoint_version: number;
+      context_id: string;
+      consecutive_no_progress: number;
+    }>(
+      'SELECT checkpoint_version, context_id, consecutive_no_progress '
+        + 'FROM waspada.investigation_progress_snapshots '
+        + 'WHERE dataset_kind = $1 AND investigation_id = $2',
+      [fixture.datasetKind, result.checkpoint.investigation_id],
+    );
+    assert.deepEqual(finalSnapshot.rows, [
+      {
+        checkpoint_version: 1,
+        context_id: initialContextId,
+        consecutive_no_progress: 0,
+      },
+      {
+        checkpoint_version: result.checkpoint.checkpoint_version,
+        context_id: refreshedContextId,
+        consecutive_no_progress: 0,
+      },
+    ]);
+    const plannerReservation = await readStoredReservation(
+      testDatabase,
+      fixture.datasetKind,
+      result.checkpoint.investigation_id,
+      'reservation-coordinator-composition-plan',
+    );
+    const actionReservation = await readStoredReservation(
+      testDatabase,
+      fixture.datasetKind,
+      result.checkpoint.investigation_id,
+      'reservation-coordinator-composition-action',
+    );
+    assert.equal(plannerReservation.reservation_status, 'reconciled');
+    assert.equal(plannerReservation.reserved_reasoning_turns, 1);
+    assert.equal(plannerReservation.actual_model_tokens, 9);
+    assert.equal(actionReservation.reservation_status, 'reconciled');
+    const stableActionReservation = await testDatabase.executor.query<{
+      reserved_tool_attempts: number;
+      reserved_at: string;
+    }>(
+      'SELECT reserved_tool_attempts, created_at::text AS reserved_at '
+        + 'FROM waspada.investigation_action_reservations '
+        + 'WHERE dataset_kind = $1 AND reservation_id = $2',
+      [fixture.datasetKind, 'reservation-coordinator-composition-action'],
+    );
+    assert.equal(stableActionReservation.rows[0]?.reserved_tool_attempts, 1);
+    assert.equal(Date.parse(stableActionReservation.rows[0]!.reserved_at), Date.parse('2026-09-25T10:03:00Z'));
+
+    const ledgerJson = await readLedgerJson(testDatabase, fixture.datasetKind, result.checkpoint.investigation_id);
+    const storedContexts = await testDatabase.executor.query<{ record_json: string }>(
+      'SELECT record_json::text AS record_json FROM waspada.grounding_contexts '
+        + 'WHERE dataset_kind = $1 AND context_id = ANY($2::text[])',
+      [fixture.datasetKind, [initialContextId, refreshedContextId]],
+    );
+    const durable = ledgerJson + storedContexts.rows.map(({ record_json }) => record_json).join('\n');
+    assert.equal(durable.includes(privateActionInput), false);
+    assert.equal(durable.includes(outputReferenceId), false);
+    assert.equal(durable.includes(JSON.stringify({ query: privateActionInput })), false);
+  });
+
   it('counts failed reasoning against configured budgets and appends only successful validated model runs', async () => {
     const fixture = await seedFixture(testDatabase, 'reasoning-budget', { sufficient: false });
     const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
@@ -1366,7 +1636,7 @@ interface FixtureContext {
 async function seedFixture(
   testDatabase: TestDatabase,
   suffix: string,
-  options: { readonly sufficient: boolean },
+  options: { readonly sufficient: boolean; readonly seedContext?: boolean },
 ): Promise<FixtureContext> {
   const datasetKind: DatasetKind = 'synthetic';
   const seedTrace = `trace-l3-seed-${suffix}`;
@@ -1412,14 +1682,16 @@ async function seedFixture(
     [datasetKind, candidateId, seedTrace, reportRevisionId,
       JSON.stringify({ record_type: 'ExtractionResult', fixture: 'synthetic-test-only' })],
   );
-  await testDatabase.executor.query(
-    `INSERT INTO waspada.grounding_contexts
-       (dataset_kind, context_id, trace_id, candidate_id, retrieval_version,
-        index_version, sufficient, record_json)
-     VALUES ($1, $2, $3, $4, 'retrieval-synthetic-test-v1', 'index-synthetic-test-v1', $5, $6::jsonb)`,
-    [datasetKind, contextId, traceId, candidateId, options.sufficient,
-      JSON.stringify({ record_type: 'GroundingContext', fixture: 'synthetic-test-only' })],
-  );
+  if (options.seedContext !== false) {
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.grounding_contexts
+         (dataset_kind, context_id, trace_id, candidate_id, retrieval_version,
+          index_version, sufficient, record_json)
+       VALUES ($1, $2, $3, $4, 'retrieval-synthetic-test-v1', 'index-synthetic-test-v1', $5, $6::jsonb)`,
+      [datasetKind, contextId, traceId, candidateId, options.sufficient,
+        JSON.stringify({ record_type: 'GroundingContext', fixture: 'synthetic-test-only' })],
+    );
+  }
   return { datasetKind, candidateId, contextId, traceId };
 }
 
@@ -1444,6 +1716,34 @@ async function seedAdditionalContext(
       JSON.stringify({ record_type: 'GroundingContext', fixture: 'synthetic-test-only' })],
   );
   return { datasetKind: input.datasetKind, candidateId: input.candidateId, contextId, traceId };
+}
+
+function makeCoordinatorReasoningRequest(
+  fixture: FixtureContext,
+  contextId: string,
+  missingFields: readonly string[],
+) {
+  return {
+    data: {
+      groundingContext: {
+        schemaVersion: '2.0',
+        recordType: 'GroundingContext',
+        datasetKind: fixture.datasetKind,
+        traceId: fixture.traceId,
+        contextId,
+        candidateId: fixture.candidateId,
+        evidence: [],
+        revisionStates: [],
+        candidateEvents: [],
+        priorDecisionIds: [],
+        missingFields: [...missingFields],
+        conflicts: [],
+        retrievalVersion: 'retrieval-synthetic-coordinator-v1',
+        indexVersion: 'index-synthetic-coordinator-v1',
+        sufficient: false,
+      },
+    },
+  };
 }
 
 function makeReasoningStepRequest(fixture: FixtureContext): InvestigationPlanRequest {
