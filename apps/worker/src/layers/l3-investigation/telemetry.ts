@@ -34,6 +34,10 @@ export function createTelemetryInvestigationLedgerRepository(
       (checkpoint) => checkpoint,
     ),
     getLatest: (datasetKind, investigationId) => repository.getLatest(datasetKind, investigationId),
+    getFingerprintKeyId: (datasetKind, investigationId) => (
+      repository.getFingerprintKeyId(datasetKind, investigationId)
+    ),
+    refreshGroundingProgress: (input) => repository.refreshGroundingProgress(input),
     getInFlightReservation: (datasetKind, investigationId) => (
       repository.getInFlightReservation(datasetKind, investigationId)
     ),

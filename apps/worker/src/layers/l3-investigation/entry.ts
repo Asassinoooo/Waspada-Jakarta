@@ -6,6 +6,8 @@ import type {
   InvestigationLedgerRepository,
 } from '../../../../db/src/investigation-ledger.js';
 import type { InvestigationRequiredOutcome } from '../l2-model-grounding/direct-reasoning.js';
+import type { GroundingContext } from '../l2-model-grounding/contracts.js';
+import type { L3FingerprintService } from './progress-fingerprint.js';
 
 export interface InsufficientContextEntryCallerValues {
   readonly investigationId: string;
@@ -23,7 +25,8 @@ export type InsufficientContextReviewReason =
   | 'invalid_question_input'
   | 'no_investigation_questions'
   | 'too_many_investigation_questions'
-  | 'caller_values_missing';
+  | 'caller_values_missing'
+  | 'fingerprint_unavailable';
 
 export type InsufficientContextEntryResult =
   | {
@@ -52,6 +55,7 @@ export interface InsufficientContextEntryService {
  */
 export function createInsufficientContextEntryService(
   ledger: Pick<InvestigationLedgerRepository, 'create'>,
+  fingerprints: L3FingerprintService,
 ): InsufficientContextEntryService {
   return {
     async open(outcome, callerValues): Promise<InsufficientContextEntryResult> {
@@ -96,12 +100,25 @@ export function createInsufficientContextEntryService(
         ...Array.from({ length: missingFields.length }, (_, index) => 'missing_field_' + (index + 1)),
         ...Array.from({ length: conflicts.length }, (_, index) => 'conflict_' + (index + 1)),
       ];
+      let initialFingerprint;
+      try {
+        initialFingerprint = await fingerprints.fingerprintGrounding({
+          datasetKind: persistedRecord.dataset_kind,
+          investigationId: callerValues.investigationId,
+          context: context as unknown as GroundingContext,
+        });
+      } catch {
+        return reviewRequired('fingerprint_unavailable');
+      }
+
       const input: CreateInvestigationInput = {
         datasetKind: persistedRecord.dataset_kind,
         investigationId: callerValues.investigationId,
         traceId: persistedRecord.trace_id,
         candidateId: persistedRecord.candidate_id,
         contextId: persistedRecord.context_id,
+        fingerprintKeyId: initialFingerprint.keyId,
+        initialGroundingDigestHex: initialFingerprint.digestHex,
         eventId,
         eventVersion,
         questions,

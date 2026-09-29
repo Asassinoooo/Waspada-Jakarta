@@ -16,6 +16,7 @@ import {
   type InvestigationPlannerPreflightOutcome,
 } from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
 import { validateReasoningRequest } from '../../worker/src/layers/l2-model-grounding/validation.js';
+import { createL3FingerprintService } from '../../worker/src/layers/l3-investigation/progress-fingerprint.js';
 import {
   createReasoningStepExecutor,
   type ReasoningStepExecutorClock,
@@ -24,6 +25,10 @@ import {
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const TEST_TIME = '2026-09-25T10:00:00Z';
+const TEST_FINGERPRINTS = createL3FingerprintService({
+  keyId: 'fixture-hmac-v1',
+  keyMaterial: new Uint8Array(32).fill(47),
+});
 
 describe('L3 durable investigation ledger', () => {
   let testDatabase: TestDatabase;
@@ -33,10 +38,218 @@ describe('L3 durable investigation ledger', () => {
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const result = await applyMigrations(testDatabase.executor, migrations);
     assert.ok(result.applied.includes('010_l2_grounding_context_writer'));
+  assert.ok(result.applied.includes('019_l3_progress_fingerprints'));
   });
 
   after(async () => {
     await testDatabase.close();
+  });
+
+  it('persists the initial progress baseline and replays, caps, and resets progress snapshots', async () => {
+    const fixture = await seedFixture(testDatabase, 'progress-streak', { sufficient: false });
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const replayRepository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const input = makeCreateInput(fixture);
+    await repository.create(input);
+
+    const initialSnapshot = await testDatabase.executor.query<{
+      checkpoint_version: number;
+      context_id: string;
+      fingerprint_key_id: string;
+      digest_hex: string;
+      consecutive_no_progress: number;
+    }>(
+      "SELECT checkpoint_version, context_id, fingerprint_key_id, "
+        + "encode(grounding_fingerprint, 'hex') AS digest_hex, consecutive_no_progress "
+        + "FROM waspada.investigation_progress_snapshots "
+        + "WHERE dataset_kind = $1 AND investigation_id = $2",
+      [fixture.datasetKind, input.investigationId],
+    );
+    assert.deepEqual(initialSnapshot.rows, [{
+      checkpoint_version: 1,
+      context_id: fixture.contextId,
+      fingerprint_key_id: TEST_FINGERPRINT_KEY_ID,
+      digest_hex: input.initialGroundingDigestHex,
+      consecutive_no_progress: 0,
+    }]);
+
+    const firstRefresh = {
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      expectedCheckpointVersion: 1,
+      contextId: fixture.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: input.initialGroundingDigestHex,
+      refreshedAt: '2026-09-25T10:01:00Z',
+    };
+    const first = await repository.refreshGroundingProgress(firstRefresh);
+    assert.equal(first.checkpoint.checkpoint_version, 2);
+    assert.equal(first.snapshot.consecutiveNoProgress, 1);
+    const replay = await replayRepository.refreshGroundingProgress(firstRefresh);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.checkpoint.checkpoint_version, 2);
+    assert.equal(replay.snapshot.consecutiveNoProgress, 1);
+    await assertLedgerError('progress_conflict', repository.refreshGroundingProgress({
+      ...firstRefresh,
+      digestHex: testDigest('conflicting-replay'),
+    }));
+
+    const stopped = await repository.refreshGroundingProgress({
+      ...firstRefresh,
+      expectedCheckpointVersion: 2,
+      refreshedAt: '2026-09-25T10:02:00Z',
+    });
+    assert.equal(stopped.snapshot.consecutiveNoProgress, 2);
+    assert.equal(stopped.checkpoint.case_status, 'stopped_for_review');
+    assert.equal(stopped.checkpoint.stop_reason, 'no_progress');
+
+    const resetFixture = await seedFixture(testDatabase, 'progress-reset', { sufficient: false });
+    const refreshedContext = await seedAdditionalContext(testDatabase, 'progress-reset-next', {
+      datasetKind: resetFixture.datasetKind,
+      candidateId: resetFixture.candidateId,
+      sufficient: false,
+    });
+    const resetInput = makeCreateInput(resetFixture);
+    await repository.create(resetInput);
+    const changed = await repository.refreshGroundingProgress({
+      datasetKind: resetFixture.datasetKind,
+      investigationId: resetInput.investigationId,
+      expectedCheckpointVersion: 1,
+      contextId: refreshedContext.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: testDigest('changed-grounding'),
+      refreshedAt: '2026-09-25T10:03:00Z',
+    });
+    assert.equal(changed.snapshot.consecutiveNoProgress, 0);
+    const repeated = await repository.refreshGroundingProgress({
+      datasetKind: resetFixture.datasetKind,
+      investigationId: resetInput.investigationId,
+      expectedCheckpointVersion: 2,
+      contextId: refreshedContext.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: testDigest('changed-grounding'),
+      refreshedAt: '2026-09-25T10:04:00Z',
+    });
+    assert.equal(repeated.snapshot.consecutiveNoProgress, 1);
+    const reset = await repository.refreshGroundingProgress({
+      datasetKind: resetFixture.datasetKind,
+      investigationId: resetInput.investigationId,
+      expectedCheckpointVersion: 3,
+      contextId: refreshedContext.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: testDigest('new-grounding'),
+      refreshedAt: '2026-09-25T10:05:00Z',
+    });
+    assert.equal(reset.snapshot.consecutiveNoProgress, 0);
+    assert.equal(reset.checkpoint.case_status, 'open');
+
+    const paused = await repository.pause({
+      datasetKind: resetFixture.datasetKind,
+      investigationId: resetInput.investigationId,
+      expectedCheckpointVersion: reset.checkpoint.checkpoint_version,
+      pausedAt: '2026-09-25T10:06:00Z',
+    });
+    await assertLedgerError('stale_checkpoint', repository.refreshGroundingProgress({
+      datasetKind: resetFixture.datasetKind,
+      investigationId: resetInput.investigationId,
+      expectedCheckpointVersion: reset.checkpoint.checkpoint_version,
+      contextId: refreshedContext.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: testDigest('stale-grounding'),
+      refreshedAt: '2026-09-25T10:07:00Z',
+    }));
+    await assertLedgerError('invalid_input', repository.refreshGroundingProgress({
+      datasetKind: resetFixture.datasetKind,
+      investigationId: resetInput.investigationId,
+      expectedCheckpointVersion: paused.checkpoint.checkpoint_version,
+      contextId: refreshedContext.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: testDigest('out-of-order'),
+      refreshedAt: '2026-09-25T10:05:30Z',
+    }));
+    const wrongCandidate = await seedFixture(testDatabase, 'progress-other-candidate', { sufficient: false });
+    await assertLedgerError('context_mismatch', repository.refreshGroundingProgress({
+      datasetKind: resetFixture.datasetKind,
+      investigationId: resetInput.investigationId,
+      expectedCheckpointVersion: paused.checkpoint.checkpoint_version,
+      contextId: wrongCandidate.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: testDigest('wrong-candidate'),
+      refreshedAt: '2026-09-25T10:08:00Z',
+    }));
+  });
+
+  it('rejects an exact registered action after a cold restart without consuming more budget', async () => {
+    const fixture = await seedFixture(testDatabase, 'duplicate-action', { sufficient: false });
+    const firstRepository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const restartedRepository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const input = makeCreateInput(fixture);
+    const initial = await firstRepository.create(input);
+    const actionFingerprint = testFingerprint('lookup.same-input');
+    const reservation = {
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'reservation-first-action',
+      expectedCheckpointVersion: initial.checkpoint_version,
+      actionKind: 'tool' as const,
+      actionFingerprint,
+      actionName: 'lookup.same-input',
+      reservedActiveSeconds: 7,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:01:00Z',
+    };
+    const first = await firstRepository.reserveAction(reservation);
+    assert.equal(first.replayed, false);
+    const replay = await restartedRepository.reserveAction(reservation);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.mayInvoke, false);
+    await assertLedgerError('duplicate_action', restartedRepository.reserveAction({
+      ...reservation,
+      reservationId: 'reservation-second-action',
+      expectedCheckpointVersion: first.checkpoint.checkpoint_version,
+      reservedAt: '2026-09-25T10:02:00Z',
+    }));
+
+    const state = await testDatabase.executor.query<{
+      checkpoint_version: number;
+      reserved_tool_attempts: number;
+      reserved_active_seconds: number;
+    }>(
+      "SELECT request.reserved_tool_attempts, request.reserved_active_seconds, "
+        + "checkpoint.checkpoint_version "
+        + "FROM waspada.investigation_requests AS request "
+        + "JOIN waspada.investigation_checkpoints AS checkpoint "
+        + "ON checkpoint.dataset_kind = request.dataset_kind "
+        + "AND checkpoint.investigation_id = request.investigation_id "
+        + "WHERE request.dataset_kind = $1 AND request.investigation_id = $2 "
+        + "ORDER BY checkpoint.checkpoint_version DESC LIMIT 1",
+      [fixture.datasetKind, input.investigationId],
+    );
+    assert.deepEqual(state.rows[0], {
+      checkpoint_version: 2,
+      reserved_tool_attempts: 1,
+      reserved_active_seconds: 7,
+    });
+    const persisted = await testDatabase.executor.query<{
+      action_fingerprint_key_id: string;
+      digest_hex: string;
+    }>(
+      "SELECT action_fingerprint_key_id, encode(action_fingerprint, 'hex') AS digest_hex "
+        + "FROM waspada.investigation_action_reservations "
+        + "WHERE dataset_kind = $1 AND reservation_id = $2",
+      [fixture.datasetKind, reservation.reservationId],
+    );
+    assert.deepEqual(persisted.rows, [{
+      action_fingerprint_key_id: TEST_FINGERPRINT_KEY_ID,
+      digest_hex: actionFingerprint.digestHex,
+    }]);
+    const publicRecord = await testDatabase.executor.query<{ record_json: string }>(
+      "SELECT record_json::text AS record_json FROM waspada.investigation_requests "
+        + "WHERE dataset_kind = $1 AND investigation_id = $2",
+      [fixture.datasetKind, input.investigationId],
+    );
+    assert.equal(publicRecord.rows[0]?.record_json.includes(TEST_FINGERPRINT_KEY_ID), false);
+    assert.equal(publicRecord.rows[0]?.record_json.includes(actionFingerprint.digestHex), false);
   });
 
   it('creates only from insufficient persisted grounding, then reserves and reconciles failed tool use once', async () => {
@@ -59,6 +272,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-vertical',
       expectedCheckpointVersion: 1,
       actionKind: 'tool' as const,
+      actionFingerprint: testFingerprint('lookup.synthetic'),
       actionName: 'lookup.synthetic',
       reservedActiveSeconds: 10,
       reservedModelTokens: 0,
@@ -142,6 +356,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-denied',
       expectedCheckpointVersion: 3,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.denied'),
       actionName: 'lookup.denied',
       reservedActiveSeconds: 2,
       reservedModelTokens: 0,
@@ -172,6 +387,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-cancelled',
       expectedCheckpointVersion: denied.checkpoint.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.cancelled'),
       actionName: 'lookup.cancelled',
       reservedActiveSeconds: 1,
       reservedModelTokens: 0,
@@ -260,6 +476,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-refresh-preserved',
       expectedCheckpointVersion: initial.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.refresh'),
       actionName: 'lookup.refresh',
       reservedActiveSeconds: 8,
       reservedModelTokens: 0,
@@ -277,6 +494,7 @@ describe('L3 durable investigation ledger', () => {
       expectedCheckpointVersion: paused.checkpoint.checkpoint_version,
       resumedAt: '2026-09-25T10:03:00Z',
       contextId: refreshed.contextId,
+      progressFingerprint: testFingerprint('refreshed-grounding'),
     });
     assert.equal(resumed.checkpoint.investigation_id, input.investigationId);
     assert.equal(resumed.checkpoint.candidate_id, fixture.candidateId);
@@ -321,6 +539,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-stale-version',
       expectedCheckpointVersion: 1,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.stale'),
       actionName: 'lookup.stale',
       reservedActiveSeconds: 1,
       reservedModelTokens: 0,
@@ -339,6 +558,7 @@ describe('L3 durable investigation ledger', () => {
       expectedCheckpointVersion: pausedAgain.checkpoint.checkpoint_version,
       resumedAt: '2026-09-25T10:04:01Z',
       contextId: other.contextId,
+      progressFingerprint: testFingerprint('other-candidate-grounding'),
     }));
     const resumedAgain = await repository.resume({
       datasetKind: fixture.datasetKind,
@@ -402,6 +622,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-reasoning-concurrent',
       expectedCheckpointVersion: failedReservation.checkpoint.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.concurrent'),
       actionName: 'lookup.concurrent',
       reservedActiveSeconds: 1,
       reservedModelTokens: 0,
@@ -570,6 +791,7 @@ describe('L3 durable investigation ledger', () => {
     };
     const executor = createReasoningStepExecutor({
       ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
       planner: plannerDouble.planner,
       maxActiveSeconds,
       maxModelTokens,
@@ -689,6 +911,7 @@ describe('L3 durable investigation ledger', () => {
     };
     const executor = createReasoningStepExecutor({
       ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
       planner: plannerDouble.planner,
       maxActiveSeconds,
       maxModelTokens,
@@ -762,6 +985,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-interrupted',
       expectedCheckpointVersion: initial.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.interrupted'),
       actionName: 'lookup.interrupted',
       reservedActiveSeconds: 10,
       reservedModelTokens: 0,
@@ -799,6 +1023,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-safe-release',
       expectedCheckpointVersion: timeout.checkpoint.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.uninvoked'),
       actionName: 'lookup.uninvoked',
       reservedActiveSeconds: 10,
       reservedModelTokens: 0,
@@ -842,6 +1067,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-started-release',
       expectedCheckpointVersion: released.checkpoint.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.started'),
       actionName: 'lookup.started',
       reservedActiveSeconds: 10,
       reservedModelTokens: 0,
@@ -894,6 +1120,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-over-case-limit',
       expectedCheckpointVersion: finished.checkpoint.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.exhausted'),
       actionName: 'lookup.exhausted',
       reservedActiveSeconds: 1,
       reservedModelTokens: 0,
@@ -905,6 +1132,7 @@ describe('L3 durable investigation ledger', () => {
       reservationId: 'reservation-over-hard-limit',
       expectedCheckpointVersion: finished.checkpoint.checkpoint_version,
       actionKind: 'tool',
+      actionFingerprint: testFingerprint('lookup.too-long'),
       actionName: 'lookup.too-long',
       reservedActiveSeconds: 61,
       reservedModelTokens: 0,
@@ -919,12 +1147,21 @@ describe('L3 durable investigation ledger', () => {
     await testDatabase.executor.execute('SET ROLE waspada_l3_coordinator');
     try {
       const initial = await repository.create(input);
+      const baseline = await testDatabase.executor.query<{ fingerprint_key_id: string; digest_hex: string }>(
+        "SELECT fingerprint_key_id, encode(grounding_fingerprint, 'hex') AS digest_hex "
+          + "FROM waspada.investigation_progress_snapshots "
+          + "WHERE dataset_kind = $1 AND investigation_id = $2",
+        [fixture.datasetKind, input.investigationId],
+      );
+      assert.equal(baseline.rows.length, 1);
+      assert.equal(baseline.rows[0]?.fingerprint_key_id, TEST_FINGERPRINT_KEY_ID);
       const reservation = await repository.reserveAction({
         datasetKind: fixture.datasetKind,
         investigationId: input.investigationId,
         reservationId: 'reservation-role-scoped',
         expectedCheckpointVersion: initial.checkpoint_version,
         actionKind: 'tool',
+        actionFingerprint: testFingerprint('lookup.role-scoped'),
         actionName: 'lookup.role-scoped',
         reservedActiveSeconds: 2,
         reservedModelTokens: 0,
@@ -947,6 +1184,14 @@ describe('L3 durable investigation ledger', () => {
         finishedAt: '2026-09-25T10:12:02Z',
       });
       assert.equal(reconciled.checkpoint.budget.consumed.tool_attempts, 1);
+      await assert.rejects(
+        testDatabase.executor.query(
+          "UPDATE waspada.investigation_progress_snapshots SET consecutive_no_progress = 1 "
+            + "WHERE dataset_kind = $1 AND investigation_id = $2",
+          [fixture.datasetKind, input.investigationId],
+        ),
+        /permission denied/,
+      );
       await assert.rejects(testDatabase.executor.query('SELECT event_id FROM waspada.event_versions'), /permission denied/);
       await assert.rejects(testDatabase.executor.query('SELECT decision_id FROM waspada.publication_decisions'), /permission denied/);
       await assert.rejects(testDatabase.executor.query(
@@ -973,6 +1218,35 @@ describe('L3 durable investigation ledger', () => {
            'decision-forbidden', '{"claims":[],"impact_refs":[],"fixture":"synthetic"}'::jsonb)`,
         [fixture.traceId],
       ), /permission denied/);
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+    await assert.rejects(
+      testDatabase.executor.query(
+        "UPDATE waspada.investigation_progress_snapshots SET consecutive_no_progress = 1 "
+          + "WHERE dataset_kind = $1 AND investigation_id = $2",
+        [fixture.datasetKind, input.investigationId],
+      ),
+      /append-only/,
+    );
+    await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_reader');
+    try {
+      await assert.rejects(
+        testDatabase.executor.query(
+          "SELECT fingerprint_key_id FROM waspada.investigation_requests "
+            + "WHERE dataset_kind = $1 AND investigation_id = $2",
+          [fixture.datasetKind, input.investigationId],
+        ),
+        /permission denied/,
+      );
+      await assert.rejects(
+        testDatabase.executor.query(
+          "SELECT * FROM waspada.investigation_progress_snapshots "
+            + "WHERE dataset_kind = $1 AND investigation_id = $2",
+          [fixture.datasetKind, input.investigationId],
+        ),
+        /permission denied/,
+      );
     } finally {
       await testDatabase.executor.execute('RESET ROLE');
     }
@@ -1259,6 +1533,8 @@ function makeCreateInput(fixture: FixtureContext, overrides: Partial<CreateInves
     traceId: fixture.traceId,
     candidateId: fixture.candidateId,
     contextId: fixture.contextId,
+    fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+    initialGroundingDigestHex: testDigest('initial-grounding'),
     eventId: null,
     eventVersion: null,
     questions: ['Which synthetic detail is still unknown?'],
@@ -1276,6 +1552,16 @@ function zeroCounters(): {
   readonly model_tokens: 0;
 } {
   return { tool_attempts: 0, reasoning_turns: 0, active_seconds: 0, model_tokens: 0 };
+}
+
+const TEST_FINGERPRINT_KEY_ID = 'fixture-hmac-v1';
+
+function testDigest(value: string): string {
+  return createHash('sha256').update('fixture-digest:' + value, 'utf8').digest('hex');
+}
+
+function testFingerprint(value: string): { readonly keyId: string; readonly digestHex: string } {
+  return { keyId: TEST_FINGERPRINT_KEY_ID, digestHex: testDigest(value) };
 }
 
 function sha256(value: string): string {

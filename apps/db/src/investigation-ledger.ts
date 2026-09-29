@@ -105,6 +105,8 @@ export interface CreateInvestigationInput {
   readonly traceId: string;
   readonly candidateId: string;
   readonly contextId: string;
+  readonly fingerprintKeyId: string;
+  readonly initialGroundingDigestHex: string;
   readonly eventId: string | null;
   readonly eventVersion: number | null;
   readonly questions: readonly string[];
@@ -113,12 +115,18 @@ export interface CreateInvestigationInput {
   readonly requestedAt: string;
 }
 
+export interface ActionFingerprintInput {
+  readonly keyId: string;
+  readonly digestHex: string;
+}
+
 export interface ReserveActionInput {
   readonly datasetKind: DatasetKind;
   readonly investigationId: string;
   readonly reservationId: string;
   readonly expectedCheckpointVersion: number;
   readonly actionKind: ActionKind;
+  readonly actionFingerprint?: ActionFingerprintInput;
   readonly actionName: string;
   readonly reservedActiveSeconds: number;
   readonly reservedModelTokens: number;
@@ -167,9 +175,39 @@ export interface LedgerOperationResult {
   readonly replayed: boolean;
 }
 
+export interface InvestigationProgressSnapshotRecord {
+  readonly datasetKind: DatasetKind;
+  readonly investigationId: string;
+  readonly checkpointVersion: number;
+  readonly candidateId: string;
+  readonly contextId: string;
+  readonly fingerprintKeyId: string;
+  readonly digestHex: string;
+  readonly consecutiveNoProgress: number;
+  readonly recordedAt: string;
+}
+
+export interface RefreshGroundingProgressInput {
+  readonly datasetKind: DatasetKind;
+  readonly investigationId: string;
+  readonly expectedCheckpointVersion: number;
+  readonly contextId: string;
+  readonly fingerprintKeyId: string;
+  readonly digestHex: string;
+  readonly refreshedAt: string;
+}
+
+export interface InvestigationProgressOperationResult {
+  readonly checkpoint: InvestigationCheckpointRecord;
+  readonly snapshot: InvestigationProgressSnapshotRecord;
+  readonly replayed: boolean;
+}
+
 export interface InvestigationLedgerRepository {
   create(input: CreateInvestigationInput): Promise<InvestigationCheckpointRecord>;
   getLatest(datasetKind: DatasetKind, investigationId: string): Promise<InvestigationCheckpointRecord | null>;
+  getFingerprintKeyId(datasetKind: DatasetKind, investigationId: string): Promise<string | null>;
+  refreshGroundingProgress(input: RefreshGroundingProgressInput): Promise<InvestigationProgressOperationResult>;
   getInFlightReservation(datasetKind: DatasetKind, investigationId: string): Promise<ReservationRecord | null>;
   reserveAction(input: ReserveActionInput): Promise<ReservationOperationResult>;
   startAction(input: {
@@ -205,7 +243,8 @@ export interface InvestigationLedgerRepository {
     readonly expectedCheckpointVersion: number;
     readonly resumedAt: string;
     readonly contextId?: string;
-  }): Promise<LedgerOperationResult>;
+    readonly progressFingerprint?: ActionFingerprintInput;
+  }): Promise<LedgerOperationResult | InvestigationProgressOperationResult>;
   terminate(input: {
     readonly datasetKind: DatasetKind;
     readonly investigationId: string;
@@ -227,7 +266,11 @@ export type InvestigationLedgerErrorCode =
   | 'invalid_state'
   | 'reservation_conflict'
   | 'reservation_in_flight'
-  | 'budget_exhausted';
+  | 'budget_exhausted'
+  | 'duplicate_action'
+  | 'fingerprint_unavailable'
+  | 'fingerprint_key_mismatch'
+  | 'progress_conflict';
 
 export class InvestigationLedgerError extends Error {
   constructor(readonly code: InvestigationLedgerErrorCode) {
@@ -245,6 +288,8 @@ const HARD_LIMITS: BudgetLimits = {
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ACTION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/;
 const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const FINGERPRINT_KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+const DIGEST_HEX_PATTERN = /^[a-f0-9]{64}$/;
 const ZERO_COUNTERS: BudgetCounters = {
   toolAttempts: 0,
   reasoningTurns: 0,
@@ -275,6 +320,7 @@ interface RequestRow {
   reserved_active_seconds: number;
   reserved_model_tokens: number;
   requested_at: string;
+  fingerprint_key_id: string | null;
   record_json: unknown;
 }
 
@@ -301,12 +347,26 @@ interface ReservationRow {
   started_at: string | null;
   finished_at: string | null;
   reconciled_checkpoint_version: number | null;
+  action_fingerprint_key_id: string | null;
+  action_fingerprint: string | null;
 }
 
 interface CurrentState {
   readonly request: RequestRow;
   readonly checkpoint: InvestigationCheckpointRecord;
   readonly budget: BudgetLedger;
+}
+
+interface ProgressSnapshotRow {
+  dataset_kind: DatasetKind;
+  investigation_id: string;
+  checkpoint_version: number;
+  candidate_id: string;
+  context_id: string;
+  fingerprint_key_id: string;
+  digest_hex: string;
+  consecutive_no_progress: number;
+  recorded_at: string;
 }
 
 export function createSqlInvestigationLedgerRepository(
@@ -323,8 +383,8 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     const requestRecord = buildRequestRecord(input);
 
     return this.executor.transaction(async (transaction) => {
-      const existing = await transaction.query<{ matches: boolean }>(
-        `SELECT
+      const existing = await transaction.query<{ matches: boolean; fingerprint_key_id: string | null }>(
+        `SELECT fingerprint_key_id,
            dataset_kind IS NOT DISTINCT FROM $1::text
            AND investigation_id IS NOT DISTINCT FROM $2::text
            AND trace_id IS NOT DISTINCT FROM $3::text
@@ -339,13 +399,23 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
            AND limit_active_seconds IS NOT DISTINCT FROM $12::integer
            AND limit_model_tokens IS NOT DISTINCT FROM $13::integer
            AND requested_at IS NOT DISTINCT FROM $14::timestamptz
-           AND record_json = $15::jsonb AS matches
+           AND record_json = $15::jsonb
+           AND fingerprint_key_id IS NOT DISTINCT FROM $16::text AS matches
          FROM waspada.investigation_requests
          WHERE dataset_kind = $1 AND investigation_id = $2`,
         createRequestParameters(input, requestRecord),
       );
       if (existing.rows.length > 0) {
-        if (existing.rows[0]?.matches !== true) fail('investigation_conflict');
+        const row = existing.rows[0]!;
+        if (row.fingerprint_key_id === null) fail('fingerprint_unavailable');
+        if (row.fingerprint_key_id !== input.fingerprintKeyId) fail('fingerprint_key_mismatch');
+        if (row.matches !== true) fail('investigation_conflict');
+        const baseline = await loadProgressSnapshot(transaction, input.datasetKind, input.investigationId, 1);
+        if (!baseline
+          || baseline.context_id !== input.contextId
+          || baseline.fingerprint_key_id !== input.fingerprintKeyId
+          || baseline.digest_hex !== input.initialGroundingDigestHex
+          || baseline.consecutive_no_progress !== 0) fail('progress_conflict');
         const state = await loadState(transaction, input.datasetKind, input.investigationId, false);
         return state.checkpoint;
       }
@@ -375,24 +445,33 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
            (dataset_kind, investigation_id, trace_id, candidate_id, context_id,
             event_id, event_version, questions, budget_policy_version,
             limit_tool_attempts, limit_reasoning_turns, limit_active_seconds,
-            limit_model_tokens, requested_at, record_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
+            limit_model_tokens, requested_at, record_json, fingerprint_key_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16)
          ON CONFLICT (dataset_kind, investigation_id) DO NOTHING
          RETURNING investigation_id`,
         createRequestParameters(input, requestRecord),
       );
       if (inserted.rows.length === 0) {
-        const raced = await transaction.query<{ matches: boolean }>(
-          `SELECT record_json = $3::jsonb
+        const raced = await transaction.query<{ matches: boolean; fingerprint_key_id: string | null }>(
+          `SELECT fingerprint_key_id, record_json = $3::jsonb
                     AND trace_id = $4 AND candidate_id = $5 AND context_id = $6
                     AND event_id IS NOT DISTINCT FROM $7::text
-                    AND event_version IS NOT DISTINCT FROM $8::integer AS matches
+                    AND event_version IS NOT DISTINCT FROM $8::integer
+                    AND fingerprint_key_id IS NOT DISTINCT FROM $9::text AS matches
            FROM waspada.investigation_requests
            WHERE dataset_kind = $1 AND investigation_id = $2`,
           [input.datasetKind, input.investigationId, JSON.stringify(requestRecord), input.traceId,
-            input.candidateId, input.contextId, input.eventId, input.eventVersion],
+            input.candidateId, input.contextId, input.eventId, input.eventVersion, input.fingerprintKeyId],
         );
-        if (raced.rows[0]?.matches !== true) fail('investigation_conflict');
+        const racedRow = raced.rows[0];
+        if (racedRow?.fingerprint_key_id === null) fail('fingerprint_unavailable');
+        if (racedRow?.fingerprint_key_id !== input.fingerprintKeyId) fail('fingerprint_key_mismatch');
+        if (racedRow?.matches !== true) fail('investigation_conflict');
+        const baseline = await loadProgressSnapshot(transaction, input.datasetKind, input.investigationId, 1);
+        if (!baseline || baseline.context_id !== input.contextId
+          || baseline.fingerprint_key_id !== input.fingerprintKeyId
+          || baseline.digest_hex !== input.initialGroundingDigestHex
+          || baseline.consecutive_no_progress !== 0) fail('progress_conflict');
         return (await loadState(transaction, input.datasetKind, input.investigationId, false)).checkpoint;
       }
 
@@ -422,6 +501,17 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
         completedAt: null,
       });
       await insertCheckpoint(transaction, checkpoint);
+      await insertProgressSnapshot(transaction, {
+        datasetKind: input.datasetKind,
+        investigationId: input.investigationId,
+        checkpointVersion: 1,
+        candidateId: input.candidateId,
+        contextId: input.contextId,
+        fingerprintKeyId: input.fingerprintKeyId,
+        digestHex: input.initialGroundingDigestHex,
+        consecutiveNoProgress: 0,
+        recordedAt: input.requestedAt,
+      });
       return checkpoint;
     });
   }
@@ -438,6 +528,86 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     );
     const row = result.rows[0];
     return row ? mapCheckpoint(row.record_json) : null;
+  }
+
+  async getFingerprintKeyId(datasetKind: DatasetKind, investigationId: string): Promise<string | null> {
+    validateDatasetAndId(datasetKind, investigationId, 'investigation ID');
+    const result = await this.executor.query<{ fingerprint_key_id: string | null }>(
+      'SELECT fingerprint_key_id FROM waspada.investigation_requests ' +
+        'WHERE dataset_kind = $1 AND investigation_id = $2',
+      [datasetKind, investigationId],
+    );
+    return result.rows[0]?.fingerprint_key_id ?? null;
+  }
+
+  async refreshGroundingProgress(
+    input: RefreshGroundingProgressInput,
+  ): Promise<InvestigationProgressOperationResult> {
+    validateProgressInput(input);
+    return this.executor.transaction(async (transaction) => {
+      const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      const targetVersion = input.expectedCheckpointVersion + 1;
+      const replay = await loadProgressSnapshot(transaction, input.datasetKind, input.investigationId, targetVersion);
+      if (replay) {
+        if (!matchesProgressInput(replay, input)) fail('progress_conflict');
+        const checkpoint = await loadCheckpointVersion(
+          transaction, input.datasetKind, input.investigationId, targetVersion,
+        );
+        return { checkpoint, snapshot: mapProgressSnapshot(replay), replayed: true };
+      }
+
+      ensureExpectedVersion(state, input.expectedCheckpointVersion);
+      if (state.checkpoint.case_status !== 'open' && state.checkpoint.case_status !== 'paused') {
+        fail('invalid_state');
+      }
+      if (state.request.fingerprint_key_id === null) fail('fingerprint_unavailable');
+      if (input.fingerprintKeyId !== state.request.fingerprint_key_id) fail('fingerprint_key_mismatch');
+      if (Date.parse(input.refreshedAt) < Date.parse(state.checkpoint.updated_at)) fail('invalid_input');
+
+      const active = await transaction.query<{ reservation_id: string }>(
+        `SELECT reservation_id
+         FROM waspada.investigation_action_reservations
+         WHERE dataset_kind = $1 AND investigation_id = $2
+           AND reservation_status = 'started'
+         LIMIT 1`,
+        [input.datasetKind, input.investigationId],
+      );
+      if (active.rows.length > 0) fail('reservation_in_flight');
+
+      const context = await findContext(transaction, input.datasetKind, input.contextId);
+      if (!context) fail('context_not_found');
+      if (context.candidate_id !== state.request.candidate_id) fail('context_mismatch');
+
+      const previous = await loadLatestProgressSnapshot(transaction, input.datasetKind, input.investigationId);
+      if (!previous) fail('fingerprint_unavailable');
+      if (previous.fingerprint_key_id !== input.fingerprintKeyId) fail('fingerprint_key_mismatch');
+      if (Date.parse(input.refreshedAt) < Date.parse(previous.recorded_at)) fail('invalid_input');
+
+      const consecutiveNoProgress = previous.digest_hex === input.digestHex
+        ? Math.min(previous.consecutive_no_progress + 1, 2)
+        : 0;
+      const stoppedForNoProgress = consecutiveNoProgress >= 2;
+      const checkpoint = await appendCheckpoint(transaction, state, {
+        caseStatus: stoppedForNoProgress ? 'stopped_for_review' : 'open',
+        stopReason: stoppedForNoProgress ? 'no_progress' : null,
+        completedAt: stoppedForNoProgress ? input.refreshedAt : null,
+        contextId: input.contextId,
+        traceId: context.trace_id,
+        updatedAt: input.refreshedAt,
+      });
+      const snapshot = await insertProgressSnapshot(transaction, {
+        datasetKind: input.datasetKind,
+        investigationId: input.investigationId,
+        checkpointVersion: checkpoint.checkpoint_version,
+        candidateId: state.request.candidate_id,
+        contextId: input.contextId,
+        fingerprintKeyId: input.fingerprintKeyId,
+        digestHex: input.digestHex,
+        consecutiveNoProgress,
+        recordedAt: input.refreshedAt,
+      });
+      return { checkpoint, snapshot, replayed: false };
+    });
   }
 
   async getInFlightReservation(
@@ -461,10 +631,16 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
   async reserveAction(input: ReserveActionInput): Promise<ReservationOperationResult> {
     validateReserveInput(input);
     return this.executor.transaction(async (transaction) => {
+      const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
       const alreadyReserved = await findReservation(transaction, input.datasetKind, input.reservationId, true);
       if (alreadyReserved) {
         if (!matchesReservationInput(alreadyReserved, input)) fail('reservation_conflict');
-        const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+        if (input.actionKind === 'tool') {
+          if (state.request.fingerprint_key_id === null) fail('fingerprint_unavailable');
+          if (state.request.fingerprint_key_id !== input.actionFingerprint!.keyId) {
+            fail('fingerprint_key_mismatch');
+          }
+        }
         return {
           reservation: mapReservation(alreadyReserved),
           checkpoint: state.checkpoint,
@@ -473,7 +649,6 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
         };
       }
 
-      const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
       const secondCheck = await findReservation(transaction, input.datasetKind, input.reservationId, true);
       if (secondCheck) {
         if (!matchesReservationInput(secondCheck, input)) fail('reservation_conflict');
@@ -486,6 +661,23 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
       }
       ensureExpectedVersion(state, input.expectedCheckpointVersion);
       if (state.checkpoint.case_status !== 'open') fail('invalid_state');
+
+      if (input.actionKind === 'tool') {
+        const fingerprint = input.actionFingerprint!;
+        if (state.request.fingerprint_key_id === null) fail('fingerprint_unavailable');
+        if (state.request.fingerprint_key_id !== fingerprint.keyId) fail('fingerprint_key_mismatch');
+        const duplicate = await transaction.query<{ reservation_id: string }>(
+          `SELECT reservation_id
+           FROM waspada.investigation_action_reservations
+           WHERE dataset_kind = $1 AND investigation_id = $2
+             AND action_kind = 'tool'
+             AND action_fingerprint_key_id = $3
+             AND action_fingerprint = decode($4, 'hex')
+           LIMIT 1`,
+          [input.datasetKind, input.investigationId, fingerprint.keyId, fingerprint.digestHex],
+        );
+        if (duplicate.rows.length > 0) fail('duplicate_action');
+      }
 
       const active = await transaction.query<{ reservation_id: string }>(
         `SELECT reservation_id
@@ -505,8 +697,9 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
         `INSERT INTO waspada.investigation_action_reservations
            (dataset_kind, reservation_id, investigation_id, action_kind, action_name,
             expected_checkpoint_version, reserved_tool_attempts, reserved_reasoning_turns,
-            reserved_active_seconds, reserved_model_tokens, reservation_status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'reserved', $11)
+            reserved_active_seconds, reserved_model_tokens, reservation_status, created_at,
+            action_fingerprint_key_id, action_fingerprint)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'reserved', $11, $12, decode($13, 'hex'))
          ON CONFLICT (dataset_kind, reservation_id) DO NOTHING
          RETURNING ${RESERVATION_COLUMNS}`,
         reservationInsertParameters(input, reserved),
@@ -744,22 +937,35 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     readonly expectedCheckpointVersion: number;
     readonly resumedAt: string;
     readonly contextId?: string;
-  }): Promise<LedgerOperationResult> {
+    readonly progressFingerprint?: ActionFingerprintInput;
+  }): Promise<LedgerOperationResult | InvestigationProgressOperationResult> {
     validateTransitionInput(input.datasetKind, input.investigationId, input.expectedCheckpointVersion, input.resumedAt);
-    if (input.contextId !== undefined) validateId(input.contextId, 'context ID');
+    if (input.contextId !== undefined) {
+      validateId(input.contextId, 'context ID');
+      if (!input.progressFingerprint) fail('fingerprint_unavailable');
+      return this.refreshGroundingProgress({
+        datasetKind: input.datasetKind,
+        investigationId: input.investigationId,
+        expectedCheckpointVersion: input.expectedCheckpointVersion,
+        contextId: input.contextId,
+        fingerprintKeyId: input.progressFingerprint.keyId,
+        digestHex: input.progressFingerprint.digestHex,
+        refreshedAt: input.resumedAt,
+      });
+    }
+    if (input.progressFingerprint !== undefined) fail('invalid_input');
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
       ensureExpectedVersion(state, input.expectedCheckpointVersion);
       if (state.checkpoint.case_status !== 'paused') fail('invalid_state');
-      const contextId = input.contextId ?? state.checkpoint.context_id;
-      const context = await findContext(transaction, input.datasetKind, contextId);
+      const context = await findContext(transaction, input.datasetKind, state.checkpoint.context_id);
       if (!context) fail('context_not_found');
       if (context.candidate_id !== state.request.candidate_id) fail('context_mismatch');
       const checkpoint = await appendCheckpoint(transaction, state, {
         caseStatus: 'open',
         stopReason: null,
         completedAt: null,
-        contextId,
+        contextId: state.checkpoint.context_id,
         traceId: context.trace_id,
         updatedAt: input.resumedAt,
       });
@@ -818,19 +1024,21 @@ const RESERVATION_COLUMNS = `dataset_kind, reservation_id, investigation_id, act
   expected_checkpoint_version, reserved_tool_attempts, reserved_reasoning_turns,
   reserved_active_seconds, reserved_model_tokens, reservation_status, outcome,
   actual_active_seconds, actual_model_tokens, created_at::text AS created_at,
-  started_at::text AS started_at, finished_at::text AS finished_at, reconciled_checkpoint_version`;
+  started_at::text AS started_at, finished_at::text AS finished_at, reconciled_checkpoint_version,
+  action_fingerprint_key_id, encode(action_fingerprint, 'hex') AS action_fingerprint`;
 
 function createRequestParameters(input: CreateInvestigationInput, record: InvestigationRequestRecord): readonly unknown[] {
   return [input.datasetKind, input.investigationId, input.traceId, input.candidateId, input.contextId,
     input.eventId, input.eventVersion, [...input.questions], input.policyVersion,
     input.limits.toolAttempts, input.limits.reasoningTurns, input.limits.activeSeconds,
-    input.limits.modelTokens, input.requestedAt, JSON.stringify(record)];
+    input.limits.modelTokens, input.requestedAt, JSON.stringify(record), input.fingerprintKeyId];
 }
 
 function reservationInsertParameters(input: ReserveActionInput, reserved: BudgetCounters): readonly unknown[] {
   return [input.datasetKind, input.reservationId, input.investigationId, input.actionKind, input.actionName,
     input.expectedCheckpointVersion, reserved.toolAttempts, reserved.reasoningTurns,
-    reserved.activeSeconds, reserved.modelTokens, input.reservedAt];
+    reserved.activeSeconds, reserved.modelTokens, input.reservedAt,
+    input.actionFingerprint?.keyId ?? null, input.actionFingerprint?.digestHex ?? null];
 }
 
 async function findReservation(
@@ -860,7 +1068,7 @@ async function loadState(
             limit_tool_attempts, limit_reasoning_turns, limit_active_seconds, limit_model_tokens,
             consumed_tool_attempts, consumed_reasoning_turns, consumed_active_seconds, consumed_model_tokens,
             reserved_tool_attempts, reserved_reasoning_turns, reserved_active_seconds, reserved_model_tokens,
-            requested_at::text AS requested_at, record_json
+            requested_at::text AS requested_at, fingerprint_key_id, record_json
      FROM waspada.investigation_requests
      WHERE dataset_kind = $1 AND investigation_id = $2${lock ? ' FOR UPDATE' : ''}`,
     [datasetKind, investigationId],
@@ -907,6 +1115,83 @@ async function findContext(
     [datasetKind, contextId],
   );
   return result.rows[0] ?? null;
+}
+
+async function loadProgressSnapshot(
+  executor: SqlExecutor,
+  datasetKind: DatasetKind,
+  investigationId: string,
+  checkpointVersion: number,
+): Promise<ProgressSnapshotRow | null> {
+  const result = await executor.query<ProgressSnapshotRow>(
+    'SELECT dataset_kind, investigation_id, checkpoint_version, candidate_id, context_id, ' +
+      'fingerprint_key_id, encode(grounding_fingerprint, \'hex\') AS digest_hex, ' +
+      'consecutive_no_progress, recorded_at::text AS recorded_at ' +
+      'FROM waspada.investigation_progress_snapshots ' +
+      'WHERE dataset_kind = $1 AND investigation_id = $2 AND checkpoint_version = $3',
+    [datasetKind, investigationId, checkpointVersion],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function loadLatestProgressSnapshot(
+  executor: SqlExecutor,
+  datasetKind: DatasetKind,
+  investigationId: string,
+): Promise<ProgressSnapshotRow | null> {
+  const result = await executor.query<ProgressSnapshotRow>(
+    'SELECT dataset_kind, investigation_id, checkpoint_version, candidate_id, context_id, ' +
+      'fingerprint_key_id, encode(grounding_fingerprint, \'hex\') AS digest_hex, ' +
+      'consecutive_no_progress, recorded_at::text AS recorded_at ' +
+      'FROM waspada.investigation_progress_snapshots ' +
+      'WHERE dataset_kind = $1 AND investigation_id = $2 ' +
+      'ORDER BY checkpoint_version DESC LIMIT 1',
+    [datasetKind, investigationId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function insertProgressSnapshot(
+  executor: SqlExecutor,
+  snapshot: InvestigationProgressSnapshotRecord,
+): Promise<InvestigationProgressSnapshotRecord> {
+  const result = await executor.query<ProgressSnapshotRow>(
+    'INSERT INTO waspada.investigation_progress_snapshots ' +
+      '(dataset_kind, investigation_id, checkpoint_version, candidate_id, context_id, ' +
+      'fingerprint_key_id, grounding_fingerprint, consecutive_no_progress, recorded_at) ' +
+      'VALUES ($1, $2, $3, $4, $5, $6, decode($7, \'hex\'), $8, $9) ' +
+      'RETURNING dataset_kind, investigation_id, checkpoint_version, candidate_id, context_id, ' +
+      'fingerprint_key_id, encode(grounding_fingerprint, \'hex\') AS digest_hex, ' +
+      'consecutive_no_progress, recorded_at::text AS recorded_at',
+    [snapshot.datasetKind, snapshot.investigationId, snapshot.checkpointVersion,
+      snapshot.candidateId, snapshot.contextId, snapshot.fingerprintKeyId, snapshot.digestHex,
+      snapshot.consecutiveNoProgress, snapshot.recordedAt],
+  );
+  if (!result.rows[0]) fail('progress_conflict');
+  return mapProgressSnapshot(result.rows[0]);
+}
+
+function mapProgressSnapshot(row: ProgressSnapshotRow): InvestigationProgressSnapshotRecord {
+  return {
+    datasetKind: row.dataset_kind,
+    investigationId: row.investigation_id,
+    checkpointVersion: Number(row.checkpoint_version),
+    candidateId: row.candidate_id,
+    contextId: row.context_id,
+    fingerprintKeyId: row.fingerprint_key_id,
+    digestHex: row.digest_hex,
+    consecutiveNoProgress: Number(row.consecutive_no_progress),
+    recordedAt: formatTimestamp(row.recorded_at),
+  };
+}
+
+function matchesProgressInput(row: ProgressSnapshotRow, input: RefreshGroundingProgressInput): boolean {
+  return row.dataset_kind === input.datasetKind
+    && row.investigation_id === input.investigationId
+    && row.context_id === input.contextId
+    && row.fingerprint_key_id === input.fingerprintKeyId
+    && row.digest_hex === input.digestHex
+    && Date.parse(row.recorded_at) === Date.parse(input.refreshedAt);
 }
 
 async function updateRequestCounters(
@@ -1289,7 +1574,9 @@ function matchesReservationInput(row: ReservationRow, input: ReserveActionInput)
     && Number(row.expected_checkpoint_version) === input.expectedCheckpointVersion
     && Number(row.reserved_active_seconds) === input.reservedActiveSeconds
     && Number(row.reserved_model_tokens) === input.reservedModelTokens
-    && Date.parse(row.created_at) === Date.parse(input.reservedAt);
+    && Date.parse(row.created_at) === Date.parse(input.reservedAt)
+    && row.action_fingerprint_key_id === (input.actionFingerprint?.keyId ?? null)
+    && row.action_fingerprint === (input.actionFingerprint?.digestHex ?? null);
 }
 
 function matchesReconciliation(row: ReservationRow, input: ReconcileActionInput): boolean {
@@ -1382,6 +1669,8 @@ function validateCreateInput(input: CreateInvestigationInput): void {
   validateId(input.traceId, 'trace ID');
   validateId(input.candidateId, 'candidate ID');
   validateId(input.contextId, 'context ID');
+  if (!FINGERPRINT_KEY_ID_PATTERN.test(input.fingerprintKeyId)) fail('fingerprint_unavailable');
+  if (!DIGEST_HEX_PATTERN.test(input.initialGroundingDigestHex)) fail('invalid_input');
   validateEventPair(input.eventId, input.eventVersion);
   if (!Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 20
     || input.questions.some((question) => typeof question !== 'string' || codePointLength(question) < 1 || codePointLength(question) > 1000)) {
@@ -1402,7 +1691,24 @@ function validateReserveInput(input: ReserveActionInput): void {
     || !isIntegerIn(input.reservedModelTokens, 0, HARD_LIMITS.modelTokens)) fail('invalid_input');
   if (input.actionKind === 'tool' && input.reservedModelTokens !== 0) fail('invalid_input');
   if (input.actionKind === 'reasoning' && input.reservedModelTokens < 1) fail('invalid_input');
+  if (input.actionKind === 'tool') {
+    const fingerprint = input.actionFingerprint;
+    if (!fingerprint || !FINGERPRINT_KEY_ID_PATTERN.test(fingerprint.keyId)) fail('fingerprint_unavailable');
+    if (!DIGEST_HEX_PATTERN.test(fingerprint.digestHex)) fail('invalid_input');
+  } else if (input.actionFingerprint !== undefined) {
+    fail('invalid_input');
+  }
   validateTimestamp(input.reservedAt, 'reservedAt');
+}
+
+function validateProgressInput(input: RefreshGroundingProgressInput): void {
+  validateDatasetAndId(input.datasetKind, input.investigationId, 'investigation ID');
+  validateVersion(input.expectedCheckpointVersion, 'expectedCheckpointVersion');
+  if (input.expectedCheckpointVersion >= 2_147_483_647) fail('invalid_input');
+  validateId(input.contextId, 'context ID');
+  if (!FINGERPRINT_KEY_ID_PATTERN.test(input.fingerprintKeyId)) fail('fingerprint_unavailable');
+  if (!DIGEST_HEX_PATTERN.test(input.digestHex)) fail('invalid_input');
+  validateTimestamp(input.refreshedAt, 'refreshedAt');
 }
 
 function validateReconcileInput(input: ReconcileActionInput): void {

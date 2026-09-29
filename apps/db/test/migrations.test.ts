@@ -23,7 +23,8 @@ describe('DATA-01 migrations', () => {
       && version !== '015_public_geojson_candidates'
       && version !== '016_public_update_feed_order'
       && version !== '017_moderator_publication_writer_role'
-      && version !== '018_l1_extraction_result_verification');
+      && version !== '018_l1_extraction_result_verification'
+      && version !== '019_l3_progress_fingerprints');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -52,7 +53,8 @@ describe('DATA-01 migrations', () => {
         && version !== '015_public_geojson_candidates'
         && version !== '016_public_update_feed_order'
         && version !== '017_moderator_publication_writer_role'
-        && version !== '018_l1_extraction_result_verification');
+        && version !== '018_l1_extraction_result_verification'
+        && version !== '019_l3_progress_fingerprints');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -168,7 +170,7 @@ describe('DATA-01 migrations', () => {
         '015_public_geojson_candidates',
         '016_public_update_feed_order',
         '017_moderator_publication_writer_role',
-        '018_l1_extraction_result_verification',
+        '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -301,7 +303,7 @@ describe('DATA-01 migrations', () => {
       '014_public_event_history_review_metadata', '015_public_geojson_candidates',
       '016_public_update_feed_order',
       '017_moderator_publication_writer_role',
-      '018_l1_extraction_result_verification',
+      '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
     ]);
   });
 
@@ -318,13 +320,13 @@ describe('DATA-01 migrations', () => {
       '014_public_event_history_review_metadata', '015_public_geojson_candidates',
       '016_public_update_feed_order',
       '017_moderator_publication_writer_role',
-      '018_l1_extraction_result_verification',
+      '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '18');
+    assert.equal(count.rows[0]?.count, '19');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -343,7 +345,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 018_l1_extraction_result_verification/,
+      /Cannot apply migration 000_late_backfill before already applied migration 019_l3_progress_fingerprints/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -368,6 +370,7 @@ describe('DATA-01 migrations', () => {
       { version: '016_public_update_feed_order' },
       { version: '017_moderator_publication_writer_role' },
       { version: '018_l1_extraction_result_verification' },
+      { version: '019_l3_progress_fingerprints' },
     ]);
   });
 
@@ -381,7 +384,7 @@ describe('DATA-01 migrations', () => {
       '014_public_event_history_review_metadata', '015_public_geojson_candidates',
       '016_public_update_feed_order',
       '017_moderator_publication_writer_role',
-      '018_l1_extraction_result_verification',
+      '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -892,7 +895,8 @@ describe('DATA-01 migrations', () => {
        JOIN pg_attribute AS column_meta ON column_meta.attrelid = table_class.oid
        WHERE table_schema.nspname = 'waspada'
          AND table_class.relname IN ('extraction_results', 'grounding_contexts',
-           'investigation_requests', 'investigation_checkpoints', 'investigation_action_reservations')
+           'investigation_requests', 'investigation_checkpoints', 'investigation_action_reservations',
+           'investigation_progress_snapshots')
          AND column_meta.attnum > 0 AND NOT column_meta.attisdropped
        ORDER BY table_class.relname, column_meta.attname`,
     );
@@ -906,14 +910,14 @@ describe('DATA-01 migrations', () => {
     expect('investigation_requests', 'select', [
       'dataset_kind', 'investigation_id', 'trace_id', 'candidate_id', 'context_id', 'event_id', 'event_version',
       'questions', 'budget_policy_version', 'limit_tool_attempts', 'limit_reasoning_turns', 'limit_active_seconds',
-      'limit_model_tokens', 'consumed_tool_attempts', 'consumed_reasoning_turns', 'consumed_active_seconds',
+      'limit_model_tokens', 'fingerprint_key_id', 'consumed_tool_attempts', 'consumed_reasoning_turns', 'consumed_active_seconds',
       'consumed_model_tokens', 'reserved_tool_attempts', 'reserved_reasoning_turns', 'reserved_active_seconds',
       'reserved_model_tokens', 'requested_at', 'record_json',
     ]);
     expect('investigation_requests', 'insert', [
       'dataset_kind', 'investigation_id', 'trace_id', 'candidate_id', 'context_id', 'event_id', 'event_version',
       'questions', 'budget_policy_version', 'limit_tool_attempts', 'limit_reasoning_turns', 'limit_active_seconds',
-      'limit_model_tokens', 'requested_at', 'record_json',
+      'limit_model_tokens', 'requested_at', 'fingerprint_key_id', 'record_json',
     ]);
     expect('investigation_requests', 'update', [
       'consumed_tool_attempts', 'consumed_reasoning_turns', 'consumed_active_seconds', 'consumed_model_tokens',
@@ -934,18 +938,25 @@ describe('DATA-01 migrations', () => {
       'expected_checkpoint_version', 'reserved_tool_attempts', 'reserved_reasoning_turns',
       'reserved_active_seconds', 'reserved_model_tokens', 'reservation_status', 'outcome',
       'actual_active_seconds', 'actual_model_tokens', 'created_at', 'started_at', 'finished_at',
-      'reconciled_checkpoint_version',
+      'reconciled_checkpoint_version', 'action_fingerprint_key_id', 'action_fingerprint',
     ];
     expect('investigation_action_reservations', 'select', reservationColumns);
     expect('investigation_action_reservations', 'insert', [
       'dataset_kind', 'reservation_id', 'investigation_id', 'action_kind', 'action_name',
       'expected_checkpoint_version', 'reserved_tool_attempts', 'reserved_reasoning_turns',
       'reserved_active_seconds', 'reserved_model_tokens', 'reservation_status', 'created_at',
+      'action_fingerprint_key_id', 'action_fingerprint',
     ]);
     expect('investigation_action_reservations', 'update', [
       'reservation_status', 'outcome', 'actual_active_seconds', 'actual_model_tokens',
       'started_at', 'finished_at', 'reconciled_checkpoint_version',
     ]);
+    const progressSnapshotColumns = [
+      'dataset_kind', 'investigation_id', 'checkpoint_version', 'candidate_id', 'context_id',
+      'fingerprint_key_id', 'grounding_fingerprint', 'consecutive_no_progress', 'recorded_at',
+    ];
+    expect('investigation_progress_snapshots', 'select', progressSnapshotColumns);
+    expect('investigation_progress_snapshots', 'insert', progressSnapshotColumns);
 
     const granted = new Set<string>();
     for (const row of columns.rows) {

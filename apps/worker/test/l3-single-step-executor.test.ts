@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InvestigationLedgerError } from '../../db/src/investigation-ledger.js';
+import { createL3FingerprintService } from '../src/layers/l3-investigation/progress-fingerprint.js';
 import type {
   InvestigationCheckpointRecord,
   InvestigationLedgerRepository,
@@ -20,6 +21,10 @@ import type { TelemetryRecord, TelemetrySink } from '../src/layers/l5-evaluation
 
 const timestamp = '2026-09-26T00:00:00.000Z';
 const actionName = 'synthetic_lookup';
+const TEST_FINGERPRINTS = createL3FingerprintService({
+  keyId: 'fixture-hmac-v1',
+  keyMaterial: new Uint8Array(32).fill(47),
+});
 
 test('orders reserve, start, one handler call, and reconcile with bounded success data', async () => {
   const calls: string[] = [];
@@ -45,12 +50,20 @@ test('orders reserve, start, one handler call, and reconcile with bounded succes
   assert.deepEqual(calls, ['reserve', 'start', 'handler', 'reconcile']);
   assert.equal(handlerCalls, 1);
   assert.deepEqual(originalInput, inputSnapshot);
+  const actionFingerprint = await TEST_FINGERPRINTS.fingerprintAction({
+    datasetKind: 'synthetic',
+    investigationId: 'investigation_synthetic',
+    keyId: 'fixture-hmac-v1',
+    actionName,
+    parsedInput: { query: 'synthetic-query' },
+  });
   assert.deepEqual(ledger.reserveInputs[0], {
     datasetKind: 'synthetic',
     investigationId: 'investigation_synthetic',
     reservationId: 'reservation_synthetic_1',
     expectedCheckpointVersion: 2,
     actionKind: 'tool',
+    actionFingerprint,
     actionName,
     reservedActiveSeconds: 7,
     reservedModelTokens: 0,
@@ -590,6 +603,7 @@ test('invalid registry entries fail closed at executor construction', () => {
   for (const registry of invalidRegistrations) {
     assert.throws(() => createSingleStepExecutor({
       ledger: makeLedger().repository,
+      fingerprints: TEST_FINGERPRINTS,
       registry: registry as unknown as readonly InvestigationActionRegistration[],
       clock: makeClock(),
       timer: new FakeTimer(),
@@ -621,6 +635,7 @@ function makeExecutor(input: {
   });
   return createSingleStepExecutor({
     ledger: input.ledger,
+    fingerprints: TEST_FINGERPRINTS,
     registry: [action],
     clock,
     timer,
@@ -692,6 +707,12 @@ function makeLedger(config: {
       calls.push('getLatest');
       if (config.latestError) throw config.latestError;
       return latestCheckpoint;
+    },
+    async getFingerprintKeyId() {
+      return 'fixture-hmac-v1';
+    },
+    async refreshGroundingProgress() {
+      throw new Error('unexpected progress refresh');
     },
     async getInFlightReservation() {
       calls.push('getInFlight');

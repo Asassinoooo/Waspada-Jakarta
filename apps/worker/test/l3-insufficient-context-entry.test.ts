@@ -10,6 +10,7 @@ import type {
   ReasoningRequest,
 } from '../src/layers/l2-model-grounding/contracts.js';
 import type { InvestigationRequiredOutcome } from '../src/layers/l2-model-grounding/direct-reasoning.js';
+import { createL3FingerprintService } from '../src/layers/l3-investigation/progress-fingerprint.js';
 import {
   createInsufficientContextEntryService,
   type InsufficientContextEntryCallerValues,
@@ -18,6 +19,15 @@ import {
 const sourceMarker = 'private-source-text-marker';
 const conflictMarker = 'private-conflict-url-and-prompt-marker';
 const checkpoint = {} as InvestigationCheckpointRecord;
+const TEST_FINGERPRINTS = createL3FingerprintService({
+  keyId: 'fixture-hmac-v1',
+  keyMaterial: new Uint8Array(32).fill(47),
+});
+
+const createTestEntryService = (ledger: Parameters<typeof createInsufficientContextEntryService>[0]) => (
+  createInsufficientContextEntryService(ledger, TEST_FINGERPRINTS)
+);
+
 const callerValues: InsufficientContextEntryCallerValues = {
   investigationId: 'investigation-entry-synthetic',
   requestedAt: '2026-09-26T05:15:00.000Z',
@@ -33,12 +43,12 @@ const callerValues: InsufficientContextEntryCallerValues = {
 test('maps persisted identity and explicit case values while returning the ledger checkpoint unchanged', async () => {
   const source = makeOutcome({
     context: {
-      missingFields: ['private missing label one', 'private missing label two'],
+      missingFields: ['private_missing_label_one', 'private_missing_label_two'],
       conflicts: [conflictMarker],
     },
   });
   const calls: CreateInvestigationInput[] = [];
-  const service = createInsufficientContextEntryService({
+  const service = createTestEntryService({
     async create(input) {
       calls.push(input);
       return checkpoint;
@@ -57,6 +67,8 @@ test('maps persisted identity and explicit case values while returning the ledge
     traceId: 'trace-entry-synthetic',
     candidateId: 'candidate-entry-synthetic',
     contextId: 'context-entry-synthetic',
+    fingerprintKeyId: 'fixture-hmac-v1',
+    initialGroundingDigestHex: calls[0]!.initialGroundingDigestHex,
     eventId: 'event-entry-synthetic',
     eventVersion: 4,
     questions: ['missing_field_1', 'missing_field_2', 'conflict_1'],
@@ -64,7 +76,10 @@ test('maps persisted identity and explicit case values while returning the ledge
     limits: callerValues.limits,
     requestedAt: callerValues.requestedAt,
   });
+  assert.match(calls[0]?.initialGroundingDigestHex ?? '', /^[a-f0-9]{64}$/);
   assert.strictEqual(calls[0]?.limits, callerValues.limits);
+  assert.equal(JSON.stringify(calls[0]).includes(sourceMarker), false);
+  assert.equal(JSON.stringify(calls[0]).includes(conflictMarker), false);
   const serializedQuestions = JSON.stringify(calls[0]?.questions);
   assert.ok(!serializedQuestions.includes(sourceMarker));
   assert.ok(!serializedQuestions.includes(conflictMarker));
@@ -78,7 +93,7 @@ test('uses a null event pair for no matches and the exact persisted pair for one
 
   for (const candidate of cases) {
     const calls: CreateInvestigationInput[] = [];
-    const service = createInsufficientContextEntryService({
+    const service = createTestEntryService({
       async create(input) {
         calls.push(input);
         return checkpoint;
@@ -95,7 +110,7 @@ test('uses a null event pair for no matches and the exact persisted pair for one
 
 test('holds multiple candidate event matches for review without choosing one', async () => {
   let createCalls = 0;
-  const service = createInsufficientContextEntryService({
+  const service = createTestEntryService({
     async create() {
       createCalls += 1;
       return checkpoint;
@@ -120,7 +135,7 @@ test('generates bounded stable labels from positions and replays identical creat
   const conflicts = Array.from({ length: 9 }, (_, index) => 'private-conflict-marker-' + index + '-' + conflictMarker);
   const outcome = makeOutcome({ context: { missingFields, conflicts } });
   const calls: CreateInvestigationInput[] = [];
-  const service = createInsufficientContextEntryService({
+  const service = createTestEntryService({
     async create(input) {
       calls.push(input);
       return checkpoint;
@@ -145,7 +160,7 @@ test('generates bounded stable labels from positions and replays identical creat
 
 test('returns review-required for zero or more than twenty questions without truncation', async () => {
   let createCalls = 0;
-  const service = createInsufficientContextEntryService({
+  const service = createTestEntryService({
     async create() {
       createCalls += 1;
       return checkpoint;
@@ -176,7 +191,7 @@ test('rejects every mismatched persisted identity field and every sufficient con
     { sufficient: true },
   ];
   let createCalls = 0;
-  const service = createInsufficientContextEntryService({
+  const service = createTestEntryService({
     async create() {
       createCalls += 1;
       return checkpoint;
@@ -195,7 +210,7 @@ test('rejects every mismatched persisted identity field and every sufficient con
 
 test('rejects a direct-reasoning success and missing explicit caller values', async () => {
   let createCalls = 0;
-  const service = createInsufficientContextEntryService({
+  const service = createTestEntryService({
     async create() {
       createCalls += 1;
       return checkpoint;
@@ -229,7 +244,7 @@ test('rejects a direct-reasoning success and missing explicit caller values', as
 
 test('propagates the exact ledger error object unchanged', async () => {
   const ledgerError = new Error('synthetic ledger failure');
-  const service = createInsufficientContextEntryService({
+  const service = createTestEntryService({
     async create() {
       throw ledgerError;
     },
@@ -272,7 +287,7 @@ function makeOutcome(input: {
     revisionStates: [],
     candidateEvents: [{ eventId: 'event-entry-synthetic', eventVersion: 4 }],
     priorDecisionIds: [],
-    missingFields: ['private-missing-marker'],
+    missingFields: ['private_missing_marker'],
     conflicts: [conflictMarker],
     retrievalVersion: 'retrieval-entry-synthetic-v1',
     indexVersion: 'index-entry-synthetic-v1',
