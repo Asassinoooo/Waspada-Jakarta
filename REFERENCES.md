@@ -94,3 +94,10 @@ Reviewed the official terms and source documentation on 28 September 2026 to det
 - **ANTARA.** [Terms of Use](https://fin.antaranews.com/terms-of-use/), [RSS directory](https://www.antaranews.com/rss?mobile=true), and a [representative article page](https://www.antaranews.com/berita/5409494/google-perbarui-fitur-perlindungan-data-pribadi-pengguna-di-search). Terms limit sharing of content to platform-enabled personal/non-commercial use and reserve other reproduction, public communication and distribution for written consent. The RSS directory documents feed-reader syndication; it does not itself grant Waspada permission to retain feed/article content or use it as AI input. The article page states that crawling and automated AI indexing require written permission. Accessed 28 September 2026.
 
 These notes inform conservative engineering gates and are not a legal determination. See [SPEC-01](docs/SOURCE_FEASIBILITY.md) and [SOURCE_VERIFICATION_PLAN.md](SOURCE_VERIFICATION_PLAN.md) for current status and implementation consequences.
+
+## Cloudflare Workflows Free-tier re-check — 29 September 2026
+
+- [Workflows pricing](https://developers.cloudflare.com/workflows/reference/pricing/), official Cloudflare documentation, page last updated 21 September 2026 and accessed 29 September 2026. Confirms Free-plan availability and current step, execution, CPU and storage allotments.
+- [Workflows limits](https://developers.cloudflare.com/workflows/reference/limits/), official Cloudflare documentation, page last updated 21 September 2026 and accessed 29 September 2026. Confirms per-instance step/state ceilings, three-day Free retention and inherited Workers subrequest limits.
+
+These are provider-published ceilings, not measurements or guarantees for Waspada. No Workflow or Neon resource was configured or deployed during this review. See [ADR-010](docs/decisions/ADR-010-cloudflare-neon-free.md).
