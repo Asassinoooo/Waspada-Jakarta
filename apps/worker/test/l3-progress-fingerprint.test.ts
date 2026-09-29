@@ -123,6 +123,97 @@ test('fails closed for missing, malformed, and mismatched runtime key configurat
   );
 });
 
+test('projects natural conflict prose using bounded counts without retaining or hashing the text', async () => {
+  const fingerprints = createL3FingerprintService({ keyId, keyMaterial });
+  const natural = makeContext({
+    missingFields: ['No current service area is stated'],
+    conflicts: ['Synthetic reports disagree on current service status'],
+  });
+  const sameCountsDifferentText = makeContext({
+    missingFields: ['The affected region is unclear'],
+    conflicts: ['Synthetic sources describe incompatible service hours'],
+  });
+  const first = await fingerprints.fingerprintGrounding({
+    datasetKind: 'synthetic',
+    investigationId: 'investigation_fingerprint',
+    keyId,
+    context: natural,
+  });
+  const second = await fingerprints.fingerprintGrounding({
+    datasetKind: 'synthetic',
+    investigationId: 'investigation_fingerprint',
+    keyId,
+    context: sameCountsDifferentText,
+  });
+  assert.deepEqual(second, first);
+
+  const changedCount = await fingerprints.fingerprintGrounding({
+    datasetKind: 'synthetic',
+    investigationId: 'investigation_fingerprint',
+    keyId,
+    context: makeContext({
+      missingFields: natural.missingFields,
+      conflicts: [...natural.conflicts, 'A separate synthetic report is also inconsistent'],
+    }),
+  });
+  assert.notEqual(changedCount.digestHex, first.digestHex);
+});
+
+test('reversing evidence and grounding metadata arrays preserves the canonical fingerprint', async () => {
+  const fingerprints = createL3FingerprintService({ keyId, keyMaterial });
+  const seed = makeContext();
+  const seedEvidence = seed.evidence[0]!;
+  const evidence = [
+    {
+      ...seedEvidence,
+      sourceId: 'source_Z',
+      reference: { ...seedEvidence.reference, reportRevisionId: 'revision_Z' },
+      origins: [
+        { originId: 'origin_Z', independenceStatus: 'established' as const, dependsOnOriginIds: ['origin_a'] },
+        { originId: 'origin_a', independenceStatus: 'established' as const, dependsOnOriginIds: ['origin_Z'] },
+      ],
+    },
+    {
+      ...seedEvidence,
+      sourceId: 'source_a',
+      reference: { ...seedEvidence.reference, reportRevisionId: 'revision_a' },
+      origins: [
+        { originId: 'origin_c', independenceStatus: 'established' as const, dependsOnOriginIds: ['origin_b'] },
+        { originId: 'origin_b', independenceStatus: 'established' as const, dependsOnOriginIds: ['origin_c'] },
+      ],
+    },
+  ] satisfies GroundingContext['evidence'];
+  const revisionStates = [
+    { reportRevisionId: 'revision_Z', revisionStatus: 'eligible' as const },
+    { reportRevisionId: 'revision_a', revisionStatus: 'quarantined' as const },
+  ];
+  const candidateEvents = [
+    { eventId: 'event_Z', eventVersion: 2 },
+    { eventId: 'event_a', eventVersion: 1 },
+  ];
+  const priorDecisionIds = ['decision_Z', 'decision_a'];
+  const ordered = makeContext({ evidence, revisionStates, candidateEvents, priorDecisionIds });
+  const reversed = makeContext({
+    evidence: [...evidence].reverse().map((item) => ({ ...item, origins: [...item.origins].reverse() })),
+    revisionStates: [...revisionStates].reverse(),
+    candidateEvents: [...candidateEvents].reverse(),
+    priorDecisionIds: [...priorDecisionIds].reverse(),
+  });
+  const first = await fingerprints.fingerprintGrounding({
+    datasetKind: 'synthetic',
+    investigationId: 'investigation_fingerprint',
+    keyId,
+    context: ordered,
+  });
+  const reordered = await fingerprints.fingerprintGrounding({
+    datasetKind: 'synthetic',
+    investigationId: 'investigation_fingerprint',
+    keyId,
+    context: reversed,
+  });
+  assert.deepEqual(reordered, first);
+});
+
 test('rejects non-JSON values and object accessors during strict canonicalization', () => {
   const accessor = Object.defineProperty({}, 'query', {
     enumerable: true,

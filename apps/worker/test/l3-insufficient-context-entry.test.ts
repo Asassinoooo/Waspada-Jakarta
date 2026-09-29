@@ -85,6 +85,30 @@ test('maps persisted identity and explicit case values while returning the ledge
   assert.ok(!serializedQuestions.includes(conflictMarker));
 });
 
+test('opens ordinary free-form grounding conflicts without persisting their prose', async () => {
+  const missingText = 'No current service area is stated';
+  const conflictText = 'Synthetic reports disagree on current service status';
+  const calls: CreateInvestigationInput[] = [];
+  const service = createTestEntryService({
+    async create(input) {
+      calls.push(input);
+      return checkpoint;
+    },
+  });
+
+  const result = await service.open(makeOutcome({
+    context: { missingFields: [missingText], conflicts: [conflictText] },
+  }), callerValues);
+
+  assert.equal(result.status, 'opened');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0]?.questions, ['missing_field_1', 'conflict_1']);
+  assert.match(calls[0]?.initialGroundingDigestHex ?? '', /^[a-f0-9]{64}$/);
+  const persisted = JSON.stringify(calls[0]);
+  assert.equal(persisted.includes(missingText), false);
+  assert.equal(persisted.includes(conflictText), false);
+});
+
 test('uses a null event pair for no matches and the exact persisted pair for one match', async () => {
   const cases = [
     { events: [], eventId: null, eventVersion: null },

@@ -11,7 +11,6 @@ type RuntimeCryptoKey = Parameters<RuntimeSubtleCrypto['sign']>[1];
 
 const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const LABEL_PATTERN = /^[A-Za-z][A-Za-z0-9_.:-]{0,99}$/;
 const MAX_CANONICAL_INPUT_CODE_UNITS = 32_768;
 const MAX_CANONICAL_INPUT_NODES = 1_000;
 const MAX_CANONICAL_INPUT_DEPTH = 16;
@@ -299,7 +298,7 @@ function groundingProjection(datasetKind: DatasetKind, value: GroundingContext):
         independenceStatus: origin.independenceStatus,
         dependsOnOriginIds,
       };
-    }).sort((left, right) => left.originId.localeCompare(right.originId));
+    }).sort((left, right) => compareCodeUnits(left.originId, right.originId));
 
     return {
       reportRevisionId: reference.reportRevisionId,
@@ -312,49 +311,46 @@ function groundingProjection(datasetKind: DatasetKind, value: GroundingContext):
       revisionStatus: record.revisionStatus,
       origins,
     };
-  }).sort((left, right) => canonicalizeTrustedJson(left).localeCompare(canonicalizeTrustedJson(right)));
+  }).sort((left, right) => compareCodeUnits(canonicalizeTrustedJson(left), canonicalizeTrustedJson(right)));
 
   const revisionStates = dataArray(context.revisionStates, 128).map((stateValue) => {
     const state = readObject(stateValue);
     if (!state || typeof state.reportRevisionId !== 'string' || !isId(state.reportRevisionId)
       || !isRevisionStatus(state.revisionStatus)) throw new L3FingerprintError('fingerprint_invalid_input');
     return { reportRevisionId: state.reportRevisionId, revisionStatus: state.revisionStatus };
-  }).sort((left, right) => left.reportRevisionId.localeCompare(right.reportRevisionId));
+  }).sort((left, right) => compareCodeUnits(left.reportRevisionId, right.reportRevisionId));
 
   const candidateEvents = dataArray(context.candidateEvents, 20).map((eventValue) => {
     const event = readObject(eventValue);
     if (!event || typeof event.eventId !== 'string' || !isId(event.eventId)
       || !isInteger(event.eventVersion, 1, 2_147_483_647)) throw new L3FingerprintError('fingerprint_invalid_input');
     return { eventId: event.eventId, eventVersion: event.eventVersion };
-  }).sort((left, right) => left.eventId.localeCompare(right.eventId) || left.eventVersion - right.eventVersion);
+  }).sort((left, right) => compareCodeUnits(left.eventId, right.eventId) || left.eventVersion - right.eventVersion);
 
   const priorDecisionIds = dataArray(context.priorDecisionIds, 100).map((id) => {
     if (typeof id !== 'string' || !isId(id)) throw new L3FingerprintError('fingerprint_invalid_input');
     return id;
   }).sort();
-  const missingFields = safeLabels(context.missingFields);
-  const conflicts = safeLabels(context.conflicts);
+  const missingFieldCount = dataArray(context.missingFields, 100).length;
+  const conflictCount = dataArray(context.conflicts, 100).length;
 
   return {
-    projectionVersion: 1,
+    projectionVersion: 2,
     datasetKind,
     candidateId: context.candidateId,
     evidence,
     revisionStates,
     candidateEvents,
     priorDecisionIds,
-    missingFields,
-    conflicts,
+    missingFieldCount,
+    conflictCount,
   };
 }
 
-function safeLabels(value: unknown[]): string[] {
-  return dataArray(value, 100).map((label) => {
-    if (typeof label !== 'string' || !LABEL_PATTERN.test(label)) {
-      throw new L3FingerprintError('fingerprint_invalid_input');
-    }
-    return label;
-  }).sort();
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function dataArray(value: unknown[], maximum: number): unknown[] {

@@ -70,9 +70,12 @@ BEGIN
     RAISE EXCEPTION 'investigation action reservations cannot be deleted';
   END IF;
 
-  IF TG_OP = 'INSERT' AND NEW.action_kind = 'tool'
-     AND (NEW.action_fingerprint_key_id IS NULL OR NEW.action_fingerprint IS NULL) THEN
-    RAISE EXCEPTION 'registered tool reservations require a keyed fingerprint';
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.action_kind = 'tool'
+       AND (NEW.action_fingerprint_key_id IS NULL OR NEW.action_fingerprint IS NULL) THEN
+      RAISE EXCEPTION 'registered tool reservations require a keyed fingerprint';
+    END IF;
+    RETURN NEW;
   END IF;
 
   IF ROW(
@@ -99,6 +102,12 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+DROP TRIGGER investigation_action_reservations_guard
+  ON waspada.investigation_action_reservations;
+CREATE TRIGGER investigation_action_reservations_guard
+  BEFORE INSERT OR UPDATE OR DELETE ON waspada.investigation_action_reservations
+  FOR EACH ROW EXECUTE FUNCTION waspada.guard_investigation_action_reservation_update();
 
 ALTER TABLE waspada.investigation_checkpoints
   ADD CONSTRAINT investigation_checkpoint_progress_scope_unique

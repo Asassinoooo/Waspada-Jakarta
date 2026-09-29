@@ -252,6 +252,86 @@ describe('L3 durable investigation ledger', () => {
     assert.equal(publicRecord.rows[0]?.record_json.includes(actionFingerprint.digestHex), false);
   });
 
+  it('enforces tool fingerprints on insert while allowing reasoning and legacy null fingerprints', async () => {
+    const fixture = await seedFixture(testDatabase, 'fingerprint-insert-boundary', { sufficient: false });
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const input = makeCreateInput(fixture);
+    await repository.create(input);
+
+    const insertReservation = 'INSERT INTO waspada.investigation_action_reservations '
+      + '(dataset_kind, reservation_id, investigation_id, action_kind, action_name, '
+      + 'expected_checkpoint_version, reserved_tool_attempts, reserved_reasoning_turns, '
+      + 'reserved_active_seconds, reserved_model_tokens, reservation_status, created_at) '
+      + 'VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)';
+    await assert.rejects(
+      testDatabase.executor.query(insertReservation, [
+        fixture.datasetKind, 'reservation-tool-without-fingerprint', input.investigationId,
+        'tool', 'lookup.synthetic', 1, 1, 0, 1, 0, 'reserved', TEST_TIME,
+      ]),
+      /registered tool reservations require a keyed fingerprint/,
+    );
+
+    const reasoning = await testDatabase.executor.query<{
+      action_kind: string;
+      action_fingerprint_key_id: string | null;
+      fingerprint_missing: boolean;
+    }>(
+      'INSERT INTO waspada.investigation_action_reservations '
+        + '(dataset_kind, reservation_id, investigation_id, action_kind, action_name, '
+        + 'expected_checkpoint_version, reserved_tool_attempts, reserved_reasoning_turns, '
+        + 'reserved_active_seconds, reserved_model_tokens, reservation_status, created_at, '
+        + 'action_fingerprint_key_id, action_fingerprint) '
+        + 'VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, NULL) '
+        + 'RETURNING action_kind, action_fingerprint_key_id, '
+        + 'action_fingerprint IS NULL AS fingerprint_missing',
+      [
+        fixture.datasetKind, 'reservation-reasoning-null-fingerprint', input.investigationId,
+        'reasoning', 'reasoning.synthetic', 1, 0, 1, 1, 1, 'reserved', TEST_TIME,
+      ],
+    );
+    assert.deepEqual(reasoning.rows, [{
+      action_kind: 'reasoning',
+      action_fingerprint_key_id: null,
+      fingerprint_missing: true,
+    }]);
+
+    const legacyFixture = await seedFixture(testDatabase, 'legacy-null-fingerprint', { sufficient: false });
+    const legacyInput = makeCreateInput(legacyFixture);
+    await repository.create(legacyInput);
+    await testDatabase.executor.query(
+      'ALTER TABLE waspada.investigation_action_reservations DISABLE TRIGGER investigation_action_reservations_guard',
+    );
+    try {
+      await testDatabase.executor.query(insertReservation, [
+        legacyFixture.datasetKind, 'reservation-legacy-null-fingerprint', legacyInput.investigationId,
+        'tool', 'lookup.legacy', 1, 1, 0, 1, 0, 'reserved', TEST_TIME,
+      ]);
+    } finally {
+      await testDatabase.executor.query(
+        'ALTER TABLE waspada.investigation_action_reservations ENABLE TRIGGER investigation_action_reservations_guard',
+      );
+    }
+
+    const releasedLegacy = await testDatabase.executor.query<{
+      reservation_status: string;
+      fingerprint_missing: boolean;
+      reconciled_checkpoint_version: number;
+    }>(
+      'UPDATE waspada.investigation_action_reservations '
+        + "SET reservation_status = 'released', finished_at = $3::timestamptz, "
+        + 'reconciled_checkpoint_version = 2 '
+        + 'WHERE dataset_kind = $1 AND reservation_id = $2 '
+        + 'RETURNING reservation_status, action_fingerprint IS NULL AS fingerprint_missing, '
+        + 'reconciled_checkpoint_version',
+      [legacyFixture.datasetKind, 'reservation-legacy-null-fingerprint', '2026-09-25T10:00:01Z'],
+    );
+    assert.deepEqual(releasedLegacy.rows, [{
+      reservation_status: 'released',
+      fingerprint_missing: true,
+      reconciled_checkpoint_version: 2,
+    }]);
+  });
+
   it('creates only from insufficient persisted grounding, then reserves and reconciles failed tool use once', async () => {
     const fixture = await seedFixture(testDatabase, 'vertical', { sufficient: false });
     const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
@@ -466,10 +546,21 @@ describe('L3 durable investigation ledger', () => {
     const refreshed = await seedAdditionalContext(testDatabase, 'refresh-context-next', {
       datasetKind: fixture.datasetKind, candidateId: fixture.candidateId, sufficient: true,
     });
+    const refreshedAgain = await seedAdditionalContext(testDatabase, 'refresh-context-next-two', {
+      datasetKind: fixture.datasetKind, candidateId: fixture.candidateId, sufficient: true,
+    });
     const other = await seedFixture(testDatabase, 'refresh-other-candidate', { sufficient: false });
     const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
     const input = makeCreateInput(fixture);
     const initial = await repository.create(input);
+    await assertLedgerError('invalid_state', repository.resume({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      resumedAt: '2026-09-25T10:01:00Z',
+      contextId: refreshed.contextId,
+      progressFingerprint: testFingerprint('resume-open-case'),
+    }));
     const reservation = await repository.reserveAction({
       datasetKind: fixture.datasetKind,
       investigationId: input.investigationId,
@@ -488,14 +579,26 @@ describe('L3 durable investigation ledger', () => {
       expectedCheckpointVersion: reservation.checkpoint.checkpoint_version,
       pausedAt: '2026-09-25T10:02:01Z',
     });
-    const resumed = await repository.resume({
+    const resumeInput = {
       datasetKind: fixture.datasetKind,
       investigationId: input.investigationId,
       expectedCheckpointVersion: paused.checkpoint.checkpoint_version,
       resumedAt: '2026-09-25T10:03:00Z',
       contextId: refreshed.contextId,
       progressFingerprint: testFingerprint('refreshed-grounding'),
-    });
+    };
+    const resumed = await repository.resume(resumeInput);
+    const resumeReplay = await repository.resume(resumeInput);
+    assert.equal(resumeReplay.replayed, true);
+    assert.equal(resumeReplay.checkpoint.checkpoint_version, resumed.checkpoint.checkpoint_version);
+    await assertLedgerError('invalid_state', repository.resume({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      expectedCheckpointVersion: resumed.checkpoint.checkpoint_version,
+      resumedAt: '2026-09-25T10:03:30Z',
+      contextId: refreshedAgain.contextId,
+      progressFingerprint: testFingerprint('new-context-while-open'),
+    }));
     assert.equal(resumed.checkpoint.investigation_id, input.investigationId);
     assert.equal(resumed.checkpoint.candidate_id, fixture.candidateId);
     assert.equal(resumed.checkpoint.context_id, refreshed.contextId);

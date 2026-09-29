@@ -543,9 +543,17 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
   async refreshGroundingProgress(
     input: RefreshGroundingProgressInput,
   ): Promise<InvestigationProgressOperationResult> {
+    return this.refreshGroundingProgressInState(input, false);
+  }
+
+  private async refreshGroundingProgressInState(
+    input: RefreshGroundingProgressInput,
+    pausedOnly: boolean,
+  ): Promise<InvestigationProgressOperationResult> {
     validateProgressInput(input);
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+
       const targetVersion = input.expectedCheckpointVersion + 1;
       const replay = await loadProgressSnapshot(transaction, input.datasetKind, input.investigationId, targetVersion);
       if (replay) {
@@ -557,6 +565,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
       }
 
       ensureExpectedVersion(state, input.expectedCheckpointVersion);
+      if (pausedOnly && state.checkpoint.case_status !== 'paused') fail('invalid_state');
       if (state.checkpoint.case_status !== 'open' && state.checkpoint.case_status !== 'paused') {
         fail('invalid_state');
       }
@@ -565,11 +574,11 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
       if (Date.parse(input.refreshedAt) < Date.parse(state.checkpoint.updated_at)) fail('invalid_input');
 
       const active = await transaction.query<{ reservation_id: string }>(
-        `SELECT reservation_id
-         FROM waspada.investigation_action_reservations
-         WHERE dataset_kind = $1 AND investigation_id = $2
-           AND reservation_status = 'started'
-         LIMIT 1`,
+        'SELECT reservation_id '
+          + 'FROM waspada.investigation_action_reservations '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 '
+          + "AND reservation_status = 'started' "
+          + 'LIMIT 1',
         [input.datasetKind, input.investigationId],
       );
       if (active.rows.length > 0) fail('reservation_in_flight');
@@ -943,7 +952,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     if (input.contextId !== undefined) {
       validateId(input.contextId, 'context ID');
       if (!input.progressFingerprint) fail('fingerprint_unavailable');
-      return this.refreshGroundingProgress({
+      return this.refreshGroundingProgressInState({
         datasetKind: input.datasetKind,
         investigationId: input.investigationId,
         expectedCheckpointVersion: input.expectedCheckpointVersion,
@@ -951,7 +960,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
         fingerprintKeyId: input.progressFingerprint.keyId,
         digestHex: input.progressFingerprint.digestHex,
         refreshedAt: input.resumedAt,
-      });
+      }, true);
     }
     if (input.progressFingerprint !== undefined) fail('invalid_input');
     return this.executor.transaction(async (transaction) => {
