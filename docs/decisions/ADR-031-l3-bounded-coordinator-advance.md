@@ -29,4 +29,3 @@ The coordinator can be verified as a deterministic state machine using injected 
 - **Let the planner select or invoke arbitrary tools:** rejected because proposals are untrusted data and cannot replace L3 registration, validation, reservation or reconciliation.
 - **Perform source cleanup or context construction in L3:** rejected because preprocessing belongs to L1 and grounding/retrieval belongs to L2.
 - **Let sufficient or model-confident output publish directly:** rejected because L4 publication policy remains independent and deterministic.
-

@@ -1,13 +1,13 @@
 # L3-COORDINATOR-CORE — compose one bounded investigation advance
 
-**Parent package:** AGENT-01 / FR-07 bounded investigation  
+**Parent package:** AGENT-01 / FR-07 bounded investigation
 **Status:** Ready for implementation on the dedicated task branch
-**Implementation model:** GPT-6 Luna, max reasoning  
-**Branch:** `work/L3-COORDINATOR-CORE`  
+**Implementation model:** GPT-6 Luna, max reasoning
+**Branch:** `work/L3-COORDINATOR-CORE`
 **Worktree:** Dedicated managed worktree from the pinned base below; do not edit in the root checkout.
 **Base:** `40e94100753a96eabdd908a5a76d6ab8ffd7d188` (root acceptance, ADR-031 and task assignment)
-**Contract baseline:** schema 2.0 `GroundingContext`/investigation records; internal investigation plan 1.0; existing L3 ledger port and executors. Do not change public schemas, OpenAPI, or provider/runtime configuration.  
-**Dependencies:** `L3-LEDGER-CORE`, `L3-INSUFFICIENT-CONTEXT-ENTRY-CORE`, `L3-SINGLE-STEP-EXECUTOR-CORE`, `L3-REASONING-STEP-CORE`, `L3-PROGRESS-FINGERPRINT-CORE`, `L2-INVESTIGATION-PLAN-CORE`, `RAG-CONTEXT-ASSEMBLY-CORE`, `L2-CONTEXT-PERSIST-CORE`, `DB-TEST-RUNNER-ISOLATION`; [ADR-031](../decisions/ADR-031-l3-bounded-coordinator-advance.md).  
+**Contract baseline:** schema 2.0 `GroundingContext`/investigation records; internal investigation plan 1.0; existing L3 ledger port and executors. Do not change public schemas, OpenAPI, or provider/runtime configuration.
+**Dependencies:** `L3-LEDGER-CORE`, `L3-INSUFFICIENT-CONTEXT-ENTRY-CORE`, `L3-SINGLE-STEP-EXECUTOR-CORE`, `L3-REASONING-STEP-CORE`, `L3-PROGRESS-FINGERPRINT-CORE`, `L2-INVESTIGATION-PLAN-CORE`, `RAG-CONTEXT-ASSEMBLY-CORE`, `L2-CONTEXT-PERSIST-CORE`, `DB-TEST-RUNNER-ISOLATION`; [ADR-031](../decisions/ADR-031-l3-bounded-coordinator-advance.md).
 
 ## Objective
 
