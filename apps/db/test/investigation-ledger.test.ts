@@ -8,6 +8,19 @@ import {
   type CreateInvestigationInput,
 } from '../src/investigation-ledger.js';
 import type { DatasetKind } from '../src/ports.js';
+import {
+  INVESTIGATION_PLAN_CAPABILITY,
+  type InvestigationPlanRequest,
+  type InvestigationPlanner,
+  type InvestigationPlannerOutcome,
+  type InvestigationPlannerPreflightOutcome,
+} from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
+import { validateReasoningRequest } from '../../worker/src/layers/l2-model-grounding/validation.js';
+import {
+  createReasoningStepExecutor,
+  type ReasoningStepExecutorClock,
+  type ReasoningStepExecutorTimer,
+} from '../../worker/src/layers/l3-investigation/reasoning-step-executor.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const TEST_TIME = '2026-09-25T10:00:00Z';
@@ -495,6 +508,247 @@ describe('L3 durable investigation ledger', () => {
     }));
   });
 
+  it('integrates one proposal and a stale retry with the persisted L3 ledger', async () => {
+    const fixture = await seedFixture(testDatabase, 'reasoning-step-pglite-success', { sufficient: false });
+    const request = makeReasoningStepRequest(fixture);
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const initial = await repository.create(makeCreateInput(fixture, {
+      questions: [...request.questions],
+      limits: { toolAttempts: 2, reasoningTurns: 3, activeSeconds: 30, modelTokens: 500 },
+    }));
+    const maxActiveSeconds = 11;
+    const maxModelTokens = 96;
+    let monotonicMilliseconds = 0;
+    const startedAt = '2026-09-25T10:10:00.000Z';
+    const startedAtMilliseconds = Date.parse(startedAt);
+    const clock: ReasoningStepExecutorClock = {
+      wallNow: () => new Date(startedAtMilliseconds + monotonicMilliseconds).toISOString(),
+      monotonicNow: () => monotonicMilliseconds,
+    };
+    const usage = {
+      inputTokens: 17,
+      outputTokens: 8,
+      totalTokens: 25,
+      modelVersion: '@synthetic/planner-v9',
+      promptVersion: 'synthetic/prompts/reasoning-step-v4',
+    };
+    const proposedValue = {
+      schemaVersion: '1.0',
+      recordType: 'InvestigationPlanResult',
+      outcome: 'proposed',
+      actionName: 'synthetic_search',
+      input: { query: 'ephemeral synthetic planner output' },
+    } as const;
+    const plannerDouble = makeReasoningPlannerDouble({
+      request,
+      maxModelTokens,
+      outcome: {
+        status: 'succeeded',
+        capability: INVESTIGATION_PLAN_CAPABILITY,
+        value: proposedValue,
+        usage,
+      },
+      onPropose: async () => {
+        await assertPlanningReservationStarted({
+          testDatabase,
+          repository,
+          fixture,
+          investigationId: initial.investigation_id,
+          reservationId: 'reservation-reasoning-step-pglite-success',
+          reservedActiveSeconds: maxActiveSeconds,
+          reservedModelTokens: maxModelTokens,
+        });
+        monotonicMilliseconds += 2_300;
+      },
+    });
+    const timer: ReasoningStepExecutorTimer = {
+      setTimeout(_callback, delayMs) {
+        assert.equal(delayMs, maxActiveSeconds * 1_000);
+        return Symbol('planner-deadline');
+      },
+      clearTimeout() {},
+    };
+    const executor = createReasoningStepExecutor({
+      ledger: repository,
+      planner: plannerDouble.planner,
+      maxActiveSeconds,
+      maxModelTokens,
+      clock,
+      timer,
+    });
+    const stepProposal = {
+      datasetKind: fixture.datasetKind,
+      investigationId: initial.investigation_id,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      reservationId: 'reservation-reasoning-step-pglite-success',
+      reservedAt: startedAt,
+      request,
+    } as const;
+
+    const result = await executor.plan(stepProposal);
+    assert.equal(result.status, 'proposed');
+    if (result.status !== 'proposed') assert.fail('expected the valid planner proposal');
+    assert.deepEqual(result.proposal, proposedValue);
+    assert.deepEqual(result.usage, usage);
+    assert.equal(plannerDouble.preflightCalls, 1);
+    assert.equal(plannerDouble.proposeCalls, 1);
+
+    const checkpoint = await repository.getLatest(fixture.datasetKind, initial.investigation_id);
+    assert.ok(checkpoint);
+    assert.equal(checkpoint.checkpoint_version, initial.checkpoint_version + 2);
+    assert.equal(checkpoint.case_status, 'open');
+    assert.deepEqual(checkpoint.budget.consumed, {
+      tool_attempts: 0,
+      reasoning_turns: 1,
+      active_seconds: 3,
+      model_tokens: usage.totalTokens,
+    });
+    assert.deepEqual(checkpoint.budget.reserved, zeroCounters());
+    assert.deepEqual(checkpoint.reasoning_runs, [{
+      capability: 'reasoning',
+      model_version: usage.modelVersion,
+      prompt_version: usage.promptVersion,
+      input_tokens: usage.inputTokens,
+      output_tokens: usage.outputTokens,
+    }]);
+
+    const reservation = await readStoredReservation(
+      testDatabase,
+      fixture.datasetKind,
+      initial.investigation_id,
+      stepProposal.reservationId,
+    );
+    assert.equal(reservation.reservation_status, 'reconciled');
+    assert.equal(reservation.outcome, 'succeeded');
+    assert.equal(reservation.expected_checkpoint_version, initial.checkpoint_version);
+    assert.equal(reservation.reserved_reasoning_turns, 1);
+    assert.equal(reservation.reserved_active_seconds, maxActiveSeconds);
+    assert.equal(reservation.reserved_model_tokens, maxModelTokens);
+    assert.equal(reservation.actual_active_seconds, 3);
+    assert.equal(reservation.actual_model_tokens, usage.totalTokens);
+    assert.ok(reservation.started_at);
+    assert.ok(reservation.finished_at);
+    assert.equal(reservation.reconciled_checkpoint_version, checkpoint.checkpoint_version);
+
+    const checkpointBeforeRetry = checkpoint;
+    const retry = await executor.plan(stepProposal);
+    assert.equal(retry.status, 'review_required');
+    if (retry.status !== 'review_required') assert.fail('expected the original checkpoint to be stale');
+    assert.equal(retry.reason, 'stale_checkpoint');
+    assert.equal(retry.checkpoint?.checkpoint_version, checkpointBeforeRetry.checkpoint_version);
+    assert.equal(plannerDouble.preflightCalls, 2);
+    assert.equal(plannerDouble.proposeCalls, 1, 'a stale retry cannot make a second planner call');
+    assert.deepEqual(await repository.getLatest(fixture.datasetKind, initial.investigation_id), checkpointBeforeRetry);
+    assert.deepEqual(
+      await readStoredReservation(testDatabase, fixture.datasetKind, initial.investigation_id, stepProposal.reservationId),
+      reservation,
+      'a stale retry cannot change the persisted reservation accounting',
+    );
+
+    const persistedJson = await readLedgerJson(testDatabase, fixture.datasetKind, initial.investigation_id);
+    assert.equal(persistedJson.includes('ephemeral synthetic planner output'), false);
+    assert.equal(persistedJson.includes('Synthetic L3 ledger fixture evidence'), false);
+    assert.equal(persistedJson.includes(JSON.stringify(request)), false);
+  });
+
+  it('charges one provider error to the full configured reservation and closes it', async () => {
+    const fixture = await seedFixture(testDatabase, 'reasoning-step-pglite-failure', { sufficient: false });
+    const request = makeReasoningStepRequest(fixture);
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const initial = await repository.create(makeCreateInput(fixture, {
+      questions: [...request.questions],
+      limits: { toolAttempts: 2, reasoningTurns: 3, activeSeconds: 30, modelTokens: 500 },
+    }));
+    const maxActiveSeconds = 7;
+    const maxModelTokens = 83;
+    let monotonicMilliseconds = 0;
+    const startedAt = '2026-09-25T10:20:00.000Z';
+    const startedAtMilliseconds = Date.parse(startedAt);
+    const clock: ReasoningStepExecutorClock = {
+      wallNow: () => new Date(startedAtMilliseconds + monotonicMilliseconds).toISOString(),
+      monotonicNow: () => monotonicMilliseconds,
+    };
+    const privateProviderFailure = 'synthetic provider exception must not enter the ledger';
+    const plannerDouble = makeReasoningPlannerDouble({
+      request,
+      maxModelTokens,
+      error: privateProviderFailure,
+      onPropose: () => assertPlanningReservationStarted({
+        testDatabase,
+        repository,
+        fixture,
+        investigationId: initial.investigation_id,
+        reservationId: 'reservation-reasoning-step-pglite-failure',
+        reservedActiveSeconds: maxActiveSeconds,
+        reservedModelTokens: maxModelTokens,
+      }),
+    });
+    const timer: ReasoningStepExecutorTimer = {
+      setTimeout() { return Symbol('planner-deadline'); },
+      clearTimeout() {},
+    };
+    const executor = createReasoningStepExecutor({
+      ledger: repository,
+      planner: plannerDouble.planner,
+      maxActiveSeconds,
+      maxModelTokens,
+      clock,
+      timer,
+    });
+    const stepProposal = {
+      datasetKind: fixture.datasetKind,
+      investigationId: initial.investigation_id,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      reservationId: 'reservation-reasoning-step-pglite-failure',
+      reservedAt: startedAt,
+      request,
+    } as const;
+
+    const result = await executor.plan(stepProposal);
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected provider failure to require review');
+    assert.equal(result.reason, 'planner_failed');
+    assert.equal(plannerDouble.preflightCalls, 1);
+    assert.equal(plannerDouble.proposeCalls, 1);
+
+    const checkpoint = await repository.getLatest(fixture.datasetKind, initial.investigation_id);
+    assert.ok(checkpoint);
+    assert.equal(checkpoint.checkpoint_version, initial.checkpoint_version + 2);
+    assert.equal(checkpoint.case_status, 'open');
+    assert.deepEqual(checkpoint.budget.consumed, {
+      tool_attempts: 0,
+      reasoning_turns: 1,
+      active_seconds: maxActiveSeconds,
+      model_tokens: maxModelTokens,
+    });
+    assert.deepEqual(checkpoint.budget.reserved, zeroCounters());
+    assert.deepEqual(checkpoint.reasoning_runs, [], 'provider failures do not create a ModelRun');
+
+    const reservation = await readStoredReservation(
+      testDatabase,
+      fixture.datasetKind,
+      initial.investigation_id,
+      stepProposal.reservationId,
+    );
+    assert.equal(reservation.reservation_status, 'reconciled');
+    assert.equal(reservation.outcome, 'failed');
+    assert.equal(reservation.expected_checkpoint_version, initial.checkpoint_version);
+    assert.equal(reservation.reserved_reasoning_turns, 1);
+    assert.equal(reservation.reserved_active_seconds, maxActiveSeconds);
+    assert.equal(reservation.reserved_model_tokens, maxModelTokens);
+    assert.equal(reservation.actual_active_seconds, maxActiveSeconds);
+    assert.equal(reservation.actual_model_tokens, maxModelTokens);
+    assert.ok(reservation.started_at);
+    assert.ok(reservation.finished_at);
+    assert.equal(reservation.reconciled_checkpoint_version, checkpoint.checkpoint_version);
+
+    const persistedJson = await readLedgerJson(testDatabase, fixture.datasetKind, initial.investigation_id);
+    assert.equal(persistedJson.includes(privateProviderFailure), false);
+    assert.equal(persistedJson.includes('ephemeral synthetic planner output'), false);
+    assert.equal(persistedJson.includes('Synthetic L3 ledger fixture evidence'), false);
+    assert.equal(persistedJson.includes(JSON.stringify(request)), false);
+  });
+
   it('charges interrupted invocations at their reservation and releases only known-uninvoked actions', async () => {
     const fixture = await seedFixture(testDatabase, 'interruption-release', { sufficient: false });
     const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
@@ -813,6 +1067,189 @@ async function seedAdditionalContext(
       JSON.stringify({ record_type: 'GroundingContext', fixture: 'synthetic-test-only' })],
   );
   return { datasetKind: input.datasetKind, candidateId: input.candidateId, contextId, traceId };
+}
+
+function makeReasoningStepRequest(fixture: FixtureContext): InvestigationPlanRequest {
+  const suffix = fixture.candidateId.slice('candidate-l3-'.length);
+  const reportRevisionId = `revision-l3-${suffix}`;
+  const permittedText = 'Synthetic L3 ledger fixture evidence';
+  const permittedTextHash = sha256(permittedText);
+  return {
+    schemaVersion: '1.0',
+    recordType: 'InvestigationPlanRequest',
+    groundingContext: {
+      schemaVersion: '2.0',
+      recordType: 'GroundingContext',
+      datasetKind: fixture.datasetKind,
+      traceId: fixture.traceId,
+      contextId: fixture.contextId,
+      candidateId: fixture.candidateId,
+      evidence: [{
+        reference: {
+          reportRevisionId,
+          permittedTextHash,
+          spanStart: 0,
+          spanEnd: Array.from(permittedText).length,
+          offsetUnit: 'unicode_code_points',
+          relation: 'context',
+        },
+        text: permittedText,
+        sourceId: `source-l3-${suffix}`,
+        revisionStatus: 'unreviewed',
+        publishedAt: null,
+        observedAt: null,
+        retrievedAt: TEST_TIME,
+        origins: [],
+      }],
+      revisionStates: [{ reportRevisionId, revisionStatus: 'unreviewed' }],
+      candidateEvents: [],
+      priorDecisionIds: [],
+      missingFields: ['synthetic_status'],
+      conflicts: ['synthetic_sources_disagree'],
+      retrievalVersion: 'retrieval-synthetic-l3-pglite-v1',
+      indexVersion: 'index-synthetic-l3-pglite-v1',
+      sufficient: false,
+    },
+    questions: ['missing_field_1', 'conflict_1'],
+    actionMenu: [
+      { name: 'synthetic_search', description: 'Search one synthetic source index.' },
+      { name: 'gazetteer_lookup', description: 'Look up one synthetic place.' },
+    ],
+  };
+}
+
+async function assertPlanningReservationStarted(input: {
+  readonly testDatabase: TestDatabase;
+  readonly repository: ReturnType<typeof createSqlInvestigationLedgerRepository>;
+  readonly fixture: FixtureContext;
+  readonly investigationId: string;
+  readonly reservationId: string;
+  readonly reservedActiveSeconds: number;
+  readonly reservedModelTokens: number;
+}): Promise<void> {
+  const reservation = await readStoredReservation(
+    input.testDatabase,
+    input.fixture.datasetKind,
+    input.investigationId,
+    input.reservationId,
+  );
+  assert.equal(reservation.reservation_status, 'started');
+  assert.equal(reservation.outcome, null);
+  assert.equal(reservation.reserved_reasoning_turns, 1);
+  assert.equal(reservation.reserved_active_seconds, input.reservedActiveSeconds);
+  assert.equal(reservation.reserved_model_tokens, input.reservedModelTokens);
+  assert.equal(reservation.actual_active_seconds, 0);
+  assert.equal(reservation.actual_model_tokens, 0);
+  assert.ok(reservation.started_at);
+  assert.equal(reservation.finished_at, null);
+  assert.equal(reservation.reconciled_checkpoint_version, null);
+
+  const checkpoint = await input.repository.getLatest(input.fixture.datasetKind, input.investigationId);
+  assert.ok(checkpoint);
+  assert.deepEqual(checkpoint.budget.consumed, zeroCounters());
+  assert.deepEqual(checkpoint.budget.reserved, {
+    tool_attempts: 0,
+    reasoning_turns: 1,
+    active_seconds: input.reservedActiveSeconds,
+    model_tokens: input.reservedModelTokens,
+  });
+}
+
+function makeReasoningPlannerDouble(input: {
+  readonly request: InvestigationPlanRequest;
+  readonly maxModelTokens: number;
+  readonly outcome?: InvestigationPlannerOutcome;
+  readonly error?: string;
+  readonly onPropose?: () => void | Promise<void>;
+}): {
+  readonly planner: InvestigationPlanner;
+  readonly preflightCalls: number;
+  readonly proposeCalls: number;
+} {
+  let preflightCalls = 0;
+  let proposeCalls = 0;
+  const planner: InvestigationPlanner = {
+    async preflight(rawRequest): Promise<InvestigationPlannerPreflightOutcome> {
+      preflightCalls += 1;
+      assert.deepEqual(rawRequest, input.request);
+      const validated = await validateReasoningRequest({
+        data: { groundingContext: input.request.groundingContext },
+      });
+      assert.deepEqual(validated.data.groundingContext, input.request.groundingContext);
+      return {
+        status: 'ready',
+        capability: INVESTIGATION_PLAN_CAPABILITY,
+        request: input.request,
+      };
+    },
+    async propose(rawRequest, callOptions): Promise<InvestigationPlannerOutcome> {
+      proposeCalls += 1;
+      assert.deepEqual(rawRequest, input.request);
+      assert.equal(callOptions.maxTotalTokens, input.maxModelTokens);
+      await input.onPropose?.();
+      if (input.error !== undefined) throw new Error(input.error);
+      if (!input.outcome) throw new Error('synthetic test planner outcome missing');
+      return input.outcome;
+    },
+  };
+  return {
+    planner,
+    get preflightCalls() { return preflightCalls; },
+    get proposeCalls() { return proposeCalls; },
+  };
+}
+
+interface StoredReservationOutcome {
+  readonly reservation_status: string;
+  readonly outcome: string | null;
+  readonly expected_checkpoint_version: number;
+  readonly reserved_reasoning_turns: number;
+  readonly reserved_active_seconds: number;
+  readonly reserved_model_tokens: number;
+  readonly actual_active_seconds: number;
+  readonly actual_model_tokens: number;
+  readonly started_at: string | null;
+  readonly finished_at: string | null;
+  readonly reconciled_checkpoint_version: number | null;
+}
+
+async function readStoredReservation(
+  testDatabase: TestDatabase,
+  datasetKind: DatasetKind,
+  investigationId: string,
+  reservationId: string,
+): Promise<StoredReservationOutcome> {
+  const result = await testDatabase.executor.query<StoredReservationOutcome>(
+    `SELECT reservation_status, outcome, expected_checkpoint_version,
+            reserved_reasoning_turns, reserved_active_seconds, reserved_model_tokens,
+            actual_active_seconds, actual_model_tokens, started_at, finished_at,
+            reconciled_checkpoint_version
+     FROM waspada.investigation_action_reservations
+     WHERE dataset_kind = $1 AND investigation_id = $2 AND reservation_id = $3`,
+    [datasetKind, investigationId, reservationId],
+  );
+  assert.equal(result.rows.length, 1, 'expected one persisted reservation row');
+  return result.rows[0]!;
+}
+
+async function readLedgerJson(
+  testDatabase: TestDatabase,
+  datasetKind: DatasetKind,
+  investigationId: string,
+): Promise<string> {
+  const result = await testDatabase.executor.query<{ readonly ledger_json: string }>(
+    `SELECT request.record_json::text || checkpoint.record_json::text AS ledger_json
+     FROM waspada.investigation_requests AS request
+     INNER JOIN waspada.investigation_checkpoints AS checkpoint
+       ON checkpoint.dataset_kind = request.dataset_kind
+      AND checkpoint.investigation_id = request.investigation_id
+     WHERE request.dataset_kind = $1 AND request.investigation_id = $2
+     ORDER BY checkpoint.checkpoint_version DESC
+     LIMIT 1`,
+    [datasetKind, investigationId],
+  );
+  assert.equal(result.rows.length, 1, 'expected the persisted request and latest checkpoint');
+  return result.rows[0]!.ledger_json;
 }
 
 function makeCreateInput(fixture: FixtureContext, overrides: Partial<CreateInvestigationInput> = {}): CreateInvestigationInput {
