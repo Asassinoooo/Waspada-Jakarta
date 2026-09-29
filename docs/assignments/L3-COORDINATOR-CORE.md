@@ -1,11 +1,11 @@
 # L3-COORDINATOR-CORE — compose one bounded investigation advance
 
 **Parent package:** AGENT-01 / FR-07 bounded investigation  
-**Status:** Assigned after root baseline pin on `main`  
+**Status:** Ready for implementation on the dedicated task branch
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/L3-COORDINATOR-CORE`  
-**Worktree:** Dedicated managed worktree created from the exact root baseline recorded before implementation; do not edit in the root checkout.  
-**Base:** Root will pin the exact `main` SHA before worktree creation; report it in the handoff.  
+**Worktree:** Dedicated managed worktree from the pinned base below; do not edit in the root checkout.
+**Base:** `40e94100753a96eabdd908a5a76d6ab8ffd7d188` (root acceptance, ADR-031 and task assignment)
 **Contract baseline:** schema 2.0 `GroundingContext`/investigation records; internal investigation plan 1.0; existing L3 ledger port and executors. Do not change public schemas, OpenAPI, or provider/runtime configuration.  
 **Dependencies:** `L3-LEDGER-CORE`, `L3-INSUFFICIENT-CONTEXT-ENTRY-CORE`, `L3-SINGLE-STEP-EXECUTOR-CORE`, `L3-REASONING-STEP-CORE`, `L3-PROGRESS-FINGERPRINT-CORE`, `L2-INVESTIGATION-PLAN-CORE`, `RAG-CONTEXT-ASSEMBLY-CORE`, `L2-CONTEXT-PERSIST-CORE`, `DB-TEST-RUNNER-ISOLATION`; [ADR-031](../decisions/ADR-031-l3-bounded-coordinator-advance.md).  
 
@@ -45,4 +45,3 @@ Do not edit the root-owned SDP, architecture, backlog, ADR, checkpoint, delivery
 Do not enable live sources/providers, configure keys or Workflows, add a scheduler/runtime, publish, add moderator writes, alter public contracts, or exceed the allowed paths. If a required invariant cannot be enforced using the accepted L3 ports, stop before weakening it and give root the exact failing case.
 
 Commit all task work to this branch in coherent descriptive commits. Do not merge, push, or edit root-owned planning files. Handoff with the exact branch/worktree, base and commit SHA(s) plus messages, changed paths, behavior, WSL commands/results and runtime versions, limitations, migration/configuration impact, and remaining decisions. Root owns review, acceptance, integration and final status.
-
