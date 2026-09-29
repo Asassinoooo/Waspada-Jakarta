@@ -113,6 +113,8 @@ Allowed tools request one approved source search, one original-document acquisit
 
 Stop when required claims are supported; the next action would repeat an unchanged lookup; two successive results add no usable evidence; a hard limit is exhausted; a tool is unavailable without an approved alternative; or a material dispute remains. Preserve eligible claims for policy review and queue unresolved claims with a reason. No evidence is a valid result. A moderator can submit supported corrections or explicitly authorize a new investigation with a new ID; neither action can bypass the publication gate. Models cannot grant tool permissions, approve sources or reset budgets.
 
+Restart-safe repeat/no-progress detection follows [ADR-030](docs/decisions/ADR-030-l3-progress-fingerprints.md). Trusted code computes purpose-separated HMAC-SHA-256 digests over validated action inputs and a closed, text-free grounding projection. The ledger stores only digests, a key identifier, and bounded progress counts; exact repeated action digests are rejected, and two successive unchanged grounding refreshes stop for review. The key remains outside the database. This persistence slice is assigned for local synthetic implementation; there is no production key, Workflow binding, or coordinator runtime configured.
+
 ## 5. Contracts and module interfaces
 
 The machine-readable boundary specification is [docs/contracts.schema.json](docs/contracts.schema.json), with [synthetic examples](docs/contracts.examples.json) for each record type. It is a design artifact, not evidence that runtime validation is implemented. All records carry schema_version and trace_id. Closed object schemas reject extra fields, and required fields distinguish explicit unknowns from omitted values.

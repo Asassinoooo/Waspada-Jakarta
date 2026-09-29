@@ -1,11 +1,11 @@
 # L3-REASONING-STEP-PGLITE-CORE — verify planner budgeting with the durable ledger
 
 **Parent package:** AGENT-01 / FR-07 bounded investigation
-**Status:** Assigned on `main` at `ced0c1a`
+**Status:** Accepted on `main` after root review; agent handoff commit `5cbc5331cf4bee60a76011bf53cc6674f6d76897` is integrated.
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/L3-REASONING-STEP-PGLITE-CORE`
 **Worktree:** Reuse `C:\Users\perry\.codex\worktrees\obs-01-l1-fixture-telemetry\RPL` only after creating the new task branch from `main`; do not edit the root checkout.
-**Base commit:** `ced0c1af39a96ce248a756e141a7d3264413214d`
+**Base commit:** `4e24882198de89ff1efd36adb4b477b2fc78a650`
 **Contract baseline:** L2 investigation-plan 1.0; schema 2.0 grounding context and L3 ledger; no runtime or public API changes.
 
 ## Objective
@@ -52,3 +52,7 @@ Root owns this assignment, the backlog, checkpoint, delivery log and acceptance.
 Stop and report to root if the existing PGlite harness cannot exercise the L3 service without production-code changes, or if a schema, contract, dependency, package-script or runtime change appears necessary. Continue the test-only task if a fixture detail is missing by following existing synthetic patterns; do not add new source data.
 
 The handoff must include branch/worktree, base and full commit SHAs with exact messages, changed paths, WSL commands/results and runtime versions, what the real-ledger test proves, limitations, and any remaining decisions. Do not claim hosted Neon or provider behavior was tested.
+
+## Root review and acceptance
+
+Root fast-forwarded the two task commits to `main` after reviewing the test and handoff. In WSL Ubuntu-26.04, root independently passed `npm run db:test` (21/21 files) and `npm test` (web 60, Worker 327, DB 21/21 files, evaluation 12). The agent also passed the focused 8/8 test, workspace typecheck/build, and WSL diff checks on the same final content. The checks use synthetic data and establish no hosted Neon, live provider, or runtime behavior.
