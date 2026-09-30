@@ -107,6 +107,46 @@ describe('public event list candidate repository', () => {
       freshness: 'current',
       placeIds: ['place-withheld'],
     });
+    await seedEventVersion(live, 'event-aggregate-none-current', 1, 'published', '2026-09-24T03:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'current', lifecycle: 'ongoing',
+    });
+    await seedEventVersion(live, 'event-aggregate-none-expired', 1, 'published', '2026-09-24T02:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'expired', lifecycle: 'ongoing',
+    });
+    await seedEventVersion(live, 'event-aggregate-all-current', 1, 'published', '2026-09-24T01:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'current', lifecycle: 'ongoing',
+      impactFreshnessStatuses: ['current', 'current'],
+    });
+    await database.executor.query(
+      `INSERT INTO waspada.impact_versions
+         (dataset_kind, impact_id, version, trace_id, event_id, event_version,
+          impact_type, lifecycle, published_at, record_json)
+       VALUES ('live', $1, 2, $2, $3, 1, 'other', 'ongoing', $4, $5::jsonb)`,
+      [
+        'event-aggregate-all-current-impact-1', live.traceId, 'event-aggregate-all-current', FIRST,
+        JSON.stringify({ freshness: { status: 'needs_update' } }),
+      ],
+    );
+    await seedEventVersion(live, 'event-aggregate-all-expired', 1, 'published', '2026-09-24T00:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'expired', lifecycle: 'ongoing',
+      impactFreshnessStatuses: ['expired', 'expired'],
+    });
+    await seedEventVersion(live, 'event-aggregate-needs-update', 1, 'published', '2026-09-23T23:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'current', lifecycle: 'ongoing',
+      impactFreshnessStatuses: ['needs_update'],
+    });
+    await seedEventVersion(live, 'event-aggregate-mixed', 1, 'published', '2026-09-24T04:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'current', lifecycle: 'ongoing',
+      impactFreshnessStatuses: ['current', 'expired'],
+    });
+    await seedEventVersion(live, 'event-aggregate-claim-needs-update', 1, 'published', '2026-09-23T21:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'needs_update', lifecycle: 'ongoing',
+      impactFreshnessStatuses: ['current'],
+    });
+    await seedEventVersion(live, 'event-aggregate-invalid-impact', 1, 'published', '2026-09-23T20:00:00.000000Z', {
+      category: 'utilities_essential_services', freshness: 'current', lifecycle: 'ongoing',
+      impactFreshnessStatuses: ['stale'],
+    });
   });
 
   after(async () => {
@@ -290,11 +330,15 @@ describe('public event list candidate repository', () => {
       (await repository.read({ limit: 100, filters })).candidates.map(({ eventId }) => eventId);
 
     assert.deepEqual(await ids({ category: 'crime_personal_security' }), ['event-search-literal']);
-    assert.deepEqual(await ids({ category: 'utilities_essential_services' }), []);
+    assert.deepEqual(await ids({ category: 'utilities_essential_services' }), [
+      'event-aggregate-mixed', 'event-aggregate-none-current', 'event-aggregate-none-expired',
+      'event-aggregate-all-current', 'event-aggregate-all-expired', 'event-aggregate-needs-update',
+      'event-aggregate-claim-needs-update', 'event-aggregate-invalid-impact',
+    ]);
     assert.deepEqual(await ids({ lifecycle: 'planned' }), ['event-search-literal']);
     assert.deepEqual(await ids({ lifecycle: 'cancelled' }), []);
-    assert.deepEqual(await ids({ freshness: 'needs_update' }), ['event-filter-all']);
-    assert.deepEqual(await ids({ freshness: 'expired' }), ['event-filter-boundary-start']);
+    assert.deepEqual(await ids({ category: 'disasters_weather', freshness: 'needs_update' }), ['event-filter-all']);
+    assert.deepEqual(await ids({ category: 'disasters_weather', freshness: 'expired' }), ['event-filter-boundary-start']);
     assert.deepEqual(await ids({ place_id: ' place-alpha ' }), ['event-filter-all', 'event-filter-unknown-time']);
     assert.deepEqual(await ids({ place_id: 'place-alpha-plus' }), ['event-search-literal']);
     assert.deepEqual(await ids({ place_id: 'place-alpha-extended' }), []);
@@ -346,6 +390,89 @@ describe('public event list candidate repository', () => {
     assert.ok(!calls[0]!.statement.includes('claims'));
     assert.ok(!calls[0]!.statement.includes(query));
     assert.ok(calls[0]!.parameters.includes(query));
+  });
+
+  it('filters list pages on derived freshness before limits under the public-reader role', async () => {
+    const aggregateEventIds = [
+      'event-aggregate-none-current', 'event-aggregate-none-expired', 'event-aggregate-all-current',
+      'event-aggregate-all-expired', 'event-aggregate-needs-update', 'event-aggregate-mixed',
+      'event-aggregate-claim-needs-update', 'event-aggregate-invalid-impact',
+    ];
+    const before = await database.executor.query(
+      `SELECT event_id, lifecycle, publication_status, record_json #>> '{freshness,status}' AS record_freshness
+       FROM waspada.event_versions WHERE event_id = ANY($1::text[]) ORDER BY event_id`,
+      [aggregateEventIds],
+    );
+    const calls: { statement: string; parameters: readonly unknown[] }[] = [];
+    const repository = createPublicEventListRepository(recordQueries(database.executor, calls));
+
+    await database.executor.execute('SET ROLE waspada_public_reader');
+    try {
+      const filteredBeforeLimit = await repository.read({
+        limit: 1,
+        filters: { category: 'utilities_essential_services', freshness: 'current' },
+      });
+      assert.deepEqual(filteredBeforeLimit.candidates.map(({ eventId }) => eventId), ['event-aggregate-none-current']);
+      assert.deepEqual(
+        (await repository.read({
+          limit: 100,
+          filters: { category: 'utilities_essential_services', freshness: 'expired' },
+        })).candidates.map(({ eventId }) => eventId),
+        ['event-aggregate-none-expired', 'event-aggregate-all-expired'],
+      );
+      assert.deepEqual(
+        (await repository.read({
+          limit: 100,
+          filters: { category: 'utilities_essential_services', freshness: 'needs_update' },
+        })).candidates.map(({ eventId }) => eventId),
+        [
+          'event-aggregate-mixed', 'event-aggregate-needs-update',
+          'event-aggregate-claim-needs-update', 'event-aggregate-invalid-impact',
+        ],
+      );
+
+      const viewRows = await database.executor.query<{
+        event_id: string;
+        freshness_status: string;
+        record_freshness: string;
+        lifecycle: string;
+        publication_status: string;
+      }>(
+        `SELECT event_id, freshness_status, record_json #>> '{freshness,status}' AS record_freshness,
+                lifecycle, record_json->>'publication_status' AS publication_status
+         FROM waspada.public_event_versions WHERE event_id = ANY($1::text[]) ORDER BY event_id`,
+        [aggregateEventIds],
+      );
+      assert.deepEqual(viewRows.rows.map(({ event_id, freshness_status }) => [event_id, freshness_status]), [
+        ['event-aggregate-all-current', 'current'],
+        ['event-aggregate-all-expired', 'expired'],
+        ['event-aggregate-claim-needs-update', 'needs_update'],
+        ['event-aggregate-invalid-impact', 'needs_update'],
+        ['event-aggregate-mixed', 'needs_update'],
+        ['event-aggregate-needs-update', 'needs_update'],
+        ['event-aggregate-none-current', 'current'],
+        ['event-aggregate-none-expired', 'expired'],
+      ]);
+      const mixed = viewRows.rows.find(({ event_id }) => event_id === 'event-aggregate-mixed');
+      assert.deepEqual(mixed, {
+        event_id: 'event-aggregate-mixed',
+        freshness_status: 'needs_update',
+        record_freshness: 'current',
+        lifecycle: 'ongoing',
+        publication_status: 'published',
+      });
+      assert.ok(calls[0]!.statement.indexOf('candidate_events.freshness_status')
+        < calls[0]!.statement.indexOf('ORDER BY first_published_at'));
+    } finally {
+      await database.executor.execute('RESET ROLE');
+    }
+
+    const after = await database.executor.query(
+      `SELECT event_id, lifecycle, publication_status, record_json #>> '{freshness,status}' AS record_freshness
+       FROM waspada.event_versions WHERE event_id = ANY($1::text[]) ORDER BY event_id`,
+      [aggregateEventIds],
+    );
+    assert.deepEqual(after.rows, before.rows, 'reader projections leave event and publication rows unchanged');
   });
 });
 
@@ -420,6 +547,7 @@ interface EventOverrides {
   readonly category?: string;
   readonly lifecycle?: string;
   readonly freshness?: string;
+  readonly impactFreshnessStatuses?: readonly string[];
   readonly eventTimeStart?: string | null;
   readonly placeIds?: readonly string[];
   readonly serviceIds?: readonly string[];
@@ -465,6 +593,23 @@ async function seedEventVersion(
         record.title, record.summary, record.category, record.lifecycle, status, withdrawalReason,
         decisionId, publishedAt, withdrawnAt, JSON.stringify(record)],
     );
+    for (const [index, freshnessStatus] of (overrides.impactFreshnessStatuses ?? []).entries()) {
+      const impactId = eventId + '-impact-' + (index + 1);
+      await transaction.query(
+        `INSERT INTO waspada.impact_versions
+           (dataset_kind, impact_id, version, trace_id, event_id, event_version,
+            impact_type, lifecycle, published_at, record_json)
+         VALUES ($1, $2, 1, $3, $4, $5, 'other', 'ongoing', $6, $7::jsonb)`,
+        [fixture.datasetKind, impactId, fixture.traceId, eventId, version, publishedAt ?? FIRST,
+          JSON.stringify({ freshness: { status: freshnessStatus } })],
+      );
+      await transaction.query(
+        `INSERT INTO waspada.event_impact_refs
+           (dataset_kind, event_id, event_version, impact_id, impact_version)
+         VALUES ($1, $2, $3, $4, 1)`,
+        [fixture.datasetKind, eventId, version, impactId],
+      );
+    }
   });
 }
 
@@ -496,7 +641,10 @@ function eventRecord(
       ? [{ claim_id: 'claim-' + eventId + '-v' + version },
         ...(overrides.claimMarker === undefined ? [] : [{ claim_id: overrides.claimMarker }])]
       : [],
-    impact_refs: [], publication_status: status, withdrawal_reason: withdrawalReason,
+    impact_refs: (overrides.impactFreshnessStatuses ?? []).map((_, index) => ({
+      impact_id: eventId + '-impact-' + (index + 1), version: 1,
+    })),
+    publication_status: status, withdrawal_reason: withdrawalReason,
     publication_decision_id: fixture.prefix + '-decision-' + eventId + '-v' + version,
     published_at: publishedAt, withdrawn_at: withdrawnAt,
   };

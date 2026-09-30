@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { projectPublicEvent, PublicProjectionError, type PublicProjectionErrorCode, type PublicProjectionLookups } from "../src/layers/l4-application-integration/public-projection.js";
+import {
+  aggregateEventFreshnessStatus,
+  FreshnessAggregatePolicyError,
+  type FreshnessAggregateInput,
+} from "../src/layers/l4-application-integration/freshness-aggregate-policy.js";
+import type { FreshnessStatus } from "../src/contracts/public-api.js";
 
 const syntheticHashOne = "a".repeat(64);
 const syntheticHashTwo = "b".repeat(64);
@@ -317,6 +323,12 @@ test("projects the exact OpenAPI EventView allowlist with synthetic test lookups
   assertExactKeys(result, openApiKeys.eventView);
   assertExactKeys(result.scope, openApiKeys.publicScope);
   assertExactKeys(result.freshness, openApiKeys.freshness);
+  assert.deepEqual(result.freshness, {
+    status: "needs_update",
+    evaluated_at: "2026-09-25T03:00:00Z",
+    review_due_at: "2026-09-26T03:00:00Z",
+    basis: "manual_review",
+  });
   assertExactKeys(result.event_time, openApiKeys.timeScope);
   assertExactKeys(result.validity, openApiKeys.validity);
   assert.deepEqual(result.scope, {
@@ -345,6 +357,11 @@ test("projects the exact OpenAPI EventView allowlist with synthetic test lookups
   assert.equal(result.claims[1]?.sources[0]?.observed_at, "2026-09-25T03:15:00Z");
   assert.equal(result.claims[1]?.sources[1]?.excerpt, null);
   assert.deepEqual(result.impacts.map((impact) => impact.impact_id), ["impact-synthetic-a", "impact-synthetic-z"]);
+  assert.deepEqual(result.impacts.map((impact) => impact.freshness.status), ["current", "needs_update"]);
+  assert.deepEqual(result.impacts.map((impact) => impact.freshness.evaluated_at), [
+    "2026-09-25T03:03:00Z",
+    "2026-09-25T03:02:00Z",
+  ]);
   assert.deepEqual(result.impacts[0]?.scope.audiences, ["Synthetic student audience"]);
 
   for (const claim of result.claims) {
@@ -392,6 +409,66 @@ test("projection ordering is stable when stored and lookup arrays arrive in anot
     impacts: [...lookups.impacts].reverse(),
   };
   assert.deepEqual(projectPublicEvent(reversedEvent, shuffledLookups), projectPublicEvent(event, lookups));
+});
+
+test("event freshness aggregation covers each status combination and preserves the empty-impact status", () => {
+  const statuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
+  const impactCombinations: FreshnessStatus[][] = [[]];
+  for (const first of statuses) {
+    impactCombinations.push([first]);
+    for (const second of statuses) impactCombinations.push([first, second]);
+  }
+  const expectedByStatusSet: Readonly<Record<string, FreshnessStatus>> = {
+    current: "current",
+    expired: "expired",
+    needs_update: "needs_update",
+    "current|expired": "needs_update",
+    "current|needs_update": "needs_update",
+    "expired|needs_update": "needs_update",
+    "current|expired|needs_update": "needs_update",
+  };
+
+  for (const claimSetStatus of statuses) {
+    for (const impactStatuses of impactCombinations) {
+      const allStatuses = [claimSetStatus, ...impactStatuses];
+      const statusSet = [...new Set(allStatuses)].sort().join("|");
+      assert.equal(
+        aggregateEventFreshnessStatus({ claimSetStatus, impactStatuses }),
+        expectedByStatusSet[statusSet],
+        `${claimSetStatus} with [${impactStatuses.join(", ")}]`,
+      );
+    }
+  }
+});
+
+test("event freshness aggregation is order independent and rejects invalid inputs", () => {
+  const impactOrderings: readonly (readonly FreshnessStatus[])[] = [
+    ["current", "expired"],
+    ["expired", "current"],
+    ["current", "expired", "needs_update"],
+    ["needs_update", "expired", "current"],
+    ["expired", "needs_update", "current"],
+  ];
+  for (const impactStatuses of impactOrderings) {
+    assert.equal(aggregateEventFreshnessStatus({ claimSetStatus: "current", impactStatuses }), "needs_update");
+  }
+
+  const invalidInputs: unknown[] = [
+    null,
+    [],
+    { claimSetStatus: "stale", impactStatuses: [] },
+    { claimSetStatus: "current", impactStatuses: ["stale"] },
+    { claimSetStatus: "current", impactStatuses: [] , unexpected: true },
+    { claimSetStatus: "current" },
+  ];
+  for (const input of invalidInputs) {
+    assert.throws(() => aggregateEventFreshnessStatus(input as FreshnessAggregateInput), (error: unknown) => {
+      assert.ok(error instanceof FreshnessAggregatePolicyError);
+      assert.equal(error.code, "INVALID_INPUT");
+      assert.equal(error.message.includes("stale"), false);
+      return true;
+    });
+  }
 });
 
 test("non-live and withdrawn event versions fail closed", () => {

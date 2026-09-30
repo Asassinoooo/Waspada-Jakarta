@@ -4,7 +4,9 @@ import worker from "../src/index.js";
 import type {
   EventDetail,
   EventPage,
+  EventView,
   HistoryPage,
+  PublicImpact,
   PublicContext,
 } from "../src/contracts/public-api.js";
 import {
@@ -16,6 +18,7 @@ import {
   readPublicGeoJSONQuery,
 } from "../src/layers/l4-application-integration/public-geojson-query.js";
 import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
+import { syntheticEventFixtures } from "../src/layers/l4-application-integration/synthetic-fixtures.js";
 import {
   PublicEventListPageServiceError,
   type PublicEventListPageService,
@@ -43,6 +46,55 @@ async function readJson<T>(response: Response): Promise<T> {
 function assertKeys(value: object, expected: string[]) {
   assert.deepEqual(Object.keys(value).sort(), [...expected].sort());
 }
+
+test("demo event reads aggregate impact freshness before filtering and detail projection", () => {
+  const base = syntheticEventFixtures[0]!;
+  const impactFreshness = {
+    status: "expired" as const,
+    evaluated_at: "2026-09-25T04:00:00.000Z",
+    review_due_at: null,
+    basis: "source_validity" as const,
+  };
+  const impact: PublicImpact = {
+    impact_id: "synthetic-aggregate-impact",
+    version: 1,
+    impact_type: "facility_closure",
+    title: "Fictional closure example",
+    description: "Authored fixture used to check aggregate status.",
+    lifecycle: "ongoing",
+    freshness: impactFreshness,
+    event_time: { start: null, end: null, precision: "unknown" },
+    validity: { valid_from: null, valid_until: null },
+    scope: { places: [], services: [], institutions: [], audiences: [] },
+  };
+  const fixture: EventView = {
+    ...base,
+    event_id: "synthetic-aggregate-event",
+    freshness: {
+      status: "current",
+      evaluated_at: "2026-09-25T03:00:00.000Z",
+      review_due_at: "2026-09-26T03:00:00.000Z",
+      basis: "manual_review",
+    },
+    impacts: [impact],
+  };
+  const model = new PublicReadModel({ listPublicSourceStatus: () => [] }, [fixture]);
+
+  const needsUpdate = model.events(new URLSearchParams({ freshness: "needs_update" }));
+  assert.equal(needsUpdate.data.length, 1);
+  assert.deepEqual(needsUpdate.data[0]?.freshness, {
+    status: "needs_update",
+    evaluated_at: "2026-09-25T03:00:00.000Z",
+    review_due_at: "2026-09-26T03:00:00.000Z",
+    basis: "manual_review",
+  });
+  assert.equal(model.events(new URLSearchParams({ freshness: "current" })).data.length, 0);
+
+  const detail = model.detail(fixture.event_id);
+  assert.equal(detail?.freshness.status, "needs_update");
+  assert.deepEqual(detail?.impacts[0]?.freshness, impactFreshness);
+  assert.equal(fixture.freshness.status, "current", "the stored fixture remains unchanged");
+});
 
 test("updates remain unavailable in demo and unset modes without synthetic fallback", async () => {
   for (const environment of [{}, demoEnvironment]) {

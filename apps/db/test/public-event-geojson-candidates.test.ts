@@ -15,6 +15,7 @@ import { createTestDatabase, type TestDatabase } from './harness.js';
 const TEST_TIME = '2026-09-27T03:00:00Z';
 const TEST_HASH = 'c'.repeat(64);
 const BBOX = [106.79, -6.21, 106.81, -6.19] as const;
+const AGGREGATE_BBOX = [106.84, -6.21, 106.87, -6.19] as const;
 
 type DatasetKind = 'live' | 'historical' | 'synthetic';
 type PublicationStatus = 'published' | 'withdrawn';
@@ -50,6 +51,7 @@ interface EventSeed {
   readonly category?: string;
   readonly lifecycle?: string;
   readonly freshness?: string;
+  readonly impactFreshnessStatuses?: readonly string[];
   readonly eventGeometryIds?: readonly string[];
   readonly claims?: readonly ClaimSeed[];
   readonly recordJson?: unknown;
@@ -93,6 +95,12 @@ describe('public event GeoJSON candidate reader', () => {
       point('geo-filtered', 106.8, -6.195),
       point('geo-historical', 106.8, -6.2),
       point('geo-synthetic', 106.8, -6.2),
+      point('geo-aggregate-none-current', 106.85, -6.2),
+      point('geo-aggregate-all-current', 106.852, -6.2),
+      point('geo-aggregate-all-expired', 106.854, -6.2),
+      point('geo-aggregate-needs-update', 106.856, -6.2),
+      point('geo-aggregate-mixed', 106.858, -6.2),
+      point('geo-aggregate-claim-needs-update', 106.86, -6.2),
     ];
     for (const geometry of geometries) await seedGeometry(testDatabase, liveFixture, geometry);
     await seedGeometry(testDatabase, historicalFixture, point('geo-historical', 106.8, -6.2));
@@ -173,6 +181,47 @@ describe('public event GeoJSON candidate reader', () => {
       freshness: 'expired',
       claims: [{ claimId: 'claim-filtered', geometryIds: ['geo-filtered'] }],
     });
+    await seedEventVersion(testDatabase, liveFixture, {
+      eventId: 'event-geojson-aggregate-none-current', version: 1,
+      freshness: 'current',
+      claims: [{ claimId: 'claim-geojson-aggregate-none-current', geometryIds: ['geo-aggregate-none-current'] }],
+    });
+    await seedEventVersion(testDatabase, liveFixture, {
+      eventId: 'event-geojson-aggregate-all-current', version: 1,
+      freshness: 'current', impactFreshnessStatuses: ['current', 'current'],
+      claims: [{ claimId: 'claim-geojson-aggregate-all-current', geometryIds: ['geo-aggregate-all-current'] }],
+    });
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.impact_versions
+         (dataset_kind, impact_id, version, trace_id, event_id, event_version,
+          impact_type, lifecycle, published_at, record_json)
+       VALUES ('live', $1, 2, $2, $3, 1, 'other', 'ongoing', $4, $5::jsonb)`,
+      [
+        'event-geojson-aggregate-all-current-impact-1', liveFixture.traceId,
+        'event-geojson-aggregate-all-current', TEST_TIME,
+        JSON.stringify({ freshness: { status: 'needs_update' } }),
+      ],
+    );
+    await seedEventVersion(testDatabase, liveFixture, {
+      eventId: 'event-geojson-aggregate-all-expired', version: 1,
+      freshness: 'expired', impactFreshnessStatuses: ['expired', 'expired'],
+      claims: [{ claimId: 'claim-geojson-aggregate-all-expired', geometryIds: ['geo-aggregate-all-expired'] }],
+    });
+    await seedEventVersion(testDatabase, liveFixture, {
+      eventId: 'event-geojson-aggregate-needs-update', version: 1,
+      freshness: 'current', impactFreshnessStatuses: ['needs_update'],
+      claims: [{ claimId: 'claim-geojson-aggregate-needs-update', geometryIds: ['geo-aggregate-needs-update'] }],
+    });
+    await seedEventVersion(testDatabase, liveFixture, {
+      eventId: 'event-geojson-aggregate-mixed', version: 1,
+      freshness: 'current', impactFreshnessStatuses: ['current', 'expired'],
+      claims: [{ claimId: 'claim-geojson-aggregate-mixed', geometryIds: ['geo-aggregate-mixed'] }],
+    });
+    await seedEventVersion(testDatabase, liveFixture, {
+      eventId: 'event-geojson-aggregate-claim-needs-update', version: 1,
+      freshness: 'needs_update', impactFreshnessStatuses: ['current'],
+      claims: [{ claimId: 'claim-geojson-aggregate-claim-needs-update', geometryIds: ['geo-aggregate-claim-needs-update'] }],
+    });
     await seedEventVersion(testDatabase, historicalFixture, {
       eventId: 'event-historical', version: 1,
       claims: [{ claimId: 'claim-historical', geometryIds: ['geo-historical'] }],
@@ -189,6 +238,7 @@ describe('public event GeoJSON candidate reader', () => {
     await seedEventVersion(testDatabase, liveFixture, {
       eventId: 'event-overflow',
       version: 1,
+      impactFreshnessStatuses: ['needs_update'],
       claims: [{ claimId: 'claim-overflow', geometryIds: overflowGeometryIds }],
     });
   });
@@ -248,6 +298,102 @@ describe('public event GeoJSON candidate reader', () => {
       freshness: 'expired',
     });
     assert.deepEqual(combined.map(candidateKey), ['event-filtered:1:geo-filtered']);
+  });
+
+  it('filters GeoJSON on exact aggregate freshness before the feature probe under the public-reader role', async () => {
+    const aggregateEventIds = [
+      'event-geojson-aggregate-none-current', 'event-geojson-aggregate-all-current',
+      'event-geojson-aggregate-all-expired', 'event-geojson-aggregate-needs-update',
+      'event-geojson-aggregate-mixed', 'event-geojson-aggregate-claim-needs-update',
+    ];
+    const before = await testDatabase.executor.query(
+      `SELECT event_id, lifecycle, publication_status, record_json #>> '{freshness,status}' AS record_freshness
+       FROM waspada.event_versions WHERE event_id = ANY($1::text[]) ORDER BY event_id`,
+      [aggregateEventIds],
+    );
+    const calls: { statement: string; parameters: readonly unknown[] }[] = [];
+    const repository = createPublicEventGeoJSONCandidateRepository(recordQueries(testDatabase.executor, calls));
+
+    await testDatabase.executor.execute('SET ROLE waspada_public_reader');
+    try {
+      const all = await repository.read({ bbox: AGGREGATE_BBOX });
+      assert.deepEqual(all.map(candidateKey), [
+        'event-geojson-aggregate-all-current:1:geo-aggregate-all-current',
+        'event-geojson-aggregate-all-expired:1:geo-aggregate-all-expired',
+        'event-geojson-aggregate-claim-needs-update:1:geo-aggregate-claim-needs-update',
+        'event-geojson-aggregate-mixed:1:geo-aggregate-mixed',
+        'event-geojson-aggregate-needs-update:1:geo-aggregate-needs-update',
+        'event-geojson-aggregate-none-current:1:geo-aggregate-none-current',
+      ]);
+      assert.deepEqual(all.map(({ eventId, freshness }) => [eventId, freshness]), [
+        ['event-geojson-aggregate-all-current', 'current'],
+        ['event-geojson-aggregate-all-expired', 'expired'],
+        ['event-geojson-aggregate-claim-needs-update', 'needs_update'],
+        ['event-geojson-aggregate-mixed', 'needs_update'],
+        ['event-geojson-aggregate-needs-update', 'needs_update'],
+        ['event-geojson-aggregate-none-current', 'current'],
+      ]);
+      const mixed = all.find(({ eventId }) => eventId === 'event-geojson-aggregate-mixed');
+      assert.equal(mixed?.freshness, 'needs_update');
+      assert.equal(
+        ((mixed?.eventRecordJson as Record<string, unknown>).freshness as Record<string, unknown>).status,
+        'current',
+        'the derived status is separate from immutable Event JSON',
+      );
+      assert.equal(
+        all.find(({ eventId }) => eventId === 'event-geojson-aggregate-all-current')?.freshness,
+        'current',
+        'an unreferenced newer impact version does not affect the exact referenced version',
+      );
+
+      assert.deepEqual(
+        (await repository.read({ bbox: AGGREGATE_BBOX, freshness: 'current' })).map(candidateKey),
+        [
+          'event-geojson-aggregate-all-current:1:geo-aggregate-all-current',
+          'event-geojson-aggregate-none-current:1:geo-aggregate-none-current',
+        ],
+      );
+      assert.deepEqual(
+        (await repository.read({ bbox: AGGREGATE_BBOX, freshness: 'expired' })).map(candidateKey),
+        ['event-geojson-aggregate-all-expired:1:geo-aggregate-all-expired'],
+      );
+      assert.deepEqual(
+        (await repository.read({ bbox: AGGREGATE_BBOX, freshness: 'needs_update' })).map(candidateKey),
+        [
+          'event-geojson-aggregate-claim-needs-update:1:geo-aggregate-claim-needs-update',
+          'event-geojson-aggregate-mixed:1:geo-aggregate-mixed',
+          'event-geojson-aggregate-needs-update:1:geo-aggregate-needs-update',
+        ],
+      );
+      const freshnessStatement = calls.find(({ parameters }) => parameters[6] === 'needs_update')?.statement;
+      assert.ok(freshnessStatement);
+      assert.ok(freshnessStatement.indexOf('candidate.freshness = $7')
+        < freshnessStatement.indexOf('ORDER BY candidate.event_id'));
+      assert.ok(freshnessStatement.indexOf('ORDER BY candidate.event_id')
+        < freshnessStatement.indexOf('LIMIT 501'));
+
+      const overflowLongitudes = Array.from({ length: 501 }, (_, index) => 106.5 + index / 2048);
+      const overflowBBox = [106.5, -6.2, overflowLongitudes[500]!, -6.2] as const;
+      assert.deepEqual(
+        await repository.read({ bbox: overflowBBox, freshness: 'current' }),
+        [],
+        'aggregate freshness filtering removes 501 nonmatching features before the overflow probe',
+      );
+      await assert.rejects(
+        repository.read({ bbox: overflowBBox, freshness: 'needs_update' }),
+        (error: unknown) => error instanceof PublicEventGeoJSONCandidateError
+          && error.code === 'FEATURE_LIMIT_EXCEEDED',
+      );
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+
+    const after = await testDatabase.executor.query(
+      `SELECT event_id, lifecycle, publication_status, record_json #>> '{freshness,status}' AS record_freshness
+       FROM waspada.event_versions WHERE event_id = ANY($1::text[]) ORDER BY event_id`,
+      [aggregateEventIds],
+    );
+    assert.deepEqual(after.rows, before.rows, 'GeoJSON reads leave event and publication rows unchanged');
   });
 
   it('accepts inclusive bbox edges and uses exact intersection without clipping', async () => {
@@ -585,6 +731,7 @@ async function seedEventVersion(
     category: input.category,
     lifecycle: input.lifecycle,
     freshness: input.freshness,
+    impactFreshnessStatuses: input.impactFreshnessStatuses,
     eventGeometryIds: input.eventGeometryIds ?? [],
     claims: claims.map(({ record: claim }) => claim),
     decisionId,
@@ -625,6 +772,24 @@ async function seedEventVersion(
       ],
     );
 
+    for (const [index, freshnessStatus] of (input.impactFreshnessStatuses ?? []).entries()) {
+      const impactId = eventId + '-impact-' + (index + 1);
+      await transaction.query(
+        `INSERT INTO waspada.impact_versions
+           (dataset_kind, impact_id, version, trace_id, event_id, event_version,
+            impact_type, lifecycle, published_at, record_json)
+         VALUES ($1, $2, 1, $3, $4, $5, 'other', 'ongoing', $6, $7::jsonb)`,
+        [datasetKind, impactId, fixture.traceId, eventId, version, TEST_TIME,
+          JSON.stringify({ freshness: { status: freshnessStatus } })],
+      );
+      await transaction.query(
+        `INSERT INTO waspada.event_impact_refs
+           (dataset_kind, event_id, event_version, impact_id, impact_version)
+         VALUES ($1, $2, $3, $4, 1)`,
+        [datasetKind, eventId, version, impactId],
+      );
+    }
+
     for (const { seed, record: claim } of claims) {
       if (seed.storeClaim !== false) {
         await transaction.query(
@@ -657,6 +822,7 @@ function createEventRecord(
     readonly category?: string;
     readonly lifecycle?: string;
     readonly freshness?: string;
+    readonly impactFreshnessStatuses?: readonly string[];
     readonly eventGeometryIds?: readonly string[];
     readonly claims?: readonly Record<string, unknown>[];
     readonly decisionId?: string;
@@ -689,7 +855,9 @@ function createEventRecord(
       geometry_ids: [...(options.eventGeometryIds ?? [])],
     },
     claims: status === 'published' ? [...(options.claims ?? [])] : [],
-    impact_refs: [],
+    impact_refs: (options.impactFreshnessStatuses ?? []).map((_, index) => ({
+      impact_id: options.eventId + '-impact-' + (index + 1), version: 1,
+    })),
     publication_status: status,
     withdrawal_reason: status === 'withdrawn' ? 'duplicate' : null,
     publication_decision_id: options.decisionId ?? 'fixture-event-decision',

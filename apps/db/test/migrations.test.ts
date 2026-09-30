@@ -24,7 +24,8 @@ describe('DATA-01 migrations', () => {
       && version !== '016_public_update_feed_order'
       && version !== '017_moderator_publication_writer_role'
       && version !== '018_l1_extraction_result_verification'
-      && version !== '019_l3_progress_fingerprints');
+      && version !== '019_l3_progress_fingerprints'
+      && version !== '020_public_event_freshness_aggregate');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -54,7 +55,8 @@ describe('DATA-01 migrations', () => {
         && version !== '016_public_update_feed_order'
         && version !== '017_moderator_publication_writer_role'
         && version !== '018_l1_extraction_result_verification'
-        && version !== '019_l3_progress_fingerprints');
+        && version !== '019_l3_progress_fingerprints'
+        && version !== '020_public_event_freshness_aggregate');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -171,6 +173,7 @@ describe('DATA-01 migrations', () => {
         '016_public_update_feed_order',
         '017_moderator_publication_writer_role',
         '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
+        '020_public_event_freshness_aggregate',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -304,6 +307,7 @@ describe('DATA-01 migrations', () => {
       '016_public_update_feed_order',
       '017_moderator_publication_writer_role',
       '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
+      '020_public_event_freshness_aggregate',
     ]);
   });
 
@@ -321,12 +325,13 @@ describe('DATA-01 migrations', () => {
       '016_public_update_feed_order',
       '017_moderator_publication_writer_role',
       '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
+      '020_public_event_freshness_aggregate',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '19');
+    assert.equal(count.rows[0]?.count, '20');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -345,7 +350,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 019_l3_progress_fingerprints/,
+      /Cannot apply migration 000_late_backfill before already applied migration 020_public_event_freshness_aggregate/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -371,6 +376,7 @@ describe('DATA-01 migrations', () => {
       { version: '017_moderator_publication_writer_role' },
       { version: '018_l1_extraction_result_verification' },
       { version: '019_l3_progress_fingerprints' },
+      { version: '020_public_event_freshness_aggregate' },
     ]);
   });
 
@@ -385,6 +391,7 @@ describe('DATA-01 migrations', () => {
       '016_public_update_feed_order',
       '017_moderator_publication_writer_role',
       '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
+      '020_public_event_freshness_aggregate',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",

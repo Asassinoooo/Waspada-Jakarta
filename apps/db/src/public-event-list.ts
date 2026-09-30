@@ -167,7 +167,7 @@ function buildQuery(options: ValidatedOptions, probeLimit: number): {
     conditions.push(`candidate_events.record_json->>'lifecycle' = ${parameter(filters.lifecycle)}::text`);
   }
   if (filters.freshness !== undefined) {
-    conditions.push(`candidate_events.record_json #>> '{freshness,status}' = ${parameter(filters.freshness)}::text`);
+    conditions.push(`candidate_events.freshness_status = ${parameter(filters.freshness)}::text`);
   }
   if (filters.from !== undefined) {
     conditions.push(`${eventStartTimestamp} >= ${parameter(filters.from)}::timestamptz`);
@@ -216,6 +216,7 @@ function buildQuery(options: ValidatedOptions, probeLimit: number): {
   const filtered = [
     'WITH candidate_events AS (',
     '  SELECT current.dataset_kind, current.event_id, current.version, current.record_json,',
+    '         current.freshness_status,',
     '         initial.record_json AS first_record_json',
     '  FROM waspada.public_event_versions AS current',
     '  JOIN waspada.public_event_history_versions AS initial',

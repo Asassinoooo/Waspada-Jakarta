@@ -58,7 +58,8 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       version !== '016_public_update_feed_order'
       && version !== '017_moderator_publication_writer_role'
       && version !== '018_l1_extraction_result_verification'
-      && version !== '019_l3_progress_fingerprints'));
+      && version !== '019_l3_progress_fingerprints'
+      && version !== '020_public_event_freshness_aggregate'));
     await database.executor.query(
       "INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')",
     );
@@ -84,6 +85,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     assert.deepEqual(applied.applied, [
       '016_public_update_feed_order', '017_moderator_publication_writer_role',
       '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
+      '020_public_event_freshness_aggregate',
     ]);
   });
 

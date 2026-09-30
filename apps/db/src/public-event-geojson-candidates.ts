@@ -293,7 +293,7 @@ function isEventRecordIdentity(value: unknown, row: CandidateRow): boolean {
     && value.category === row.category
     && value.lifecycle === row.lifecycle
     && isRecord(value.freshness)
-    && value.freshness.status === row.freshness
+    && isFreshness(value.freshness.status)
     && Array.isArray(value.claims);
 }
 

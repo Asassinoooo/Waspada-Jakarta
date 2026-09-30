@@ -5,8 +5,10 @@ import type {
   HistoryPage,
   PublicContext,
   PublicFeatureCollection,
+  EventView,
 } from "../../contracts/public-api.js";
 import type { SourceStatusProvider } from "../l1-data-knowledge/source-status.js";
+import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
 
@@ -55,7 +57,7 @@ export class PublicReadModel {
     const offset = this.readCursor(search.get("cursor"));
     const filters = this.readFilters(search);
 
-    const matches = this.fixtures.filter((event) => {
+    const matches = this.fixtures.map(withAggregateFreshness).filter((event) => {
       if (filters.category && event.category !== filters.category) return false;
       if (filters.lifecycle && event.lifecycle !== filters.lifecycle) return false;
       if (filters.freshness && event.freshness.status !== filters.freshness) return false;
@@ -90,8 +92,9 @@ export class PublicReadModel {
   }
 
   detail(eventId: string): EventDetail | null {
-    const event = this.findFixture(eventId);
-    if (!event) return null;
+    const fixture = this.findFixture(eventId);
+    if (!fixture) return null;
+    const event = withAggregateFreshness(fixture);
 
     return {
       event_id: event.event_id,
@@ -231,4 +234,17 @@ export class PublicReadModel {
       .join(" ")
       .toLocaleLowerCase("id");
   }
+}
+
+function withAggregateFreshness(event: EventView): EventView {
+  return {
+    ...event,
+    freshness: {
+      ...event.freshness,
+      status: aggregateEventFreshnessStatus({
+        claimSetStatus: event.freshness.status,
+        impactStatuses: event.impacts.map((impact) => impact.freshness.status),
+      }),
+    },
+  };
 }

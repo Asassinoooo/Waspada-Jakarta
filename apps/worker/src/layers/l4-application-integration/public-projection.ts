@@ -1,4 +1,5 @@
 import type { EventView, Freshness, Lifecycle, PublicClaim, PublicImpact, TimeScope, Validity } from "../../contracts/public-api.js";
+import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 
 /**
  * Lookup rows are deliberately runtime-checked. They are supplied by trusted
@@ -229,6 +230,13 @@ function projectValidatedEvent(
   }
 
   const projectedImpacts = projectImpacts(event, lookups.impacts, lookups.scopeNames);
+  const freshness: Freshness = {
+    ...event.freshness,
+    status: aggregateEventFreshnessStatus({
+      claimSetStatus: event.freshness.status,
+      impactStatuses: projectedImpacts.map((impact) => impact.freshness.status),
+    }),
+  };
 
   projectedClaims.sort((left, right) => compareStrings(left.claim_id, right.claim_id));
   projectedImpacts.sort((left, right) => compareStrings(left.impact_id, right.impact_id)
@@ -242,7 +250,7 @@ function projectValidatedEvent(
     category: event.category,
     tags: event.tags,
     lifecycle: event.lifecycle,
-    freshness: event.freshness,
+    freshness,
     event_time: event.eventTime,
     validity: event.validity,
     scope: eventScope,
