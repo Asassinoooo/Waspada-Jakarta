@@ -1,8 +1,11 @@
+/// <reference lib="webworker" />
+
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createRepositoryPorts } from '../src/ports.js';
+import { createPublicEventUpdatesReader } from '../src/public-event-updates.js';
 import {
   PublicationWriteError,
   SqlPublicationWriter,
@@ -12,6 +15,8 @@ import {
   type PublicationWriteCommand,
 } from '../src/publication-writer.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
+import { createPublicEventUpdatesCursorCodec } from '../../worker/src/layers/l4-application-integration/public-event-updates-cursor.js';
+import { createPublicEventUpdatesService } from '../../worker/src/layers/l4-application-integration/public-event-updates-service.js';
 
 const fixtureTraceId = 'trace-pub-write-fixture';
 const fixtureProposalId = 'proposal-pub-write-create';
@@ -251,6 +256,126 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
       [fixtureEventId],
     );
     assert.equal(outboxCount.rows[0]?.count, '2');
+  });
+
+  it('projects an authored synthetic correction through persisted update disclosures', async () => {
+    const eventId = 'event-pub-write-correction-chain';
+    const impactId = 'impact-pub-write-correction-chain';
+    const firstProposalId = 'proposal-pub-write-correction-v1';
+    const correctionProposalId = 'proposal-pub-write-correction-v2';
+    const firstPublishedAt = '2026-09-25T05:00:00Z';
+    const correctionPublishedAt = '2026-09-25T05:15:00.123456Z';
+    const firstDisclosureSummary = 'Authored synthetic publication summary for fictional exercise version one.';
+    const correctionDisclosureSummary = 'Authored synthetic correction summary for fictional exercise version two.';
+
+    await seedProposal(database, firstProposalId, null);
+    const firstCommand = makeCommand({
+      proposalId: firstProposalId,
+      decisionId: 'decision-pub-write-correction-v1',
+      idempotencyKey: 'pub-write-correction-v1-key',
+      event: { ...eventDraft(1, null, eventId), published_at: firstPublishedAt },
+      impact: impactDraft(1, 1, eventId, impactId),
+    });
+    const firstResult = await runAsModeratorPublicationWriter(database, () => writer.publish(firstCommand));
+    assert.deepEqual(firstResult, {
+      outcome: 'written', decisionId: firstCommand.decisionId, eventId, eventVersion: 1,
+    });
+    const replay = await runAsModeratorPublicationWriter(database, () => writer.publish(firstCommand));
+    assert.deepEqual(replay, {
+      outcome: 'replayed', decisionId: firstCommand.decisionId, eventId, eventVersion: 1,
+    });
+
+    await seedProposal(database, correctionProposalId, { eventId, baseVersion: 1 });
+    const correctionCommand = makeCommand({
+      proposalId: correctionProposalId,
+      decisionId: 'decision-pub-write-correction-v2',
+      idempotencyKey: 'pub-write-correction-v2-key',
+      expectedTarget: { event_id: eventId, base_event_version: 1 },
+      event: { ...eventDraft(2, 1, eventId), published_at: correctionPublishedAt },
+      impact: impactDraft(2, 2, eventId, impactId),
+    });
+    const correctionResult = await runAsModeratorPublicationWriter(database, () => writer.publish(correctionCommand));
+    assert.deepEqual(correctionResult, {
+      outcome: 'written', decisionId: correctionCommand.decisionId, eventId, eventVersion: 2,
+    });
+
+    const storedVersions = await database.executor.query<{
+      version: number;
+      supersedes_version: number | null;
+      published_at: string;
+    }>(
+      `SELECT version, supersedes_version, record_json->>'published_at' AS published_at
+       FROM waspada.event_versions
+       WHERE dataset_kind = 'live' AND event_id = $1
+       ORDER BY version`,
+      [eventId],
+    );
+    assert.deepEqual(storedVersions.rows, [
+      { version: 1, supersedes_version: null, published_at: firstPublishedAt },
+      { version: 2, supersedes_version: 1, published_at: correctionPublishedAt },
+    ]);
+
+    // These append-only rows are authored disclosure fixtures, not human decisions or moderator actions.
+    await seedSyntheticDisclosure(database, {
+      eventId,
+      eventVersion: 1,
+      changeType: 'published',
+      summary: firstDisclosureSummary,
+    });
+    await seedSyntheticDisclosure(database, {
+      eventId,
+      eventVersion: 2,
+      changeType: 'corrected',
+      summary: correctionDisclosureSummary,
+    });
+
+    const key = await globalThis.crypto.subtle.generateKey(
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify'],
+    );
+    const now = () => Date.parse('2026-09-25T06:00:00.000Z');
+    const page = await database.executor.transaction(async (transaction) => {
+      await transaction.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const reader = createPublicEventUpdatesReader(transaction);
+      const cursor = await createPublicEventUpdatesCursorCodec({ key, now }).issue('0');
+      return createPublicEventUpdatesService({ reader, key, now }).read({ cursor: cursor.token });
+    });
+
+    assert.deepEqual(page.items, [
+      {
+        event_id: eventId,
+        version: 1,
+        change_type: 'published',
+        changed_at: storedVersions.rows[0]!.published_at,
+        summary: firstDisclosureSummary,
+      },
+      {
+        event_id: eventId,
+        version: 2,
+        change_type: 'corrected',
+        changed_at: storedVersions.rows[1]!.published_at,
+        summary: correctionDisclosureSummary,
+      },
+    ]);
+    assert.deepEqual(Object.keys(page).sort(), [
+      'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
+    ]);
+    for (const item of page.items) {
+      assert.deepEqual(Object.keys(item).sort(), [
+        'change_type', 'changed_at', 'event_id', 'summary', 'version',
+      ]);
+    }
+
+    const projection = JSON.stringify(page);
+    for (const internalValue of [
+      'synthetic-fixture-not-a-person', 'reviewer_id', 'reviewerId', 'review_id',
+      'change_sequence', 'changeSequence', 'proposal-pub-write-correction',
+      'decision-pub-write-correction', 'source-pub-write-fixture', 'evidence_ref_id',
+      'waspada.', 'SELECT',
+    ]) {
+      assert.equal(projection.includes(internalValue), false, `projection excludes ${internalValue}`);
+    }
   });
 
   it('returns stable conflicts for changed idempotency payloads, duplicate creates, and stale retries', async () => {
@@ -596,6 +721,25 @@ interface EvidenceReferenceFixture {
     readonly offset_unit: 'unicode_code_points';
     readonly relation: 'supports' | 'contradicts' | 'context';
   };
+}
+
+async function seedSyntheticDisclosure(
+  database: TestDatabase,
+  input: {
+    readonly eventId: string;
+    readonly eventVersion: number;
+    readonly changeType: 'published' | 'corrected';
+    readonly summary: string;
+  },
+): Promise<void> {
+  await database.executor.query(
+    `INSERT INTO waspada.public_event_history_review_decisions
+       (dataset_kind, event_id, event_version, review_status, change_type,
+        summary, reviewer_id, reviewed_at)
+     VALUES ('live', $1, $2, 'approved', $3, $4,
+        'synthetic-fixture-not-a-person', '2026-09-25T05:30:00Z')`,
+    [input.eventId, input.eventVersion, input.changeType, input.summary],
+  );
 }
 
 async function insertEvidenceReference(
