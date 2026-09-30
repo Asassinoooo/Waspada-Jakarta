@@ -27,6 +27,10 @@ Source health is updated independently from event state. A successful poll recor
 - Ingestion connectors, report preprocessing, public APIs, model calls, L3 investigation work, live-source permissions, moderator authentication, Cloudflare schedules, Neon integration and deployment remain separate tasks or authorization gates.
 - Backoff and attempts are locally testable. Cloudflare Workflow replay, Neon locking/extension behavior, provider quotas and hosted latency remain unverified until an authorized provider test.
 
+### Local due-poll scheduling boundary
+
+The local L1 scheduler selects only sources that are active, approved, enabled for automatic acquisition, and configured with a source-specific polling interval. A source becomes due when it has no prior check or its last check is at least one configured interval old. The scheduler derives an idempotency key from the source identity, configured interval, dataset, and current UTC schedule slot; a pending, leased, or retrying poll suppresses another enqueue. It processes a bounded batch and schedules only the current slot after downtime, avoiding a catch-up burst. The scheduler only writes queue requests: it does not claim jobs, fetch content, or update connector health. A runtime timer/Cron adapter and external source activation remain separate work.
+
 ## Alternatives considered
 
 - **Cron/Workflow as sole queue:** rejected because duplicate triggers, retries and restarts need a durable shared idempotency and attempt ledger.

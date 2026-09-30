@@ -9,7 +9,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Current planning boundary:** The bounded freshness policy is accepted. Event-level claim/impact freshness presentation still needs a decision before related aggregation work; other LIFE-01 work remains for persisted transitions, source-revision invalidation, and outbox delivery. Source rights, human-adjudicated cases, authenticated moderator writes, and production source dispatch remain gated or deferred.
+**Active implementation:** `JOB-01-SCHEDULED-POLL-CORE` is assigned to add deterministic, bounded due-source scheduling over the accepted PostgreSQL queue using only authored synthetic rows. It does not add source access, Cloudflare Cron/Workflow configuration, or change a source's configured polling interval. Event-level claim/impact freshness presentation remains an open decision; source rights, human-adjudicated cases, authenticated moderator writes, and production source dispatch remain gated or deferred.
 
 ## Repository state
 
