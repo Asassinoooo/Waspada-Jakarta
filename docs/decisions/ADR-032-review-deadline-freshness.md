@@ -22,3 +22,9 @@ Neither `needs_update` nor `expired` changes event or impact lifecycle to resolv
 The 60-minute fast-observation and 24-hour undated-advisory thresholds are review deadlines: if they pass without new applicable evidence, the corresponding evidence becomes `needs_update`. They do not age an observation into `expired`. Source-specific explicit validity and cancellation/update statements remain authoritative for source expiry.
 
 This is a design rule; no clock-driven freshness evaluator, scheduled job, migration, or public API behavior is implemented by this ADR. LIFE-01 must add deterministic transition tests before runtime scheduling is enabled.
+
+### Item-level deterministic evaluation boundary
+
+For one event or impact freshness record, evaluate an explicit issuer `valid_until` before its review deadline. At or after `valid_until`, freshness is `expired`, including when new evidence was just evaluated but still carries an ended issuer validity window. Otherwise, a current record becomes `needs_update` at or after `review_due_at` when no newer applicable evidence has been evaluated. Existing `needs_update` and `expired` states remain until Layer 4 evaluates newer applicable evidence; that evaluation may return the record to `current` only while issuer validity is not ended. A fetch, unchanged page, or HTTP 304 is not such an evaluation.
+
+This item-level policy does not aggregate claim or impact states into event freshness, schedule evaluations, persist transitions, or alter lifecycle/publication state. Event-level freshness aggregation remains open for LIFE-01.
