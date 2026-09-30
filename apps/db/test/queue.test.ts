@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { JOB_QUEUE_POLICY } from '../src/queue.js';
+import { createSourcePollIdempotencyKey, SqlSourcePollScheduler } from '../src/source-poll-scheduler.js';
 import { createRepositoryPorts, type DatasetKind } from '../src/ports.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
@@ -16,10 +17,12 @@ const dedupeTime = '2030-01-01T00:00:00.000Z';
 describe('JOB-01 durable acquisition queue', () => {
   let database: TestDatabase;
   let ports: ReturnType<typeof createRepositoryPorts>;
+  let sourcePollScheduler: SqlSourcePollScheduler;
 
   before(async () => {
     database = await createTestDatabase();
     ports = createRepositoryPorts(database.executor);
+    sourcePollScheduler = new SqlSourcePollScheduler(database.executor, ports.acquisitionJobs);
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     await applyMigrations(database.executor, migrations);
     await insertTrace(catalogTraceId, null);
@@ -484,6 +487,347 @@ describe('JOB-01 durable acquisition queue', () => {
       'synthetic', claimed.jobId, claimed.leaseToken ?? '', addMs(expires, 1_000),
     ), { outcome: 'not_owned' });
     assert.deepEqual(await getSourceHealth('source-queue-race'), healthAfterRecovery);
+  });
+
+  it('schedules configured due sources at the inclusive boundary without fetching or changing health', async () => {
+    const now = '2040-01-01T01:00:00.000Z';
+    const sources = [
+      'scheduler-exact-hour',
+      'scheduler-exact-minute',
+      'scheduler-one-ms-late',
+      'scheduler-disabled',
+      'scheduler-pending-approval',
+      'scheduler-paused',
+      'scheduler-no-interval',
+    ];
+    await insertSource('scheduler-exact-minute', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+      pollingIntervalSeconds: 60,
+    });
+    await insertSource('scheduler-exact-hour', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+      pollingIntervalSeconds: 3_600,
+    });
+    await insertSource('scheduler-one-ms-late', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+      pollingIntervalSeconds: 60,
+    });
+    await insertSource('scheduler-disabled', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: false,
+      pollingIntervalSeconds: 60,
+    });
+    await insertSource('scheduler-pending-approval', {
+      registryStatus: 'active', approvalStatus: 'pending', autoAcquisitionEnabled: false,
+      pollingIntervalSeconds: 60,
+    });
+    await insertSource('scheduler-paused', {
+      registryStatus: 'paused', approvalStatus: 'approved', autoAcquisitionEnabled: false,
+      pollingIntervalSeconds: 60,
+    });
+    await insertSource('scheduler-no-interval', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+      pollingIntervalSeconds: null,
+    });
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET last_checked_at = $2::timestamptz WHERE source_id = $1",
+      ['scheduler-exact-minute', '2040-01-01T00:59:00.000Z'],
+    );
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET last_checked_at = $2::timestamptz WHERE source_id = $1",
+      ['scheduler-exact-hour', '2040-01-01T00:00:00.000Z'],
+    );
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET last_checked_at = $2::timestamptz WHERE source_id = $1",
+      ['scheduler-one-ms-late', '2040-01-01T00:59:00.001Z'],
+    );
+
+    const healthBefore = await Promise.all(sources.map((sourceId) => getSourceHealth(sourceId)));
+    const recordCountsBefore = await database.executor.query<{ reports: string; events: string }>(
+      "SELECT (SELECT count(*)::text FROM waspada.report_revisions) AS reports, " +
+        "(SELECT count(*)::text FROM waspada.event_versions) AS events",
+    );
+    const summary = await (async () => {
+      await database.executor.execute('SET ROLE waspada_l1_pipeline;');
+      try {
+        return await sourcePollScheduler.scheduleDueSourcePolls({
+          datasetKind: 'synthetic',
+          traceId: syntheticTraceId,
+          now,
+        });
+      } finally {
+        await database.executor.execute('RESET ROLE;');
+      }
+    })();
+
+    assert.deepEqual(summary, {
+      candidateCount: 2,
+      enqueuedCount: 2,
+      existingCount: 0,
+      notSchedulableCount: 0,
+    });
+    assert.deepEqual(Object.keys(summary).sort(), [
+      'candidateCount', 'enqueuedCount', 'existingCount', 'notSchedulableCount',
+    ]);
+    const scheduled = await database.executor.query<{ source_id: string; idempotency_key: string }>(
+      [
+        "SELECT source_id, idempotency_key",
+        "FROM waspada.acquisition_jobs",
+        "WHERE dataset_kind = 'synthetic' AND source_id LIKE 'scheduler-exact-%'",
+        'ORDER BY source_id COLLATE "C" ASC',
+      ].join("\n"),
+    );
+    assert.deepEqual(scheduled.rows.map((row) => row.source_id), [
+      'scheduler-exact-hour', 'scheduler-exact-minute',
+    ]);
+    assert.ok(scheduled.rows.every((row) => /^source-poll:v1:[0-9a-f]{64}$/.test(row.idempotency_key)));
+    assert.deepEqual(
+      await Promise.all(sources.map((sourceId) => getSourceHealth(sourceId))),
+      healthBefore,
+    );
+    const recordCountsAfter = await database.executor.query<{ reports: string; events: string }>(
+      "SELECT (SELECT count(*)::text FROM waspada.report_revisions) AS reports, " +
+        "(SELECT count(*)::text FROM waspada.event_versions) AS events",
+    );
+    assert.deepEqual(recordCountsAfter.rows, recordCountsBefore.rows);
+    await database.executor.query(
+      "DELETE FROM waspada.source_registry WHERE source_id = 'scheduler-one-ms-late'",
+    );
+  });
+
+  it('suppresses pending, leased and retry jobs while completed and terminal jobs allow a later slot', async () => {
+    const seedAt = '2038-12-01T00:00:00.000Z';
+    const sourceIds = [
+      'scheduler-suppress-pending',
+      'scheduler-suppress-leased',
+      'scheduler-suppress-retry',
+      'scheduler-terminal-later',
+      'scheduler-completed-later',
+    ];
+    for (const sourceId of sourceIds) {
+      await insertSource(sourceId, {
+        registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+        pollingIntervalSeconds: 60,
+      });
+    }
+    for (const [sourceId, key] of [
+      ['scheduler-suppress-pending', 'scheduler-seed:pending'],
+      ['scheduler-suppress-leased', 'scheduler-seed:leased'],
+      ['scheduler-suppress-retry', 'scheduler-seed:retry'],
+      ['scheduler-terminal-later', 'scheduler-seed:terminal'],
+      ['scheduler-completed-later', 'scheduler-seed:completed'],
+    ] as const) {
+      const result = await ports.acquisitionJobs.enqueueSourcePoll(sourcePollInput(
+        'synthetic', key, sourceId, seedAt,
+      ));
+      assert.equal(result.outcome, 'enqueued');
+    }
+    await database.executor.query(
+      [
+        "UPDATE waspada.acquisition_jobs",
+        "SET status = 'leased', attempt_count = 1,",
+        "    lease_token = $2, lease_started_at = $3::timestamptz,",
+        "    lease_expires_at = $3::timestamptz + INTERVAL '1 minute',",
+        "    updated_at = $3::timestamptz",
+        "WHERE idempotency_key = $1",
+      ].join("\n"),
+      ['scheduler-seed:leased', '00000000-0000-4000-8000-000000000001', seedAt],
+    );
+    await database.executor.query(
+      [
+        "UPDATE waspada.acquisition_jobs",
+        "SET status = 'retry', attempt_count = 1, last_failure_code = 'test_retry',",
+        "    updated_at = $2::timestamptz",
+        "WHERE idempotency_key = $1",
+      ].join("\n"),
+      ['scheduler-seed:retry', seedAt],
+    );
+    await database.executor.query(
+      [
+        "UPDATE waspada.acquisition_jobs",
+        "SET status = 'terminal', attempt_count = 1, last_failure_code = 'test_terminal',",
+        "    updated_at = $2::timestamptz, finished_at = $2::timestamptz",
+        "WHERE idempotency_key = $1",
+      ].join("\n"),
+      ['scheduler-seed:terminal', '2038-12-01T00:00:01.000Z'],
+    );
+    await database.executor.query(
+      [
+        "UPDATE waspada.acquisition_jobs",
+        "SET status = 'completed', attempt_count = 1,",
+        "    updated_at = $2::timestamptz, finished_at = $2::timestamptz",
+        "WHERE idempotency_key = $1",
+      ].join("\n"),
+      ['scheduler-seed:completed', '2038-12-01T00:00:01.000Z'],
+    );
+
+    const summary = await sourcePollScheduler.scheduleDueSourcePolls({
+      datasetKind: 'synthetic',
+      traceId: syntheticTraceId,
+      now: '2040-01-01T01:00:00.000Z',
+    });
+    assert.deepEqual(summary, {
+      candidateCount: 2,
+      enqueuedCount: 2,
+      existingCount: 0,
+      notSchedulableCount: 0,
+    });
+    for (const [sourceId, expectedStatuses] of [
+      ['scheduler-suppress-pending', ['pending']],
+      ['scheduler-suppress-leased', ['leased']],
+      ['scheduler-suppress-retry', ['retry']],
+      ['scheduler-terminal-later', ['pending', 'terminal']],
+      ['scheduler-completed-later', ['completed', 'pending']],
+    ] as const) {
+      const rows = await database.executor.query<{ status: string }>(
+        "SELECT status FROM waspada.acquisition_jobs WHERE dataset_kind = 'synthetic' AND source_id = $1 ORDER BY status",
+        [sourceId],
+      );
+      assert.deepEqual(rows.rows.map((row) => row.status), [...expectedStatuses].sort(), sourceId);
+    }
+  });
+
+  it('uses one UTC slot key for offset-equivalent instants and concurrent same-slot triggers', async () => {
+    const keyInput = {
+      datasetKind: 'synthetic' as const,
+      sourceId: 'scheduler-offset-key',
+      pollingIntervalSeconds: 300,
+      now: '2046-02-03T12:02:00.000Z',
+    };
+    const key = createSourcePollIdempotencyKey(keyInput);
+    assert.equal(createSourcePollIdempotencyKey({
+      ...keyInput,
+      now: '2046-02-03T07:02:00.000-05:00',
+    }), key);
+    assert.notEqual(createSourcePollIdempotencyKey({ ...keyInput, datasetKind: 'live' }), key);
+    assert.notEqual(createSourcePollIdempotencyKey({ ...keyInput, pollingIntervalSeconds: 60 }), key);
+    assert.notEqual(createSourcePollIdempotencyKey({
+      ...keyInput,
+      now: '2046-02-03T12:05:00.000Z',
+    }), key);
+
+    await insertSource('scheduler-offset-key', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+      pollingIntervalSeconds: 300,
+    });
+    const first = await sourcePollScheduler.scheduleDueSourcePolls({
+      datasetKind: 'synthetic',
+      traceId: syntheticTraceId,
+      now: keyInput.now,
+    });
+    assert.deepEqual(first, {
+      candidateCount: 1,
+      enqueuedCount: 1,
+      existingCount: 0,
+      notSchedulableCount: 0,
+    });
+    const inserted = await database.executor.query<{ idempotency_key: string }>(
+      "SELECT idempotency_key FROM waspada.acquisition_jobs WHERE source_id = 'scheduler-offset-key'",
+    );
+    assert.equal(inserted.rows[0]?.idempotency_key, key);
+    await database.executor.query(
+      [
+        "UPDATE waspada.acquisition_jobs",
+        "SET status = 'terminal', attempt_count = 1, last_failure_code = 'test_terminal',",
+        "    updated_at = $2::timestamptz, finished_at = $2::timestamptz",
+        "WHERE source_id = $1",
+      ].join("\n"),
+      ['scheduler-offset-key', keyInput.now],
+    );
+    const repeated = await sourcePollScheduler.scheduleDueSourcePolls({
+      datasetKind: 'synthetic',
+      traceId: syntheticTraceId,
+      now: '2046-02-03T07:02:00.000-05:00',
+    });
+    assert.deepEqual(repeated, {
+      candidateCount: 1,
+      enqueuedCount: 0,
+      existingCount: 1,
+      notSchedulableCount: 0,
+    });
+    const repeatedRows = await database.executor.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM waspada.acquisition_jobs WHERE source_id = 'scheduler-offset-key'",
+    );
+    assert.equal(repeatedRows.rows[0]?.count, '1');
+
+    await database.executor.query(
+      "DELETE FROM waspada.acquisition_jobs WHERE source_id = 'scheduler-offset-key'",
+    );
+    await database.executor.query(
+      "DELETE FROM waspada.source_registry WHERE source_id = 'scheduler-offset-key'",
+    );
+    await insertSource('scheduler-concurrent-key', {
+      registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+      pollingIntervalSeconds: 60,
+    });
+    const concurrent = await Promise.all([
+      sourcePollScheduler.scheduleDueSourcePolls({
+        datasetKind: 'synthetic', traceId: syntheticTraceId, now: keyInput.now,
+      }),
+      sourcePollScheduler.scheduleDueSourcePolls({
+        datasetKind: 'synthetic', traceId: syntheticTraceId, now: keyInput.now,
+      }),
+    ]);
+    assert.equal(concurrent.reduce((sum, result) => sum + result.enqueuedCount, 0), 1);
+    const concurrentRows = await database.executor.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM waspada.acquisition_jobs WHERE source_id = 'scheduler-concurrent-key'",
+    );
+    assert.equal(concurrentRows.rows[0]?.count, '1');
+  });
+
+  it('caps each scheduling call at 100 due sources and advances in deterministic order', async () => {
+    await database.executor.query(
+      "DELETE FROM waspada.acquisition_jobs WHERE source_id LIKE 'scheduler-%'",
+    );
+    await database.executor.query(
+      "DELETE FROM waspada.source_registry WHERE source_id LIKE 'scheduler-%'",
+    );
+    for (let index = 0; index < 105; index += 1) {
+      const sourceId = 'scheduler-batch-' + String(index).padStart(3, '0');
+      await insertSource(sourceId, {
+        registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+        pollingIntervalSeconds: 60,
+      });
+    }
+    const now = '2050-01-01T00:00:00.000Z';
+    const first = await sourcePollScheduler.scheduleDueSourcePolls({
+      datasetKind: 'synthetic', traceId: syntheticTraceId, now,
+    });
+    assert.deepEqual(first, {
+      candidateCount: 100,
+      enqueuedCount: 100,
+      existingCount: 0,
+      notSchedulableCount: 0,
+    });
+    const firstBatch = await database.executor.query<{ source_id: string }>(
+      [
+        "SELECT source_id FROM waspada.acquisition_jobs",
+        "WHERE source_id LIKE 'scheduler-batch-%'",
+        'ORDER BY source_id COLLATE "C" ASC',
+      ].join("\n"),
+    );
+    const expectedFirstBatch = Array.from(
+      { length: 100 },
+      (_, index) => 'scheduler-batch-' + String(index).padStart(3, '0'),
+    );
+    assert.deepEqual(firstBatch.rows.map((row) => row.source_id), expectedFirstBatch);
+
+    const second = await sourcePollScheduler.scheduleDueSourcePolls({
+      datasetKind: 'synthetic', traceId: syntheticTraceId, now,
+    });
+    assert.deepEqual(second, {
+      candidateCount: 5,
+      enqueuedCount: 5,
+      existingCount: 0,
+      notSchedulableCount: 0,
+    });
+    const finalCount = await database.executor.query<{ count: string; distinct_sources: string }>(
+      [
+        "SELECT count(*)::text AS count, count(DISTINCT source_id)::text AS distinct_sources",
+        "FROM waspada.acquisition_jobs WHERE source_id LIKE 'scheduler-batch-%'",
+      ].join("\n"),
+    );
+    assert.equal(finalCount.rows[0]?.count, '105');
+    assert.equal(finalCount.rows[0]?.distinct_sources, '105');
   });
 
   it('keeps L1 health writes, L4 policy writes and queue worker grants distinct', async () => {
