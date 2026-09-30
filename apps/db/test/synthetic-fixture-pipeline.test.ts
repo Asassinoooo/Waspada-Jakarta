@@ -6,12 +6,14 @@ import { createRepositoryPorts } from "../src/ports.js";
 import { createTestDatabase, type TestDatabase } from "./harness.js";
 import {
   InMemorySyntheticFixtureCatalog,
+  InMemorySyntheticSourcePollFixtureCatalog,
   processSyntheticFixtureJob,
   type FixturePipelinePorts,
   type SyntheticFixture,
   type SyntheticReportManifest,
 } from "../../worker/src/layers/l1-data-knowledge/synthetic-fixture-pipeline.js";
 import { runSyntheticFixtureJob } from "../../worker/src/layers/l1-data-knowledge/synthetic-fixture-runner.js";
+import { runSyntheticSourcePollJob } from "../../worker/src/layers/l1-data-knowledge/synthetic-source-poll-runner.js";
 import { createModelCapabilityAdapter } from "../../worker/src/layers/l2-model-grounding/adapter.js";
 import type {
   ExtractionRequest,
@@ -449,6 +451,184 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
       health_status: "unknown", last_checked_at: null, last_success_at: null,
     });
   });
+
+  it("claims one due synthetic source poll, replays writes, and leaves out-of-scope work untouched", async () => {
+    const pollAt = "2026-09-25T03:00:00.000Z";
+    const retryAt = "2026-09-25T03:02:31.000Z";
+    const pollUrl = "https://synthetic.invalid/polls/fixture-runner-poll";
+    const pollFixture = makeFixture({
+      sourceId: "source-fixture-runner-poll",
+      url: pollUrl,
+      candidateId: "candidate-fixture-source-poll-1",
+      reportRevisionId: "revision-fixture-source-poll-1",
+      geometryId: "geometry-fixture-source-poll-1",
+    });
+    await database.executor.query(
+      `INSERT INTO waspada.source_registry
+         (source_id, trace_id, registry_version, display_name, source_kind, remit,
+          access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+          approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
+          polling_interval_seconds)
+       VALUES ('source-fixture-poll-paused', 'trace-fixture-catalog', 1,
+          'Synthetic ineligible poll fixture', 'authority', ARRAY['authored fixture tests'], 'api',
+          ARRAY['synthetic.invalid'], ARRAY['synthetic fixture only'], ARRAY['authored fixture'],
+          'active', 'approved', 'unknown', true, 'never', 300)`,
+    );
+    const ineligiblePoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "synthetic", idempotencyKey: "fixture-source-poll:paused",
+      traceId: runnerTrace, sourceId: "source-fixture-poll-paused", requestedAt: pollAt,
+    });
+    const duePoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "synthetic", idempotencyKey: "fixture-source-poll:due",
+      traceId: runnerTrace, sourceId: "source-fixture-runner-poll", requestedAt: pollAt,
+    });
+    const futurePoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "synthetic", idempotencyKey: "fixture-source-poll:future",
+      traceId: runnerTrace, sourceId: "source-fixture-runner-poll", requestedAt: "2026-09-25T03:10:00.000Z",
+    });
+    const livePoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "live", idempotencyKey: "fixture-source-poll:live",
+      traceId: runnerLiveTrace, sourceId: "source-fixture-runner-poll", requestedAt: pollAt,
+    });
+    const historicalPoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "historical", idempotencyKey: "fixture-source-poll:historical",
+      traceId: runnerHistoricalTrace, sourceId: "source-fixture-runner-poll", requestedAt: pollAt,
+    });
+    const moderatorSubmission = await ports.acquisitionJobs.enqueueModeratorSubmission({
+      datasetKind: "synthetic", idempotencyKey: "fixture-source-poll:moderator",
+      traceId: runnerTrace, requestedBy: "fixture-source-poll-test",
+      submittedUrl: pollUrl, requestedAt: pollAt,
+    });
+    for (const receipt of [ineligiblePoll, duePoll, futurePoll, livePoll, historicalPoll]) {
+      assert.equal(receipt.outcome, "enqueued");
+    }
+    assert.equal(moderatorSubmission.outcome, "enqueued");
+    if (ineligiblePoll.outcome !== "enqueued" || duePoll.outcome !== "enqueued"
+      || futurePoll.outcome !== "enqueued" || livePoll.outcome !== "enqueued"
+      || historicalPoll.outcome !== "enqueued" || moderatorSubmission.outcome !== "enqueued") return;
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET registry_status = 'paused', auto_acquisition_enabled = false WHERE source_id = 'source-fixture-poll-paused'",
+    );
+    let extractionAdapterCalls = 0;
+    const countingAdapter: FixturePipelinePorts["modelAdapter"] = {
+      async extract(request) {
+        extractionAdapterCalls += 1;
+        return pipelinePorts.modelAdapter.extract(request);
+      },
+    };
+    const pollPipelinePorts: FixturePipelinePorts = { ...pipelinePorts, modelAdapter: countingAdapter };
+    const catalog = new InMemorySyntheticSourcePollFixtureCatalog([pollFixture]);
+    const assertPollWritesPersisted = async () => {
+      const rows = await database.executor.query<{ reports: string; sourceMatches: string; candidates: string; links: string; chunks: string; geometries: string }>(
+        `SELECT
+           (SELECT count(*)::text FROM waspada.report_revisions WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-source-poll-1') AS reports,
+           (SELECT count(*)::text FROM waspada.report_revisions WHERE dataset_kind = 'synthetic'
+              AND report_revision_id = 'revision-fixture-source-poll-1'
+              AND source_id = 'source-fixture-runner-poll'
+              AND canonical_url = 'https://synthetic.invalid/polls/fixture-runner-poll') AS "sourceMatches",
+           (SELECT count(*)::text FROM waspada.extraction_results WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-source-poll-1') AS candidates,
+           (SELECT count(*)::text FROM waspada.extraction_evidence WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-source-poll-1') AS links,
+           (SELECT count(*)::text FROM waspada.evidence_chunks WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-source-poll-1') AS chunks,
+           (SELECT count(*)::text FROM waspada.geometries WHERE dataset_kind = 'synthetic' AND geometry_id = 'geometry-fixture-source-poll-1') AS geometries`,
+      );
+      assert.deepEqual(rows.rows[0], {
+        reports: "1", sourceMatches: "1", candidates: "1", links: "4", chunks: "1", geometries: "1",
+      });
+    };
+    let uncertainAcknowledgementCalls = 0;
+    const interruptedJobs = new Proxy(pipelinePorts.acquisitionJobs, {
+      get(target, property, receiver) {
+        if (property === "complete") {
+          return async () => {
+            uncertainAcknowledgementCalls += 1;
+            await assertPollWritesPersisted();
+            throw new Error("synthetic poll acknowledgement connection loss");
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const interrupted = await runAsL1(database, () => runSyntheticSourcePollJob({
+      now: pollAt,
+      queue: ports.acquisitionJobs,
+      catalog,
+      pipelinePorts: { ...pollPipelinePorts, acquisitionJobs: interruptedJobs },
+    }));
+    assert.deepEqual(interrupted, {
+      outcome: "failed", code: "queue_acknowledgement_failed", queueOutcome: "not_acknowledged",
+    });
+    assert.equal(uncertainAcknowledgementCalls, 1);
+    assert.equal(extractionAdapterCalls, 1);
+    const leased = await ports.acquisitionJobs.findById("synthetic", duePoll.job.jobId);
+    assert.equal(leased?.status, "leased");
+
+    assert.equal(await ports.acquisitionJobs.recoverExpiredLeases("2026-09-25T03:02:00.000Z"), 1);
+    const replayJobs = new Proxy(pipelinePorts.acquisitionJobs, {
+      get(target, property, receiver) {
+        if (property === "complete") {
+          return async (...args: Parameters<typeof target.complete>) => {
+            await assertPollWritesPersisted();
+            return target.complete(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const replayed = await runAsL1(database, () => runSyntheticSourcePollJob({
+      now: retryAt,
+      queue: ports.acquisitionJobs,
+      catalog,
+      pipelinePorts: { ...pollPipelinePorts, acquisitionJobs: replayJobs },
+    }));
+    assert.deepEqual(replayed, {
+      outcome: "completed", empty: false, reportCount: 1,
+      evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 1,
+    });
+    assert.equal(extractionAdapterCalls, 1);
+    assert.equal(uncertainAcknowledgementCalls, 1);
+
+    for (const [datasetKind, jobId] of [
+      ["synthetic", ineligiblePoll.job.jobId],
+      ["synthetic", futurePoll.job.jobId],
+      ["live", livePoll.job.jobId],
+      ["historical", historicalPoll.job.jobId],
+      ["synthetic", moderatorSubmission.job.jobId],
+    ] as const) {
+      const untouched = await ports.acquisitionJobs.findById(datasetKind, jobId);
+      assert.equal(untouched?.status, "pending");
+      assert.equal(untouched?.attemptCount, 0);
+      assert.equal(untouched?.leaseToken, null);
+    }
+    const completed = await ports.acquisitionJobs.findById("synthetic", duePoll.job.jobId);
+    assert.equal(completed?.status, "completed");
+    assert.equal(completed?.attemptCount, 2);
+    const sourceHealth = await database.executor.query<{
+      registry_status: string; approval_status: string; auto_acquisition_enabled: boolean;
+      auto_publication_policy: string; health_status: string; last_checked_at: string | null;
+    }>(
+      `SELECT registry_status, approval_status, auto_acquisition_enabled,
+              auto_publication_policy, health_status, last_checked_at::text AS last_checked_at
+       FROM waspada.source_registry WHERE source_id = 'source-fixture-runner-poll'`,
+    );
+    assert.equal(sourceHealth.rows[0]?.registry_status, "active");
+    assert.equal(sourceHealth.rows[0]?.approval_status, "approved");
+    assert.equal(sourceHealth.rows[0]?.auto_acquisition_enabled, true);
+    assert.equal(sourceHealth.rows[0]?.auto_publication_policy, "never");
+    assert.equal(sourceHealth.rows[0]?.health_status, "healthy");
+    assert.equal(Date.parse(sourceHealth.rows[0]?.last_checked_at ?? "invalid"), Date.parse(retryAt));
+    const publishedState = await database.executor.query<{ events: string; publications: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM waspada.event_versions WHERE trace_id = $1) AS events,
+         (SELECT count(*)::text FROM waspada.publication_decisions WHERE trace_id = $1) AS publications`,
+      [runnerTrace],
+    );
+    assert.deepEqual(publishedState.rows[0], { events: "0", publications: "0" });
+    assert.equal(JSON.stringify(replayed).includes(pollUrl), false);
+    assert.equal(JSON.stringify(replayed).includes(permittedText), false);
+  });
+
 });
 
 async function runAsL1<Result>(database: TestDatabase, work: () => Promise<Result>): Promise<Result> {
@@ -472,16 +652,18 @@ function makeTrace(traceId: string, datasetKind: "live" | "historical" | "synthe
 }
 
 function makeFixture(input: {
+  readonly sourceId?: string;
   readonly url?: string;
   readonly candidateId?: string;
   readonly reportRevisionId?: string;
   readonly geometryId?: string;
 } = {}): SyntheticFixture {
+  const sourceId = input.sourceId ?? "source-fixture-pipeline";
   const url = input.url ?? fixtureUrl;
   const manifest: SyntheticReportManifest = {
     candidateId: input.candidateId ?? "candidate-fixture-pipeline-1",
     reportRevisionId: input.reportRevisionId ?? "revision-fixture-pipeline-1",
-    sourceId: "source-fixture-pipeline",
+    sourceId,
     canonicalUrl: url,
     contentHash: "b".repeat(64),
     permittedText,
@@ -516,7 +698,7 @@ function makeFixture(input: {
       }],
     }),
     retrievedAt,
-    sourceId: "source-fixture-pipeline",
+    sourceId,
     manifests: new Map([["parser-feature-id", manifest]]),
   };
 }

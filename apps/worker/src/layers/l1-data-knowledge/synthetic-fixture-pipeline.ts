@@ -86,6 +86,28 @@ export class InMemorySyntheticFixtureCatalog implements SyntheticFixtureCatalog 
   }
 }
 
+export interface SyntheticSourcePollFixtureCatalog {
+  lookupExactSourceId(sourceId: string): SyntheticFixture | null;
+}
+
+/** A tiny exact source-ID catalog of caller-buffered synthetic poll fixtures. */
+export class InMemorySyntheticSourcePollFixtureCatalog implements SyntheticSourcePollFixtureCatalog {
+  private readonly fixturesBySourceId: ReadonlyMap<string, SyntheticFixture>;
+
+  constructor(fixtures: readonly SyntheticFixture[]) {
+    const bySourceId = new Map<string, SyntheticFixture>();
+    for (const fixture of fixtures) {
+      if (bySourceId.has(fixture.sourceId)) throw new Error("Duplicate synthetic fixture source ID");
+      bySourceId.set(fixture.sourceId, fixture);
+    }
+    this.fixturesBySourceId = bySourceId;
+  }
+
+  lookupExactSourceId(sourceId: string): SyntheticFixture | null {
+    return this.fixturesBySourceId.get(sourceId) ?? null;
+  }
+}
+
 export interface FixtureJobRecord {
   readonly jobId: string;
   readonly datasetKind: string;
@@ -98,6 +120,10 @@ export interface FixtureJobRecord {
 }
 
 export interface FixtureSourceRecord {
+  /** Returned by the existing source-registry lookup when available. */
+  readonly sourceId?: string;
+  readonly registryStatus?: string;
+  readonly pollingIntervalSeconds?: number | null;
   readonly accessMethod: string;
   readonly approvalStatus: string;
   readonly autoAcquisitionEnabled: boolean;
@@ -273,30 +299,101 @@ export interface ProcessSyntheticFixtureInput {
   readonly transitionAt: string;
 }
 
-/** Process an already-leased synthetic moderator submission from an exact in-memory fixture. */
+export interface ProcessSyntheticSourcePollInput {
+  readonly job: FixtureJobRecord;
+  readonly catalog: SyntheticSourcePollFixtureCatalog;
+  readonly ports: FixturePipelinePorts;
+  /** Caller-supplied timestamp used for the lease transition; no clock is read here. */
+  readonly transitionAt: string;
+}
+
+interface FixtureProcessorInput {
+  readonly job: FixtureJobRecord;
+  readonly ports: FixturePipelinePorts;
+  readonly transitionAt: string;
+  readonly sourcePoll: boolean;
+  readonly resolveFixture: () => SyntheticFixture | null;
+}
+
+/** Process an already-leased synthetic moderator submission from an exact URL-keyed fixture. */
 export async function processSyntheticFixtureJob(
   input: ProcessSyntheticFixtureInput,
 ): Promise<SyntheticFixturePipelineResult> {
-  const { job, ports } = input;
-  const leaseToken = job.leaseToken;
-  if (job.status !== "leased" || job.datasetKind !== "synthetic"
-    || job.jobKind !== "moderator_submission" || job.sourceId !== null
-    || typeof job.submittedUrl !== "string" || !job.submittedUrl
-    || typeof leaseToken !== "string" || !leaseToken.trim()
-    || !isTimestamp(input.transitionAt)) {
+  const inputValue: unknown = input;
+  if (!isRecord(inputValue) || !isModeratorFixtureJob(inputValue.job, inputValue.transitionAt)) {
     return { outcome: "not_eligible", code: "job_not_eligible" };
   }
+  const typedInput = input as ProcessSyntheticFixtureInput;
+  return processFixtureWithPolicy({
+    job: typedInput.job,
+    ports: typedInput.ports,
+    transitionAt: typedInput.transitionAt,
+    sourcePoll: false,
+    resolveFixture: () => typedInput.catalog.lookupExact(typedInput.job.submittedUrl!),
+  });
+}
 
+/** Process one already-leased synthetic source poll from an exact source-ID-keyed fixture. */
+export async function processSyntheticSourcePollJob(
+  input: ProcessSyntheticSourcePollInput,
+): Promise<SyntheticFixturePipelineResult> {
+  const inputValue: unknown = input;
+  if (!isRecord(inputValue) || !isSyntheticSourcePollJob(inputValue.job, inputValue.transitionAt)) {
+    return { outcome: "not_eligible", code: "job_not_eligible" };
+  }
+  const typedInput = input as ProcessSyntheticSourcePollInput;
+  return processFixtureWithPolicy({
+    job: typedInput.job,
+    ports: typedInput.ports,
+    transitionAt: typedInput.transitionAt,
+    sourcePoll: true,
+    resolveFixture: () => typedInput.catalog.lookupExactSourceId(typedInput.job.sourceId!),
+  });
+}
+
+function isModeratorFixtureJob(value: unknown, transitionAt: unknown): value is FixtureJobRecord {
+  return isRecord(value) && value.status === "leased" && value.datasetKind === "synthetic"
+    && value.jobKind === "moderator_submission" && value.sourceId === null
+    && typeof value.submittedUrl === "string" && value.submittedUrl.length > 0
+    && typeof value.jobId === "string" && typeof value.traceId === "string"
+    && typeof value.leaseToken === "string" && !!value.leaseToken.trim()
+    && typeof transitionAt === "string" && isTimestamp(transitionAt);
+}
+
+function isSyntheticSourcePollJob(value: unknown, transitionAt: unknown): value is FixtureJobRecord {
+  return isRecord(value) && value.status === "leased" && value.datasetKind === "synthetic"
+    && value.jobKind === "source_poll" && value.submittedUrl === null
+    && isId(value.jobId) && isId(value.traceId) && isId(value.sourceId)
+    && typeof value.leaseToken === "string" && !!value.leaseToken.trim()
+    && typeof transitionAt === "string" && isTimestamp(transitionAt);
+}
+
+async function processFixtureWithPolicy(
+  input: FixtureProcessorInput,
+): Promise<SyntheticFixturePipelineResult> {
+  const { job, ports } = input;
+  const leaseToken = job.leaseToken!;
   try {
     let fixture: SyntheticFixture | null;
     try {
-      fixture = input.catalog.lookupExact(job.submittedUrl);
+      fixture = input.resolveFixture();
     } catch {
       throw new FixtureFailure("fixture_catalog_failed", "retryable");
     }
-    if (!fixture) throw new FixtureFailure("fixture_not_found", "permanent");
-    if (fixture.url !== job.submittedUrl) throw new FixtureFailure("fixture_not_found", "permanent");
-    const parsed = parsePetabencanaGeoJson(fixture.geoJson, fixture.retrievedAt);
+    if (!fixture || (input.sourcePoll
+      ? fixture.sourceId !== job.sourceId
+      : fixture.url !== job.submittedUrl)) {
+      throw new FixtureFailure("fixture_not_found", "permanent");
+    }
+
+    if (input.sourcePoll) await verifySourcePollRegistryState(ports, fixture.sourceId);
+
+    let parsed: ReturnType<typeof parsePetabencanaGeoJson>;
+    try {
+      parsed = parsePetabencanaGeoJson(fixture.geoJson, fixture.retrievedAt);
+    } catch {
+      throw new FixtureFailure("fixture_payload_invalid", "permanent");
+    }
     if (parsed.kind === "error") throw new FixtureFailure("fixture_payload_invalid", "permanent");
     if (parsed.kind === "empty") {
       if (fixture.manifests.size !== 0) throw new FixtureFailure("fixture_manifest_invalid", "permanent");
@@ -313,7 +410,8 @@ export async function processSyntheticFixtureJob(
     let geometryCount = 0;
     for (const report of parsed.reports) {
       const manifest = fixture.manifests.get(report.featureId!);
-      if (!manifest || !isValidManifest(manifest, fixture)) {
+      if (!manifest || !isValidManifest(manifest, fixture)
+        || (input.sourcePoll && manifest.sourceId !== job.sourceId)) {
         throw new FixtureFailure("fixture_manifest_invalid", "permanent");
       }
       const prepared = await preparePermittedText(manifest.permittedText)
@@ -331,11 +429,13 @@ export async function processSyntheticFixtureJob(
         throw new FixtureFailure("fixture_manifest_invalid", "permanent");
       }
 
-      const source = await ports.sourceRegistry.findById(manifest.sourceId)
-        .catch(() => { throw new FixtureFailure("fixture_persistence_failed", "retryable"); });
-      if (!source || source.accessMethod !== "manual_fixture" || source.approvalStatus !== "approved"
-        || source.autoAcquisitionEnabled !== false || source.autoPublicationPolicy !== "never") {
-        throw new FixtureFailure("fixture_source_invalid", "permanent");
+      if (!input.sourcePoll) {
+        const source = await ports.sourceRegistry.findById(manifest.sourceId)
+          .catch(() => { throw new FixtureFailure("fixture_persistence_failed", "retryable"); });
+        if (!source || source.accessMethod !== "manual_fixture" || source.approvalStatus !== "approved"
+          || source.autoAcquisitionEnabled !== false || source.autoPublicationPolicy !== "never") {
+          throw new FixtureFailure("fixture_source_invalid", "permanent");
+        }
       }
 
       const revisionInput = makeRevisionInput(job, fixture, manifest, prepared);
@@ -437,6 +537,21 @@ export async function processSyntheticFixtureJob(
   }
 }
 
+async function verifySourcePollRegistryState(
+  ports: FixturePipelinePorts,
+  sourceId: string,
+): Promise<void> {
+  const source = await ports.sourceRegistry.findById(sourceId)
+    .catch(() => { throw new FixtureFailure("fixture_persistence_failed", "retryable"); });
+  if (!source || source.sourceId !== sourceId || source.registryStatus !== "active"
+    || typeof source.pollingIntervalSeconds !== "number"
+    || !Number.isSafeInteger(source.pollingIntervalSeconds) || source.pollingIntervalSeconds <= 0
+    || source.approvalStatus !== "approved" || source.autoAcquisitionEnabled !== true
+    || source.autoPublicationPolicy !== "never") {
+    throw new FixtureFailure("fixture_source_invalid", "permanent");
+  }
+}
+
 async function findOrExtractFixtureCandidate(
   ports: FixturePipelinePorts,
   job: FixtureJobRecord,
@@ -501,7 +616,7 @@ function hasErrorCode(error: unknown, code: string): boolean {
 }
 
 async function complete(
-  input: ProcessSyntheticFixtureInput,
+  input: FixtureProcessorInput,
   counts: Omit<Extract<SyntheticFixturePipelineResult, { outcome: "completed" }>, "outcome">,
 ): Promise<SyntheticFixturePipelineResult> {
   let transition: Awaited<ReturnType<FixtureJobRepository["complete"]>>;
