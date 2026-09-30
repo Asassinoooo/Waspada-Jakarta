@@ -903,6 +903,10 @@ The user selected a read-only moderator experience for the course demo. Root rec
 
 The user reconfirmed that MOD-01 remains read-only for the course demo, consistent with ADR-028. Following the LIFE-01 audit, root assigned [a test-only synthetic correction read-chain](assignments/LIFE-01-CORRECTION-READ-CHAIN-CORE.md): compose two immutable versions from the existing PGlite publication writer with explicitly authored exact-version disclosure fixtures, then read and project the correction through the existing update feed. This does not add a moderator write path, represent a human review, deliver outbox messages, activate a source, or resolve LIFE-01 freshness/retraction/deletion design gaps. Implementation and independent root review remain pending.
 
+### ADR-032 freshness review-deadline decision — 30 September 2026
+
+The user chose to mark freshness `needs_update` when a review deadline passes without new applicable evidence, while reserving `expired` for an explicit issuer validity end. Root recorded [ADR-032](decisions/ADR-032-review-deadline-freshness.md) and aligned the domain model, source-verification plan, software-development plan, and LIFE-01 backlog description. This preserves the separation between freshness and incident resolution/safety. Mixed claim/impact freshness presentation remains open; no transition code, timer, migration, or API change was made.
+
 ### OBS-01-L1-FIXTURE-TELEMETRY-CORE assigned — 28 September 2026
 
 Root assigned the next locally verifiable observability slice: opt-in, privacy-safe summaries for the existing bounded synthetic Layer 1 fixture runner. Its fixed outcomes and bounded counts will make local pipeline execution measurable without exposing fixture content or identifiers. The task does not add live acquisition, source/runtime wiring, remote log collection, or quality/factuality claims. It is assigned to a dedicated Luna Max branch/worktree with WSL checks and an independent root review required before acceptance. See the [task assignment](assignments/OBS-01-L1-FIXTURE-TELEMETRY-CORE.md).

@@ -208,7 +208,7 @@ Keep four independent dimensions:
 | Dimension | Proposed representation | Owner |
 | --- | --- | --- |
 | Incident or impact lifecycle | planned, ongoing, resolved, cancelled, unknown | Evidence-backed proposal and L4 decision; each impact has its own lifecycle. |
-| Freshness | current, needs_update, expired | L4 time rules and scheduled checks; not a finding that physical conditions are safe. |
+| Freshness | current, needs_update, expired | L4 marks missed review deadlines `needs_update`; `expired` requires an explicit issuer validity end. Neither state resolves an incident or establishes safety; see [ADR-032](docs/decisions/ADR-032-review-deadline-freshness.md). |
 | Evidence | issuer notice / attributed / independently corroborated; support may be disputed or withdrawn | Recorded provenance, assessments and moderation. |
 | User relevance | Match by place, service, institution or user-selected group | Deterministic relevance rules; not a global event truth label. |
 
@@ -216,7 +216,7 @@ These conceptual states must become an explicit transition table and versioned e
 
 Maintain histories for collected events, not every event that ever happened. Active-condition retrieval filters validity and eligibility; historical matching can access older records; audit views can inspect retracted evidence without treating it as current support. Invalidations affect chunks, vectors, caches, dependent summaries and public versions. Retrieval checks source state even when indexing is delayed.
 
-Baseline freshness rules remain those in SOURCE_VERIFICATION_PLAN.md: explicit issuer validity first; 60-minute review deadline for fast-changing observations; 24-hour review for an undated-end advisory. Fetching again never refreshes observation time. Proposed polling intervals are BMKG 2 minutes, PetaBencana 5 minutes and news/traffic 10 minutes, always subject to source limits.
+Baseline freshness rules remain those in SOURCE_VERIFICATION_PLAN.md and [ADR-032](docs/decisions/ADR-032-review-deadline-freshness.md): explicit issuer validity controls expiry; passing a 60-minute review deadline for fast-changing observations or a 24-hour deadline for an undated-end advisory marks freshness `needs_update` until new applicable evidence is evaluated. Fetching again never refreshes observation time. Proposed polling intervals are BMKG 2 minutes, PetaBencana 5 minutes and news/traffic 10 minutes, always subject to source limits.
 
 The [source feasibility matrix](docs/SOURCE_FEASIBILITY.md) and [ADR-005](docs/decisions/ADR-005-source-retention.md) define the accepted prototype retention baseline. Source-specific reuse rights, permitted archival formats and rate limits remain required before live enablement. Do not promise indefinite raw-document retention. Minimize unnecessary personal details before embedding; a deletion workflow must reach derived data and define backup expiry. Public user location remains optional; prototype preferences stay on the user's device.
 
