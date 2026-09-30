@@ -3,6 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { createSqlGeometryWriter } from "../src/geometry-writer.js";
 import { applyMigrations, readMigrations } from "../src/migrations.js";
 import { createRepositoryPorts } from "../src/ports.js";
+import { SqlSourcePollScheduler } from "../src/source-poll-scheduler.js";
 import { createTestDatabase, type TestDatabase } from "./harness.js";
 import {
   InMemorySyntheticFixtureCatalog,
@@ -629,6 +630,254 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     assert.equal(JSON.stringify(replayed).includes(permittedText), false);
   });
 
+  it("schedules and persists one exact synthetic poll before acknowledging its queue job", async () => {
+    const cycleAt = "2026-09-25T03:00:00.000Z";
+    const cycleRetrievedAt = "2026-09-25T02:55:00.000Z";
+    const cycleObservedAt = "2026-09-25T02:45:00.000Z";
+    const cycleTrace = "trace-fixture-poll-cycle";
+    const cycleSourceId = "source-fixture-poll-cycle";
+    const cycleUrl = "https://synthetic.invalid/polls/poll-cycle-exact";
+    const cycleFixture = makeFixture({
+      sourceId: cycleSourceId,
+      url: cycleUrl,
+      candidateId: "candidate-fixture-poll-cycle",
+      reportRevisionId: "revision-fixture-poll-cycle",
+      geometryId: "geometry-fixture-poll-cycle",
+      retrievedAt: cycleRetrievedAt,
+      observedAt: cycleObservedAt,
+    });
+    const decoyFixture = makeFixture({
+      sourceId: "source-fixture-poll-cycle-decoy",
+      url: "https://synthetic.invalid/polls/poll-cycle-decoy",
+      candidateId: "candidate-fixture-poll-cycle-decoy",
+      reportRevisionId: "revision-fixture-poll-cycle-decoy",
+      geometryId: "geometry-fixture-poll-cycle-decoy",
+    });
+
+    await ports.tracesAndAudit.createTrace(makeTrace(cycleTrace, "synthetic"));
+    await database.executor.query(
+      `INSERT INTO waspada.source_registry
+         (source_id, trace_id, registry_version, display_name, source_kind, remit,
+          access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+          approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
+          polling_interval_seconds)
+       VALUES ($1, 'trace-fixture-catalog', 1,
+          'Synthetic poll-cycle fixture', 'authority', ARRAY['authored fixture tests'], 'api',
+          ARRAY['synthetic.invalid'], ARRAY['synthetic fixture only'], ARRAY['authored fixture'],
+          'active', 'approved', 'unknown', true, 'never', 300)`,
+      [cycleSourceId],
+    );
+
+    // Suppress the shared runner fixture during scheduler selection, including when this case runs alone.
+    const baselinePoll = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "synthetic",
+      idempotencyKey: "fixture-poll-cycle:suppress-baseline",
+      traceId: runnerTrace,
+      sourceId: "source-fixture-runner-poll",
+      requestedAt: "2030-01-01T00:00:00.000Z",
+    });
+    assert.equal(baselinePoll.outcome, "enqueued");
+    if (baselinePoll.outcome !== "enqueued") return;
+
+    let scheduledJobId: string | null = null;
+    let completionCalls = 0;
+    const assertCycleWritesPersisted = async () => {
+      const counts = await database.executor.query<{
+        reports: string;
+        sourceMatches: string;
+        candidates: string;
+        evidenceReferences: string;
+        extractionLinks: string;
+        chunks: string;
+        geometries: string;
+        decoyReports: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text FROM waspada.report_revisions
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-poll-cycle') AS reports,
+           (SELECT count(*)::text FROM waspada.report_revisions
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-poll-cycle'
+              AND trace_id = $1 AND source_id = $2 AND canonical_url = $3) AS "sourceMatches",
+           (SELECT count(*)::text FROM waspada.extraction_results
+            WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-poll-cycle') AS candidates,
+           (SELECT count(*)::text FROM waspada.evidence_references
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-poll-cycle') AS "evidenceReferences",
+           (SELECT count(*)::text FROM waspada.extraction_evidence
+            WHERE dataset_kind = 'synthetic' AND candidate_id = 'candidate-fixture-poll-cycle') AS "extractionLinks",
+           (SELECT count(*)::text FROM waspada.evidence_chunks
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-poll-cycle') AS chunks,
+           (SELECT count(*)::text FROM waspada.geometries
+            WHERE dataset_kind = 'synthetic' AND geometry_id = 'geometry-fixture-poll-cycle') AS geometries,
+           (SELECT count(*)::text FROM waspada.report_revisions
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-poll-cycle-decoy') AS "decoyReports"`,
+        [cycleTrace, cycleSourceId, cycleUrl],
+      );
+      assert.deepEqual(counts.rows[0], {
+        reports: "1", sourceMatches: "1", candidates: "1", evidenceReferences: "5",
+        extractionLinks: "4", chunks: "1", geometries: "1", decoyReports: "0",
+      });
+      const report = await database.executor.query<{
+        retrieved_at: string;
+        published_at: string | null;
+        observed_at: string | null;
+      }>(
+        `SELECT retrieved_at::text AS retrieved_at, published_at::text AS published_at,
+                observed_at::text AS observed_at
+         FROM waspada.report_revisions
+         WHERE dataset_kind = 'synthetic' AND report_revision_id = 'revision-fixture-poll-cycle'`,
+      );
+      assert.equal(Date.parse(report.rows[0]?.retrieved_at ?? "invalid"), Date.parse(cycleRetrievedAt));
+      assert.equal(report.rows[0]?.published_at, null);
+      assert.equal(Date.parse(report.rows[0]?.observed_at ?? "invalid"), Date.parse(cycleObservedAt));
+    };
+
+    const completionObservedJobs: FixturePipelinePorts["acquisitionJobs"] = new Proxy(
+      pipelinePorts.acquisitionJobs,
+      {
+        get(target, property, receiver) {
+          if (property === "complete") {
+            return async (...args: Parameters<typeof target.complete>) => {
+              completionCalls += 1;
+              const [datasetKind, jobId, leaseToken, completedAt] = args;
+              assert.equal(datasetKind, "synthetic");
+              assert.equal(jobId, scheduledJobId);
+              assert.equal(completedAt, cycleAt);
+              const leased = await ports.acquisitionJobs.findById(datasetKind, jobId);
+              assert.equal(leased?.status, "leased");
+              assert.equal(leased?.leaseToken, leaseToken);
+              assert.equal(leased?.attemptCount, 1);
+              await assertCycleWritesPersisted();
+              const healthBeforeAcknowledgement = await database.executor.query<{
+                registry_status: string;
+                approval_status: string;
+                auto_acquisition_enabled: boolean;
+                auto_publication_policy: string;
+                health_status: string;
+                last_checked_at: string | null;
+                last_success_at: string | null;
+              }>(
+                `SELECT registry_status, approval_status, auto_acquisition_enabled,
+                        auto_publication_policy, health_status,
+                        last_checked_at::text AS last_checked_at,
+                        last_success_at::text AS last_success_at
+                 FROM waspada.source_registry WHERE source_id = $1`,
+                [cycleSourceId],
+              );
+              assert.deepEqual(healthBeforeAcknowledgement.rows[0], {
+                registry_status: "active", approval_status: "approved",
+                auto_acquisition_enabled: true, auto_publication_policy: "never",
+                health_status: "unknown", last_checked_at: null, last_success_at: null,
+              });
+              return target.complete(...args);
+            };
+          }
+          const value: unknown = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      },
+    );
+
+    const cycleResult = await runAsL1(database, async () => {
+      const scheduled = await new SqlSourcePollScheduler(database.executor, ports.acquisitionJobs)
+        .scheduleDueSourcePolls({ datasetKind: "synthetic", traceId: cycleTrace, now: cycleAt });
+      assert.deepEqual(scheduled, {
+        candidateCount: 1, enqueuedCount: 1, existingCount: 0, notSchedulableCount: 0,
+      });
+      const queued = await database.executor.query<{
+        job_id: string;
+        dataset_kind: string;
+        job_kind: string;
+        source_id: string | null;
+        trace_id: string;
+        status: string;
+        attempt_count: number;
+        available_at: string;
+      }>(
+        `SELECT job_id, dataset_kind, job_kind, source_id, trace_id, status,
+                attempt_count, available_at::text AS available_at
+         FROM waspada.acquisition_jobs
+         WHERE dataset_kind = 'synthetic' AND trace_id = $1`,
+        [cycleTrace],
+      );
+      assert.equal(queued.rows.length, 1);
+      const job = queued.rows[0]!;
+      scheduledJobId = job.job_id;
+      assert.equal(job.dataset_kind, "synthetic");
+      assert.equal(job.job_kind, "source_poll");
+      assert.equal(job.source_id, cycleSourceId);
+      assert.equal(job.trace_id, cycleTrace);
+      assert.equal(job.status, "pending");
+      assert.equal(job.attempt_count, 0);
+      assert.equal(Date.parse(job.available_at), Date.parse(cycleAt));
+
+      const healthAfterScheduling = await database.executor.query<{ health_status: string; last_checked_at: string | null; last_success_at: string | null }>(
+        `SELECT health_status, last_checked_at::text AS last_checked_at,
+                last_success_at::text AS last_success_at
+         FROM waspada.source_registry WHERE source_id = $1`,
+        [cycleSourceId],
+      );
+      assert.deepEqual(healthAfterScheduling.rows[0], {
+        health_status: "unknown", last_checked_at: null, last_success_at: null,
+      });
+
+      return runSyntheticSourcePollJob({
+        now: cycleAt,
+        queue: ports.acquisitionJobs,
+        catalog: new InMemorySyntheticSourcePollFixtureCatalog([cycleFixture, decoyFixture]),
+        pipelinePorts: { ...pipelinePorts, acquisitionJobs: completionObservedJobs },
+      });
+    });
+
+    assert.deepEqual(cycleResult, {
+      outcome: "completed", empty: false, reportCount: 1,
+      evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 1,
+    });
+    assert.equal(completionCalls, 1);
+    assert.equal(scheduledJobId !== null, true);
+    await assertCycleWritesPersisted();
+    const completedJob = await ports.acquisitionJobs.findById("synthetic", scheduledJobId!);
+    assert.equal(completedJob?.status, "completed");
+    assert.equal(completedJob?.sourceId, cycleSourceId);
+    assert.equal(completedJob?.traceId, cycleTrace);
+    assert.equal(completedJob?.attemptCount, 1);
+    const publishedState = await database.executor.query<{ events: string; publications: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM waspada.event_versions WHERE trace_id = $1) AS events,
+         (SELECT count(*)::text FROM waspada.publication_decisions WHERE trace_id = $1) AS publications`,
+      [cycleTrace],
+    );
+    assert.deepEqual(publishedState.rows[0], { events: "0", publications: "0" });
+    const completedHealth = await database.executor.query<{
+      registry_status: string;
+      approval_status: string;
+      auto_acquisition_enabled: boolean;
+      auto_publication_policy: string;
+      health_status: string;
+      last_checked_at: string | null;
+      last_success_at: string | null;
+    }>(
+      `SELECT registry_status, approval_status, auto_acquisition_enabled,
+              auto_publication_policy, health_status,
+              last_checked_at::text AS last_checked_at,
+              last_success_at::text AS last_success_at
+       FROM waspada.source_registry WHERE source_id = $1`,
+      [cycleSourceId],
+    );
+    const health = completedHealth.rows[0];
+    assert.equal(health?.registry_status, "active");
+    assert.equal(health?.approval_status, "approved");
+    assert.equal(health?.auto_acquisition_enabled, true);
+    assert.equal(health?.auto_publication_policy, "never");
+    assert.equal(health?.health_status, "healthy");
+    assert.equal(Date.parse(health?.last_checked_at ?? "invalid"), Date.parse(cycleAt));
+    assert.equal(Date.parse(health?.last_success_at ?? "invalid"), Date.parse(cycleAt));
+
+    const untouchedBaselinePoll = await ports.acquisitionJobs.findById("synthetic", baselinePoll.job.jobId);
+    assert.equal(untouchedBaselinePoll?.status, "pending");
+    assert.equal(untouchedBaselinePoll?.attemptCount, 0);
+    assert.equal(untouchedBaselinePoll?.leaseToken, null);
+  });
+
 });
 
 async function runAsL1<Result>(database: TestDatabase, work: () => Promise<Result>): Promise<Result> {
@@ -657,6 +906,8 @@ function makeFixture(input: {
   readonly candidateId?: string;
   readonly reportRevisionId?: string;
   readonly geometryId?: string;
+  readonly retrievedAt?: string;
+  readonly observedAt?: string | null;
 } = {}): SyntheticFixture {
   const sourceId = input.sourceId ?? "source-fixture-pipeline";
   const url = input.url ?? fixtureUrl;
@@ -668,7 +919,7 @@ function makeFixture(input: {
     contentHash: "b".repeat(64),
     permittedText,
     publishedAt: null,
-    observedAt: null,
+    observedAt: input.observedAt ?? null,
     validFrom: null,
     validUntil: null,
     supersedesId: null,
@@ -697,7 +948,7 @@ function makeFixture(input: {
         geometry: { type: "Point", coordinates: [106.8272, -6.1754] },
       }],
     }),
-    retrievedAt,
+    retrievedAt: input.retrievedAt ?? retrievedAt,
     sourceId,
     manifests: new Map([["parser-feature-id", manifest]]),
   };
