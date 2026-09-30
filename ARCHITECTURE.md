@@ -22,6 +22,8 @@ Responsible AI applies across all five layers: provenance, least-privilege acces
 
 Layer 4 keeps freshness separate from lifecycle and user relevance. A missed evidence review deadline yields `needs_update`; only issuer validity yields `expired`. The event badge conservatively summarizes its grouped public claim set and its impacts: any `needs_update` or a mixture of current and expired yields event `needs_update`; `expired` requires every included value to be issuer-expired; `current` requires every value to be current. Public claims remain grouped under event freshness and impacts retain their own freshness in the existing contract. The single-record transition policy is implemented, while event aggregation and its public projection wiring remain unimplemented; see [ADR-032](docs/decisions/ADR-032-review-deadline-freshness.md).
 
+`LIFE-01-FRESHNESS-AGGREGATE-CORE` is assigned to derive that event status across public event projections and keep database list/GeoJSON freshness filters consistent. It preserves event-level evaluation metadata and the existing API shape; impact freshness remains separate.
+
 ```mermaid
 flowchart TD
   S[Approved feeds and original reports] --> D["L1 Data & Knowledge\nclean, extract, version, index"]
