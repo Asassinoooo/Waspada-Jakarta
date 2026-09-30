@@ -34,7 +34,7 @@ Ran in WSL Ubuntu-26.04 using Node v24.21.0 and npm 11.19.0. Tool versions obser
 - npm test: web 60/60, worker 346/346, database 21/21 files, evaluation casebook 12/12 passed.
 - npm run typecheck: passed across workspaces and evaluation.
 - npm run build: passed; Vite production build and Wrangler dry-run succeeded.
-- git diff --check against the assigned base: passed before commit; final post-commit check is recorded in the task handoff message.
+- git diff --check ab6511cca25f01b53dc4a78dcd41c489e3b9a38f..HEAD: passed after the implementation and handoff commits.
 
 The worktree temporarily used the existing repository node_modules through a symlink for verification; the symlink was removed before handoff. No dependency was installed or changed.
 
@@ -44,6 +44,7 @@ The worktree temporarily used the existing repository node_modules through a sym
 - An early typecheck caught an optional nullable polling-interval narrowing error; it was fixed and typecheck subsequently passed.
 - An early runner test expected the empty-feed path to omit the source-registry read; the expectation was corrected to match fail-closed source validation, and all 12 runner tests passed.
 - A partial composition-test edit temporarily caused a typecheck error; the test was completed and both focused and full verification passed afterward.
+- An intermediate diff check caught trailing spaces used for Markdown hard breaks in the handoff; they were removed, and the staged and final assigned-base checks passed.
 
 ## Limits and remaining decisions
 
