@@ -3,13 +3,20 @@
 **Branch:** `work/JOB-01-SCHEDULED-POLL-CORE`
 **Worktree:** `C:\Users\perry\.codex\worktrees\l3-coordinator-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l3-coordinator-core/RPL` in WSL)
 **Base:** `c2d5573a6a05ceaefffa9116d26928cf1d5ce990`
-**Implementation commit:** `03828bf17cbff96462e08dc31a8e7494ad20533c` - `feat(JOB-01): add bounded due source poll scheduler`
+
+## Commits
+
+- `03828bf17cbff96462e08dc31a8e7494ad20533c` - `feat(JOB-01): add bounded due source poll scheduler`
+- `aeabdd0077ee09d80b4194e76f6b83653ff0dabf` - `fix(JOB-01): restore UTF-8 scheduler handoff`
+- `406dc290ac8ba7ac1d31416b05a6e4f9230b36d1` - `fix(JOB-01): validate scheduler timestamp calendar fields`
 
 ## Delivered behavior
 
 Added `SourcePollScheduler`, a standalone L1 service that accepts an explicit RFC3339 evaluation time, dataset, and persisted trace ID. It validates the trace against the requested dataset, then selects at most 100 due sources in deterministic source-ID order. A source is eligible only when active, approved, automatic acquisition is enabled, and its polling interval is configured. A null `last_checked_at` is due, and the interval boundary is inclusive.
 
 The scheduler excludes sources with a same-dataset/source `pending`, `leased`, or `retry` source-poll job. It derives a stable SHA-256 idempotency key from the dataset, source ID, configured interval, and current UTC interval slot. Equivalent timestamp offsets map to the same slot, repeated and concurrent enqueues use the existing unique key, and completed or terminal jobs do not suppress a later due slot. Downtime schedules only the current slot.
+
+Explicit timestamps are checked for valid Gregorian calendar days, leap years, clock fields, and offset fields before parsing, so impossible dates such as February 31 or a non-leap February 29 are rejected. A valid leap day is accepted.
 
 The service uses only the existing `SqlExecutor` and `AcquisitionJobRepository` interfaces and the current least-privilege database role. It only enqueues requests; it does not claim jobs, fetch source content, mutate source health or events, or call L2/L3. Its return value contains counts only.
 
@@ -27,11 +34,12 @@ All project verification ran in WSL Ubuntu-26.04 with the existing Linux runtime
 
 Tool versions: Node.js `v24.21.0`; npm `11.19.0`; PGlite `0.5.8`; tsx `4.23.15`; TypeScript `7.0.2`; Wrangler `4.137.0`.
 
-- From `apps/db`, `tsx --test test/queue.test.ts` - exit 0; 15/15 tests passed.
-- `npm run db:test` - exit 0; all 21 DB test files passed.
-- `npm test` - exit 0; web 60, Worker 334, DB 21, and evaluation 12 tests passed.
+- From `apps/db`, `tsx --test test/queue.test.ts` - exit 0; 16/16 tests passed.
+- `npm run db:test` - exit 0; all 21 DB files and 162 tests passed.
+- `npm test` - exit 0; web 60, Worker 334, DB 21 files / 162 tests, and evaluation 12 tests passed.
 - `npm run typecheck` - exit 0.
 - `npm run build` - exit 0; TypeScript, Vite production build, and Wrangler deploy dry-run completed.
+- Python 3 UTF-8 decode and ASCII-only validation of this handoff - exit 0.
 - `git diff --check c2d5573a6a05ceaefffa9116d26928cf1d5ce990..HEAD` - exit 0; no output.
 
 ## Limitations and remaining decisions
