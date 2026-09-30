@@ -6,6 +6,7 @@ import {
   createSqlExactEvidenceSpanReader,
   ExactEvidenceSpanReadError,
 } from '../src/evidence-retrieval.js';
+import { assembleGroundingReasoningRequest } from '../../worker/src/layers/l2-model-grounding/grounding-context.js';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createRepositoryPorts, type NewReportRevision, type TraceRecord } from '../src/ports.js';
 import type { EvidenceRetrievalQuery } from '../src/evidence-retrieval.js';
@@ -614,6 +615,97 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
     }
   });
 
+  it('projects relational timestamps as timezone-independent RFC3339 accepted by strict L2 assembly', async () => {
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: syntheticTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-timestamp-rfc3339',
+      reportRevisionId: 'revision-syn-timestamp-rfc3339',
+      text: 'Synthetic timestamp report with cited evidence.',
+      span: 'cited evidence',
+      relation: 'supports',
+      revisionStatus: 'eligible',
+      publishedAt: '2026-09-26T12:34:56.123456+05:30',
+      observedAt: '2026-09-26T08:09:10.000007-04:00',
+      retrievedAt: '2026-09-26T13:14:15.987654+07:00',
+      validFrom: '2026-09-26T13:00:00.100200+07:00',
+      validUntil: '2026-09-26T13:30:00.654321+07:00',
+      eventTime: { start: '2026-09-24T09:01:02.123456+02:00', end: null, precision: 'exact' },
+      vector: null,
+    });
+
+    await testDatabase.executor.execute("SET TIME ZONE 'Asia/Jakarta'");
+    try {
+      const result = await ports.evidenceRetrieval.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-timestamp-rfc3339' }],
+      });
+      assert.equal(result.candidates.length, 1);
+      const candidate = result.candidates[0]!;
+      assert.deepEqual({
+        publishedAt: candidate.publishedAt,
+        observedAt: candidate.observedAt,
+        retrievedAt: candidate.retrievedAt,
+        validFrom: candidate.validFrom,
+        validUntil: candidate.validUntil,
+      }, {
+        publishedAt: '2026-09-26T07:04:56.123456Z',
+        observedAt: '2026-09-26T12:09:10.000007Z',
+        retrievedAt: '2026-09-26T06:14:15.987654Z',
+        validFrom: '2026-09-26T06:00:00.100200Z',
+        validUntil: '2026-09-26T06:30:00.654321Z',
+      });
+      for (const value of [candidate.publishedAt, candidate.observedAt, candidate.retrievedAt,
+        candidate.validFrom, candidate.validUntil]) {
+        assert.match(value ?? '', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/);
+      }
+      assert.deepEqual(candidate.eventTime, {
+        start: '2026-09-24T09:01:02.123456+02:00',
+        end: null,
+        precision: 'exact',
+        status: 'valid',
+      }, 'schema 2.0 event-time JSON remains unchanged');
+
+      const request = await assembleGroundingReasoningRequest(
+        createSqlExactEvidenceSpanReader(testDatabase.executor),
+        {
+          retrieval: result,
+          datasetKind: 'synthetic',
+          traceId: 'trace-timestamp-context',
+          contextId: 'context-timestamp-context',
+          candidateId: 'candidate-syn-timestamp-rfc3339',
+          evidenceReferenceIds: [candidate.evidenceReferenceId],
+          candidateEvents: [],
+          priorDecisionIds: [],
+          missingFields: [],
+          conflicts: [],
+          sufficient: false,
+        },
+      );
+      assert.deepEqual({
+        publishedAt: request.data.groundingContext.evidence[0]?.publishedAt,
+        observedAt: request.data.groundingContext.evidence[0]?.observedAt,
+        retrievedAt: request.data.groundingContext.evidence[0]?.retrievedAt,
+      }, {
+        publishedAt: '2026-09-26T07:04:56.123456Z',
+        observedAt: '2026-09-26T12:09:10.000007Z',
+        retrievedAt: '2026-09-26T06:14:15.987654Z',
+      });
+
+      const nullableResult = await ports.evidenceRetrieval.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: 'candidate-syn-gamma' }],
+      });
+      assert.equal(nullableResult.candidates[0]?.publishedAt, null);
+      assert.equal(nullableResult.candidates[0]?.observedAt, null);
+      assert.equal(nullableResult.candidates[0]?.validFrom, null);
+      assert.equal(nullableResult.candidates[0]?.validUntil, null);
+    } finally {
+      await testDatabase.executor.execute('RESET TIME ZONE');
+    }
+  });
+
   async function addSource(
     sourceId: string,
     registryStatus: 'active' | 'paused' | 'retired',
@@ -775,6 +867,8 @@ interface FixtureInput {
   readonly publishedAt: string | null;
   readonly observedAt: string | null;
   readonly retrievedAt: string;
+  readonly validFrom?: string | null;
+  readonly validUntil?: string | null;
   readonly eventTime: { readonly start: string | null; readonly end: string | null; readonly precision: 'exact' | 'date' | 'range' | 'unknown' };
   readonly origin?: {
     readonly originId: string;
@@ -803,8 +897,8 @@ function makeRevision(fixture: FixtureInput): NewReportRevision {
     publishedAt: fixture.publishedAt,
     observedAt: fixture.observedAt,
     retrievedAt: fixture.retrievedAt,
-    validFrom: null,
-    validUntil: null,
+    validFrom: fixture.validFrom ?? null,
+    validUntil: fixture.validUntil ?? null,
     supersedesId: null,
     revisionStatus: fixture.revisionStatus,
     recordJson: { fixture: 'synthetic-test-only' },
