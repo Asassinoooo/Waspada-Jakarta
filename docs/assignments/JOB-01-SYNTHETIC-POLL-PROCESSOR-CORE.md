@@ -1,11 +1,11 @@
 # JOB-01-SYNTHETIC-POLL-PROCESSOR-CORE — bounded authored-fixture processing
 
 **Parent package:** JOB-01, FR-02/03/13, NFR-01/05/07  
-**Status:** Assigned for local synthetic-only implementation  
+**Status:** Accepted on `main` at `84c350b` after root review
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/JOB-01-SYNTHETIC-POLL-PROCESSOR-CORE`  
 **Worktree:** Reuse the clean managed `l3-coordinator-core` worktree after verifying no process uses it. Do not edit through the root checkout.  
-**Base:** Exact root commit to be recorded before implementation starts.  
+**Base:** `ab6511cca25f01b53dc4a78dcd41c489e3b9a38f`.
 **Dependencies:** `JOB-01-SCHEDULED-POLL-CORE`, `JOB-01-SYNTHETIC-POLL-CLAIM-CORE`, `L1-FIXTURE-PIPE-CORE`, `L1-FIXTURE-EXTRACTION-CORE`, `L1-EXTRACTION-REPLAY-CORE`, `ING-PARSE-01`, and `DB-TEST-RUNNER-ISOLATION`.  
 **Contract baseline:** Existing `AcquisitionJobRepository`, synthetic schema 2.0 fixture/persistence contracts, queue lease and retry policy; no public/API contract change.
 
