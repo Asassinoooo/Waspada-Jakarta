@@ -82,6 +82,11 @@ export interface AcquisitionJobRepository {
     now: string,
     leaseDurationMs?: number,
   ): Promise<AcquisitionJobRecord | null>;
+  /** Claim one due synthetic source poll without leasing other queue work. */
+  claimDueSyntheticSourcePoll(
+    now: string,
+    leaseDurationMs?: number,
+  ): Promise<AcquisitionJobRecord | null>;
   renewLease(
     datasetKind: DatasetKind,
     jobId: string,
@@ -272,17 +277,26 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
     return this.claimDueJobInScope(nowInput, leaseDurationMs, 'synthetic_moderator_submission');
   }
 
+  async claimDueSyntheticSourcePoll(
+    nowInput: string,
+    leaseDurationMs = JOB_QUEUE_POLICY.defaultLeaseDurationMs,
+  ): Promise<AcquisitionJobRecord | null> {
+    return this.claimDueJobInScope(nowInput, leaseDurationMs, 'synthetic_source_poll');
+  }
+
   private async claimDueJobInScope(
     nowInput: string,
     leaseDurationMs: number,
-    scope: 'any' | 'synthetic_moderator_submission',
+    scope: 'any' | 'synthetic_moderator_submission' | 'synthetic_source_poll',
   ): Promise<AcquisitionJobRecord | null> {
     const now = normalizeTimestamp(nowInput, 'now');
     validateLeaseDuration(leaseDurationMs);
     const leaseExpiresAt = addMilliseconds(now, leaseDurationMs);
     const scopePredicate = scope === 'synthetic_moderator_submission'
       ? "AND job.dataset_kind = 'synthetic' AND job.job_kind = 'moderator_submission'"
-      : '';
+      : scope === 'synthetic_source_poll'
+        ? "AND job.dataset_kind = 'synthetic' AND job.job_kind = 'source_poll'"
+        : '';
     const result = await this.executor.query<AcquisitionJobRow>(
       `WITH due_job AS (
          SELECT job.job_id

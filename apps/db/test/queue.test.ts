@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
-import { JOB_QUEUE_POLICY } from '../src/queue.js';
+import { JOB_QUEUE_POLICY, type AcquisitionJobRecord } from '../src/queue.js';
 import { createSourcePollIdempotencyKey, SqlSourcePollScheduler } from '../src/source-poll-scheduler.js';
 import { createRepositoryPorts, type DatasetKind } from '../src/ports.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
@@ -240,6 +240,204 @@ describe('JOB-01 durable acquisition queue', () => {
     assert.equal(await ports.acquisitionJobs.claimDueSyntheticModeratorSubmission(t0), null);
     await database.executor.query(
       "DELETE FROM waspada.acquisition_jobs WHERE idempotency_key LIKE 'fixture-runner:%'",
+    );
+  });
+
+  it('claims only one due eligible synthetic source poll under the L1 role', async () => {
+    const claimTime = '2029-01-01T00:00:00.000Z';
+    const dueAt = '2028-12-31T23:59:00.000Z';
+    const leaseDurationMs = 30_000;
+    const sourceIds = [
+      'claim-core-synthetic-due',
+      'claim-core-live-due',
+      'claim-core-historical-due',
+      'claim-core-synthetic-future',
+      'claim-core-terminal',
+      'claim-core-paused',
+      'claim-core-unapproved',
+      'claim-core-disabled',
+      'claim-core-no-interval',
+    ];
+    for (const sourceId of sourceIds) {
+      await insertSource(sourceId, {
+        registryStatus: 'active', approvalStatus: 'approved', autoAcquisitionEnabled: true,
+        pollingIntervalSeconds: 300,
+      });
+    }
+
+    const pollCases: Array<{
+      sourceId: string;
+      datasetKind: DatasetKind;
+      traceId: string;
+      requestedAt: string;
+    }> = [
+      { sourceId: 'claim-core-synthetic-due', datasetKind: 'synthetic',
+        traceId: syntheticTraceId, requestedAt: dueAt },
+      { sourceId: 'claim-core-live-due', datasetKind: 'live',
+        traceId: liveTraceId, requestedAt: dueAt },
+      { sourceId: 'claim-core-historical-due', datasetKind: 'historical',
+        traceId: historicalTraceId, requestedAt: dueAt },
+      { sourceId: 'claim-core-synthetic-future', datasetKind: 'synthetic',
+        traceId: syntheticTraceId, requestedAt: '2029-01-01T00:01:00.000Z' },
+      { sourceId: 'claim-core-terminal', datasetKind: 'synthetic',
+        traceId: syntheticTraceId, requestedAt: dueAt },
+      { sourceId: 'claim-core-paused', datasetKind: 'synthetic',
+        traceId: syntheticTraceId, requestedAt: dueAt },
+      { sourceId: 'claim-core-unapproved', datasetKind: 'synthetic',
+        traceId: syntheticTraceId, requestedAt: dueAt },
+      { sourceId: 'claim-core-disabled', datasetKind: 'synthetic',
+        traceId: syntheticTraceId, requestedAt: dueAt },
+      { sourceId: 'claim-core-no-interval', datasetKind: 'synthetic',
+        traceId: syntheticTraceId, requestedAt: dueAt },
+    ];
+    const pollJobs = new Map<string, AcquisitionJobRecord>();
+    for (const poll of pollCases) {
+      const queued = await ports.acquisitionJobs.enqueueSourcePoll(sourcePollInput(
+        poll.datasetKind,
+        'claim-core:poll:' + poll.sourceId,
+        poll.sourceId,
+        poll.requestedAt,
+        poll.traceId,
+      ));
+      assert.equal(queued.outcome, 'enqueued', poll.sourceId);
+      if (queued.outcome === 'enqueued') pollJobs.set(poll.sourceId, queued.job);
+    }
+    const moderator = await ports.acquisitionJobs.enqueueModeratorSubmission({
+      datasetKind: 'synthetic',
+      idempotencyKey: 'claim-core:moderator-submission',
+      traceId: syntheticTraceId,
+      requestedBy: 'claim-core-test',
+      submittedUrl: 'https://example.org/claim-core-moderator',
+      requestedAt: dueAt,
+    });
+    assert.equal(moderator.outcome, 'enqueued');
+    if (moderator.outcome !== 'enqueued') return;
+
+    const terminalJob = pollJobs.get('claim-core-terminal');
+    assert.ok(terminalJob);
+    await database.executor.query(
+      "UPDATE waspada.acquisition_jobs " +
+        "SET status = 'terminal', attempt_count = 1, " +
+        "last_failure_code = 'synthetic_poll_claim_terminal', " +
+        "updated_at = $2::timestamptz, finished_at = $2::timestamptz " +
+        "WHERE job_id = $1",
+      [terminalJob.jobId, claimTime],
+    );
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET registry_status = 'paused', auto_acquisition_enabled = false WHERE source_id = 'claim-core-paused'",
+    );
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET approval_status = 'pending', auto_acquisition_enabled = false WHERE source_id = 'claim-core-unapproved'",
+    );
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET auto_acquisition_enabled = false WHERE source_id = 'claim-core-disabled'",
+    );
+    await database.executor.query(
+      "UPDATE waspada.source_registry SET polling_interval_seconds = NULL, auto_acquisition_enabled = false WHERE source_id = 'claim-core-no-interval'",
+    );
+
+    const healthBefore = await Promise.all(sourceIds.map((sourceId) => getSourceHealth(sourceId)));
+    const eventBefore = await database.executor.query<{
+      dataset_kind: string;
+      event_id: string;
+      version: number;
+      lifecycle: string;
+      publication_status: string;
+      title: string;
+      record_json: unknown;
+    }>(
+      "SELECT dataset_kind, event_id, version, lifecycle, publication_status, title, record_json " +
+        "FROM waspada.event_versions ORDER BY dataset_kind, event_id, version",
+    );
+    const decisionsBefore = await database.executor.query<{
+      dataset_kind: string;
+      decision_id: string;
+      event_id: string;
+      event_version: number;
+      record_json: unknown;
+    }>(
+      "SELECT dataset_kind, decision_id, event_id, event_version, record_json " +
+        "FROM waspada.publication_decisions ORDER BY dataset_kind, decision_id",
+    );
+
+    let claimed: AcquisitionJobRecord | null = null;
+    let secondClaim: AcquisitionJobRecord | null = null;
+    await database.executor.execute('SET ROLE waspada_l1_pipeline;');
+    try {
+      claimed = await ports.acquisitionJobs.claimDueSyntheticSourcePoll(claimTime, leaseDurationMs);
+      secondClaim = await ports.acquisitionJobs.claimDueSyntheticSourcePoll(claimTime, leaseDurationMs);
+    } finally {
+      await database.executor.execute('RESET ROLE;');
+    }
+
+    assert.ok(claimed);
+    assert.equal(claimed.datasetKind, 'synthetic');
+    assert.equal(claimed.jobKind, 'source_poll');
+    assert.equal(claimed.sourceId, 'claim-core-synthetic-due');
+    assert.equal(claimed.status, 'leased');
+    assert.equal(claimed.attemptCount, 1);
+    assert.match(claimed.leaseToken ?? '', /^[0-9a-f-]{36}$/i);
+    assert.equal(claimed.leaseStartedAt, claimTime);
+    assert.equal(claimed.leaseExpiresAt, addMs(claimTime, leaseDurationMs));
+    assert.equal(secondClaim, null);
+
+    const assertUnchangedJob = async (
+      datasetKind: DatasetKind,
+      jobId: string,
+      status: 'pending' | 'terminal',
+      attemptCount: number,
+    ): Promise<void> => {
+      const unchanged = await ports.acquisitionJobs.findById(datasetKind, jobId);
+      assert.ok(unchanged, jobId);
+      assert.equal(unchanged.status, status, jobId);
+      assert.equal(unchanged.attemptCount, attemptCount, jobId);
+      assert.equal(unchanged.leaseToken, null, jobId);
+      assert.equal(unchanged.leaseStartedAt, null, jobId);
+      assert.equal(unchanged.leaseExpiresAt, null, jobId);
+    };
+    for (const poll of pollCases) {
+      if (poll.sourceId === 'claim-core-synthetic-due' || poll.sourceId === 'claim-core-terminal') continue;
+      const queued = pollJobs.get(poll.sourceId);
+      assert.ok(queued, poll.sourceId);
+      await assertUnchangedJob(poll.datasetKind, queued.jobId, 'pending', 0);
+    }
+    await assertUnchangedJob('synthetic', terminalJob.jobId, 'terminal', 1);
+    await assertUnchangedJob('synthetic', moderator.job.jobId, 'pending', 0);
+
+    assert.deepEqual(
+      await Promise.all(sourceIds.map((sourceId) => getSourceHealth(sourceId))),
+      healthBefore,
+    );
+    const eventAfter = await database.executor.query<{
+      dataset_kind: string;
+      event_id: string;
+      version: number;
+      lifecycle: string;
+      publication_status: string;
+      title: string;
+      record_json: unknown;
+    }>(
+      "SELECT dataset_kind, event_id, version, lifecycle, publication_status, title, record_json " +
+        "FROM waspada.event_versions ORDER BY dataset_kind, event_id, version",
+    );
+    assert.deepEqual(eventAfter.rows, eventBefore.rows);
+    const decisionsAfter = await database.executor.query<{
+      dataset_kind: string;
+      decision_id: string;
+      event_id: string;
+      event_version: number;
+      record_json: unknown;
+    }>(
+      "SELECT dataset_kind, decision_id, event_id, event_version, record_json " +
+        "FROM waspada.publication_decisions ORDER BY dataset_kind, decision_id",
+    );
+    assert.deepEqual(decisionsAfter.rows, decisionsBefore.rows);
+
+    await database.executor.query(
+      "DELETE FROM waspada.acquisition_jobs WHERE idempotency_key LIKE 'claim-core:%'",
+    );
+    await database.executor.query(
+      "DELETE FROM waspada.source_registry WHERE source_id LIKE 'claim-core-%'",
     );
   });
 
