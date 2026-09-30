@@ -7,8 +7,9 @@ import {
   InvestigationLedgerError,
   type CreateInvestigationInput,
 } from '../src/investigation-ledger.js';
-import { createSqlGroundingContextRepository } from '../src/grounding-contexts.js';
-import type { DatasetKind } from '../src/ports.js';
+import { createSqlExactEvidenceSpanReader } from '../src/evidence-retrieval.js';
+import { createSqlGeometryWriter } from '../src/geometry-writer.js';
+import { createRepositoryPorts, type DatasetKind } from '../src/ports.js';
 import {
   INVESTIGATION_PLAN_CAPABILITY,
   createInvestigationPlanner,
@@ -20,6 +21,20 @@ import {
 } from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
 import { createDirectReasoningService } from '../../worker/src/layers/l2-model-grounding/direct-reasoning.js';
 import { createReasoningContextPersister } from '../../worker/src/layers/l2-model-grounding/context-persistence.js';
+import { assembleGroundingReasoningRequest } from '../../worker/src/layers/l2-model-grounding/grounding-context.js';
+import {
+  InMemorySyntheticFixtureCatalog,
+  type FixturePipelinePorts,
+  type SyntheticFixture,
+  type SyntheticReportManifest,
+} from '../../worker/src/layers/l1-data-knowledge/synthetic-fixture-pipeline.js';
+import { runSyntheticFixtureJob } from '../../worker/src/layers/l1-data-knowledge/synthetic-fixture-runner.js';
+import { createModelCapabilityAdapter } from '../../worker/src/layers/l2-model-grounding/adapter.js';
+import { preparePermittedText } from '../../worker/src/layers/l1-data-knowledge/text-preparation.js';
+import type {
+  ExtractionRequest,
+  UntrustedModelProvider,
+} from '../../worker/src/layers/l2-model-grounding/contracts.js';
 import { validateReasoningRequest } from '../../worker/src/layers/l2-model-grounding/validation.js';
 import { createL3FingerprintService } from '../../worker/src/layers/l3-investigation/progress-fingerprint.js';
 import { createInvestigationCoordinator } from '../../worker/src/layers/l3-investigation/coordinator.js';
@@ -710,13 +725,12 @@ describe('L3 durable investigation ledger', () => {
     }));
   });
 
-  it('composes one coordinator advance through PGlite and the injected L1/L2 refresh boundary', async () => {
-    const fixture = await seedFixture(testDatabase, 'coordinator-composition', {
-      sufficient: false,
-      seedContext: false,
-    });
+  it('composes one coordinator advance through a persisted synthetic L1 replay and exact L2 refresh', async () => {
+    const roundtrip = await seedRoundtripFixture(testDatabase);
+    const { fixture, sourceId, reportRevisionId, selectedStart, selectedEnd, selectedSpan,
+      authoredText, eventTime, publishedAt, observedAt, retrievedAt, queued, extractorCalls } = roundtrip;
     const contextPersister = createReasoningContextPersister(
-      createSqlGroundingContextRepository(testDatabase.executor),
+      roundtrip.ports.groundingContexts,
     );
     const directReasoning = createDirectReasoningService(contextPersister, {
       async reason() {
@@ -724,7 +738,8 @@ describe('L3 durable investigation ledger', () => {
       },
     });
     const initialContextId = fixture.contextId;
-    const refreshedContextId = 'context-l3-coordinator-composition-refreshed';
+    const refreshedContextId = 'context-l3-coordinator-roundtrip-refreshed';
+    const refreshedMissingFields = ['synthetic_followup', 'second_synthetic_gap'] as const;
     const directOutcome = await directReasoning.reason(makeCoordinatorReasoningRequest(
       fixture,
       initialContextId,
@@ -760,7 +775,23 @@ describe('L3 durable investigation ledger', () => {
     };
     const events: string[] = [];
     const privateActionInput = 'ephemeral planner action input marker';
-    const outputReferenceId = 'output-synthetic-reference-coordinator';
+    const outputReferenceId = [
+      'synthetic-report', queued.job.jobId,
+    ].join(':');
+    let outputReference: {
+      readonly id: string;
+      readonly datasetKind: DatasetKind;
+      readonly traceId: string;
+      readonly candidateId: string;
+      readonly reportRevisionId: string;
+    } | null = null;
+    let l1RunnerCalls = 0;
+    let l2RetrievalCalls = 0;
+    let exactSpanReadCalls = 0;
+    let l2PersistenceCalls = 0;
+    const refreshPersistence: { value: Awaited<ReturnType<typeof contextPersister.persist>> | null } = { value: null };
+    let actionFailure: string | null = null;
+    let refreshFailure: string | null = null;
     const actionMenu: readonly InvestigationActionMenuEntry[] = [
       { name: 'synthetic_search', description: 'Search one synthetic test fixture.' },
     ];
@@ -806,10 +837,41 @@ describe('L3 durable investigation ledger', () => {
         maxActiveSeconds: 5,
         parseInput: (input) => ({ ok: true, value: input }),
         async handler(input) {
-          events.push('action');
-          actionInputSeen = input;
-          monotonicMilliseconds += 600;
-          return { status: 'succeeded', outputReferenceIds: [outputReferenceId] };
+          try {
+            events.push('action');
+            actionInputSeen = input;
+            assert.deepEqual(input, { query: privateActionInput });
+            monotonicMilliseconds += 600;
+            l1RunnerCalls += 1;
+            await testDatabase.executor.execute('SET ROLE waspada_l1_pipeline');
+            let l1Result;
+            try {
+              l1Result = await runSyntheticFixtureJob({
+                now: '2026-09-26T15:00:00.000Z',
+                queue: roundtrip.ports.acquisitionJobs,
+                catalog: roundtrip.fixtureCatalog,
+                pipelinePorts: roundtrip.fixturePorts,
+              });
+            } finally {
+              await testDatabase.executor.execute('RESET ROLE');
+            }
+            assert.deepEqual(l1Result, {
+              outcome: 'completed', empty: false, reportCount: 1,
+              evidenceReferenceCount: 1, chunkCount: 1, geometryCount: 0,
+            });
+            assert.equal(extractorCalls.count, 1);
+            outputReference = {
+              id: outputReferenceId,
+              datasetKind: fixture.datasetKind,
+              traceId: fixture.traceId,
+              candidateId: fixture.candidateId,
+              reportRevisionId,
+            };
+            return { status: 'succeeded', outputReferenceIds: [outputReference.id] };
+          } catch (error) {
+            actionFailure = error instanceof Error ? error.message : String(error);
+            throw error;
+          }
         },
       }],
       clock,
@@ -819,39 +881,171 @@ describe('L3 durable investigation ledger', () => {
       async refresh(input: {
         readonly datasetKind: DatasetKind;
         readonly investigationId: string;
+        readonly traceId: string;
+        readonly candidateId: string;
         readonly previousContextId: string;
+        readonly eventId: string | null;
+        readonly eventVersion: number | null;
         readonly outputReferenceIds: readonly string[];
       }) {
         events.push('refresh');
-        assert.equal(input.previousContextId, initialContextId);
-        assert.deepEqual(input.outputReferenceIds, [outputReferenceId]);
-        const beforeProgress = await repository.getLatest(input.datasetKind, input.investigationId);
-        assert.ok(beforeProgress);
-        assert.equal(beforeProgress.context_id, initialContextId);
-        assert.equal(beforeProgress.checkpoint_version, 5);
-        const pendingSnapshot = await testDatabase.executor.query<{
-          checkpoint_version: number;
-          context_id: string;
-        }>(
-          'SELECT checkpoint_version, context_id FROM waspada.investigation_progress_snapshots '
-            + 'WHERE dataset_kind = $1 AND investigation_id = $2',
-          [input.datasetKind, input.investigationId],
-        );
-        assert.deepEqual(pendingSnapshot.rows, [{ checkpoint_version: 1, context_id: initialContextId }]);
-        const persisted = await contextPersister.persist(makeCoordinatorReasoningRequest(
-          fixture,
-          refreshedContextId,
-          ['synthetic_followup', 'second_synthetic_gap'],
-        ));
-        const contextRow = await testDatabase.executor.query<{ context_id: string }>(
-          'SELECT context_id FROM waspada.grounding_contexts WHERE dataset_kind = $1 AND context_id = $2',
-          [fixture.datasetKind, refreshedContextId],
-        );
-        assert.deepEqual(contextRow.rows, [{ context_id: refreshedContextId }]);
-        return {
-          context: persisted.reasoningRequest.data.groundingContext,
-          persistedRecord: persisted.persistedRecord,
-        };
+        try {
+          assert.equal(input.datasetKind, fixture.datasetKind);
+          assert.equal(input.traceId, fixture.traceId);
+          assert.equal(input.candidateId, fixture.candidateId);
+          assert.equal(input.eventId, null);
+          assert.equal(input.eventVersion, null);
+          assert.equal(input.previousContextId, initialContextId);
+          assert.deepEqual(input.outputReferenceIds, [outputReferenceId]);
+          const reference = outputReference;
+          assert.ok(reference);
+          assert.deepEqual(reference, {
+            id: outputReferenceId,
+            datasetKind: fixture.datasetKind,
+            traceId: fixture.traceId,
+            candidateId: fixture.candidateId,
+            reportRevisionId,
+          });
+          const beforeProgress = await repository.getLatest(input.datasetKind, input.investigationId);
+          assert.ok(beforeProgress);
+          assert.equal(beforeProgress.context_id, initialContextId);
+          assert.equal(beforeProgress.dataset_kind, fixture.datasetKind);
+          assert.equal(beforeProgress.trace_id, fixture.traceId);
+          assert.equal(beforeProgress.candidate_id, fixture.candidateId);
+          assert.equal(beforeProgress.event_id, null);
+          assert.equal(beforeProgress.event_version, null);
+          assert.equal(beforeProgress.checkpoint_version, 5);
+          const pendingSnapshot = await testDatabase.executor.query<{
+            checkpoint_version: number;
+            context_id: string;
+          }>(
+            'SELECT checkpoint_version, context_id FROM waspada.investigation_progress_snapshots '
+              + 'WHERE dataset_kind = $1 AND investigation_id = $2',
+            [input.datasetKind, input.investigationId],
+          );
+          assert.deepEqual(pendingSnapshot.rows, [{ checkpoint_version: 1, context_id: initialContextId }]);
+
+          let retrieval: Awaited<ReturnType<typeof roundtrip.ports.evidenceRetrieval.search>>;
+          let reasoningRequest: Awaited<ReturnType<typeof assembleGroundingReasoningRequest>>;
+          await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_reader');
+          try {
+            l2RetrievalCalls += 1;
+            retrieval = await roundtrip.ports.evidenceRetrieval.search({
+              datasetKind: reference.datasetKind,
+              identifiers: [{ kind: 'candidate', value: reference.candidateId }],
+              maxResults: 10,
+              maxRowsExamined: 20,
+              maxSpanTextCodePoints: 256,
+            });
+            assert.equal(retrieval.datasetKind, fixture.datasetKind);
+            assert.equal(retrieval.scanTruncated, false);
+            assert.equal(retrieval.resultTruncated, false);
+            assert.equal(retrieval.invalidSpanRowsOmitted, 0);
+            assert.equal(retrieval.candidates.length, 1);
+            const retrieved = retrieval.candidates[0]!;
+            assert.equal(retrieved.datasetKind, reference.datasetKind);
+            assert.equal(retrieved.candidateId, reference.candidateId);
+            assert.equal(retrieved.reportRevisionId, reference.reportRevisionId);
+            assert.equal(retrieved.permittedTextHash, sha256(authoredText));
+            assert.equal(retrieved.spanStart, selectedStart);
+            assert.equal(retrieved.spanEnd, selectedEnd);
+            assert.ok(retrieved.spanText.startsWith(selectedSpan));
+            assert.equal(retrieved.spanTextTruncated, false);
+            assert.equal(retrieved.relation, 'supports');
+            assert.equal(retrieved.source.sourceId, sourceId);
+            assert.equal(retrieved.source.registryStatus, 'active');
+            assert.equal(retrieved.source.approvalStatus, 'approved');
+            assert.equal(retrieved.revisionStatus, 'unreviewed');
+            assert.equal(retrieved.publishedAt, '2026-09-26T07:04:56.123456Z');
+            assert.equal(retrieved.observedAt, '2026-09-26T12:09:10.000007Z');
+            assert.equal(retrieved.retrievedAt, '2026-09-26T06:14:15.987654Z');
+            assert.equal(retrieved.eventTime.status, 'valid');
+            assert.equal(Date.parse(retrieved.eventTime.start ?? ''), Date.parse(eventTime));
+            assert.equal(retrieved.originLineageStatus, 'unknown');
+            assert.deepEqual(retrieved.origins, []);
+            assert.equal(new Set([
+              Date.parse(retrieved.publishedAt),
+              Date.parse(retrieved.observedAt),
+              Date.parse(retrieved.retrievedAt),
+              Date.parse(retrieved.eventTime.start ?? ''),
+            ]).size, 4);
+
+            const exactSpanReader = createSqlExactEvidenceSpanReader(testDatabase.executor);
+            const countingSpanReader = {
+              async readExactSpan(request: Parameters<typeof exactSpanReader.readExactSpan>[0]) {
+                exactSpanReadCalls += 1;
+                return exactSpanReader.readExactSpan(request);
+              },
+            };
+            reasoningRequest = await assembleGroundingReasoningRequest(countingSpanReader, {
+              retrieval,
+              datasetKind: reference.datasetKind,
+              traceId: reference.traceId,
+              contextId: refreshedContextId,
+              candidateId: reference.candidateId,
+              evidenceReferenceIds: [retrieved.evidenceReferenceId],
+              candidateEvents: [],
+              priorDecisionIds: [],
+              missingFields: refreshedMissingFields,
+              conflicts: [],
+              sufficient: false,
+            });
+            assert.equal(reasoningRequest.data.groundingContext.contextId, refreshedContextId);
+            assert.equal(reasoningRequest.data.groundingContext.traceId, fixture.traceId);
+            assert.equal(reasoningRequest.data.groundingContext.candidateId, fixture.candidateId);
+            assert.equal(reasoningRequest.data.groundingContext.datasetKind, fixture.datasetKind);
+            assert.equal(reasoningRequest.data.groundingContext.sufficient, false);
+            assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.text, selectedSpan);
+            assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.sourceId, sourceId);
+            assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.publishedAt,
+              '2026-09-26T07:04:56.123456Z');
+            assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.observedAt,
+              '2026-09-26T12:09:10.000007Z');
+            assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.retrievedAt,
+              '2026-09-26T06:14:15.987654Z');
+            assert.deepEqual(reasoningRequest.data.groundingContext.candidateEvents, []);
+          } finally {
+            await testDatabase.executor.execute('RESET ROLE');
+          }
+          assert.equal(exactSpanReadCalls, 1);
+
+          let persisted: Awaited<ReturnType<typeof contextPersister.persist>> | null = null;
+          await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_writer');
+          try {
+            l2PersistenceCalls += 1;
+            persisted = await contextPersister.persist(reasoningRequest);
+            refreshPersistence.value = persisted;
+          } finally {
+            await testDatabase.executor.execute('RESET ROLE');
+          }
+          assert.ok(persisted);
+          assert.deepEqual(persisted.persistedRecord.evidence, [{
+            report_revision_id: reportRevisionId,
+            permitted_text_hash: retrieval!.candidates[0]!.permittedTextHash,
+            span_start: selectedStart,
+            span_end: selectedEnd,
+            offset_unit: 'unicode_code_points',
+            relation: 'supports',
+          }]);
+          assert.deepEqual(persisted.persistedRecord.candidate_events, []);
+          const contextRow = await testDatabase.executor.query<{ context_id: string; record_json: string }>(
+            'SELECT context_id, record_json::text AS record_json FROM waspada.grounding_contexts '
+              + 'WHERE dataset_kind = $1 AND context_id = $2',
+            [fixture.datasetKind, refreshedContextId],
+          );
+          assert.equal(contextRow.rows.length, 1);
+          assert.equal(contextRow.rows[0]?.context_id, refreshedContextId);
+          assert.deepEqual(JSON.parse(contextRow.rows[0]!.record_json), persisted.persistedRecord);
+          assert.equal(contextRow.rows[0]!.record_json.includes(selectedSpan), false);
+          assert.equal(Object.hasOwn(persisted.persistedRecord.evidence[0]!, 'text'), false);
+          return {
+            context: persisted.reasoningRequest.data.groundingContext,
+            persistedRecord: persisted.persistedRecord,
+          };
+        } catch (error) {
+          refreshFailure = error instanceof Error ? error.message : String(error);
+          throw error;
+        }
       },
     };
     const coordinator = createInvestigationCoordinator({
@@ -880,12 +1074,25 @@ describe('L3 durable investigation ledger', () => {
     } as const;
     const result = await coordinator.advance(advanceInput);
 
-    assert.equal(result.status, 'continue', JSON.stringify({ result, events }));
+    assert.equal(result.status, 'continue', JSON.stringify({ result, events, actionFailure, refreshFailure }));
     if (result.status !== 'continue') assert.fail('expected the changed insufficient context to continue');
     assert.deepEqual(events, ['planner', 'action', 'refresh']);
     assert.deepEqual(actionInputSeen, { query: privateActionInput });
+    const persistedRefresh = refreshPersistence.value;
+    assert.ok(persistedRefresh);
     assert.equal(result.context.contextId, refreshedContextId);
-    assert.deepEqual(result.context.missingFields, ['synthetic_followup', 'second_synthetic_gap']);
+    assert.equal(result.context.datasetKind, fixture.datasetKind);
+    assert.equal(result.context.traceId, fixture.traceId);
+    assert.equal(result.context.candidateId, fixture.candidateId);
+    assert.deepEqual(result.context.candidateEvents, []);
+    assert.deepEqual(result.context.evidence[0]?.reference,
+      persistedRefresh.reasoningRequest.data.groundingContext.evidence[0]?.reference);
+    assert.deepEqual(result.context.missingFields, refreshedMissingFields);
+    assert.equal(result.checkpoint.dataset_kind, fixture.datasetKind);
+    assert.equal(result.checkpoint.trace_id, fixture.traceId);
+    assert.equal(result.checkpoint.candidate_id, fixture.candidateId);
+    assert.equal(result.checkpoint.event_id, null);
+    assert.equal(result.checkpoint.event_version, null);
     assert.equal(result.checkpoint.context_id, refreshedContextId);
     assert.equal(result.checkpoint.checkpoint_version, 6);
     assert.equal(result.checkpoint.budget.consumed.reasoning_turns, 1);
@@ -908,6 +1115,11 @@ describe('L3 durable investigation ledger', () => {
     if (outerRetry.status !== 'review_required') assert.fail('expected stale checkpoint after outer replay');
     assert.equal(outerRetry.reason, 'stale_checkpoint');
     assert.deepEqual(events, ['planner', 'action', 'refresh']);
+    assert.equal(l1RunnerCalls, 1);
+    assert.equal(extractorCalls.count, 1);
+    assert.equal(l2RetrievalCalls, 1);
+    assert.equal(exactSpanReadCalls, 1);
+    assert.equal(l2PersistenceCalls, 1);
 
     const finalSnapshot = await testDatabase.executor.query<{
       checkpoint_version: number;
@@ -959,13 +1171,56 @@ describe('L3 durable investigation ledger', () => {
     assert.equal(stableActionReservation.rows[0]?.reserved_tool_attempts, 1);
     assert.equal(Date.parse(stableActionReservation.rows[0]!.reserved_at), Date.parse('2026-09-25T10:03:00Z'));
 
+    const persistedRevision = await roundtrip.ports.reportRevisions.findById(fixture.datasetKind, reportRevisionId);
+    assert.ok(persistedRevision);
+    assert.equal(persistedRevision.traceId, fixture.traceId);
+    assert.equal(persistedRevision.sourceId, sourceId);
+    assert.equal(persistedRevision.revisionStatus, 'unreviewed');
+    assert.equal(Date.parse(persistedRevision.publishedAt ?? ''), Date.parse(publishedAt));
+    assert.equal(Date.parse(persistedRevision.observedAt ?? ''), Date.parse(observedAt));
+    assert.equal(Date.parse(persistedRevision.retrievedAt), Date.parse(retrievedAt));
+    const persistedCandidate = await roundtrip.ports.extractionResults.findByCandidateId(
+      fixture.datasetKind,
+      fixture.candidateId,
+    );
+    assert.equal(persistedCandidate.outcome, 'found');
+    if (persistedCandidate.outcome !== 'found') {
+      assert.fail('expected the exact L1 extraction to remain persisted after coordinator replay');
+    }
+    assert.equal(persistedCandidate.record.trace_id, fixture.traceId);
+    assert.equal(persistedCandidate.record.candidate_id, fixture.candidateId);
+    assert.equal(persistedCandidate.record.report_revision_id, reportRevisionId);
+    assert.equal(Date.parse(persistedCandidate.record.event_time.start ?? ''), Date.parse(eventTime));
+    const l1Job = await roundtrip.ports.acquisitionJobs.findById(fixture.datasetKind, queued.job.jobId);
+    assert.equal(l1Job?.status, 'completed');
+    assert.equal(l1Job?.attemptCount, 1);
+    const noPublicationWrites = await testDatabase.executor.query<{
+      events: string;
+      publications: string;
+      proposals: string;
+    }>(
+      'SELECT '
+        + '(SELECT count(*)::text FROM waspada.event_versions WHERE dataset_kind = $1 AND trace_id = $2) AS events, '
+        + '(SELECT count(*)::text FROM waspada.publication_decisions WHERE dataset_kind = $1 AND trace_id = $2) AS publications, '
+        + '(SELECT count(*)::text FROM waspada.event_proposals WHERE dataset_kind = $1 AND trace_id = $2) AS proposals',
+      [fixture.datasetKind, fixture.traceId],
+    );
+    assert.deepEqual(noPublicationWrites.rows[0], { events: '0', publications: '0', proposals: '0' });
+
     const ledgerJson = await readLedgerJson(testDatabase, fixture.datasetKind, result.checkpoint.investigation_id);
-    const storedContexts = await testDatabase.executor.query<{ record_json: string }>(
-      'SELECT record_json::text AS record_json FROM waspada.grounding_contexts '
+    const storedContexts = await testDatabase.executor.query<{ context_id: string; record_json: string }>(
+      'SELECT context_id, record_json::text AS record_json FROM waspada.grounding_contexts '
         + 'WHERE dataset_kind = $1 AND context_id = ANY($2::text[])',
       [fixture.datasetKind, [initialContextId, refreshedContextId]],
     );
-    const durable = ledgerJson + storedContexts.rows.map(({ record_json }) => record_json).join('\n');
+    assert.equal(storedContexts.rows.length, 2);
+    const refreshedStoredContext = storedContexts.rows.find(({ context_id }) => context_id === refreshedContextId);
+    assert.ok(refreshedStoredContext);
+    assert.deepEqual(JSON.parse(refreshedStoredContext.record_json), persistedRefresh.persistedRecord);
+    const durableContextJson = storedContexts.rows.map(({ record_json }) => record_json).join('\n');
+    assert.equal(durableContextJson.includes(selectedSpan), false);
+    assert.equal(durableContextJson.includes(authoredText), false);
+    const durable = ledgerJson + durableContextJson;
     assert.equal(durable.includes(privateActionInput), false);
     assert.equal(durable.includes(outputReferenceId), false);
     assert.equal(durable.includes(JSON.stringify({ query: privateActionInput })), false);
@@ -1631,6 +1886,253 @@ interface FixtureContext {
   readonly candidateId: string;
   readonly contextId: string;
   readonly traceId: string;
+}
+
+async function seedRoundtripFixture(testDatabase: TestDatabase) {
+  const fixture: FixtureContext = {
+    datasetKind: 'synthetic',
+    candidateId: 'candidate-l3-coordinator-roundtrip',
+    contextId: 'context-l3-coordinator-roundtrip-initial',
+    traceId: 'trace-l3-coordinator-roundtrip',
+  };
+  const sourceId = 'source-l3-coordinator-roundtrip';
+  const reportRevisionId = 'revision-l3-coordinator-roundtrip';
+  const featureId = 'l3-roundtrip-feature';
+  const fixtureUrl = 'https://synthetic.invalid/l3/coordinator-roundtrip';
+  const authoredText = 'Synthetic authored report: the bridge remains open at the main crossing.';
+  const selectedSpan = 'the bridge remains open';
+  const selectedStart = Array.from(authoredText.slice(0, authoredText.indexOf(selectedSpan))).length;
+  const selectedEnd = selectedStart + Array.from(selectedSpan).length;
+  const publishedAt = '2026-09-26T12:34:56.123456+05:30';
+  const observedAt = '2026-09-26T08:09:10.000007-04:00';
+  const retrievedAt = '2026-09-26T13:14:15.987654+07:00';
+  const eventTime = '2026-09-24T09:01:02.123456+02:00';
+  const ports = createRepositoryPorts(testDatabase.executor);
+  await ports.tracesAndAudit.createTrace({
+    traceId: fixture.traceId,
+    datasetKind: fixture.datasetKind,
+    startedAt: TEST_TIME,
+    endedAt: null,
+    outcome: 'open',
+    metadata: { fixture: 'synthetic-l1-l2-roundtrip-test' },
+  });
+  await testDatabase.executor.query(
+    'INSERT INTO waspada.source_registry '
+      + '(source_id, trace_id, registry_version, display_name, source_kind, remit, '
+      + 'access_method, approved_hosts, access_restrictions, reuse_basis, registry_status, '
+      + 'approval_status, health_status, auto_acquisition_enabled, auto_publication_policy) '
+      + 'VALUES ($1, $2, 1, $3, $4, $5, $6, $7::text[], $8::text[], $9::text[], '
+      + '$10, $11, $12, $13, $14)',
+    [sourceId, fixture.traceId, 'Synthetic coordinator round-trip source', 'other',
+      ['authored synthetic integration fixture'], 'manual_fixture', [],
+      ['synthetic-only'], ['authored synthetic report'], 'active', 'approved', 'unknown', false, 'never'],
+  );
+  const manifest: SyntheticReportManifest = {
+    candidateId: fixture.candidateId,
+    reportRevisionId,
+    sourceId,
+    canonicalUrl: fixtureUrl,
+    contentHash: sha256('synthetic coordinator round-trip source payload'),
+    permittedText: authoredText,
+    publishedAt,
+    observedAt,
+    validFrom: null,
+    validUntil: null,
+    supersedesId: null,
+    supportSpans: [{ spanStart: selectedStart, spanEnd: selectedEnd }],
+  };
+  const syntheticFixture: SyntheticFixture = {
+    url: fixtureUrl,
+    geoJson: JSON.stringify({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        id: featureId,
+        properties: { status: 'transient-only', report_type: 'transient-only' },
+        geometry: null,
+      }],
+    }),
+    retrievedAt,
+    sourceId,
+    manifests: new Map([[featureId, manifest]]),
+  };
+  const prepared = await preparePermittedText(authoredText);
+  const recordJson = {
+    schema_version: '2.0',
+    trace_id: fixture.traceId,
+    record_type: 'ReportRevision',
+    dataset_kind: fixture.datasetKind,
+    report_revision_id: reportRevisionId,
+    source_id: sourceId,
+    canonical_url: fixtureUrl,
+    source_revision_key: null,
+    content_hash: manifest.contentHash,
+    permitted_text: prepared.permittedText,
+    permitted_text_hash: prepared.permittedTextHash,
+    normalization_version: prepared.normalizationVersion,
+    published_at: publishedAt,
+    observed_at: observedAt,
+    retrieved_at: retrievedAt,
+    validity: { valid_from: null, valid_until: null },
+    supersedes_id: null,
+    revision_status: 'unreviewed',
+  };
+  await ports.reportRevisions.create({
+    datasetKind: fixture.datasetKind,
+    reportRevisionId,
+    traceId: fixture.traceId,
+    sourceId,
+    canonicalUrl: fixtureUrl,
+    sourceRevisionKey: null,
+    contentHash: manifest.contentHash,
+    permittedText: prepared.permittedText,
+    permittedTextHash: prepared.permittedTextHash,
+    normalizationVersion: prepared.normalizationVersion,
+    publishedAt,
+    observedAt,
+    retrievedAt,
+    validFrom: null,
+    validUntil: null,
+    supersedesId: null,
+    revisionStatus: 'unreviewed',
+    recordJson,
+  });
+  const extractorCalls = { count: 0 };
+  const extractorProvider: UntrustedModelProvider = {
+    async classify() { throw new Error('unused synthetic classification'); },
+    async extract(request: ExtractionRequest) {
+      extractorCalls.count += 1;
+      assert.equal(request.data.candidateId, fixture.candidateId);
+      assert.equal(request.data.report.reportRevisionId, reportRevisionId);
+      return {
+        output: {
+          category: 'transport_road_incidents',
+          tags: [],
+          eventTime: { start: eventTime, end: eventTime, precision: 'exact' },
+          scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
+          evidence: [{
+            reportRevisionId,
+            permittedTextHash: request.data.report.permittedTextHash,
+            spanStart: selectedStart,
+            spanEnd: selectedEnd,
+            offsetUnit: 'unicode_code_points',
+            relation: 'supports',
+          }],
+          unknownFields: [],
+        },
+        usage: { inputTokens: 13, outputTokens: 5 },
+      };
+    },
+    async embed() { throw new Error('unused synthetic embedding'); },
+    async reason() { throw new Error('unused synthetic reasoning'); },
+  };
+  const fixturePorts: FixturePipelinePorts = {
+    acquisitionJobs: ports.acquisitionJobs,
+    sourceRegistry: ports.sourceRegistry,
+    modelAdapter: createModelCapabilityAdapter(extractorProvider, {
+      extraction: {
+        provider: 'synthetic-l3-roundtrip-provider',
+        modelVersion: 'synthetic-l3-roundtrip-extractor-v1',
+        promptVersion: 'synthetic-l3-roundtrip-prompt-v1',
+      },
+    }),
+    reportRevisions: ports.reportRevisions,
+    extractionResults: ports.extractionResults,
+    evidenceChunks: ports.evidenceChunks,
+    geometryWriter: createSqlGeometryWriter(testDatabase.executor),
+  };
+  const baselineExtraction = await fixturePorts.modelAdapter.extract({
+    data: {
+      candidateId: fixture.candidateId,
+      report: {
+        reportRevisionId,
+        permittedTextHash: prepared.permittedTextHash,
+        normalizationVersion: prepared.normalizationVersion,
+        permittedText: prepared.permittedText,
+      },
+    },
+  });
+  assert.equal(baselineExtraction.status, 'succeeded');
+  if (baselineExtraction.status !== 'succeeded') {
+    assert.fail('expected the deterministic synthetic extraction baseline');
+  }
+  for (const reference of baselineExtraction.value.evidence) {
+    await ports.reportRevisions.createEvidenceReference({
+      datasetKind: fixture.datasetKind,
+      traceId: fixture.traceId,
+      reportRevisionId: reference.reportRevisionId,
+      permittedTextHash: reference.permittedTextHash,
+      spanStart: reference.spanStart,
+      spanEnd: reference.spanEnd,
+      relation: reference.relation,
+    });
+  }
+  await ports.extractionResults.createOrVerify({
+    schema_version: '2.0',
+    trace_id: fixture.traceId,
+    record_type: 'ExtractionResult',
+    dataset_kind: fixture.datasetKind,
+    candidate_id: fixture.candidateId,
+    report_revision_id: reportRevisionId,
+    category: baselineExtraction.value.category,
+    tags: baselineExtraction.value.tags.map(({ namespace, value }) => ({ namespace, value })),
+    event_time: {
+      start: baselineExtraction.value.eventTime.start,
+      end: baselineExtraction.value.eventTime.end,
+      precision: baselineExtraction.value.eventTime.precision,
+    },
+    scope: {
+      place_ids: [...baselineExtraction.value.scope.placeIds],
+      service_ids: [...baselineExtraction.value.scope.serviceIds],
+      institution_ids: [...baselineExtraction.value.scope.institutionIds],
+      audience_ids: [...baselineExtraction.value.scope.audienceIds],
+      geometry_ids: [...baselineExtraction.value.scope.geometryIds],
+    },
+    evidence: baselineExtraction.value.evidence.map((reference) => ({
+      report_revision_id: reference.reportRevisionId,
+      permitted_text_hash: reference.permittedTextHash,
+      span_start: reference.spanStart,
+      span_end: reference.spanEnd,
+      offset_unit: reference.offsetUnit,
+      relation: reference.relation,
+    })),
+    unknown_fields: [...baselineExtraction.value.unknownFields],
+    model_run: {
+      capability: 'extraction',
+      model_version: baselineExtraction.value.modelRun.modelVersion,
+      prompt_version: baselineExtraction.value.modelRun.promptVersion,
+      input_tokens: baselineExtraction.value.modelRun.inputTokens,
+      output_tokens: baselineExtraction.value.modelRun.outputTokens,
+    },
+  });
+  const queued = await ports.acquisitionJobs.enqueueModeratorSubmission({
+    datasetKind: fixture.datasetKind,
+    idempotencyKey: 'synthetic-l3-roundtrip:one',
+    traceId: fixture.traceId,
+    requestedBy: 'synthetic-l3-roundtrip-test',
+    submittedUrl: fixtureUrl,
+    requestedAt: '2026-09-25T10:00:00Z',
+  });
+  assert.equal(queued.outcome, 'enqueued');
+  if (queued.outcome !== 'enqueued') assert.fail('expected one synthetic moderator fixture job');
+  return {
+    fixture,
+    sourceId,
+    reportRevisionId,
+    selectedStart,
+    selectedEnd,
+    selectedSpan,
+    authoredText,
+    eventTime,
+    publishedAt,
+    observedAt,
+    retrievedAt,
+    fixturePorts,
+    fixtureCatalog: new InMemorySyntheticFixtureCatalog([syntheticFixture]),
+    queued,
+    extractorCalls,
+    ports,
+  };
 }
 
 async function seedFixture(
