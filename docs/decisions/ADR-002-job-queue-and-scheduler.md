@@ -12,7 +12,7 @@ Scheduled triggers can be late or repeated, and workers can stop after claiming 
 
 ## Decision
 
-Persist queue state in PostgreSQL. Cron or a local timer will only request due work; later Cloudflare Workflows may execute a bounded job by ID. The database row remains authoritative for identity, idempotency, attempts, lease state, retry time and outcome. The accepted local JOB-01 slices implement database-backed queue primitives and bounded due-source scheduling, not Cloudflare Cron/Workflow bindings or a live connector.
+Persist queue state in PostgreSQL. Cron or a local timer will only request due work; later Cloudflare Workflows may execute a bounded job by ID. The database row remains authoritative for identity, idempotency, attempts, lease state, retry time and outcome. The accepted local JOB-01 slices implement database-backed queue primitives, bounded due-source scheduling, and a synthetic-only source-poll claim, not Cloudflare Cron/Workflow bindings or a live connector.
 
 Every enqueue carries a dataset-scoped idempotency key. Scheduled source polls are accepted only for an active, approved source with automatic acquisition enabled and an explicitly configured interval; this ADR does not approve or select a polling cadence. Moderator-submitted acquisitions use the same durable queue and downstream L1 pipeline, but the enqueue caller must already have passed MOD-01 authorization. The queue itself is not an authorization boundary.
 
@@ -30,6 +30,8 @@ Source health is updated independently from event state. A successful poll recor
 ### Local due-poll scheduling boundary
 
 The accepted local L1 scheduler selects only sources that are active, approved, enabled for automatic acquisition, and configured with a source-specific polling interval. A source becomes due when it has no prior check or its last check is at least one configured interval old. The scheduler derives an idempotency key from the source identity, configured interval, dataset, and current UTC schedule slot; a pending, leased, or retrying poll suppresses another enqueue. It processes a bounded batch and schedules only the current slot after downtime, avoiding a catch-up burst. The scheduler only writes queue requests: it does not claim jobs, fetch content, or update connector health. This policy is implemented and accepted in `JOB-01-SCHEDULED-POLL-CORE`; a runtime timer/Cron adapter and external source activation remain separate work.
+
+The typed `claimDueSyntheticSourcePoll` operation applies the synthetic dataset and `source_poll` job-kind predicates before the existing atomic lease update. It uses the same source approval and finite lease rules as general polling, under the current L1 role. It is accepted as `JOB-01-SYNTHETIC-POLL-CLAIM-CORE`; processing claimed polls and acquiring any external content remain separate work.
 
 ## Alternatives considered
 

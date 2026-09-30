@@ -1,7 +1,7 @@
 # JOB-01-SYNTHETIC-POLL-CLAIM-CORE - scoped synthetic source-poll claiming
 
 **Parent package:** JOB-01, FR-02/03/13  
-**Status:** Assigned for local implementation  
+**Status:** Accepted on `main` at `16bf22a`
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/JOB-01-SYNTHETIC-POLL-CLAIM-CORE`  
 **Worktree:** Reuse the clean managed `l3-coordinator-core` worktree after verifying no process uses it.  

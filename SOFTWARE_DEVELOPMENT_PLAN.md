@@ -12,6 +12,10 @@ Local Layer 1 wires the typed, append-only schema 2.0 extraction repository into
 
 `JOB-01-SCHEDULED-POLL-CORE` adds a bounded, enqueue-only Layer 1 scheduler. Given an explicit RFC3339 instant, dataset, and persisted trace, it selects at most 100 active, approved sources whose configured polling interval is due and enqueues stable keys for the current UTC slot. It skips sources with pending, leased, or retry poll jobs, rejects invalid calendar dates, and does not fetch content or update source health. This is verified with synthetic PGlite rows; timer/Cron wiring, source-poll execution, hosted Neon behavior, and independent PostgreSQL concurrency remain unverified.
 
+The accepted `JOB-01-SYNTHETIC-POLL-CLAIM-CORE` adds a typed Layer 1 lease boundary for due synthetic source-poll jobs. It fixes the claim to the synthetic dataset and `source_poll` kind, reuses existing source-approval checks and finite lease rules, and runs under the current L1 role. It does not process fixtures or acquire source content; timer/Cron wiring, source-poll execution, hosted Neon behavior, and independent PostgreSQL concurrency remain unverified.
+
+`JOB-01-SYNTHETIC-POLL-PROCESSOR-CORE` is assigned as the next local L1 slice. It will process one claimed synthetic source-poll job through an exact source-ID keyed catalog of authored, buffered fixtures and existing parsing/persistence capabilities. It excludes network acquisition, L3 investigation, publication, and runtime timer configuration; it does not activate any real source.
+
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
 This Software Development Plan (SDP) is the project's main engineering document. It combines the release scope, a requirements baseline, work breakdown, delivery process and acceptance gates. The detailed architecture and source-verification specifications remain linked supporting documents. A separate Software Requirements Specification (SRS) can later be extracted from the requirements here if the course requires it; duplicating the same requirements now would create competing versions.
