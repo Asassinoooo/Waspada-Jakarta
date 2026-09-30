@@ -1,7 +1,7 @@
 # JOB-01-SYNTHETIC-POLL-CYCLE-PGLITE-CORE — verify the local scheduled ingestion path
 
 **Parent package:** JOB-01, FR-02/03/13, NFR-01/05/07  
-**Status:** Assigned for synthetic-only PGlite verification  
+**Status:** Accepted on `main` at implementation `e2af444` and handoff `459f68a`
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/JOB-01-SYNTHETIC-POLL-CYCLE-PGLITE-CORE`  
 **Worktree:** Reuse the clean managed `l3-coordinator-core` worktree after confirming the prior task is complete and no process uses it. Root supplies the Windows/WSL paths and exact `main` base at dispatch.  

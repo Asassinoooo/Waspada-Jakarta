@@ -10,7 +10,7 @@
 
 ## Context and constraints
 
-The user selected `needs_update` when `review_due_at` passes without newer applicable evidence and reserved `expired` for the issuing source's explicit validity end. The current ADR leaves the event-level aggregate of claim and impact freshness open. This task implements a pure policy for one event or impact record, without choosing that aggregate.
+The user selected `needs_update` when `review_due_at` passes without newer applicable evidence and reserved `expired` for the issuing source's explicit validity end. When this assignment was created, the event-level aggregate of claim and impact freshness was still open. The user later selected the conservative aggregate now recorded in ADR-032; this accepted task remains limited to one event or impact record and does not implement aggregation. Public claims remain grouped under event freshness in the current contract.
 
 Layer 4 owns the deterministic decision. The function is not a scheduler, database writer, publication endpoint, or complete runtime transition workflow. Do not infer event resolution, cancellation, current physical safety, evidence support, or freshness from a fetch, HTTP 304, source-page rebuild, event time, or elapsed age alone.
 
