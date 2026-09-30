@@ -1,7 +1,7 @@
 # JOB-01-SCHEDULED-POLL-CORE — bounded due-poll scheduling
 
 **Parent package:** JOB-01, FR-02/13  
-**Status:** Assigned for local implementation  
+**Status:** Accepted on `main` at handoff `aa2fa8f`
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/JOB-01-SCHEDULED-POLL-CORE`  
 **Worktree:** Reuse the clean managed `l3-coordinator-core` worktree after checking no process uses it; root supplies its WSL and Windows paths at dispatch.  
