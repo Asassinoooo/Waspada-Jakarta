@@ -686,6 +686,36 @@ describe('JOB-01 durable acquisition queue', () => {
     }
   });
 
+  it('rejects impossible calendar dates and invalid clock fields in poll timestamps', async () => {
+    const keyInput = {
+      datasetKind: 'synthetic' as const,
+      sourceId: 'scheduler-invalid-timestamp',
+      pollingIntervalSeconds: 60,
+      now: '2040-02-31T00:00:00Z',
+    };
+    for (const now of [
+      '2040-02-31T00:00:00Z',
+      '2041-02-29T00:00:00Z',
+      '2040-04-31T00:00:00Z',
+      '2040-01-01T24:00:00Z',
+    ]) {
+      assert.throws(
+        () => createSourcePollIdempotencyKey({ ...keyInput, now }),
+        /valid timestamp/,
+        now,
+      );
+    }
+    assert.doesNotThrow(() => createSourcePollIdempotencyKey({
+      ...keyInput,
+      now: '2040-02-29T00:00:00Z',
+    }));
+    await assert.rejects(sourcePollScheduler.scheduleDueSourcePolls({
+      datasetKind: 'synthetic',
+      traceId: syntheticTraceId,
+      now: keyInput.now,
+    }), /valid timestamp/);
+  });
+
   it('uses one UTC slot key for offset-equivalent instants and concurrent same-slot triggers', async () => {
     const keyInput = {
       datasetKind: 'synthetic' as const,
