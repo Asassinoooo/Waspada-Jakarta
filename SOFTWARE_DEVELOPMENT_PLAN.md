@@ -29,6 +29,8 @@ The accepted `ING-CAP-PARSE-CORE` adds bounded, namespace-aware CAP 1.2 parsing 
 
 ## 1. Document ownership and change control
 
+`L2-PROPOSAL-PERSIST-CORE` is assigned under [ADR-036](docs/decisions/ADR-036-event-proposal-persistence.md). It will store canonical private drafts and their exact grounding, evidence, support-origin and optional case lineage with an isolated writer role. Draft-only constraints will align with the existing schema; public contracts and publication authority remain unchanged. Implementation, root acceptance and a later reasoning-result bridge are pending.
+
 | Document | Owns |
 | --- | --- |
 | This SDP | Current delivery scope, requirements, milestones, responsibilities and release acceptance |

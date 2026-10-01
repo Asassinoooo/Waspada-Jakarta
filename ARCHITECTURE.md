@@ -97,6 +97,8 @@ The accepted RAG-CORE repository implements bounded exact-identifier/term, repor
 
 ## 4. Layer 3 — bounded investigation
 
+The durable EventProposal boundary is assigned separately under [ADR-036](docs/decisions/ADR-036-event-proposal-persistence.md), with implementation pending. Its writer stores canonical private drafts and exact context/evidence/support-origin/case links; it does not call models, decide sufficiency, spend investigation budgets or publish. A later bridge must map the typed reasoning result into this shared draft contract. Draft labels remain assessments; Layer 4 owns public labels and publication.
+
 Layer 3 owns a case state machine, not the whole data platform. Its initial state contains candidate ID, GroundingContext ID, unresolved questions, checked sources, counters, elapsed time, model usage and checkpoint version. Use a bounded TypeScript workflow on Cloudflare Workflows for persisted asynchronous transitions. Neon case/job rows remain authoritative for investigation identity, counters and outcomes; every step checks its saved budget before acting. The workflow does not own ingestion, normalization or publication. Free step/CPU quotas may require smaller investigations or a held-for-review outcome.
 
 ```mermaid

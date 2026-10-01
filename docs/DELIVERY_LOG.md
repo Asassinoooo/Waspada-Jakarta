@@ -1,5 +1,9 @@
 # Delivery log
 
+## L2-PROPOSAL-PERSIST-CORE assigned — 1 October 2026
+
+Root audited the direct reasoning and publication boundary while the chunk-retry correction ran independently. The proposal tables have no typed writer, and their draft label/text constraints differ from the existing canonical schema. ADR-036 records a separate private-draft storage boundary, exact grounding and support-origin links, optional case lineage and atomic immutable replay, with migration 023 reserved for draft-only alignment and a narrow NOLOGIN role. Root selected the clean completed embedding worktree for `work/L2-PROPOSAL-PERSIST-CORE`; the dispatch commit supplies the base before agent edits. This is planning only: no proposal writer, model/provider, publication route, source activation or external configuration is claimed. Root acceptance remains pending.
+
 ## DATA-02-CHUNK-INVALIDATION-REPLAY-CORE assigned — 1 October 2026
 
 Root pushed and confirmed the accepted embedding checkpoint at `9c32ab19121a6115c1a4c14e99e8b80b44b6a075`. The next local correction follows ADR-035: reject invalidated chunk IDs/known invalidated chunker versions and denied revision states in the atomic write, preserving active/history rows and vectors. Root selected the clean `l3-coordinator-core` managed worktree for `work/DATA-02-CHUNK-INVALIDATION-REPLAY-CORE`; the dispatch commit supplies its base before any agent edits. The bounded Luna/max assignment allows only the existing chunk writer, relevant chunk/embedding tests and a handoff. No migration, grant, dependency, API, source or provider configuration change is authorized. Implementation and root review remain pending.
