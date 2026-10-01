@@ -1,8 +1,8 @@
 # RAG-GROUNDED-PROPOSAL-ROUNDTRIP-CORE — Verify synthetic grounding through private draft persistence
 
-**Status:** Assigned; implementation and root acceptance pending  
+**Status:** Accepted on `main` at root merge `a8dd175`; see [handoff](RAG-GROUNDED-PROPOSAL-ROUNDTRIP-CORE-HANDOFF.md)
 **Implementation model:** GPT-6 Luna, max reasoning  
-**Base:** Root dispatch commit; exact SHA will be supplied in the assignment message  
+**Base:** `3f51bb6c71279d4b264b186718a353ca84d5608b`
 **Branch:** `work/RAG-GROUNDED-PROPOSAL-ROUNDTRIP-CORE`  
 **Worktree:** `C:\Users\perry\.codex\worktrees\rag-grounded-proposal-roundtrip-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/rag-grounded-proposal-roundtrip-core/RPL` in WSL)
 
