@@ -1,7 +1,8 @@
 # JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE — implementation handoff
 
-- **Status:** Implementation ready; root review pending
+- **Status:** Implementation committed; root review pending
 - **Branch:** `work/JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE`
+- **Implementation commit:** `70d14cc666aa2868e9ff7fe6dc11c68428e8474b` — `feat(JOB-01): add synthetic scheduled enqueue runtime`
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l3-coordinator-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l3-coordinator-core/RPL`)
 - **Assigned base:** `94c25f754182b0b992c971200e5bc93e90f7f831`
 - **Contract:** schema 2.0; public DTO/OpenAPI unchanged
@@ -40,7 +41,7 @@ Performed in WSL Ubuntu-26.04 with Node `v24.21.0`, npm `11.19.0`; package versi
 - Repository root `npm test` — **passed**: web 60 tests, Worker 357 tests, DB runner 22/22 test files, evaluation 12 tests.
 - Repository root `npm run typecheck` — **passed**.
 - Repository root `npm run build` — **passed**: Vite build and Wrangler `deploy --dry-run --outdir dist`; dry-run retained only the existing `DATASET_MODE="demo"` binding.
-- Worktree `git diff --check` — **passed** before commit. Assignment-required `git diff --check 94c25f754182b0b992c971200e5bc93e90f7f831..HEAD` is to be run after commit and recorded in the final handoff.
+- `git diff --check 94c25f754182b0b992c971200e5bc93e90f7f831..HEAD` — **passed** (exit 0) after the implementation commit.
 
 ### Failure and rerun history
 
