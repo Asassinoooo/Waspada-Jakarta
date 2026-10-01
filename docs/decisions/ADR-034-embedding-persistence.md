@@ -1,6 +1,6 @@
 # ADR-034 — Atomic embedding metadata and vector persistence
 
-- **Status:** Accepted design; implementation planned
+- **Status:** Accepted design; implementation assigned
 - **Date:** 1 October 2026
 - **Owner:** Root planner
 - **Task:** DATA-02-EMBEDDING-PERSIST-CORE
@@ -13,6 +13,8 @@ Hybrid retrieval already reads compatible vectors, but tests seed those rows dir
 Serialize run identity and lock its chunk before writing to prevent overlap with chunk invalidation. Reusing an ID with equal metadata and the same database-stored vector is an idempotent replay. Changed identity, lineage, timestamp, provider/version, hash, or vector is a bounded conflict writing nothing. Reindexing uses a new run ID. Exact replay of an invalidated run reports its unavailable state without restoring either run or chunk; failed, missing or inconsistent prior vectors fail closed.
 
 Use the existing retrieval implementation's 1–2048 dimension bound as the initial persistence budget. Values must remain finite after single-precision storage conversion; cosine vectors must remain nonzero after conversion. Replay comparison uses the stored vector representation, avoiding false conflicts from floating-point rounding. The message schema's larger dimension ceiling stays unchanged; no model dimension or ANN index is selected.
+
+The writer accepts calendar-valid RFC3339 `created_at` with at most six fractional-second digits, rejects finer inputs before SQL and compares equal instants at microsecond precision. Equivalent offsets are replay-compatible; a one-microsecond difference is a conflict. Local PGlite verification must establish this storage comparison; the general schema is unchanged.
 
 Reserve migration 022 for exact column-level L1 reads needed to verify embedding metadata and vectors. No table, write grant, status authority, API, credential, provider invocation, Worker trigger, source activation or dependency changes are included.
 
