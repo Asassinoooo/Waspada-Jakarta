@@ -1,6 +1,6 @@
 # LIFE-01-FRESHNESS-LEDGER-CORE — persist version-bound freshness transitions
 
-**Status:** Assigned for local persistence implementation under accepted [ADR-038](../decisions/ADR-038-append-only-freshness-transitions.md).  
+**Status:** Accepted on local `main` after independent root review under [ADR-038](../decisions/ADR-038-append-only-freshness-transitions.md).
 **Backlog ID:** `LIFE-01-FRESHNESS-LEDGER-CORE`  
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/LIFE-01-FRESHNESS-LEDGER-CORE`  
@@ -38,12 +38,13 @@ Implement a bounded Layer 4 recorder and append-only database repository for act
 - `apps/db/src/freshness-transition-ledger.ts` (new)
 - `apps/db/test/freshness-transition-ledger.test.ts` (new)
 - `apps/db/test/migrations.test.ts` (migration ordering/inventory and capability checks only)
+- `apps/db/test/public-event-updates.test.ts` (root-authorized migration-024 ordering fixture only)
 - `apps/worker/src/layers/l4-application-integration/freshness-transition-recorder.ts` (new)
 - `apps/worker/test/l4-freshness-transition-recorder.test.ts` (new)
 - `apps/worker/package.json` (only to register the focused test; no dependency changes)
 - `docs/assignments/LIFE-01-FRESHNESS-LEDGER-CORE-HANDOFF.md` (new)
 
-Do not change public projection SQL, current public event/impact readers, API/OpenAPI/DTOs, UI, contracts, publication policy/writer, source adapters, model providers, queue/scheduler, outbox delivery, environment bindings, deployment configuration, dependencies, or unrelated migration/test files. Stop and ask root before any additional path becomes necessary.
+Do not change public projection SQL, current public event/impact readers, API/OpenAPI/DTOs, UI, contracts, publication policy/writer, source adapters, model providers, queue/scheduler, outbox delivery, environment bindings, deployment configuration, dependencies, or unrelated migration/test files. Root authorized the one staged migration-order fixture update in `apps/db/test/public-event-updates.test.ts`; no other path was added. Synthetic publication-decision rows in PGlite fixtures only satisfy the existing immutable event-version foreign key; the recorder and repository do not create decisions or outbox rows.
 
 ## Acceptance and verification
 
