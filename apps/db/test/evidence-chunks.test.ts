@@ -257,6 +257,104 @@ describe('DATA-02-CORE evidence chunk persistence', () => {
     );
     assert.deepEqual(metadata.rows, [{ status: 'invalidated', vector_count: 1 }]);
   });
+
+  it('rejects invalidated IDs and generations without partial writes or status changes', async () => {
+    const replayRevision = makeRevision(permittedText, 'revision-chunks-stale-replay');
+    await ports.reportRevisions.create(replayRevision);
+    const oldVersion = 'chunker-replay-opaque-v1';
+    const oldChunk = makeChunk(replayRevision, 'chunk-synthetic-replay-old', oldVersion, 0,
+      Array.from(permittedText).length, permittedText);
+    const oldSet = makeSet(replayRevision, [oldChunk]);
+    await runAsL1(() => ports.evidenceChunks.persist(oldSet));
+
+    const currentSet = makeSet(replayRevision, [
+      makeChunk(replayRevision, 'chunk-synthetic-replay-current', 'chunker-current-generation', 0,
+        Array.from(permittedText).length, permittedText),
+    ]);
+    await runAsL1(() => ports.evidenceChunks.persist(currentSet));
+
+    const stateQuery = `SELECT chunk_id, chunker_version, status
+                        FROM waspada.evidence_chunks
+                        WHERE dataset_kind = 'synthetic' AND report_revision_id = $1
+                        ORDER BY chunk_id`;
+    const before = await testDatabase.executor.query<{
+      chunk_id: string;
+      chunker_version: string;
+      status: string;
+    }>(stateQuery, [replayRevision.reportRevisionId]);
+    assert.deepEqual(before.rows, [
+      { chunk_id: 'chunk-synthetic-replay-current', chunker_version: 'chunker-current-generation', status: 'active' },
+      { chunk_id: 'chunk-synthetic-replay-old', chunker_version: oldVersion, status: 'invalidated' },
+    ]);
+
+    await assert.rejects(runAsL1(() => ports.evidenceChunks.persist(oldSet)), /Chunk persistence rejected/);
+    const afterOldReplay = await testDatabase.executor.query(stateQuery, [replayRevision.reportRevisionId]);
+    assert.deepEqual(afterOldReplay.rows, before.rows);
+
+    const newIdSameOldVersion = makeSet(replayRevision, [
+      makeChunk(replayRevision, 'chunk-synthetic-replay-new-old-version', oldVersion, 0,
+        Array.from(permittedText).length, permittedText),
+    ]);
+    await assert.rejects(
+      runAsL1(() => ports.evidenceChunks.persist(newIdSameOldVersion)),
+      /Chunk persistence rejected/,
+    );
+    const afterNewIdReplay = await testDatabase.executor.query(stateQuery, [replayRevision.reportRevisionId]);
+    assert.deepEqual(afterNewIdReplay.rows, before.rows);
+
+    const mixedStaleAndNew = makeSet(replayRevision, [oldChunk, makeChunk(
+      replayRevision,
+      'chunk-synthetic-replay-mixed-new-id',
+      oldVersion,
+      0,
+      Array.from(permittedText).length,
+      permittedText,
+    )]);
+    await assert.rejects(
+      runAsL1(() => ports.evidenceChunks.persist(mixedStaleAndNew)),
+      /Chunk persistence rejected/,
+    );
+    const afterMixedReplay = await testDatabase.executor.query(stateQuery, [replayRevision.reportRevisionId]);
+    assert.deepEqual(afterMixedReplay.rows, before.rows);
+  });
+
+  it('allows eligible revisions and rejects quarantined, superseded, or retracted ones', async () => {
+    const eligible = makeRevision(permittedText, 'revision-chunks-eligible', undefined, 'eligible');
+    await ports.reportRevisions.create(eligible);
+    await runAsL1(() => ports.evidenceChunks.persist(makeSet(eligible, [
+      makeChunk(eligible, 'chunk-synthetic-eligible', 'chunker-eligible', 0,
+        Array.from(permittedText).length, permittedText),
+    ])));
+
+    for (const revisionStatus of ['quarantined', 'superseded', 'retracted'] as const) {
+      const disallowed = makeRevision(
+        permittedText,
+        `revision-chunks-${revisionStatus}`,
+        undefined,
+        revisionStatus,
+      );
+      await ports.reportRevisions.create(disallowed);
+      const rejectedSet = makeSet(disallowed, [makeChunk(
+        disallowed,
+        `chunk-synthetic-${revisionStatus}`,
+        `chunker-${revisionStatus}`,
+        0,
+        Array.from(permittedText).length,
+        permittedText,
+      )]);
+      await assert.rejects(
+        runAsL1(() => ports.evidenceChunks.persist(rejectedSet)),
+        /Chunk persistence rejected/,
+      );
+      const rows = await testDatabase.executor.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM waspada.evidence_chunks
+         WHERE dataset_kind = 'synthetic' AND report_revision_id = $1`,
+        [disallowed.reportRevisionId],
+      );
+      assert.equal(rows.rows[0]?.count, '0');
+    }
+  });
+
 });
 
 function makeSet(revision: NewReportRevision, chunks: readonly EvidenceChunkInput[]): PersistEvidenceChunksInput {
@@ -296,6 +394,7 @@ function makeRevision(
   permittedText: string,
   reportRevisionId: string,
   sourceInputHash = sha256(`synthetic raw fixture: ${reportRevisionId}`),
+  revisionStatus: NewReportRevision['revisionStatus'] = 'unreviewed',
 ): NewReportRevision {
   return {
     datasetKind: 'synthetic',
@@ -314,7 +413,7 @@ function makeRevision(
     validFrom: null,
     validUntil: null,
     supersedesId: null,
-    revisionStatus: 'unreviewed',
+    revisionStatus,
     recordJson: { record_type: 'ReportRevision', fixture: 'synthetic-test-only' },
   };
 }

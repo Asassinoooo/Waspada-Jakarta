@@ -102,6 +102,7 @@ class SqlEvidenceChunkRepository implements EvidenceChunkRepository {
              AND revision.report_revision_id = $3
              AND revision.permitted_text_hash = $4
              AND revision.normalization_version = $5
+             AND revision.revision_status IN ('unreviewed', 'eligible')
              AND NOT EXISTS (
                SELECT 1
                FROM incoming
@@ -115,6 +116,21 @@ class SqlEvidenceChunkRepository implements EvidenceChunkRepository {
                   OR existing.chunker_version <> $6
                   OR existing.chunk_text_hash <> incoming.chunk_text_hash
              )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM incoming
+               JOIN waspada.evidence_chunks AS tombstone
+                 ON tombstone.dataset_kind = $1 AND tombstone.chunk_id = incoming.chunk_id
+               WHERE tombstone.status = 'invalidated'
+             )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM waspada.evidence_chunks AS tombstone
+               WHERE tombstone.dataset_kind = $1
+                 AND tombstone.report_revision_id = $3
+                 AND tombstone.chunker_version = $6
+                 AND tombstone.status = 'invalidated'
+             )
          ),
          persisted AS (
            INSERT INTO waspada.evidence_chunks
@@ -126,7 +142,8 @@ class SqlEvidenceChunkRepository implements EvidenceChunkRepository {
            FROM incoming CROSS JOIN valid_revision
            ON CONFLICT (dataset_kind, chunk_id) DO UPDATE
              SET status = 'active'
-             WHERE waspada.evidence_chunks.report_revision_id = EXCLUDED.report_revision_id
+             WHERE waspada.evidence_chunks.status = 'active'
+               AND waspada.evidence_chunks.report_revision_id = EXCLUDED.report_revision_id
                AND waspada.evidence_chunks.permitted_text_hash = EXCLUDED.permitted_text_hash
                AND waspada.evidence_chunks.span_start = EXCLUDED.span_start
                AND waspada.evidence_chunks.span_end = EXCLUDED.span_end

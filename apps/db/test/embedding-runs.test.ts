@@ -290,7 +290,37 @@ describe('DATA-02-EMBEDDING-PERSIST-CORE', () => {
 
   it('requires an active chunk and unreviewed or eligible revision for new available runs', async () => {
     for (const status of ['quarantined', 'superseded', 'retracted'] as const) {
-      const disallowed = await createFixture(status, 'synthetic', status);
+      const seed = await createFixture(`${status}-seed`, 'synthetic', 'eligible');
+      const revision: NewReportRevision = {
+        ...seed.revision,
+        reportRevisionId: `revision-embedding-${status}`,
+        canonicalUrl: `https://fixtures.invalid/embedding/${status}-ineligible`,
+        revisionStatus: status,
+        recordJson: {
+          fixture: 'synthetic-test-only',
+          intentionallyStaleActiveChunkSetup: true,
+        },
+      };
+      await ports.reportRevisions.create(revision);
+      const chunkId = `chunk-embedding-${status}-legacy-active`;
+      // Seed a legacy-invalid active chunk as the test database owner. Current chunk persistence
+      // correctly refuses to create active chunks for these revision states; this tests the separate
+      // embedding writer's defense against rows left by older data or an external writer.
+      await database.executor.query(
+        `INSERT INTO waspada.evidence_chunks
+           (dataset_kind, chunk_id, trace_id, report_revision_id, permitted_text_hash,
+            span_start, span_end, offset_unit, chunker_version, chunk_text_hash, status)
+         VALUES ($1, $2, $3, $4, $5, 0, $6, 'unicode_code_points',
+                 'chunker-legacy-ineligible-fixture', $7, 'active')`,
+        [seed.datasetKind, chunkId, revision.traceId, revision.reportRevisionId,
+          revision.permittedTextHash, Array.from(seed.text).length, sha256(seed.text)],
+      );
+      const disallowed: Fixture = {
+        ...seed,
+        revision,
+        chunkId,
+        chunkerVersion: 'chunker-legacy-ineligible-fixture',
+      };
       await assertRepositoryError(
         runAsL1(() => ports.embeddingRuns.createOrVerify(
           makeRecord(disallowed, `embedding-${status}`), [0.25, 0.75])),
@@ -520,6 +550,158 @@ describe('DATA-02-EMBEDDING-PERSIST-CORE', () => {
     }));
     assert.equal(afterInvalidation.semanticStatus, 'no_compatible_vector');
     assert.equal(afterInvalidation.candidates[0]?.chunk?.embeddingStatus, 'no_compatible_embedding');
+  });
+
+  it('keeps the current chunk and embedding retrievable after stale-generation replay attempts', async () => {
+    const fixture = await createFixture('stale-replay', 'synthetic', 'eligible');
+    const candidateId = 'candidate-embedding-stale-replay';
+    await database.executor.query(
+      `INSERT INTO waspada.extraction_results
+         (dataset_kind, candidate_id, trace_id, report_revision_id, category, record_json)
+       VALUES ($1, $2, $3, $4, NULL, $5::jsonb)`,
+      [fixture.datasetKind, candidateId, fixture.revision.traceId,
+        fixture.revision.reportRevisionId,
+        JSON.stringify({ event_time: { start: null, end: null, precision: 'unknown' } })],
+    );
+    const evidence = await database.executor.query<{ evidence_ref_id: string }>(
+      `INSERT INTO waspada.evidence_references
+         (dataset_kind, trace_id, report_revision_id, permitted_text_hash,
+          span_start, span_end, offset_unit, relation)
+       VALUES ($1, $2, $3, $4, 0, $5, 'unicode_code_points', 'supports')
+       RETURNING evidence_ref_id::text AS evidence_ref_id`,
+      [fixture.datasetKind, fixture.revision.traceId, fixture.revision.reportRevisionId,
+        fixture.revision.permittedTextHash, Array.from(fixture.text).length],
+    );
+    await database.executor.query(
+      `INSERT INTO waspada.extraction_evidence (dataset_kind, candidate_id, evidence_ref_id)
+       VALUES ($1, $2, $3)`,
+      [fixture.datasetKind, candidateId, evidence.rows[0]!.evidence_ref_id],
+    );
+
+    const oldChunk = makeChunk(fixture, fixture.chunkerVersion, fixture.chunkId);
+    const oldSet = {
+      datasetKind: fixture.datasetKind,
+      traceId: fixture.revision.traceId,
+      reportRevisionId: fixture.revision.reportRevisionId,
+      permittedTextHash: fixture.revision.permittedTextHash,
+      normalizationVersion: fixture.revision.normalizationVersion,
+      chunks: [oldChunk],
+    };
+    assert.deepEqual(await runAsL1(() => ports.evidenceChunks.persist(oldSet)), {
+      persistedChunkCount: 1,
+      invalidatedChunkCount: 0,
+      invalidatedEmbeddingRunCount: 0,
+    });
+
+    const oldRecord = makeRecord(fixture, 'embedding-stale-replay-old', {
+      provider: 'fixture-provider-stale-replay',
+      model_version: 'fixture-model-stale-replay',
+      vector_index_version: 'fixture-index-stale-replay',
+    });
+    assert.equal(await runAsL1(() => ports.embeddingRuns.createOrVerify(oldRecord, [1, 0])), 'created');
+
+    const currentChunk = makeChunk(fixture, 'chunker-a-current-generation', 'chunk-embedding-stale-current');
+    const currentSet = { ...oldSet, chunks: [currentChunk] };
+    assert.deepEqual(await runAsL1(() => ports.evidenceChunks.persist(currentSet)), {
+      persistedChunkCount: 1,
+      invalidatedChunkCount: 1,
+      invalidatedEmbeddingRunCount: 1,
+    });
+    const currentRecord = makeRecord(fixture, 'embedding-stale-replay-current', {
+      chunk_id: currentChunk.chunkId,
+      provider: oldRecord.provider,
+      model_version: oldRecord.model_version,
+      vector_index_version: oldRecord.vector_index_version,
+    });
+    assert.equal(await runAsL1(() => ports.embeddingRuns.createOrVerify(currentRecord, [1, 0])), 'created');
+
+    const statusesBeforeReplay = await database.executor.query<{
+      chunk_id: string;
+      chunk_status: string;
+      run_id: string;
+      run_status: string;
+      vector_count: number;
+    }>(
+      `SELECT chunk.chunk_id, chunk.status AS chunk_status,
+              run.embedding_run_id AS run_id, run.status AS run_status,
+              (SELECT count(*)::integer FROM waspada.embedding_vectors AS vector
+               WHERE vector.dataset_kind = run.dataset_kind
+                 AND vector.embedding_run_id = run.embedding_run_id) AS vector_count
+       FROM waspada.evidence_chunks AS chunk
+       JOIN waspada.embedding_runs AS run
+         ON run.dataset_kind = chunk.dataset_kind AND run.chunk_id = chunk.chunk_id
+       WHERE chunk.dataset_kind = $1
+         AND chunk.report_revision_id = $2
+       ORDER BY chunk.chunk_id`,
+      [fixture.datasetKind, fixture.revision.reportRevisionId],
+    );
+    assert.deepEqual(statusesBeforeReplay.rows, [
+      {
+        chunk_id: currentChunk.chunkId,
+        chunk_status: 'active',
+        run_id: currentRecord.embedding_run_id,
+        run_status: 'available',
+        vector_count: 1,
+      },
+      {
+        chunk_id: oldChunk.chunkId,
+        chunk_status: 'invalidated',
+        run_id: oldRecord.embedding_run_id,
+        run_status: 'invalidated',
+        vector_count: 1,
+      },
+    ]);
+
+    await assert.rejects(runAsL1(() => ports.evidenceChunks.persist(oldSet)), /Chunk persistence rejected/);
+    const newIdSameOldVersion = {
+      ...oldSet,
+      chunks: [makeChunk(fixture, fixture.chunkerVersion, 'chunk-embedding-stale-new-old-version')],
+    };
+    await assert.rejects(
+      runAsL1(() => ports.evidenceChunks.persist(newIdSameOldVersion)),
+      /Chunk persistence rejected/,
+    );
+
+    const statusesAfterReplay = await database.executor.query<{
+      chunk_id: string;
+      chunk_status: string;
+      run_id: string;
+      run_status: string;
+      vector_count: number;
+    }>(
+      `SELECT chunk.chunk_id, chunk.status AS chunk_status,
+              run.embedding_run_id AS run_id, run.status AS run_status,
+              (SELECT count(*)::integer FROM waspada.embedding_vectors AS vector
+               WHERE vector.dataset_kind = run.dataset_kind
+                 AND vector.embedding_run_id = run.embedding_run_id) AS vector_count
+       FROM waspada.evidence_chunks AS chunk
+       JOIN waspada.embedding_runs AS run
+         ON run.dataset_kind = chunk.dataset_kind AND run.chunk_id = chunk.chunk_id
+       WHERE chunk.dataset_kind = $1
+         AND chunk.report_revision_id = $2
+       ORDER BY chunk.chunk_id`,
+      [fixture.datasetKind, fixture.revision.reportRevisionId],
+    );
+    assert.deepEqual(statusesAfterReplay.rows, statusesBeforeReplay.rows);
+
+    const identity = {
+      provider: currentRecord.provider,
+      modelVersion: currentRecord.model_version,
+      dimensions: currentRecord.dimensions,
+      distanceMetric: currentRecord.distance_metric,
+      vectorIndexVersion: currentRecord.vector_index_version,
+    };
+    const currentRetrieval = await runAsL2(() => ports.evidenceRetrieval.search({
+      datasetKind: fixture.datasetKind,
+      identifiers: [{ kind: 'candidate', value: candidateId }],
+      semantic: { identity, queryVector: [1, 0] },
+    }));
+    assert.equal(currentRetrieval.semanticStatus, 'matched');
+    assert.equal(currentRetrieval.candidates[0]?.chunk?.chunkId, currentChunk.chunkId);
+    assert.equal(currentRetrieval.candidates[0]?.chunk?.chunkerVersion, currentChunk.chunkerVersion);
+    assert.equal(currentRetrieval.candidates[0]?.chunk?.embeddingStatus, 'matched');
+    assert.equal(currentRetrieval.candidates[0]?.chunk?.embeddingRunId, currentRecord.embedding_run_id);
+    assert.notEqual(currentRetrieval.candidates[0]?.chunk?.chunkId, oldChunk.chunkId);
   });
 
   async function createFixture(
