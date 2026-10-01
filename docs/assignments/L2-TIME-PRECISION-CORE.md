@@ -1,6 +1,6 @@
 # L2-TIME-PRECISION-CORE — Compare RFC3339 intervals at full precision
 
-- **Status:** Assigned; implementation and root acceptance pending
+- **Status:** Accepted on `main` at root merge `93f8aae`; implementation and handoff details are recorded in [the handoff](L2-TIME-PRECISION-CORE-HANDOFF.md)
 - **Agent:** GPT-6 Luna / max
 - **Branch:** `work/L2-TIME-PRECISION-CORE`
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l2-time-precision-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l2-time-precision-core/RPL`)
