@@ -436,6 +436,8 @@ describe('L2 grounded EventProposal persistence', () => {
         [DATASET],
       );
       assert.ok(Number(evidence.rows[0]?.count) >= 4);
+      const roleWrite = makeProposal({ proposal_id: 'proposal-role-write' });
+      assert.deepEqual(await ports.eventProposals.createOrVerify(roleWrite), roleWrite);
       await assert.rejects(db.executor.query('SELECT permitted_text FROM waspada.report_revisions'));
       await assert.rejects(db.executor.query('UPDATE waspada.proposal_claims SET claim_text=\'not authorized\''));
       await assert.rejects(db.executor.query('INSERT INTO waspada.publication_decisions DEFAULT VALUES'));
