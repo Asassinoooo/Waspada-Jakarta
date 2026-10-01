@@ -6,6 +6,7 @@ import {
 } from './grounding-contexts.js';
 import { createSqlEvidenceRetrievalRepository, type EvidenceRetrievalRepository } from './evidence-retrieval.js';
 import { createSqlEvidenceChunkRepository, type EvidenceChunkRepository } from './evidence-chunks.js';
+import { createSqlEmbeddingRunRepository, type EmbeddingRunRepository } from './embedding-runs.js';
 import { SqlAcquisitionJobRepository, type AcquisitionJobRepository } from './queue.js';
 import type { SqlExecutor, SqlTransactionRunner, TransactionalSqlExecutor } from './sql.js';
 
@@ -133,6 +134,7 @@ export interface RepositoryPorts {
   readonly extractionResults: ExtractionResultRepository;
   readonly groundingContexts: GroundingContextRepository;
   readonly evidenceChunks: EvidenceChunkRepository;
+  readonly embeddingRuns: EmbeddingRunRepository;
   readonly evidenceRetrieval: EvidenceRetrievalRepository;
   readonly tracesAndAudit: TraceAuditRepository;
   readonly acquisitionJobs: AcquisitionJobRepository;
@@ -145,6 +147,7 @@ export function createRepositoryPorts(executor: TransactionalSqlExecutor): Repos
     extractionResults: createSqlExtractionResultRepository(executor),
     groundingContexts: createSqlGroundingContextRepository(executor),
     evidenceChunks: createSqlEvidenceChunkRepository(executor),
+    embeddingRuns: createSqlEmbeddingRunRepository(executor),
     evidenceRetrieval: createSqlEvidenceRetrievalRepository(executor),
     tracesAndAudit: new SqlTraceAuditRepository(executor),
     acquisitionJobs: new SqlAcquisitionJobRepository(executor),

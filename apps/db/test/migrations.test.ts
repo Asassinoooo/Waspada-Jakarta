@@ -26,7 +26,8 @@ describe('DATA-01 migrations', () => {
       && version !== '018_l1_extraction_result_verification'
       && version !== '019_l3_progress_fingerprints'
       && version !== '020_public_event_freshness_aggregate'
-      && version !== '021_l1_scheduler_namespace_read');
+      && version !== '021_l1_scheduler_namespace_read'
+      && version !== '022_l1_embedding_verification_reads');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -58,7 +59,8 @@ describe('DATA-01 migrations', () => {
         && version !== '018_l1_extraction_result_verification'
         && version !== '019_l3_progress_fingerprints'
         && version !== '020_public_event_freshness_aggregate'
-        && version !== '021_l1_scheduler_namespace_read');
+        && version !== '021_l1_scheduler_namespace_read'
+        && version !== '022_l1_embedding_verification_reads');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -177,6 +179,7 @@ describe('DATA-01 migrations', () => {
         '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
         '020_public_event_freshness_aggregate',
         '021_l1_scheduler_namespace_read',
+        '022_l1_embedding_verification_reads',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -312,6 +315,7 @@ describe('DATA-01 migrations', () => {
       '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
       '020_public_event_freshness_aggregate',
       '021_l1_scheduler_namespace_read',
+      '022_l1_embedding_verification_reads',
     ]);
   });
 
@@ -331,12 +335,13 @@ describe('DATA-01 migrations', () => {
       '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
       '020_public_event_freshness_aggregate',
       '021_l1_scheduler_namespace_read',
+      '022_l1_embedding_verification_reads',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '21');
+    assert.equal(count.rows[0]?.count, '22');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -355,7 +360,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 021_l1_scheduler_namespace_read/,
+      /Cannot apply migration 000_late_backfill before already applied migration 022_l1_embedding_verification_reads/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -383,6 +388,7 @@ describe('DATA-01 migrations', () => {
       { version: '019_l3_progress_fingerprints' },
       { version: '020_public_event_freshness_aggregate' },
       { version: '021_l1_scheduler_namespace_read' },
+      { version: '022_l1_embedding_verification_reads' },
     ]);
   });
 
@@ -399,6 +405,7 @@ describe('DATA-01 migrations', () => {
       '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
       '020_public_event_freshness_aggregate',
       '021_l1_scheduler_namespace_read',
+      '022_l1_embedding_verification_reads',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -613,10 +620,19 @@ describe('DATA-01 migrations', () => {
       .map((row) => `${row.table_name}.${row.column_name}`)
       .sort();
     assert.deepEqual(granted, [
+      'embedding_runs.capability',
       'embedding_runs.chunk_id',
+      'embedding_runs.created_at',
       'embedding_runs.dataset_kind',
+      'embedding_runs.dimensions',
+      'embedding_runs.distance_metric',
       'embedding_runs.embedding_run_id',
+      'embedding_runs.input_text_hash',
+      'embedding_runs.model_version',
+      'embedding_runs.provider',
       'embedding_runs.status',
+      'embedding_runs.trace_id',
+      'embedding_runs.vector_index_version',
       'evidence_chunks.chunk_id',
       'evidence_chunks.chunk_text_hash',
       'evidence_chunks.chunker_version',
