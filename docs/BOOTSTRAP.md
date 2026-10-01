@@ -1,5 +1,7 @@
 # BOOT-01 local bootstrap
 
+**Current implementation note — 1 October 2026:** the sections below preserve BOOT-01's original setup and verification. Since that checkpoint, local database repositories, typed L2 adapters, bounded L3 components, strict public projectors and credential-gated read runtimes have been accepted. The checked-in Worker still uses labelled demo fixtures and has no configured database binding, live source or model provider. Use SOFTWARE_DEVELOPMENT_PLAN.md and IMPLEMENTATION_BACKLOG.md for current capability status; the historical test counts here are not the current suite totals. All current project verification continues to use WSL Ubuntu-26.04.
+
 This package is a local-only React client and Cloudflare Worker shell. It serves the two public read routes the demo uses: `GET /api/v1/context` and `GET /api/v1/events`. Both responses follow the OpenAPI `PublicContext` and `EventPage` projections. The Worker selects its dataset through server-side `DATASET_MODE=demo` in `apps/worker/wrangler.toml`; browser query parameters and headers cannot switch it. No Cloudflare account, credential, database, or `.env` file is needed.
 
 All fixture content is synthetic. The page persistently shows **DEMO — data sintetis; bukan peringatan langsung**, reports that there are no live sources, and uses an explicit empty state that does not imply safety. An unavailable API is also presented as unknown. The layer modules are separated by responsibility; L2 and L3 are contracts only, and this shell does not implement the wider pipeline.

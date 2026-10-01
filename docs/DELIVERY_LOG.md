@@ -1,5 +1,13 @@
 # Delivery log
 
+## Local runtime and data planning — 1 October 2026
+
+Root pushed the reviewed freshness aggregation checkpoint through `8b7097e` (`docs(LIFE-01): accept event freshness aggregation`). Root then recorded ADR-033 and the bounded JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE assignment in `94c25f7` (`docs(JOB-01): scope opt-in synthetic schedule runtime`), selected the clean managed worktree `C:\Users\perry\.codex\worktrees\l3-coordinator-core\RPL`, and created `work/JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE` from that base before dispatching a GPT-6 Luna/max implementation agent. The runtime is assigned, not implemented/accepted by this log entry; scheduling remains disabled and no external configuration was changed.
+
+Root recorded ADR-034, a ready but unassigned DATA-02-EMBEDDING-PERSIST-CORE slice, and its upstream storage reference in `5bec58c` (`docs(DATA-02): plan atomic embedding persistence`). Migration 022 is reserved for that later slice; dispatch is serialized after scheduled-runtime integration to avoid shared migration-test edits. Both planning commits were pushed; `git ls-remote` confirmed remote main at `5bec58c42753133b87245bca346d1a0d843c8b9d`. WSL assigned-range diff check passed and the root checkout was clean. These were document-only changes, so no new runtime test or provider/model result is claimed.
+
+Root also annotated BOOTSTRAP.md and PLATFORM_COMPATIBILITY.md to distinguish their historical setup/measurements from newer accepted local capabilities. Original measurement evidence is preserved; hosted compatibility and external activation remain unverified.
+
 ## 24 September 2026 — development start
 
 - User authorized proceeding with the plan and keeping agent instructions out of Git.
