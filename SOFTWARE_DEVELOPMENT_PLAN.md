@@ -31,6 +31,8 @@ The accepted `ING-CAP-PARSE-CORE` adds bounded, namespace-aware CAP 1.2 parsing 
 
 The test-only `L3-GROUNDED-PROPOSAL-ROUNDTRIP-CORE` composition is accepted: an insufficient persisted context triggers one bounded investigation advance through the synthetic L1 pipeline and exact L2 refresh, then reaches deterministic reasoning and canonical private proposal persistence under the same case identity. Replay leaves private proposal rows stable, and the integration writes no public event, publication, outbox, audit, or moderator-review records. This remains a PGlite proof with synthetic inputs and fixed model/action doubles; it does not establish live source, provider, Neon, or deployed Workflow behavior. See the [assignment and handoff](docs/assignments/L3-GROUNDED-PROPOSAL-ROUNDTRIP-CORE.md).
 
+The user selected append-only freshness transition records bound to exact immutable event/impact publication versions. The status may be overlaid later by the current-public projection while the published `evaluated_at`, `review_due_at`, and `basis` metadata stays unchanged; event freshness remains the conservative status-only aggregate and claims remain grouped. ADR-038 records this decision. The next persistence task adds the ledger and Layer 4 recorder only; it does not yet add a clock, public reader overlay, scheduler, or live data.
+
 ## 1. Document ownership and change control
 
 | Document | Owns |
