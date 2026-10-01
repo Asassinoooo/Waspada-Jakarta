@@ -40,6 +40,8 @@ import {
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
   HYPERDRIVE?: { readonly connectionString?: string };
+  L1_HYPERDRIVE?: { readonly connectionString?: string };
+  SYNTHETIC_POLL_SCHEDULER_ENABLED?: string;
   PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
 }
 

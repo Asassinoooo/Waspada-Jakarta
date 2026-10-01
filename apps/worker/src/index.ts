@@ -11,6 +11,7 @@ import {
   type WorkerEnvironment,
 } from "./layers/l4-application-integration/api.js";
 import { consoleTelemetry } from "./layers/l5-evaluation-monitoring/telemetry.js";
+import { handleSyntheticPollScheduleTrigger } from "./runtime/synthetic-poll-schedule-trigger.js";
 
 export default {
   async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
@@ -87,5 +88,11 @@ export default {
       publicBriefingRuntime,
       publicEventUpdatesRuntime,
     );
+  },
+  async scheduled(
+    controller: { readonly scheduledTime: number },
+    env: WorkerEnvironment,
+  ): Promise<void> {
+    await handleSyntheticPollScheduleTrigger(controller.scheduledTime, env);
   },
 };
