@@ -1,5 +1,9 @@
 # Delivery log
 
+## Chunk-retry draft review and fixture adjustment — 1 October 2026
+
+The chunk agent reported a focused embedding fixture failure: the test tried creating chunks for denied revision states through the repository now correctly blocking them. Root authorized only an owner-seeded stale-active-chunk setup for the existing embedding rejection test, preserving production guards and assertions. Root's draft SQL review also requested that the conflict update itself require an active stored chunk, in addition to the atomic tombstone snapshot checks. Neither implementation nor reruns are accepted yet; the handoff must record the original failure and fixes.
+
 ## L2-PROPOSAL-PERSIST-CORE assigned — 1 October 2026
 
 Root audited the direct reasoning and publication boundary while the chunk-retry correction ran independently. The proposal tables have no typed writer, and their draft label/text constraints differ from the existing canonical schema. ADR-036 records a separate private-draft storage boundary, exact grounding and support-origin links, optional case lineage and atomic immutable replay, with migration 023 reserved for draft-only alignment and a narrow NOLOGIN role. Root selected the clean completed embedding worktree for `work/L2-PROPOSAL-PERSIST-CORE`; the dispatch commit supplies the base before agent edits. This is planning only: no proposal writer, model/provider, publication route, source activation or external configuration is claimed. Root acceptance remains pending.

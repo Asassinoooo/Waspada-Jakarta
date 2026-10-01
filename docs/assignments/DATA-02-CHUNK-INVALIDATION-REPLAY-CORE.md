@@ -21,10 +21,12 @@ No generation order is inferred from version text. Genuinely new versions remain
 
 - `apps/db/src/evidence-chunks.ts`
 - `apps/db/test/evidence-chunks.test.ts`
-- `apps/db/test/embedding-runs.test.ts` — stale generation/chunk/embedding composition only
+- `apps/db/test/embedding-runs.test.ts` — stale generation/chunk/embedding composition; root also authorized the existing denied-revision fixture setup adjustment below
 - `docs/assignments/DATA-02-CHUNK-INVALIDATION-REPLAY-CORE-HANDOFF.md`
 
 No migration, grants, schema, dependencies, runtime, provider calls, source access, UI/API/auth, publication, deployment, purchase, merge, push or further agents. Root owns plans/ADR/backlog. Report missing paths/decisions before expanding scope; continue independent checks.
+
+Root authorized one necessary test-fixture extension on 1 October: the existing embedding test for quarantined/superseded/retracted revisions can no longer create chunks through the newly guarded repository. Seed explicitly stale active chunks as owner for this rejection test, without relaxing either production policy or assertions. Record the initial setup failure and correction in the handoff. Root also requested an active-status predicate in the conflict update itself; this adds a defensive no-revival check without claiming independent-session correctness.
 
 ## Acceptance and verification
 
