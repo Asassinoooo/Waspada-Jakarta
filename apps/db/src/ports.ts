@@ -8,6 +8,7 @@ import { createSqlEvidenceRetrievalRepository, type EvidenceRetrievalRepository 
 import { createSqlEvidenceChunkRepository, type EvidenceChunkRepository } from './evidence-chunks.js';
 import { createSqlEmbeddingRunRepository, type EmbeddingRunRepository } from './embedding-runs.js';
 import { SqlAcquisitionJobRepository, type AcquisitionJobRepository } from './queue.js';
+import { createSqlEventProposalRepository, type EventProposalRepository } from './event-proposals.js';
 import type { SqlExecutor, SqlTransactionRunner, TransactionalSqlExecutor } from './sql.js';
 
 export type DatasetKind = 'live' | 'historical' | 'synthetic';
@@ -138,6 +139,7 @@ export interface RepositoryPorts {
   readonly evidenceRetrieval: EvidenceRetrievalRepository;
   readonly tracesAndAudit: TraceAuditRepository;
   readonly acquisitionJobs: AcquisitionJobRepository;
+  readonly eventProposals: EventProposalRepository;
 }
 
 export function createRepositoryPorts(executor: TransactionalSqlExecutor): RepositoryPorts {
@@ -151,6 +153,7 @@ export function createRepositoryPorts(executor: TransactionalSqlExecutor): Repos
     evidenceRetrieval: createSqlEvidenceRetrievalRepository(executor),
     tracesAndAudit: new SqlTraceAuditRepository(executor),
     acquisitionJobs: new SqlAcquisitionJobRepository(executor),
+    eventProposals: createSqlEventProposalRepository(executor),
   };
 }
 
