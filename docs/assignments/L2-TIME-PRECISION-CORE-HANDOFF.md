@@ -1,9 +1,9 @@
 # L2-TIME-PRECISION-CORE handoff
 
-**Branch:** `work/L2-TIME-PRECISION-CORE`  
-**Worktree:** `C:\Users\perry\.codex\worktrees\l2-time-precision-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l2-time-precision-core/RPL`)  
-**Assigned base:** `a500ecf241fb727f347557fda3fc06d5c7061de3`  
-**Implementation commit:** `067a27d541ebdd97b3a68ff7e9637073ba11b540` - `fix(L2): compare event intervals at nanosecond precision`
+- **Branch:** `work/L2-TIME-PRECISION-CORE`
+- **Worktree:** `C:\Users\perry\.codex\worktrees\l2-time-precision-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l2-time-precision-core/RPL`)
+- **Assigned base:** `a500ecf241fb727f347557fda3fc06d5c7061de3`
+- **Implementation commit:** `067a27d541ebdd97b3a68ff7e9637073ba11b540` - `fix(L2): compare event intervals at nanosecond precision`
 
 ## Changed paths
 
