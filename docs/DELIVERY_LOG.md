@@ -1,5 +1,9 @@
 # Delivery log
 
+## DATA-02-CHUNK-INVALIDATION-REPLAY-CORE assigned — 1 October 2026
+
+Root pushed and confirmed the accepted embedding checkpoint at `9c32ab19121a6115c1a4c14e99e8b80b44b6a075`. The next local correction follows ADR-035: reject invalidated chunk IDs/known invalidated chunker versions and denied revision states in the atomic write, preserving active/history rows and vectors. Root selected the clean `l3-coordinator-core` managed worktree for `work/DATA-02-CHUNK-INVALIDATION-REPLAY-CORE`; the dispatch commit supplies its base before any agent edits. The bounded Luna/max assignment allows only the existing chunk writer, relevant chunk/embedding tests and a handoff. No migration, grant, dependency, API, source or provider configuration change is authorized. Implementation and root review remain pending.
+
 ## DATA-02-EMBEDDING-PERSIST-CORE accepted — 1 October 2026
 
 Root reviewed `work/DATA-02-EMBEDDING-PERSIST-CORE` at base `63def4eab330773ac2537de77b28bac3b1c31028`. Agent commits `5e4199a2a39ab15fefb14e16943335b7369e0886` (`feat(DATA-02): persist embedding metadata and vectors`) and `15937679ebeedee04dbe909cc3b207896f8856b7` (`docs(DATA-02): record embedding persistence handoff`) were cherry-picked as `0aa8e0d5c2a407f18fcb10f71db535ce60841796` and `c781ca34b6643ddf036c38bbd8f8f957ce731ed0`. The typed L1 writer stores closed metadata and vector atomically, verifies exact chunk/trace lineage, and preserves unavailable/failed states. Migration 022 grants only necessary run/vector column reads; no chunk grant, write authority, schema/API, dependency, provider or runtime configuration changed.

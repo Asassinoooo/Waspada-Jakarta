@@ -1,8 +1,10 @@
 # DATA-02-CHUNK-INVALIDATION-REPLAY-CORE — Preserve invalidated chunk generations
 
-- **Status:** Ready after embedding persistence integration; not assigned
+- **Status:** Assigned; implementation and root acceptance pending
 - **Agent:** GPT-6 Luna / max
-- **Branch/worktree/base:** Root selects a clean dedicated worktree at dispatch.
+- **Branch:** `work/DATA-02-CHUNK-INVALIDATION-REPLAY-CORE`
+- **Worktree:** `C:\Users\perry\.codex\worktrees\l3-coordinator-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l3-coordinator-core/RPL`)
+- **Base:** Root's dispatch commit after accepted embedding persistence `9c32ab1`; exact SHA is supplied in the assignment message and must appear in the handoff.
 - **Dependencies:** DATA-02-CORE, DATA-02-EMBEDDING-PERSIST-CORE, RAG-CORE; ADR-035
 - **Requirements:** FR-03/05/13; NFR-01/05/07
 - **Contracts:** Existing EvidenceChunkRepository input/result and schema 2.0; public API unchanged
@@ -28,4 +30,4 @@ No migration, grants, schema, dependencies, runtime, provider calls, source acce
 
 Under L1 with authored synthetic rows, prove active identical replay succeeds; re-chunking to a new generation invalidates older chunks/runs and preserves vectors; old-set replay and a new ID with an invalidated version are denied; a mixed stale/new set leaves no partial writes/status changes; unreviewed/eligible revisions work and quarantined/superseded/retracted do not; dataset scoping and exact lineage remain enforced. Compose actual embedding persistence and retrieval after rejected replay to show the current generation remains usable and old content cannot become current support. No semantic-quality or hosted-concurrency claim.
 
-Use WSL Ubuntu-26.04 and existing dependencies only. Run focused chunk/embedding tests, `npm run db:test`, `npm test`, `npm run typecheck`, `npm run build` (dry-run only), and assigned-base `git diff --check`. Commit coherent changes on the assigned branch. Return branch/worktree/base, exact SHAs/messages, paths, behavior, actual checks with versions/counts/failures, limits and configuration impact. Root sets final acceptance.
+Use WSL Ubuntu-26.04 and existing dependencies only. Include `/home/perry/.nvm/versions/node/v24.21.0/bin` in PATH. WSL Git uses `GIT_DIR=/mnt/d/Projects/RPL/.git/worktrees/RPL5` and `GIT_WORK_TREE=/mnt/c/Users/perry/.codex/worktrees/l3-coordinator-core/RPL`. A temporary dependency link to `/mnt/d/Projects/RPL/node_modules` is allowed; remove before handoff. Run focused chunk/embedding tests, `npm run db:test`, `npm test`, `npm run typecheck`, existing `npm run build` (local Vite outputs and Wrangler dry-run only), and assigned-base `git diff --check`. Commit coherent changes on the assigned branch. Return branch/worktree/base, exact SHAs/messages, paths, behavior, actual checks with versions/counts/failures and review fixes, limits and configuration impact. Root sets final acceptance.

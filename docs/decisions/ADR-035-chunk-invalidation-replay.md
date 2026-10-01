@@ -1,6 +1,6 @@
 # ADR-035 — Invalidated chunk generations are not retry targets
 
-- **Status:** Accepted design; correction planned
+- **Status:** Accepted design; correction assigned
 - **Date:** 1 October 2026
 - **Owner:** Root planner
 - **Task:** DATA-02-CHUNK-INVALIDATION-REPLAY-CORE
