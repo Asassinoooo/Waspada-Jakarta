@@ -62,7 +62,8 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       && version !== '020_public_event_freshness_aggregate'
       && version !== '021_l1_scheduler_namespace_read'
       && version !== '022_l1_embedding_verification_reads'
-      && version !== '023_l2_event_proposal_writer'));
+      && version !== '023_l2_event_proposal_writer'
+      && version !== '024_freshness_transition_ledger'));
     await database.executor.query(
       "INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')",
     );
@@ -92,6 +93,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       '021_l1_scheduler_namespace_read',
       '022_l1_embedding_verification_reads',
       '023_l2_event_proposal_writer',
+      '024_freshness_transition_ledger',
     ]);
   });
 

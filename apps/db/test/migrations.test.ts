@@ -28,7 +28,8 @@ describe('DATA-01 migrations', () => {
       && version !== '020_public_event_freshness_aggregate'
       && version !== '021_l1_scheduler_namespace_read'
       && version !== '022_l1_embedding_verification_reads'
-      && version !== '023_l2_event_proposal_writer');
+      && version !== '023_l2_event_proposal_writer'
+      && version !== '024_freshness_transition_ledger');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -62,7 +63,8 @@ describe('DATA-01 migrations', () => {
         && version !== '020_public_event_freshness_aggregate'
         && version !== '021_l1_scheduler_namespace_read'
         && version !== '022_l1_embedding_verification_reads'
-        && version !== '023_l2_event_proposal_writer');
+        && version !== '023_l2_event_proposal_writer'
+        && version !== '024_freshness_transition_ledger');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -183,6 +185,7 @@ describe('DATA-01 migrations', () => {
         '021_l1_scheduler_namespace_read',
         '022_l1_embedding_verification_reads',
         '023_l2_event_proposal_writer',
+        '024_freshness_transition_ledger',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -320,6 +323,7 @@ describe('DATA-01 migrations', () => {
       '021_l1_scheduler_namespace_read',
       '022_l1_embedding_verification_reads',
       '023_l2_event_proposal_writer',
+      '024_freshness_transition_ledger',
     ]);
   });
 
@@ -341,12 +345,13 @@ describe('DATA-01 migrations', () => {
       '021_l1_scheduler_namespace_read',
       '022_l1_embedding_verification_reads',
       '023_l2_event_proposal_writer',
+      '024_freshness_transition_ledger',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '23');
+    assert.equal(count.rows[0]?.count, '24');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -365,7 +370,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 023_l2_event_proposal_writer/,
+      /Cannot apply migration 000_late_backfill before already applied migration 024_freshness_transition_ledger/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -395,6 +400,7 @@ describe('DATA-01 migrations', () => {
       { version: '021_l1_scheduler_namespace_read' },
       { version: '022_l1_embedding_verification_reads' },
       { version: '023_l2_event_proposal_writer' },
+      { version: '024_freshness_transition_ledger' },
     ]);
   });
 
@@ -413,12 +419,92 @@ describe('DATA-01 migrations', () => {
       '021_l1_scheduler_namespace_read',
       '022_l1_embedding_verification_reads',
       '023_l2_event_proposal_writer',
+      '024_freshness_transition_ledger',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
     );
     assert.match(version.rows[0]?.version ?? '', /^\d+\.\d+/);
     assert.match(version.rows[0]?.server_version ?? '', /^\d+/);
+  });
+
+  it('grants the isolated freshness writer only append and replay access', async () => {
+    const role = await testDatabase.executor.query<{
+      rolcanlogin: boolean;
+      rolsuper: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolinherit: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+    }>(
+      `SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit,
+              rolreplication, rolbypassrls
+       FROM pg_roles WHERE rolname = 'waspada_l4_freshness_writer'`,
+    );
+    assert.deepEqual(role.rows[0], {
+      rolcanlogin: false, rolsuper: false, rolcreatedb: false, rolcreaterole: false,
+      rolinherit: false, rolreplication: false, rolbypassrls: false,
+    });
+
+    const membership = await testDatabase.executor.query<{ count: number }>(
+      `SELECT count(*)::integer AS count FROM pg_auth_members
+       WHERE member = (SELECT oid FROM pg_roles WHERE rolname = 'waspada_l4_freshness_writer')
+          OR roleid = (SELECT oid FROM pg_roles WHERE rolname = 'waspada_l4_freshness_writer')`,
+    );
+    assert.equal(membership.rows[0]?.count, 0);
+
+    const grants = await testDatabase.executor.query<{
+      can_read_transition: boolean;
+      can_insert_transition: boolean;
+      can_insert_identity: boolean;
+      can_update_transition: boolean;
+      can_delete_transition: boolean;
+      can_read_links: boolean;
+      can_insert_links: boolean;
+      can_update_links: boolean;
+      can_delete_links: boolean;
+      can_rewrite_event: boolean;
+      can_rewrite_impact: boolean;
+      can_rewrite_publication: boolean;
+      can_read_public_ledger: boolean;
+      can_read_l1_ledger: boolean;
+      can_read_l2_ledger: boolean;
+    }>(
+      `SELECT has_column_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transitions', 'request_fingerprint', 'SELECT') AS can_read_transition,
+              has_column_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transitions', 'request_fingerprint', 'INSERT') AS can_insert_transition,
+              has_column_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transitions', 'transition_id', 'INSERT') AS can_insert_identity,
+              has_table_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transitions', 'UPDATE') AS can_update_transition,
+              has_table_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transitions', 'DELETE') AS can_delete_transition,
+              has_column_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transition_evidence', 'evidence_ref_id', 'SELECT') AS can_read_links,
+              has_column_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transition_evidence', 'evidence_ref_id', 'INSERT') AS can_insert_links,
+              has_table_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transition_evidence', 'UPDATE') AS can_update_links,
+              has_table_privilege('waspada_l4_freshness_writer', 'waspada.freshness_transition_evidence', 'DELETE') AS can_delete_links,
+              has_table_privilege('waspada_l4_freshness_writer', 'waspada.event_versions', 'INSERT')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.event_versions', 'UPDATE')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.event_versions', 'DELETE') AS can_rewrite_event,
+              has_table_privilege('waspada_l4_freshness_writer', 'waspada.impact_versions', 'INSERT')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.impact_versions', 'UPDATE')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.impact_versions', 'DELETE') AS can_rewrite_impact,
+              has_table_privilege('waspada_l4_freshness_writer', 'waspada.publication_decisions', 'INSERT')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.publication_decisions', 'UPDATE')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.publication_decisions', 'DELETE')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.publication_outbox', 'INSERT')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.publication_outbox', 'UPDATE')
+                OR has_table_privilege('waspada_l4_freshness_writer', 'waspada.publication_outbox', 'DELETE') AS can_rewrite_publication,
+              has_table_privilege('waspada_public_reader', 'waspada.freshness_transitions', 'SELECT') AS can_read_public_ledger,
+              has_table_privilege('waspada_l1_pipeline', 'waspada.freshness_transitions', 'SELECT') AS can_read_l1_ledger,
+              has_table_privilege('waspada_l2_grounding_reader', 'waspada.freshness_transitions', 'SELECT')
+                OR has_table_privilege('waspada_l2_grounding_writer', 'waspada.freshness_transitions', 'SELECT')
+                OR has_table_privilege('waspada_l2_proposal_writer', 'waspada.freshness_transitions', 'SELECT') AS can_read_l2_ledger`,
+    );
+    assert.deepEqual(grants.rows[0], {
+      can_read_transition: true, can_insert_transition: true, can_insert_identity: false,
+      can_update_transition: false, can_delete_transition: false,
+      can_read_links: true, can_insert_links: true, can_update_links: false, can_delete_links: false,
+      can_rewrite_event: false, can_rewrite_impact: false, can_rewrite_publication: false,
+      can_read_public_ledger: false, can_read_l1_ledger: false, can_read_l2_ledger: false,
+    });
   });
 
   it('creates the isolated publication capability with its exact operation grants', async () => {
