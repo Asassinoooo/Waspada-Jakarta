@@ -1,5 +1,11 @@
 # Delivery log
 
+## Confirmed chunk retry defect and correction plan — 1 October 2026
+
+While DATA-02-EMBEDDING-PERSIST-CORE ran on its isolated branch, root inspected the existing chunk invalidation statement. A temporary ignored regression copied the existing chunk tests and added an old-set replay after successful re-chunking. WSL `node --import tsx --test .codex-build/checks/chunk-stale-replay.test.ts` returned **4/5 passing, 1 failing**: `chunk-synthetic-version-old` became active and `chunk-synthetic-version-new` became invalidated. This intentionally failing diagnostic is not a passing verification result and changed no tracked production/test file.
+
+ADR-035 and DATA-02-CHUNK-INVALIDATION-REPLAY-CORE specify atomic tombstone and revision-state guards. The correction is ready after embedding persistence integration and is not yet assigned or implemented. The embedding agent was informed and kept its scope unchanged. Hosted concurrency remains unverified; the diagnostic establishes only the local stale-retry defect.
+
 ## JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE accepted — 1 October 2026
 
 The accepted checkpoint was pushed through `4ac1773fc439772cdf71b73b650e6debcdc68bc9`; remote main matched. Root then selected the clean `l1-fixture-runner-core` managed worktree for `work/DATA-02-EMBEDDING-PERSIST-CORE` and assigned the provider-free atomic persistence slice. ADR-034 now explicitly bounds timestamp precision and requires equivalent-offset replay and microsecond conflict checks. Migration 022 remains reserved; the next slice changes no provider/runtime configuration and requires root review before acceptance.
