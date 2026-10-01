@@ -8,7 +8,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Next planned implementation:** `LIFE-01-FRESHNESS-READ-PROJECTION-CORE` will overlay only the latest recorded status onto the exact current published event/impact versions. It must retain the event aggregate-only contract and immutable metadata, leave historical-version status as published, and give public roles no direct ledger access. No scheduler, source, provider, or publication behavior is included. The task will be assigned from local `main` after its bounded assignment is committed.
+**Active implementation:** `LIFE-01-FRESHNESS-READ-PROJECTION-CORE` is assigned on its own branch/worktree from the exact local `main` commit in the dispatch. It overlays only the latest recorded status onto exact current published event/impact versions, retains event aggregate-only status and immutable metadata, leaves historical-version status as published, and keeps direct ledger access private. No scheduler, source, provider, or publication behavior is included. See [the assignment](assignments/LIFE-01-FRESHNESS-READ-PROJECTION-CORE.md).
 **Remote state:** Local `main` is ahead of `origin/main`; the authorized push remains blocked because WSL Git has no GitHub HTTPS credential available. No remote repository changes have been made since the last successful push.
 
 ## Repository state

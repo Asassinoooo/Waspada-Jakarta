@@ -33,6 +33,8 @@ The test-only `L3-GROUNDED-PROPOSAL-ROUNDTRIP-CORE` composition is accepted: an 
 
 The user selected append-only freshness transition records bound to exact immutable event/impact publication versions. The status may be overlaid later by the current-public projection while the published `evaluated_at`, `review_due_at`, and `basis` metadata stays unchanged; event freshness remains the conservative status-only aggregate and claims remain grouped. ADR-038 records this decision. `LIFE-01-FRESHNESS-LEDGER-CORE` is now accepted: migration 024 and the bounded Layer 4 recorder persist only status changes, with exact-version binding, evidence lineage for recovery, replay protection, and sequence checks. This is verified with isolated synthetic PGlite fixtures only. The current public read overlay, evaluation clock/scheduler, source invalidation, and live data remain future work; see the [handoff](docs/assignments/LIFE-01-FRESHNESS-LEDGER-CORE-HANDOFF.md).
 
+`LIFE-01-FRESHNESS-READ-PROJECTION-CORE` is assigned as the next slice: current public event/impact views will overlay the latest exact-version status while retaining immutable metadata and private ledger access. It must preserve the user's aggregate-only event status, existing public DTOs, published historical-version statuses, and withdrawn-history hiding. It adds no clock, scheduler, transition writer, or source integration; see the [assignment](docs/assignments/LIFE-01-FRESHNESS-READ-PROJECTION-CORE.md).
+
 ## 1. Document ownership and change control
 
 | Document | Owns |
