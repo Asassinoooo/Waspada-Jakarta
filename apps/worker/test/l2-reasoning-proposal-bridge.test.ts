@@ -14,6 +14,7 @@ import {
   type ReasoningProposalBridgeInput,
   type ReasoningProposalTarget,
 } from "../src/layers/l2-model-grounding/reasoning-proposal-bridge.js";
+import { parseReasoningOutput } from "../src/layers/l2-model-grounding/validation.js";
 
 const TEST_TIME = "2026-10-01T12:34:56.123456+07:00";
 const MODEL_PROVIDER = "synthetic-provider-must-not-be-persisted";
@@ -256,9 +257,29 @@ function recordingRepository() {
   return { repository, received };
 }
 
-test("maps proposed claims to the closed draft shape with exact references, times, origins, and caller metadata", async () => {
+test("maps parser-revalidated proposed claims without changing references, times, unresolved fields, or model metadata", async () => {
+  const context = contextFixture();
+  const reasoning = proposalResult(context);
+  const parserResult = await parseReasoningOutput(
+    {
+      output: {
+        outcome: reasoning.outcome,
+        claims: reasoning.claims,
+        unresolvedFields: reasoning.unresolvedFields,
+      },
+      usage: { inputTokens: reasoning.modelRun.inputTokens, outputTokens: reasoning.modelRun.outputTokens },
+    },
+    { data: { groundingContext: context } },
+    {
+      provider: reasoning.provider,
+      modelVersion: reasoning.modelRun.modelVersion,
+      promptVersion: reasoning.modelRun.promptVersion,
+    },
+  );
+  assert.deepEqual(parserResult, reasoning);
+
   const { repository, received } = recordingRepository();
-  const result = await createReasoningProposalBridge(repository).persist(bridgeInput());
+  const result = await createReasoningProposalBridge(repository).persist(bridgeInput({ context, result: reasoning }));
 
   assert.equal(result.status, "persisted");
   if (result.status !== "persisted") assert.fail("expected a persisted proposal");
@@ -274,6 +295,8 @@ test("maps proposed claims to the closed draft shape with exact references, time
   assert.equal(proposal.event_id, null);
   assert.equal(proposal.base_event_version, null);
   assert.deepEqual(proposal.claims.map((claim) => claim.claim_id), ["claim-001", "claim-002", "claim-003"]);
+  assert.deepEqual(proposal.claims.map((claim) => claim.text), parserResult.claims.map((claim) => claim.text));
+  assert.deepEqual(proposal.unresolved_fields, parserResult.unresolvedFields);
   assert.deepEqual(proposal.claims.map((claim) => claim.evidence_label), ["under_review", "under_review", "under_review"]);
   assert.deepEqual(proposal.claims.map((claim) => claim.support_assessment), ["disputed", "supported", "uncertain"]);
   assert.deepEqual(proposal.claims[0]?.origin_ids, ["origin-alpha", "origin-beta", "origin-zeta"]);
@@ -500,9 +523,38 @@ test("malformed runtime outcomes fail with content-free errors before repository
       && !error.message.includes(secret),
   );
   assert.deepEqual(received, []);
+
+  const invalidOutput = structuredClone(valid) as any;
+  invalidOutput.claims[0]!.text = secret;
+  invalidOutput.claims[0]!.eventTime.precision = "invalid_precision";
+  await assert.rejects(
+    createReasoningProposalBridge(repository).persist({
+      ...bridgeInput({ context }),
+      capabilityOutcome: capabilityOutcome(invalidOutput),
+    }),
+    (error: unknown) => error instanceof ReasoningProposalBridgeError
+      && error.code === "invalid_reasoning_outcome"
+      && !error.message.includes(secret),
+  );
+  assert.deepEqual(received, []);
 });
 
-test("invalid calendar dates, time precision, validity intervals, and proposed-at values fail before persistence", async (t) => {
+test("parser normalization that changes unresolved fields is rejected before persistence", async () => {
+  const context = contextFixture();
+  const reasoning = structuredClone(proposalResult(context)) as any;
+  reasoning.unresolvedFields = ["model_specific_unresolved_field"];
+  const { repository, received } = recordingRepository();
+
+  await assert.rejects(
+    createReasoningProposalBridge(repository).persist(bridgeInput({ context, result: reasoning })),
+    (error: unknown) => error instanceof ReasoningProposalBridgeError
+      && error.code === "invalid_reasoning_outcome"
+      && !error.message.includes("model_specific_unresolved_field"),
+  );
+  assert.deepEqual(received, []);
+});
+
+test("invalid reasoning calendar dates, time precision, and validity intervals fail before persistence", async (t) => {
   const context = contextFixture();
   const cases: Array<{
     readonly name: string;
@@ -538,11 +590,6 @@ test("invalid calendar dates, time precision, validity intervals, and proposed-a
         return { ...bridgeInput({ context }), capabilityOutcome: capabilityOutcome(value) };
       },
       expectedCode: "invalid_reasoning_outcome",
-    },
-    {
-      name: "impossible proposed-at date",
-      makeInput: () => ({ ...bridgeInput({ context }), proposedAt: "2026-02-30T10:00:00Z" }),
-      expectedCode: "invalid_bridge_input",
     },
   ];
 

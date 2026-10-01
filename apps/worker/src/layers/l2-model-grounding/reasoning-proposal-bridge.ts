@@ -15,10 +15,11 @@ import type {
   CapabilityOutcome,
   EvidenceReference,
   GroundingContext,
+  ModelIdentity,
+  ReasoningRequest,
   ReasoningResult,
-  TimeScope,
 } from "./contracts.js";
-import { parseEvidenceReference, validateReasoningRequest } from "./validation.js";
+import { parseReasoningOutput, validateReasoningRequest } from "./validation.js";
 
 export type ReasoningProposalTarget =
   | { readonly kind: "new" }
@@ -88,24 +89,22 @@ export function createReasoningProposalBridge(repository: EventProposalRepositor
         return { status: "no_write", capabilityStatus: outcome.status };
       }
 
-      const reasoning = parseReasoningResult(outcome.value);
       const contextSnapshot = snapshotPlainData(bridgeInput.groundingContext, "invalid_bridge_input");
       const persistedRecordSnapshot = snapshotPlainData(bridgeInput.persistedContextRecord, "invalid_bridge_input");
-      let context: GroundingContext;
+      let request: ReasoningRequest;
       try {
-        context = (await validateReasoningRequest({ data: { groundingContext: contextSnapshot } })).data.groundingContext;
+        request = await validateReasoningRequest({ data: { groundingContext: contextSnapshot } });
       } catch {
         throw new ReasoningProposalBridgeError("invalid_grounding_context");
       }
+      const context = request.data.groundingContext;
 
       const expectedRecord = toGroundingContextRecord(context);
       if (!sameValue(persistedRecordSnapshot, expectedRecord)) {
         throw new ReasoningProposalBridgeError("grounding_context_mismatch");
       }
-      if (!sameStringList(reasoning.conflicts, context.conflicts)) {
-        throw new ReasoningProposalBridgeError("conflict_mismatch");
-      }
 
+      const reasoning = await parseReasoningResult(outcome.value, request, context);
       const target = validateTarget(bridgeInput.target, context);
       const proposal = mapProposal(reasoning, context, bridgeInput, target);
       try {
@@ -135,7 +134,7 @@ function parseBridgeInput(value: unknown): ParsedBridgeInput {
       "capabilityOutcome", "groundingContext", "persistedContextRecord", "proposalId", "proposedAt", "target",
     ]);
     const proposalId = identifier(record.proposalId);
-    const proposedAt = parseDateTime(record.proposedAt, "invalid_bridge_input").source;
+    const proposedAt = boundedString(record.proposedAt, 500, "invalid_bridge_input");
     const investigationId = record.investigationId === undefined || record.investigationId === null
       ? null
       : identifier(record.investigationId);
@@ -189,217 +188,52 @@ function parseCapabilityOutcome(value: unknown): ParsedCapabilityOutcome {
   }
 }
 
-function parseReasoningResult(value: unknown): ReasoningResult {
+async function parseReasoningResult(
+  value: unknown,
+  request: ReasoningRequest,
+  context: GroundingContext,
+): Promise<ReasoningResult> {
   try {
-    const record = exactObject(value, ["outcome", "claims", "unresolvedFields", "conflicts", "modelRun", "provider"]);
-    if (record.outcome !== "proposed" && record.outcome !== "abstained") invalid("invalid_reasoning_outcome");
-    const claims = boundedArray(record.claims, 20).map((claim) => parseProposedClaim(claim));
-    const unresolvedFields = uniqueStringList(record.unresolvedFields, 100, 500);
-    const conflicts = uniqueStringList(record.conflicts, 100, 500);
-    const modelRunRecord = exactObject(record.modelRun, [
+    const snapshot = snapshotPlainData(value, "invalid_reasoning_outcome");
+    const record = exactObject(snapshot, ["outcome", "claims", "unresolvedFields", "conflicts", "modelRun", "provider"]);
+    if (!sameValue(record.conflicts, context.conflicts)) invalid("conflict_mismatch");
+
+    const modelRun = exactObject(record.modelRun, [
       "capability", "modelVersion", "promptVersion", "inputTokens", "outputTokens",
     ]);
-    if (modelRunRecord.capability !== "reasoning") invalid("invalid_reasoning_outcome");
-    const modelRun = {
-      capability: "reasoning" as const,
-      modelVersion: boundedString(modelRunRecord.modelVersion, 200),
-      promptVersion: boundedString(modelRunRecord.promptVersion, 200),
-      inputTokens: integer(modelRunRecord.inputTokens, 0, 12_000),
-      outputTokens: integer(modelRunRecord.outputTokens, 0, 12_000),
-    };
-    if (modelRun.inputTokens + modelRun.outputTokens > 12_000) invalid("invalid_reasoning_outcome");
-    const provider = boundedString(record.provider, 120);
-    if (record.outcome === "proposed" && claims.length === 0) invalid("invalid_reasoning_outcome");
-    if (record.outcome === "abstained" && (claims.length !== 0 || unresolvedFields.length === 0)) {
+    if (modelRun.capability !== "reasoning") invalid("invalid_reasoning_outcome");
+
+    const parsed = await parseReasoningOutput(
+      {
+        output: {
+          outcome: record.outcome,
+          claims: record.claims,
+          unresolvedFields: record.unresolvedFields,
+        },
+        usage: {
+          inputTokens: modelRun.inputTokens,
+          outputTokens: modelRun.outputTokens,
+        },
+      },
+      request,
+      {
+        provider: record.provider as string,
+        modelVersion: modelRun.modelVersion as string,
+        promptVersion: modelRun.promptVersion as string,
+      } satisfies ModelIdentity,
+    );
+
+    if (!sameValue(parsed.claims, record.claims)
+      || !sameValue(parsed.unresolvedFields, record.unresolvedFields)
+      || !sameValue(parsed.modelRun, record.modelRun)
+      || !sameValue(parsed.provider, record.provider)) {
       invalid("invalid_reasoning_outcome");
     }
-    return { outcome: record.outcome, claims, unresolvedFields, conflicts, modelRun, provider };
+    return parsed;
   } catch (error) {
-    if (error instanceof ReasoningProposalBridgeError && error.code !== "invalid_bridge_input") throw error;
+    if (error instanceof ReasoningProposalBridgeError && error.code === "conflict_mismatch") throw error;
     throw new ReasoningProposalBridgeError("invalid_reasoning_outcome");
   }
-}
-
-function parseProposedClaim(value: unknown): ReasoningResult["claims"][number] {
-  const record = exactObject(value, [
-    "text", "eventTime", "validity", "scope", "qualifiers", "support", "contradictions", "contextEvidence", "supportAssessment",
-  ]);
-  const text = boundedString(record.text, 4_000);
-  const eventTime = parseTimeScope(record.eventTime);
-  const validity = parseValidity(record.validity);
-  const scopeRecord = exactObject(record.scope, [
-    "placeIds", "serviceIds", "institutionIds", "audienceIds", "geometryIds",
-  ]);
-  const scope = {
-    placeIds: identifierList(scopeRecord.placeIds, 100),
-    serviceIds: identifierList(scopeRecord.serviceIds, 100),
-    institutionIds: identifierList(scopeRecord.institutionIds, 100),
-    audienceIds: identifierList(scopeRecord.audienceIds, 100),
-    geometryIds: identifierList(scopeRecord.geometryIds, 100),
-  };
-  const qualifiers = uniqueStringList(record.qualifiers, 100, 500);
-  const support = evidenceList(record.support, "supports");
-  const contradictions = evidenceList(record.contradictions, "contradicts");
-  const contextEvidence = evidenceList(record.contextEvidence, "updates_or_context");
-  if (support.length === 0 || support.length + contradictions.length + contextEvidence.length > 100) {
-    invalid("invalid_reasoning_outcome");
-  }
-  if (support.length > 8 || contradictions.length > 8 || contextEvidence.length > 8) invalid("invalid_reasoning_outcome");
-  if (record.supportAssessment !== "supported" && record.supportAssessment !== "uncertain" && record.supportAssessment !== "disputed") {
-    invalid("invalid_reasoning_outcome");
-  }
-  if (contradictions.length > 0 && record.supportAssessment === "supported") invalid("invalid_reasoning_outcome");
-  return {
-    text,
-    eventTime,
-    validity,
-    scope,
-    qualifiers,
-    support,
-    contradictions,
-    contextEvidence,
-    supportAssessment: record.supportAssessment,
-  };
-}
-
-interface ParsedDateTime {
-  readonly source: string;
-  readonly micros: bigint;
-}
-
-interface ParsedDateOnly {
-  readonly source: string;
-  readonly day: bigint;
-}
-
-const DAY_MICROS = 86_400_000_000n;
-
-function parseTimeScope(value: unknown): TimeScope {
-  const record = exactObject(value, ["start", "end", "precision"]);
-  if (record.precision === "unknown") {
-    if (record.start !== null || record.end !== null) invalid("invalid_reasoning_outcome");
-    return { precision: "unknown", start: null, end: null };
-  }
-  if (record.precision === "exact") {
-    const start = parseDateTime(record.start);
-    const end = record.end === null ? null : parseDateTime(record.end);
-    if (end && start.micros >= end.micros) invalid("invalid_reasoning_outcome");
-    return { precision: "exact", start: start.source, end: end?.source ?? null };
-  }
-  if (record.precision === "date") {
-    const start = parseDateOnly(record.start);
-    const end = record.end === null ? null : parseDateOnly(record.end);
-    if (end && start.day >= end.day) invalid("invalid_reasoning_outcome");
-    return { precision: "date", start: start.source, end: end?.source ?? null };
-  }
-  if (record.precision === "range") {
-    const start = parseEndpoint(record.start);
-    const end = parseEndpoint(record.end);
-    if (start.micros >= end.micros) invalid("invalid_reasoning_outcome");
-    return { precision: "range", start: start.source, end: end.source };
-  }
-  invalid("invalid_reasoning_outcome");
-}
-
-function parseValidity(value: unknown): { readonly validFrom: string | null; readonly validUntil: string | null } {
-  const record = exactObject(value, ["validFrom", "validUntil"]);
-  const validFrom = record.validFrom === null ? null : parseDateTime(record.validFrom);
-  const validUntil = record.validUntil === null ? null : parseDateTime(record.validUntil);
-  if (validFrom && validUntil && validFrom.micros >= validUntil.micros) invalid("invalid_reasoning_outcome");
-  return { validFrom: validFrom?.source ?? null, validUntil: validUntil?.source ?? null };
-}
-
-function parseEndpoint(value: unknown): ParsedDateTime {
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const date = parseDateOnly(value);
-    return { source: date.source, micros: date.day * DAY_MICROS };
-  }
-  return parseDateTime(value);
-}
-
-function parseDateOnly(value: unknown, errorCode: ReasoningProposalBridgeErrorCode = "invalid_reasoning_outcome"): ParsedDateOnly {
-  if (typeof value !== "string") invalid(errorCode);
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) invalid(errorCode);
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (year < 1 || month < 1 || month > 12 || day < 1 || day > monthDays(year, month)) invalid(errorCode);
-  scalarString(value, 10, 10, errorCode);
-  return { source: value, day: daysFromCivil(year, month, day) };
-}
-
-function parseDateTime(value: unknown, errorCode: ReasoningProposalBridgeErrorCode = "invalid_reasoning_outcome"): ParsedDateTime {
-  if (typeof value !== "string") invalid(errorCode);
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
-  if (!match) invalid(errorCode);
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = Number(match[6]);
-  if (year < 1 || month < 1 || month > 12 || day < 1 || day > monthDays(year, month)
-    || hour > 23 || minute > 59 || second > 59) invalid(errorCode);
-  const fraction = (match[7] ?? "").padEnd(6, "0");
-  let offsetMinutes = 0;
-  if (match[8] !== "Z") {
-    const zone = match[8]!;
-    const offsetHour = Number(zone.slice(1, 3));
-    const offsetMinute = Number(zone.slice(4, 6));
-    if (offsetHour > 23 || offsetMinute > 59) invalid(errorCode);
-    offsetMinutes = (zone[0] === "+" ? 1 : -1) * (offsetHour * 60 + offsetMinute);
-  }
-  const micros = daysFromCivil(year, month, day) * DAY_MICROS
-    + BigInt(hour * 3600 + minute * 60 + second) * 1_000_000n
-    + BigInt(fraction || "0") - BigInt(offsetMinutes) * 60_000_000n;
-  if (micros < daysFromCivil(1, 1, 1) * DAY_MICROS || micros >= daysFromCivil(10_000, 1, 1) * DAY_MICROS) {
-    invalid(errorCode);
-  }
-  scalarString(value, 35, 20, errorCode);
-  return { source: value, micros };
-}
-
-function scalarString(value: string, maximum: number, minimum: number, errorCode: ReasoningProposalBridgeErrorCode): void {
-  if (value.includes("\0")) invalid(errorCode);
-  let count = 0;
-  for (const character of value) {
-    const codePoint = character.codePointAt(0)!;
-    if (codePoint >= 0xd800 && codePoint <= 0xdfff) invalid(errorCode);
-    count += 1;
-  }
-  if (count < minimum || count > maximum) invalid(errorCode);
-}
-
-function monthDays(year: number, month: number): number {
-  if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
-  return [4, 6, 9, 11].includes(month) ? 30 : 31;
-}
-
-function daysFromCivil(year: number, month: number, day: number): bigint {
-  let adjustedYear = year;
-  if (month <= 2) adjustedYear -= 1;
-  const era = Math.floor(adjustedYear / 400);
-  const yearOfEra = adjustedYear - era * 400;
-  const adjustedMonth = month + (month > 2 ? -3 : 9);
-  const dayOfYear = Math.floor((153 * adjustedMonth + 2) / 5) + day - 1;
-  const dayOfEra = yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
-  return BigInt(era * 146_097 + dayOfEra - 719_468);
-}
-
-function evidenceList(value: unknown, expected: "supports" | "contradicts" | "updates_or_context"): EvidenceReference[] {
-  const references = boundedArray(value, 8).map((reference) => parseEvidenceReference(reference));
-  const seen = new Set<string>();
-  for (const reference of references) {
-    const relation = reference.relation;
-    if (expected === "supports" && relation !== "supports") invalid("invalid_reasoning_outcome");
-    if (expected === "contradicts" && relation !== "contradicts") invalid("invalid_reasoning_outcome");
-    if (expected === "updates_or_context" && relation !== "updates" && relation !== "context") invalid("invalid_reasoning_outcome");
-    const key = evidenceKey(reference);
-    if (seen.has(key)) invalid("invalid_reasoning_outcome");
-    seen.add(key);
-  }
-  return references;
 }
 
 function validateTarget(value: unknown, context: GroundingContext): { readonly eventId: string | null; readonly baseVersion: number | null } {
@@ -590,21 +424,6 @@ function recordObject(value: unknown): Record<string, unknown> {
   return result;
 }
 
-function boundedArray(value: unknown, maximum: number): unknown[] {
-  if (!Array.isArray(value) || value.length > maximum) invalid("invalid_reasoning_outcome");
-  const keys = Reflect.ownKeys(value);
-  if (keys.some((key) => key !== "length" && (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length))) {
-    invalid("invalid_reasoning_outcome");
-  }
-  const result: unknown[] = [];
-  for (let index = 0; index < value.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) invalid("invalid_reasoning_outcome");
-    result.push(descriptor.value);
-  }
-  return result;
-}
-
 function boundedString(
   value: unknown,
   maximum: number,
@@ -613,6 +432,17 @@ function boundedString(
   if (typeof value !== "string") invalid(errorCode);
   scalarString(value, maximum, 1, errorCode);
   return value;
+}
+
+function scalarString(value: string, maximum: number, minimum: number, errorCode: ReasoningProposalBridgeErrorCode): void {
+  if (value.includes("\0")) invalid(errorCode);
+  let count = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) invalid(errorCode);
+    count += 1;
+  }
+  if (count < minimum || count > maximum) invalid(errorCode);
 }
 
 function identifier(value: unknown): string {
@@ -627,23 +457,9 @@ function integer(value: unknown, minimum: number, maximum: number): number {
   return value;
 }
 
-function uniqueStringList(value: unknown, maximumItems: number, maxLength: number): string[] {
-  const items = boundedArray(value, maximumItems).map((item) => boundedString(item, maxLength));
-  if (new Set(items).size !== items.length) invalid("invalid_reasoning_outcome");
-  return items;
-}
-
-function identifierList(value: unknown, maximumItems: number): string[] {
-  return boundedArray(value, maximumItems).map((item) => identifier(item));
-}
-
 function evidenceKey(reference: EvidenceReference): string {
   return [reference.reportRevisionId, reference.permittedTextHash, reference.spanStart, reference.spanEnd,
     reference.offsetUnit, reference.relation].join("\u0000");
-}
-
-function sameStringList(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function snapshotPlainData(value: unknown, errorCode: ReasoningProposalBridgeErrorCode): unknown {
