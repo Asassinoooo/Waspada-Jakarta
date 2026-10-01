@@ -1,6 +1,6 @@
 # ADR-036 — Grounded draft proposal persistence
 
-- **Status:** Accepted design; local implementation assigned, acceptance pending
+- **Status:** Accepted design and local implementation; reasoning/provider integration and hosted validation remain pending
 - **Date:** 1 October 2026
 - **Owner:** Root planner
 - **Task:** L2-PROPOSAL-PERSIST-CORE
@@ -28,3 +28,7 @@ The draft schema permits `under_review` and 4,000-code-point claim text; the fou
 Both future proposal paths can share a private, evidence-linked record before the existing Layer 4 gate. Saving `supported` or `under_review` establishes neither truth nor publication eligibility. Drafts with labels/text outside the current publication writer's narrower budget remain unpublishable through that writer; changing publication handling is separate work.
 
 Persisting raw reasoning output would lose canonical identity and provenance requirements; granting the retrieval reader draft writes would blur the existing access boundary. Both are rejected. This task selects no model/provider, calls no model, adds no route/runtime trigger and enables no source or moderation mutation. Authored PGlite checks establish local storage/access behavior only; independent PostgreSQL concurrency, hosted Neon, semantic quality, data rights and authenticated moderation remain unverified.
+
+## Local implementation accepted
+
+Root accepted the local implementation on `main` at `d3a4a25` after reviewing the isolated branch diff. The writer uses a transaction-scoped advisory lock, validates and snapshots the closed proposal before I/O, resolves exact evidence and case lineage, persists all normalized rows atomically, and verifies complete replay without repair. Migration 023 adds only draft claim constraints and the narrow `waspada_l2_proposal_writer` role. Root independently passed the focused PGlite suite (25/25) and the integrated full workspace suite (web 60/60, Worker 357/357, DB 24/24 files, evaluation 12/12), followed by typecheck and Vite/Wrangler dry-run build. These checks do not establish hosted concurrency or semantic quality; see the [handoff](../assignments/L2-PROPOSAL-PERSIST-CORE-HANDOFF.md).

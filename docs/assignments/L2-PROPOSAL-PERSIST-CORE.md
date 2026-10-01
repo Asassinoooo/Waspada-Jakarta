@@ -1,6 +1,6 @@
 # L2-PROPOSAL-PERSIST-CORE — Persist canonical grounded drafts
 
-- **Status:** Assigned; implementation and root acceptance pending
+- **Status:** Accepted locally on `main`; reasoning-result bridge remains a separate task
 - **Agent:** GPT-6 Luna / max
 - **Branch:** `work/L2-PROPOSAL-PERSIST-CORE`
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l1-fixture-runner-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l1-fixture-runner-core/RPL`)

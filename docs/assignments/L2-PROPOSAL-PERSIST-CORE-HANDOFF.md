@@ -1,6 +1,6 @@
 # L2-PROPOSAL-PERSIST-CORE handoff
 
-- **Status:** Implementation complete; root review and acceptance pending.
+- **Status:** Root accepted locally on `main` after independent diff and focused-suite review.
 - **Branch:** `work/L2-PROPOSAL-PERSIST-CORE`
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l1-fixture-runner-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l1-fixture-runner-core/RPL`)
 - **Assigned base:** `20757bfaa61d25399fd8563583ec2311f8504446`
@@ -50,4 +50,4 @@ The tests use authored synthetic fixtures and local PGlite transaction/role boun
 
 ## Limitations and review
 
-Root review and acceptance remain pending. Sequential PGlite checks establish the local transaction and access behavior but do not prove concurrent behavior under hosted PostgreSQL/Neon. The advisory lock is implemented but no concurrent database test was run. Semantic truth, source eligibility, corroboration independence, publication authorization, authenticated moderation, hosted configuration and live data behavior are outside this slice and remain unverified. No model/provider or external source was enabled or called.
+Sequential PGlite checks establish the local transaction and access behavior but do not prove concurrent behavior under hosted PostgreSQL/Neon. The advisory lock is implemented but no concurrent database test was run. Semantic truth, source eligibility, corroboration independence, publication authorization, authenticated moderation, hosted configuration and live data behavior are outside this slice and remain unverified. No model/provider or external source was enabled or called.
