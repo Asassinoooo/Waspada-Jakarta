@@ -25,6 +25,8 @@ The accepted `ING-CAP-PARSE-CORE` adds bounded, namespace-aware CAP 1.2 parsing 
 
 **Known local defect:** an old chunk-set retry after re-chunking can reactivate the old generation and invalidate the new one. Root reproduced this with synthetic PGlite rows. [ADR-035](docs/decisions/ADR-035-chunk-invalidation-replay.md) specifies atomic tombstone and revision-state guards; DATA-02-CHUNK-INVALIDATION-REPLAY-CORE follows embedding persistence integration. The correction is not implemented yet, and stale-retry safety is not a completed release capability.
 
+`DATA-02-EMBEDDING-PERSIST-CORE` adds atomic Layer 1 metadata/vector persistence over exact immutable chunk lineage. It validates and snapshots inputs before SQL, compares timestamps at microsecond precision and vectors in their float32 storage representation, and never repairs or reactivates invalidated/failed runs. Migration 022 adds only required L1 verification-column reads. Local tests compose storage with chunk invalidation and retrieval under the existing L2 reader role. Embedding invocation, model selection, semantic quality and hosted concurrency remain unverified or unimplemented; see [ADR-034](docs/decisions/ADR-034-embedding-persistence.md).
+
 ## 1. Document ownership and change control
 
 | Document | Owns |

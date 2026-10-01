@@ -1,6 +1,6 @@
 # ADR-034 — Atomic embedding metadata and vector persistence
 
-- **Status:** Accepted design; implementation assigned
+- **Status:** Accepted design and local implementation; provider/hosted behavior unverified
 - **Date:** 1 October 2026
 - **Owner:** Root planner
 - **Task:** DATA-02-EMBEDDING-PERSIST-CORE

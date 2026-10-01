@@ -1,10 +1,10 @@
 # DATA-02-EMBEDDING-PERSIST-CORE — Atomic embedding persistence
 
-- **Status:** Assigned; root review/acceptance pending
+- **Status:** Accepted locally on `main`; provider/hosted behavior remains unverified
 - **Agent:** GPT-6 Luna / max
 - **Branch:** `work/DATA-02-EMBEDDING-PERSIST-CORE`
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l1-fixture-runner-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l1-fixture-runner-core/RPL`)
-- **Base:** Root's dispatch commit after accepted scheduled runtime `4ac1773`; the exact SHA is supplied in the assignment message and must be recorded in the handoff.
+- **Base:** `63def4eab330773ac2537de77b28bac3b1c31028`
 - **Dependencies:** DATA-01, DATA-02-CORE, RAG-CORE, RAG-ACCESS-01; ADR-034
 - **Requirements:** FR-03/05/06; NFR-01/05/07
 - **Contracts:** Closed schema 2.0 EmbeddingRun; existing SqlTransactionRunner, chunks and retrieval identities; public API unchanged
