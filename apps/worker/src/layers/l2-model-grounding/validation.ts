@@ -37,7 +37,7 @@ export const MAX_MODEL_TOKENS_PER_CALL = 12_000;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const DATETIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+const DATETIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/;
 const REVISION_STATUSES = ["unreviewed", "eligible", "quarantined", "superseded", "retracted"] as const;
 const RELATIONS = ["supports", "contradicts", "updates", "context"] as const;
 const DISTANCE_METRICS = ["cosine", "dot_product", "euclidean"] as const;
@@ -148,7 +148,7 @@ function validDateTime(value: string): boolean {
   const hour = Number(match[4]);
   const minute = Number(match[5]);
   const second = Number(match[6]);
-  const zone = match[7];
+  const zone = match[8];
   if (hour > 23 || minute > 59 || second > 59) return false;
   if (zone !== "Z") {
     const offsetHour = Number(zone.slice(1, 3));
@@ -171,8 +171,45 @@ function dateOrDateTime(value: unknown, path: string): string {
   return parsed;
 }
 
-function instant(value: string): number {
-  return DATE_PATTERN.test(value) ? Date.parse(`${value}T00:00:00Z`) : Date.parse(value);
+const SECONDS_PER_DAY = 86_400n;
+const NANOSECONDS_PER_SECOND = 1_000_000_000n;
+
+function daysSinceUnixEpoch(year: number, month: number, day: number): bigint {
+  const adjustedYear = year - (month <= 2 ? 1 : 0);
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const shiftedMonth = month + (month > 2 ? -3 : 9);
+  const dayOfYear = Math.floor((153 * shiftedMonth + 2) / 5) + day - 1;
+  const dayOfEra = yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+  return BigInt(era * 146_097 + dayOfEra - 719_468);
+}
+
+function instant(value: string): bigint {
+  const dateMatch = DATE_PATTERN.exec(value);
+  if (dateMatch) {
+    const days = daysSinceUnixEpoch(Number(dateMatch[1]), Number(dateMatch[2]), Number(dateMatch[3]));
+    return days * SECONDS_PER_DAY * NANOSECONDS_PER_SECOND;
+  }
+
+  const match = DATETIME_PATTERN.exec(value);
+  if (!match) reject("invalid_datetime");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const fraction = match[7] ?? "";
+  const zone = match[8]!;
+  let offsetSeconds = 0;
+  if (zone !== "Z") {
+    const offsetMinutes = Number(zone.slice(1, 3)) * 60 + Number(zone.slice(4, 6));
+    offsetSeconds = (zone[0] === "+" ? 1 : -1) * offsetMinutes * 60;
+  }
+  const localSeconds = BigInt(hour * 3_600 + minute * 60 + second);
+  const utcSeconds = daysSinceUnixEpoch(year, month, day) * SECONDS_PER_DAY + localSeconds - BigInt(offsetSeconds);
+  const fractionalNanoseconds = fraction.length === 0 ? 0n : BigInt(fraction.padEnd(9, "0"));
+  return utcSeconds * NANOSECONDS_PER_SECOND + fractionalNanoseconds;
 }
 
 function parseTimeScope(value: unknown, path: string): TimeScope {

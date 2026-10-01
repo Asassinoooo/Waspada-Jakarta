@@ -221,6 +221,173 @@ test("extractor rejects extra fields and invalid time precision", async () => {
   assert.equal(badTime.status, "invalid_output");
 });
 
+test("event-time intervals compare RFC3339 timestamps at full precision and retain their text", async () => {
+  const report = await makeReport();
+  const support = await referenceFor(report.reportRevisionId, report.permittedText, "supports");
+  const scope = { placeIds: ["place-merdeka"], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] };
+  const parseEventTime = async (eventTime: unknown) => {
+    const provider = new ScriptedModelProviderDoubleForTests({
+      extraction: providerEnvelope({
+        category: "disasters_weather",
+        tags: [{ namespace: "hazard", value: "flood" }],
+        eventTime,
+        scope,
+        evidence: [support],
+        unknownFields: [],
+      }),
+    });
+    return createModelCapabilityAdapter(provider, configuration).extract({
+      data: { candidateId: "candidate-time-precision", report },
+    });
+  };
+
+  const reversedExact = await parseEventTime({
+    start: "2026-10-01T10:00:00.123456Z",
+    end: "2026-10-01T10:00:00.123455Z",
+    precision: "exact",
+  });
+  assert.deepEqual(reversedExact, {
+    status: "invalid_output",
+    capability: "extraction",
+    reason: "provider.extraction.output.eventTime:reversed_interval",
+  });
+
+  const reversedRange = await parseEventTime({
+    start: "2026-10-01T10:00:00.123456Z",
+    end: "2026-10-01T10:00:00.123455Z",
+    precision: "range",
+  });
+  assert.deepEqual(reversedRange, {
+    status: "invalid_output",
+    capability: "extraction",
+    reason: "provider.extraction.output.eventTime:reversed_interval",
+  });
+
+  const sixDigitExact = await parseEventTime({
+    start: "2026-10-01T10:00:00.123455Z",
+    end: "2026-10-01T10:00:00.123456Z",
+    precision: "exact",
+  });
+  if (sixDigitExact.status !== "succeeded") assert.fail("expected increasing six-digit exact timestamps");
+  assert.deepEqual(sixDigitExact.value.eventTime, {
+    start: "2026-10-01T10:00:00.123455Z",
+    end: "2026-10-01T10:00:00.123456Z",
+    precision: "exact",
+  });
+
+  const nineDigitRange = await parseEventTime({
+    start: "2026-10-01T10:00:00.123456789Z",
+    end: "2026-10-01T10:00:00.123456790Z",
+    precision: "range",
+  });
+  if (nineDigitRange.status !== "succeeded") assert.fail("expected increasing nine-digit range timestamps");
+  assert.deepEqual(nineDigitRange.value.eventTime, {
+    start: "2026-10-01T10:00:00.123456789Z",
+    end: "2026-10-01T10:00:00.123456790Z",
+    precision: "range",
+  });
+
+  const offsetEquivalentExact = await parseEventTime({
+    start: "2026-10-01T10:00:00.123456Z",
+    end: "2026-10-01T12:00:00.123456+02:00",
+    precision: "exact",
+  });
+  if (offsetEquivalentExact.status !== "succeeded") assert.fail("expected offset-equivalent exact timestamps to compare equal");
+  assert.deepEqual(offsetEquivalentExact.value.eventTime, {
+    start: "2026-10-01T10:00:00.123456Z",
+    end: "2026-10-01T12:00:00.123456+02:00",
+    precision: "exact",
+  });
+
+  const dateOnly = await parseEventTime({
+    start: "2026-10-01",
+    end: "2026-10-02",
+    precision: "date",
+  });
+  if (dateOnly.status !== "succeeded") assert.fail("expected increasing date-only endpoints");
+  assert.deepEqual(dateOnly.value.eventTime, {
+    start: "2026-10-01",
+    end: "2026-10-02",
+    precision: "date",
+  });
+
+  const reversedDateOnly = await parseEventTime({
+    start: "2026-10-02",
+    end: "2026-10-01",
+    precision: "date",
+  });
+  assert.deepEqual(reversedDateOnly, {
+    status: "invalid_output",
+    capability: "extraction",
+    reason: "provider.extraction.output.eventTime.end:invalid_date_or_interval",
+  });
+
+  const malformedTimestamp = "2026-10-01T10:00:00.1234567890Z";
+  const malformed = await parseEventTime({ start: malformedTimestamp, end: null, precision: "exact" });
+  assert.deepEqual(malformed, {
+    status: "invalid_output",
+    capability: "extraction",
+    reason: "provider.extraction.output.eventTime.start:invalid_datetime",
+  });
+  assert.equal(JSON.stringify(malformed).includes(malformedTimestamp), false);
+});
+
+test("validity periods compare fractional precision and keep their end-exclusive boundary", async () => {
+  const groundingContext = await makeGroundingContext();
+  const support = groundingContext.evidence[0]!.reference;
+  const scope = { placeIds: ["place-merdeka"], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] };
+  const parseValidity = async (validity: unknown) => {
+    const provider = new ScriptedModelProviderDoubleForTests({
+      reasoning: providerEnvelope({
+        outcome: "proposed",
+        claims: [{
+          text: "A synthetic validity-bound claim.",
+          eventTime: { start: null, end: null, precision: "unknown" },
+          validity,
+          scope,
+          qualifiers: [],
+          support: [support],
+          contradictions: [],
+          contextEvidence: [],
+          supportAssessment: "supported",
+        }],
+        unresolvedFields: [],
+      }),
+    });
+    return createModelCapabilityAdapter(provider, configuration).reason({ data: { groundingContext } });
+  };
+
+  const increasingNanoseconds = await parseValidity({
+    validFrom: "2026-10-01T10:00:00.123456789Z",
+    validUntil: "2026-10-01T10:00:00.123456790Z",
+  });
+  if (increasingNanoseconds.status !== "succeeded") assert.fail("expected a one-nanosecond validity interval");
+  assert.deepEqual(increasingNanoseconds.value.claims[0]?.validity, {
+    validFrom: "2026-10-01T10:00:00.123456789Z",
+    validUntil: "2026-10-01T10:00:00.123456790Z",
+  });
+
+  const reversedSubMillisecond = await parseValidity({
+    validFrom: "2026-10-01T10:00:00.123456Z",
+    validUntil: "2026-10-01T10:00:00.123455Z",
+  });
+  assert.deepEqual(reversedSubMillisecond, {
+    status: "invalid_output",
+    capability: "reasoning",
+    reason: "provider.reasoning.output.claims[0].validity:invalid_validity_interval",
+  });
+
+  const equalOffsetInstants = await parseValidity({
+    validFrom: "2026-10-01T10:00:00.123456Z",
+    validUntil: "2026-10-01T12:00:00.123456+02:00",
+  });
+  assert.deepEqual(equalOffsetInstants, {
+    status: "invalid_output",
+    capability: "reasoning",
+    reason: "provider.reasoning.output.claims[0].validity:invalid_validity_interval",
+  });
+});
+
 test("reasoning can cite only exact retrieved context and retains contrary evidence", async () => {
   const groundingContext = await makeGroundingContext();
   const support = groundingContext.evidence[0]!.reference;
