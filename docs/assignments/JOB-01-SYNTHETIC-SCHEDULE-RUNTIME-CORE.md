@@ -1,6 +1,6 @@
 # JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE — Synthetic scheduled enqueue runtime
 
-- **Status:** Assigned; root acceptance pending
+- **Status:** Accepted locally on `main`; hosted execution remains unverified
 - **Agent:** GPT-6 Luna / max
 - **Branch:** `work/JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE`
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l3-coordinator-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l3-coordinator-core/RPL`)

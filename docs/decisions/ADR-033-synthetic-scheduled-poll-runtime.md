@@ -1,6 +1,6 @@
 # ADR-033 — Opt-in synthetic scheduled-poll runtime
 
-- **Status:** Accepted design; implementation assigned, hosted behavior unverified
+- **Status:** Accepted design and local implementation; hosted behavior unverified
 - **Date:** 1 October 2026
 - **Owner:** Root planner
 - **Requirements:** FR-02/14; NFR-01/05/07/08
@@ -16,7 +16,7 @@ Validate the platform-supplied scheduled epoch before opening SQL. Use its UTC R
 
 Migration 021 grants L1 only `SELECT (dataset_kind)` on the existing namespace configuration table. It grants no namespace mutation, credential, role membership, publication authority, or new table. Future authorized provisioning must supply a login that can assume the L1 role; a binding alone does not establish access.
 
-Failures roll back and surface a bounded redacted runtime error. Preserve no raw connection string, exception, source content, or identifiers in error/log messages. Successful trace metadata records the trigger kind and scheduler counts only. A repeated trigger may create another trace, but existing queue keys and active-job suppression prevent duplicate logical polling work.
+Failures roll back and surface a bounded redacted runtime error. Preserve no raw connection string, exception, source content, or identifiers in error/log messages. Successful trace metadata records the trigger kind and scheduler counts only. A repeated trigger may create another trace, but existing queue keys and active-job suppression prevent duplicate logical polling work. Trace start/end use the supplied scheduling instant; this enqueue summary does not measure execution duration or establish intake, model, or publication completion.
 
 ## Validation and limits
 
