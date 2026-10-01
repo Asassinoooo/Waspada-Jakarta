@@ -1,7 +1,7 @@
 # LIFE-01-FRESHNESS-AGGREGATE-CORE — project conservative event freshness status
 
 - **Parent:** LIFE-01, FR-09/11/13, NFR-01/05/07
-- **Status:** Assigned for local Layer 4 and query integration
+- **Status:** Accepted on `main` after root review; see [handoff](LIFE-01-FRESHNESS-AGGREGATE-CORE-HANDOFF.md)
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/LIFE-01-FRESHNESS-AGGREGATE-CORE`
 - **Worktree:** Reuse the clean managed `l3-coordinator-core` worktree after checking that its previous JOB-01 task and processes are complete. Root supplies the exact `main` base at dispatch.
@@ -61,6 +61,8 @@ Aggregate only `Freshness.status`. Preserve the event's `evaluated_at`, `review_
 - `apps/db/src/public-event-geojson-candidates.ts`
 - `apps/db/test/public-event-list.test.ts`
 - `apps/db/test/public-event-geojson-candidates.test.ts`
+- `apps/db/test/migrations.test.ts` (root-authorized narrow migration inventory/order coverage for migration 020)
+- `apps/db/test/public-event-updates.test.ts` (root-authorized pre-016/post-020 migration-order fixture update)
 - `docs/assignments/LIFE-01-FRESHNESS-AGGREGATE-CORE-HANDOFF.md` (new)
 
 Root owns the backlog, architecture, ADR, SDP, delivery log, and assignment status. Stop before editing other paths if compatibility requires a public contract change, additional permission, or a different freshness decision.

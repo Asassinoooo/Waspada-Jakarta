@@ -52,4 +52,4 @@ An initial full DB run caught test maintenance issues after adding migration 020
 
 ## Limitations and remaining decisions
 
-No known implementation limitation or remaining design decision. Root review and integration remain outstanding. Do not merge or push from this branch.
+No remaining design decision is required for this local slice. Hosted Neon behavior has not been verified; the SQL migration and public-reader permissions were exercised with PGlite only. Live sources remain disabled. Root review and integration are recorded separately in the delivery log.
