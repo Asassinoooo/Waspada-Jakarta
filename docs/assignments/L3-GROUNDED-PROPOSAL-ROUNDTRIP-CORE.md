@@ -1,10 +1,11 @@
 # L3-GROUNDED-PROPOSAL-ROUNDTRIP-CORE — compose investigation with private proposal persistence
 
-**Status:** Assigned as a test-only integration slice after accepting the L3 synthetic L1/L2 refresh and RAG-to-private-proposal roundtrips.  
+**Status:** Accepted after independent root review on local `main`; see the [implementation handoff](L3-GROUNDED-PROPOSAL-ROUNDTRIP-CORE-HANDOFF.md).
+
 **Backlog ID:** `L3-GROUNDED-PROPOSAL-ROUNDTRIP-CORE`  
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/L3-GROUNDED-PROPOSAL-ROUNDTRIP-CORE`  
-**Worktree:** `C:\Users\perry\.codex\worktrees\l3-grounded-proposal-roundtrip-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l3-grounded-proposal-roundtrip-core/RPL` in WSL Ubuntu-26.04). Root will create it from the exact pushed `main` commit identified in the dispatch.
+**Worktree:** `C:\Users\perry\.codex\worktrees\l3-grounded-proposal-roundtrip-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l3-grounded-proposal-roundtrip-core/RPL` in WSL Ubuntu-26.04), created from assigned base `856c29a0377877a5acd43f7e2f9a1f061719e94c`.
 
 ## Context and dependencies
 
