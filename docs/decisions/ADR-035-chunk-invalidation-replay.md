@@ -1,6 +1,6 @@
 # ADR-035 — Invalidated chunk generations are not retry targets
 
-- **Status:** Accepted design; correction assigned
+- **Status:** Accepted with local implementation; hosted/independent-session behavior unverified
 - **Date:** 1 October 2026
 - **Owner:** Root planner
 - **Task:** DATA-02-CHUNK-INVALIDATION-REPLAY-CORE
@@ -12,7 +12,7 @@ Root reproduced a stale retry in WSL/PGlite using the existing chunk test with o
 
 Treat persisted invalidated chunks as tombstones. An input that reuses an invalidated chunk ID, or a chunker version already invalidated for that exact dataset/revision, is rejected before any inserts or status changes. New IDs must not bypass a known invalidated generation. Existing active identical sets remain replay-compatible; a genuinely new chunker version can replace them through the existing atomic write/invalidation statement. Version labels are opaque: do not infer chronology from their spelling. Restoring an old generation is not an automatic retry action.
 
-Require the revision to remain unreviewed or eligible in the write statement. Quarantined, superseded and retracted revisions cannot create or refresh active chunks. Preserve immutable source text, old chunk/run history and vector rows. Failed guards must leave the entire input set and every current/old status unchanged. Keep the existing repository input/result contracts and L1 grants; no schema, migration or provider change is required by this slice.
+Require the revision to remain unreviewed or eligible in the write statement. Quarantined, superseded and retracted revisions cannot create or refresh active chunks. The conflict update itself also requires that the stored row remain active. Preserve immutable source text, old chunk/run history and vector rows. Failed guards must leave the entire input set and every current/old status unchanged. Keep the existing repository input/result contracts and L1 grants; no schema, migration or provider change is required by this slice.
 
 ## Trade-offs and limits
 
@@ -21,3 +21,5 @@ Rejecting a stale generation makes an old job fail explicitly rather than silent
 ## Verification
 
 Add permanent regression tests under the L1 role for old-set replay, new-ID reuse of a tombstoned version, mixed stale/new inputs without partial writes, denied revision states, normal active replay, a new generation and retained vector/run history. Run the actual chunk/embedding/retrieval composition locally; source rights, model quality and hosted Neon remain unverified.
+
+The implementation is accepted at root commit `acafcdd` (agent commit `ac8f494`); handoff `7d11856` records review and verification. Root independently passed the focused chunk/embedding suite **18/18**, then `npm run typecheck && npm run build` and `git diff --check` in WSL Ubuntu-26.04. The agent passed focused chunk **7/7**, embedding **11/11**, DB suite **23/23 files**, and full `npm test` (web **60/60**, Worker **357/357**, DB **23/23 files**, casebook **12/12**). No migration, contract, grant, dependency or configuration change was made. Local checks do not prove independent PostgreSQL session ordering or hosted Neon behavior.
