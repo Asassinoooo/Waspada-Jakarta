@@ -38,5 +38,6 @@ The user has requested a five-layer architecture, orchestration confined to L3, 
 | [ADR-029](ADR-029-l3-budgeted-planner-call.md) | Budget Layer 2 investigation-planning calls in Layer 3 | L2 validates one planner call and its usage; L3 verifies current case identity, reserves before invocation, reconciles actual or full reserved usage, and never retries or executes the proposal | Accepted for local synthetic implementation; L3-REASONING-STEP-CORE accepted on `main` |
 
 | [ADR-033](ADR-033-synthetic-scheduled-poll-runtime.md) | Opt-in synthetic scheduled enqueue runtime | Demo-only scheduled handler, separate L1 connection, synthetic namespace and L1-role transaction; no schedule enabled | Accepted design; JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE assigned |
+| [ADR-034](ADR-034-embedding-persistence.md) | Atomic embedding metadata/vector persistence | Exact chunk lineage, float32-aware idempotency and no invalidation reversal; no provider selection | Accepted design; DATA-02-EMBEDDING-PERSIST-CORE ready |
 
 Resolve decisions at the indicated dependency boundary; fixtures and unrelated planning can continue. Do not silently make a billable provider or public-launch decision on the user's behalf. Record routine reversible engineering decisions in the ADR without adding unnecessary approval steps.

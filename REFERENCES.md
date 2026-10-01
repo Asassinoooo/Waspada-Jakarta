@@ -1,5 +1,9 @@
 # Waspada Jakarta Reference Register
 
+## Embedding persistence design — 1 October 2026
+
+- **pgvector maintainers.** [Vector type reference](https://github.com/pgvector/pgvector#vector-type). Reviewed 1 October 2026. Defines finite single-precision vector storage, supporting storage-aware retry comparison in ADR-034. Waspada's 2048-dimensional initial writer budget comes from its existing retrieval implementation; no embedding model, ANN index or hosted extension version is selected by this reference.
+
 This working file keeps the sources for the Waspada Jakarta report while the final reference section is being prepared. The chapter currently has no reference list or numbered in-text citations. Keep this register local and prepare the bibliography at the end of the complete report, following the user's later instructions.
 
 ## Public and Jakarta context sources
