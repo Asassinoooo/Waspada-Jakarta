@@ -27,9 +27,9 @@ The accepted `ING-CAP-PARSE-CORE` adds bounded, namespace-aware CAP 1.2 parsing 
 
 `DATA-02-EMBEDDING-PERSIST-CORE` adds atomic Layer 1 metadata/vector persistence over exact immutable chunk lineage. It validates and snapshots inputs before SQL, compares timestamps at microsecond precision and vectors in their float32 storage representation, and never repairs or reactivates invalidated/failed runs. Migration 022 adds only required L1 verification-column reads. Local tests compose storage with chunk invalidation and retrieval under the existing L2 reader role. Embedding invocation, model selection, semantic quality and hosted concurrency remain unverified or unimplemented; see [ADR-034](docs/decisions/ADR-034-embedding-persistence.md).
 
-## 1. Document ownership and change control
-
 `L2-PROPOSAL-PERSIST-CORE` is assigned under [ADR-036](docs/decisions/ADR-036-event-proposal-persistence.md). It will store canonical private drafts and their exact grounding, evidence, support-origin and optional case lineage with an isolated writer role. Draft-only constraints will align with the existing schema; public contracts and publication authority remain unchanged. Implementation, root acceptance and a later reasoning-result bridge are pending.
+
+## 1. Document ownership and change control
 
 | Document | Owns |
 | --- | --- |

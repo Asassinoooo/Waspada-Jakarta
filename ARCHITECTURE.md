@@ -95,9 +95,9 @@ Use strict schema validation at every boundary. Source-span existence and hash c
 
 The accepted RAG-CORE repository implements bounded exact-identifier/term, report/event-time, source-linked geometry-intersection, and optional exact-embedding-identity distance facets over stored evidence. It returns source/revision state, source and origin lineage, time distinctions, exact offsets, match facets and truncation metadata. Its row-evaluation limit is not a physical database scan or latency bound. RAG-ACCESS-01 adds a dedicated `waspada_l2_grounding_reader` role with column-scoped grants and verifies the actual query under `SET ROLE` in synthetic PGlite fixtures. The modules remain outside an application retrieval path until Worker/database service-role wiring is integrated and checked against Neon. They never set `GroundingContext.sufficient`, make a safety/factuality claim, or invoke L3.
 
-## 4. Layer 3 — bounded investigation
-
 The durable EventProposal boundary is assigned separately under [ADR-036](docs/decisions/ADR-036-event-proposal-persistence.md), with implementation pending. Its writer stores canonical private drafts and exact context/evidence/support-origin/case links; it does not call models, decide sufficiency, spend investigation budgets or publish. A later bridge must map the typed reasoning result into this shared draft contract. Draft labels remain assessments; Layer 4 owns public labels and publication.
+
+## 4. Layer 3 — bounded investigation
 
 Layer 3 owns a case state machine, not the whole data platform. Its initial state contains candidate ID, GroundingContext ID, unresolved questions, checked sources, counters, elapsed time, model usage and checkpoint version. Use a bounded TypeScript workflow on Cloudflare Workflows for persisted asynchronous transitions. Neon case/job rows remain authoritative for investigation identity, counters and outcomes; every step checks its saved budget before acting. The workflow does not own ingestion, normalization or publication. Free step/CPU quotas may require smaller investigations or a held-for-review outcome.
 
