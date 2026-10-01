@@ -35,6 +35,14 @@ All project checks used WSL Ubuntu-26.04 with Node.js 24.21.0 and npm 11.19.0. I
 - `npm run build`: passed, including Vite production build and Wrangler `deploy --dry-run --outdir dist`; no deploy occurred.
 - `git diff --check 63def4eab330773ac2537de77b28bac3b1c31028..HEAD`: passed.
 
+## Review and failure history
+
+An early lineage-test fixture attempted to mutate an immutable report revision and was rejected by the database. The fixture was replaced with a deliberately malformed persisted chunk row, and focused tests passed on rerun. An initial typecheck also flagged an unused import; it was removed and typecheck passed on rerun.
+
+Root review prompted validated metadata snapshots before asynchronous SQL, storage and equality using the same validated float32 vector snapshot, and removal of the unused `evidence_chunks.trace_id` SELECT and grant. Coverage was added for exact replay of a failed run with its vector present, denied new-run states including quarantined, superseded, and retracted, and semantic retrieval under the existing L2 reader role.
+
+The implementation files remained unchanged after root's hash-bound 24/24 focused test check.
+
 ## Limits and follow-up
 
 PGlite coverage does not establish independent PostgreSQL/Neon or multi-session concurrency correctness. Semantic tests validate retrieval composition and identity filtering, not embedding quality. No provider was selected or invoked. Migration 022 has not been applied to a hosted database.
