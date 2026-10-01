@@ -21,6 +21,7 @@ import {
 } from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
 import { createDirectReasoningService } from '../../worker/src/layers/l2-model-grounding/direct-reasoning.js';
 import { createReasoningContextPersister } from '../../worker/src/layers/l2-model-grounding/context-persistence.js';
+import { createReasoningProposalBridge } from '../../worker/src/layers/l2-model-grounding/reasoning-proposal-bridge.js';
 import { assembleGroundingReasoningRequest } from '../../worker/src/layers/l2-model-grounding/grounding-context.js';
 import {
   InMemorySyntheticFixtureCatalog,
@@ -32,7 +33,11 @@ import { runSyntheticFixtureJob } from '../../worker/src/layers/l1-data-knowledg
 import { createModelCapabilityAdapter } from '../../worker/src/layers/l2-model-grounding/adapter.js';
 import { preparePermittedText } from '../../worker/src/layers/l1-data-knowledge/text-preparation.js';
 import type {
+  CapabilityOutcome,
   ExtractionRequest,
+  GroundingContext,
+  ReasoningRequest,
+  ReasoningResult,
   UntrustedModelProvider,
 } from '../../worker/src/layers/l2-model-grounding/contracts.js';
 import { validateReasoningRequest } from '../../worker/src/layers/l2-model-grounding/validation.js';
@@ -725,21 +730,52 @@ describe('L3 durable investigation ledger', () => {
     }));
   });
 
-  it('composes one coordinator advance through a persisted synthetic L1 replay and exact L2 refresh', async () => {
+  it('composes one bounded synthetic investigation through exact-context private proposal persistence and replay', async () => {
     const roundtrip = await seedRoundtripFixture(testDatabase);
-    const { fixture, sourceId, reportRevisionId, selectedStart, selectedEnd, selectedSpan,
+    const { fixture, sourceId, reportRevisionId, originId, evidenceReferenceId, selectedStart, selectedEnd, selectedSpan,
       authoredText, eventTime, publishedAt, observedAt, retrievedAt, queued, extractorCalls } = roundtrip;
     const contextPersister = createReasoningContextPersister(
       roundtrip.ports.groundingContexts,
     );
+    let reasoningCalls = 0;
+    const reasoningRequestAtCall: { value: ReasoningRequest | null } = { value: null };
     const directReasoning = createDirectReasoningService(contextPersister, {
-      async reason() {
-        assert.fail('insufficient context must be returned to L3 before direct model synthesis');
+      async reason(request: ReasoningRequest): Promise<CapabilityOutcome<ReasoningResult, 'reasoning'>> {
+        reasoningCalls += 1;
+        reasoningRequestAtCall.value = request;
+        assert.equal(request.data.groundingContext.sufficient, true,
+          'only the explicitly controlled refreshed fixture may reach reasoning');
+        const persisted = await testDatabase.executor.query<{
+          context_id: string;
+          sufficient: boolean;
+          record_json: string;
+        }>(
+          'SELECT context_id, sufficient, record_json::text AS record_json '
+            + 'FROM waspada.grounding_contexts WHERE dataset_kind = $1 AND context_id = $2',
+          [fixture.datasetKind, refreshedContextId],
+        );
+        assert.equal(persisted.rows.length, 1, 'the refreshed refs-only context is committed before reasoning');
+        assert.equal(persisted.rows[0]?.sufficient, true);
+        assert.equal(persisted.rows[0]?.record_json.includes(selectedSpan), false);
+        assert.equal(Object.hasOwn(JSON.parse(persisted.rows[0]!.record_json).evidence[0], 'text'), false);
+        const refreshed = refreshPersistence.value;
+        assert.ok(refreshed);
+        assert.deepEqual(JSON.parse(persisted.rows[0]!.record_json), refreshed.persistedRecord);
+        assert.deepEqual(request, refreshed.reasoningRequest,
+          'the reasoner receives the exact request persisted by the L2 refresh');
+        const support = request.data.groundingContext.evidence[0];
+        assert.ok(support);
+        assert.equal(support.text, selectedSpan, 'only the exact persisted source span is rehydrated in memory');
+        return {
+          status: 'succeeded',
+          capability: 'reasoning',
+          value: fixedCoordinatorReasoningResult(request.data.groundingContext, eventTime),
+        };
       },
     });
     const initialContextId = fixture.contextId;
     const refreshedContextId = 'context-l3-coordinator-roundtrip-refreshed';
-    const refreshedMissingFields = ['synthetic_followup', 'second_synthetic_gap'] as const;
+    const refreshedMissingFields = [] as const;
     const directOutcome = await directReasoning.reason(makeCoordinatorReasoningRequest(
       fixture,
       initialContextId,
@@ -749,6 +785,39 @@ describe('L3 durable investigation ledger', () => {
     if (directOutcome.status !== 'investigation_required') {
       assert.fail('expected the persisted insufficient-context handoff');
     }
+    assert.equal(directOutcome.persistedRecord.sufficient, false);
+    assert.equal(directOutcome.persistedRecord.context_id, initialContextId);
+    assert.equal(reasoningCalls, 0, 'initial insufficiency must stop before the reasoning capability');
+    const initialStoredContext = await testDatabase.executor.query<{ context_id: string; record_json: string }>(
+      'SELECT context_id, record_json::text AS record_json FROM waspada.grounding_contexts '
+        + 'WHERE dataset_kind = $1 AND context_id = $2',
+      [fixture.datasetKind, initialContextId],
+    );
+    assert.equal(initialStoredContext.rows.length, 1, 'the initial insufficient context is persisted before L3');
+    assert.deepEqual(JSON.parse(initialStoredContext.rows[0]!.record_json), directOutcome.persistedRecord);
+    assert.equal(initialStoredContext.rows[0]!.record_json.includes(selectedSpan), false);
+    assert.deepEqual(JSON.parse(initialStoredContext.rows[0]!.record_json).evidence, []);
+
+    const protectedWriteCounts = async () => {
+      const result = await testDatabase.executor.query<{
+        event_versions: string;
+        publication_decisions: string;
+        publication_outbox: string;
+        audit_records: string;
+        moderator_reviews: string;
+      }>(
+        'SELECT '
+          + '(SELECT count(*)::text FROM waspada.event_versions) AS event_versions, '
+          + '(SELECT count(*)::text FROM waspada.publication_decisions) AS publication_decisions, '
+          + '(SELECT count(*)::text FROM waspada.publication_outbox) AS publication_outbox, '
+          + '(SELECT count(*)::text FROM waspada.audit_records) AS audit_records, '
+          + '(SELECT count(*)::text FROM waspada.public_event_history_review_decisions) AS moderator_reviews',
+      );
+      const row = result.rows[0];
+      assert.ok(row);
+      return row;
+    };
+    const protectedWritesBefore = await protectedWriteCounts();
 
     const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
     const entry = createInsufficientContextEntryService(repository, TEST_FINGERPRINTS);
@@ -961,8 +1030,15 @@ describe('L3 durable investigation ledger', () => {
             assert.equal(retrieved.retrievedAt, '2026-09-26T06:14:15.987654Z');
             assert.equal(retrieved.eventTime.status, 'valid');
             assert.equal(Date.parse(retrieved.eventTime.start ?? ''), Date.parse(eventTime));
-            assert.equal(retrieved.originLineageStatus, 'unknown');
-            assert.deepEqual(retrieved.origins, []);
+            assert.equal(retrieved.originLineageStatus, 'recorded');
+            assert.deepEqual(retrieved.origins, [{
+              originId,
+              sourceId,
+              originKind: 'unknown',
+              lineageRelation: 'unknown',
+              independenceStatus: 'unknown',
+              dependsOnOriginIds: [],
+            }]);
             assert.equal(new Set([
               Date.parse(retrieved.publishedAt),
               Date.parse(retrieved.observedAt),
@@ -988,13 +1064,14 @@ describe('L3 durable investigation ledger', () => {
               priorDecisionIds: [],
               missingFields: refreshedMissingFields,
               conflicts: [],
-              sufficient: false,
+              sufficient: true,
             });
             assert.equal(reasoningRequest.data.groundingContext.contextId, refreshedContextId);
             assert.equal(reasoningRequest.data.groundingContext.traceId, fixture.traceId);
             assert.equal(reasoningRequest.data.groundingContext.candidateId, fixture.candidateId);
             assert.equal(reasoningRequest.data.groundingContext.datasetKind, fixture.datasetKind);
-            assert.equal(reasoningRequest.data.groundingContext.sufficient, false);
+            assert.equal(reasoningRequest.data.groundingContext.sufficient, true,
+              'sufficiency is an explicitly authored fixture input, not an evaluation');
             assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.text, selectedSpan);
             assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.sourceId, sourceId);
             assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.publishedAt,
@@ -1003,6 +1080,11 @@ describe('L3 durable investigation ledger', () => {
               '2026-09-26T12:09:10.000007Z');
             assert.equal(reasoningRequest.data.groundingContext.evidence[0]?.retrievedAt,
               '2026-09-26T06:14:15.987654Z');
+            assert.deepEqual(reasoningRequest.data.groundingContext.evidence[0]?.origins, [{
+              originId,
+              independenceStatus: 'unknown',
+              dependsOnOriginIds: [],
+            }]);
             assert.deepEqual(reasoningRequest.data.groundingContext.candidateEvents, []);
           } finally {
             await testDatabase.executor.execute('RESET ROLE');
@@ -1074,12 +1156,17 @@ describe('L3 durable investigation ledger', () => {
     } as const;
     const result = await coordinator.advance(advanceInput);
 
-    assert.equal(result.status, 'continue', JSON.stringify({ result, events, actionFailure, refreshFailure }));
-    if (result.status !== 'continue') assert.fail('expected the changed insufficient context to continue');
+    assert.equal(result.status, 'sufficient_context', JSON.stringify({ result, events, actionFailure, refreshFailure }));
+    if (result.status !== 'sufficient_context') assert.fail('expected the authored sufficient-context checkpoint');
+    const checkpoint = result.checkpoint;
+    assert.ok(checkpoint, 'the sufficient-context result carries its exact investigation checkpoint');
     assert.deepEqual(events, ['planner', 'action', 'refresh']);
     assert.deepEqual(actionInputSeen, { query: privateActionInput });
     const persistedRefresh = refreshPersistence.value;
     assert.ok(persistedRefresh);
+    assert.deepEqual(result.context, persistedRefresh.reasoningRequest.data.groundingContext);
+    assert.deepEqual(result.persistedRecord, persistedRefresh.persistedRecord);
+    assert.equal(result.persistedRecord.sufficient, true);
     assert.equal(result.context.contextId, refreshedContextId);
     assert.equal(result.context.datasetKind, fixture.datasetKind);
     assert.equal(result.context.traceId, fixture.traceId);
@@ -1088,20 +1175,141 @@ describe('L3 durable investigation ledger', () => {
     assert.deepEqual(result.context.evidence[0]?.reference,
       persistedRefresh.reasoningRequest.data.groundingContext.evidence[0]?.reference);
     assert.deepEqual(result.context.missingFields, refreshedMissingFields);
-    assert.equal(result.checkpoint.dataset_kind, fixture.datasetKind);
-    assert.equal(result.checkpoint.trace_id, fixture.traceId);
-    assert.equal(result.checkpoint.candidate_id, fixture.candidateId);
-    assert.equal(result.checkpoint.event_id, null);
-    assert.equal(result.checkpoint.event_version, null);
-    assert.equal(result.checkpoint.context_id, refreshedContextId);
-    assert.equal(result.checkpoint.checkpoint_version, 6);
-    assert.equal(result.checkpoint.budget.consumed.reasoning_turns, 1);
-    assert.equal(result.checkpoint.budget.consumed.tool_attempts, 1);
-    assert.equal(result.checkpoint.budget.consumed.model_tokens, 9);
-    assert.deepEqual(result.checkpoint.budget.reserved, zeroCounters());
+    assert.equal(checkpoint.dataset_kind, fixture.datasetKind);
+    assert.equal(checkpoint.trace_id, fixture.traceId);
+    assert.equal(checkpoint.candidate_id, fixture.candidateId);
+    assert.equal(checkpoint.investigation_id, advanceInput.callerValues.investigationId);
+    assert.equal(checkpoint.event_id, null);
+    assert.equal(checkpoint.event_version, null);
+    assert.equal(checkpoint.context_id, refreshedContextId);
+    assert.equal(checkpoint.checkpoint_version, 6);
+    assert.equal(checkpoint.budget.consumed.reasoning_turns, 1);
+    assert.equal(checkpoint.budget.consumed.tool_attempts, 1);
+    assert.equal(checkpoint.budget.consumed.model_tokens, 9);
+    assert.deepEqual(checkpoint.budget.reserved, zeroCounters());
+
+    const refreshedRequest = persistedRefresh.reasoningRequest;
+    let reasoningOutcome: Awaited<ReturnType<typeof directReasoning.reason>>;
+    await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_writer');
+    try {
+      reasoningOutcome = await directReasoning.reason(refreshedRequest);
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+    assert.equal(reasoningOutcome.status, 'succeeded');
+    if (reasoningOutcome.status !== 'succeeded') assert.fail('expected deterministic synthetic reasoning');
+    assert.equal(reasoningOutcome.capability, 'reasoning');
+    assert.equal(reasoningCalls, 1);
+    const exactReasoningRequest = reasoningRequestAtCall.value;
+    assert.ok(exactReasoningRequest);
+    assert.deepEqual(exactReasoningRequest, refreshedRequest);
+
+    const proposalBridge = createReasoningProposalBridge(roundtrip.ports.eventProposals);
+    const proposalInput = {
+      capabilityOutcome: reasoningOutcome,
+      groundingContext: exactReasoningRequest.data.groundingContext,
+      persistedContextRecord: result.persistedRecord,
+      proposalId: 'proposal-l3-coordinator-roundtrip',
+      proposedAt: '2026-09-26T15:30:00.000000Z',
+      target: { kind: 'new' as const },
+      investigationId: checkpoint.investigation_id,
+    };
+    let firstProposal: Awaited<ReturnType<typeof proposalBridge.persist>>;
+    await testDatabase.executor.execute('SET ROLE waspada_l2_proposal_writer');
+    try {
+      firstProposal = await proposalBridge.persist(proposalInput);
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+    assert.equal(firstProposal.status, 'persisted');
+    if (firstProposal.status !== 'persisted') assert.fail('expected the canonical private proposal');
+    const proposalRowCounts = async () => {
+      const counts = await testDatabase.executor.query<{
+        proposals: string;
+        claims: string;
+        evidence_links: string;
+        origin_links: string;
+      }>(
+        'SELECT '
+          + '(SELECT count(*)::text FROM waspada.event_proposals WHERE dataset_kind = $1 AND proposal_id = $2) AS proposals, '
+          + '(SELECT count(*)::text FROM waspada.proposal_claims WHERE dataset_kind = $1 AND proposal_id = $2) AS claims, '
+          + '(SELECT count(*)::text FROM waspada.proposal_claim_evidence WHERE dataset_kind = $1 AND proposal_id = $2) AS evidence_links, '
+          + '(SELECT count(*)::text FROM waspada.proposal_claim_origins WHERE dataset_kind = $1 AND proposal_id = $2) AS origin_links',
+        [fixture.datasetKind, proposalInput.proposalId],
+      );
+      const row = counts.rows[0];
+      assert.ok(row);
+      return row;
+    };
+    const countsAfterProposal = await proposalRowCounts();
+    assert.deepEqual(countsAfterProposal, {
+      proposals: '1', claims: '1', evidence_links: '1', origin_links: '1',
+    });
+    const proposal = firstProposal.proposal;
+    assert.equal(proposal.schema_version, '2.0');
+    assert.equal(proposal.dataset_kind, fixture.datasetKind);
+    assert.equal(proposal.trace_id, fixture.traceId);
+    assert.equal(proposal.candidate_id, fixture.candidateId);
+    assert.equal(proposal.context_id, refreshedContextId);
+    assert.equal(proposal.proposal_id, proposalInput.proposalId);
+    assert.equal(proposal.investigation_id, checkpoint.investigation_id);
+    assert.equal(proposal.event_id, null);
+    assert.equal(proposal.base_event_version, null);
+    assert.deepEqual(proposal.claims[0]?.origin_ids, [originId]);
+    assert.equal(proposal.claims[0]?.support_assessment, 'uncertain');
+    assert.equal(proposal.claims[0]?.evidence_label, 'under_review');
+    assert.deepEqual(proposal.claims[0]?.support, [{
+      report_revision_id: reportRevisionId,
+      permitted_text_hash: persistedRefresh.persistedRecord.evidence[0]!.permitted_text_hash,
+      span_start: selectedStart,
+      span_end: selectedEnd,
+      offset_unit: 'unicode_code_points',
+      relation: 'supports',
+    }]);
+    assert.deepEqual(proposal.model_runs, [{
+      capability: 'reasoning',
+      model_version: 'synthetic-l3-composition-reasoner-v1',
+      prompt_version: 'synthetic-l3-composition-prompt-v1',
+      input_tokens: 17,
+      output_tokens: 8,
+    }]);
+    const storedProposal = await testDatabase.executor.query<{ record_json: string }>(
+      'SELECT record_json::text AS record_json FROM waspada.event_proposals '
+        + 'WHERE dataset_kind = $1 AND proposal_id = $2',
+      [fixture.datasetKind, proposalInput.proposalId],
+    );
+    assert.equal(storedProposal.rows.length, 1);
+    assert.deepEqual(JSON.parse(storedProposal.rows[0]!.record_json), proposal);
+    const normalizedEvidence = await testDatabase.executor.query<{
+      evidence_kind: string;
+      evidence_ref_id: string;
+    }>(
+      'SELECT evidence_kind, evidence_ref_id::text AS evidence_ref_id FROM waspada.proposal_claim_evidence '
+        + 'WHERE dataset_kind = $1 AND proposal_id = $2',
+      [fixture.datasetKind, proposalInput.proposalId],
+    );
+    assert.deepEqual(normalizedEvidence.rows, [{ evidence_kind: 'support', evidence_ref_id: evidenceReferenceId }]);
+    const normalizedOrigins = await testDatabase.executor.query<{ origin_id: string }>(
+      'SELECT origin_id FROM waspada.proposal_claim_origins WHERE dataset_kind = $1 AND proposal_id = $2',
+      [fixture.datasetKind, proposalInput.proposalId],
+    );
+    assert.deepEqual(normalizedOrigins.rows, [{ origin_id: originId }]);
+    let proposalReplay: Awaited<ReturnType<typeof proposalBridge.persist>>;
+    await testDatabase.executor.execute('SET ROLE waspada_l2_proposal_writer');
+    try {
+      proposalReplay = await proposalBridge.persist(proposalInput);
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+    assert.deepEqual(proposalReplay, firstProposal, 'an exact retry returns the same immutable private proposal');
+    assert.deepEqual(await proposalRowCounts(), countsAfterProposal,
+      'an exact replay adds no proposal, claim, evidence, or origin rows');
+    assert.deepEqual(await protectedWriteCounts(), protectedWritesBefore,
+      'the investigated private proposal path writes no public, publication, audit, outbox, or moderator rows');
+
     const repeatedAction = await singleStep.execute({
       datasetKind: fixture.datasetKind,
-      investigationId: result.checkpoint.investigation_id,
+      investigationId: checkpoint.investigation_id,
       expectedCheckpointVersion: 3,
       reservationId: advanceInput.actionReservationId,
       reservedAt: advanceInput.actionReservedAt,
@@ -1129,7 +1337,7 @@ describe('L3 durable investigation ledger', () => {
       'SELECT checkpoint_version, context_id, consecutive_no_progress '
         + 'FROM waspada.investigation_progress_snapshots '
         + 'WHERE dataset_kind = $1 AND investigation_id = $2',
-      [fixture.datasetKind, result.checkpoint.investigation_id],
+      [fixture.datasetKind, checkpoint.investigation_id],
     );
     assert.deepEqual(finalSnapshot.rows, [
       {
@@ -1138,7 +1346,7 @@ describe('L3 durable investigation ledger', () => {
         consecutive_no_progress: 0,
       },
       {
-        checkpoint_version: result.checkpoint.checkpoint_version,
+        checkpoint_version: checkpoint.checkpoint_version,
         context_id: refreshedContextId,
         consecutive_no_progress: 0,
       },
@@ -1146,13 +1354,13 @@ describe('L3 durable investigation ledger', () => {
     const plannerReservation = await readStoredReservation(
       testDatabase,
       fixture.datasetKind,
-      result.checkpoint.investigation_id,
+      checkpoint.investigation_id,
       'reservation-coordinator-composition-plan',
     );
     const actionReservation = await readStoredReservation(
       testDatabase,
       fixture.datasetKind,
-      result.checkpoint.investigation_id,
+      checkpoint.investigation_id,
       'reservation-coordinator-composition-action',
     );
     assert.equal(plannerReservation.reservation_status, 'reconciled');
@@ -1205,9 +1413,11 @@ describe('L3 durable investigation ledger', () => {
         + '(SELECT count(*)::text FROM waspada.event_proposals WHERE dataset_kind = $1 AND trace_id = $2) AS proposals',
       [fixture.datasetKind, fixture.traceId],
     );
-    assert.deepEqual(noPublicationWrites.rows[0], { events: '0', publications: '0', proposals: '0' });
+    assert.deepEqual(noPublicationWrites.rows[0], { events: '0', publications: '0', proposals: '1' });
+    assert.deepEqual(await protectedWriteCounts(), protectedWritesBefore,
+      'coordinator retry and proposal replay add no event, publication, audit, outbox, or moderator records');
 
-    const ledgerJson = await readLedgerJson(testDatabase, fixture.datasetKind, result.checkpoint.investigation_id);
+    const ledgerJson = await readLedgerJson(testDatabase, fixture.datasetKind, checkpoint.investigation_id);
     const storedContexts = await testDatabase.executor.query<{ context_id: string; record_json: string }>(
       'SELECT context_id, record_json::text AS record_json FROM waspada.grounding_contexts '
         + 'WHERE dataset_kind = $1 AND context_id = ANY($2::text[])',
@@ -1897,6 +2107,7 @@ async function seedRoundtripFixture(testDatabase: TestDatabase) {
   };
   const sourceId = 'source-l3-coordinator-roundtrip';
   const reportRevisionId = 'revision-l3-coordinator-roundtrip';
+  const originId = 'origin-l3-coordinator-roundtrip';
   const featureId = 'l3-roundtrip-feature';
   const fixtureUrl = 'https://synthetic.invalid/l3/coordinator-roundtrip';
   const authoredText = 'Synthetic authored report: the bridge remains open at the main crossing.';
@@ -2056,8 +2267,9 @@ async function seedRoundtripFixture(testDatabase: TestDatabase) {
   if (baselineExtraction.status !== 'succeeded') {
     assert.fail('expected the deterministic synthetic extraction baseline');
   }
+  const evidenceReferenceIds: string[] = [];
   for (const reference of baselineExtraction.value.evidence) {
-    await ports.reportRevisions.createEvidenceReference({
+    evidenceReferenceIds.push(await ports.reportRevisions.createEvidenceReference({
       datasetKind: fixture.datasetKind,
       traceId: fixture.traceId,
       reportRevisionId: reference.reportRevisionId,
@@ -2065,8 +2277,27 @@ async function seedRoundtripFixture(testDatabase: TestDatabase) {
       spanStart: reference.spanStart,
       spanEnd: reference.spanEnd,
       relation: reference.relation,
-    });
+    }));
   }
+  assert.equal(evidenceReferenceIds.length, 1, 'the authored synthetic extraction has one exact support reference');
+  const evidenceReferenceId = evidenceReferenceIds[0]!;
+  await testDatabase.executor.query(
+    `INSERT INTO waspada.evidence_origins
+       (dataset_kind, origin_id, trace_id, origin_kind, source_id, lineage_relation,
+        independence_status, record_json)
+     VALUES ($1, $2, $3, 'unknown', $4, 'unknown', 'unknown',
+        '{"fixture":"authored-synthetic-only","lineage":"unknown"}'::jsonb)`,
+    [fixture.datasetKind, originId, fixture.traceId, sourceId],
+  );
+  await testDatabase.executor.query(
+    'INSERT INTO waspada.origin_report_revisions (dataset_kind, origin_id, report_revision_id) '
+      + 'VALUES ($1, $2, $3)',
+    [fixture.datasetKind, originId, reportRevisionId],
+  );
+  await testDatabase.executor.query(
+    'INSERT INTO waspada.origin_evidence (dataset_kind, origin_id, evidence_ref_id) VALUES ($1, $2, $3)',
+    [fixture.datasetKind, originId, evidenceReferenceId],
+  );
   await ports.extractionResults.createOrVerify({
     schema_version: '2.0',
     trace_id: fixture.traceId,
@@ -2119,6 +2350,8 @@ async function seedRoundtripFixture(testDatabase: TestDatabase) {
     fixture,
     sourceId,
     reportRevisionId,
+    originId,
+    evidenceReferenceId,
     selectedStart,
     selectedEnd,
     selectedSpan,
@@ -2467,6 +2700,38 @@ function testDigest(value: string): string {
 
 function testFingerprint(value: string): { readonly keyId: string; readonly digestHex: string } {
   return { keyId: TEST_FINGERPRINT_KEY_ID, digestHex: testDigest(value) };
+}
+
+function fixedCoordinatorReasoningResult(
+  context: GroundingContext,
+  eventTime: string,
+): ReasoningResult {
+  const evidence = context.evidence[0];
+  assert.ok(evidence);
+  return {
+    outcome: 'proposed',
+    claims: [{
+      text: 'The authored synthetic notice states that the bridge remains open.',
+      eventTime: { precision: 'exact', start: eventTime, end: null },
+      validity: { validFrom: null, validUntil: null },
+      scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
+      qualifiers: [],
+      support: [evidence.reference],
+      contradictions: [],
+      contextEvidence: [],
+      supportAssessment: 'uncertain',
+    }],
+    unresolvedFields: [...context.missingFields],
+    conflicts: [...context.conflicts],
+    modelRun: {
+      capability: 'reasoning',
+      modelVersion: 'synthetic-l3-composition-reasoner-v1',
+      promptVersion: 'synthetic-l3-composition-prompt-v1',
+      inputTokens: 17,
+      outputTokens: 8,
+    },
+    provider: 'synthetic-test-provider',
+  };
 }
 
 function sha256(value: string): string {
