@@ -1,5 +1,9 @@
 # Delivery log
 
+## Proposal trace-lineage clarification — 1 October 2026
+
+The proposal agent identified that a refreshed L3 checkpoint may use a new context trace while the request retains its original trace. Root verified the existing ledger refresh implementation and clarified ADR-036: a proposal matches its persisted context trace; an initial case context matches the original request trace, while a refreshed context matches the exact checkpoint trace/context/candidate/target. Dataset/candidate/immutable request target remain fixed. This corrects the draft writer design without changing L3, contracts or publication authority; implementation and review remain pending.
+
 ## Chunk-retry draft review and fixture adjustment — 1 October 2026
 
 The chunk agent reported a focused embedding fixture failure: the test tried creating chunks for denied revision states through the repository now correctly blocking them. Root authorized only an owner-seeded stale-active-chunk setup for the existing embedding rejection test, preserving production guards and assertions. Root's draft SQL review also requested that the conflict update itself require an active stored chunk, in addition to the atomic tombstone snapshot checks. Neither implementation nor reruns are accepted yet; the handoff must record the original failure and fixes.

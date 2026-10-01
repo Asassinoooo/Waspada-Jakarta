@@ -15,6 +15,8 @@ Read SOFTWARE_DEVELOPMENT_PLAN.md first, this backlog item, ADR-036, canonical c
 
 Validate and copy the complete canonical input before asynchronous work, using ADR-036's explicit local budgets. Preserve unknown/date precision and evidence relations. Stable validation/reference/conflict/storage errors must not include user content or raw database exceptions. Resolve trace/context/candidate, exact grounded evidence, claim support-origin coverage, optional existing-event pair and investigation lineage before writing. Investigation context may be initial or a persisted checkpoint for the same case/candidate/target; the writer has no case-state or budget authority.
 
+Root clarification: proposal trace equals context trace. For the initial case context it also equals request trace; for a refreshed context it equals the exact recorded checkpoint trace, which may differ from the immutable request trace. Both branches preserve the request's dataset/candidate/target pair; the checkpoint branch also verifies its exact target. Cover a refreshed different-trace success and mismatched checkpoint trace/context failure. Existing L3 refresh behavior is preserved.
+
 Persist all normalized rows and canonical JSON atomically with immutable dataset/proposal identity. Exact complete replay succeeds. Changed JSON, normalized metadata, claim/link sets or incomplete stored rows conflict and are never repaired. Keep assessments/draft labels as data. Migration 023 aligns draft-only label/length constraints and creates the isolated clamped role with narrow reads and inserts. Existing public/publication constraints and roles must remain unchanged.
 
 ## Allowed paths
