@@ -23,6 +23,8 @@ This Software Development Plan (SDP) is the project's main engineering document.
 
 The accepted `ING-CAP-PARSE-CORE` adds bounded, namespace-aware CAP 1.2 parsing for authored synthetic XML in Layer 1. It extracts source-declared fields only; it does not fetch or persist source records, verify issuer authenticity, infer event meaning, or enable the BMKG connector. Source terms and field mapping remain activation gates.
 
+**Known local defect:** an old chunk-set retry after re-chunking can reactivate the old generation and invalidate the new one. Root reproduced this with synthetic PGlite rows. [ADR-035](docs/decisions/ADR-035-chunk-invalidation-replay.md) specifies atomic tombstone and revision-state guards; DATA-02-CHUNK-INVALIDATION-REPLAY-CORE follows embedding persistence integration. The correction is not implemented yet, and stale-retry safety is not a completed release capability.
+
 ## 1. Document ownership and change control
 
 | Document | Owns |

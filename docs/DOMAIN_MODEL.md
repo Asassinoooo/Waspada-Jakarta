@@ -124,6 +124,8 @@ An origin is the underlying authority statement, operator notice, newsroom obser
 
 Embedding metadata is a separate `EmbeddingRun`, with capability fixed to embedding, provider/model version, vector dimensions, distance metric, index version, input chunk hash and status. It is not represented as an extraction/reasoning model run. Re-indexing creates a new run/version. A withdrawn, superseded or privacy-deleted report invalidates derived chunks/vectors/caches, and retrieval rechecks revision status even if a vector index is stale.
 
+Invalidated chunk IDs and known invalidated chunker versions for the same dataset/revision are tombstones, not automatic retry targets. Active identical sets can replay; a new chunker version can replace them. Version labels have no implicit chronological order. Atomic writes must reject stale generations and quarantined/superseded/retracted revisions without altering current or historical rows. Root confirmed that the existing chunk writer violates the late-retry rule; [ADR-035](decisions/ADR-035-chunk-invalidation-replay.md) tracks the unimplemented correction and its local verification boundary.
+
 ## Schema checks and service checks
 
 | Enforceable by JSON Schema | Requires database, application policy or human assessment |
