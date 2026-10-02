@@ -35,6 +35,8 @@ The user selected append-only freshness transition records bound to exact immuta
 
 `LIFE-01-FRESHNESS-READ-PROJECTION-CORE` is accepted on local `main` at implementation commit `9437502cc2fca64485d7c9ee7616f2bd10201fac` and handoff commit `bf998964676b818eb20109bab1c606ae436259ca`. Migration 025 projects exact-version freshness status through current-public event/impact views while preserving stored publication rows, aggregate metadata, public DTOs, historical status, and withdrawn-history hiding. The public reader retains no direct access to either ledger table. Root authorized a narrow update to the v1 list-reader invariant: it still requires every publication/history field to match and validates both freshness objects, allowing only the projected `freshness.status` difference. See the [assignment](docs/assignments/LIFE-01-FRESHNESS-READ-PROJECTION-CORE.md) and [handoff](docs/assignments/LIFE-01-FRESHNESS-READ-PROJECTION-CORE-HANDOFF.md).
 
+`LIFE-01-FRESHNESS-DUE-TARGET-READER-CORE` is now assigned to build a bounded read-only candidate repository for explicit-time freshness evaluation. It will select exact-current event claim-set and referenced impact targets using their own immutable record status plus exact ledger history; it will not use the current event aggregate as the claim-set input. The slice has no clock, writes, source access, cron configuration, or public contract change. See the [assignment](docs/assignments/LIFE-01-FRESHNESS-DUE-TARGET-READER-CORE.md).
+
 ## 1. Document ownership and change control
 
 | Document | Owns |
