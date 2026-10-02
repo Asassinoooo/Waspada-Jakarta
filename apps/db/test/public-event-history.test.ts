@@ -59,6 +59,7 @@ describe('public event history repository', () => {
     await seedEvent(testDatabase, liveFixture, 'event-paged', [
       { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 },
     ]);
+    await seedFreshnessTransition(testDatabase, liveFixture, 'event-paged', 4);
     await seedEvent(testDatabase, liveFixture, 'event-withdrawn', [
       { version: 1 }, { version: 2, status: 'withdrawn' },
     ]);
@@ -107,6 +108,24 @@ describe('public event history repository', () => {
     assert.ok(result.rows.every(({ dataset_kind, record_json, event_id, version }) =>
       dataset_kind === 'live' && record_json.dataset_kind === 'live'
       && record_json.event_id === event_id && record_json.version === version));
+    assert.equal(
+      (result.rows.find(({ event_id, version }) => event_id === 'event-paged' && version === 4)
+        ?.record_json.freshness as Record<string, unknown>).status,
+      'current',
+      'the history view keeps the published status for the current version',
+    );
+    const currentView = await testDatabase.executor.query<{
+      freshness_status: string;
+      record_json: Record<string, unknown>;
+    }>(
+      `SELECT freshness_status, record_json FROM waspada.public_event_versions
+       WHERE event_id = 'event-paged'`,
+    );
+    assert.equal(currentView.rows[0]?.freshness_status, 'needs_update');
+    assert.equal(
+      (currentView.rows[0]?.record_json.freshness as Record<string, unknown>).status,
+      'needs_update',
+    );
     assert.ok(!result.rows.some(({ event_id }) => event_id === 'event-withdrawn'));
     assert.ok(!result.rows.some(({ event_id }) => event_id === 'event-non-live' || event_id === 'event-synthetic'));
     assert.ok(!result.rows.some(({ event_id }) => event_id === 'event-malformed-current'));
@@ -404,6 +423,28 @@ async function seedFixture(datasetKind: Fixture['datasetKind'], prefix: string):
   );
   return fixture;
 }
+
+async function seedFreshnessTransition(
+  database: TestDatabase,
+  fixture: Fixture,
+  eventId: string,
+  eventVersion: number,
+): Promise<void> {
+  await database.executor.query(
+    `INSERT INTO waspada.freshness_transitions
+       (dataset_kind, event_id, event_version, target_kind, transition_sequence,
+        previous_status, resulting_status, reason, evaluated_at, trace_id,
+        idempotency_key, request_fingerprint)
+     VALUES ($1, $2, $3, 'event_claim_set', 1, 'current', 'needs_update',
+       'review_deadline_missed', $4, $5, $6, $7)`,
+    [
+      fixture.datasetKind, eventId, eventVersion, TEST_TIME, fixture.traceId,
+      fixture.prefix + ':' + eventId + ':' + eventVersion + ':overlay',
+      'c'.repeat(64),
+    ],
+  );
+}
+
 
 async function seedEvent(
   database: TestDatabase,

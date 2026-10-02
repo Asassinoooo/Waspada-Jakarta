@@ -147,6 +147,10 @@ describe('public event list candidate repository', () => {
       category: 'utilities_essential_services', freshness: 'current', lifecycle: 'ongoing',
       impactFreshnessStatuses: ['stale'],
     });
+    await seedFreshnessTransition(live, {
+      eventId: 'event-aggregate-none-current', eventVersion: 1, transitionSequence: 1,
+      previousStatus: 'current', resultingStatus: 'needs_update', reason: 'review_deadline_missed',
+    });
   });
 
   after(async () => {
@@ -412,7 +416,7 @@ describe('public event list candidate repository', () => {
         limit: 1,
         filters: { category: 'utilities_essential_services', freshness: 'current' },
       });
-      assert.deepEqual(filteredBeforeLimit.candidates.map(({ eventId }) => eventId), ['event-aggregate-none-current']);
+      assert.deepEqual(filteredBeforeLimit.candidates.map(({ eventId }) => eventId), ['event-aggregate-all-current']);
       assert.deepEqual(
         (await repository.read({
           limit: 100,
@@ -426,7 +430,7 @@ describe('public event list candidate repository', () => {
           filters: { category: 'utilities_essential_services', freshness: 'needs_update' },
         })).candidates.map(({ eventId }) => eventId),
         [
-          'event-aggregate-mixed', 'event-aggregate-needs-update',
+          'event-aggregate-mixed', 'event-aggregate-none-current', 'event-aggregate-needs-update',
           'event-aggregate-claim-needs-update', 'event-aggregate-invalid-impact',
         ],
       );
@@ -450,14 +454,14 @@ describe('public event list candidate repository', () => {
         ['event-aggregate-invalid-impact', 'needs_update'],
         ['event-aggregate-mixed', 'needs_update'],
         ['event-aggregate-needs-update', 'needs_update'],
-        ['event-aggregate-none-current', 'current'],
+        ['event-aggregate-none-current', 'needs_update'],
         ['event-aggregate-none-expired', 'expired'],
       ]);
       const mixed = viewRows.rows.find(({ event_id }) => event_id === 'event-aggregate-mixed');
       assert.deepEqual(mixed, {
         event_id: 'event-aggregate-mixed',
         freshness_status: 'needs_update',
-        record_freshness: 'current',
+        record_freshness: 'needs_update',
         lifecycle: 'ongoing',
         publication_status: 'published',
       });
@@ -473,6 +477,34 @@ describe('public event list candidate repository', () => {
       [aggregateEventIds],
     );
     assert.deepEqual(after.rows, before.rows, 'reader projections leave event and publication rows unchanged');
+  });
+
+  it('uses the effective status for a current v1 list row while history keeps its published status', async () => {
+    const repository = createPublicEventListRepository(database.executor);
+    await database.executor.execute('SET ROLE waspada_public_reader');
+    try {
+      const page = await repository.read({
+        limit: 100,
+        filters: { category: 'utilities_essential_services', freshness: 'needs_update' },
+      });
+      const current = page.candidates.find(({ eventId }) => eventId === 'event-aggregate-none-current');
+      assert.ok(current);
+      assert.equal(current.eventVersion, 1);
+      assert.deepEqual((current.recordJson as Record<string, unknown>).freshness, {
+        status: 'needs_update', evaluated_at: FIRST, review_due_at: null, basis: 'unknown',
+      });
+
+      const history = await database.executor.query<{ freshness: unknown }>(
+        `SELECT record_json->'freshness' AS freshness
+         FROM waspada.public_event_history_versions
+         WHERE event_id = 'event-aggregate-none-current' AND version = 1`,
+      );
+      assert.deepEqual(history.rows, [{
+        freshness: { status: 'current', evaluated_at: FIRST, review_due_at: null, basis: 'unknown' },
+      }]);
+    } finally {
+      await database.executor.execute('RESET ROLE');
+    }
   });
 });
 
@@ -555,6 +587,34 @@ interface EventOverrides {
   readonly audienceIds?: readonly string[];
   readonly claimMarker?: string;
 }
+
+async function seedFreshnessTransition(
+  fixture: Fixture,
+  transition: {
+    readonly eventId: string;
+    readonly eventVersion: number;
+    readonly transitionSequence: number;
+    readonly previousStatus: 'current' | 'needs_update' | 'expired';
+    readonly resultingStatus: 'current' | 'needs_update' | 'expired';
+    readonly reason: 'issuer_validity_ended' | 'review_deadline_missed';
+  },
+): Promise<void> {
+  await database.executor.query(
+    `INSERT INTO waspada.freshness_transitions
+       (dataset_kind, event_id, event_version, target_kind, transition_sequence,
+        previous_status, resulting_status, reason, evaluated_at, trace_id,
+        idempotency_key, request_fingerprint)
+     VALUES ($1, $2, $3, 'event_claim_set', $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      fixture.datasetKind, transition.eventId, transition.eventVersion, transition.transitionSequence,
+      transition.previousStatus, transition.resultingStatus, transition.reason, FIRST, fixture.traceId,
+      fixture.prefix + ':' + transition.eventId + ':' + transition.eventVersion + ':'
+        + transition.transitionSequence,
+      'e'.repeat(64),
+    ],
+  );
+}
+
 
 async function seedEventVersion(
   fixture: Fixture, eventId: string, version: number,

@@ -29,7 +29,8 @@ describe('DATA-01 migrations', () => {
       && version !== '021_l1_scheduler_namespace_read'
       && version !== '022_l1_embedding_verification_reads'
       && version !== '023_l2_event_proposal_writer'
-      && version !== '024_freshness_transition_ledger');
+      && version !== '024_freshness_transition_ledger'
+      && version !== '025_freshness_current_public_overlay');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -64,7 +65,8 @@ describe('DATA-01 migrations', () => {
         && version !== '021_l1_scheduler_namespace_read'
         && version !== '022_l1_embedding_verification_reads'
         && version !== '023_l2_event_proposal_writer'
-        && version !== '024_freshness_transition_ledger');
+        && version !== '024_freshness_transition_ledger'
+        && version !== '025_freshness_current_public_overlay');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -186,6 +188,7 @@ describe('DATA-01 migrations', () => {
         '022_l1_embedding_verification_reads',
         '023_l2_event_proposal_writer',
         '024_freshness_transition_ledger',
+        '025_freshness_current_public_overlay',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -324,6 +327,7 @@ describe('DATA-01 migrations', () => {
       '022_l1_embedding_verification_reads',
       '023_l2_event_proposal_writer',
       '024_freshness_transition_ledger',
+      '025_freshness_current_public_overlay',
     ]);
   });
 
@@ -346,12 +350,13 @@ describe('DATA-01 migrations', () => {
       '022_l1_embedding_verification_reads',
       '023_l2_event_proposal_writer',
       '024_freshness_transition_ledger',
+      '025_freshness_current_public_overlay',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '24');
+    assert.equal(count.rows[0]?.count, '25');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -370,7 +375,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 024_freshness_transition_ledger/,
+      /Cannot apply migration 000_late_backfill before already applied migration 025_freshness_current_public_overlay/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -401,6 +406,7 @@ describe('DATA-01 migrations', () => {
       { version: '022_l1_embedding_verification_reads' },
       { version: '023_l2_event_proposal_writer' },
       { version: '024_freshness_transition_ledger' },
+      { version: '025_freshness_current_public_overlay' },
     ]);
   });
 
@@ -420,6 +426,7 @@ describe('DATA-01 migrations', () => {
       '022_l1_embedding_verification_reads',
       '023_l2_event_proposal_writer',
       '024_freshness_transition_ledger',
+      '025_freshness_current_public_overlay',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -505,6 +512,47 @@ describe('DATA-01 migrations', () => {
       can_rewrite_event: false, can_rewrite_impact: false, can_rewrite_publication: false,
       can_read_public_ledger: false, can_read_l1_ledger: false, can_read_l2_ledger: false,
     });
+  });
+
+
+  it('keeps freshness ledger private while current-public safe views stay readable', async () => {
+    const privileges = await testDatabase.executor.query<{
+      can_read_current_view: boolean;
+      can_read_impact_view: boolean;
+      can_read_transition_ledger: boolean;
+      can_read_evidence_ledger: boolean;
+    }>(
+      `SELECT has_table_privilege('waspada_public_reader', 'waspada.public_event_versions', 'SELECT') AS can_read_current_view,
+              has_table_privilege('waspada_public_reader', 'waspada.public_event_impacts', 'SELECT') AS can_read_impact_view,
+              has_table_privilege('waspada_public_reader', 'waspada.freshness_transitions', 'SELECT') AS can_read_transition_ledger,
+              has_table_privilege('waspada_public_reader', 'waspada.freshness_transition_evidence', 'SELECT') AS can_read_evidence_ledger`,
+    );
+    assert.deepEqual(privileges.rows[0], {
+      can_read_current_view: true,
+      can_read_impact_view: true,
+      can_read_transition_ledger: false,
+      can_read_evidence_ledger: false,
+    });
+
+    await testDatabase.executor.execute('SET ROLE waspada_public_reader');
+    try {
+      await testDatabase.executor.query(
+        'SELECT event_id, record_json FROM waspada.public_event_versions LIMIT 1',
+      );
+      await testDatabase.executor.query(
+        'SELECT impact_id, record_json FROM waspada.public_event_impacts LIMIT 1',
+      );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT transition_id FROM waspada.freshness_transitions LIMIT 1'),
+        /permission denied/iu,
+      );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT transition_id FROM waspada.freshness_transition_evidence LIMIT 1'),
+        /permission denied/iu,
+      );
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
   });
 
   it('creates the isolated publication capability with its exact operation grants', async () => {

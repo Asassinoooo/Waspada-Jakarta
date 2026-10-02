@@ -186,6 +186,7 @@ describe('public event GeoJSON candidate reader', () => {
       freshness: 'current',
       claims: [{ claimId: 'claim-geojson-aggregate-none-current', geometryIds: ['geo-aggregate-none-current'] }],
     });
+    await seedFreshnessTransition(liveFixture, 'event-geojson-aggregate-none-current', 1);
     await seedEventVersion(testDatabase, liveFixture, {
       eventId: 'event-geojson-aggregate-all-current', version: 1,
       freshness: 'current', impactFreshnessStatuses: ['current', 'current'],
@@ -331,14 +332,14 @@ describe('public event GeoJSON candidate reader', () => {
         ['event-geojson-aggregate-claim-needs-update', 'needs_update'],
         ['event-geojson-aggregate-mixed', 'needs_update'],
         ['event-geojson-aggregate-needs-update', 'needs_update'],
-        ['event-geojson-aggregate-none-current', 'current'],
+        ['event-geojson-aggregate-none-current', 'needs_update'],
       ]);
       const mixed = all.find(({ eventId }) => eventId === 'event-geojson-aggregate-mixed');
       assert.equal(mixed?.freshness, 'needs_update');
       assert.equal(
         ((mixed?.eventRecordJson as Record<string, unknown>).freshness as Record<string, unknown>).status,
-        'current',
-        'the derived status is separate from immutable Event JSON',
+        'needs_update',
+        'the current-public JSON carries the same aggregate status as its filter column',
       );
       assert.equal(
         all.find(({ eventId }) => eventId === 'event-geojson-aggregate-all-current')?.freshness,
@@ -350,7 +351,6 @@ describe('public event GeoJSON candidate reader', () => {
         (await repository.read({ bbox: AGGREGATE_BBOX, freshness: 'current' })).map(candidateKey),
         [
           'event-geojson-aggregate-all-current:1:geo-aggregate-all-current',
-          'event-geojson-aggregate-none-current:1:geo-aggregate-none-current',
         ],
       );
       assert.deepEqual(
@@ -363,6 +363,7 @@ describe('public event GeoJSON candidate reader', () => {
           'event-geojson-aggregate-claim-needs-update:1:geo-aggregate-claim-needs-update',
           'event-geojson-aggregate-mixed:1:geo-aggregate-mixed',
           'event-geojson-aggregate-needs-update:1:geo-aggregate-needs-update',
+          'event-geojson-aggregate-none-current:1:geo-aggregate-none-current',
         ],
       );
       const freshnessStatement = calls.find(({ parameters }) => parameters[6] === 'needs_update')?.statement;
@@ -705,6 +706,27 @@ async function seedGeometryBatch(
     [fixture.traceId, fixture.revisionId, TEST_HASH, [...geometryIds], [...longitudes]],
   );
 }
+
+async function seedFreshnessTransition(
+  fixture: DatasetFixture,
+  eventId: string,
+  eventVersion: number,
+): Promise<void> {
+  await testDatabase.executor.query(
+    `INSERT INTO waspada.freshness_transitions
+       (dataset_kind, event_id, event_version, target_kind, transition_sequence,
+        previous_status, resulting_status, reason, evaluated_at, trace_id,
+        idempotency_key, request_fingerprint)
+     VALUES ($1, $2, $3, 'event_claim_set', 1, 'current', 'needs_update',
+       'review_deadline_missed', $4, $5, $6, $7)`,
+    [
+      fixture.datasetKind, eventId, eventVersion, TEST_TIME, fixture.traceId,
+      fixture.prefix + ':' + eventId + ':' + eventVersion + ':overlay',
+      'f'.repeat(64),
+    ],
+  );
+}
+
 
 async function seedEventVersion(
   database: TestDatabase,

@@ -28,6 +28,7 @@ interface DatasetFixture {
 interface ImpactFixture {
   readonly impactId: string;
   readonly impactVersion: number;
+  readonly freshnessStatus?: 'current' | 'needs_update' | 'expired';
 }
 
 let testDatabase: TestDatabase;
@@ -46,13 +47,51 @@ describe('public event snapshot repository', () => {
     syntheticFixture = await seedDataset(testDatabase, 'synthetic', 'fixture-synthetic');
 
     await seedPublishedEvent(testDatabase, liveFixture, 'event-current', 1, [
-      { impactId: 'impact-shared', impactVersion: 1 },
+      { impactId: 'impact-shared', impactVersion: 1, freshnessStatus: 'current' },
     ]);
+    await seedFreshnessTransition(testDatabase, liveFixture, {
+      eventId: 'event-current', eventVersion: 1, targetKind: 'event_claim_set',
+      transitionSequence: 1, previousStatus: 'current', resultingStatus: 'needs_update',
+      reason: 'review_deadline_missed',
+    });
+    await seedFreshnessTransition(testDatabase, liveFixture, {
+      eventId: 'event-current', eventVersion: 1, targetKind: 'impact',
+      impactId: 'impact-shared', impactVersion: 1, transitionSequence: 1,
+      previousStatus: 'current', resultingStatus: 'needs_update', reason: 'review_deadline_missed',
+    });
     await seedPublishedEvent(testDatabase, liveFixture, 'event-current', 2, [
-      { impactId: 'impact-z', impactVersion: 1 },
-      { impactId: 'impact-shared', impactVersion: 2 },
-      { impactId: 'impact-a', impactVersion: 1 },
+      { impactId: 'impact-z', impactVersion: 1, freshnessStatus: 'expired' },
+      { impactId: 'impact-shared', impactVersion: 2, freshnessStatus: 'current' },
+      { impactId: 'impact-a', impactVersion: 1, freshnessStatus: 'expired' },
     ]);
+    await seedFreshnessTransition(testDatabase, liveFixture, {
+      eventId: 'event-current', eventVersion: 2, targetKind: 'event_claim_set',
+      transitionSequence: 1, previousStatus: 'current', resultingStatus: 'needs_update',
+      reason: 'review_deadline_missed',
+    });
+    await seedFreshnessTransition(testDatabase, liveFixture, {
+      eventId: 'event-current', eventVersion: 2, targetKind: 'event_claim_set',
+      transitionSequence: 2, previousStatus: 'needs_update', resultingStatus: 'expired',
+      reason: 'issuer_validity_ended',
+    });
+    await seedFreshnessTransition(testDatabase, liveFixture, {
+      eventId: 'event-current', eventVersion: 2, targetKind: 'impact',
+      impactId: 'impact-shared', impactVersion: 2, transitionSequence: 1,
+      previousStatus: 'current', resultingStatus: 'needs_update', reason: 'review_deadline_missed',
+    });
+    await seedFreshnessTransition(testDatabase, liveFixture, {
+      eventId: 'event-current', eventVersion: 2, targetKind: 'impact',
+      impactId: 'impact-shared', impactVersion: 2, transitionSequence: 2,
+      previousStatus: 'needs_update', resultingStatus: 'expired',
+      reason: 'issuer_validity_ended',
+    });
+    await seedPublishedEvent(testDatabase, liveFixture, 'event-fallback', 1, []);
+    await seedFreshnessTransition(testDatabase, liveFixture, {
+      eventId: 'event-fallback', eventVersion: 1, targetKind: 'event_claim_set',
+      transitionSequence: 1, previousStatus: 'current', resultingStatus: 'needs_update',
+      reason: 'review_deadline_missed',
+    });
+    await seedPublishedEvent(testDatabase, liveFixture, 'event-fallback', 2, []);
     await seedPublishedEvent(testDatabase, liveFixture, 'event-withdrawn', 1, [
       { impactId: 'impact-withdrawn-old', impactVersion: 1 },
     ]);
@@ -85,11 +124,11 @@ describe('public event snapshot repository', () => {
     assert.equal(result.snapshot.eventId, 'event-current');
     assert.equal(result.snapshot.eventVersion, 2);
     assert.deepEqual(result.snapshot.recordJson,
-      eventRecord(liveFixture, 'event-current', 2, 'published', [
+      withFreshnessStatus(eventRecord(liveFixture, 'event-current', 2, 'published', [
         { impactId: 'impact-z', impactVersion: 1 },
         { impactId: 'impact-shared', impactVersion: 2 },
         { impactId: 'impact-a', impactVersion: 1 },
-      ]));
+      ]), 'expired'));
     assert.deepEqual(result.snapshot.impacts.map(({ impactId, impactVersion }) => [impactId, impactVersion]), [
       ['impact-a', 1],
       ['impact-shared', 2],
@@ -98,7 +137,7 @@ describe('public event snapshot repository', () => {
     assert.ok(result.snapshot.impacts.every((impact) =>
       impact.eventId === 'event-current' && impact.eventVersion === 2));
     assert.deepEqual(result.snapshot.impacts[0]?.recordJson,
-      impactRecord('event-current', 2, 'impact-a', 1));
+      impactRecord('event-current', 2, 'impact-a', 1, 'expired'));
 
     assert.equal(calls.length, 2);
     assert.match(calls[0]?.statement ?? '', /FROM waspada\.public_event_versions/iu);
@@ -118,6 +157,23 @@ describe('public event snapshot repository', () => {
     );
     assert.equal(calls.length, 2, 'invalid identifiers are rejected before querying');
   });
+
+  it('uses published freshness when only an older event version has a transition', async () => {
+    const result = await createPublicEventSnapshotRepository(testDatabase.executor).read('event-fallback');
+    assert.equal(result.kind, 'found');
+    if (result.kind !== 'found') return;
+    assert.equal(result.snapshot.eventVersion, 2);
+    const eventRecordJson = result.snapshot.recordJson as Record<string, unknown>;
+    assert.equal((eventRecordJson.freshness as Record<string, unknown>).status, 'current');
+    assert.deepEqual(eventRecordJson.freshness, {
+      status: 'current',
+      evaluated_at: '2026-09-26T09:00:00Z',
+      review_due_at: '2026-09-26T11:00:00Z',
+      basis: 'issuer_notice',
+    });
+    assert.deepEqual(result.snapshot.impacts, []);
+  });
+
 
   it('returns missing when the latest version is withdrawn or no live row exists', async () => {
     const repository = createPublicEventSnapshotRepository(testDatabase.executor);
@@ -241,13 +297,38 @@ describe('public event snapshot repository', () => {
     );
   });
 
-  it('uses the public reader role and cannot read base event or impact tables', async () => {
+  it('projects exact-version freshness through safe views while the public role cannot read the ledger', async () => {
+    const immutableBefore = await readStoredPublicationState(testDatabase, 'event-current');
     const calls: { statement: string; parameters: readonly unknown[] }[] = [];
     const repository = createPublicEventSnapshotRepository(recordQueries(testDatabase.executor, calls));
     await testDatabase.executor.execute('SET ROLE waspada_public_reader');
     try {
       const result = await repository.read('event-current');
       assert.equal(result.kind, 'found');
+      if (result.kind !== 'found') return;
+      const eventRecordJson = result.snapshot.recordJson as Record<string, unknown>;
+      assert.equal((eventRecordJson.freshness as Record<string, unknown>).status, 'expired');
+      assert.deepEqual(eventRecordJson.freshness, {
+        status: 'expired',
+        evaluated_at: '2026-09-26T09:00:00Z',
+        review_due_at: '2026-09-26T11:00:00Z',
+        basis: 'issuer_notice',
+      });
+      assert.deepEqual(result.snapshot.impacts.map(({ impactId, recordJson }) => [
+        impactId, ((recordJson as Record<string, unknown>).freshness as Record<string, unknown>).status,
+      ]), [
+        ['impact-a', 'expired'],
+        ['impact-shared', 'expired'],
+        ['impact-z', 'expired'],
+      ]);
+      const shared = result.snapshot.impacts.find(({ impactId }) => impactId === 'impact-shared');
+      const sharedRecordJson = shared?.recordJson as Record<string, unknown> | undefined;
+      assert.deepEqual(sharedRecordJson?.freshness, {
+        status: 'expired',
+        evaluated_at: '2026-09-26T09:15:00Z',
+        review_due_at: '2026-09-26T11:15:00Z',
+        basis: 'issuer_notice',
+      });
       assert.equal(calls.length, 2);
       await assert.rejects(
         testDatabase.executor.query('SELECT event_id FROM waspada.event_versions LIMIT 1'),
@@ -257,9 +338,19 @@ describe('public event snapshot repository', () => {
         testDatabase.executor.query('SELECT impact_id FROM waspada.impact_versions LIMIT 1'),
         /permission denied/iu,
       );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT transition_id FROM waspada.freshness_transitions LIMIT 1'),
+        /permission denied/iu,
+      );
+      await assert.rejects(
+        testDatabase.executor.query('SELECT transition_id FROM waspada.freshness_transition_evidence LIMIT 1'),
+        /permission denied/iu,
+      );
     } finally {
       await testDatabase.executor.execute('RESET ROLE');
     }
+    assert.deepEqual(await readStoredPublicationState(testDatabase, 'event-current'), immutableBefore,
+      'event/impact JSON, publication decisions, and outbox rows remain unchanged');
   });
 
   it('rejects malformed rows and read failures without exposing values', async () => {
@@ -329,6 +420,76 @@ describe('public event snapshot repository', () => {
     );
   });
 });
+
+async function seedFreshnessTransition(
+  database: TestDatabase,
+  fixture: DatasetFixture,
+  transition: {
+    readonly eventId: string;
+    readonly eventVersion: number;
+    readonly targetKind: 'event_claim_set' | 'impact';
+    readonly impactId?: string;
+    readonly impactVersion?: number;
+    readonly transitionSequence: number;
+    readonly previousStatus: 'current' | 'needs_update' | 'expired';
+    readonly resultingStatus: 'current' | 'needs_update' | 'expired';
+    readonly reason: 'issuer_validity_ended' | 'new_applicable_evidence_evaluated' | 'review_deadline_missed';
+  },
+): Promise<void> {
+  await database.executor.query(
+    `INSERT INTO waspada.freshness_transitions
+       (dataset_kind, event_id, event_version, target_kind, impact_id, impact_version,
+        transition_sequence, previous_status, resulting_status, reason, evaluated_at,
+        trace_id, idempotency_key, request_fingerprint)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    [
+      fixture.datasetKind, transition.eventId, transition.eventVersion, transition.targetKind,
+      transition.impactId ?? null, transition.impactVersion ?? null, transition.transitionSequence,
+      transition.previousStatus, transition.resultingStatus, transition.reason, TEST_TIME,
+      fixture.traceId,
+      fixture.prefix + ':' + transition.eventId + ':' + transition.eventVersion + ':'
+        + transition.targetKind + ':' + String(transition.impactId ?? 'event') + ':'
+        + String(transition.impactVersion ?? '') + ':' + transition.transitionSequence,
+      'd'.repeat(64),
+    ],
+  );
+}
+
+async function readStoredPublicationState(database: TestDatabase, eventId: string) {
+  const result = await database.executor.query<{
+    event_versions: unknown;
+    impact_versions: unknown;
+    publication_decisions: unknown;
+    publication_outbox: unknown;
+  }>(
+    `SELECT
+       (SELECT jsonb_agg(to_jsonb(event) ORDER BY event.version)
+        FROM waspada.event_versions AS event
+        WHERE event.dataset_kind = 'live' AND event.event_id = $1) AS event_versions,
+       (SELECT jsonb_agg(to_jsonb(impact) ORDER BY impact.impact_id, impact.version)
+        FROM waspada.impact_versions AS impact
+        WHERE impact.dataset_kind = 'live' AND impact.event_id = $1) AS impact_versions,
+       (SELECT jsonb_agg(to_jsonb(decision) ORDER BY decision.decision_id)
+        FROM waspada.publication_decisions AS decision
+        WHERE decision.dataset_kind = 'live' AND decision.event_id = $1) AS publication_decisions,
+       (SELECT jsonb_agg(to_jsonb(outbox) ORDER BY outbox.outbox_id)
+        FROM waspada.publication_outbox AS outbox
+        WHERE outbox.dataset_kind = 'live' AND outbox.event_id = $1) AS publication_outbox`,
+    [eventId],
+  );
+  return result.rows[0];
+}
+
+
+function withFreshnessStatus(
+  record: Record<string, unknown>,
+  status: 'current' | 'needs_update' | 'expired',
+): Record<string, unknown> {
+  return {
+    ...record,
+    freshness: { ...(record.freshness as Record<string, unknown>), status },
+  };
+}
 
 function recordQueries(
   executor: SqlExecutor,
@@ -509,7 +670,7 @@ async function seedEventVersion(
           eventId,
           version,
           TEST_TIME,
-          JSON.stringify(impactRecord(eventId, version, impact.impactId, impact.impactVersion)),
+          JSON.stringify(impactRecord(eventId, version, impact.impactId, impact.impactVersion, impact.freshnessStatus ?? 'current')),
         ],
       );
       await transaction.query(
@@ -542,6 +703,10 @@ function eventRecord(
     summary: 'Authored fictional event for a database test.',
     category: 'group_specific_critical_notices',
     lifecycle: 'unknown',
+    freshness: {
+      status: 'current', evaluated_at: '2026-09-26T09:00:00Z',
+      review_due_at: '2026-09-26T11:00:00Z', basis: 'issuer_notice',
+    },
     claims: published ? [{ claim_id: 'fictional-claim' }] : [],
     impact_refs: published ? impacts.map(({ impactId, impactVersion }) => ({
       impact_id: impactId,
@@ -560,6 +725,7 @@ function impactRecord(
   eventVersion: number,
   impactId: string,
   impactVersion: number,
+  freshnessStatus: 'current' | 'needs_update' | 'expired' = 'current',
 ): Record<string, unknown> {
   return {
     schema_version: '2.0',
@@ -572,6 +738,10 @@ function impactRecord(
     version: impactVersion,
     impact_type: 'other',
     lifecycle: 'unknown',
+    freshness: {
+      status: freshnessStatus, evaluated_at: '2026-09-26T09:15:00Z',
+      review_due_at: '2026-09-26T11:15:00Z', basis: 'issuer_notice',
+    },
     fixture_marker: 'untrusted-impact-json-fixture',
   };
 }

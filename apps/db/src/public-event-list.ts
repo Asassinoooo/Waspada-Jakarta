@@ -112,6 +112,10 @@ const categories = new Set<PublicEventListCategory>([
 ]);
 const lifecycles = new Set<PublicEventListLifecycle>(['planned', 'ongoing', 'resolved', 'cancelled', 'unknown']);
 const freshnessStatuses = new Set<PublicEventListFreshness>(['current', 'needs_update', 'expired']);
+const freshnessBases = new Set([
+  'source_validity', 'fast_observation_review', 'undated_advisory_review', 'manual_review', 'unknown',
+]);
+const freshnessKeys = ['status', 'evaluated_at', 'review_due_at', 'basis'] as const;
 const eventRecordKeys = [
   'schema_version', 'trace_id', 'record_type', 'dataset_kind', 'event_id', 'version',
   'supersedes_version', 'title', 'summary', 'category', 'tags', 'lifecycle', 'freshness',
@@ -375,7 +379,8 @@ function validateRows(
 
     validateEventRecord(value.record_json, value.event_id, value.version);
     const firstRecord = validateEventRecord(value.first_record_json, value.event_id, 1);
-    if (value.version === 1 && !isDeepStrictEqual(value.record_json, value.first_record_json)) {
+    if (value.version === 1
+      && !sameVersionOneRecordExceptProjectedFreshnessStatus(value.record_json, value.first_record_json)) {
       fail('RESULT_INVALID');
     }
     if (!isCanonicalTimestamp(value.first_published_at)) fail('RESULT_INVALID');
@@ -409,6 +414,30 @@ function validateRows(
   }
 
   return candidates;
+}
+
+function sameVersionOneRecordExceptProjectedFreshnessStatus(current: unknown, published: unknown): boolean {
+  if (!isPlainRecord(current) || !isPlainRecord(published)
+    || !isWellFormedFreshness(current.freshness)
+    || !isWellFormedFreshness(published.freshness)) {
+    return false;
+  }
+
+  return isDeepStrictEqual({
+    ...current,
+    freshness: { ...current.freshness, status: published.freshness.status },
+  }, published);
+}
+
+function isWellFormedFreshness(value: unknown): value is Record<string, unknown> {
+  return isPlainRecord(value)
+    && hasExactKeys(value, freshnessKeys)
+    && typeof value.status === 'string'
+    && freshnessStatuses.has(value.status as PublicEventListFreshness)
+    && isDateTime(value.evaluated_at)
+    && (value.review_due_at === null || isDateTime(value.review_due_at))
+    && typeof value.basis === 'string'
+    && freshnessBases.has(value.basis);
 }
 
 function validateEventRecord(value: unknown, eventId: string, version: number): ValidatedEventRecord {
