@@ -1,11 +1,11 @@
 # OBS-01-FRESHNESS-DUE-TELEMETRY-CORE — safe telemetry for freshness schedule runs
 
-**Status:** Assigned for isolated implementation.<br>
+**Status:** Accepted after root review.<br>
 **Backlog ID:** `OBS-01-FRESHNESS-DUE-TELEMETRY-CORE`<br>
 **Implementation model:** GPT-6 Luna, max reasoning<br>
 **Branch:** `work/OBS-01-FRESHNESS-DUE-TELEMETRY-CORE`<br>
 **Worktree:** `/mnt/c/Users/perry/.codex/worktrees/obs-01-freshness-due-telemetry-core/RPL`<br>
-**Assigned base:** `ec658bf4f1ab986b6a3afe66325b26b1cd7ba8f2`.<br>
+**Assigned base:** `1bddab5073df9667dfa4fe6b42d638304202ad42`.<br>
 **Contract baseline:** Accepted `TelemetryRecord`/`TelemetrySink`, `consoleTelemetry` and `noOpTelemetry`, the `LIFE-01-FRESHNESS-DUE-WORKER-RUNTIME-CORE` scheduled runtime, and its disabled-by-default gates. Do not change public API/DTOs, database contracts, freshness evaluator/trace behavior, or activation configuration.
 
 ## Objective
@@ -47,3 +47,7 @@ Do not change `wrangler.toml`, environment bindings, secrets, migrations, API/Op
 ## Stop conditions
 
 Stop and report to root if safe telemetry requires database/API schema changes, a new provider or external sink, a new environment binding, or changes to the scheduled activation gates. Do not install dependencies or configure any hosted service. Escalate to Astra only if a Luna/max attempt documents a substantive unresolved technical blocker.
+
+## Root review and acceptance
+
+Root fast-forwarded this branch to local `main`, preserving implementation commit `3dbec2dee0c873c87e013caee8172810e76d1403` and handoff commit `689c2a779f429fc3c35ca7a2c529d0e5ce0978d1`. Root independently passed the focused runtime and telemetry tests (20/20) and assigned-base `git diff --check` in WSL Ubuntu-26.04. The agent passed typecheck, full workspace tests, and the build; the final focused suite also covers two test-only assertions added after the full run. The scheduled runtime remains disabled in the checked-in demo configuration, and hosted behavior remains unverified.
