@@ -43,6 +43,8 @@ The user selected append-only freshness transition records bound to exact immuta
 
 `DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE` is accepted on local `main`, preserving implementation commit `ad7f6f8ddb9fa7159e6ce94a619f4d4b359529a6` (`feat(db): add transactional postgres executor`) and handoff commit `beec3127b72e1cae47bd656534473099b4308340` (`docs(DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE): record implementation handoff`). The request-scoped adapter now exposes `TransactionalSqlExecutor` with explicit `BEGIN`/`COMMIT` and best-effort `ROLLBACK`; the outer operation remains unwrapped, and cleanup preserves original failures. Root independently passed the focused suite (11/11) and assigned-base diff check. The agent passed `npm run typecheck`, `npm test` (web 60, Worker 387, DB 28/28 files, evaluation 12), and `npm run build` (Vite and Wrangler dry-run) in WSL Ubuntu-26.04. No dependency, migration, grant, runtime, binding, schedule, or live connection changed. Hosted PostgreSQL remains unverified; see the [assignment](docs/assignments/DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE.md) and [handoff](docs/assignments/DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE-HANDOFF.md).
 
+`LIFE-01-FRESHNESS-DUE-RUN-TRACE-CORE` is assigned under accepted [ADR-039](docs/decisions/ADR-039-freshness-due-run-traces.md). The due-transition ledger requires an evaluation trace, while its least-privilege writer role cannot create or finalize one. The assigned database-only change uses fixed-purpose, narrowly executable functions rather than broad trace-table write grants; it does not wire a Worker schedule or configure a hosted login.
+
 ## 1. Document ownership and change control
 
 | Document | Owns |
