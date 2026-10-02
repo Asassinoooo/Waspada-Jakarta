@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { withPostgresSqlExecutor } from '../src/postgres-sql-executor.js';
+import {
+  withPostgresSqlExecutor,
+  withPostgresTransactionalSqlExecutor,
+} from '../src/postgres-sql-executor.js';
 
 interface PersonRow {
   readonly id: string;
@@ -221,3 +224,187 @@ function fakeClientFactory(
     };
   };
 }
+
+
+describe('request-scoped node-postgres TransactionalSqlExecutor adapter', () => {
+  it('uses one client and issues transaction statements in order only when requested', async () => {
+    const events: string[] = [];
+    const connectionStrings: string[] = [];
+    const queryCalls: { readonly statement: string; readonly parameters?: unknown[] }[] = [];
+    const marker = { source: 'synthetic' };
+    const parameters = [marker, 17] as const;
+    const rows: readonly PersonRow[] = [{ id: 'person-2', name: 'Bima' }];
+
+    const result = await withPostgresTransactionalSqlExecutor(
+      CONNECTION_STRING,
+      async (executor) => {
+        const before = await executor.query('SELECT before_transaction');
+        assert.deepEqual(before.rows, []);
+
+        const name = await executor.transaction(async (transaction) => {
+          const people = await transaction.query<PersonRow>(
+            'SELECT id, name FROM people WHERE marker = $1 AND id = $2',
+            parameters,
+          );
+          const typedName: string = people.rows[0]!.name;
+          await transaction.execute('UPDATE people SET seen = true');
+          return typedName;
+        });
+
+        await executor.execute('SELECT after_transaction');
+        return name;
+      },
+      fakeClientFactory({
+        query: async (statement, values) => {
+          events.push('sql:' + statement);
+          queryCalls.push({ statement, ...(values === undefined ? {} : { parameters: values }) });
+          return statement.startsWith('SELECT id, name') ? { rows } : { rows: [] };
+        },
+      }, events, connectionStrings),
+    );
+
+    assert.equal(result, 'Bima');
+    assert.deepEqual(connectionStrings, [CONNECTION_STRING]);
+    assert.deepEqual(events, [
+      'connect',
+      'sql:SELECT before_transaction',
+      'sql:BEGIN',
+      'sql:SELECT id, name FROM people WHERE marker = $1 AND id = $2',
+      'sql:UPDATE people SET seen = true',
+      'sql:COMMIT',
+      'sql:SELECT after_transaction',
+      'end',
+    ]);
+    assert.deepEqual(queryCalls.map((call) => call.statement), [
+      'SELECT before_transaction',
+      'BEGIN',
+      'SELECT id, name FROM people WHERE marker = $1 AND id = $2',
+      'UPDATE people SET seen = true',
+      'COMMIT',
+      'SELECT after_transaction',
+    ]);
+    assert.deepEqual(queryCalls[2]!.parameters, [...parameters]);
+    assert.notStrictEqual(queryCalls[2]!.parameters, parameters);
+    assert.strictEqual(queryCalls[2]!.parameters?.[0], marker);
+  });
+
+  it('rolls back work failures and preserves the original error if rollback fails', async () => {
+    const events: string[] = [];
+    const connectionStrings: string[] = [];
+    const workError = new Error('synthetic transaction work failure');
+    const rollbackError = new Error('synthetic rollback failure');
+
+    await assert.rejects(
+      withPostgresTransactionalSqlExecutor(
+        CONNECTION_STRING,
+        (executor) => executor.transaction(async (transaction) => {
+          await transaction.query('SELECT before_failure');
+          throw workError;
+        }),
+        fakeClientFactory({
+          query: async (statement) => {
+            events.push('sql:' + statement);
+            if (statement === 'ROLLBACK') throw rollbackError;
+            return { rows: [] };
+          },
+        }, events, connectionStrings),
+      ),
+      (error: unknown) => error === workError,
+    );
+
+    assert.deepEqual(connectionStrings, [CONNECTION_STRING]);
+    assert.deepEqual(events, [
+      'connect',
+      'sql:BEGIN',
+      'sql:SELECT before_failure',
+      'sql:ROLLBACK',
+      'end',
+    ]);
+  });
+
+  it('attempts rollback after commit failure and preserves it over rollback and cleanup failures', async () => {
+    const events: string[] = [];
+    const connectionStrings: string[] = [];
+    const commitError = new Error('synthetic commit failure');
+    const rollbackError = new Error('synthetic rollback failure');
+    const closeError = new Error('synthetic close failure');
+
+    await assert.rejects(
+      withPostgresTransactionalSqlExecutor(
+        CONNECTION_STRING,
+        (executor) => executor.transaction(async (transaction) => {
+          await transaction.execute('UPDATE fixture SET value = 1');
+          return 'uncommitted';
+        }),
+        fakeClientFactory({
+          query: async (statement) => {
+            events.push('sql:' + statement);
+            if (statement === 'COMMIT') throw commitError;
+            if (statement === 'ROLLBACK') throw rollbackError;
+            return { rows: [] };
+          },
+          end: async () => { throw closeError; },
+        }, events, connectionStrings),
+      ),
+      (error: unknown) => error === commitError,
+    );
+
+    assert.deepEqual(connectionStrings, [CONNECTION_STRING]);
+    assert.deepEqual(events, [
+      'connect',
+      'sql:BEGIN',
+      'sql:UPDATE fixture SET value = 1',
+      'sql:COMMIT',
+      'sql:ROLLBACK',
+      'end',
+    ]);
+  });
+
+  it('skips the operation after connect failure and attempts cleanup', async () => {
+    const events: string[] = [];
+    const connectionStrings: string[] = [];
+    const connectError = new Error('synthetic connection failure');
+    const closeError = new Error('synthetic close failure');
+    let operationCalled = false;
+
+    await assert.rejects(
+      withPostgresTransactionalSqlExecutor(
+        CONNECTION_STRING,
+        async () => { operationCalled = true; },
+        fakeClientFactory({
+          connect: async () => { throw connectError; },
+          end: async () => { throw closeError; },
+        }, events, connectionStrings),
+      ),
+      (error: unknown) => error === connectError,
+    );
+
+    assert.equal(operationCalled, false);
+    assert.deepEqual(connectionStrings, [CONNECTION_STRING]);
+    assert.deepEqual(events, ['connect', 'end']);
+  });
+
+  it('surfaces cleanup failure after a successful outer operation', async () => {
+    const events: string[] = [];
+    const connectionStrings: string[] = [];
+    const closeError = new Error('synthetic close failure');
+
+    await assert.rejects(
+      withPostgresTransactionalSqlExecutor(
+        CONNECTION_STRING,
+        (executor) => executor.transaction(async () => 'committed'),
+        fakeClientFactory({
+          query: async (statement) => {
+            events.push('sql:' + statement);
+            return { rows: [] };
+          },
+          end: async () => { throw closeError; },
+        }, events, connectionStrings),
+      ),
+      (error: unknown) => error === closeError,
+    );
+
+    assert.deepEqual(connectionStrings, [CONNECTION_STRING]);
+    assert.deepEqual(events, ['connect', 'sql:BEGIN', 'sql:COMMIT', 'end']);
+  });
+});

@@ -1,5 +1,5 @@
 import { Client } from 'pg';
-import type { SqlExecutor } from './sql.js';
+import type { SqlExecutor, TransactionalSqlExecutor } from './sql.js';
 
 interface PostgresSqlClient {
   connect(): Promise<void>;
@@ -40,6 +40,28 @@ function createSqlExecutor(client: PostgresSqlClient): SqlExecutor {
   };
 }
 
+function createTransactionalSqlExecutor(client: PostgresSqlClient): TransactionalSqlExecutor {
+  return {
+    ...createSqlExecutor(client),
+    async transaction<Result>(work: (transaction: SqlExecutor) => Promise<Result>) {
+      await client.query('BEGIN');
+
+      try {
+        const result = await work(createSqlExecutor(client));
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          // Preserve the work or commit error that caused the rollback.
+        }
+        throw error;
+      }
+    },
+  };
+}
+
 /** Runs one operation with a request-scoped node-postgres client. */
 export async function withPostgresSqlExecutor<Result>(
   connectionString: string,
@@ -52,6 +74,32 @@ export async function withPostgresSqlExecutor<Result>(
   try {
     await client.connect();
     outcome = { ok: true, result: await operation(createSqlExecutor(client)) };
+  } catch (error) {
+    outcome = { ok: false, error };
+  }
+
+  try {
+    await client.end();
+  } catch (closeError) {
+    if (outcome.ok) throw closeError;
+  }
+
+  if (!outcome.ok) throw outcome.error;
+  return outcome.result;
+}
+
+/** Runs one operation with a request-scoped client and explicit transactions. */
+export async function withPostgresTransactionalSqlExecutor<Result>(
+  connectionString: string,
+  operation: (executor: TransactionalSqlExecutor) => Promise<Result>,
+  createClient: PostgresSqlClientFactory = createNodePostgresClient,
+): Promise<Result> {
+  const client = createClient(connectionString);
+  let outcome: { readonly ok: true; readonly result: Result } | { readonly ok: false; readonly error: unknown };
+
+  try {
+    await client.connect();
+    outcome = { ok: true, result: await operation(createTransactionalSqlExecutor(client)) };
   } catch (error) {
     outcome = { ok: false, error };
   }
