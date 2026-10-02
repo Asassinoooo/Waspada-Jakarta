@@ -1216,3 +1216,14 @@ Root reviewed the full diff, independently passed the focused reader suite (**8/
 ### LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE assigned — 2 October 2026
 
 After accepting the exact-version due-target reader, root assigned a bounded Layer 4 composition. The service will read one page at an explicit caller-supplied instant, serially invoke the existing freshness policy/ledger recorder for at most 100 candidates, and use stable per-target idempotency keys. It must stop on the first conflict or port failure and resume from the original cursor so no target is skipped. It cannot claim new evidence, recover stale items, read external sources, create a clock, configure Cron, or publish data. This assignment adds no runtime DB wiring or public API. See the [assignment](assignments/LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE.md).
+
+
+### LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE accepted — 2 October 2026
+
+Root reviewed and fast-forwarded work/LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE to local main, preserving implementation commit 657d1a065b1b241ba3890f09192eacb20cbf527e (feat(LIFE-01): add bounded freshness due evaluator) and handoff commit 16ec788b5e27440f70ceb6665dcdf467e8410824 (docs(LIFE-01): record freshness due evaluator handoff). The service reads and validates one caller-timed page of up to 100 due targets, uses the existing policy and append-only recorder serially, derives stable idempotency keys from the run and complete target identity, and stops without advancing its cursor on conflict or failure. It cannot recover stale data, access sources, publish, or schedule itself.
+
+Root independently passed the focused evaluator tests (5/5). The agent passed full WSL npm test (web 60, Worker 387, DB 27/27 files, evaluation 12), typecheck, Vite production build plus Wrangler dry-run, and assigned-base git diff --check. No migration, dependency, public contract, scheduler, or runtime database binding changed; deterministic fake ports do not verify runtime composition or hosted Neon.
+
+### LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE assigned — 2 October 2026
+
+Root assigned a test-only synthetic PGlite composition of the actual due-target reader, bounded evaluator, deterministic recorder, append-only SQL ledger, and current-public freshness views. It must verify exact-version status transitions, conservative event aggregation, and unchanged event/impact publication records. No scheduler, runtime database binding, public API, migration, dependency, or source access is authorized. See the [assignment](assignments/LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE.md).

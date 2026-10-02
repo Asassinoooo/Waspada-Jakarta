@@ -1,12 +1,16 @@
 # LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE — bounded Layer 4 due-page evaluation
 
-**Status:** Assigned for isolated implementation.  
+**Status:** Accepted on local `main` after root review.
 **Backlog ID:** `LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE`  
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE`  
 **Worktree:** `/mnt/c/Users/perry/.codex/worktrees/life-01-freshness-due-evaluator-core/RPL`  
-**Assigned base:** Exact local `main` SHA supplied in the root dispatch after this assignment is committed.  
+**Assigned base:** `5c296a30f4808ea87cb064c462773bef8d1643a7`
 **Contract baseline:** Current internal freshness reader and recorder ports, Schema 2.0 event/impact records, ADR-032/038; no public API/DTO/OpenAPI change.
+
+**Commits:** `657d1a065b1b241ba3890f09192eacb20cbf527e` (`feat(LIFE-01): add bounded freshness due evaluator`); `16ec788b5e27440f70ceb6665dcdf467e8410824` (`docs(LIFE-01): record freshness due evaluator handoff`). See the [implementation handoff](LIFE-01-FRESHNESS-DUE-EVALUATOR-CORE-HANDOFF.md).
+
+Root review independently passed the focused evaluator suite (**5/5**) and accepted the implementation on local `main`. The agent's full WSL suite, typecheck, build, and assigned-base whitespace check are recorded in the handoff and delivery log.
 
 ## Context and dependencies
 
