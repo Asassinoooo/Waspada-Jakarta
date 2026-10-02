@@ -1,11 +1,11 @@
 # LIFE-01-FRESHNESS-DUE-RUN-TRACE-CORE — narrow run-trace capability
 
-**Status:** Assigned for isolated implementation.<br>
+**Status:** Accepted on local `main` after root review.<br>
 **Backlog ID:** `LIFE-01-FRESHNESS-DUE-RUN-TRACE-CORE`<br>
 **Implementation model:** GPT-6 Luna, max reasoning<br>
 **Branch:** `work/LIFE-01-FRESHNESS-DUE-RUN-TRACE-CORE`<br>
 **Worktree:** `/mnt/c/Users/perry/.codex/worktrees/life-01-freshness-due-run-trace-core/RPL`<br>
-**Assigned base:** Exact local `main` SHA supplied in the root dispatch after this assignment is committed.<br>
+**Assigned base:** `0525feff019c42fb75c88b23a848a836d9f676a8`.<br>
 **Contract baseline:** ADR-038 append-only freshness ledger, ADR-039 run-trace decision, existing `waspada.traces`, and `waspada_l4_freshness_writer`; no public API/DTO or Worker runtime contract change.
 
 ## Objective
@@ -29,6 +29,8 @@ Add narrow database functions that let the existing freshness writer capability 
 
 - `apps/db/migrations/026_freshness_due_run_traces.sql` (new)
 - `apps/db/test/freshness-due-run-traces.test.ts` (new)
+- `apps/db/test/migrations.test.ts` (root-authorized update to ordered migration/count/latest-version expectations for 026)
+- `apps/db/test/public-event-updates.test.ts` (root-authorized update to exclude 026 from the pre-024 fixture subset and include it in the full applied list)
 - `docs/assignments/LIFE-01-FRESHNESS-DUE-RUN-TRACE-CORE-HANDOFF.md` (new implementation handoff)
 
 Do not change the existing migration files, runtime/Worker code, package manifests or lockfiles, role membership for a hosted login, deployment bindings, Cron configuration, external services, or any public contract. ADR-039 is the accepted design baseline; ask root if the function boundary or privilege scope proves insufficient.
