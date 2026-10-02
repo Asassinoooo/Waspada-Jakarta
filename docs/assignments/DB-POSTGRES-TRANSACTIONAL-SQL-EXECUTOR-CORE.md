@@ -1,12 +1,18 @@
 # DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE — transactional node-postgres adapter
 
-**Status:** Assigned for isolated implementation.<br>
+**Status:** Accepted and integrated on local `main`.<br>
 **Backlog ID:** `DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE`<br>
 **Implementation model:** GPT-6 Luna, max reasoning<br>
 **Branch:** `work/DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE`<br>
 **Worktree:** `/mnt/c/Users/perry/.codex/worktrees/db-postgres-transactional-sql-executor-core/RPL`<br>
 **Assigned base:** Exact local `main` SHA supplied in the root dispatch after this assignment is committed.<br>
 **Contract baseline:** Existing `SqlExecutor` and `TransactionalSqlExecutor` in `apps/db/src/sql.ts`, node-postgres adapter in `apps/db/src/postgres-sql-executor.ts`, and ADR-022. No application API or Worker binding change.
+
+**Accepted commits:** `ad7f6f8ddb9fa7159e6ce94a619f4d4b359529a6` — `feat(db): add transactional postgres executor`; `beec3127b72e1cae47bd656534473099b4308340` — `docs(DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE): record implementation handoff`.<br>
+**Changed paths:** `apps/db/src/postgres-sql-executor.ts`, `apps/db/test/postgres-sql-executor.test.ts`, and this handoff.<br>
+**Root review:** Allowed-path diff reviewed; independent focused tests passed 11/11; assigned-base diff check passed. The commits were fast-forwarded to local `main`.
+
+The agent's WSL Ubuntu-26.04 checks passed: typecheck; `npm test` (web 60, Worker 387, DB 28/28 files, evaluation 12); build (Vite production and Wrangler dry-run); and assigned-base diff check. Tests use fake PostgreSQL clients; no hosted database, binding, runtime, migration, dependency, or schedule was exercised or changed. See the [implementation handoff](DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE-HANDOFF.md).
 
 ## Objective
 
