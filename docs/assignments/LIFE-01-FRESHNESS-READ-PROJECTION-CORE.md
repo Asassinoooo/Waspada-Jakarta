@@ -41,6 +41,8 @@ Project the latest append-only freshness status onto the existing current-public
 - `apps/db/test/public-event-updates.test.ts` (staged migration inventory only)
 - `docs/assignments/LIFE-01-FRESHNESS-READ-PROJECTION-CORE-HANDOFF.md` (new)
 
+**Root-authorized path extension:** During implementation, root authorized `apps/db/src/public-event-list.ts` for the narrowly scoped version-1 publication/history equality adjustment required by the status-only current-view overlay. The check still validates both freshness objects and deep-compares every other field.
+
 Do not change the ledger write path, transition policy, event/impact storage, current API/OpenAPI/DTOs, UI, publication authorization, source adapters, model providers, scheduler/clock, outbox, deployment configuration, dependency versions, or unrelated tests. Stop and ask root before any additional path becomes necessary.
 
 ## Acceptance and verification
