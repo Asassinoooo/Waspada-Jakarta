@@ -9,6 +9,14 @@ import {
   type FreshnessDueEvaluatorResult,
 } from "../layers/l4-application-integration/freshness-due-evaluator.js";
 import { createFreshnessTransitionRecorder } from "../layers/l4-application-integration/freshness-transition-recorder.js";
+import {
+  FRESHNESS_DUE_SCHEDULE_EVENT_NAME,
+  noOpTelemetry,
+  type FreshnessDueScheduleOutcome,
+  type FreshnessDueScheduleTelemetryCounts,
+  type FreshnessDueScheduleTelemetryRecord,
+  type TelemetrySink,
+} from "../layers/l5-evaluation-monitoring/telemetry.js";
 import { isValidHyperdriveConnectionString } from "./public-event-list-runtime.js";
 
 const maxPageSize = 100;
@@ -35,6 +43,7 @@ export interface FreshnessDueScheduleRuntimeDependencies {
   readonly withTransactionalSqlExecutor?: FreshnessDueScheduleTransactionalSqlExecutorRunner;
   readonly createEvaluator?: FreshnessDueScheduleEvaluatorFactory;
   readonly clock?: () => number;
+  readonly telemetry?: TelemetrySink;
 }
 
 export interface FreshnessDueScheduleRuntime {
@@ -68,17 +77,24 @@ export function createFreshnessDueScheduleRuntime(
     ?? withPostgresTransactionalSqlExecutor;
   const evaluatorFactory = dependencies.createEvaluator ?? createSqlEvaluator;
   const clock = dependencies.clock ?? Date.now;
+  const telemetry = dependencies.telemetry ?? noOpTelemetry;
 
   return {
     async schedule(scheduledTime): Promise<void> {
-      const scheduledInstant = formatScheduledInstant(scheduledTime);
-      const runId = "freshness-due:" + scheduledTime;
-
+      const telemetryStartedAt = readTelemetryClock();
+      let telemetryOutcome: FreshnessDueScheduleOutcome = "failed";
+      let telemetryCounts: FreshnessDueScheduleTelemetryCounts | undefined;
       try {
+        const scheduledInstant = formatScheduledInstant(scheduledTime);
+        const runId = "freshness-due:" + scheduledTime;
+
         await withTransactionalSqlExecutor(connectionString, (executor) =>
           withFreshnessWriterRole(executor, async () => {
             const beginStatus = await beginRun(executor, runId, scheduledInstant);
-            if (beginStatus === "succeeded" || beginStatus === "failed") return;
+            if (beginStatus === "succeeded" || beginStatus === "failed") {
+              telemetryOutcome = "terminal_replay";
+              return;
+            }
             if (beginStatus !== "open") throw new Error("unexpected freshness run status");
 
             let outcome: "succeeded" | "failed" = "failed";
@@ -95,10 +111,14 @@ export function createFreshnessDueScheduleRuntime(
               });
               const validated = validateEvaluationResult(evaluation);
               counts = validated.counts;
+              telemetryCounts = validated.counts;
+              telemetryOutcome = validated.outcome === "succeeded" ? "completed" : "failed";
               outcome = validated.outcome;
             } catch {
               // A fixed count summary lets an opened run be closed without exposing diagnostics.
               counts = failedCounts();
+              telemetryCounts = undefined;
+              telemetryOutcome = "failed";
               outcome = "failed";
             }
 
@@ -106,10 +126,77 @@ export function createFreshnessDueScheduleRuntime(
             await finalizeRun(executor, runId, scheduledInstant, finishedAt, outcome, counts);
           }));
       } catch {
+        telemetryOutcome = "failed";
+        recordTelemetry(telemetry, telemetryOutcome, telemetryStartedAt, telemetryCounts);
+        if (isInvalidScheduledTime(scheduledTime)) {
+          throw new FreshnessDueScheduleRuntimeError("INVALID_SCHEDULED_TIME");
+        }
         throw new FreshnessDueScheduleRuntimeError("SCHEDULE_FAILED");
       }
+
+      recordTelemetry(telemetry, telemetryOutcome, telemetryStartedAt, telemetryCounts);
     },
   };
+}
+
+function recordTelemetry(
+  sink: TelemetrySink,
+  outcome: FreshnessDueScheduleOutcome,
+  startedAt: number | undefined,
+  counts: FreshnessDueScheduleTelemetryCounts | undefined,
+): void {
+  try {
+    const finishedAt = readTelemetryClock();
+    const elapsed = startedAt === undefined || finishedAt === undefined ? 0 : finishedAt - startedAt;
+    const durationMs = Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : 0;
+    let record: FreshnessDueScheduleTelemetryRecord;
+
+    if (outcome === "terminal_replay") {
+      record = {
+        eventName: FRESHNESS_DUE_SCHEDULE_EVENT_NAME,
+        outcome,
+        durationMs,
+      };
+    } else if (outcome === "completed") {
+      if (counts === undefined) return;
+      record = {
+        eventName: FRESHNESS_DUE_SCHEDULE_EVENT_NAME,
+        outcome,
+        durationMs,
+        counts: { ...counts },
+      };
+    } else {
+      record = {
+        eventName: FRESHNESS_DUE_SCHEDULE_EVENT_NAME,
+        outcome,
+        durationMs,
+        ...(counts === undefined ? {} : { counts: { ...counts } }),
+      };
+    }
+
+    sink.record(record);
+  } catch {
+    // Telemetry validation and sink failures never affect the scheduled runtime result.
+  }
+}
+
+function readTelemetryClock(): number | undefined {
+  try {
+    const value = Date.now();
+    return Number.isFinite(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isInvalidScheduledTime(value: unknown): boolean {
+  try {
+    formatScheduledInstant(value);
+    return false;
+  } catch (error) {
+    return error instanceof FreshnessDueScheduleRuntimeError
+      && error.code === "INVALID_SCHEDULED_TIME";
+  }
 }
 
 function createSqlEvaluator(executor: TransactionalSqlExecutor): FreshnessDueEvaluator {

@@ -3,6 +3,7 @@ export const L2_RETRIEVAL_EVENT_NAME = "l2_retrieval" as const;
 export const L2_DIRECT_REASONING_EVENT_NAME = "l2_direct_reasoning" as const;
 export const L3_LEDGER_OPERATION_EVENT_NAME = "l3_ledger_operation" as const;
 export const L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME = "l1_synthetic_fixture_job" as const;
+export const FRESHNESS_DUE_SCHEDULE_EVENT_NAME = "freshness_due_schedule" as const;
 
 export const L1_SYNTHETIC_FIXTURE_TELEMETRY_MAX_COUNT = 1_000_000;
 
@@ -36,6 +37,16 @@ export type L1SyntheticFixtureJobOutcome =
   | "not_eligible"
   | "lost_lease"
   | "failed";
+
+export type FreshnessDueScheduleOutcome = "completed" | "failed" | "terminal_replay";
+
+export interface FreshnessDueScheduleTelemetryCounts {
+  written: number;
+  replayed: number;
+  noChange: number;
+  conflicts: number;
+  failures: number;
+}
 
 export type L2RetrievalSemanticStatus =
   | "not_requested"
@@ -123,6 +134,25 @@ export interface L1SyntheticFixtureJobOtherTelemetryRecord {
   durationMs: number;
 }
 
+export type FreshnessDueScheduleTelemetryRecord =
+  | {
+    eventName: typeof FRESHNESS_DUE_SCHEDULE_EVENT_NAME;
+    outcome: "completed";
+    durationMs: number;
+    counts: FreshnessDueScheduleTelemetryCounts;
+  }
+  | {
+    eventName: typeof FRESHNESS_DUE_SCHEDULE_EVENT_NAME;
+    outcome: "failed";
+    durationMs: number;
+    counts?: FreshnessDueScheduleTelemetryCounts;
+  }
+  | {
+    eventName: typeof FRESHNESS_DUE_SCHEDULE_EVENT_NAME;
+    outcome: "terminal_replay";
+    durationMs: number;
+  };
+
 export type L1SyntheticFixtureJobTelemetryRecord =
   | L1SyntheticFixtureJobCompletedTelemetryRecord
   | L1SyntheticFixtureJobOtherTelemetryRecord;
@@ -136,7 +166,8 @@ export type TelemetryRecord =
   | L2RetrievalTelemetryRecord
   | L2DirectReasoningTelemetryRecord
   | L3LedgerTelemetryRecord
-  | L1SyntheticFixtureJobTelemetryRecord;
+  | L1SyntheticFixtureJobTelemetryRecord
+  | FreshnessDueScheduleTelemetryRecord;
 
 export interface TelemetrySink {
   record(record: TelemetryRecord): void;
@@ -232,6 +263,25 @@ function recordConsoleTelemetry(record: TelemetryRecord): void {
     return;
   }
 
+  if (input.eventName === FRESHNESS_DUE_SCHEDULE_EVENT_NAME) {
+    if (!isFreshnessDueScheduleRecord(input)) return;
+    console.log({
+      event_name: FRESHNESS_DUE_SCHEDULE_EVENT_NAME,
+      outcome: input.outcome,
+      duration_ms: input.durationMs,
+      ...(input.counts === undefined ? {} : {
+        counts: {
+          written: input.counts.written,
+          replayed: input.counts.replayed,
+          no_change: input.counts.noChange,
+          conflicts: input.counts.conflicts,
+          failures: input.counts.failures,
+        },
+      }),
+    });
+    return;
+  }
+
   if (input.eventName !== L3_LEDGER_OPERATION_EVENT_NAME) return;
 
   if (input.outcome === "success") {
@@ -302,6 +352,13 @@ const L3_STOP_REASONS = new Set<L3LedgerStopReason>([
   "awaiting_moderator",
   "completed",
 ]);
+const FRESHNESS_DUE_SCHEDULE_OUTCOMES = new Set<FreshnessDueScheduleOutcome>([
+  "completed",
+  "failed",
+  "terminal_replay",
+]);
+const FRESHNESS_DUE_SCHEDULE_COUNT_KEYS = ["written", "replayed", "noChange", "conflicts", "failures"] as const;
+const FRESHNESS_DUE_SCHEDULE_MAX_COUNT = 100;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -388,10 +445,54 @@ function isL1SyntheticFixtureJobRecord(value: Record<string, unknown>): boolean 
       : value.reportCount > 0);
 }
 
+function isFreshnessDueScheduleRecord(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & {
+  outcome: FreshnessDueScheduleOutcome;
+  durationMs: number;
+  counts?: FreshnessDueScheduleTelemetryCounts;
+} {
+  if (!FRESHNESS_DUE_SCHEDULE_OUTCOMES.has(value.outcome as FreshnessDueScheduleOutcome)
+    || !isFiniteNonNegative(value.durationMs)) {
+    return false;
+  }
+
+  if (value.outcome === "terminal_replay") {
+    return hasExactKeys(value, ["eventName", "outcome", "durationMs"]);
+  }
+
+  if (value.outcome === "completed") {
+    return hasExactKeys(value, ["eventName", "outcome", "durationMs", "counts"])
+      && isFreshnessDueScheduleCounts(value.counts);
+  }
+
+  return hasExactKeys(value, ["eventName", "outcome", "durationMs"])
+    || (hasExactKeys(value, ["eventName", "outcome", "durationMs", "counts"])
+      && isFreshnessDueScheduleCounts(value.counts));
+}
+
+function isFreshnessDueScheduleCounts(value: unknown): value is FreshnessDueScheduleTelemetryCounts {
+  if (!isRecord(value) || !hasExactKeys(value, FRESHNESS_DUE_SCHEDULE_COUNT_KEYS)) return false;
+
+  let total = 0;
+  for (const key of FRESHNESS_DUE_SCHEDULE_COUNT_KEYS) {
+    const count = value[key];
+    if (!isCounter(count) || count > FRESHNESS_DUE_SCHEDULE_MAX_COUNT) return false;
+    total += count;
+  }
+  return total <= FRESHNESS_DUE_SCHEDULE_MAX_COUNT;
+}
+
 function isBoundedCount(value: unknown): value is number {
   return isCounter(value) && value <= L1_SYNTHETIC_FIXTURE_TELEMETRY_MAX_COUNT;
 }
 
 function hasOwn(value: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function hasExactKeys(value: object, expectedKeys: readonly string[]): boolean {
+  const expected = new Set(expectedKeys);
+  const keys = Object.keys(value);
+  return keys.length === expected.size && keys.every((key) => expected.has(key));
 }
