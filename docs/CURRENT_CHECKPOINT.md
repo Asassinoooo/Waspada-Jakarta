@@ -8,7 +8,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Active implementation:** None. The next bounded local slice is to compose the accepted due evaluator and trace functions behind a disabled-by-default Worker scheduled handler. It must not add a Cron entry, configure Hyperdrive, assign hosted role membership, or access live data.
+**Active implementation:** `LIFE-01-FRESHNESS-DUE-WORKER-RUNTIME-CORE` is assigned on its own branch/worktree. It composes one bounded due page through the accepted trace functions behind exact-live, explicit-flag, dedicated-connection gates. It adds no Cron entry, Hyperdrive resource, hosted role membership, or live-data access. See [the assignment](assignments/LIFE-01-FRESHNESS-DUE-WORKER-RUNTIME-CORE.md).
 **Remote state:** Local `main` is ahead of `origin/main`; the authorized push remains blocked because WSL Git has no GitHub HTTPS credential available. No remote repository changes have been made since the last successful push.
 
 ## Repository state
