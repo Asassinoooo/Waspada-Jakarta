@@ -41,6 +41,8 @@ The user selected append-only freshness transition records bound to exact immuta
 
 `LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE` is accepted on local `main`, preserving implementation commit `e0ec2cf4ce8557234e80154cf306a050507bb597` (`test(LIFE-01): compose freshness due evaluation in PGlite`) and handoff commit `2ee1d9b3ddaeac41104a9d99faa72c3282db7bdb` (`docs(LIFE-01): record due composition handoff`). The synthetic PGlite test composes the due reader, evaluator, recorder, SQL ledger, and current-public views at an explicit instant; it verifies an exact-version issuer-expiry transition, the conservative event aggregate, a subsequent due-read exclusion, and unchanged event/impact/publication-decision data. Root independently passed the focused test (1/1) and assigned-base diff check. The agent passed `npm run db:test` (28/28 files), `npm test` (workspace 387 tests, DB 28/28 files, evaluation 12), typecheck, and Vite/Wrangler dry-run build in WSL Ubuntu-26.04. No runtime binding, scheduler, API, migration, dependency, or source access changed. PGlite was used; hosted Neon and outbox mutation are not exercised. See the [assignment](docs/assignments/LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE.md) and [handoff](docs/assignments/LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE-HANDOFF.md).
 
+`DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE` is assigned to extend the existing request-scoped PostgreSQL adapter with an explicit `TransactionalSqlExecutor` operation, required by the append-only freshness ledger. The work is limited to adapter and fake-client tests; it does not wire an application runtime, database binding, secret, or schedule. Hosted connectivity remains outside the task.
+
 ## 1. Document ownership and change control
 
 | Document | Owns |
