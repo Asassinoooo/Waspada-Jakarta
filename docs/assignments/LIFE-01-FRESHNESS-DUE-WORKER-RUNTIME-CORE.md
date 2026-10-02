@@ -1,11 +1,11 @@
 # LIFE-01-FRESHNESS-DUE-WORKER-RUNTIME-CORE — disabled-by-default scheduled composition
 
-**Status:** Assigned for isolated implementation.<br>
+**Status:** Accepted on local `main` after root review.<br>
 **Backlog ID:** `LIFE-01-FRESHNESS-DUE-WORKER-RUNTIME-CORE`<br>
 **Implementation model:** GPT-6 Luna, max reasoning<br>
 **Branch:** `work/LIFE-01-FRESHNESS-DUE-WORKER-RUNTIME-CORE`<br>
 **Worktree:** `/mnt/c/Users/perry/.codex/worktrees/life-01-freshness-due-worker-runtime-core/RPL`<br>
-**Assigned base:** Exact local `main` SHA supplied in root dispatch after this assignment is committed.<br>
+**Assigned base:** `efc968bf60ff18f20b37fab1e046f49b43605ce0`.<br>
 **Contract baseline:** Accepted freshness due reader/evaluator, exact-version transition ledger, migration 026 trace functions, `TransactionalSqlExecutor`, ADR-038/039, and existing Worker scheduled-event boundary. Do not change public API/DTOs or the freshness ledger/function contracts.
 
 ## Objective
