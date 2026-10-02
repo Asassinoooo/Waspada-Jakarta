@@ -8,7 +8,7 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Active implementation:** None. The scheduled freshness runtime is accepted and remains disabled by default. The next local slice will extend Layer 5 telemetry to cover the bounded freshness scheduler without recording event, source, schedule-slot, or connection identifiers.
+**Active implementation:** `OBS-01-FRESHNESS-DUE-TELEMETRY-CORE` is assigned on its own branch/worktree. It reuses the existing Layer 5 sink for bounded outcome/duration/count events from active freshness due runs and excludes schedule, incident, source, evidence, and connection identifiers. It changes no external sink configuration. See [the assignment](assignments/OBS-01-FRESHNESS-DUE-TELEMETRY-CORE.md).
 **Remote state:** Local `main` is ahead of `origin/main`; the authorized push remains blocked because WSL Git has no GitHub HTTPS credential available. No remote repository changes have been made since the last successful push.
 
 ## Repository state
