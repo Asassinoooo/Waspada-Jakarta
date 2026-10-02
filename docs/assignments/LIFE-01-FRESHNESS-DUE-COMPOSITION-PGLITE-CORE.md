@@ -29,6 +29,7 @@ Add one focused, test-only PGlite composition that exercises the actual due-targ
 ## Allowed paths
 
 - `apps/db/test/freshness-due-evaluator-composition.test.ts` (new)
+- `docs/assignments/LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE-HANDOFF.md` (new implementation handoff)
 
 If the existing synthetic fixture helpers cannot support a minimal valid event/impact publication lineage, stop and report the exact fixture seam to root rather than modifying production paths or broadening scope.
 
