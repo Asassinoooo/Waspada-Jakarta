@@ -1,12 +1,18 @@
 # LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE — synthetic due-evaluation vertical composition
 
-**Status:** Assigned for isolated implementation.<br>
+**Status:** Accepted and integrated on local `main`.<br>
 **Backlog ID:** `LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE`<br>
 **Implementation model:** GPT-6 Luna, max reasoning<br>
 **Branch:** `work/LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE`<br>
 **Worktree:** `/mnt/c/Users/perry/.codex/worktrees/life-01-freshness-due-composition-pglite-core/RPL`<br>
 **Assigned base:** Exact local `main` SHA supplied in the root dispatch after this assignment is committed.<br>
 **Contract baseline:** Existing internal Layer 4 due-reader/evaluator/recorder ports, append-only freshness ledger, current-public views, Schema 2.0 records, ADR-032/038; no API/DTO/OpenAPI change.
+
+**Accepted commits:** `e0ec2cf4ce8557234e80154cf306a050507bb597` — `test(LIFE-01): compose freshness due evaluation in PGlite`; `2ee1d9b3ddaeac41104a9d99faa72c3282db7bdb` — `docs(LIFE-01): record due composition handoff`.<br>
+**Changed paths:** `apps/db/test/freshness-due-evaluator-composition.test.ts`; `docs/assignments/LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE-HANDOFF.md`.<br>
+**Root review:** Full allowed-path diff reviewed; focused test passed 1/1; assigned-base `git diff --check` passed. The two commits were fast-forwarded to local `main`.
+
+The agent's WSL Ubuntu-26.04 checks passed: `npm run db:test` (28/28 files), `npm test` (workspace 387 tests, DB 28/28 files, evaluation 12), `npm run typecheck`, `npm run build` (Vite production build and Wrangler dry-run), and assigned-base diff check. PGlite only; hosted Neon behavior remains unverified. The outbox row for this synthetic event is absent both before and after the test because the existing outbox is live-only. No runtime binding, schedule, migration, dependency, API, or external source changed. See the [implementation handoff](LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE-HANDOFF.md).
 
 ## Objective
 

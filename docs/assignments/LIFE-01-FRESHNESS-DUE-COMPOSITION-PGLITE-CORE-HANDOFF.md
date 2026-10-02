@@ -1,10 +1,13 @@
 # LIFE-01 freshness due-composition implementation handoff
 
+- **Status:** Accepted and integrated on local `main`.
 - **Backlog ID:** `LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE`
 - **Branch:** `work/LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE`
 - **Worktree:** `/mnt/c/Users/perry/.codex/worktrees/life-01-freshness-due-composition-pglite-core/RPL`
 - **Assigned base:** `8ff0811f343560f8c14a4ef5d9697d8ab4c389bb`
 - **Implementation commit:** `e0ec2cf4ce8557234e80154cf306a050507bb597` — `test(LIFE-01): compose freshness due evaluation in PGlite`
+- **Handoff commit:** `2ee1d9b3ddaeac41104a9d99faa72c3282db7bdb` — `docs(LIFE-01): record due composition handoff`
+- **Root review:** Full assigned-path diff reviewed; focused test passed 1/1; assigned-base `git diff --check` passed. Both agent commits were fast-forwarded to local `main`.
 
 ## Implemented behavior
 
