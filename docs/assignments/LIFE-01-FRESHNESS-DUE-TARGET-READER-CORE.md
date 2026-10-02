@@ -1,11 +1,13 @@
 # LIFE-01-FRESHNESS-DUE-TARGET-READER-CORE — bounded due freshness candidates
 
-**Status:** Assigned for isolated implementation.  
+**Status:** Accepted on local `main` after root review.
 **Backlog ID:** `LIFE-01-FRESHNESS-DUE-TARGET-READER-CORE`  
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/LIFE-01-FRESHNESS-DUE-TARGET-READER-CORE`  
 **Worktree:** Root creates a dedicated worktree from the exact local `main` commit named in dispatch.  
 **Contract baseline:** Schema 2.0 event/impact records and current `FreshnessStatus`; no public contract change.
+
+**Commits:** `2cba16e4baa32eda578efd3e44093a958109064a` (`feat(LIFE-01): add bounded freshness due-target reader`); `3cf00313e4ee46991547e31b5c52d5f52e5d40d5` (`docs(LIFE-01): record due-target reader handoff`). See the [implementation handoff](LIFE-01-FRESHNESS-DUE-TARGET-READER-CORE-HANDOFF.md).
 
 ## Context and dependencies
 
