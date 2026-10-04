@@ -9,7 +9,7 @@
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 **Active implementation:** `JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE` is assigned on `work/JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE` from implementation base `2cf9612ea365b8a72801c04049c3af3abe7bc9ec`. Its dedicated managed worktree is recorded in the assignment. Real provider and live-source gates remain closed.
-**Remote state:** This assignment starts from the previously synchronized `main`; root will push the committed ADR, backlog entry, assignment, and checkpoint before implementation begins.
+**Remote state:** Root pushed planning commit `a032036` to `origin/main`. The isolated implementation branch remains based on the prior synchronized commit `2cf9612`, as recorded in its assignment.
 
 ## Repository state
 
