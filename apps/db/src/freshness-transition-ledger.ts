@@ -7,6 +7,8 @@ export type PersistedFreshnessTransitionReason =
   | 'issuer_validity_ended'
   | 'new_applicable_evidence_evaluated'
   | 'review_deadline_missed';
+export type SourceRevisionFreshnessTransitionReason = 'source_report_retracted' | 'source_report_superseded';
+type AllFreshnessTransitionReason = PersistedFreshnessTransitionReason | SourceRevisionFreshnessTransitionReason;
 
 export type FreshnessTransitionTarget =
   | { readonly kind: 'event_claim_set' }
@@ -28,6 +30,12 @@ export interface AppendFreshnessTransitionInput {
   readonly evidenceReferenceIds: readonly string[];
 }
 
+export interface AppendSourceRevisionFreshnessTransitionInput
+  extends Omit<AppendFreshnessTransitionInput, 'reason'> {
+  readonly reason: SourceRevisionFreshnessTransitionReason;
+  readonly sourceObservationId: string;
+}
+
 export interface FreshnessTransitionRecord {
   readonly transitionId: string;
   readonly datasetKind: FreshnessDatasetKind;
@@ -43,6 +51,13 @@ export interface FreshnessTransitionRecord {
   readonly idempotencyKey: string;
   readonly requestFingerprint: string;
   readonly evidenceReferenceIds: readonly string[];
+  readonly sourceObservationId: string | null;
+}
+
+export interface SourceRevisionFreshnessTransitionRecord
+  extends Omit<FreshnessTransitionRecord, 'reason' | 'sourceObservationId'> {
+  readonly reason: SourceRevisionFreshnessTransitionReason;
+  readonly sourceObservationId: string;
 }
 
 export type FreshnessTransitionConflictCode =
@@ -60,8 +75,13 @@ export type FreshnessTransitionAppendResult =
   | { readonly outcome: 'written' | 'replayed'; readonly record: FreshnessTransitionRecord }
   | { readonly outcome: 'conflict'; readonly code: FreshnessTransitionConflictCode };
 
+export type SourceRevisionFreshnessTransitionAppendResult =
+  | { readonly outcome: 'written' | 'replayed'; readonly record: SourceRevisionFreshnessTransitionRecord }
+  | { readonly outcome: 'conflict'; readonly code: FreshnessTransitionConflictCode };
+
 export interface FreshnessTransitionLedgerRepository {
   append(input: AppendFreshnessTransitionInput): Promise<FreshnessTransitionAppendResult>;
+  append(input: AppendSourceRevisionFreshnessTransitionInput): Promise<SourceRevisionFreshnessTransitionAppendResult>;
 }
 
 export class FreshnessTransitionLedgerInputError extends Error {
@@ -78,9 +98,19 @@ export class FreshnessTransitionLedgerStorageError extends Error {
   }
 }
 
-interface Snapshot extends AppendFreshnessTransitionInput {
+interface Snapshot extends Omit<AppendFreshnessTransitionInput, 'reason'> {
   readonly evidenceReferenceIds: readonly string[];
+  readonly reason: AllFreshnessTransitionReason;
+  readonly sourceObservationId: string | null;
 }
+
+interface InternalFreshnessTransitionRecord extends Omit<FreshnessTransitionRecord, 'reason'> {
+  readonly reason: AllFreshnessTransitionReason;
+}
+
+type InternalAppendResult =
+  | { readonly outcome: 'written' | 'replayed'; readonly record: InternalFreshnessTransitionRecord }
+  | { readonly outcome: 'conflict'; readonly code: FreshnessTransitionConflictCode };
 
 interface TransitionRow {
   readonly transition_id: string;
@@ -93,11 +123,12 @@ interface TransitionRow {
   readonly transition_sequence: number;
   readonly previous_status: FreshnessStatus;
   readonly resulting_status: FreshnessStatus;
-  readonly reason: PersistedFreshnessTransitionReason;
+  readonly reason: AllFreshnessTransitionReason;
   readonly evaluated_at: string;
   readonly trace_id: string;
   readonly idempotency_key: string;
   readonly request_fingerprint: string;
+  readonly source_observation_id: string | null;
 }
 
 interface TargetVersionRow {
@@ -117,8 +148,9 @@ interface EvidenceReferenceRow {
 
 const DATASETS = new Set<FreshnessDatasetKind>(['live', 'historical', 'synthetic']);
 const STATUSES = new Set<FreshnessStatus>(['current', 'needs_update', 'expired']);
-const REASONS = new Set<PersistedFreshnessTransitionReason>([
+const REASONS = new Set<AllFreshnessTransitionReason>([
   'issuer_validity_ended', 'new_applicable_evidence_evaluated', 'review_deadline_missed',
+  'source_report_retracted', 'source_report_superseded',
 ]);
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
@@ -130,6 +162,7 @@ const INPUT_KEYS = [
   'datasetKind', 'eventId', 'eventVersion', 'target', 'expectedSequence', 'previousStatus',
   'resultingStatus', 'reason', 'evaluatedAt', 'traceId', 'idempotencyKey', 'evidenceReferenceIds',
 ] as const;
+const OPTIONAL_INPUT_KEYS = ['sourceObservationId'] as const;
 
 export function createSqlFreshnessTransitionLedger(
   transactions: TransactionalSqlExecutor,
@@ -143,12 +176,17 @@ export function createSqlFreshnessTransitionLedger(
 class SqlFreshnessTransitionLedger implements FreshnessTransitionLedgerRepository {
   constructor(private readonly transactions: TransactionalSqlExecutor) {}
 
-  async append(input: AppendFreshnessTransitionInput): Promise<FreshnessTransitionAppendResult> {
+  async append(input: AppendFreshnessTransitionInput): Promise<FreshnessTransitionAppendResult>;
+  async append(input: AppendSourceRevisionFreshnessTransitionInput): Promise<SourceRevisionFreshnessTransitionAppendResult>;
+  async append(
+    input: AppendFreshnessTransitionInput | AppendSourceRevisionFreshnessTransitionInput,
+  ): Promise<FreshnessTransitionAppendResult | SourceRevisionFreshnessTransitionAppendResult> {
     const snapshot = snapshotInput(input);
     const requestFingerprint = fingerprint(snapshot);
     try {
-      return await this.transactions.transaction((transaction) =>
+      const result = await this.transactions.transaction((transaction) =>
         this.appendInTransaction(transaction, snapshot, requestFingerprint));
+      return publicResult(snapshot.reason, result);
     } catch (error) {
       if (pgConstraint(error, 'freshness_transition_evidence_required')) {
         throw new FreshnessTransitionLedgerInputError('evidence_references_required');
@@ -164,7 +202,7 @@ class SqlFreshnessTransitionLedger implements FreshnessTransitionLedgerRepositor
     transaction: SqlExecutor,
     input: Snapshot,
     requestFingerprint: string,
-  ): Promise<FreshnessTransitionAppendResult> {
+  ): Promise<InternalAppendResult> {
     await lock(transaction, 'waspada:freshness-idempotency:', input.idempotencyKey);
     const priorByKey = await findByIdempotencyKey(transaction, input.idempotencyKey);
     if (priorByKey) {
@@ -239,17 +277,19 @@ class SqlFreshnessTransitionLedger implements FreshnessTransitionLedgerRepositor
       `INSERT INTO waspada.freshness_transitions
          (dataset_kind, event_id, event_version, target_kind, impact_id, impact_version,
           transition_sequence, previous_status, resulting_status, reason, evaluated_at,
-          trace_id, idempotency_key, request_fingerprint)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          trace_id, idempotency_key, request_fingerprint, source_observation_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT DO NOTHING
        RETURNING transition_id::text AS transition_id, dataset_kind, event_id, event_version,
                  target_kind, impact_id, impact_version, transition_sequence, previous_status,
-                 resulting_status, reason, evaluated_at, trace_id, idempotency_key, request_fingerprint`,
+                 resulting_status, reason, evaluated_at, trace_id, idempotency_key, request_fingerprint,
+                 source_observation_id`,
       [input.datasetKind, input.eventId, input.eventVersion, input.target.kind,
         input.target.kind === 'impact' ? input.target.impactId : null,
         input.target.kind === 'impact' ? input.target.impactVersion : null,
         input.expectedSequence, input.previousStatus, input.resultingStatus, input.reason,
-        input.evaluatedAt, input.traceId, input.idempotencyKey, requestFingerprint],
+        input.evaluatedAt, input.traceId, input.idempotencyKey, requestFingerprint,
+        input.sourceObservationId],
     );
     const row = inserted.rows[0];
     if (!row) {
@@ -278,14 +318,16 @@ class SqlFreshnessTransitionLedger implements FreshnessTransitionLedgerRepositor
 }
 
 function snapshotInput(value: unknown): Snapshot {
-  if (!isObject(value) || !hasExactKeys(value, INPUT_KEYS)) return invalid();
+  if (!isObject(value) || !hasExactKeysWithOptional(value, INPUT_KEYS, OPTIONAL_INPUT_KEYS)) return invalid();
   if (typeof value.datasetKind !== 'string' || !DATASETS.has(value.datasetKind as FreshnessDatasetKind)) return invalid();
   if (!isId(value.eventId) || !isId(value.traceId) || !isIdempotencyKey(value.idempotencyKey)) return invalid();
   if (!positiveInt(value.eventVersion) || !positiveInt(value.expectedSequence)) return invalid();
   if (typeof value.previousStatus !== 'string' || !STATUSES.has(value.previousStatus as FreshnessStatus)) return invalid();
   if (typeof value.resultingStatus !== 'string' || !STATUSES.has(value.resultingStatus as FreshnessStatus)) return invalid();
-  if (typeof value.reason !== 'string' || !REASONS.has(value.reason as PersistedFreshnessTransitionReason)) return invalid();
+  if (typeof value.reason !== 'string' || !REASONS.has(value.reason as AllFreshnessTransitionReason)) return invalid();
   if (typeof value.evaluatedAt !== 'string' || !RFC3339_PATTERN.test(value.evaluatedAt)) return invalid();
+  if (Object.hasOwn(value, 'sourceObservationId')
+    && value.sourceObservationId !== undefined && !isId(value.sourceObservationId)) return invalid();
   if (!isObject(value.target)) return invalid();
 
   let target: FreshnessTransitionTarget;
@@ -306,16 +348,21 @@ function snapshotInput(value: unknown): Snapshot {
   }
   if (new Set(evidenceReferenceIds).size !== evidenceReferenceIds.length) return invalid();
   evidenceReferenceIds.sort((left, right) => BigInt(left) < BigInt(right) ? -1 : BigInt(left) > BigInt(right) ? 1 : 0);
-  const reason = value.reason as PersistedFreshnessTransitionReason;
+  const reason = value.reason as AllFreshnessTransitionReason;
   const previousStatus = value.previousStatus as FreshnessStatus;
   const resultingStatus = value.resultingStatus as FreshnessStatus;
+  const sourceObservationId = typeof value.sourceObservationId === 'string' ? value.sourceObservationId : null;
   if (previousStatus === resultingStatus
     || (reason === 'issuer_validity_ended'
-      && (resultingStatus !== 'expired' || previousStatus === 'expired'))
+      && (resultingStatus !== 'expired' || previousStatus === 'expired' || sourceObservationId !== null))
     || (reason === 'review_deadline_missed'
-      && (previousStatus !== 'current' || resultingStatus !== 'needs_update'))
+      && (previousStatus !== 'current' || resultingStatus !== 'needs_update' || sourceObservationId !== null))
     || (reason === 'new_applicable_evidence_evaluated'
-      && ((previousStatus !== 'needs_update' && previousStatus !== 'expired') || resultingStatus !== 'current'))) {
+      && ((previousStatus !== 'needs_update' && previousStatus !== 'expired') || resultingStatus !== 'current'
+        || sourceObservationId !== null))
+    || ((reason === 'source_report_retracted' || reason === 'source_report_superseded')
+      && (value.datasetKind !== 'live' || previousStatus !== 'current' || resultingStatus !== 'needs_update'
+        || sourceObservationId === null))) {
     return invalid();
   }
   if (reason === 'new_applicable_evidence_evaluated' && evidenceReferenceIds.length === 0) {
@@ -338,6 +385,7 @@ function snapshotInput(value: unknown): Snapshot {
     traceId: value.traceId,
     idempotencyKey: value.idempotencyKey,
     evidenceReferenceIds,
+    sourceObservationId,
   };
 }
 
@@ -345,7 +393,8 @@ async function findByIdempotencyKey(transaction: SqlExecutor, idempotencyKey: st
   const result = await transaction.query<TransitionRow>(
     `SELECT transition_id::text AS transition_id, dataset_kind, event_id, event_version,
             target_kind, impact_id, impact_version, transition_sequence, previous_status,
-            resulting_status, reason, evaluated_at, trace_id, idempotency_key, request_fingerprint
+            resulting_status, reason, evaluated_at, trace_id, idempotency_key, request_fingerprint,
+            source_observation_id
      FROM waspada.freshness_transitions WHERE idempotency_key = $1`,
     [idempotencyKey],
   );
@@ -369,7 +418,7 @@ async function findLatestTransition(
   return result.rows[0] ?? null;
 }
 
-async function loadRecord(transaction: SqlExecutor, row: TransitionRow): Promise<FreshnessTransitionRecord> {
+async function loadRecord(transaction: SqlExecutor, row: TransitionRow): Promise<InternalFreshnessTransitionRecord> {
   const links = await transaction.query<EvidenceReferenceRow>(
     `SELECT evidence_ref_id::text AS evidence_ref_id
      FROM waspada.freshness_transition_evidence
@@ -380,7 +429,10 @@ async function loadRecord(transaction: SqlExecutor, row: TransitionRow): Promise
   return recordFromRow(row, links.rows.map(({ evidence_ref_id }) => evidence_ref_id));
 }
 
-function recordFromRow(row: TransitionRow, evidenceReferenceIds: readonly string[]): FreshnessTransitionRecord {
+function recordFromRow(
+  row: TransitionRow,
+  evidenceReferenceIds: readonly string[],
+): InternalFreshnessTransitionRecord {
   const target: FreshnessTransitionTarget = row.target_kind === 'event_claim_set'
     ? { kind: 'event_claim_set' }
     : { kind: 'impact', impactId: row.impact_id!, impactVersion: row.impact_version! };
@@ -399,6 +451,33 @@ function recordFromRow(row: TransitionRow, evidenceReferenceIds: readonly string
     idempotencyKey: row.idempotency_key,
     requestFingerprint: row.request_fingerprint,
     evidenceReferenceIds: [...evidenceReferenceIds],
+    sourceObservationId: row.source_observation_id,
+  };
+}
+
+function publicResult(
+  reason: AllFreshnessTransitionReason,
+  result: InternalAppendResult,
+): FreshnessTransitionAppendResult | SourceRevisionFreshnessTransitionAppendResult {
+  if (result.outcome === 'conflict') return result;
+  if (reason === 'source_report_retracted' || reason === 'source_report_superseded') {
+    if (result.record.sourceObservationId === null) return { outcome: 'conflict', code: 'target_changed' };
+    return {
+      outcome: result.outcome,
+      record: {
+        ...result.record,
+        reason,
+        sourceObservationId: result.record.sourceObservationId,
+      },
+    };
+  }
+  return {
+    outcome: result.outcome,
+    record: {
+      ...result.record,
+      reason,
+      sourceObservationId: null,
+    },
   };
 }
 
@@ -434,6 +513,16 @@ function sameStringList(left: readonly string[], right: readonly string[]): bool
 function hasExactKeys(value: Record<string, unknown>, expectedKeys: readonly string[]): boolean {
   const expected = new Set<string>(expectedKeys);
   return Object.keys(value).length === expected.size && Object.keys(value).every((key) => expected.has(key));
+}
+
+function hasExactKeysWithOptional(
+  value: Record<string, unknown>,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[],
+): boolean {
+  const allowed = new Set<string>([...requiredKeys, ...optionalKeys]);
+  return requiredKeys.every((key) => Object.hasOwn(value, key))
+    && Object.keys(value).every((key) => allowed.has(key));
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

@@ -242,7 +242,7 @@ describe('LIFE-01 source revision observations', () => {
     ), /report_revision_source_observations is append-only/);
     await assert.rejects(database.executor.execute(
       'TRUNCATE waspada.report_revision_source_observations',
-    ), /append-only/);
+    ), /append-only|cannot truncate a table referenced in a foreign key constraint/iu);
     const after = await database.executor.query<{ count: string }>(
       `SELECT count(*)::text AS count FROM waspada.report_revision_source_observations
        WHERE dataset_kind = $1 AND observation_id = $2`,
