@@ -1,6 +1,6 @@
 # LIFE-01-SOURCE-REVISION-REVIEW-CANDIDATE-READER-CORE — read affected current publications
 
-**Status:** Assigned for isolated implementation under [ADR-045](../decisions/ADR-045-source-revision-review-candidates.md).
+**Status:** Accepted on local `main` after independent root review under [ADR-045](../decisions/ADR-045-source-revision-review-candidates.md). The agent implementation and handoff commits are integrated by merge `b57de8ad8cbfbd3c8de73e23657873e529a36083`.
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-REVIEW-CANDIDATE-READER-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-REVIEW-CANDIDATE-READER-CORE`
@@ -54,3 +54,7 @@ Do not change the source-observation ledger semantics, L2 gate, freshness policy
 ## Stop conditions
 
 Stop and ask root if this needs a public freshness change, publication correction/withdrawal, source-text interpretation, reviewer identity/authentication, review mutation, durable queue state, a new API or UI, source acquisition, a model call, a broader grant, or a dependency/configuration change. Keep the current published version unchanged and the read model content-free.
+
+## Root review and acceptance
+
+Root independently reviewed the agent branch from assigned base `48e038c65e8690ab096579894d211df8131d5e9e`, verified the six changed paths are within assignment scope, and passed the focused reader, migration, and public-update-feed suites (**25/25**) plus assigned-base `git diff --check` in WSL Ubuntu-26.04. The agent's full `npm run db:test` passed (**35/35 files**); full `npm test`, typecheck, and build also passed. Full DB/workspace runs preceded only final type-safe test edits; focused affected suites were rerun and passed afterward. Validation used synthetic PGlite fixtures; hosted Neon/live data remain unverified. No package, public API, freshness writer, source, provider, or deployment configuration changed.

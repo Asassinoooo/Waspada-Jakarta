@@ -1,6 +1,6 @@
 # LIFE-01 source-revision review-candidate reader handoff
 
-Implementation is complete for independent root review. It has not been accepted.
+The implementation was complete for root review at handoff time. Root acceptance is recorded in the assignment and delivery log.
 
 ## Branch and commits
 
@@ -8,7 +8,7 @@ Implementation is complete for independent root review. It has not been accepted
 - Worktree: `/mnt/d/Projects/RPL/.codex-build/worktrees/life01-source-revision-review-candidate-reader-core`
 - Exact base: `48e038c65e8690ab096579894d211df8131d5e9e`
 - Implementation commit: `e6b7e933a9dc762dc0f68c259d4f931af77bab49` — `feat(LIFE-01): add source-revision review-candidate reader`
-- This handoff is recorded in a separate commit with message `docs(LIFE-01): record review-candidate reader handoff`.
+- Handoff commit: `9d01db3ed988a6618583e1fc4f905c1e3a7138d4` — `docs(LIFE-01): record review-candidate reader handoff`.
 
 ## Implementation
 
