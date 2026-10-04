@@ -133,6 +133,8 @@ Restart-safe repeat/no-progress detection follows [ADR-030](docs/decisions/ADR-0
 
 The machine-readable boundary specification is [docs/contracts.schema.json](docs/contracts.schema.json), with [synthetic examples](docs/contracts.examples.json) for each record type. It is a design artifact, not evidence that runtime validation is implemented. All records carry schema_version and trace_id. Closed object schemas reject extra fields, and required fields distinguish explicit unknowns from omitted values.
 
+ADR-040 defines a separate future synthetic poll-processing runtime after enqueueing. It reuses the bounded L1 runner and requires both an in-memory source-ID fixture catalog and an injected L2 extraction adapter; absent either, it must not open SQL or claim a job. The current Worker still has no such provider/catalog composition. This remains a synthetic local pipeline and does not enable a live source or move ingestion into L3.
+
 | Record | Producer → consumer | Essential content |
 | --- | --- | --- |
 | ReportRevision | L1 → storage/extraction | Source and revision IDs, canonical URL, hash, permitted text, publication/fetch times, source status |

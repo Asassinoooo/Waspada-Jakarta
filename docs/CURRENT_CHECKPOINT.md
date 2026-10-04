@@ -1,15 +1,15 @@
 # Waspada Jakarta — Current Checkpoint
 
-**Checkpoint date:** 2 October 2026
-**Latest documentation update:** Root accepted `OBS-01-FRESHNESS-DUE-TELEMETRY-CORE`. The bounded scheduled runtime now records privacy-safe outcome, duration, and evaluator-count telemetry through the existing structured console sink when active; it remains dormant in the checked-in demo configuration.
+**Checkpoint date:** 4 October 2026
+**Latest documentation update:** Root assigned `JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE` after accepting the freshness telemetry slice. This next local task adds a separate one-job synthetic poll-processing runtime with injected fixture and L2 extraction boundaries; no provider or fixture catalog is configured in the checked-in Worker.
 **Latest accepted work:** Local `main` includes telemetry implementation `3dbec2dee0c873c87e013caee8172810e76d1403` and handoff `689c2a779f429fc3c35ca7a2c529d0e5ce0978d1`, following accepted freshness runtime commits `5abbf1089dae8cf0543b3ff766d616028d15af65` and `ca739f3ef876cc4b37f4d7f2a9a2d31578afb097`. Root independently passed the focused runtime/telemetry suite (20/20) and assigned-base `git diff --check`. The agent passed typecheck, full `npm test` (web 60, Worker 405, DB 30/30 files, evaluation 12/12), and `npm run build` (Vite plus Wrangler dry-run) in WSL Ubuntu-26.04; its final focused suite (20/20) included two extra test-only assertions added after the full run. No external sink or live run was exercised; hosted Neon/Cloudflare behavior remains unverified. No schedule gate, API, migration, dependency, binding, provider, source access, or deployment configuration changed. See the [handoff](assignments/OBS-01-FRESHNESS-DUE-TELEMETRY-CORE-HANDOFF.md).
 **Latest accepted test slices:** The freshness transition policy, conservative aggregate, append-only ledger, current-public status projection, bounded due-target reader/evaluator, PGlite compositions, transaction-capable PostgreSQL adapter, run-trace functions, disabled-by-default scheduled Worker runtime, and privacy-safe freshness telemetry are accepted. Hosted Neon concurrency, live sources, model quality, source dispatch, and production Workflow behavior remain unverified or gated.
 **Reason:** The local freshness evaluation path is composed and audited, but cannot run until a dedicated binding, opt-in flag, and hosted role membership are separately authorized and configured. No Cron or hosted database login has been configured. Do not enable ingestion or model providers while source rights and human-adjudicated cases remain pending. BMKG and ANTARA automation remain disabled pending written permission; PetaBencana remains conditional on confirming deployment, processing, API, privacy and retention fit.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Active implementation:** The accepted freshness telemetry slice is complete. Further live source, hosted runtime, model evaluation, and publication work remains gated by pending rights, service configuration, and human-reviewed data.
-**Remote state:** The authorized push completed successfully; local `main` is synchronized with `origin/main`, including the implementation, handoff, root acceptance, and checkpoint documentation.
+**Active implementation:** `JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE` is assigned on `work/JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE` from implementation base `2cf9612ea365b8a72801c04049c3af3abe7bc9ec`. Its dedicated managed worktree is recorded in the assignment. Real provider and live-source gates remain closed.
+**Remote state:** This assignment starts from the previously synchronized `main`; root will push the committed ADR, backlog entry, assignment, and checkpoint before implementation begins.
 
 ## Repository state
 
