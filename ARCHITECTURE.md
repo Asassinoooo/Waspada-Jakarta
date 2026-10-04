@@ -158,6 +158,8 @@ The accepted `apps/worker/src/layers/l4-application-integration/publication-poli
 
 Publication is an idempotent transaction keyed by proposal ID and policy version. A changed event version triggers re-grounding and revalidation, not a blind overwrite. Commit eligible claim versions and an outbox event together so map/feed/briefing updates remain consistent. Moderation supplies evidence and reasons, then re-enters the same gate; rejecting a claim can occur without publishing anything.
 
+The publication outbox remains append-only. [ADR-041](docs/decisions/ADR-041-publication-outbox-delivery.md) assigns a bounded at-least-once relay using a separate append-only attempt ledger and an injected sink that deduplicates by stable outbox ID. This is local relay infrastructure only: it does not select a cache/notification provider, configure a trigger, alter event publication, or deliver source-retraction/freshness updates.
+
 Public map/feed reads use published views only. Briefings summarize eligible claims with links and cannot add unsupported effects. Background jobs remove expired warnings, mark unsupported recency as stale, invalidate dependent summaries on corrections, and suppress duplicate alerts. Map geometry and audience relevance follow source scope. Browsing should remain usable when model services are unavailable, showing current stored status and source-health limitations.
 
 ## 7. Layer 5 — evaluation, monitoring and safeguards
