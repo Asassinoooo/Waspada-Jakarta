@@ -1,7 +1,7 @@
 # OBS-01-SYNTHETIC-POLL-PROCESSOR-TELEMETRY-CORE — privacy-safe synthetic poll runtime metrics
 
 **Parent package:** OBS-01 (Layer 5 evaluation and monitoring)  
-**Status:** Assigned  
+**Status:** Accepted on local `main` at root commits `b93495427d024350a31b78de5f30ed5fe7da93a3` and `222db761c5abd02e5f2d1a80c6ff7096545c93f5`<br>
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/OBS-01-SYNTHETIC-POLL-PROCESSOR-TELEMETRY-CORE`  
 **Worktree:** `C:\Users\perry\.codex\worktrees\obs-01-synthetic-poll-processor-telemetry-core\RPL`  
