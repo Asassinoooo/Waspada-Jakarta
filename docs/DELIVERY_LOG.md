@@ -1,5 +1,11 @@
 # Delivery log
 
+## Official source and public-data catalog re-check — 4 October 2026
+
+Root reviewed the current published terms and public catalog pages for BMKG, PetaBencana, ANTARA and Satu Data Jakarta. The official BMKG terms still require the official API for automated machine-to-machine access, prohibit automated scraping of the public-service interface, and direct integration/data-use requests to its legal/cooperation office. PetaBencana's current CC BY-NC 4.0 page specifies attribution, a license link, and change notice, with an educational/non-profit path; project deployment classification, API/privacy rules, processing and retention fit remain to be confirmed. ANTARA's current terms reserve uses beyond platform-enabled personal/non-commercial sharing for written consent; its RSS documentation describes feed-reader syndication, not Waspada's AI-processing or retention rights.
+
+Satu Data Jakarta's CRM entry is marked open, describes quarterly counts by period/channel/category, and is unsuitable as evidence for an individual event or warning zone. The catalog lists `Data Angka Kriminalitas yang Tertangani`, but its detail page did not render during this review, so its schema, granularity, recency and reuse terms were not verified. This remains a discovery lead, not an approved source. Root updated [SOURCE_FEASIBILITY.md](SOURCE_FEASIBILITY.md), [SOURCE_VERIFICATION_PLAN.md](../SOURCE_VERIFICATION_PLAN.md), and [REFERENCES.md](../REFERENCES.md). The browser review used official provider/catalog pages only; no report, article, image, or dataset row was downloaded, and no connector or external service was enabled. No legal determination or source approval is claimed. Source rights and human-adjudicated EVAL-01 cases remain open.
+
 ## PUB-OUTBOX-DELIVERY-CORE accepted — 4 October 2026
 
 Root reviewed and fast-forwarded `work/PUB-OUTBOX-DELIVERY-CORE` from base `33bafac0efafdea5860b5c4ce65fa86f130af1e2` to local `main`, preserving the agent's implementation commit `4eaaeefa62a8988c4769aa161d734c6833d2fa3b` (`feat(PUB-OUTBOX-DELIVERY-CORE): add durable publication outbox relay`) and handoff commit `d9ffb452402c198d74023539fcf91abf380380c9` (`docs(PUB-OUTBOX-DELIVERY-CORE): record implementation handoff`).
