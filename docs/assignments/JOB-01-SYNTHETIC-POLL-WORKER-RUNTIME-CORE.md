@@ -1,6 +1,6 @@
 # JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE — bounded fixture-poll execution
 
-**Status:** Assigned for isolated implementation.<br>
+**Status:** Accepted on local `main` after root review.<br>
 **Backlog ID:** `JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE`<br>
 **Implementation model:** GPT-6 Luna, max reasoning<br>
 **Branch:** `work/JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE`<br>
