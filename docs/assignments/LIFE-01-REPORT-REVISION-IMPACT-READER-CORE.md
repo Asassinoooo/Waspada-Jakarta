@@ -37,6 +37,7 @@ Add an internal, bounded, least-privilege Layer 4 DB reader that maps one exact 
 - `apps/db/src/report-revision-impact-reader.ts` (new)
 - `apps/db/test/report-revision-impact-reader.test.ts` (new)
 - `apps/db/test/migrations.test.ts` (migration inventory/order and role-access assertions only)
+- `apps/db/test/public-event-updates.test.ts` (staged migration inventory/order expectation only)
 - `docs/assignments/LIFE-01-REPORT-REVISION-IMPACT-READER-CORE-HANDOFF.md` (new)
 
 Do not change Layer 1 ingestion or report-revision persistence, L2 retrieval/chunks/embeddings, freshness policy or ledger, publication code/data, current public views, API/OpenAPI/DTOs, UI, authentication, source adapters/providers, scheduler/outbox, dependencies, deployment configuration, or unrelated tests. Stop and ask root if the exact lineage cannot be queried with read-only column grants or if another path is required.
