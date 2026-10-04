@@ -31,7 +31,8 @@ describe('DATA-01 migrations', () => {
       && version !== '023_l2_event_proposal_writer'
       && version !== '024_freshness_transition_ledger'
       && version !== '025_freshness_current_public_overlay'
-      && version !== '026_freshness_due_run_traces');
+      && version !== '026_freshness_due_run_traces'
+      && version !== '027_publication_outbox_delivery');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -68,7 +69,8 @@ describe('DATA-01 migrations', () => {
         && version !== '023_l2_event_proposal_writer'
         && version !== '024_freshness_transition_ledger'
         && version !== '025_freshness_current_public_overlay'
-        && version !== '026_freshness_due_run_traces');
+        && version !== '026_freshness_due_run_traces'
+        && version !== '027_publication_outbox_delivery');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -192,6 +194,7 @@ describe('DATA-01 migrations', () => {
         '024_freshness_transition_ledger',
         '025_freshness_current_public_overlay',
         '026_freshness_due_run_traces',
+        '027_publication_outbox_delivery',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -332,6 +335,7 @@ describe('DATA-01 migrations', () => {
       '024_freshness_transition_ledger',
       '025_freshness_current_public_overlay',
       '026_freshness_due_run_traces',
+      '027_publication_outbox_delivery',
     ]);
   });
 
@@ -356,12 +360,13 @@ describe('DATA-01 migrations', () => {
       '024_freshness_transition_ledger',
       '025_freshness_current_public_overlay',
       '026_freshness_due_run_traces',
+      '027_publication_outbox_delivery',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '26');
+    assert.equal(count.rows[0]?.count, '27');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -380,7 +385,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 026_freshness_due_run_traces/,
+      /Cannot apply migration 000_late_backfill before already applied migration 027_publication_outbox_delivery/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -413,6 +418,7 @@ describe('DATA-01 migrations', () => {
       { version: '024_freshness_transition_ledger' },
       { version: '025_freshness_current_public_overlay' },
       { version: '026_freshness_due_run_traces' },
+      { version: '027_publication_outbox_delivery' },
     ]);
   });
 
@@ -434,6 +440,7 @@ describe('DATA-01 migrations', () => {
       '024_freshness_transition_ledger',
       '025_freshness_current_public_overlay',
       '026_freshness_due_run_traces',
+      '027_publication_outbox_delivery',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
