@@ -1,15 +1,15 @@
 # Waspada Jakarta — Current Checkpoint
 
 **Checkpoint date:** 4 October 2026
-**Latest documentation update:** Root accepted `JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE` after independent diff review and focused WSL verification. The separate processor trigger follows the enqueue trigger and remains dormant without an injected fixture catalog and L2 extractor.
+**Latest documentation update:** Root assigned `OBS-01-SYNTHETIC-POLL-PROCESSOR-TELEMETRY-CORE` after accepting the bounded synthetic poll processor. The new slice adds only privacy-safe operational telemetry for active processor calls; the checked-in processor remains dormant without its injected fixture catalog and L2 extractor.
 **Latest accepted work:** `JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE` is integrated on local `main` at root commits `d6bf552` and `030356a`, preserving agent implementation `59673c69debc5037a975e3c84ca56410fb16fbcc` and handoff `9355d9d2f79b3ca523938693590b13c397560845`. Root independently passed Worker 6/6, PGlite 1/1, and assigned-base diff checks; the agent passed DB 31/31 files, full `npm test` (web 60, Worker 413, DB 31 files, evaluation 12), typecheck, and Vite/Wrangler dry-run in WSL Ubuntu-26.04. No provider, source, schema, grant, dependency, binding, schedule, or deployment was added. Hosted Neon and Cloudflare execution remain unverified; see the [handoff](assignments/JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE-HANDOFF.md).
 **Latest accepted test slices:** The freshness transition policy, conservative aggregate, append-only ledger, current-public status projection, bounded due-target reader/evaluator, PGlite compositions, transaction-capable PostgreSQL adapter, run-trace functions, disabled-by-default scheduled Worker runtime, and privacy-safe freshness telemetry are accepted. Hosted Neon concurrency, live sources, model quality, source dispatch, and production Workflow behavior remain unverified or gated.
 **Reason:** The local freshness evaluation path is composed and audited, but cannot run until a dedicated binding, opt-in flag, and hosted role membership are separately authorized and configured. No Cron or hosted database login has been configured. Do not enable ingestion or model providers while source rights and human-adjudicated cases remain pending. BMKG and ANTARA automation remain disabled pending written permission; PetaBencana remains conditional on confirming deployment, processing, API, privacy and retention fit.
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Active implementation:** None. Real provider and live-source gates remain closed.
-**Remote state:** Root pushed planning commit `a032036` to `origin/main`. The isolated implementation branch remains based on the prior synchronized commit `2cf9612`, as recorded in its assignment.
+**Active implementation:** `OBS-01-SYNTHETIC-POLL-PROCESSOR-TELEMETRY-CORE` is assigned on an isolated branch/worktree. No code changes are accepted yet. Real provider and live-source gates remain closed.
+**Remote state:** At assignment time, `origin/main` is synchronized through `5e2abf21b17474d1e93752bec1755f40609352a4`; root will push the assignment/checkpoint commit before implementation proceeds. The implementation branch's code baseline is that synchronized commit.
 
 ## Repository state
 
