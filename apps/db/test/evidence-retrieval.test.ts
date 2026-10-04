@@ -9,7 +9,8 @@ import {
 import { assembleGroundingReasoningRequest } from '../../worker/src/layers/l2-model-grounding/grounding-context.js';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createRepositoryPorts, type NewReportRevision, type TraceRecord } from '../src/ports.js';
-import type { EvidenceRetrievalQuery } from '../src/evidence-retrieval.js';
+import type { EvidenceRetrievalCandidate, EvidenceRetrievalQuery } from '../src/evidence-retrieval.js';
+import type { SqlExecutor } from '../src/sql.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const syntheticStartedAt = '2026-09-25T05:00:00Z';
@@ -615,6 +616,159 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
     }
   });
 
+  it('blocks exact spans with any same-dataset non-current source assertion under the L2 reader', async () => {
+    const invalidationCases = [
+      { state: 'superseded' as const, reportRevisionId: 'revision-gate-superseded' },
+      { state: 'retracted' as const, reportRevisionId: 'revision-gate-retracted' },
+      { state: 'withdrawn' as const, reportRevisionId: 'revision-gate-withdrawn' },
+    ];
+    for (const { state, reportRevisionId } of invalidationCases) {
+      const candidateId = `candidate-gate-${state}`;
+      await addFixture({
+        datasetKind: 'synthetic',
+        traceId: syntheticTrace.traceId,
+        sourceId: 'source-syn-alpha',
+        candidateId,
+        reportRevisionId,
+        text: `Authored synthetic ${state} target text.`,
+        span: `${state} target text`,
+        relation: 'supports',
+        revisionStatus: 'eligible',
+        publishedAt: null,
+        observedAt: null,
+        retrievedAt: syntheticStartedAt,
+        eventTime: { start: null, end: null, precision: 'unknown' },
+        vector: null,
+      });
+
+      let assertionRevisionId = reportRevisionId;
+      let replacementRevisionId: string | null = null;
+      if (state === 'superseded') {
+        replacementRevisionId = `${reportRevisionId}-replacement`;
+        assertionRevisionId = replacementRevisionId;
+        await addAssertionRevision(
+          replacementRevisionId,
+          `Publisher synthetic notice: ${reportRevisionId} is superseded.`,
+          reportRevisionId,
+        );
+      } else {
+        assertionRevisionId = `${reportRevisionId}-notice`;
+        await addAssertionRevision(
+          assertionRevisionId,
+          `Publisher synthetic notice: ${reportRevisionId} is ${state}.`,
+        );
+      }
+      await addSourceObservation({
+        observationId: `observation-gate-${state}`,
+        targetReportRevisionId: reportRevisionId,
+        assertionReportRevisionId: assertionRevisionId,
+        assertedState: state,
+        replacementReportRevisionId: replacementRevisionId,
+      });
+    }
+
+    // A revision ID is only unique within its dataset. This historical assertion
+    // must not affect the synthetic report with the same ID.
+    await addAssertionRevision(
+      'revision-syn-alpha',
+      'Historical synthetic notice for an independent dataset namespace.',
+      null,
+      'historical',
+      historyTrace.traceId,
+    );
+    await addSourceObservation({
+      datasetKind: 'historical',
+      traceId: historyTrace.traceId,
+      observationId: 'observation-gate-other-dataset',
+      targetReportRevisionId: 'revision-syn-alpha',
+      assertionReportRevisionId: 'revision-syn-alpha',
+      assertedState: 'retracted',
+    });
+
+    const observedQueryRows: Array<{
+      readonly source_revision_invalidated: boolean;
+      readonly exact_span_text: string | null;
+    }> = [];
+    const recordingExecutor: SqlExecutor = {
+      async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
+        const result = await testDatabase.executor.query<Row>(statement, parameters);
+        if (statement.includes('AS source_revision_invalidated')) {
+          const row = result.rows[0] as {
+            readonly source_revision_invalidated: boolean;
+            readonly exact_span_text: string | null;
+          } | undefined;
+          if (row) observedQueryRows.push(row);
+        }
+        return result;
+      },
+      execute: (statement) => testDatabase.executor.execute(statement),
+    };
+    const reader = createSqlExactEvidenceSpanReader(recordingExecutor);
+
+    async function expectSourceInvalidated(request: ReturnType<typeof exactSpanRequest>): Promise<void> {
+      const previousQueryCount = observedQueryRows.length;
+      await assert.rejects(
+        reader.readExactSpan(request),
+        (error: unknown) => error instanceof ExactEvidenceSpanReadError
+          && error.code === 'source_invalidated'
+          && error.message === 'source_invalidated'
+          && !error.message.includes(request.reportRevisionId),
+      );
+      assert.equal(observedQueryRows.length, previousQueryCount + 1,
+        'the exact-span denial is returned by one bounded SQL snapshot');
+      assert.equal(observedQueryRows[previousQueryCount]?.source_revision_invalidated, true);
+      assert.equal(observedQueryRows[previousQueryCount]?.exact_span_text, null,
+        'the SQL snapshot denies without returning any span text');
+    }
+
+    const alphaRequest = await exactSpanRequestFor('candidate-syn-alpha');
+    const noObservation = await withL2Reader(() => reader.readExactSpan(alphaRequest));
+    assert.equal(noObservation.text, 'closure near Monas 😀',
+      'an observation in another dataset does not invalidate the exact synthetic revision');
+    assert.equal(observedQueryRows.at(-1)?.source_revision_invalidated, false);
+    assert.equal(observedQueryRows.at(-1)?.exact_span_text, 'closure near Monas 😀');
+
+    await addSourceObservation({
+      observationId: 'observation-gate-alpha-current',
+      targetReportRevisionId: 'revision-syn-alpha',
+      assertionReportRevisionId: 'revision-syn-alpha',
+      assertedState: 'current',
+    });
+    const currentOnly = await withL2Reader(() => reader.readExactSpan(alphaRequest));
+    assert.equal(currentOnly.text, 'closure near Monas 😀');
+    assert.equal(observedQueryRows.at(-1)?.source_revision_invalidated, false);
+    assert.equal(observedQueryRows.at(-1)?.exact_span_text, 'closure near Monas 😀');
+
+    for (const { state, reportRevisionId } of invalidationCases) {
+      const request = await withL2Reader(async () => {
+        const candidate = (await ports.evidenceRetrieval.search({
+          datasetKind: 'synthetic',
+          identifiers: [{ kind: 'candidate', value: `candidate-gate-${state}` }],
+        })).candidates[0];
+        assert.ok(candidate);
+        return exactSpanRequest(candidate);
+      });
+      assert.equal(request.reportRevisionId, reportRevisionId);
+      await expectSourceInvalidated(request);
+    }
+
+    await addSourceObservation({
+      observationId: 'observation-gate-alpha-retracted',
+      targetReportRevisionId: 'revision-syn-alpha',
+      assertionReportRevisionId: 'revision-syn-alpha',
+      assertedState: 'retracted',
+    });
+    await expectSourceInvalidated(alphaRequest);
+
+    await withL2Reader(async () => {
+      await assert.rejects(
+        testDatabase.executor.query('SELECT observation_id FROM waspada.report_revision_source_observations'),
+        /permission denied|denied/i,
+        'the L2 reader sees only the three granted assertion columns',
+      );
+    });
+  });
+
   it('projects relational timestamps as timezone-independent RFC3339 accepted by strict L2 assembly', async () => {
     await addFixture({
       datasetKind: 'synthetic',
@@ -826,6 +980,92 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
          VALUES ($1, $2, 2, $3::vector)`,
         [fixture.datasetKind, runId, `[${fixture.vector.join(',')}]`],
       );
+    }
+  }
+
+  async function addAssertionRevision(
+    reportRevisionId: string,
+    text: string,
+    supersedesId: string | null = null,
+    datasetKind: 'synthetic' | 'historical' = 'synthetic',
+    traceId = syntheticTrace.traceId,
+  ): Promise<void> {
+    const revision: NewReportRevision = {
+      datasetKind,
+      reportRevisionId,
+      traceId,
+      sourceId: 'source-syn-alpha',
+      canonicalUrl: `https://fixtures.invalid/${reportRevisionId}`,
+      sourceRevisionKey: null,
+      contentHash: sha256(`synthetic raw assertion fixture: ${reportRevisionId}`),
+      permittedText: text,
+      permittedTextHash: sha256(text),
+      normalizationVersion: 'synthetic-fixture-normalizer-v1',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: syntheticStartedAt,
+      validFrom: null,
+      validUntil: null,
+      supersedesId,
+      revisionStatus: 'eligible',
+      recordJson: { fixture: 'synthetic-test-only' },
+    };
+    await ports.reportRevisions.create(revision);
+  }
+
+  async function addSourceObservation(input: {
+    readonly datasetKind?: 'synthetic' | 'historical';
+    readonly traceId?: string;
+    readonly observationId: string;
+    readonly targetReportRevisionId: string;
+    readonly assertionReportRevisionId: string;
+    readonly assertedState: 'current' | 'superseded' | 'retracted' | 'withdrawn';
+    readonly replacementReportRevisionId?: string | null;
+  }): Promise<void> {
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.report_revision_source_observations
+         (dataset_kind, observation_id, trace_id, source_id, target_report_revision_id,
+          assertion_report_revision_id, asserted_state, replacement_report_revision_id,
+          publisher_observed_at, retrieved_at)
+       VALUES ($1, $2, $3, 'source-syn-alpha', $4, $5, $6, $7, $8, $9)`,
+      [input.datasetKind ?? 'synthetic', input.observationId, input.traceId ?? syntheticTrace.traceId,
+        input.targetReportRevisionId, input.assertionReportRevisionId, input.assertedState,
+        input.replacementReportRevisionId ?? null, '2026-09-25T09:00:00Z', '2026-09-25T09:01:00Z'],
+    );
+  }
+
+  async function exactSpanRequestFor(candidateId: string) {
+    return withL2Reader(async () => {
+      const candidate = (await ports.evidenceRetrieval.search({
+        datasetKind: 'synthetic',
+        identifiers: [{ kind: 'candidate', value: candidateId }],
+      })).candidates[0];
+      assert.ok(candidate);
+      return exactSpanRequest(candidate);
+    });
+  }
+
+  function exactSpanRequest(candidate: EvidenceRetrievalCandidate) {
+    return {
+      datasetKind: candidate.datasetKind,
+      candidateId: candidate.candidateId,
+      evidenceReferenceId: candidate.evidenceReferenceId,
+      reportRevisionId: candidate.reportRevisionId,
+      permittedTextHash: candidate.permittedTextHash,
+      spanStart: candidate.spanStart,
+      spanEnd: candidate.spanEnd,
+      offsetUnit: candidate.offsetUnit,
+      relation: candidate.relation,
+      revisionStatus: candidate.revisionStatus,
+    } as const;
+  }
+
+  async function withL2Reader<Result>(work: () => Promise<Result>): Promise<Result> {
+    await testDatabase.executor.execute('SET ROLE waspada_l2_grounding_reader');
+    try {
+      return await work();
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
     }
   }
 

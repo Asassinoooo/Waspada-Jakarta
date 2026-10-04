@@ -6,6 +6,7 @@ import type {
   EvidenceRetrievalCandidate,
   EvidenceRetrievalResult,
 } from "../../db/src/evidence-retrieval.js";
+import { ExactEvidenceSpanReadError } from "../../db/src/evidence-retrieval.js";
 import {
   GroundingContextAssemblyError,
   assembleGroundingReasoningRequest,
@@ -291,6 +292,35 @@ it("rejects oversized spans and stale or malformed exact-reader results", async 
     assembleGroundingReasoningRequest(shortSpanReader, makeInput(normalRetrieval, ["502"], false)),
     assemblyError("rehydrated_span_mismatch"),
   );
+});
+
+it("maps a source-invalidated exact span to a stable redacted L2 context error", async () => {
+  const candidate = makeCandidate({
+    evidenceReferenceId: "503",
+    reportRevisionId: "revision-source-invalidated-private-id",
+    spanStart: 0,
+    relation: "supports",
+    revisionStatus: "eligible",
+    exactText: "private source excerpt",
+  });
+  const retrieval = makeRetrieval([candidate], null);
+  let reads = 0;
+  const reader: ExactEvidenceSpanReader = {
+    async readExactSpan() {
+      reads += 1;
+      throw new ExactEvidenceSpanReadError("source_invalidated");
+    },
+  };
+
+  await assert.rejects(
+    assembleGroundingReasoningRequest(reader, makeInput(retrieval, ["503"], true)),
+    (error: unknown) => error instanceof GroundingContextAssemblyError
+      && error.code === "source_invalidated"
+      && error.message === "source_invalidated"
+      && !error.message.includes(candidate.reportRevisionId)
+      && !error.message.includes("private source excerpt"),
+  );
+  assert.equal(reads, 1);
 });
 
 it("runs schema 2.0 validation after copying caller fields", async () => {

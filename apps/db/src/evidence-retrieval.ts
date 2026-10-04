@@ -189,7 +189,8 @@ export type ExactEvidenceSpanReadErrorCode =
   | 'invalid_identity'
   | 'span_too_large'
   | 'not_found'
-  | 'identity_mismatch';
+  | 'identity_mismatch'
+  | 'source_invalidated';
 
 export class ExactEvidenceSpanReadError extends Error {
   constructor(readonly code: ExactEvidenceSpanReadErrorCode) {
@@ -250,8 +251,10 @@ class SqlExactEvidenceSpanReader implements ExactEvidenceSpanReader {
               revision.permitted_text_hash AS revision_permitted_text_hash,
               revision.revision_status,
               char_length(revision.permitted_text) AS report_code_points,
+              source_state.invalidated AS source_revision_invalidated,
               CASE
-                WHEN reference.report_revision_id = $4::text
+                WHEN NOT source_state.invalidated
+                 AND reference.report_revision_id = $4::text
                  AND reference.permitted_text_hash = $5::text
                  AND revision.report_revision_id = $4::text
                  AND revision.permitted_text_hash = $5::text
@@ -269,6 +272,15 @@ class SqlExactEvidenceSpanReader implements ExactEvidenceSpanReader {
                 ELSE NULL
               END AS exact_span_text
        FROM waspada.evidence_references AS reference
+       CROSS JOIN LATERAL (
+         SELECT EXISTS (
+           SELECT 1
+           FROM waspada.report_revision_source_observations AS observation
+           WHERE observation.dataset_kind = reference.dataset_kind
+             AND observation.target_report_revision_id = reference.report_revision_id
+             AND observation.asserted_state IN ('superseded', 'retracted', 'withdrawn')
+         ) AS invalidated
+       ) AS source_state
        JOIN waspada.extraction_evidence AS link
          ON link.dataset_kind = reference.dataset_kind
         AND link.evidence_ref_id = reference.evidence_ref_id
@@ -296,6 +308,9 @@ class SqlExactEvidenceSpanReader implements ExactEvidenceSpanReader {
     if (result.rows.length === 0) throw new ExactEvidenceSpanReadError('not_found');
     if (result.rows.length !== 1) throw new ExactEvidenceSpanReadError('identity_mismatch');
     const row = result.rows[0]!;
+    if (row.source_revision_invalidated) {
+      throw new ExactEvidenceSpanReadError('source_invalidated');
+    }
     if (row.dataset_kind !== request.datasetKind
       || row.candidate_id !== request.candidateId
       || row.evidence_reference_id !== request.evidenceReferenceId
@@ -344,6 +359,7 @@ interface ExactEvidenceSpanRow {
   readonly revision_permitted_text_hash: string;
   readonly revision_status: string | null;
   readonly report_code_points: number;
+  readonly source_revision_invalidated: boolean;
   readonly exact_span_text: string | null;
 }
 

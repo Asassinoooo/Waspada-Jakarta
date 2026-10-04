@@ -1,4 +1,5 @@
 import {
+  ExactEvidenceSpanReadError,
   MAX_EXACT_EVIDENCE_SPAN_CODE_POINTS,
   type ExactEvidenceSpanReader,
   type ExactEvidenceSpanRequest,
@@ -41,6 +42,7 @@ export type GroundingContextAssemblyErrorCode =
   | "span_too_large"
   | "rehydrated_identity_mismatch"
   | "rehydrated_span_mismatch"
+  | "source_invalidated"
   | "caller_input_invalid";
 
 export class GroundingContextAssemblyError extends Error {
@@ -144,7 +146,15 @@ export async function assembleGroundingReasoningRequest(
       relation: candidate.relation,
       revisionStatus: candidate.revisionStatus,
     };
-    const exactSpan = await reader.readExactSpan(exactSpanRequest);
+    let exactSpan: Awaited<ReturnType<ExactEvidenceSpanReader["readExactSpan"]>>;
+    try {
+      exactSpan = await reader.readExactSpan(exactSpanRequest);
+    } catch (error) {
+      if (error instanceof ExactEvidenceSpanReadError && error.code === "source_invalidated") {
+        throw new GroundingContextAssemblyError("source_invalidated");
+      }
+      throw error;
+    }
     if (!sameExactSpanIdentity(exactSpan, exactSpanRequest)) {
       throw new GroundingContextAssemblyError("rehydrated_identity_mismatch");
     }

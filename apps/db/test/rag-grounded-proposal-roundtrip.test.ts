@@ -16,6 +16,7 @@ import {
 } from '../../worker/src/layers/l2-model-grounding/direct-reasoning.js';
 import {
   assembleGroundingReasoningRequest,
+  GroundingContextAssemblyError,
 } from '../../worker/src/layers/l2-model-grounding/grounding-context.js';
 import {
   createReasoningContextPersister,
@@ -40,6 +41,13 @@ const ORIGIN_ID = 'origin-rag-proposal-roundtrip';
 const CONTEXT_ID = 'context-rag-proposal-roundtrip';
 const INSUFFICIENT_CONTEXT_ID = 'context-rag-proposal-insufficient';
 const PROPOSAL_ID = 'proposal-rag-proposal-roundtrip';
+const BLOCKED_CONTEXT_ID = 'context-rag-source-invalidated';
+const BLOCKED_PROPOSAL_ID = 'proposal-rag-source-invalidated';
+const BASELINE_PUBLIC_EVENT_ID = 'event-rag-source-gate-baseline';
+const BASELINE_PUBLIC_PROPOSAL_ID = 'proposal-rag-source-gate-baseline';
+const BASELINE_PUBLIC_CONTEXT_ID = 'context-rag-source-gate-baseline';
+const BASELINE_PUBLIC_DECISION_ID = 'decision-rag-source-gate-baseline';
+const BASELINE_PUBLIC_CLAIM_ID = 'claim-rag-source-gate-baseline';
 const PROPOSED_AT = '2026-09-26T14:30:00.123456+07:00';
 const EVENT_TIME = '2026-09-26T09:01:02.123456+02:00';
 const SYNTHETIC_CONFLICT = 'An authored fixture note records an unresolved status discrepancy.';
@@ -276,6 +284,89 @@ describe('RAG grounded proposal roundtrip', () => {
       'the insufficient-context path creates no public, audit, outbox, or moderator record');
   });
 
+  it('blocks the reasoning and proposal path after source invalidation without changing public state', async () => {
+    await seedPublicBaselineWithFreshness();
+    const publicBeforeAssertion = await publicAndFreshnessSnapshot();
+    const sideEffectsBeforeAssertion = await sourceGateSideEffectCounts();
+    assert.equal(publicBeforeAssertion.publicEvents.length, 1);
+    assert.equal(publicBeforeAssertion.publicEvents[0]?.event_id, BASELINE_PUBLIC_EVENT_ID);
+    assert.equal(publicBeforeAssertion.publicEvents[0]?.freshness_status, 'needs_update');
+    assert.equal(publicBeforeAssertion.freshnessTransitions.length, 1);
+
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.report_revision_source_observations
+         (dataset_kind, observation_id, trace_id, source_id, target_report_revision_id,
+          assertion_report_revision_id, asserted_state, publisher_observed_at, retrieved_at)
+       VALUES ($1, 'observation-rag-source-invalidated', $2, $3, $4, $4, 'retracted', $5, $6)`,
+      [DATASET, TRACE_ID, SOURCE_ID, REVISION_ID, '2026-09-27T04:00:00Z', '2026-09-27T04:01:00Z'],
+    );
+    const publicAfterAssertion = await publicAndFreshnessSnapshot();
+    assert.deepEqual(publicAfterAssertion, publicBeforeAssertion,
+      'the source assertion leaves the existing public version and projected freshness unchanged');
+    assert.deepEqual(await sourceGateSideEffectCounts(), sideEffectsBeforeAssertion,
+      'recording a source assertion creates no publication, freshness, audit, outbox, or review writes');
+
+    let reasoningCalls = 0;
+    let proposalBridgeCalls = 0;
+    let reasoningRequestAtCall: ReasoningRequest | undefined;
+    const contextPersister = createReasoningContextPersister(ports.groundingContexts);
+    const directReasoning = createDirectReasoningService(contextPersister, {
+      async reason(request: ReasoningRequest): Promise<CapabilityOutcome<ReasoningResult, 'reasoning'>> {
+        reasoningCalls += 1;
+        reasoningRequestAtCall = request;
+        return {
+          status: 'succeeded',
+          capability: 'reasoning',
+          value: fixedReasoningResult(request.data.groundingContext),
+        };
+      },
+    });
+    const bridge = createReasoningProposalBridge(ports.eventProposals);
+
+    const blockedPipeline = async () => {
+      const assembled = await assembleContext(BLOCKED_CONTEXT_ID, true, [], [SYNTHETIC_CONFLICT]);
+      const outcome = await withRole('waspada_l2_grounding_writer', () =>
+        directReasoning.reason(assembled.reasoningRequest));
+      if (outcome.status !== 'succeeded') assert.fail('a sufficient synthetic request should reach reasoning');
+      proposalBridgeCalls += 1;
+      const contextRow = (await contextRows(BLOCKED_CONTEXT_ID))[0];
+      assert.ok(contextRow);
+      const persistedRecord = JSON.parse(contextRow.record_json) as GroundingContextRecord;
+      const request = reasoningRequestAtCall;
+      assert.ok(request);
+      return withRole('waspada_l2_proposal_writer', () => bridge.persist({
+        capabilityOutcome: outcome,
+        groundingContext: request.data.groundingContext,
+        persistedContextRecord: persistedRecord,
+        proposalId: BLOCKED_PROPOSAL_ID,
+        proposedAt: PROPOSED_AT,
+        target: { kind: 'new' },
+        investigationId: null,
+      }));
+    };
+
+    const sideEffectsBeforeBlockedPath = await sourceGateSideEffectCounts();
+    await assert.rejects(
+      blockedPipeline(),
+      (error: unknown) => error instanceof GroundingContextAssemblyError
+        && error.code === 'source_invalidated'
+        && error.message === 'source_invalidated'
+        && !error.message.includes(REVISION_ID)
+        && !error.message.includes(SELECTED_SPAN),
+    );
+    assert.equal(reasoningCalls, 0, 'no reasoning request reaches the injected capability');
+    assert.equal(proposalBridgeCalls, 0, 'the private proposal bridge is not invoked');
+    assert.deepEqual(await contextRows(BLOCKED_CONTEXT_ID), [],
+      'the denied request is not persisted as a grounding context');
+    assert.deepEqual(await privateProposalCounts(BLOCKED_PROPOSAL_ID), {
+      proposals: '0', claims: '0', evidenceLinks: '0', originLinks: '0',
+    });
+    assert.deepEqual(await sourceGateSideEffectCounts(), sideEffectsBeforeBlockedPath,
+      'the blocked path writes no private proposal, publication, freshness, audit, outbox, or moderator data');
+    assert.deepEqual(await publicAndFreshnessSnapshot(), publicAfterAssertion,
+      'the current public event and its freshness projection remain unchanged after the L2 denial');
+  });
+
   async function seedPersistedEvidence(): Promise<void> {
     await ports.tracesAndAudit.createTrace({
       traceId: TRACE_ID,
@@ -387,6 +478,115 @@ describe('RAG grounded proposal roundtrip', () => {
       `INSERT INTO waspada.embedding_vectors (dataset_kind, embedding_run_id, dimensions, embedding)
        VALUES ($1, $2, 2, '[1,0]'::vector)`,
       [DATASET, embeddingRunId],
+    );
+  }
+
+  async function seedPublicBaselineWithFreshness(): Promise<void> {
+    await testDatabase.executor.query(
+      "INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'synthetic')",
+    );
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.grounding_contexts
+         (dataset_kind, context_id, trace_id, candidate_id, retrieval_version,
+          index_version, sufficient, record_json)
+       VALUES ($1, $2, $3, $4, 'synthetic-fixture-v1', 'not_applicable', true,
+         '{"fixture":"authored-synthetic-public-baseline"}'::jsonb)`,
+      [DATASET, BASELINE_PUBLIC_CONTEXT_ID, TRACE_ID, CANDIDATE_ID],
+    );
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.event_proposals
+         (dataset_kind, proposal_id, trace_id, candidate_id, context_id, proposed_at, record_json)
+       VALUES ($1, $2, $3, $4, $5, $6, '{"fixture":"authored-synthetic-public-baseline"}'::jsonb)`,
+      [DATASET, BASELINE_PUBLIC_PROPOSAL_ID, TRACE_ID, CANDIDATE_ID,
+        BASELINE_PUBLIC_CONTEXT_ID, PROPOSED_AT],
+    );
+    const freshness = {
+      status: 'current',
+      evaluated_at: '2026-09-26T12:00:00Z',
+      review_due_at: '2026-09-28T12:00:00Z',
+      basis: 'issuer_notice',
+    };
+    const eventRecord = {
+      schema_version: '2.0',
+      record_type: 'Event',
+      dataset_kind: DATASET,
+      event_id: BASELINE_PUBLIC_EVENT_ID,
+      version: 1,
+      title: 'Authored synthetic public baseline',
+      summary: 'A pre-existing synthetic public version for the source-revision gate test.',
+      category: 'transport_road_incidents',
+      lifecycle: 'ongoing',
+      claims: [{
+        claim_id: BASELINE_PUBLIC_CLAIM_ID,
+        text: 'The fictional crossing is closed.',
+        evidence_label: 'attributed_report',
+        support: [{
+          report_revision_id: REVISION_ID,
+          permitted_text_hash: permittedTextHash,
+          span_start: SELECTED_SPAN_START,
+          span_end: SELECTED_SPAN_END,
+          offset_unit: 'unicode_code_points',
+          relation: 'supports',
+        }],
+        origin_ids: [ORIGIN_ID],
+      }],
+      impact_refs: [],
+      publication_status: 'published',
+      publication_decision_id: BASELINE_PUBLIC_DECISION_ID,
+      published_at: RETRIEVED_AT,
+      withdrawn_at: null,
+      freshness,
+    };
+    await testDatabase.executor.transaction(async (transaction) => {
+      await transaction.execute('SET CONSTRAINTS ALL DEFERRED');
+      await transaction.query(
+        `INSERT INTO waspada.publication_decisions
+           (dataset_kind, decision_id, trace_id, proposal_id, policy_version,
+            event_id, event_version, decided_at, record_json)
+         VALUES ($1, $2, $3, $4, 'synthetic-baseline-policy-v1', $5, 1, $6,
+           '{"fixture":"authored-synthetic-public-baseline"}'::jsonb)`,
+        [DATASET, BASELINE_PUBLIC_DECISION_ID, TRACE_ID, BASELINE_PUBLIC_PROPOSAL_ID,
+          BASELINE_PUBLIC_EVENT_ID, RETRIEVED_AT],
+      );
+      await transaction.query(
+        `INSERT INTO waspada.event_versions
+           (dataset_kind, event_id, version, trace_id, supersedes_version, title, summary,
+            category, lifecycle, publication_status, withdrawal_reason, publication_decision_id,
+            published_at, withdrawn_at, record_json)
+         VALUES ($1, $2, 1, $3, NULL, $4, $5, 'transport_road_incidents', 'ongoing',
+           'published', NULL, $6, $7, NULL, $8::jsonb)`,
+        [DATASET, BASELINE_PUBLIC_EVENT_ID, TRACE_ID, eventRecord.title, eventRecord.summary,
+          BASELINE_PUBLIC_DECISION_ID, RETRIEVED_AT, JSON.stringify(eventRecord)],
+      );
+      await transaction.query(
+        `INSERT INTO waspada.event_claims
+           (dataset_kind, event_id, event_version, claim_id, claim_text, evidence_label, record_json)
+         VALUES ($1, $2, 1, $3, 'The fictional crossing is closed.', 'attributed_report', $4::jsonb)`,
+        [DATASET, BASELINE_PUBLIC_EVENT_ID, BASELINE_PUBLIC_CLAIM_ID,
+          JSON.stringify(eventRecord.claims[0])],
+      );
+      await transaction.query(
+        `INSERT INTO waspada.event_claim_evidence
+           (dataset_kind, event_id, event_version, claim_id, evidence_kind, evidence_ref_id)
+         VALUES ($1, $2, 1, $3, 'support', $4)`,
+        [DATASET, BASELINE_PUBLIC_EVENT_ID, BASELINE_PUBLIC_CLAIM_ID, evidenceReferenceId],
+      );
+      await transaction.query(
+        `INSERT INTO waspada.event_claim_origins
+           (dataset_kind, event_id, event_version, claim_id, origin_id)
+         VALUES ($1, $2, 1, $3, $4)`,
+        [DATASET, BASELINE_PUBLIC_EVENT_ID, BASELINE_PUBLIC_CLAIM_ID, ORIGIN_ID],
+      );
+    });
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.freshness_transitions
+         (dataset_kind, event_id, event_version, target_kind, transition_sequence,
+          previous_status, resulting_status, reason, evaluated_at, trace_id,
+          idempotency_key, request_fingerprint)
+       VALUES ($1, $2, 1, 'event_claim_set', 1, 'current', 'needs_update',
+         'review_deadline_missed', '2026-09-27T12:00:00Z', $3,
+         'source-gate-baseline-freshness', $4)`,
+      [DATASET, BASELINE_PUBLIC_EVENT_ID, TRACE_ID, sha256('source-gate-baseline-freshness')],
     );
   }
 
@@ -562,6 +762,66 @@ describe('RAG grounded proposal roundtrip', () => {
       eventVersions: row.event_versions,
       decisions: row.decisions,
       outbox: row.outbox,
+      audits: row.audits,
+      moderatorReviews: row.moderator_reviews,
+    };
+  }
+
+  async function publicAndFreshnessSnapshot(): Promise<{
+    readonly publicEvents: readonly Record<string, unknown>[];
+    readonly freshnessTransitions: readonly Record<string, unknown>[];
+  }> {
+    const [publicEvents, freshnessTransitions] = await Promise.all([
+      testDatabase.executor.query<Record<string, unknown>>(
+        `SELECT dataset_kind, event_id, version, title, summary, category, lifecycle,
+                record_json::text AS record_json, freshness_status
+         FROM waspada.public_event_versions WHERE event_id = $1 ORDER BY version`,
+        [BASELINE_PUBLIC_EVENT_ID],
+      ),
+      testDatabase.executor.query<Record<string, unknown>>(
+        `SELECT dataset_kind, event_id, event_version, target_kind, transition_sequence,
+                previous_status, resulting_status, reason, evaluated_at, trace_id, idempotency_key
+         FROM waspada.freshness_transitions WHERE event_id = $1 ORDER BY transition_sequence`,
+        [BASELINE_PUBLIC_EVENT_ID],
+      ),
+    ]);
+    return { publicEvents: publicEvents.rows, freshnessTransitions: freshnessTransitions.rows };
+  }
+
+  async function sourceGateSideEffectCounts(): Promise<{
+    readonly proposals: string;
+    readonly eventVersions: string;
+    readonly decisions: string;
+    readonly outbox: string;
+    readonly freshnessTransitions: string;
+    readonly audits: string;
+    readonly moderatorReviews: string;
+  }> {
+    const result = await testDatabase.executor.query<{
+      proposals: string;
+      event_versions: string;
+      decisions: string;
+      outbox: string;
+      freshness_transitions: string;
+      audits: string;
+      moderator_reviews: string;
+    }>(
+      `SELECT (SELECT count(*)::text FROM waspada.event_proposals) AS proposals,
+              (SELECT count(*)::text FROM waspada.event_versions) AS event_versions,
+              (SELECT count(*)::text FROM waspada.publication_decisions) AS decisions,
+              (SELECT count(*)::text FROM waspada.publication_outbox) AS outbox,
+              (SELECT count(*)::text FROM waspada.freshness_transitions) AS freshness_transitions,
+              (SELECT count(*)::text FROM waspada.audit_records) AS audits,
+              (SELECT count(*)::text FROM waspada.public_event_history_review_decisions) AS moderator_reviews`,
+    );
+    const row = result.rows[0];
+    assert.ok(row);
+    return {
+      proposals: row.proposals,
+      eventVersions: row.event_versions,
+      decisions: row.decisions,
+      outbox: row.outbox,
+      freshnessTransitions: row.freshness_transitions,
       audits: row.audits,
       moderatorReviews: row.moderator_reviews,
     };
