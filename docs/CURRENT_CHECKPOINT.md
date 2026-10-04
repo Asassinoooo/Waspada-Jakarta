@@ -13,8 +13,8 @@
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 **Latest accepted work:** `LIFE-01-SOURCE-REVISION-OBSERVATION-CORE` is integrated on local `main` through agent commits `48fd6d69d201d9cac284f40e4b2e7fe8e5780d1d` (`feat(LIFE-01): store source revision observations`), `c5b8c47327d616e85f88b7680dafcd4ca7b1e097` (`docs(LIFE-01): record source observation handoff`), and `49e64b6d18ba9c988191862fb3637d8035f14362` (`docs(LIFE-01): list handoff commit identity`). Root independently passed focused DB tests 25/25 and assigned-base `git diff --check`; the agent passed focused 7/7, migration capability 1/1, DB suite 34/34 files, full `npm test` (423 workspace tests, DB 34/34 files, evaluation 12), typecheck, build, and final diff check in WSL Ubuntu-26.04. The append-only Layer 1 ledger preserves exact report lineage, conflicting assertions, and separate publisher/retrieval/recorded times; it does not interpret source text, resolve state, change retrieval or publication, or alter public status. Hosted Neon remains unverified. See [assignment and handoff](assignments/LIFE-01-SOURCE-REVISION-OBSERVATION-CORE.md).
-**Active implementation:** None. Public freshness treatment remains open, source rights remain pending, and real provider/live-source gates remain closed.
-**Remote state:** The accepted source-observation implementation is local; push follows the root acceptance record.
+**Active implementation:** `LIFE-01-L2-SOURCE-REVISION-GROUNDING-GATE-CORE` is assigned to `work/LIFE-01-L2-SOURCE-REVISION-GROUNDING-GATE-CORE` in `.codex-build/worktrees/life01-l2-source-revision-grounding-gate-core`. It blocks exact L2 source spans after any explicit non-current issuer assertion; it leaves the published version untouched pending moderator review.
+**Remote state:** The accepted source-observation ledger and the L2 gate design/assignment are pushed to `origin/main`; implementation is active on the isolated local worktree.
 
 ## Repository state
 
