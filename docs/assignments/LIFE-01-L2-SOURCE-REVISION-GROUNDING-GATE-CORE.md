@@ -1,10 +1,10 @@
 # LIFE-01-L2-SOURCE-REVISION-GROUNDING-GATE-CORE — block invalidated source spans
 
-**Status:** Assigned for isolated implementation under [ADR-044](../decisions/ADR-044-l2-source-revision-grounding-gate.md).
+**Status:** Accepted on local `main` after root review; see the implementation and handoff commits in [DELIVERY_LOG.md](../DELIVERY_LOG.md).
 **Backlog ID:** `LIFE-01-L2-SOURCE-REVISION-GROUNDING-GATE-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-L2-SOURCE-REVISION-GROUNDING-GATE-CORE`
-**Worktree:** `.codex-build/worktrees/life01-l2-source-revision-grounding-gate-core` (WSL-compatible linked worktree)
+**Worktree:** `.codex-build/worktrees/life01-l2-source-invalidation-grounding-gate-core` (WSL-compatible linked worktree)
 **Contract baseline:** Persisted/domain schema 2.0; public API/OpenAPI/DTO unchanged; no model prompt-schema change.
 
 ## Context and dependencies
@@ -52,4 +52,3 @@ Do not edit `GroundingContext` schema, public API/OpenAPI/DTOs, source acquisiti
 ## Stop conditions
 
 Stop and ask root if source observation lineage is ambiguous; a source failure/404 must be treated as retraction; a public freshness/publication change or review mutation is needed; or an invalidated source must be automatically reinstated. Preserve existing published versions and stop at the L2 exact-span boundary.
-
