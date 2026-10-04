@@ -1,6 +1,6 @@
 # LIFE-01-SOURCE-REVISION-OBSERVATION-CORE — persist publisher assertions
 
-**Status:** Assigned for isolated implementation under accepted [ADR-043](../decisions/ADR-043-source-revision-observations.md).
+**Status:** Accepted on local `main` after root review; see the implementation and handoff commits below and the acceptance record in [DELIVERY_LOG.md](../DELIVERY_LOG.md).
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-OBSERVATION-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-OBSERVATION-CORE`
@@ -54,4 +54,3 @@ Do not change Layer 2 retrieval/grounding, Layer 3 orchestration, public API/Ope
 ## Stop conditions
 
 Stop and ask root if resolving conflicting assertions, deciding public freshness treatment, changing L2 retrieval behavior, creating moderator state, treating fetch failure as retraction, or altering a current published event becomes necessary. Preserve all assertions as data and stop at the append-only L1 boundary.
-
