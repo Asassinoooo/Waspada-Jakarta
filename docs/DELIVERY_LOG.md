@@ -1,5 +1,9 @@
 # Delivery log
 
+## Source permission request pack drafted — 4 October 2026
+
+Root added [SOURCE_PERMISSION_REQUESTS.md](SOURCE_PERMISSION_REQUESTS.md) with unsent Bahasa Indonesia/English request templates for BMKG, PetaBencana, ANTARA and Satu Data Jakarta. The drafts ask about approved access, display/attribution, AI processing, retention/deletion, updates, rate limits, and the project's public free-tier hosting assumptions. They disclose that third-party inference is unselected and the off-provider backup/deletion plan is unresolved. The source-feasibility page now links to these templates. No message was sent, no incident/dataset content was downloaded, and no provider/source configuration changed. WSL `git diff --check` is the documentation-only check; no application tests apply.
+
 ## Assignment-status reconciliation — 4 October 2026
 
 Root compared assignment-header status with `docs/IMPLEMENTATION_BACKLOG.md`, the root acceptance records in `docs/CURRENT_CHECKPOINT.md`, and this delivery log. Thirteen assignment files still described already accepted work as assigned or ready. Their headers now say accepted on local `main` and link to the root review record: API geometry, public lookup/snapshot/projection and update projection/runtime; DATA-02 chunk invalidation; ING-PARSE-01; L1 fixture pipeline; L2 adapter, investigation planner and proposal bridge; and the UI-02 update centre. No code, branch history, task scope, contract, or task acceptance changed. WSL `git diff --check` is the required documentation-only validation.
