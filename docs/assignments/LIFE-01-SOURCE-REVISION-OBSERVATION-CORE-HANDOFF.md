@@ -8,7 +8,7 @@
 ## Commits
 
 - `48fd6d69d201d9cac284f40e4b2e7fe8e5780d1d` — `feat(LIFE-01): store source revision observations`
-- A separate documentation commit adds this handoff after the implementation commit.
+- `c5b8c47327d616e85f88b7680dafcd4ca7b1e097` — `docs(LIFE-01): record source observation handoff`
 
 ## Changed paths
 
