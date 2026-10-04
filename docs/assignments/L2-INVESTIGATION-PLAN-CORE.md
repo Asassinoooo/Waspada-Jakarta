@@ -1,6 +1,6 @@
 # L2-INVESTIGATION-PLAN-CORE — typed next-action proposals for bounded investigations
 
-- **Status:** Assigned for local implementation
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Backlog ID:** `L2-INVESTIGATION-PLAN-CORE`
 - **Objective:** Add a provider-injected Layer 2 adapter that validates one proposed investigation action or a closed abstention result against retrieved insufficient context and a bounded trusted action menu. This is model-proposal groundwork; it has no action authority.
 - **Dependencies:** L2-ADAPTER-01, RAG-CONTEXT-ASSEMBLY-CORE, L3-INSUFFICIENT-CONTEXT-ENTRY-CORE, L3-SINGLE-STEP-EXECUTOR-CORE, ADR-027.

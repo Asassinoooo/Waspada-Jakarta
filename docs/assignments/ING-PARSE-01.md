@@ -1,6 +1,6 @@
 # ING-PARSE-01 — PetaBencana GeoJSON fixture parser
 
-- **Status:** Ready for local implementation
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Depends on:** SPEC-01, DATA-01
 - **Requirement coverage:** FR-02/03; NFR-07
 - **Branch/worktree:** `work/ING-PARSE-01-petabencana-fixtures`; `D:\Projects\RPL\.codex-build\worktrees\ing-parse-01` (`/mnt/d/Projects/RPL/.codex-build/worktrees/ing-parse-01` in WSL)

@@ -1,5 +1,9 @@
 # Delivery log
 
+## Assignment-status reconciliation — 4 October 2026
+
+Root compared assignment-header status with `docs/IMPLEMENTATION_BACKLOG.md`, the root acceptance records in `docs/CURRENT_CHECKPOINT.md`, and this delivery log. Thirteen assignment files still described already accepted work as assigned or ready. Their headers now say accepted on local `main` and link to the root review record: API geometry, public lookup/snapshot/projection and update projection/runtime; DATA-02 chunk invalidation; ING-PARSE-01; L1 fixture pipeline; L2 adapter, investigation planner and proposal bridge; and the UI-02 update centre. No code, branch history, task scope, contract, or task acceptance changed. WSL `git diff --check` is the required documentation-only validation.
+
 ## Official source and public-data catalog re-check — 4 October 2026
 
 Root reviewed the current published terms and public catalog pages for BMKG, PetaBencana, ANTARA and Satu Data Jakarta. The official BMKG terms still require the official API for automated machine-to-machine access, prohibit automated scraping of the public-service interface, and direct integration/data-use requests to its legal/cooperation office. PetaBencana's current CC BY-NC 4.0 page specifies attribution, a license link, and change notice, with an educational/non-profit path; project deployment classification, API/privacy rules, processing and retention fit remain to be confirmed. ANTARA's current terms reserve uses beyond platform-enabled personal/non-commercial sharing for written consent; its RSS documentation describes feed-reader syndication, not Waspada's AI-processing or retention rights.

@@ -1,6 +1,6 @@
 # API-PUBLIC-PROJECTION-SERVICE-CORE — fail-closed snapshot projection
 
-- **Status:** Assigned; injected Layer 4 service only
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Parent work package:** API-01 — public published-event endpoints
 - **Requirements:** FR-08/09/10; NFR-01/07
 - **Dependencies:** API-PUBLIC-SNAPSHOT-CORE, API-PUBLIC-LOOKUPS-CORE, API-PROJECT-CORE, ADR-012, ADR-019

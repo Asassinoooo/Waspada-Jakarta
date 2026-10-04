@@ -1,6 +1,6 @@
 # API-PUBLIC-SNAPSHOT-CORE — bounded published-event snapshot reader
 
-- **Status:** Assigned; internal database read port only
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Parent work package:** API-01 — public published-event endpoints
 - **Requirements:** FR-09/10; NFR-01/07
 - **Dependencies:** DATA-01, DB-TEST-RUNNER-ISOLATION, API-PROJECT-CORE, API-PUBLIC-LOOKUPS-CORE, ADR-012, ADR-019

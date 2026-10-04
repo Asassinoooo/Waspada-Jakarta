@@ -1,6 +1,6 @@
 # API-PUBLIC-UPDATES-RUNTIME-CORE — exact-live update-feed route
 
-- **Status:** Assigned
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Backlog ID:** `API-PUBLIC-UPDATES-RUNTIME-CORE`
 - **Objective:** Wire `GET /api/v1/updates` to the accepted bounded update reader and Layer 4 projection service in exact live mode, preserving the existing `UpdatePage` and error-envelope contracts.
 - **Dependencies:** `API-PUBLIC-UPDATES-PROJECTION-CORE`, `API-PUBLIC-UPDATES-READER-CORE`, `API-PUBLIC-EVENT-LIST-RUNTIME-CORE`, `API-DETAIL-HISTORY-ROUTES-CORE`, `DB-HYPERDRIVE-SQL-EXECUTOR-CORE`, `ADR-021`, `ADR-022`, `ADR-026`.

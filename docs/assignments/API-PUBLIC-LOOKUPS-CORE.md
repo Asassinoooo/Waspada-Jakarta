@@ -1,6 +1,6 @@
 # API-PUBLIC-LOOKUPS-CORE — reviewed lookup persistence and read port
 
-- **Status:** Assigned; local schema/repository foundation only
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Parent work package:** API-01 — public published-event endpoints
 - **Requirements:** FR-08/09/10/15; NFR-01/07
 - **Dependencies:** DATA-01, API-PROJECT-CORE, ADR-012, ADR-019

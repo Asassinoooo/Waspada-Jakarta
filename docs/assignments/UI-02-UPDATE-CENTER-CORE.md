@@ -1,6 +1,6 @@
 # UI-02-UPDATE-CENTER-CORE — user-controlled browser update centre
 
-- **Status:** Assigned
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Backlog ID:** `UI-02-UPDATE-CENTER-CORE`
 - **Objective:** Add an accessible browser update centre that presents current-public, moderator-reviewed event changes matching locally stored user interests, using the accepted exact-live updates and event-detail endpoints.
 - **Dependencies:** `API-PUBLIC-UPDATES-RUNTIME-CORE`, `UI-02-BRIEFING-UI-CORE`, `UI-02-LOCAL-PREFERENCES-CORE`, `UI-01`, `SPEC-03`, `ADR-026`.

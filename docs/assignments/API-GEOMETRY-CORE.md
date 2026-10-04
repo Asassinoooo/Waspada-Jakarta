@@ -1,6 +1,6 @@
 # API-GEOMETRY-CORE — Layer 4 public geometry projection
 
-- **Status:** Assigned; synthetic-only projection work
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Depends on:** API-PROJECT-CORE, GEO-STORE-CORE, SPEC-02, SPEC-03
 - **Requirements:** FR-09/10; NFR-01/07
 - **Architecture:** Layer 4 allowlist projection from a current published Event and linked Geometry records to EventDetail / GeoJSON

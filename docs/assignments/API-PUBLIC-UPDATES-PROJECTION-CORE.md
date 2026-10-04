@@ -1,6 +1,6 @@
 # API-PUBLIC-UPDATES-PROJECTION-CORE — strict update page and signed cursor
 
-- **Status:** Assigned
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Backlog ID:** `API-PUBLIC-UPDATES-PROJECTION-CORE`
 - **Objective:** Compose the accepted update-feed DB reader into the existing `HistoryEntry` allowlist and implement a stateless 30-day cursor plus empty bootstrap behavior, without adding a route.
 - **Dependencies:** `API-PUBLIC-UPDATES-READER-CORE`, `API-PUBLIC-HISTORY-PROJECTION-CORE`, `API-PUBLIC-EVENT-LIST-CURSOR-CORE`, `SPEC-03`, `ADR-026`.

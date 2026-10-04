@@ -1,6 +1,6 @@
 # L1-FIXTURE-PIPE-CORE — Synthetic queue-to-fixture processing
 
-- **Status:** Ready for local implementation
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Depends on:** JOB-01, ING-PARSE-01, DATA-02-CORE, GEO-STORE-CORE, L1-WRITE-IDEMPOTENCY-CORE
 - **Requirements:** FR-02/03/13; NFR-01/05/07
 - **Architecture:** Layer 1 processing; bounded L4 job lease acknowledgement

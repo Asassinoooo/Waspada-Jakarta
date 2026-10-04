@@ -1,6 +1,6 @@
 # DATA-02-CHUNK-INVALIDATION-REPLAY-CORE — Preserve invalidated chunk generations
 
-- **Status:** Assigned; implementation and root acceptance pending
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Agent:** GPT-6 Luna / max
 - **Branch:** `work/DATA-02-CHUNK-INVALIDATION-REPLAY-CORE`
 - **Worktree:** `C:\Users\perry\.codex\worktrees\l3-coordinator-core\RPL` (`/mnt/c/Users/perry/.codex/worktrees/l3-coordinator-core/RPL`)

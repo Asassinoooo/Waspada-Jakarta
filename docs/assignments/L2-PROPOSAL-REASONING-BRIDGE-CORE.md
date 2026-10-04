@@ -1,6 +1,6 @@
 # L2-PROPOSAL-REASONING-BRIDGE-CORE — Map validated reasoning into private drafts
 
-- **Status:** Assigned; implementation and root acceptance pending
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Agent:** GPT-6 Luna / max
 - **Branch:** `work/L2-PROPOSAL-REASONING-BRIDGE-CORE`
 - **Worktree:** To be created from the root dispatch commit in its own checkout

@@ -1,6 +1,6 @@
 # L2-ADAPTER-01 — Typed model capabilities and test doubles
 
-- **Status:** Ready for local implementation
+- **Status:** Accepted on local `main`; see [root review](../CURRENT_CHECKPOINT.md)
 - **Depends on:** SPEC-02, DATA-01
 - **Requirement coverage:** FR-04/05/07; NFR-02
 - **Branch/worktree:** `work/L2-ADAPTER-01-typed-contracts`; `D:\Projects\RPL\.codex-build\worktrees\l2-adapter-01` (`/mnt/d/Projects/RPL/.codex-build/worktrees/l2-adapter-01` in WSL)
