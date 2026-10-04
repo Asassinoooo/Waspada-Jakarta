@@ -12,8 +12,8 @@
 **Repository:** `D:\Projects\RPL`
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
-**Active implementation:** The report-revision impact reader is accepted. Root will continue by selecting the next runnable local backlog item; the public freshness treatment remains open, and real provider and live-source gates remain closed.
-**Remote state:** Root pushed the accepted implementation and review documentation to `origin/main` at `4385a63` for this checkpoint.
+**Active implementation:** `LIFE-01-SOURCE-REVISION-OBSERVATION-CORE` is assigned to `work/LIFE-01-SOURCE-REVISION-OBSERVATION-CORE` in `.codex-build/worktrees/life01-source-revision-observation-core`; it stores attributed source assertions only. The report-revision impact reader is accepted. Public freshness treatment remains open, and real provider and live-source gates remain closed.
+**Remote state:** Root is pushing the accepted reader, ADR-043, and source-observation assignment to `origin/main` as part of this checkpoint.
 
 ## Repository state
 
