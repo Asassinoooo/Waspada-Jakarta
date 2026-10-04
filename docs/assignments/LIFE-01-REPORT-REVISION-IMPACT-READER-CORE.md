@@ -1,6 +1,6 @@
 # LIFE-01-REPORT-REVISION-IMPACT-READER-CORE — find current published dependencies
 
-**Status:** Assigned for isolated implementation under accepted [ADR-042](../decisions/ADR-042-source-revision-publication-review.md).
+**Status:** Accepted after independent root review; fast-forwarded to `main` through `cbe1db9623c2f7a49207e66edce58d219e4deb5b`.
 **Backlog ID:** `LIFE-01-REPORT-REVISION-IMPACT-READER-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-REPORT-REVISION-IMPACT-READER-CORE`
