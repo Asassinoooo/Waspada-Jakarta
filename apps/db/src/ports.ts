@@ -9,6 +9,10 @@ import { createSqlEvidenceChunkRepository, type EvidenceChunkRepository } from '
 import { createSqlEmbeddingRunRepository, type EmbeddingRunRepository } from './embedding-runs.js';
 import { SqlAcquisitionJobRepository, type AcquisitionJobRepository } from './queue.js';
 import { createSqlEventProposalRepository, type EventProposalRepository } from './event-proposals.js';
+import {
+  createSqlReportRevisionSourceObservationRepository,
+  type ReportRevisionSourceObservationRepository,
+} from './report-revision-source-observations.js';
 import type { SqlExecutor, SqlTransactionRunner, TransactionalSqlExecutor } from './sql.js';
 
 export type DatasetKind = 'live' | 'historical' | 'synthetic';
@@ -132,6 +136,7 @@ export interface TraceAuditRepository {
 export interface RepositoryPorts {
   readonly sourceRegistry: SourceRegistryRepository;
   readonly reportRevisions: ReportRevisionRepository;
+  readonly reportRevisionSourceObservations: ReportRevisionSourceObservationRepository;
   readonly extractionResults: ExtractionResultRepository;
   readonly groundingContexts: GroundingContextRepository;
   readonly evidenceChunks: EvidenceChunkRepository;
@@ -146,6 +151,7 @@ export function createRepositoryPorts(executor: TransactionalSqlExecutor): Repos
   return {
     sourceRegistry: new SqlSourceRegistryRepository(executor),
     reportRevisions: new SqlReportRevisionRepository(executor),
+    reportRevisionSourceObservations: createSqlReportRevisionSourceObservationRepository(executor),
     extractionResults: createSqlExtractionResultRepository(executor),
     groundingContexts: createSqlGroundingContextRepository(executor),
     evidenceChunks: createSqlEvidenceChunkRepository(executor),
