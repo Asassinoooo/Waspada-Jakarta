@@ -42,6 +42,7 @@ export interface WorkerEnvironment {
   HYPERDRIVE?: { readonly connectionString?: string };
   L1_HYPERDRIVE?: { readonly connectionString?: string };
   SYNTHETIC_POLL_SCHEDULER_ENABLED?: string;
+  SYNTHETIC_POLL_PROCESSOR_ENABLED?: string;
   FRESHNESS_DUE_HYPERDRIVE?: { readonly connectionString?: string };
   FRESHNESS_DUE_SCHEDULER_ENABLED?: string;
   PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
