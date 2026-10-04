@@ -9,7 +9,7 @@
 **Remote:** `origin` → `https://github.com/Asassinoooo/Waspada-Jakarta.git`
 
 **Active implementation:** `OBS-01-SYNTHETIC-POLL-PROCESSOR-TELEMETRY-CORE` is assigned on an isolated branch/worktree. No code changes are accepted yet. Real provider and live-source gates remain closed.
-**Remote state:** At assignment time, `origin/main` is synchronized through `5e2abf21b17474d1e93752bec1755f40609352a4`; root will push the assignment/checkpoint commit before implementation proceeds. The implementation branch's code baseline is that synchronized commit.
+**Remote state:** Root pushed assignment commit `59a67898f549a4054aedb7986f55abdbebea9db6` (`docs(OBS-01): assign synthetic poll processor telemetry`) to `origin/main` before dispatch. The isolated implementation branch uses the synchronized code baseline `5e2abf21b17474d1e93752bec1755f40609352a4`.
 
 ## Repository state
 
