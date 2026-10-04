@@ -96,7 +96,11 @@ export default {
     env: WorkerEnvironment,
   ): Promise<void> {
     await handleSyntheticPollScheduleTrigger(controller.scheduledTime, env);
-    await handleSyntheticSourcePollProcessTrigger(controller.scheduledTime, env);
+    await handleSyntheticSourcePollProcessTrigger(
+      controller.scheduledTime,
+      env,
+      { telemetry: consoleTelemetry },
+    );
     await handleFreshnessDueScheduleTrigger(controller.scheduledTime, env, undefined, consoleTelemetry);
   },
 };

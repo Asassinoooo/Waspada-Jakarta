@@ -4,6 +4,10 @@ import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js"
 import type { ModelCapabilityAdapter } from "../src/layers/l2-model-grounding/contracts.js";
 import type { SyntheticSourcePollFixtureCatalog } from "../src/layers/l1-data-knowledge/synthetic-fixture-pipeline.js";
 import {
+  SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME,
+  type TelemetryRecord,
+} from "../src/layers/l5-evaluation-monitoring/telemetry.js";
+import {
   createSyntheticSourcePollProcessRuntime,
   SyntheticSourcePollProcessRuntimeError,
   type SyntheticSourcePollProcessRuntimeDependencies,
@@ -152,14 +156,22 @@ test("trigger only reads L1_HYPERDRIVE and stays dormant without injected proces
     HYPERDRIVE: { connectionString: publicConnectionString },
     L1_HYPERDRIVE: { connectionString: l1ConnectionString },
   };
+  const records: TelemetryRecord[] = [];
+  const telemetry = { record(record: TelemetryRecord) { records.push(record); } };
 
   assert.equal(await handleSyntheticSourcePollProcessTrigger(scheduledTime, environment), undefined);
   assert.equal(await handleSyntheticSourcePollProcessTrigger(
     scheduledTime,
+    environment,
+    { telemetry, withTransactionalSqlExecutor: withSql },
+  ), undefined);
+  assert.equal(await handleSyntheticSourcePollProcessTrigger(
+    scheduledTime,
     { ...environment, L1_HYPERDRIVE: undefined },
-    { ...dependencies, withTransactionalSqlExecutor: withSql },
+    { ...dependencies, telemetry, withTransactionalSqlExecutor: withSql },
   ), undefined);
   assert.equal(opened, 0);
+  assert.deepEqual(records, []);
 });
 
 test("validates platform epochs before opening SQL and reports a fixed error", async () => {
@@ -278,4 +290,100 @@ test("role setup, cleanup, and client failures expose only fixed redacted errors
       && !error.message.includes("l1-secret")
       && !error.message.includes("private-driver-detail"),
   );
+});
+
+test("active processing emits one fixed outcome without runner failure details", async () => {
+  const records: TelemetryRecord[] = [];
+  const setup = createRuntime({
+    ...dependencies,
+    telemetry: { record(record) { records.push(record); } },
+    monotonicNow: (() => {
+      let value = 10;
+      return () => value++;
+    })(),
+  });
+  assert.ok(setup.runtime);
+
+  const result = await setup.runtime.process(scheduledTime);
+  assert.deepEqual(result, { outcome: "idle" });
+  assert.equal(records.length, 1);
+  assert.deepEqual(records[0], {
+    eventName: SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME,
+    outcome: "idle",
+    durationMs: 1,
+  });
+
+  const failureRecords: TelemetryRecord[] = [];
+  const failedSetup = createRuntime({
+    ...dependencies,
+    telemetry: { record(record) { failureRecords.push(record); } },
+  }, createFakeSql({ failClaim: true }));
+  assert.ok(failedSetup.runtime);
+  const failedResult = await failedSetup.runtime.process(scheduledTime);
+  assert.deepEqual(failedResult, {
+    outcome: "failed",
+    code: "queue_claim_failed",
+    queueOutcome: "not_claimed",
+  });
+  assert.equal(failureRecords.length, 1);
+  const failureRecord = failureRecords[0];
+  assert.ok(failureRecord);
+  assert.equal(failureRecord.eventName, SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME);
+  if (failureRecord.eventName !== SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME) {
+    assert.fail("expected synthetic poll telemetry");
+  }
+  assert.equal(failureRecord.outcome, "failed");
+  assert.deepEqual(Object.keys(failureRecord).sort(), ["durationMs", "eventName", "outcome"]);
+  assert.doesNotMatch(JSON.stringify(failureRecord), /queue_claim_failed|not_claimed|private-connection|password=secret/u);
+});
+
+test("throwing clocks and sinks cannot change a processor result or the original runtime error", async () => {
+  const resultRecords: TelemetryRecord[] = [];
+  let clockReads = 0;
+  const resultSetup = createRuntime({
+    ...dependencies,
+    monotonicNow: () => {
+      clockReads += 1;
+      if (clockReads === 2) throw new Error("private clock marker");
+      return 5;
+    },
+    telemetry: {
+      record(record) {
+        resultRecords.push(record);
+        throw new Error("private sink marker");
+      },
+    },
+  });
+  assert.ok(resultSetup.runtime);
+  assert.deepEqual(await resultSetup.runtime.process(scheduledTime), { outcome: "idle" });
+  assert.equal(clockReads, 2);
+  assert.equal(resultRecords.length, 1);
+  const resultRecord = resultRecords[0];
+  assert.ok(resultRecord);
+  assert.equal(resultRecord.eventName, SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME);
+  if (resultRecord.eventName !== SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME) {
+    assert.fail("expected synthetic poll telemetry");
+  }
+  assert.equal(resultRecord.outcome, "idle");
+  assert.equal(resultRecord.durationMs, 0);
+
+  const originalError = new SyntheticSourcePollProcessRuntimeError("PROCESS_FAILED");
+  let captured: unknown;
+  const errorSetup = createSyntheticSourcePollProcessRuntime({
+    datasetMode: "demo",
+    processorEnabled: "true",
+    l1ConnectionString,
+  }, {
+    ...dependencies,
+    monotonicNow() { throw new Error("private timing marker"); },
+    telemetry: { record() { throw new Error("private sink marker"); } },
+    withTransactionalSqlExecutor: async () => { throw originalError; },
+  });
+  assert.ok(errorSetup);
+  try {
+    await errorSetup.process(scheduledTime);
+  } catch (error) {
+    captured = error;
+  }
+  assert.equal(captured, originalError);
 });

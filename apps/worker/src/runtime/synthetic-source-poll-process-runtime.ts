@@ -12,6 +12,13 @@ import {
   runSyntheticSourcePollJob,
   type SyntheticSourcePollRunnerResult,
 } from "../layers/l1-data-knowledge/synthetic-source-poll-runner.js";
+import {
+  isSyntheticSourcePollProcessTelemetryRecord,
+  noOpTelemetry,
+  SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME,
+  type SyntheticSourcePollProcessTelemetryRecord,
+  type TelemetrySink,
+} from "../layers/l5-evaluation-monitoring/telemetry.js";
 import { isValidHyperdriveConnectionString } from "./public-event-list-runtime.js";
 
 export interface SyntheticSourcePollProcessRuntimeConfiguration {
@@ -32,6 +39,10 @@ export interface SyntheticSourcePollProcessRuntimeDependencies {
   readonly modelAdapter?: Pick<ModelCapabilityAdapter, "extract">;
   /** Test seam; production uses one request-scoped transactional PostgreSQL client. */
   readonly withTransactionalSqlExecutor?: SyntheticSourcePollProcessSqlExecutorRunner;
+  /** Optional Layer 5 sink; logging is isolated from processing. */
+  readonly telemetry?: TelemetrySink;
+  /** Test seam for monotonic duration measurement. */
+  readonly monotonicNow?: () => number;
 }
 
 export interface SyntheticSourcePollProcessRuntime {
@@ -76,61 +87,132 @@ export function createSyntheticSourcePollProcessRuntime(
 
   return {
     async process(scheduledTime) {
-      const now = formatScheduledInstant(scheduledTime);
-      let boundedRunnerFailure: SyntheticSourcePollRunnerResult | undefined;
-
+      const startedAt = readRuntimeMonotonicNow(dependencies);
+      let result: SyntheticSourcePollRunnerResult | undefined;
       try {
-        return await withTransactionalSqlExecutor(connectionString, async (executor) => {
-          let result: SyntheticSourcePollRunnerResult | undefined;
-          let runtimeFailure = false;
+        const now = formatScheduledInstant(scheduledTime);
+        let boundedRunnerFailure: SyntheticSourcePollRunnerResult | undefined;
 
-          try {
-            await executor.execute("SET ROLE waspada_l1_pipeline");
-            const ports = createRepositoryPorts(executor);
-            result = await runSyntheticSourcePollJob({
-              now,
-              queue: ports.acquisitionJobs,
-              catalog,
-              pipelinePorts: {
-                acquisitionJobs: ports.acquisitionJobs,
-                sourceRegistry: ports.sourceRegistry,
-                modelAdapter,
-                reportRevisions: ports.reportRevisions,
-                extractionResults: ports.extractionResults,
-                evidenceChunks: ports.evidenceChunks,
-                geometryWriter: createSqlGeometryWriter(executor),
-              },
-            });
-          } catch {
-            runtimeFailure = true;
-          }
+        try {
+          result = await withTransactionalSqlExecutor(connectionString, async (executor) => {
+            let runnerResult: SyntheticSourcePollRunnerResult | undefined;
+            let runtimeFailure = false;
 
-          let roleResetFailed = false;
-          try {
-            await executor.execute("RESET ROLE");
-          } catch {
-            roleResetFailed = true;
-          }
+            try {
+              await executor.execute("SET ROLE waspada_l1_pipeline");
+              const ports = createRepositoryPorts(executor);
+              runnerResult = await runSyntheticSourcePollJob({
+                now,
+                queue: ports.acquisitionJobs,
+                catalog,
+                pipelinePorts: {
+                  acquisitionJobs: ports.acquisitionJobs,
+                  sourceRegistry: ports.sourceRegistry,
+                  modelAdapter,
+                  reportRevisions: ports.reportRevisions,
+                  extractionResults: ports.extractionResults,
+                  evidenceChunks: ports.evidenceChunks,
+                  geometryWriter: createSqlGeometryWriter(executor),
+                },
+              });
+            } catch {
+              runtimeFailure = true;
+            }
 
-          if (runtimeFailure || result === undefined) {
-            throw new SyntheticSourcePollProcessRuntimeError("PROCESS_FAILED");
-          }
+            let roleResetFailed = false;
+            try {
+              await executor.execute("RESET ROLE");
+            } catch {
+              roleResetFailed = true;
+            }
 
-          // The runner result is already bounded and redacted. Preserve it if
-          // cleanup also fails; the request-scoped connection is then closed.
-          if (roleResetFailed && result.outcome !== "failed") {
-            throw new SyntheticSourcePollProcessRuntimeError("PROCESS_FAILED");
-          }
+            if (runtimeFailure || runnerResult === undefined) {
+              throw new SyntheticSourcePollProcessRuntimeError("PROCESS_FAILED");
+            }
 
-          if (result.outcome === "failed") boundedRunnerFailure = result;
+            // The runner result is already bounded and redacted. Preserve it if
+            // cleanup also fails; the request-scoped connection is then closed.
+            if (roleResetFailed && runnerResult.outcome !== "failed") {
+              throw new SyntheticSourcePollProcessRuntimeError("PROCESS_FAILED");
+            }
+
+            if (runnerResult.outcome === "failed") boundedRunnerFailure = runnerResult;
+            return runnerResult;
+          });
           return result;
-        });
-      } catch (error) {
-        if (boundedRunnerFailure !== undefined) return boundedRunnerFailure;
-        if (error instanceof SyntheticSourcePollProcessRuntimeError) throw error;
-        throw new SyntheticSourcePollProcessRuntimeError("PROCESS_FAILED");
+        } catch (error) {
+          if (boundedRunnerFailure !== undefined) {
+            result = boundedRunnerFailure;
+            return result;
+          }
+          if (error instanceof SyntheticSourcePollProcessRuntimeError) throw error;
+          throw new SyntheticSourcePollProcessRuntimeError("PROCESS_FAILED");
+        }
+      } finally {
+        recordSyntheticSourcePollProcessTelemetry(dependencies, startedAt, result);
       }
     },
+  };
+}
+
+function readRuntimeMonotonicNow(
+  dependencies: SyntheticSourcePollProcessRuntimeDependencies,
+): number | null {
+  try {
+    const clock = dependencies.monotonicNow;
+    const value = clock === undefined ? globalThis.performance?.now() : clock();
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function recordSyntheticSourcePollProcessTelemetry(
+  dependencies: SyntheticSourcePollProcessRuntimeDependencies,
+  startedAt: number | null,
+  result: SyntheticSourcePollRunnerResult | undefined,
+): void {
+  try {
+    let durationMs = 0;
+    if (startedAt !== null) {
+      const endedAt = readRuntimeMonotonicNow(dependencies);
+      if (endedAt !== null && endedAt >= startedAt) {
+        const elapsed = endedAt - startedAt;
+        if (Number.isFinite(elapsed) && elapsed >= 0) durationMs = elapsed;
+      }
+    }
+
+    const record = makeSyntheticSourcePollProcessTelemetryRecord(result, durationMs);
+    if (!isSyntheticSourcePollProcessTelemetryRecord(record)) return;
+    const sink = dependencies.telemetry ?? noOpTelemetry;
+    const recordMethod = sink.record;
+    if (typeof recordMethod === "function") recordMethod.call(sink, record);
+  } catch {
+    // Timing and telemetry are best-effort and cannot change the processor result.
+  }
+}
+
+function makeSyntheticSourcePollProcessTelemetryRecord(
+  result: SyntheticSourcePollRunnerResult | undefined,
+  durationMs: number,
+): SyntheticSourcePollProcessTelemetryRecord {
+  if (result?.outcome !== "completed") {
+    return {
+      eventName: SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME,
+      outcome: result?.outcome ?? "failed",
+      durationMs,
+    };
+  }
+
+  return {
+    eventName: SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME,
+    outcome: "completed",
+    durationMs,
+    empty: result.empty,
+    reportCount: result.reportCount,
+    evidenceReferenceCount: result.evidenceReferenceCount,
+    chunkCount: result.chunkCount,
+    geometryCount: result.geometryCount,
   };
 }
 

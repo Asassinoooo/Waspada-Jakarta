@@ -3,6 +3,7 @@ export const L2_RETRIEVAL_EVENT_NAME = "l2_retrieval" as const;
 export const L2_DIRECT_REASONING_EVENT_NAME = "l2_direct_reasoning" as const;
 export const L3_LEDGER_OPERATION_EVENT_NAME = "l3_ledger_operation" as const;
 export const L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME = "l1_synthetic_fixture_job" as const;
+export const SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME = "l1_synthetic_source_poll_process" as const;
 export const FRESHNESS_DUE_SCHEDULE_EVENT_NAME = "freshness_due_schedule" as const;
 
 export const L1_SYNTHETIC_FIXTURE_TELEMETRY_MAX_COUNT = 1_000_000;
@@ -32,6 +33,13 @@ export type L3LedgerStopReason =
   | "completed";
 
 export type L1SyntheticFixtureJobOutcome =
+  | "idle"
+  | "completed"
+  | "not_eligible"
+  | "lost_lease"
+  | "failed";
+
+export type SyntheticSourcePollProcessOutcome =
   | "idle"
   | "completed"
   | "not_eligible"
@@ -134,6 +142,23 @@ export interface L1SyntheticFixtureJobOtherTelemetryRecord {
   durationMs: number;
 }
 
+export interface SyntheticSourcePollProcessCompletedTelemetryRecord {
+  eventName: typeof SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME;
+  outcome: "completed";
+  durationMs: number;
+  empty: boolean;
+  reportCount: number;
+  evidenceReferenceCount: number;
+  chunkCount: number;
+  geometryCount: number;
+}
+
+export interface SyntheticSourcePollProcessOtherTelemetryRecord {
+  eventName: typeof SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME;
+  outcome: Exclude<SyntheticSourcePollProcessOutcome, "completed">;
+  durationMs: number;
+}
+
 export type FreshnessDueScheduleTelemetryRecord =
   | {
     eventName: typeof FRESHNESS_DUE_SCHEDULE_EVENT_NAME;
@@ -157,6 +182,10 @@ export type L1SyntheticFixtureJobTelemetryRecord =
   | L1SyntheticFixtureJobCompletedTelemetryRecord
   | L1SyntheticFixtureJobOtherTelemetryRecord;
 
+export type SyntheticSourcePollProcessTelemetryRecord =
+  | SyntheticSourcePollProcessCompletedTelemetryRecord
+  | SyntheticSourcePollProcessOtherTelemetryRecord;
+
 export type L3LedgerTelemetryRecord =
   | L3LedgerOperationSuccessTelemetryRecord
   | L3LedgerOperationErrorTelemetryRecord;
@@ -167,6 +196,7 @@ export type TelemetryRecord =
   | L2DirectReasoningTelemetryRecord
   | L3LedgerTelemetryRecord
   | L1SyntheticFixtureJobTelemetryRecord
+  | SyntheticSourcePollProcessTelemetryRecord
   | FreshnessDueScheduleTelemetryRecord;
 
 export interface TelemetrySink {
@@ -257,6 +287,29 @@ function recordConsoleTelemetry(record: TelemetryRecord): void {
     }
     console.log({
       event_name: L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME,
+      outcome: input.outcome,
+      duration_ms: input.durationMs,
+    });
+    return;
+  }
+
+  if (input.eventName === SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME) {
+    if (!isSyntheticSourcePollProcessTelemetryRecord(input)) return;
+    if (input.outcome === "completed") {
+      console.log({
+        event_name: SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME,
+        outcome: "completed",
+        duration_ms: input.durationMs,
+        empty: input.empty,
+        report_count: input.reportCount,
+        evidence_reference_count: input.evidenceReferenceCount,
+        chunk_count: input.chunkCount,
+        geometry_count: input.geometryCount,
+      });
+      return;
+    }
+    console.log({
+      event_name: SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME,
       outcome: input.outcome,
       duration_ms: input.durationMs,
     });
@@ -357,6 +410,13 @@ const FRESHNESS_DUE_SCHEDULE_OUTCOMES = new Set<FreshnessDueScheduleOutcome>([
   "failed",
   "terminal_replay",
 ]);
+const SYNTHETIC_SOURCE_POLL_PROCESS_OUTCOMES = new Set<SyntheticSourcePollProcessOutcome>([
+  "idle",
+  "completed",
+  "not_eligible",
+  "lost_lease",
+  "failed",
+]);
 const FRESHNESS_DUE_SCHEDULE_COUNT_KEYS = ["written", "replayed", "noChange", "conflicts", "failures"] as const;
 const FRESHNESS_DUE_SCHEDULE_MAX_COUNT = 100;
 
@@ -445,6 +505,46 @@ function isL1SyntheticFixtureJobRecord(value: Record<string, unknown>): boolean 
       : value.reportCount > 0);
 }
 
+export function isSyntheticSourcePollProcessTelemetryRecord(
+  value: unknown,
+): value is SyntheticSourcePollProcessTelemetryRecord {
+  if (!isRecord(value)
+    || value.eventName !== SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME
+    || !isFiniteNonNegative(value.durationMs)
+    || !SYNTHETIC_SOURCE_POLL_PROCESS_OUTCOMES.has(value.outcome as SyntheticSourcePollProcessOutcome)) {
+    return false;
+  }
+
+  if (value.outcome !== "completed") {
+    return hasExactPlainDataKeys(value, ["eventName", "outcome", "durationMs"]);
+  }
+
+  return hasExactPlainDataKeys(value, [
+    "eventName",
+    "outcome",
+    "durationMs",
+    "empty",
+    "reportCount",
+    "evidenceReferenceCount",
+    "chunkCount",
+    "geometryCount",
+  ])
+    && typeof value.empty === "boolean"
+    && isBoundedCount(value.reportCount)
+    && value.reportCount <= L1_SYNTHETIC_FIXTURE_MAX_REPORTS
+    && isBoundedCount(value.evidenceReferenceCount)
+    && isBoundedCount(value.chunkCount)
+    && value.chunkCount <= value.reportCount * L1_SYNTHETIC_FIXTURE_MAX_CHUNKS_PER_REPORT
+    && isBoundedCount(value.geometryCount)
+    && value.geometryCount <= value.reportCount
+    && (value.empty
+      ? value.reportCount === 0
+        && value.evidenceReferenceCount === 0
+        && value.chunkCount === 0
+        && value.geometryCount === 0
+      : value.reportCount > 0);
+}
+
 function isFreshnessDueScheduleRecord(
   value: Record<string, unknown>,
 ): value is Record<string, unknown> & {
@@ -495,4 +595,20 @@ function hasExactKeys(value: object, expectedKeys: readonly string[]): boolean {
   const expected = new Set(expectedKeys);
   const keys = Object.keys(value);
   return keys.length === expected.size && keys.every((key) => expected.has(key));
+}
+
+function hasExactPlainDataKeys(value: object, expectedKeys: readonly string[]): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+
+  const expected = new Set(expectedKeys);
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== expected.size) return false;
+
+  return keys.every((key) => {
+    if (typeof key !== "string" || !expected.has(key)) return false;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor?.enumerable === true
+      && Object.prototype.hasOwnProperty.call(descriptor, "value");
+  });
 }
