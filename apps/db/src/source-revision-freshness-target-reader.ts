@@ -196,6 +196,8 @@ function buildQuery(): string {
        AND impact.event_id = reference.event_id
        AND impact.impact_id = reference.impact_id
        AND impact.version = reference.impact_version
+       AND impact.record_json #>> '{event_id}' = reference.event_id
+       AND impact.record_json #>> '{event_version}' = reference.event_version::text
       LEFT JOIN LATERAL (
         SELECT latest.resulting_status, latest.transition_sequence
         FROM waspada.freshness_transitions AS latest

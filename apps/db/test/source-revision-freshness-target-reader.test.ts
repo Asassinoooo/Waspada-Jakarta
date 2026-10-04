@@ -46,6 +46,7 @@ describe('LIFE-01 source-revision freshness target reader', () => {
       eventTarget('event-transition', 1),
       eventTarget('event-versioned', 1),
       eventTarget('event-versioned', 2),
+      impactTarget('event-versioned', 2, 'impact-version-mismatch', 1),
       eventTarget('event-withdrawn', 1),
       eventTarget('event-withdrawn', 2),
       eventTarget('missing-event', 1),
@@ -101,6 +102,27 @@ describe('LIFE-01 source-revision freshness target reader', () => {
     assert.equal(currentVersion.transitionSequence, 0,
       'a prior-version transition cannot affect the latest event version');
     assert.equal(findTarget(targets, 'event-versioned', 'event_claim_set', undefined, undefined, 1), undefined);
+    assert.equal(findTarget(targets, 'event-versioned', 'impact', 'impact-version-mismatch'), undefined,
+      'an impact version attached to another event version cannot satisfy this exact event reference');
+    const mismatchedImpact = await database.executor.query<{
+      readonly record_event_version: string;
+      readonly reference_event_version: number;
+    }>(
+      `SELECT impact.record_json #>> '{event_version}' AS record_event_version,
+              reference.event_version AS reference_event_version
+       FROM waspada.impact_versions AS impact
+       JOIN waspada.event_impact_refs AS reference
+         ON reference.dataset_kind = impact.dataset_kind
+        AND reference.event_id = impact.event_id
+        AND reference.impact_id = impact.impact_id
+        AND reference.impact_version = impact.version
+       WHERE impact.dataset_kind = 'live'
+         AND impact.event_id = 'event-versioned'
+         AND impact.impact_id = 'impact-version-mismatch'
+         AND impact.version = 1`,
+    );
+    assert.deepEqual(mismatchedImpact.rows, [{ record_event_version: '1', reference_event_version: 2 }],
+      'the regression fixture has a v1 impact payload referenced by the exact v2 event version');
     assert.equal(findTarget(targets, 'event-withdrawn', 'event_claim_set'), undefined,
       'the older published version is hidden by the latest withdrawn version');
     assert.equal(targets.some(({ eventId }) => eventId === 'event-withdrawn'), false);
@@ -513,12 +535,18 @@ async function seedEvents(database: TestDatabase, evidenceReferenceId: string): 
   ]);
 
   await seedEventVersion(database, 'event-versioned', 1, { status: 'expired' });
+  await seedImpactVersion(database, 'event-versioned', 1, 'impact-version-mismatch', 1, {
+    status: 'needs_update', validUntil: null,
+  });
   await insertTransitions(database, [{
     eventId: 'event-versioned', eventVersion: 1, targetKind: 'event_claim_set', sequence: 1,
     previousStatus: 'expired', resultingStatus: 'current', reason: 'new_applicable_evidence_evaluated',
     evidenceReferenceId,
   }]);
-  await seedEventVersion(database, 'event-versioned', 2, { status: 'current' });
+  await seedEventVersion(database, 'event-versioned', 2, {
+    status: 'current', impacts: [{ impactId: 'impact-version-mismatch', impactVersion: 1 }],
+  });
+  await seedEventImpactReference(database, 'event-versioned', 2, 'impact-version-mismatch', 1);
 
   await seedEventVersion(database, 'event-withdrawn', 1, { status: 'current' });
   await seedEventVersion(database, 'event-withdrawn', 2, {
