@@ -5,7 +5,7 @@
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-FRESHNESS-TRANSITION-CORE`
 **Worktree:** `.codex-build/worktrees/life01-source-revision-freshness-transition-core`
-**Assigned base:** To be pinned by root after the assignment commit.
+**Assigned base:** `bb4915cbe48e2376053d02b2573e93929dbcf35b` (exact task-worktree start point).
 **Contracts:** Persisted/domain schema 2.0; public API, OpenAPI, DTO, model and source-observation contracts unchanged. One private freshness-ledger migration is allowed by ADR-046.
 
 ## Context and dependencies
