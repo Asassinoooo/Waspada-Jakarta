@@ -1,6 +1,7 @@
 # LIFE-01-SOURCE-REVISION-FRESHNESS-TARGET-READER-CORE — read exact current freshness state
 
-**Status:** Assigned for isolated implementation under [ADR-046](../decisions/ADR-046-source-revision-freshness.md).
+**Status:** Accepted on local `main` under [ADR-046](../decisions/ADR-046-source-revision-freshness.md).
+**Integration:** Root merge `ac2d72add4f11af6566497fc731bdf04c7c0b87e`; agent commits `4b376e716d9a313377bffe58065d0c0fa5c9b501`, `a073ac91d4ab0c985bddcf5500ae85721cd69a4d`, and `ccff864fc28f348c240eb84c93478c6ad9abcab5` are preserved.
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-FRESHNESS-TARGET-READER-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-FRESHNESS-TARGET-READER-CORE`
