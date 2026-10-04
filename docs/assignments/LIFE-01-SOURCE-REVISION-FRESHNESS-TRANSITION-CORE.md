@@ -40,6 +40,7 @@ Implement one bounded Layer 4 pass that consumes explicit live `retracted`/`supe
 - `apps/db/test/freshness-transition-ledger.test.ts`
 - `apps/db/test/migrations.test.ts`
 - `apps/db/test/public-event-updates.test.ts` (root-authorized fixture-only migration-order correction)
+- `apps/db/test/report-revision-source-observations.test.ts` (root-authorized fixture-only TRUNCATE expectation correction)
 - `apps/db/test/source-revision-freshness-transition-composition.test.ts` (new; may import the Layer 4 module for PGlite composition)
 - `apps/worker/src/layers/l4-application-integration/source-revision-freshness-transition.ts` (new)
 - `apps/worker/test/source-revision-freshness-transition.test.ts` (new)
@@ -48,7 +49,7 @@ Implement one bounded Layer 4 pass that consumes explicit live `retracted`/`supe
 
 Do not change candidate/target-reader queries or contracts, public API/DTO/OpenAPI, public projections/views, source observation persistence, L1/L2 behavior, moderator behavior, freshness policy for `withdrawn`, scheduler/runtime bindings, source/provider/model adapters, deployment settings, package dependencies, or unrelated tests. Stop and ask root if the candidate/target/ledger contracts cannot support this composition within these paths or the migration would require broader privileges or a public contract change.
 
-Root-authorized narrow exception: `public-event-updates.test.ts` may be changed only to exclude migration 032 from its pre-ledger historical setup and include 032 after migration 031 in the complete migration-order expectation. This corrects the existing staged fixture for the new strict ledger migration; do not change its tested reader behavior or make migration 032 conditional.
+Root-authorized narrow exceptions: `public-event-updates.test.ts` may be changed only to exclude migration 032 from its pre-ledger historical setup and include 032 after migration 031 in the complete migration-order expectation; `report-revision-source-observations.test.ts` may be changed only so its TRUNCATE assertion accepts the new FK rejection while still checking that observation rows remain unchanged. These corrections accommodate the strict ledger migration without changing either tested behavior or making migration 032 conditional.
 
 ## Acceptance and verification
 
