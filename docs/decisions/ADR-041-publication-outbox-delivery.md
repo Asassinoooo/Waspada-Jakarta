@@ -1,6 +1,6 @@
 # ADR-041 — Bounded idempotent delivery for publication outbox notices
 
-- **Status:** Accepted for local implementation; no external sink selected or configured
+- **Status:** Accepted and locally implemented; no external sink selected or configured
 - **Date:** 4 October 2026
 - **Owner:** Root planner
 - **Requirements:** FR-08/13; NFR-01/02/04/05/07

@@ -52,4 +52,4 @@ No scheduled handler, Cron, API route, public contract, external sink, provider,
 
 The migration creates a NOLOGIN role without granting it to a login principal, as required by the capability boundary. A production connection must therefore have an approved way to execute SET ROLE waspada_l4_publication_outbox_delivery; the assignment does not define or provision that principal binding. PGlite coverage uses an authorized test executor and a local fake sink, so hosted connection authorization and remote sink behavior remain unverified.
 
-No further contract or schema decision was introduced. Root review and acceptance remain outstanding.
+No further contract or schema decision was introduced. Root independently reviewed the capability grants and late-result terminal behavior, passed the focused tests plus full WSL workspace, typecheck, build and diff checks, and accepted the work on local `main`. The checked-in Worker still does not configure or invoke the runtime.

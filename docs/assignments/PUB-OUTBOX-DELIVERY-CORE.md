@@ -1,11 +1,13 @@
 # PUB-OUTBOX-DELIVERY-CORE — bounded publication notice relay
 
-- **Status:** Assigned for local implementation
+- **Status:** Accepted on local `main`; root review and required checks passed
 - **Parent:** PUB-01; contributes to LIFE-01 outbox/replay infrastructure
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/PUB-OUTBOX-DELIVERY-CORE`
 - **Worktree:** `.codex-build/worktrees/pub-outbox-delivery-core`
-- **Base:** Root will pin the exact assignment commit before creating the worktree.
+- **Base:** `33bafac0efafdea5860b5c4ce65fa86f130af1e2`
+- **Implementation commit:** `4eaaeefa62a8988c4769aa161d734c6833d2fa3b` (`feat(PUB-OUTBOX-DELIVERY-CORE): add durable publication outbox relay`)
+- **Handoff commit:** `d9ffb452402c198d74023539fcf91abf380380c9` (`docs(PUB-OUTBOX-DELIVERY-CORE): record implementation handoff`)
 - **Requirements:** FR-08/13; NFR-01/02/04/05/07
 - **Dependencies:** `PUB-WRITE-CORE`, `DB-POSTGRES-TRANSACTIONAL-SQL-EXECUTOR-CORE`, `OBS-01-API-TELEMETRY-CORE`, ADR-013/041.
 - **Contract baseline:** Existing immutable publication outbox in migration 005; no public API/DTO/OpenAPI or domain contract changes.
@@ -40,12 +42,15 @@ Implement a bounded relay for existing `event_version_published` rows using an i
 - `apps/db/migrations/027_publication_outbox_delivery.sql`
 - New relay module under `apps/db/src/` and its focused test under `apps/db/test/`
 - `apps/db/test/migrations.test.ts` for migration inventory/order assertions only
+- `apps/db/test/public-event-updates.test.ts` only to exclude migration 027 from its partial precondition set and include it in the later applied set
 - New Worker relay runtime/telemetry modules under `apps/worker/src/`
 - Focused Worker and PGlite tests under `apps/worker/test/` or `apps/db/test/`
 - `apps/worker/package.json` only to register focused tests
 - This assignment's `-HANDOFF.md`
 
 Root owns ADRs, architecture, backlog, SDP, checkpoint, delivery log and scope changes. Ask root before changing any other path, SQL contract, or capability boundary. Preserve all in-progress user decisions about freshness and source retractions; this slice delivers publication-version notices only.
+
+The assigned branch is integrated on local `main`. Root independently reviewed the migration, capability grants, retry/late-result behavior and runtime gates; accepted test and configuration evidence is recorded in the [handoff](PUB-OUTBOX-DELIVERY-CORE-HANDOFF.md) and [delivery log](../DELIVERY_LOG.md). A production connection still needs an approved `SET ROLE waspada_l4_publication_outbox_delivery` path, and no sink or runtime trigger is configured.
 
 ## Acceptance and verification
 
