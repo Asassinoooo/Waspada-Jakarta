@@ -23,7 +23,7 @@ Team 12 selected preserving the exact current public event version until moderat
 
 ## Consequences
 
-New model-grounding requests fail closed when any supporting exact report revision has an explicit non-current publisher assertion. Conflicting assertions remain visible in the L1 ledger and are not silently reconciled. Existing public event versions remain as published until a moderator-reviewed Layer 4 correction or withdrawal; the public freshness badge decision remains open. A source revision blocked here remains blocked until a future, explicitly authorized review policy can safely permit reuse.
+New model-grounding requests fail closed when any supporting exact report revision has an explicit non-current publisher assertion. Conflicting assertions remain visible in the L1 ledger and are not silently reconciled. Existing public event versions remain as published until a moderator-reviewed Layer 4 correction or withdrawal. [ADR-046](ADR-046-source-revision-freshness.md) separately marks exact affected live publication targets `needs_update` for explicit `retracted` or `superseded` assertions; treatment of `withdrawn` assertions remains open. A source revision blocked here remains blocked until a future, explicitly authorized review policy can safely permit reuse.
 
 The implementation is local and synthetic-only. Hosted Neon behavior and any deployed Layer 2 database binding remain unverified.
 
@@ -33,4 +33,3 @@ The implementation is local and synthetic-only. Hosted Neon behavior and any dep
 - Mutate `report_revisions.revision_status`: that field is immutable and mixes source state with processing eligibility.
 - Automatically change public event versions or freshness when L2 blocks a source revision: source support validity and public presentation are separate decisions under ADR-042.
 - Let the LLM decide whether a retracted or superseded excerpt remains trustworthy: the eligibility boundary is deterministic and precedes model invocation.
-

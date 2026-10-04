@@ -17,11 +17,11 @@
 4. A `superseded` assertion must identify an exact replacement revision from the same source and dataset. `retracted` or `withdrawn` assertions must cite an exact same-source report revision containing the publisher's notice. A missing page, failed fetch, `404`, or stale cache alone does not mean retracted or withdrawn; it updates source availability/health separately.
 5. Keep `observed_at`, `retrieved_at`, and database `recorded_at` distinct. Source text and evidence retention remain subject to [ADR-005](ADR-005-source-retention.md).
 6. L1 acquisition and persistence remain independent of the agent loop. L2 may later consume a resolved source-state projection before grounding; L3 cannot create or reconcile publisher status. The accepted Layer 4 report-revision impact reader may identify affected current published targets, but publication changes still require moderator review through the existing gate.
-7. This decision does not change public event versions, freshness, lifecycle, geometry, history, or API output. Do not expose pending source assertions publicly until the separate public-freshness choice is recorded. Expiry or retraction never means incident resolution or safety.
+7. This decision does not change public event versions, freshness, lifecycle, geometry, history, or API output. Public freshness for explicit `retracted` and `superseded` assertions is specified separately in [ADR-046](ADR-046-source-revision-freshness.md); treatment of `withdrawn` assertions remains open. Expiry or retraction never means incident resolution or safety.
 
 ## Consequences
 
-The first implementation slice stores and replays attributed observations only. It does not compute a latest/winning status, alter RAG retrieval, invalidate embeddings or caches, create moderator review records, or alter publication/freshness. Those consumers remain distinct follow-up tasks. Tests use authored synthetic records; live-source access remains gated by permissions.
+The first implementation slice stores and replays attributed observations only. It does not compute a latest/winning status, alter RAG retrieval, invalidate embeddings or caches, create moderator review records, or alter publication/freshness. ADR-046 separately defines one exact-version freshness consumer for explicit retraction/supersession; other consumers remain distinct follow-up tasks. Tests use authored synthetic records; live-source access remains gated by permissions.
 
 ## Rejected alternatives
 
@@ -29,4 +29,3 @@ The first implementation slice stores and replays attributed observations only. 
 - Treat the latest fetch result or missing page as a source retraction: transient availability does not establish publisher intent.
 - Let an LLM assign the source state from article text: source state needs typed, source-grounded provenance and must not be inferred inside the orchestration loop.
 - Auto-correct or withdraw a public event when a source report changes: conflicts with ADR-042 and bypasses moderator review.
-
