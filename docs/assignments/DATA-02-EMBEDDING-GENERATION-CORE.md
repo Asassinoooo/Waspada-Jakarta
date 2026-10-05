@@ -5,7 +5,7 @@
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/DATA-02-EMBEDDING-GENERATION-CORE`
 - **Worktree:** `.codex-build/worktrees/data-02-embedding-generation-core`
-- **Assigned base:** to be pinned by root after the assignment commit
+- **Assigned base:** `c53e37c69500c6c8f51d79e25cdc77b94949fa13` (assignment commit)
 - **Requirements:** FR-03/04/05/06; NFR-01/02/05/07
 - **Dependencies:** `DATA-02-CORE`, `DATA-02-EMBEDDING-PERSIST-CORE`, `L2-ADAPTER-01`, `RAG-CORE`, `DB-TEST-RUNNER-ISOLATION`
 - **Contracts:** Schema 2.0 `EvidenceChunkInput` and `EmbeddingRun`; existing `ModelCapabilityAdapter.embed` and `EmbeddingRunRepository`; public API unchanged
