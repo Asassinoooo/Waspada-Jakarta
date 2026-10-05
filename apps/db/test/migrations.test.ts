@@ -38,7 +38,8 @@ describe('DATA-01 migrations', () => {
       && version !== '030_l2_source_revision_grounding_gate'
       && version !== '031_source_revision_review_candidate_reader'
       && version !== '032_source_revision_freshness_transitions'
-      && version !== '033_source_revision_freshness_run_state');
+      && version !== '033_source_revision_freshness_run_state'
+      && version !== '034_source_revision_withdrawn_freshness');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -82,7 +83,8 @@ describe('DATA-01 migrations', () => {
         && version !== '030_l2_source_revision_grounding_gate'
         && version !== '031_source_revision_review_candidate_reader'
         && version !== '032_source_revision_freshness_transitions'
-        && version !== '033_source_revision_freshness_run_state');
+        && version !== '033_source_revision_freshness_run_state'
+        && version !== '034_source_revision_withdrawn_freshness');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -213,6 +215,7 @@ describe('DATA-01 migrations', () => {
         '031_source_revision_review_candidate_reader',
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
+      '034_source_revision_withdrawn_freshness',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -360,6 +363,7 @@ describe('DATA-01 migrations', () => {
       '031_source_revision_review_candidate_reader',
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
+      '034_source_revision_withdrawn_freshness',
     ]);
   });
 
@@ -391,12 +395,13 @@ describe('DATA-01 migrations', () => {
       '031_source_revision_review_candidate_reader',
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
+      '034_source_revision_withdrawn_freshness',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '33');
+    assert.equal(count.rows[0]?.count, '34');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -415,7 +420,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 033_source_revision_freshness_run_state/,
+      /Cannot apply migration 000_late_backfill before already applied migration 034_source_revision_withdrawn_freshness/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -455,6 +460,7 @@ describe('DATA-01 migrations', () => {
       { version: '031_source_revision_review_candidate_reader' },
       { version: '032_source_revision_freshness_transitions' },
       { version: '033_source_revision_freshness_run_state' },
+      { version: '034_source_revision_withdrawn_freshness' },
     ]);
   });
 
@@ -483,6 +489,7 @@ describe('DATA-01 migrations', () => {
       '031_source_revision_review_candidate_reader',
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
+      '034_source_revision_withdrawn_freshness',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -502,7 +509,8 @@ describe('DATA-01 migrations', () => {
           && version !== '030_l2_source_revision_grounding_gate'
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
       const snapshotExistingRoles = async () => {
         const roleState = await migrationDatabase.executor.query<{ state: string }>(
           `SELECT rolname || ':' || rolinherit || ':' || rolcanlogin || ':' || rolsuper
@@ -570,7 +578,8 @@ describe('DATA-01 migrations', () => {
           && version !== '030_l2_source_revision_grounding_gate'
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
       assert.deepEqual(applied.applied, ['028_report_revision_impact_reader']);
       assert.deepEqual(await snapshotExistingRoles(), before,
         'migration 028 does not broaden or alter an existing role');
@@ -609,7 +618,8 @@ describe('DATA-01 migrations', () => {
           && version !== '030_l2_source_revision_grounding_gate'
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
       const snapshotExistingSecurity = async () => {
         const roles = await migrationDatabase.executor.query<{ state: string }>(
           `SELECT rolname || ':' || rolinherit || ':' || rolcanlogin || ':' || rolsuper
@@ -667,7 +677,8 @@ describe('DATA-01 migrations', () => {
         migrations.filter(({ version }) => version !== '030_l2_source_revision_grounding_gate'
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
       assert.deepEqual(applied.applied, ['029_source_revision_observations']);
       assert.deepEqual(await snapshotExistingSecurity(), before,
         'migration 029 does not change existing role attributes, memberships, schema grants, or object grants');
@@ -795,7 +806,8 @@ describe('DATA-01 migrations', () => {
         migrations.filter(({ version }) => version !== gateMigration.version
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
 
       const snapshotUnchangedAccess = async () => {
         const [roles, schemas, memberships, otherObjects, otherObservationGrants] = await Promise.all([
@@ -868,7 +880,8 @@ describe('DATA-01 migrations', () => {
       const applied = await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
       assert.deepEqual(applied.applied, ['030_l2_source_revision_grounding_gate']);
       assert.deepEqual(await snapshotUnchangedAccess(), before,
         'migration 030 changes no existing role, membership, schema, or non-L2 table grants');
@@ -935,7 +948,8 @@ describe('DATA-01 migrations', () => {
       await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== candidateMigration.version
           && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
 
       const snapshotExistingSecurity = async () => {
         const [roles, schemas, memberships, otherObjects, otherObservationGrants] = await Promise.all([
@@ -1011,7 +1025,8 @@ describe('DATA-01 migrations', () => {
       const before = await snapshotExistingSecurity();
       const applied = await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
       assert.deepEqual(applied.applied, ['031_source_revision_review_candidate_reader']);
       assert.deepEqual(await snapshotExistingSecurity(), before,
         'migration 031 changes no role, membership, schema, unrelated object, or other-role grant');
@@ -1104,7 +1119,8 @@ describe('DATA-01 migrations', () => {
     try {
       await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== transitionMigration.version
-          && version !== '033_source_revision_freshness_run_state'));
+          && version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
 
       const snapshotPriorAccess = async () => {
         const [roles, memberships, transitionGrants, observationGrants] = await Promise.all([
@@ -1171,7 +1187,8 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotPriorAccess();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '033_source_revision_freshness_run_state'));
+        migrations.filter(({ version }) => version !== '033_source_revision_freshness_run_state'
+          && version !== '034_source_revision_withdrawn_freshness'));
       assert.deepEqual(applied.applied, ['032_source_revision_freshness_transitions']);
       assert.deepEqual(await snapshotPriorAccess(), before,
         'migration 032 creates no role or membership and preserves every pre-existing grant');
@@ -1218,6 +1235,109 @@ describe('DATA-01 migrations', () => {
       await migrationDatabase.close();
     }
   });
+  it('extends only the private freshness reason/status constraint for withdrawn observations', async () => {
+    const withdrawnMigration = migrations.find(({ version }) =>
+      version === '034_source_revision_withdrawn_freshness');
+    assert.ok(withdrawnMigration, 'the withdrawn freshness migration is loaded');
+    const migrationDatabase = await createTestDatabase();
+    try {
+      await applyMigrations(migrationDatabase.executor,
+        migrations.filter(({ version }) => version !== withdrawnMigration.version));
+
+      const accessSnapshot = async () => {
+        const [roles, memberships, grants] = await Promise.all([
+          migrationDatabase.executor.query<{ state: string }>(
+            "SELECT rolname || ':' || rolinherit || ':' || rolcanlogin || ':' || rolsuper\n"
+              + "       || ':' || rolcreatedb || ':' || rolcreaterole || ':' || rolreplication\n"
+              + "       || ':' || rolbypassrls AS state\n"
+              + "FROM pg_roles WHERE left(rolname, 8) = 'waspada_' ORDER BY state",
+          ),
+          migrationDatabase.executor.query<{ state: string }>(
+            "SELECT granted.rolname || '->' || member.rolname AS state\n"
+              + "FROM pg_auth_members AS membership\n"
+              + "JOIN pg_roles AS granted ON granted.oid = membership.roleid\n"
+              + "JOIN pg_roles AS member ON member.oid = membership.member\n"
+              + "WHERE left(granted.rolname, 8) = 'waspada_'\n"
+              + "   OR left(member.rolname, 8) = 'waspada_'\n"
+              + "ORDER BY state",
+          ),
+          migrationDatabase.executor.query<{ state: string }>(
+            "SELECT role.rolname || ':' || relation.relname\n"
+              + "       || ':' || has_table_privilege(role.rolname, relation.oid, 'SELECT')\n"
+              + "       || ':' || has_table_privilege(role.rolname, relation.oid, 'INSERT')\n"
+              + "       || ':' || has_table_privilege(role.rolname, relation.oid, 'UPDATE')\n"
+              + "       || ':' || has_table_privilege(role.rolname, relation.oid, 'DELETE')\n"
+              + "       || ':' || has_table_privilege(role.rolname, relation.oid, 'TRUNCATE')\n"
+              + "       || ':' || COALESCE(has_column_privilege(role.rolname, relation.oid,\n"
+              + "            'source_observation_id', 'SELECT')::text, 'n/a')\n"
+              + "       || ':' || COALESCE(has_column_privilege(role.rolname, relation.oid,\n"
+              + "            'source_observation_id', 'INSERT')::text, 'n/a')\n"
+              + "       || ':' || COALESCE(has_column_privilege(role.rolname, relation.oid,\n"
+              + "            'source_observation_id', 'UPDATE')::text, 'n/a') AS state\n"
+              + "FROM pg_roles AS role\n"
+              + "CROSS JOIN pg_class AS relation\n"
+              + "WHERE left(role.rolname, 8) = 'waspada_'\n"
+              + "  AND relation.oid = 'waspada.freshness_transitions'::regclass\n"
+              + "ORDER BY state",
+          ),
+        ]);
+        return {
+          roles: roles.rows.map(({ state }) => state),
+          memberships: memberships.rows.map(({ state }) => state),
+          grants: grants.rows.map(({ state }) => state),
+        };
+      };
+
+      const before = await accessSnapshot();
+      const applied = await applyMigrations(migrationDatabase.executor, migrations);
+      assert.deepEqual(applied.applied, ['034_source_revision_withdrawn_freshness']);
+      assert.deepEqual(await accessSnapshot(), before,
+        'migration 034 adds no role, membership, or new grant');
+
+      const constraints = await migrationDatabase.executor.query<{
+        conname: string;
+        definition: string;
+      }>(
+        "SELECT conname, pg_get_constraintdef(oid) AS definition\n"
+          + "FROM pg_constraint\n"
+          + "WHERE conrelid = 'waspada.freshness_transitions'::regclass\n"
+          + "  AND conname IN ('freshness_transitions_reason_check',\n"
+          + "                  'freshness_transitions_reason_status_check')\n"
+          + "ORDER BY conname",
+      );
+      const reason = constraints.rows.find(({ conname }) => conname === 'freshness_transitions_reason_check');
+      const status = constraints.rows.find(({ conname }) => conname === 'freshness_transitions_reason_status_check');
+      assert.ok(reason?.definition.includes('source_report_withdrawn'));
+      assert.ok(status?.definition.includes('source_report_withdrawn'));
+      assert.ok(status?.definition.includes("dataset_kind = 'live'"));
+      assert.ok(status?.definition.includes("previous_status = 'current'"));
+      assert.ok(status?.definition.includes("resulting_status = 'needs_update'"));
+      assert.ok(status?.definition.includes('source_observation_id IS NOT NULL'));
+      const foreignKey = await migrationDatabase.executor.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM pg_constraint\n"
+          + "WHERE conrelid = 'waspada.freshness_transitions'::regclass\n"
+          + "  AND conname = 'freshness_transitions_source_observation_fk'",
+      );
+      assert.equal(foreignKey.rows[0]?.count, 1,
+        'the existing dataset-scoped observation foreign key remains in force');
+      await migrationDatabase.executor.execute('SET ROLE waspada_l4_freshness_writer');
+      try {
+        await assert.rejects(
+          migrationDatabase.executor.query(
+            'SELECT observation_id FROM waspada.report_revision_source_observations LIMIT 1',
+          ),
+          /permission denied/iu,
+          'migration 034 does not add direct source-observation access',
+        );
+      } finally {
+        await migrationDatabase.executor.execute('RESET ROLE');
+      }
+
+    } finally {
+      await migrationDatabase.close();
+    }
+  });
+
   it('grants the isolated freshness writer only append and replay access', async () => {
     const role = await testDatabase.executor.query<{
       rolcanlogin: boolean;
@@ -1961,7 +2081,8 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== runStateMigration.version));
+        migrations.filter(({ version }) => version !== runStateMigration.version
+          && version !== '034_source_revision_withdrawn_freshness'));
 
       const snapshotPriorAccess = async () => {
         const [roles, memberships, observationGrants] = await Promise.all([
@@ -2007,7 +2128,8 @@ describe('DATA-01 migrations', () => {
       };
 
       const before = await snapshotPriorAccess();
-      const applied = await applyMigrations(migrationDatabase.executor, migrations);
+      const applied = await applyMigrations(migrationDatabase.executor,
+        migrations.filter(({ version }) => version !== '034_source_revision_withdrawn_freshness'));
       assert.deepEqual(applied.applied, ['033_source_revision_freshness_run_state']);
       assert.deepEqual(await snapshotPriorAccess(), before,
         'migration 033 creates no role or membership and preserves every observation grant');

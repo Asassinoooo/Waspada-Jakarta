@@ -55,7 +55,7 @@ describe('source-revision freshness transition coordinator', () => {
       makeCandidate('obs-a-retracted', 'retracted', { kind: 'event_claim_set' }),
       makeCandidate('obs-a-retracted', 'retracted', impactTarget()),
       makeCandidate('obs-current', 'current', { kind: 'event_claim_set' }),
-      makeCandidate('obs-expired-skip', 'withdrawn', { kind: 'event_claim_set' }),
+      makeCandidate('obs-withdrawn-duplicate', 'withdrawn', { kind: 'event_claim_set' }),
       makeCandidate('obs-z-superseded', 'superseded', { kind: 'event_claim_set' }),
       makeCandidate('obs-z-superseded', 'superseded', impactTarget()),
     ];
@@ -86,8 +86,8 @@ describe('source-revision freshness transition coordinator', () => {
     assert.equal(result.outcome, 'completed');
     if (result.outcome !== 'completed') return;
     assert.deepEqual(result.counts, {
-      candidates: 6, invalidatingCandidates: 4, selectedTargets: 2,
-      duplicateCandidates: 2, skippedCandidates: 2, written: 1, replayed: 1, noChange: 0,
+      candidates: 6, invalidatingCandidates: 5, selectedTargets: 2,
+      duplicateCandidates: 3, skippedCandidates: 1, written: 1, replayed: 1, noChange: 0,
     });
     assert.equal(targetRequests.length, 1);
     assert.deepEqual(targetRequests[0], [
@@ -114,13 +114,97 @@ describe('source-revision freshness transition coordinator', () => {
     }
   });
 
+  it('applies withdrawn assertions alongside current statements to exact event and impact targets', async () => {
+    const candidates = sortCandidates([
+      makeCandidate('obs-current-withdrawn', 'current', { kind: 'event_claim_set' }),
+      makeCandidate('obs-withdrawn-event', 'withdrawn', { kind: 'event_claim_set' }),
+      makeCandidate('obs-withdrawn-impact', 'withdrawn', impactTarget()),
+    ]);
+    const commands: (AppendFreshnessTransitionInput | AppendSourceRevisionFreshnessTransitionInput)[] = [];
+    const targetRequests: (readonly SourceRevisionFreshnessTargetRequest[])[] = [];
+    const coordinator = coordinatorFor({
+      candidates: page(candidates),
+      async readTargets(request) {
+        targetRequests.push(request);
+        return request.map((target) => makeTarget(target.target, 'current', 0, '2026-10-02T10:00:00Z'));
+      },
+      async append(command) {
+        commands.push(command);
+        return ledgerResult('written');
+      },
+    });
+
+    const result = await coordinator.processPage({
+      datasetKind: 'live', now: NOW, limit: 10, traceId: TRACE_ID,
+    });
+    assert.equal(result.outcome, 'completed');
+    if (result.outcome !== 'completed') return;
+    assert.deepEqual(result.counts, {
+      candidates: 3, invalidatingCandidates: 2, selectedTargets: 2,
+      duplicateCandidates: 0, skippedCandidates: 1, written: 2, replayed: 0, noChange: 0,
+    });
+    assert.deepEqual(targetRequests, [[
+      { eventId: 'event-source-freshness', eventVersion: 3, target: { kind: 'event_claim_set' } },
+      { eventId: 'event-source-freshness', eventVersion: 3, target: impactTarget() },
+    ]]);
+    assert.deepEqual(commands.map((command) => ({
+      target: command.target,
+      reason: command.reason,
+      observationId: 'sourceObservationId' in command ? command.sourceObservationId : null,
+      previousStatus: command.previousStatus,
+      resultingStatus: command.resultingStatus,
+    })), [
+      {
+        target: { kind: 'event_claim_set' },
+        reason: 'source_report_withdrawn',
+        observationId: 'obs-withdrawn-event',
+        previousStatus: 'current',
+        resultingStatus: 'needs_update',
+      },
+      {
+        target: impactTarget(),
+        reason: 'source_report_withdrawn',
+        observationId: 'obs-withdrawn-impact',
+        previousStatus: 'current',
+        resultingStatus: 'needs_update',
+      },
+    ]);
+  });
+
+  it('rejects malformed withdrawn candidate lineage without reading targets or writing', async () => {
+    let targetReads = 0;
+    let ledgerWrites = 0;
+    const invalidCandidate = {
+      ...makeCandidate('obs-withdrawn-invalid', 'withdrawn', { kind: 'event_claim_set' }),
+      replacementReportRevisionId: 'unexpected-replacement',
+    };
+    const coordinator = coordinatorFor({
+      candidates: {
+        async read() {
+          return { candidates: [invalidCandidate], nextCursor: null };
+        },
+      },
+      async readTargets() { targetReads += 1; return []; },
+      async append() { ledgerWrites += 1; return ledgerResult('written'); },
+    });
+    const result = await coordinator.processPage({
+      datasetKind: 'live', now: NOW, limit: 1, traceId: TRACE_ID,
+    });
+    assert.deepEqual(result, {
+      outcome: 'failed', code: 'candidate_page_invalid', counts: zeroCounts(), resumeCursor: null,
+    });
+    assert.equal(targetReads, 0);
+    assert.equal(ledgerWrites, 0);
+  });
+
   it('treats sub-microsecond just-before validity as expired and keeps stale statuses sticky', async () => {
     const beforeCandidate = makeCandidate('obs-before', 'superseded', { kind: 'event_claim_set' }, 'event-before');
     const stickyCandidates = [
       makeCandidate('obs-before', 'superseded', { kind: 'event_claim_set' }, 'event-before'),
-      makeCandidate('obs-expired', 'retracted', { kind: 'event_claim_set' }, 'event-expired'),
+      makeCandidate('obs-expired', 'withdrawn', { kind: 'event_claim_set' }, 'event-expired'),
       makeCandidate('obs-needs-update', 'retracted', { kind: 'impact', impactId: 'impact-sticky', impactVersion: 1 }, 'event-sticky'),
       makeCandidate('obs-withdrawn', 'withdrawn', { kind: 'event_claim_set' }, 'event-withdrawn'),
+      makeCandidate('obs-withdrawn-expiry', 'withdrawn', { kind: 'event_claim_set' }, 'event-withdrawn-expiry'),
       makeCandidate('obs-current', 'current', { kind: 'event_claim_set' }, 'event-current'),
     ];
     const commands: (AppendFreshnessTransitionInput | AppendSourceRevisionFreshnessTransitionInput)[] = [];
@@ -134,6 +218,9 @@ describe('source-revision freshness transition coordinator', () => {
           if (target.eventId === 'event-expired') {
             return makeTarget(target.target, 'expired', 7, '2026-09-30T10:00:00Z', target.eventId);
           }
+          if (target.eventId === 'event-withdrawn-expiry') {
+            return makeTarget(target.target, 'current', 0, NOW, target.eventId);
+          }
           return makeTarget(target.target, 'needs_update', 2, null, target.eventId);
         });
       },
@@ -146,20 +233,24 @@ describe('source-revision freshness transition coordinator', () => {
     assert.equal(beforeCandidate.eventId, 'event-before');
     assert.equal(result.outcome, 'completed');
     if (result.outcome !== 'completed') return;
-    assert.equal(commands.length, 1);
-    assert.equal(commands[0]?.reason, 'issuer_validity_ended');
-    assert.equal(commands[0]?.resultingStatus, 'expired');
-    assert.equal(result.counts.noChange, 2,
+    assert.equal(commands.length, 2);
+    assert.equal(commands.every((command) => command.reason === 'issuer_validity_ended'), true);
+    assert.equal(commands.every((command) => command.resultingStatus === 'expired'), true);
+    const withdrawnExpiry = commands.find((command) => command.eventId === 'event-withdrawn-expiry');
+    assert.ok(withdrawnExpiry);
+    assert.equal(Object.hasOwn(withdrawnExpiry, 'sourceObservationId'), false,
+      'issuer expiry takes precedence for withdrawn targets at validity equality');
+    assert.equal(result.counts.noChange, 3,
       'already-expired and needs-update targets are not downgraded or rewritten');
-    assert.equal(result.counts.skippedCandidates, 2,
-      'withdrawn and current assertions are skipped without target reads or writes');
+    assert.equal(result.counts.skippedCandidates, 1,
+      'current-only assertions are skipped without target reads or writes');
   });
 
   it('stops serial appends on a stale conflict and returns the original input cursor', async () => {
     const inputCursor = cursor('obs-a-before', 'event-before');
     const candidates = sortCandidates([
       makeCandidate('obs-b', 'retracted', { kind: 'event_claim_set' }, 'event-b'),
-      makeCandidate('obs-c', 'superseded', { kind: 'event_claim_set' }, 'event-c'),
+      makeCandidate('obs-c', 'withdrawn', { kind: 'event_claim_set' }, 'event-c'),
     ]);
     const appended: string[] = [];
     const targetResults = candidates.map((candidate) =>
