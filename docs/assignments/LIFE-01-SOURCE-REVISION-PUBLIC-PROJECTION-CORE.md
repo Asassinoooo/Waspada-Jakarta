@@ -1,6 +1,6 @@
 # LIFE-01-SOURCE-REVISION-PUBLIC-PROJECTION-CORE — verify freshness in public projections
 
-- **Status:** Assigned for test-only implementation
+- **Status:** Accepted on local `main` at root merge `b5d19d68aecd5c425482b9fa1803f7d1583455d2`
 - **Backlog ID:** `LIFE-01-SOURCE-REVISION-PUBLIC-PROJECTION-CORE`
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/LIFE-01-SOURCE-REVISION-PUBLIC-PROJECTION-CORE`
@@ -43,4 +43,6 @@ Stop and report if the accepted public DTO cannot represent the required event-l
 
 ## Root review and acceptance
 
-Pending. Root will record independent review, checks, integration, and limitations here after handoff.
+Root reviewed the two-commit branch diff from the exact assigned base and confirmed only the assigned synthetic PGlite test and handoff changed. The test uses the existing transition coordinator and existing Layer 4 list, detail, and reviewed-history projectors; it proves immutable publication/history, event-versus-impact freshness, unchanged lifecycle, unchanged claim DTOs, and private observation/source/ledger metadata. Root integrated the branch at merge `b5d19d68aecd5c425482b9fa1803f7d1583455d2`, preserving implementation commit `5f488849ffb443a9f044da727df69f7835030082` (`test(LIFE-01): verify withdrawn freshness in public projections`) and handoff commit `0f34123d381125b4bbec8c24661e9a2acc0316f6` (`docs(LIFE-01): record public projection handoff`).
+
+The agent passed the focused test (1), `npm run db:test` (39/39 files), `npm test` (web 60/60, Worker 431/431, DB 39/39, evaluation 12/12), typecheck, build, and assigned-base diff check in WSL Ubuntu-26.04. Root independently reran the focused test (1/1) and verified assigned scope and whitespace. Only authored synthetic PGlite data was used; hosted Neon, live source providers, deployed Workers, and production data remain unverified. No dependency, migration, contract, configuration, role/grant, source, or deployment changes were made.
