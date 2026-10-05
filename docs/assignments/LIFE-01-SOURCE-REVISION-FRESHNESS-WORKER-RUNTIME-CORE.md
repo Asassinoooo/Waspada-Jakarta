@@ -1,6 +1,6 @@
 # LIFE-01-SOURCE-REVISION-FRESHNESS-WORKER-RUNTIME-CORE — disabled-by-default scheduled composition
 
-**Status:** Assigned for implementation; exact base pinned by root.
+**Status:** Paused by Team 12 decision to keep the runtime paused; no role or grant change is authorized.
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-FRESHNESS-WORKER-RUNTIME-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-FRESHNESS-WORKER-RUNTIME-CORE`
