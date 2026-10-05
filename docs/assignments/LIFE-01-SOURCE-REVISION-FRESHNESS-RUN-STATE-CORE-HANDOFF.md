@@ -8,7 +8,7 @@
 ## Commits
 
 - `c3b7266b871d0248a5c054b7a934310b485fe044` — `feat(LIFE-01): persist source-revision freshness run state`
-- The handoff is committed separately after the implementation; its commit SHA and exact message are recorded in the root task report.
+- `5abbfde9371e1c429d6918fe6b1b1e602ea8396b` — `docs(LIFE-01): record freshness run-state handoff`
 
 ## Implementation
 
