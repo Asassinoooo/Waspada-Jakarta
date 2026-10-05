@@ -1,6 +1,6 @@
 # DATA-02-EMBEDDING-GENERATION-CORE — validated embedding-to-storage pipeline
 
-- **Status:** Assigned for local implementation
+- **Status:** Accepted after root review; implementation merged to `main` at `0c4e618`
 - **Backlog ID:** `DATA-02-EMBEDDING-GENERATION-CORE`
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/DATA-02-EMBEDDING-GENERATION-CORE`
@@ -44,3 +44,9 @@ Do not modify model contracts, existing adapter validation, embedding persistenc
 ## Stop conditions
 
 Stop and report to root if the existing model adapter or L1 embedding repository cannot represent the required pipeline without changing a schema/API/DB role contract, if persistence cannot safely bind an embedding to the exact chunk identity, or if a real provider/key is required to pass the local tests. Do not invent provider results or semantic-quality claims. Escalate only after a GPT-6 Luna/max attempt documents a substantive technical blocker.
+
+## Root review and acceptance — 5 October 2026
+
+Root reviewed the isolated branch `work/DATA-02-EMBEDDING-GENERATION-CORE` from exact base `ff7de506c3d4f9833956e9d0bcb850a0e328273a` and merged it to `main` at `0c4e618142290a92f9c5705521f67365195f2387`. The merge preserves implementation commit `35e2ecd7bdb90885f8f43d5662a320ccebc2387b` (`feat(DATA-02): generate and persist validated embeddings`) and handoff commit `7276ef9ef98f4be180a0281a24e0fc6947e16876` (`docs(DATA-02): record embedding generation handoff`). The runner invokes the validated L2 embedding adapter before any L1 transaction, persists only successful results through the existing atomic repository, and returns closed outcomes for failures. Synthetic tests cover exact replay, changed-vector conflict, invalidated chunks, and retrieval compatibility.
+
+Root independently passed the focused Worker test and PGlite composition test (**3/3 each**) and assigned-base `git diff --check` in WSL Ubuntu-26.04. The agent passed `npm run db:test` (**39/39 files**), full `npm test` (web **60/60**, Worker **431/431**, DB **39/39 files**, evaluation **12/12**), typecheck, and build (Vite production plus Wrangler dry-run). The accepted diff adds only its three assigned source/test files and handoff. No provider, migration, grant, public contract, dependency, runtime binding, live source, or deployment configuration was added. Tests make no semantic-quality or real-provider performance claim; hosted Neon and provider behavior remain unverified. See the [handoff](DATA-02-EMBEDDING-GENERATION-CORE-HANDOFF.md).
