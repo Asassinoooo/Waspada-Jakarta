@@ -1,6 +1,6 @@
 # LIFE-01-SOURCE-REVISION-FRESHNESS-TRANSITION-CORE — apply explicit source invalidation to freshness
 
-**Status:** Assigned for implementation; root review required.
+**Status:** Accepted on local `main` by root review on 5 October 2026.
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-FRESHNESS-TRANSITION-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-FRESHNESS-TRANSITION-CORE`
@@ -60,3 +60,12 @@ Root-authorized narrow exceptions: `public-event-updates.test.ts` may be changed
 ## Stop conditions
 
 Stop if implementation requires direct Layer 4 access to source-observation tables, if the freshness role must gain broader privileges, if any task dependency is not actually accepted, if current contract changes are needed, or if a change would touch withdrawn policy, publication content, public API, live source/runtime configuration or an external service. Ask root with the concrete blocker and continue no dependent edits.
+
+## Root review and acceptance — 5 October 2026
+
+- Integrated with merge `41c60d72bd2fc1bdc4a4082c9fe1d59bcea13c71`, preserving implementation commit `018d1c4251433d3f9f171ee57727c99c34fc4314` and handoff commit `db15c73fbb456931028ab10de09822e86851ad86` from the assigned branch/worktree.
+- Reviewed the complete branch diff, migration 032, source-observation ledger behavior, candidate and exact-target composition, public freshness projection, and handoff. The result matches the selected rule: event badge plus only directly affected impact versions; issuer expiry remains authoritative at its deadline.
+- Root checks in WSL Ubuntu-26.04 with existing Node.js 24.21.0/npm 11.19.0: `npm run db:test` passed (37/37 files), focused coordinator test passed (5/5), `npm run typecheck` passed, `npm run build` passed including Wrangler dry-run, and `git diff --check bb4915cbe48e2376053d02b2573e93929dbcf35b..HEAD` passed.
+- Agent-reported checks on the task branch: full `npm test` passed across web, Worker, DB (37/37 files), and evaluation (12/12); typecheck, build, and assigned-base diff check passed.
+- Migration impact is limited to nullable private observation linkage in the append-only freshness ledger and column-level SELECT/INSERT for the existing L4 freshness writer. No contract, public projection, source access, dependency, provider, scheduler, runtime, or deployment changes.
+- Fixtures are authored/synthetic PGlite data. Hosted Neon, live source rights/data, and scheduler/runtime integration remain unverified/out of scope. `withdrawn` freshness policy remains open.
