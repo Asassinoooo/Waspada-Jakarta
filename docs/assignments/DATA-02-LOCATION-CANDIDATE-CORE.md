@@ -1,6 +1,6 @@
 # DATA-02-LOCATION-CANDIDATE-CORE — bounded gazetteer phrase matcher
 
-- **Status:** Assigned for local implementation
+- **Status:** Accepted after root review; implementation merged to `main` at `e4a749a884a026b2f9b6c40c67ae6e368429951a`
 - **Backlog ID:** `DATA-02-LOCATION-CANDIDATE-CORE`
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/DATA-02-LOCATION-CANDIDATE-CORE`
@@ -43,6 +43,8 @@ Do not edit shared text preparation, extraction/database contracts, geometry sto
 
 Stop and report to root if actual coordinates, boundary files, source-specific gazetteer rights, a database/API schema, or a model/provider are needed for the bounded matcher. Do not substitute invented or unofficial live location data. Do not escalate models for usage limits or scheduling delays.
 
-## Root review and acceptance
+## Root review and acceptance — 5 October 2026
 
-Pending. Root will record independent review, checks, integration, and limitations here after handoff.
+Root reviewed branch `work/DATA-02-LOCATION-CANDIDATE-CORE` from exact base `4cefc063db68d0d9092761676cff713a98538b66` and merged it to `main` at `e4a749a884a026b2f9b6c40c67ae6e368429951a`. The merge preserves implementation commits `185fad662f0ecb4761d4dc3b080569f1cffb827c` (`feat(DATA-02-LOCATION-CANDIDATE-CORE): add bounded gazetteer matcher`), `0c03c1a4e9981ad7026e11a6d361371b6dee6e31` (`test(DATA-02-LOCATION-CANDIDATE-CORE): keep gazetteer fixtures synthetic`), `7aa6276e1aa3bc4ba63cc6e9533582cba38178a5` (`fix(DATA-02-LOCATION-CANDIDATE-CORE): normalize aliases with NFKC`), and handoff `dc194bc2595ca524503d939bbde308cadfc0529e` (`docs(DATA-02-LOCATION-CANDIDATE-CORE): record implementation handoff`). Review confirmed the matcher preserves ambiguity and overlap, reports exact-text code-point spans, stays within deterministic work/output limits, and emits no text, aliases, geometry, or coordinates. Only the three assigned paths changed.
+
+The agent passed focused tests (**10/10**), `npm run typecheck`, `npm run build`, final-state `npm test`, and assigned-base `git diff --check` in WSL Ubuntu-26.04 with the existing dependency tree. Root independently reran the focused test (**10/10**) using the existing WSL Node `v24.21.0` runtime and passed assigned-base and post-merge diff checks. No dependency, migration, API, source, persistence, or deployment change was added. Gazetteer rights and authoritative location validation remain gated; the matcher creates candidates only and does not establish an incident location or safety claim. See the [handoff](DATA-02-LOCATION-CANDIDATE-CORE-HANDOFF.md).
