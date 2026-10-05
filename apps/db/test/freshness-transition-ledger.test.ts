@@ -5,6 +5,7 @@ import {
   createSqlFreshnessTransitionLedger,
   FreshnessTransitionLedgerInputError,
   type AppendFreshnessTransitionInput,
+  type AppendSourceRevisionFreshnessTransitionInput,
 } from '../src/freshness-transition-ledger.js';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
@@ -292,6 +293,54 @@ describe('append-only freshness transition ledger', () => {
       ),
       /immutable|append.only/i,
     );
+  });
+
+  it('rejects withdrawn-source ledger appends outside the live current-to-needs-update shape', async () => {
+    const base: AppendSourceRevisionFreshnessTransitionInput = {
+      datasetKind: 'synthetic',
+      eventId: 'event-ledger-noop',
+      eventVersion: 1,
+      target: { kind: 'event_claim_set' },
+      expectedSequence: 1,
+      previousStatus: 'current',
+      resultingStatus: 'needs_update',
+      reason: 'source_report_withdrawn',
+      evaluatedAt: NOW,
+      traceId: TRACE,
+      idempotencyKey: 'ledger:withdrawn:invalid-shape',
+      evidenceReferenceIds: [],
+      sourceObservationId: 'observation-withdrawn',
+    };
+    await assert.rejects(
+      ledger.append(base),
+      (error: unknown) => error instanceof FreshnessTransitionLedgerInputError
+        && error.code === 'invalid_input' && error.message === 'invalid_input',
+      'withdrawn freshness is live-only',
+    );
+    await assert.rejects(
+      ledger.append({
+        ...base,
+        datasetKind: 'live',
+        previousStatus: 'expired',
+        idempotencyKey: 'ledger:withdrawn:invalid-prior',
+      }),
+      (error: unknown) => error instanceof FreshnessTransitionLedgerInputError
+        && error.code === 'invalid_input' && error.message === 'invalid_input',
+      'withdrawn freshness only changes a current target to needs_update',
+    );
+    await assert.rejects(
+      ledger.append({
+        ...base,
+        datasetKind: 'live',
+        sourceObservationId: null,
+        idempotencyKey: 'ledger:withdrawn:missing-observation',
+      } as unknown as AppendSourceRevisionFreshnessTransitionInput),
+      (error: unknown) => error instanceof FreshnessTransitionLedgerInputError
+        && error.code === 'invalid_input' && error.message === 'invalid_input',
+      'the exact source observation ID is required',
+    );
+    assert.equal(await countRows(database, 'freshness_transitions',
+      "event_id = 'event-ledger-noop' AND idempotency_key LIKE 'ledger:withdrawn:%'"), 0);
   });
 
   it('rejects no-op appends before any ledger row is created', async () => {

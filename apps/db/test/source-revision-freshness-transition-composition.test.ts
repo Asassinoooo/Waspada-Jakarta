@@ -25,7 +25,7 @@ const PRIVATE_SOURCE_TEXT = 'AUTHORED_PRIVATE_SOURCE_FIXTURE_ONLY';
 const PRIVATE_CLAIM_TEXT = 'AUTHORED_PRIVATE_CLAIM_FIXTURE_ONLY';
 
 describe('PGlite source-revision freshness transition composition', () => {
-  it('writes expiry-first event freshness and only the directly supported impact with its exact observation', async () => {
+  it('writes withdrawn freshness for exact directly supported targets without changing immutable publications', async () => {
     const database = await createTestDatabase();
     try {
       const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
@@ -46,8 +46,8 @@ describe('PGlite source-revision freshness transition composition', () => {
       assert.deepEqual(result, {
         outcome: 'completed',
         counts: {
-          candidates: 6, invalidatingCandidates: 4, selectedTargets: 2,
-          duplicateCandidates: 2, skippedCandidates: 2, written: 2, replayed: 0, noChange: 0,
+          candidates: 2, invalidatingCandidates: 2, selectedTargets: 2,
+          duplicateCandidates: 0, skippedCandidates: 0, written: 2, replayed: 0, noChange: 0,
         },
         nextCursor: null,
       });
@@ -83,9 +83,9 @@ describe('PGlite source-revision freshness transition composition', () => {
         source_observation_id: claimSet.source_observation_id,
       }, {
         target_kind: 'event_claim_set', impact_id: null, impact_version: null,
-        previous_status: 'current', resulting_status: 'expired',
-        reason: 'issuer_validity_ended', source_observation_id: null,
-      }, 'issuer validity equality takes precedence and carries no observation ID');
+        previous_status: 'current', resulting_status: 'needs_update',
+        reason: 'source_report_withdrawn', source_observation_id: 'observation-w-withdrawn',
+      }, 'the exact withdrawn observation is attached to the event claim-set transition');
       assert.deepEqual(directImpact && {
         target_kind: directImpact.target_kind,
         impact_id: directImpact.impact_id,
@@ -97,7 +97,7 @@ describe('PGlite source-revision freshness transition composition', () => {
       }, {
         target_kind: 'impact', impact_id: IMPACT_DIRECT, impact_version: 1,
         previous_status: 'current', resulting_status: 'needs_update',
-        reason: 'source_report_retracted', source_observation_id: 'observation-a-retracted',
+        reason: 'source_report_withdrawn', source_observation_id: 'observation-w-withdrawn',
       }, 'the direct impact links to the deterministic selected invalidating observation');
       assert.equal(transitions.rows.every(({ idempotency_key }) =>
         /^source-revision-freshness:[a-f0-9]{64}$/u.test(idempotency_key)), true);
@@ -113,22 +113,22 @@ describe('PGlite source-revision freshness transition composition', () => {
         expectedSequence: 1,
         previousStatus: 'current',
         resultingStatus: 'needs_update',
-        reason: 'source_report_retracted',
+        reason: 'source_report_withdrawn',
         evaluatedAt: NOW,
         traceId: EVALUATION_TRACE_ID,
         idempotencyKey: impactTransition.idempotency_key,
         evidenceReferenceIds: [],
-        sourceObservationId: 'observation-a-retracted',
+        sourceObservationId: 'observation-w-withdrawn',
       };
       const replay = await ledger.append(replayInput);
       assert.equal(replay.outcome, 'replayed');
       if (replay.outcome === 'replayed') {
-        assert.equal(replay.record.sourceObservationId, 'observation-a-retracted');
+        assert.equal(replay.record.sourceObservationId, 'observation-w-withdrawn');
         assert.equal(replay.record.requestFingerprint, impactTransition.request_fingerprint);
       }
       assert.deepEqual(await ledger.append({
         ...replayInput,
-        sourceObservationId: 'observation-z-superseded',
+        sourceObservationId: 'observation-current',
       }), { outcome: 'conflict', code: 'idempotency_key_reused' },
       'the source-observation ID participates in replay fingerprint validation');
 
@@ -161,7 +161,7 @@ describe('PGlite source-revision freshness transition composition', () => {
       for (const row of publicViews.rows) {
         assert.equal(row.lifecycle, 'unknown', 'freshness does not alter incident lifecycle');
         for (const serialized of [row.event_record, row.impact_record]) {
-          assert.equal(serialized.includes('observation-a-retracted'), false);
+          assert.equal(serialized.includes('observation-w-withdrawn'), false);
           assert.equal(serialized.includes('source_observation_id'), false);
           assert.equal(serialized.includes(PRIVATE_SOURCE_TEXT), false);
         }
@@ -202,8 +202,7 @@ async function seedFixture(database: TestDatabase): Promise<string> {
   );
 
   const revisions = [
-    'revision-source-target', 'revision-a-retracted', 'revision-z-superseded',
-    'revision-w-withdrawn', 'revision-current', 'revision-source-replacement',
+    'revision-source-target', 'revision-w-withdrawn', 'revision-current',
   ];
   for (const revisionId of revisions) {
     const text = `${PRIVATE_SOURCE_TEXT} ${revisionId}`;
@@ -214,8 +213,7 @@ async function seedFixture(database: TestDatabase): Promise<string> {
           supersedes_id, revision_status, record_json)
        VALUES ('live', $1, $2, $3, 'https://fixture.invalid/authored-only', $4, $5, $6,
          'authored-fixture-v1', $7, $8, 'eligible', '{"fixture":"authored-only"}'::jsonb)`,
-      [revisionId, TRACE_ID, SOURCE_ID, hash(`bytes:${revisionId}`), text, hash(text), NOW,
-        revisionId === 'revision-source-replacement' ? 'revision-source-target' : null],
+      [revisionId, TRACE_ID, SOURCE_ID, hash(`bytes:${revisionId}`), text, hash(text), NOW, null],
     );
   }
 
@@ -231,8 +229,6 @@ async function seedFixture(database: TestDatabase): Promise<string> {
   assert.ok(evidenceRefId);
 
   const observations = [
-    { id: 'observation-a-retracted', assertion: 'revision-a-retracted', state: 'retracted', replacement: null },
-    { id: 'observation-z-superseded', assertion: 'revision-z-superseded', state: 'superseded', replacement: 'revision-source-replacement' },
     { id: 'observation-w-withdrawn', assertion: 'revision-w-withdrawn', state: 'withdrawn', replacement: null },
     { id: 'observation-current', assertion: 'revision-current', state: 'current', replacement: null },
   ] as const;
@@ -284,7 +280,7 @@ async function seedFixture(database: TestDatabase): Promise<string> {
         { impact_id: IMPACT_UNRELATED, version: 1 },
       ],
       freshness: { status: 'current', evaluated_at: NOW, review_due_at: FUTURE, basis: 'manual_review' },
-      validity: { valid_from: null, valid_until: NOW },
+      validity: { valid_from: null, valid_until: FUTURE },
       publication_status: 'published', withdrawal_reason: null,
       publication_decision_id: 'decision-source-freshness-fixture', published_at: NOW, withdrawn_at: null,
     };
@@ -401,17 +397,17 @@ async function verifyWriterBoundary(
       expectedSequence: 1,
       previousStatus: 'current',
       resultingStatus: 'needs_update',
-      reason: 'source_report_retracted',
+      reason: 'source_report_withdrawn',
       evaluatedAt: NOW,
       traceId: EVALUATION_TRACE_ID,
       idempotencyKey: 'source-revision-freshness:role-capability-fixture',
       evidenceReferenceIds: [],
-      sourceObservationId: 'observation-a-retracted',
+      sourceObservationId: 'observation-w-withdrawn',
     });
     assert.equal(written.outcome, 'written',
       'the existing freshness writer can insert/select the new private ledger column');
     if (written.outcome === 'written') {
-      assert.equal(written.record.sourceObservationId, 'observation-a-retracted');
+      assert.equal(written.record.sourceObservationId, 'observation-w-withdrawn');
     }
   } finally {
     await database.executor.execute('RESET ROLE');

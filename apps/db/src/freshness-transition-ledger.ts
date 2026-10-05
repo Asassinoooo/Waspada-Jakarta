@@ -7,7 +7,10 @@ export type PersistedFreshnessTransitionReason =
   | 'issuer_validity_ended'
   | 'new_applicable_evidence_evaluated'
   | 'review_deadline_missed';
-export type SourceRevisionFreshnessTransitionReason = 'source_report_retracted' | 'source_report_superseded';
+export type SourceRevisionFreshnessTransitionReason =
+  | 'source_report_retracted'
+  | 'source_report_superseded'
+  | 'source_report_withdrawn';
 type AllFreshnessTransitionReason = PersistedFreshnessTransitionReason | SourceRevisionFreshnessTransitionReason;
 
 export type FreshnessTransitionTarget =
@@ -150,7 +153,7 @@ const DATASETS = new Set<FreshnessDatasetKind>(['live', 'historical', 'synthetic
 const STATUSES = new Set<FreshnessStatus>(['current', 'needs_update', 'expired']);
 const REASONS = new Set<AllFreshnessTransitionReason>([
   'issuer_validity_ended', 'new_applicable_evidence_evaluated', 'review_deadline_missed',
-  'source_report_retracted', 'source_report_superseded',
+  'source_report_retracted', 'source_report_superseded', 'source_report_withdrawn',
 ]);
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
@@ -360,7 +363,8 @@ function snapshotInput(value: unknown): Snapshot {
     || (reason === 'new_applicable_evidence_evaluated'
       && ((previousStatus !== 'needs_update' && previousStatus !== 'expired') || resultingStatus !== 'current'
         || sourceObservationId !== null))
-    || ((reason === 'source_report_retracted' || reason === 'source_report_superseded')
+    || ((reason === 'source_report_retracted' || reason === 'source_report_superseded'
+      || reason === 'source_report_withdrawn')
       && (value.datasetKind !== 'live' || previousStatus !== 'current' || resultingStatus !== 'needs_update'
         || sourceObservationId === null))) {
     return invalid();
@@ -460,7 +464,8 @@ function publicResult(
   result: InternalAppendResult,
 ): FreshnessTransitionAppendResult | SourceRevisionFreshnessTransitionAppendResult {
   if (result.outcome === 'conflict') return result;
-  if (reason === 'source_report_retracted' || reason === 'source_report_superseded') {
+  if (reason === 'source_report_retracted' || reason === 'source_report_superseded'
+    || reason === 'source_report_withdrawn') {
     if (result.record.sourceObservationId === null) return { outcome: 'conflict', code: 'target_changed' };
     return {
       outcome: result.outcome,

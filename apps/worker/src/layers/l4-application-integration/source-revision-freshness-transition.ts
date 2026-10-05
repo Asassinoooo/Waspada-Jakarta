@@ -166,7 +166,7 @@ export function createSourceRevisionFreshnessTransitionCoordinator(
 
       const chosenByTarget = new Map<string, Candidate>();
       for (const candidate of page.candidates) {
-        if (candidate.assertedState === 'withdrawn' || candidate.assertedState === 'current') {
+        if (candidate.assertedState === 'current') {
           counts.skippedCandidates += 1;
           continue;
         }
@@ -217,7 +217,9 @@ export function createSourceRevisionFreshnessTransitionCoordinator(
         } else if (!expired && target.status === 'current') {
           reason = candidate.assertedState === 'retracted'
             ? 'source_report_retracted'
-            : 'source_report_superseded';
+            : candidate.assertedState === 'superseded'
+              ? 'source_report_superseded'
+              : 'source_report_withdrawn';
           resultingStatus = 'needs_update';
         } else {
           counts.noChange += 1;
@@ -250,7 +252,8 @@ export function createSourceRevisionFreshnessTransitionCoordinator(
 
         let result: FreshnessTransitionAppendResult | SourceRevisionFreshnessTransitionAppendResult;
         try {
-          if (reason === 'source_report_retracted' || reason === 'source_report_superseded') {
+          if (reason === 'source_report_retracted' || reason === 'source_report_superseded'
+            || reason === 'source_report_withdrawn') {
             const sourceInput: AppendSourceRevisionFreshnessTransitionInput = {
               ...commonInput,
               reason,
