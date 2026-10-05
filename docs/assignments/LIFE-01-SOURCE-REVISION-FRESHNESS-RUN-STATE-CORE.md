@@ -54,3 +54,12 @@ Root-authorized narrow fixture exception: `public-event-updates.test.ts` may exc
 ## Stop conditions
 
 Stop and report to root if the fixed existing trace schema cannot express this run without exposing cursor data, if another role needs direct state-table access, if one-page recovery needs a public contract change, or if implementation requires a Cron, binding, source, hosted membership, or other external configuration. Do not solve these by widening scope. Escalate only after a GPT-6 Luna/max attempt documents a substantive unresolved technical blocker.
+
+## Root review and acceptance — 5 October 2026
+
+- Integrated at root merge `f2822bb30fab817f1cecb26d5a2b8a9a9dba50bc`, preserving implementation `c3b7266b871d0248a5c054b7a934310b485fe044` (`feat(LIFE-01): persist source-revision freshness run state`), handoff `5abbfde9371e1c429d6918fe6b1b1e602ea8396b` (`docs(LIFE-01): record freshness run-state handoff`), and handoff identity follow-up `2c303f2bdcc4a5217c5ceefafe46c566b2d723ec` (`docs(LIFE-01): include handoff commit identity`).
+- Reviewed the complete migration, repository, behavior/migration tests, and handoff. The schema keeps exact input/output cursors outside trace metadata; fixed-purpose functions provide bounded begin/CAS/finalize behavior under the existing L4 freshness-writer role, and no direct state-table grants or source-observation grants were added.
+- Root independently passed the final-source focused run-state/migration/public-update tests (**31/31**) in WSL Ubuntu-26.04, `npm run typecheck`, `npm run build` (including Wrangler dry-run), and `git diff --check` against the assigned base.
+- Agent checks: final-source `npm test` passed web (**60/60**), Worker (**429/429**), DB (**38/38 files**), and evaluation (**12/12**); typecheck, build, and assigned-base diff check passed. Its direct `npm run db:test` also passed 38/38 before the final year-zero validator guard; the post-guard database aggregate passed within full `npm test`.
+- Migration 033 adds only the private cursor checkpoint, immutable per-run input, append-only per-run advancement, and fixed-purpose SQL functions. Authored PGlite only; hosted Neon concurrency and deployed scheduling/runtime remain unverified. No public API, source access, provider, runtime, schedule, dependency, or deployment configuration changed.
+- Accepted. No unresolved design or contract decisions remain.

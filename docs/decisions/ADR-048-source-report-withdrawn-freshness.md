@@ -24,4 +24,3 @@ The append-only transition ledger uses the reason `source_report_withdrawn` and 
 ## Implementation boundary
 
 This decision does not expand the accepted `LIFE-01-SOURCE-REVISION-FRESHNESS-TRANSITION-CORE`; that slice continues to handle only explicit `retracted` and `superseded` assertions. Implement the withdrawn transition in a separate bounded slice after `LIFE-01-SOURCE-REVISION-FRESHNESS-RUN-STATE-CORE`, so migration/test-order work is serialized. The follow-up may extend the private ledger reason constraint and Layer 4 transition coordinator, with authored synthetic tests. It must not add a scheduler, source/provider access, public contract, moderator mutation, or deployment configuration.
-
