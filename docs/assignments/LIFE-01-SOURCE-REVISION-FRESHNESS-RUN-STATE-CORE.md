@@ -1,10 +1,11 @@
 # LIFE-01-SOURCE-REVISION-FRESHNESS-RUN-STATE-CORE — persist private scan progress
 
-**Status:** Assigned for implementation; exact base to be pinned before editing.
+**Status:** Assigned for implementation; exact base pinned by root.
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-FRESHNESS-RUN-STATE-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-FRESHNESS-RUN-STATE-CORE`
 **Worktree:** `.codex-build/worktrees/life01-source-revision-freshness-run-state-core`
+**Assigned base:** `b73111739ff79f12b4c6343b790c456ee26afe01` (exact task-planning commit).
 **Contracts:** Existing source-revision candidate cursor and coordinator-count contracts; source/domain schema 2.0; public API/DTO unchanged. One private migration adding run/cursor state and fixed-purpose SQL functions is allowed by ADR-047.
 
 ## Context and dependencies
@@ -48,7 +49,7 @@ Root-authorized narrow fixture exception: `public-event-updates.test.ts` may exc
 - Only a fully completed page advances the checkpoint; a failed/conflicted page leaves it unchanged. Exact CAS replay is safe after a crash between cursor advancement and trace finalization.
 - The next scheduled-slot implementation can run one page per slot without starvation, with no direct table grants, no cursor in public data, and count-only trace summaries.
 - Run focused source-revision run-state, migration, and update-reader tests; `npm run db:test`, `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check <assigned-base>..HEAD` in WSL Ubuntu-26.04 using existing dependencies only. Record exact Node/npm and relevant package versions and actual results.
-- Work only in the assigned branch/worktree after the root pins the exact base. Commit implementation and handoff in coherent descriptive commits. Do not merge or push; root reviews and integrates.
+- Work only in the assigned branch/worktree from the exact base above. Commit implementation and handoff in coherent descriptive commits. Do not merge or push; root reviews and integrates.
 
 ## Stop conditions
 
