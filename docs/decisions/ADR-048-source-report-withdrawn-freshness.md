@@ -21,6 +21,8 @@ Apply the same public freshness treatment to an explicit publisher `withdrawn` a
 
 The append-only transition ledger uses the reason `source_report_withdrawn` and retains the exact source-observation ID privately, following ADR-046's provenance and access rules. Existing public DTOs remain unchanged.
 
-## Implementation boundary
+## Implementation status
 
-This decision does not expand the accepted `LIFE-01-SOURCE-REVISION-FRESHNESS-TRANSITION-CORE`; that slice continues to handle only explicit `retracted` and `superseded` assertions. Implement the withdrawn transition in a separate bounded slice after `LIFE-01-SOURCE-REVISION-FRESHNESS-RUN-STATE-CORE`, so migration/test-order work is serialized. The follow-up may extend the private ledger reason constraint and Layer 4 transition coordinator, with authored synthetic tests. It must not add a scheduler, source/provider access, public contract, moderator mutation, or deployment configuration.
+The selected policy is implemented and accepted in `LIFE-01-SOURCE-REVISION-WITHDRAWN-FRESHNESS-CORE`. Migration 034 extends only the private freshness reason/status constraint; the Layer 4 coordinator records the exact observation identity and applies `needs_update` to the current event claim set and directly supported impacts. Existing writer grants, public contracts, publication content, and runtime configuration are unchanged. Authored PGlite fixtures cover the local behavior; hosted Neon and live-source behavior remain unverified. See the [assignment](../assignments/LIFE-01-SOURCE-REVISION-WITHDRAWN-FRESHNESS-CORE.md) and [handoff](../assignments/LIFE-01-SOURCE-REVISION-WITHDRAWN-FRESHNESS-CORE-HANDOFF.md).
+
+This slice does not add a scheduler, source/provider access, moderator mutation, or deployment configuration. The separate source-revision Worker runtime remains paused at its least-privilege role-design stop condition.
