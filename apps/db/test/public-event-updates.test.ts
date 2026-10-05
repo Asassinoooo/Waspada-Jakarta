@@ -71,7 +71,8 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       && version !== '029_source_revision_observations'
       && version !== '030_l2_source_revision_grounding_gate'
       && version !== '031_source_revision_review_candidate_reader'
-      && version !== '032_source_revision_freshness_transitions'));
+      && version !== '032_source_revision_freshness_transitions'
+      && version !== '033_source_revision_freshness_run_state'));
     await database.executor.query(
       "INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')",
     );
@@ -109,6 +110,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       '030_l2_source_revision_grounding_gate',
       '031_source_revision_review_candidate_reader',
       '032_source_revision_freshness_transitions',
+      '033_source_revision_freshness_run_state',
     ]);
   });
 
