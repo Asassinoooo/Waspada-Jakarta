@@ -5,7 +5,7 @@
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/LIFE-01-SOURCE-REVISION-PUBLIC-PROJECTION-CORE`
 - **Worktree:** `.codex-build/worktrees/life01-source-revision-public-projection-core`
-- **Assigned base:** Pinned in the root dispatch and backlog after the assignment commit.
+- **Assigned base:** `4468117dfe3c234e803d8f2ba96133e001af689d` (`docs(DATA-02): record location matcher acceptance`); the test branch starts from this exact commit.
 - **Requirements:** FR-09/10/11/13; NFR-01/05/07
 - **Dependencies:** `LIFE-01-SOURCE-REVISION-WITHDRAWN-FRESHNESS-CORE`, `LIFE-01-FRESHNESS-AGGREGATE-CORE`, `API-PUBLIC-EVENT-LIST-PROJECTION-CORE`, `API-PUBLIC-DETAIL-PROJECTION-CORE`, `API-PUBLIC-HISTORY-PROJECTION-CORE`, `DB-TEST-RUNNER-ISOLATION`, ADR-042/046/048
 - **Contracts:** Existing source-revision observation, freshness ledger, public `EventView`, `EventDetail`, and history DTOs; no contract change.
