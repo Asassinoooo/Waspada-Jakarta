@@ -14,7 +14,7 @@ test("matches complete case-insensitive phrases across punctuation and excludes 
   const text = "Flood at SYN. EXAMPLEWAY; near cASE FICTIONTON. Exampletown. ΣΥΝΤΕΣ.";
   const snapshot = gazetteer([
     { placeId: "place-synthetic-way", aliases: ["Syn Exampleway"] },
-    { placeId: "place-synthetic-fictionton", aliases: ["Case Fictionton"] },
+    { placeId: "place-synthetic-fictionton", aliases: ["Case \uFB01ctionton"] },
     { placeId: "place-example", aliases: ["Example"] },
     { placeId: "place-way", aliases: ["way"] },
     { placeId: "place-greek-fixture", aliases: ["συντεσ"] },

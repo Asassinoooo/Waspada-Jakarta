@@ -245,7 +245,12 @@ function validateSnapshot(value: unknown): ValidatedSnapshot {
       if (aliasLength === "invalid") invalid("INVALID_SNAPSHOT");
       if (aliasLength === "limit") invalid("SNAPSHOT_LIMIT_EXCEEDED");
 
-      const aliasTokens = tokenize(aliasValue).map((token) => token.key);
+      const normalizedAlias = aliasValue.normalize("NFKC");
+      const normalizedAliasLength = boundedCodePointLength(normalizedAlias, LOCATION_CANDIDATE_LIMITS.aliasCodePoints);
+      if (normalizedAliasLength === "invalid") invalid("INVALID_SNAPSHOT");
+      if (normalizedAliasLength === "limit") invalid("SNAPSHOT_LIMIT_EXCEEDED");
+
+      const aliasTokens = tokenize(normalizedAlias).map((token) => token.key);
       if (aliasTokens.length === 0) invalid("INVALID_SNAPSHOT");
       if (aliasTokens.length > LOCATION_CANDIDATE_LIMITS.aliasTokens) invalid("SNAPSHOT_LIMIT_EXCEEDED");
       totalAliasTokens += aliasTokens.length;
