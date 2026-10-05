@@ -11,50 +11,50 @@ import {
 import { NORMALIZATION_VERSION } from "../src/layers/l1-data-knowledge/text-preparation.js";
 
 test("matches complete case-insensitive phrases across punctuation and excludes word substrings", async () => {
-  const text = "Flood at JL. MERDEKA; near cEMPaka Baru. Kotabaru. ΟΔΟΣ.";
+  const text = "Flood at SYN. EXAMPLEWAY; near cASE FICTIONTON. Exampletown. ΣΥΝΤΕΣ.";
   const snapshot = gazetteer([
-    { placeId: "place-merdeka", aliases: ["Jl Merdeka"] },
-    { placeId: "place-cempaka", aliases: ["Cempaka Baru"] },
-    { placeId: "place-kota", aliases: ["Kota"] },
-    { placeId: "place-arta", aliases: ["arta"] },
-    { placeId: "place-odos", aliases: ["οδοσ"] },
+    { placeId: "place-synthetic-way", aliases: ["Syn Exampleway"] },
+    { placeId: "place-synthetic-fictionton", aliases: ["Case Fictionton"] },
+    { placeId: "place-example", aliases: ["Example"] },
+    { placeId: "place-way", aliases: ["way"] },
+    { placeId: "place-greek-fixture", aliases: ["συντεσ"] },
   ]);
 
   const result = await matchLocationCandidates(preparedText(text), snapshot);
   assert.equal(result.status, "complete");
   if (result.status !== "complete") return;
   assert.deepEqual(result.matches, [
-    matchFor(text, "JL. MERDEKA", ["place-merdeka"]),
-    matchFor(text, "cEMPaka Baru", ["place-cempaka"]),
-    matchFor(text, "ΟΔΟΣ", ["place-odos"]),
+    matchFor(text, "SYN. EXAMPLEWAY", ["place-synthetic-way"]),
+    matchFor(text, "cASE FICTIONTON", ["place-synthetic-fictionton"]),
+    matchFor(text, "ΣΥΝΤΕΣ", ["place-greek-fixture"]),
   ]);
 });
 
 test("uses exact Unicode code-point spans after non-BMP characters", async () => {
-  const text = "😀🚧 Banjir di DEPOK; Évacuate.";
+  const text = "😀🚧 Alert in ÉXAMPLEVILLE; Evacuate.";
   const result = await matchLocationCandidates(
     preparedText(text),
-    gazetteer([{ placeId: "place-depok", aliases: ["depok"] }, { placeId: "place-evacuation", aliases: ["évacuate"] }]),
+    gazetteer([{ placeId: "place-exampleville", aliases: ["éxampleville"] }, { placeId: "place-evacuation", aliases: ["evacuate"] }]),
   );
 
   assert.equal(result.status, "complete");
   if (result.status !== "complete") return;
   assert.deepEqual(result.matches, [
-    matchFor(text, "DEPOK", ["place-depok"]),
-    matchFor(text, "Évacuate", ["place-evacuation"]),
+    matchFor(text, "ÉXAMPLEVILLE", ["place-exampleville"]),
+    matchFor(text, "Evacuate", ["place-evacuation"]),
   ]);
   for (const match of result.matches) {
     assert.equal(codePoints(text).slice(match.spanStart, match.spanEnd).join(""),
-      match.spanStart === matchFor(text, "DEPOK", ["place-depok"]).spanStart ? "DEPOK" : "Évacuate");
+      match.spanStart === matchFor(text, "ÉXAMPLEVILLE", ["place-exampleville"]).spanStart ? "ÉXAMPLEVILLE" : "Evacuate");
   }
 });
 
 test("preserves nested overlaps and ambiguity with stable order independent of catalog order", async () => {
-  const text = "Kota Baru";
+  const text = "Sample Borough";
   const places: LocationCandidateGazetteerPlace[] = [
-    { placeId: "place-zeta", aliases: ["Kota Baru", "Baru"] },
-    { placeId: "place-beta", aliases: ["Kota", "Baru"] },
-    { placeId: "place-alpha", aliases: ["Kota Baru", "Kota"] },
+    { placeId: "place-synthetic-zeta", aliases: ["Sample Borough", "Borough"] },
+    { placeId: "place-synthetic-beta", aliases: ["Sample", "Borough"] },
+    { placeId: "place-synthetic-alpha", aliases: ["Sample Borough", "Sample"] },
   ];
   const first = await matchLocationCandidates(preparedText(text), gazetteer(places));
   const second = await matchLocationCandidates(preparedText(text), gazetteer([...places].reverse()));
@@ -63,9 +63,9 @@ test("preserves nested overlaps and ambiguity with stable order independent of c
   assert.equal(first.status, "complete");
   if (first.status !== "complete") return;
   assert.deepEqual(first.matches, [
-    matchFor(text, "Kota", ["place-alpha", "place-beta"]),
-    matchFor(text, "Kota Baru", ["place-alpha", "place-zeta"]),
-    matchFor(text, "Baru", ["place-beta", "place-zeta"]),
+    matchFor(text, "Sample", ["place-synthetic-alpha", "place-synthetic-beta"]),
+    matchFor(text, "Sample Borough", ["place-synthetic-alpha", "place-synthetic-zeta"]),
+    matchFor(text, "Borough", ["place-synthetic-beta", "place-synthetic-zeta"]),
   ]);
 });
 
@@ -73,7 +73,7 @@ test("returns identity with an empty candidate array and never echoes text, alia
   const text = "No authored alias appears in this synthetic report.";
   const result = await matchLocationCandidates(
     preparedText(text),
-    gazetteer([{ placeId: "place-synthetic-01", aliases: ["Cempaka Baru"] }]),
+    gazetteer([{ placeId: "place-synthetic-01", aliases: ["Fixture Sector"] }]),
   );
 
   assert.deepEqual(result, {
@@ -93,8 +93,8 @@ test("returns identity with an empty candidate array and never echoes text, alia
 });
 
 test("does not mutate frozen text or snapshot inputs", async () => {
-  const text = deepFreeze(preparedText("Synthetic Kali Baru report."));
-  const snapshot = deepFreeze(gazetteer([{ placeId: "place-kali", aliases: ["Kali Baru"] }]));
+  const text = deepFreeze(preparedText("Synthetic Mockshire report."));
+  const snapshot = deepFreeze(gazetteer([{ placeId: "place-synthetic-river", aliases: ["Mockshire"] }]));
   const textBefore = structuredClone(text);
   const snapshotBefore = structuredClone(snapshot);
 
@@ -105,19 +105,19 @@ test("does not mutate frozen text or snapshot inputs", async () => {
 });
 
 test("rejects cross-dataset input and malformed or expanded snapshots with fixed codes", async () => {
-  const text = preparedText("Kali Baru");
-  const historicalSnapshot = { ...gazetteer([{ placeId: "place-kali", aliases: ["Kali Baru"] }]), datasetKind: "historical" };
+  const text = preparedText("Sample Basin");
+  const historicalSnapshot = { ...gazetteer([{ placeId: "place-synthetic-basin", aliases: ["Sample Basin"] }]), datasetKind: "historical" };
   assert.deepEqual(await matchLocationCandidates(text, historicalSnapshot), { status: "error", code: "DATASET_MISMATCH" });
 
   assert.deepEqual(
     await matchLocationCandidates(text, {
-      ...gazetteer([{ placeId: "place-kali", aliases: ["Kali Baru"] }]),
-      places: [{ placeId: "place-kali", aliases: ["Kali Baru"], coordinates: [106.0, -6.0] }],
+      ...gazetteer([{ placeId: "place-synthetic-basin", aliases: ["Sample Basin"] }]),
+      places: [{ placeId: "place-synthetic-basin", aliases: ["Sample Basin"], coordinates: [106.0, -6.0] }],
     }),
     { status: "error", code: "INVALID_SNAPSHOT" },
   );
   assert.deepEqual(
-    await matchLocationCandidates(text, gazetteer([{ placeId: "place-kali", aliases: ["...---"] }])),
+    await matchLocationCandidates(text, gazetteer([{ placeId: "place-synthetic-basin", aliases: ["...---"] }])),
     { status: "error", code: "INVALID_SNAPSHOT" },
   );
   assert.deepEqual(
@@ -127,13 +127,13 @@ test("rejects cross-dataset input and malformed or expanded snapshots with fixed
 });
 
 test("rejects malformed prepared text and a hash that does not bind the exact text", async () => {
-  const snapshot = gazetteer([{ placeId: "place-kali", aliases: ["Kali Baru"] }]);
+  const snapshot = gazetteer([{ placeId: "place-synthetic-basin", aliases: ["Sample Basin"] }]);
   assert.deepEqual(
-    await matchLocationCandidates({ ...preparedText("Kali Baru"), normalizationVersion: "unknown" }, snapshot),
+    await matchLocationCandidates({ ...preparedText("Sample Basin"), normalizationVersion: "unknown" }, snapshot),
     { status: "error", code: "INVALID_TEXT" },
   );
   assert.deepEqual(
-    await matchLocationCandidates({ ...preparedText("Kali Baru"), permittedTextHash: "0".repeat(64) }, snapshot),
+    await matchLocationCandidates({ ...preparedText("Sample Basin"), permittedTextHash: "0".repeat(64) }, snapshot),
     { status: "error", code: "TEXT_HASH_MISMATCH" },
   );
   assert.deepEqual(
