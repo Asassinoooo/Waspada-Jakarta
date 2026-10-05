@@ -1,10 +1,11 @@
 # LIFE-01-SOURCE-REVISION-FRESHNESS-WORKER-RUNTIME-CORE — disabled-by-default scheduled composition
 
-**Status:** Assigned for implementation; root pins the exact base before dispatch.
+**Status:** Assigned for implementation; exact base pinned by root.
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-FRESHNESS-WORKER-RUNTIME-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-FRESHNESS-WORKER-RUNTIME-CORE`
 **Worktree:** `.codex-build/worktrees/life01-source-revision-freshness-worker-runtime-core`
+**Assigned base:** `56d65005fe47cce6fdb6d43608d270043012cac8` (task assignment commit).
 **Contracts:** source-revision review-candidate reader, exact freshness-target reader, transition coordinator, append-only freshness ledger, private run-state repository (schema 1.0), `TransactionalSqlExecutor`, ADR-047/048. Keep the public API/DTO/OpenAPI and database contracts unchanged.
 
 ## Context and dependencies
