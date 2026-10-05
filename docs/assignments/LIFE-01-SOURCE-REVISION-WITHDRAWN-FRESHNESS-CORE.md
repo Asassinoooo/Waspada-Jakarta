@@ -1,11 +1,11 @@
 # LIFE-01-SOURCE-REVISION-WITHDRAWN-FRESHNESS-CORE — apply withdrawn-source freshness
 
-**Status:** Assigned for implementation; root will pin the exact planning commit as the worktree base.
+**Status:** Assigned for implementation; exact base pinned by root.
 **Backlog ID:** `LIFE-01-SOURCE-REVISION-WITHDRAWN-FRESHNESS-CORE`
 **Implementation model:** GPT-6 Luna, max reasoning
 **Branch:** `work/LIFE-01-SOURCE-REVISION-WITHDRAWN-FRESHNESS-CORE`
 **Worktree:** `.codex-build/worktrees/life01-source-revision-withdrawn-freshness-core`
-**Assigned base:** To be pinned in the separate root dispatch commit immediately following this planning commit.
+**Assigned base:** `c3dca9dc8ab4e6ef6ae6b23521d98f13211c5e91` (exact task-planning commit).
 **Contracts:** ADR-048; source-observation schema 2.0; existing source-revision candidate and exact-target read contracts; append-only freshness ledger; public Freshness DTO and API remain unchanged.
 
 ## Context and dependencies
