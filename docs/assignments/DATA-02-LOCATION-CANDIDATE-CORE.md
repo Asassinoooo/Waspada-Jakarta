@@ -5,7 +5,7 @@
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/DATA-02-LOCATION-CANDIDATE-CORE`
 - **Worktree:** `.codex-build/worktrees/data-02-location-candidate-core`
-- **Assigned base:** Pinned in the root dispatch and backlog after the assignment commit.
+- **Assigned base:** `4cefc063db68d0d9092761676cff713a98538b66` (assignment commit).
 - **Requirements:** FR-03/04/06; NFR-01/05/07
 - **Dependencies:** `DATA-02-CORE`, `L2-ADAPTER-01`, `GEO-STORE-CORE`
 - **Contracts:** Existing `PreparedText`, `ExtractionResultRecord` place-ID/scope conventions, and source-supported `Geometry`; no persisted or public contract change.
