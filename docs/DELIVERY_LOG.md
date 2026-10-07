@@ -1,5 +1,9 @@
 # Delivery log
 
+## Freshness-only transitions remain outside `/updates` — 7 October 2026
+
+Team 12 decided that a freshness status change without a new moderator-reviewed publication version stays visible on the current event and directly affected impact views; it does not create an update entry or advance the update-feed cursor. The `/updates` feed remains limited to moderator-reviewed published-version changes with an approved label and summary. This preserves the distinction between current evidence status and event-version history and requires no API/DTO or database change. The existing Layer 4 updates projector consumes only latest-approved history candidates and emits the unchanged `HistoryEntry`; the freshness overlay is read through current event projections. Root documented the decision in ADR-026, the UX/API specification, architecture, plan, backlog, and current checkpoint. In WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`, direct focused update-reader, update-projection, and source-freshness projection tests passed **14/14**; `git diff --check` passed. No application code, API/DTO, database, runtime, dependency, or deployment behavior changed.
+
 ## Source permission request pack drafted — 4 October 2026
 
 Root added [SOURCE_PERMISSION_REQUESTS.md](SOURCE_PERMISSION_REQUESTS.md) with unsent Bahasa Indonesia/English request templates for BMKG, PetaBencana, ANTARA and Satu Data Jakarta. The drafts ask about approved access, display/attribution, AI processing, retention/deletion, updates, rate limits, and the project's public free-tier hosting assumptions. They disclose that third-party inference is unselected and the off-provider backup/deletion plan is unresolved. The source-feasibility page now links to these templates. No message was sent, no incident/dataset content was downloaded, and no provider/source configuration changed. WSL `git diff --check` is the documentation-only check; no application tests apply.
