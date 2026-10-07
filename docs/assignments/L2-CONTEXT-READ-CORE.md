@@ -57,4 +57,17 @@ Do not edit root-owned architecture, ADR, backlog, checkpoint, delivery log, pub
 
 ## Implementation handoff
 
-The agent fills this section after committing its work. Include the exact branch/worktree, assigned base, commit SHA(s) and messages, changed paths, behavior, WSL commands and results, role/access checks, limitations, migration/configuration impact, and remaining decisions. Do not merge or push.
+Implemented on branch `work/L2-CONTEXT-READ-CORE` in worktree `/mnt/d/Projects/RPL/.codex-build/worktrees/l2-context-read-core`, from assigned base `b6f08575f9f448354b9acefce476158e7bc9f91d` (worktree HEAD began at root planning commit `4d51450dabb38e133e19d3833e59e829ab93db0d`). Code commit: `9a1d1dd27f932270e17a0964852af2efb665074e` — `feat(L2-CONTEXT-READ): add strict grounding context rehydration`.
+
+Changed paths: `apps/db/src/grounding-contexts.ts`, `apps/db/src/ports.ts`, and `apps/db/test/grounding-contexts.test.ts`. The SQL repository now performs an exact `(dataset_kind, context_id)` lookup, validates persisted schema 2.0 JSON against all normalized parent columns, and compares exact evidence, candidate-event-version, and prior-decision link sets with their same-dataset targets. Malformed requests fail before SQL; missing rows return `null`; corrupt JSON, identity drift, link drift, and storage failures use stable redacted read errors. Reads perform no writes. The SQL factory and `RepositoryPorts.groundingContexts` expose the required `GroundingContextReadRepository`; `GroundingContextRepository.findById` remains optional for source-compatible writer-only adapters. Existing `createOrVerify` behavior remains covered.
+
+WSL Ubuntu-26.04 used Node `v24.21.0` and npm `11.19.0`. Actual checks:
+
+- `./node_modules/.bin/tsx --test apps/db/test/grounding-contexts.test.ts` — exit 0, 14/14 passed on the committed implementation.
+- `npm run db:test` — exit 0, 40/40 database test files passed. This run preceded only the final writer-interface compatibility typing change; the subsequent full test run exercised the updated tree.
+- `npm test` — exit 0 on the updated tree: web 60/60, Worker 440/440, database 40/40 files, evaluation 19/19.
+- `npm run typecheck` — exit 0 on the updated tree.
+- `npm run build` — exit 0 on the updated tree, including Vite production build and Wrangler dry-run.
+- `git diff --check b6f08575f9f448354b9acefce476158e7bc9f91d..HEAD` — exit 0. The task-only diff from `4d51450dabb38e133e19d3833e59e829ab93db0d` contains the three allowed code/test paths above plus only this Implementation handoff section.
+
+The PGlite test reads under `SET ROLE waspada_l2_grounding_writer`, verifies exact persisted links, and compares context/link snapshots before and after the read. Public, L1, L2 retrieval-reader, and L3 coordinator roles fail closed through this read path and cannot select `record_json`. Existing grants were sufficient. No migration, grant, role, runtime, API, provider, dependency, lockfile, or deployment configuration changes were needed. No known implementation limitation or remaining design decision; do not merge or push.
