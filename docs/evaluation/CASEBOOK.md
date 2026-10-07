@@ -30,4 +30,8 @@ Reason codes are `CASEBOOK_INVALID`, `DATASET_NOT_HISTORICAL`, `SOURCE_RIGHTS_NO
 
 ## Local use
 
-Run `npm test` for the workspace suites and validator tests, and `npm run typecheck` to typecheck workspaces plus the standalone validator. The validator has no runtime dependency and is not imported by the Worker or web bundle. The current tests use invented, in-memory structures only. No real evaluation labels, source rights, or reports are available or asserted.
+Run `npm run eval:casebook -- <path>` to validate one local JSON file with the existing casebook 1.0 validator and readiness checker. The path may be absolute or relative to the current working directory. The command reads at most 5 MiB, makes no network or write calls, and emits only `valid`, `metadata_ready`, `issue_codes`, and `readiness_reasons`. Usage, read, size, UTF-8, and JSON failures produce a fixed error code on stderr. A structurally invalid casebook exits with status 2, a valid but not-ready casebook exits with status 1, and status 0 means the declared metadata passed the existing readiness checks.
+
+`metadata_ready` is only a check of the supplied metadata. It does not prove external rights, reviewer identities, that reviews or adjudication occurred, label accuracy, source-data independence, enforcement of a held-out freeze, representativeness, model performance, or safety. The checked-in synthetic fixture is structurally valid but returns `metadata_ready: false` and exit status 1. Root review and actual human adjudication remain required before any release claim.
+
+Run `npm test` for the workspace, validator, and CLI suites, and `npm run typecheck` to typecheck workspaces plus the standalone evaluation tooling. The validator and CLI are not imported by the Worker or web bundle. Tests use the existing synthetic fixture and temporary authored metadata-only files. No real evaluation labels, source rights, or reports are available or asserted.

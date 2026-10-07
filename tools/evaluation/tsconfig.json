@@ -13,5 +13,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["casebook.ts", "casebook.test.ts"]
+  "include": ["casebook.ts", "casebook.test.ts", "casebook-cli.ts", "casebook-cli.test.ts"]
 }
