@@ -1,8 +1,10 @@
 # Delivery log
 
-## EVAL-01-CASEBOOK-CLI-CORE assigned — 7 October 2026
+## EVAL-01-CASEBOOK-CLI-CORE accepted — 7 October 2026
 
-Root audited the evaluation tooling and confirmed the casebook contract and validator are accepted, but can currently be called only as imported TypeScript functions. The next local task adds a bounded, redacted `npm run eval:casebook -- <path>` command with stable output and exit codes. It is limited to metadata-only JSON and authored synthetic tests; it creates no rights approvals, human labels, source access, dependency, API, or provider integration. Source/data rights remain pending for EVAL-01. The task is pinned to the root planning commit before implementation; no runtime check is claimed yet.
+Root accepted the fast-forward of `work/EVAL-01-CASEBOOK-CLI-CORE` from assigned base `bdc850de9a01dcfc607a9f71a0d40e42d883068d`, preserving implementation commit `81fa414b46c0d67a263beeb373f2a9824473afa1` (`feat(EVAL-01): add bounded casebook CLI`) and handoff commit `062459a7dd924478b23b4e35e916a0114377fc91` (`docs(EVAL-01): record casebook CLI handoff`). The command accepts one local JSON path, reads at most 5 MiB, calls the existing validator and readiness checker, and exposes only the four assigned result fields or fixed redacted error codes. It does not establish source rights, reviewer identity, adjudication, label quality, data independence, or a held-out freeze.
+
+In WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`, the agent passed focused CLI tests (7/7), full `npm test` (web 60, Worker 431, DB 41/41 files, evaluation 19/19), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and assigned-base `git diff --check`. The synthetic fixture smoke returned the expected exit status 1 with `valid: true` and `metadata_ready: false`. Root independently reviewed the full allowed-path diff, reran focused tests 7/7, verified the smoke result/status, and passed the assigned-base diff check. No dependency, schema, API, runtime, source, rights, or deployment configuration changed. Rights-cleared source data and real independent human reviews remain pending.
 
 ## Freshness-only transitions remain outside `/updates` — 7 October 2026
 

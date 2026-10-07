@@ -1,6 +1,6 @@
 # EVAL-01-CASEBOOK-CLI-CORE — local metadata-only casebook command
 
-**Status:** Assigned; local tooling only<br>
+**Status:** Accepted on local `main` at root fast-forward `062459a7dd924478b23b4e35e916a0114377fc91`; local tooling only<br>
 **Backlog ID:** `EVAL-01-CASEBOOK-CLI-CORE`<br>
 **Parent:** `EVAL-01`<br>
 **Dependencies:** `EVAL-01-TOOLS` (accepted)<br>
@@ -90,4 +90,4 @@ Stop and report to root if this command would require a schema or public contrac
 
 **Remaining decisions:** No implementation contract decision remains. EVAL-01 source/data rights and independent human review are still separate pending gates. Root review and acceptance remain outstanding.
 
-Root performs independent review and acceptance.
+Root reviewed the full branch diff, confirmed it changes only the allowed paths, independently reran the focused CLI suite (7/7), verified the synthetic smoke output and expected exit status 1, and passed the assigned-base `git diff --check`. The implementation is accepted on local `main`; source/data rights, real reviewer labels, and EVAL-01 quality evaluation remain separate pending gates.
