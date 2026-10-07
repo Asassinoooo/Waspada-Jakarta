@@ -2,7 +2,7 @@
 
 ## PUB-01-MANUAL-GATE-CORE assigned — 7 October 2026
 
-Root audited the current Layer 4 boundary and confirmed the deterministic publication policy and atomic writer are accepted but have no service composing them. The assigned local slice will rerun the policy against exact proposal/context/current retrieval and explicit moderator authorization, then construct the existing writer command through an injected port. It uses authored synthetic/live-shaped fixtures only, adds no route or database behavior, and preserves the demo's read-only moderation. Source rights, human-labelled EVAL-01 cases, authenticated review, and hosted behavior remain outside this task.
+Root audited the current Layer 4 boundary and confirmed the deterministic publication policy and atomic writer are accepted but have no service composing them. Root also found that a caller-supplied proposal could be forged to match policy input while the writer later loads different persisted claim content by ID. The assignment now adds a strict persisted-proposal reader using the existing L4 database grant; the service accepts only the proposal ID, verifies the validated stored snapshot and exact current retrieval/policy context, then constructs the writer command after explicit moderator authorization. PGlite coverage must prove the current role can read it without schema or grant changes. It uses authored synthetic/live-shaped fixtures only, adds no route or demo mutation, and preserves read-only moderation. Source rights, human-labelled EVAL-01 cases, authenticated review, and hosted behavior remain outside this task.
 
 ## EVAL-01-CASEBOOK-CLI-CORE accepted — 7 October 2026
 
