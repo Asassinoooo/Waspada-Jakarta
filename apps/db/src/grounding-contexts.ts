@@ -41,6 +41,12 @@ export interface GroundingContextRecord {
 
 export interface GroundingContextRepository {
   createOrVerify(record: GroundingContextRecord): Promise<GroundingContextRecord>;
+  /** Optional on writer-only adapters; SQL-backed repositories provide the exact read. */
+  findById?(datasetKind: DatasetKind, contextId: string): Promise<GroundingContextRecord | null>;
+}
+
+export interface GroundingContextReadRepository extends GroundingContextRepository {
+  findById(datasetKind: DatasetKind, contextId: string): Promise<GroundingContextRecord | null>;
 }
 
 export type GroundingContextReferenceKind = 'evidence' | 'candidate_event' | 'prior_decision';
@@ -69,6 +75,25 @@ export class GroundingContextReferenceError extends Error {
   constructor(readonly referenceKind: GroundingContextReferenceKind) {
     super('grounding_context_reference_not_found:' + referenceKind);
     this.name = 'GroundingContextReferenceError';
+  }
+}
+
+export type GroundingContextReadFailure =
+  | 'invalid_persisted_record'
+  | 'normalized_columns_mismatch'
+  | 'evidence_links_mismatch'
+  | 'candidate_event_links_mismatch'
+  | 'prior_decision_links_mismatch'
+  | 'duplicate_context'
+  | 'storage_read_failed';
+
+/** A redacted, stable failure raised when persisted context cannot be rehydrated safely. */
+export class GroundingContextReadError extends Error {
+  readonly code = 'grounding_context_read_error' as const;
+
+  constructor(readonly reason: GroundingContextReadFailure) {
+    super('grounding_context_read_error:' + reason);
+    this.name = 'GroundingContextReadError';
   }
 }
 
@@ -104,15 +129,45 @@ const CANDIDATE_EVENT_FIELDS = ['event_id', 'event_version'] as const;
 
 export function createSqlGroundingContextRepository(
   executor: TransactionalSqlExecutor,
-): GroundingContextRepository {
+): GroundingContextReadRepository {
   if (!executor || typeof executor.transaction !== 'function') {
     throw new TypeError('Grounding context persistence requires a transactional SQL executor');
   }
   return new SqlGroundingContextRepository(executor);
 }
 
-class SqlGroundingContextRepository implements GroundingContextRepository {
+class SqlGroundingContextRepository implements GroundingContextReadRepository {
   constructor(private readonly executor: TransactionalSqlExecutor) {}
+
+  async findById(datasetKind: DatasetKind, contextId: string): Promise<GroundingContextRecord | null> {
+    const requestedDataset = lookupDatasetKind(datasetKind);
+    const requestedContextId = id(contextId, 'lookup.context_id');
+    try {
+      return await this.executor.transaction(async (transaction) => {
+        const result = await transaction.query<StoredGroundingContextRow>(
+          'SELECT dataset_kind, context_id, trace_id, candidate_id, retrieval_version, index_version, ' +
+            'sufficient, record_json FROM waspada.grounding_contexts ' +
+            'WHERE dataset_kind = $1 AND context_id = $2',
+          [requestedDataset, requestedContextId],
+        );
+        if (result.rows.length === 0) return null;
+        if (result.rows.length !== 1) throw new GroundingContextReadError('duplicate_context');
+
+        const row = result.rows[0]!;
+        const record = parsePersistedRecord(row.record_json);
+        if (!normalizedColumnsMatch(row, record)
+          || record.dataset_kind !== requestedDataset
+          || record.context_id !== requestedContextId) {
+          throw new GroundingContextReadError('normalized_columns_mismatch');
+        }
+        await verifyPersistedContextLinks(transaction, record);
+        return record;
+      });
+    } catch (error) {
+      if (error instanceof GroundingContextReadError) throw error;
+      throw new GroundingContextReadError('storage_read_failed');
+    }
+  }
 
   async createOrVerify(input: GroundingContextRecord): Promise<GroundingContextRecord> {
     const record = validateGroundingContext(input);
@@ -163,6 +218,158 @@ class SqlGroundingContextRepository implements GroundingContextRepository {
       return record;
     });
   }
+}
+
+interface StoredGroundingContextRow {
+  readonly dataset_kind: unknown;
+  readonly context_id: unknown;
+  readonly trace_id: unknown;
+  readonly candidate_id: unknown;
+  readonly retrieval_version: unknown;
+  readonly index_version: unknown;
+  readonly sufficient: unknown;
+  readonly record_json: unknown;
+}
+
+function lookupDatasetKind(value: unknown): DatasetKind {
+  if (typeof value !== 'string' || !DATASET_KINDS.has(value as DatasetKind)) {
+    invalid('lookup.dataset_kind', 'invalid_dataset_kind');
+  }
+  return value as DatasetKind;
+}
+
+function parsePersistedRecord(value: unknown): GroundingContextRecord {
+  let candidate = value;
+  if (typeof candidate === 'string') {
+    try {
+      candidate = JSON.parse(candidate) as unknown;
+    } catch {
+      throw new GroundingContextReadError('invalid_persisted_record');
+    }
+  }
+  try {
+    return validateGroundingContext(candidate);
+  } catch {
+    throw new GroundingContextReadError('invalid_persisted_record');
+  }
+}
+
+function normalizedColumnsMatch(row: StoredGroundingContextRow, record: GroundingContextRecord): boolean {
+  return row.dataset_kind === record.dataset_kind
+    && row.context_id === record.context_id
+    && row.trace_id === record.trace_id
+    && row.candidate_id === record.candidate_id
+    && row.retrieval_version === record.retrieval_version
+    && row.index_version === record.index_version
+    && row.sufficient === record.sufficient;
+}
+
+async function verifyPersistedContextLinks(
+  executor: SqlExecutor,
+  record: GroundingContextRecord,
+): Promise<void> {
+  const evidence = await executor.query<StoredEvidenceLinkRow>(
+    'SELECT link.dataset_kind AS context_dataset_kind, evidence.dataset_kind AS evidence_dataset_kind, ' +
+      'evidence.report_revision_id, evidence.permitted_text_hash, evidence.span_start, evidence.span_end, ' +
+      'evidence.offset_unit, evidence.relation ' +
+      'FROM waspada.grounding_evidence AS link ' +
+      'LEFT JOIN waspada.evidence_references AS evidence ' +
+      'ON evidence.dataset_kind = link.dataset_kind AND evidence.evidence_ref_id = link.evidence_ref_id ' +
+      'WHERE link.dataset_kind = $1 AND link.context_id = $2',
+    [record.dataset_kind, record.context_id],
+  );
+  const evidenceKeys = evidence.rows.map((row, index) => {
+    if (row.context_dataset_kind !== record.dataset_kind || row.evidence_dataset_kind !== record.dataset_kind) {
+      throw new GroundingContextReadError('evidence_links_mismatch');
+    }
+    try {
+      return evidenceKey(parseEvidenceReference({
+        report_revision_id: row.report_revision_id,
+        permitted_text_hash: row.permitted_text_hash,
+        span_start: row.span_start,
+        span_end: row.span_end,
+        offset_unit: row.offset_unit,
+        relation: row.relation,
+      }, 'persisted.evidence[' + index + ']'));
+    } catch {
+      throw new GroundingContextReadError('evidence_links_mismatch');
+    }
+  });
+  if (!sameSet(record.evidence.map(evidenceKey), evidenceKeys)) {
+    throw new GroundingContextReadError('evidence_links_mismatch');
+  }
+
+  const events = await executor.query<StoredCandidateEventLinkRow>(
+    'SELECT link.dataset_kind AS context_dataset_kind, target.dataset_kind AS event_dataset_kind, ' +
+      'link.event_id, link.event_version FROM waspada.grounding_candidate_events AS link ' +
+      'LEFT JOIN waspada.event_versions AS target ' +
+      'ON target.dataset_kind = link.dataset_kind AND target.event_id = link.event_id ' +
+      'AND target.version = link.event_version ' +
+      'WHERE link.dataset_kind = $1 AND link.context_id = $2',
+    [record.dataset_kind, record.context_id],
+  );
+  const eventKeys = events.rows.map((row, index) => {
+    if (row.context_dataset_kind !== record.dataset_kind || row.event_dataset_kind !== record.dataset_kind) {
+      throw new GroundingContextReadError('candidate_event_links_mismatch');
+    }
+    try {
+      return candidateEventKey(parseCandidateEvent({
+        event_id: row.event_id,
+        event_version: row.event_version,
+      }, 'persisted.candidate_events[' + index + ']'));
+    } catch {
+      throw new GroundingContextReadError('candidate_event_links_mismatch');
+    }
+  });
+  if (!sameSet(record.candidate_events.map(candidateEventKey), eventKeys)) {
+    throw new GroundingContextReadError('candidate_event_links_mismatch');
+  }
+
+  const decisions = await executor.query<StoredPriorDecisionLinkRow>(
+    'SELECT link.dataset_kind AS context_dataset_kind, target.dataset_kind AS decision_dataset_kind, ' +
+      'link.decision_id FROM waspada.grounding_prior_decisions AS link ' +
+      'LEFT JOIN waspada.publication_decisions AS target ' +
+      'ON target.dataset_kind = link.dataset_kind AND target.decision_id = link.decision_id ' +
+      'WHERE link.dataset_kind = $1 AND link.context_id = $2',
+    [record.dataset_kind, record.context_id],
+  );
+  const decisionIds = decisions.rows.map((row) => {
+    if (row.context_dataset_kind !== record.dataset_kind || row.decision_dataset_kind !== record.dataset_kind) {
+      throw new GroundingContextReadError('prior_decision_links_mismatch');
+    }
+    try {
+      return id(row.decision_id, 'persisted.prior_decision_id');
+    } catch {
+      throw new GroundingContextReadError('prior_decision_links_mismatch');
+    }
+  });
+  if (!sameSet(record.prior_decision_ids, decisionIds)) {
+    throw new GroundingContextReadError('prior_decision_links_mismatch');
+  }
+}
+
+interface StoredEvidenceLinkRow {
+  readonly context_dataset_kind: unknown;
+  readonly evidence_dataset_kind: unknown;
+  readonly report_revision_id: unknown;
+  readonly permitted_text_hash: unknown;
+  readonly span_start: unknown;
+  readonly span_end: unknown;
+  readonly offset_unit: unknown;
+  readonly relation: unknown;
+}
+
+interface StoredCandidateEventLinkRow {
+  readonly context_dataset_kind: unknown;
+  readonly event_dataset_kind: unknown;
+  readonly event_id: unknown;
+  readonly event_version: unknown;
+}
+
+interface StoredPriorDecisionLinkRow {
+  readonly context_dataset_kind: unknown;
+  readonly decision_dataset_kind: unknown;
+  readonly decision_id: unknown;
 }
 
 function validateGroundingContext(value: unknown): GroundingContextRecord {
@@ -406,13 +613,16 @@ function candidateEventKey(event: GroundingCandidateEvent): string {
 }
 
 function assertSameSet(expected: readonly string[], actual: readonly string[]): void {
-  if (expected.length !== actual.length) throw new GroundingContextConflictError();
+  if (!sameSet(expected, actual)) throw new GroundingContextConflictError();
+}
+
+function sameSet(expected: readonly string[], actual: readonly string[]): boolean {
+  if (expected.length !== actual.length) return false;
   const expectedSet = new Set(expected);
   const actualSet = new Set(actual);
-  if (expectedSet.size !== expected.length || actualSet.size !== actual.length
-    || [...expectedSet].some((value) => !actualSet.has(value))) {
-    throw new GroundingContextConflictError();
-  }
+  return expectedSet.size === expected.length
+    && actualSet.size === actual.length
+    && [...expectedSet].every((value) => actualSet.has(value));
 }
 
 async function resolveEvidenceReferences(

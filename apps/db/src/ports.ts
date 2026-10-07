@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createSqlExtractionResultRepository, type ExtractionResultRepository } from './extraction-results.js';
 import {
   createSqlGroundingContextRepository,
-  type GroundingContextRepository,
+  type GroundingContextReadRepository,
 } from './grounding-contexts.js';
 import { createSqlEvidenceRetrievalRepository, type EvidenceRetrievalRepository } from './evidence-retrieval.js';
 import { createSqlEvidenceChunkRepository, type EvidenceChunkRepository } from './evidence-chunks.js';
@@ -138,7 +138,7 @@ export interface RepositoryPorts {
   readonly reportRevisions: ReportRevisionRepository;
   readonly reportRevisionSourceObservations: ReportRevisionSourceObservationRepository;
   readonly extractionResults: ExtractionResultRepository;
-  readonly groundingContexts: GroundingContextRepository;
+  readonly groundingContexts: GroundingContextReadRepository;
   readonly evidenceChunks: EvidenceChunkRepository;
   readonly embeddingRuns: EmbeddingRunRepository;
   readonly evidenceRetrieval: EvidenceRetrievalRepository;

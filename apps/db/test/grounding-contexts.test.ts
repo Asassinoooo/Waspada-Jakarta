@@ -4,12 +4,15 @@ import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createRepositoryPorts, type DatasetKind, type EvidenceRelation } from '../src/ports.js';
 import {
+  createSqlGroundingContextRepository,
   GroundingContextConflictError,
+  GroundingContextReadError,
   GroundingContextReferenceError,
   GroundingContextValidationError,
   type GroundingContextRecord,
   type GroundingEvidenceReference,
 } from '../src/grounding-contexts.js';
+import type { SqlExecutor, TransactionalSqlExecutor } from '../src/sql.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const TEST_TIME = '2026-09-26T10:00:00Z';
@@ -60,6 +63,221 @@ describe('L2 canonical grounding-context persistence', () => {
       [second.dataset_kind, second.context_id],
     );
     assert.deepEqual(sufficiency.rows[0], { sufficient: false, record_sufficient: false });
+  });
+
+  it('rehydrates an exact context with every persisted link and keeps datasets separate', async () => {
+    const syntheticSeed = await seedCandidate('read-synthetic', 'synthetic');
+    const historicalSeed = await seedCandidate('read-historical', 'historical');
+    const target = await seedEventAndDecision(syntheticSeed, 'read-synthetic');
+    const synthetic = makeContext(syntheticSeed, 'read-shared', {
+      context_id: 'context-shared-read-id',
+      candidate_events: [{ event_id: target.eventId, event_version: 1 }],
+      prior_decision_ids: [target.decisionId],
+    });
+    const historical = makeContext(historicalSeed, 'read-shared', {
+      context_id: 'context-shared-read-id',
+    });
+    await ports.groundingContexts.createOrVerify(synthetic);
+    await ports.groundingContexts.createOrVerify(historical);
+
+    assert.deepEqual(await ports.groundingContexts.findById('synthetic', synthetic.context_id), synthetic);
+    assert.deepEqual(await ports.groundingContexts.findById('historical', historical.context_id), historical);
+    assert.equal(await ports.groundingContexts.findById('live', synthetic.context_id), null);
+  });
+
+  it('rejects malformed exact lookup keys before starting a SQL transaction', async () => {
+    let sqlCalls = 0;
+    const executor = {
+      transaction: async <Result>(work: (transaction: SqlExecutor) => Promise<Result>) => {
+        sqlCalls += 1;
+        return work({
+          query: async () => {
+            sqlCalls += 1;
+            return { rows: [] };
+          },
+          execute: async () => { sqlCalls += 1; },
+        });
+      },
+    } as unknown as TransactionalSqlExecutor;
+    const repository = createSqlGroundingContextRepository(executor);
+    for (const [datasetKind, contextId, untrusted] of [
+      ['demo', 'valid-context', 'demo'],
+      ['synthetic', 'private report text with spaces', 'private report text with spaces'],
+    ] as const) {
+      await assert.rejects(
+        repository.findById(datasetKind as DatasetKind, contextId),
+        (error: unknown) => {
+          assert.ok(error instanceof GroundingContextValidationError);
+          assert.equal(error.message.includes(untrusted), false);
+          return true;
+        },
+      );
+    }
+    assert.equal(sqlCalls, 0);
+  });
+
+  it('fails closed on malformed persisted JSON and normalized-column drift with redacted errors', async () => {
+    const seed = await seedCandidate('read-corruption');
+    const malformed = makeContext(seed, 'read-malformed-json');
+    await insertRawContextWithJson(database, malformed, {
+      ...malformed,
+      retrieved_text: 'private report excerpt must stay redacted',
+    });
+    await assertReadFailure(malformed, 'invalid_persisted_record', 'private report excerpt');
+
+    const drifted = makeContext(seed, 'read-normalized-drift');
+    await insertRawContext(database, drifted, 'other-retrieval-version');
+    await assertReadFailure(drifted, 'normalized_columns_mismatch');
+  });
+
+  it('fails closed on missing, unexpected, duplicate, or mismatched evidence links', async () => {
+    const firstSeed = await seedCandidate('read-evidence-link-first');
+    const secondSeed = await seedCandidate('read-evidence-link-second');
+
+    const missing = makeContext(firstSeed, 'read-evidence-link-missing');
+    await insertRawContext(database, missing);
+    await assertReadFailure(missing, 'evidence_links_mismatch');
+
+    const unexpected = makeContext(firstSeed, 'read-evidence-link-unexpected', {
+      evidence: [], revision_states: [],
+    });
+    await insertRawContext(database, unexpected);
+    await linkEvidence(database, unexpected, await evidenceRefId(firstSeed.evidence));
+    await assertReadFailure(unexpected, 'evidence_links_mismatch');
+
+    const mismatched = makeContext(firstSeed, 'read-evidence-link-mismatched');
+    await insertRawContext(database, mismatched);
+    await linkEvidence(database, mismatched, await evidenceRefId(secondSeed.evidence));
+    await assertReadFailure(mismatched, 'evidence_links_mismatch');
+
+  });
+
+  it('fails closed on missing, unexpected, and mismatched event and decision links', async () => {
+    const seed = await seedCandidate('read-event-link');
+    const target = await seedEventAndDecision(seed, 'read-event-link');
+    const otherTarget = await seedEventAndDecision(seed, 'read-event-link-other');
+
+    const missingEvent = makeContext(seed, 'read-event-link-missing', {
+      evidence: [], revision_states: [],
+      candidate_events: [{ event_id: target.eventId, event_version: 1 }],
+    });
+    await insertRawContext(database, missingEvent);
+    await assertReadFailure(missingEvent, 'candidate_event_links_mismatch');
+
+    const unexpectedEvent = makeContext(seed, 'read-event-link-unexpected', {
+      evidence: [], revision_states: [],
+    });
+    await insertRawContext(database, unexpectedEvent);
+    await linkCandidateEvent(database, unexpectedEvent, target.eventId, 1);
+    await assertReadFailure(unexpectedEvent, 'candidate_event_links_mismatch');
+
+    const mismatchedEvent = makeContext(seed, 'read-event-link-mismatched', {
+      evidence: [], revision_states: [],
+      candidate_events: [{ event_id: target.eventId, event_version: 1 }],
+    });
+    await insertRawContext(database, mismatchedEvent);
+    await linkCandidateEvent(database, mismatchedEvent, otherTarget.eventId, 1);
+    await assertReadFailure(mismatchedEvent, 'candidate_event_links_mismatch');
+
+    const missingDecision = makeContext(seed, 'read-decision-link-missing', {
+      evidence: [], revision_states: [],
+      prior_decision_ids: [target.decisionId],
+    });
+    await insertRawContext(database, missingDecision);
+    await assertReadFailure(missingDecision, 'prior_decision_links_mismatch');
+
+    const unexpectedDecision = makeContext(seed, 'read-decision-link-unexpected', {
+      evidence: [], revision_states: [],
+    });
+    await insertRawContext(database, unexpectedDecision);
+    await linkPriorDecision(database, unexpectedDecision, target.decisionId);
+    await assertReadFailure(unexpectedDecision, 'prior_decision_links_mismatch');
+
+    const mismatchedDecision = makeContext(seed, 'read-decision-link-mismatched', {
+      evidence: [], revision_states: [],
+      prior_decision_ids: [target.decisionId],
+    });
+    await insertRawContext(database, mismatchedDecision);
+    await linkPriorDecision(database, mismatchedDecision, otherTarget.decisionId);
+    await assertReadFailure(mismatchedDecision, 'prior_decision_links_mismatch');
+  });
+
+  it('detects duplicate event and decision rows even if storage returns malformed link sets', async () => {
+    const seed = await seedCandidate('read-duplicate-links');
+    const evidenceRecord = makeContext(seed, 'read-duplicate-evidence-links');
+    const duplicateEvidenceRow = {
+      context_dataset_kind: 'synthetic', evidence_dataset_kind: 'synthetic',
+      report_revision_id: seed.evidence.report_revision_id,
+      permitted_text_hash: seed.evidence.permitted_text_hash,
+      span_start: seed.evidence.span_start, span_end: seed.evidence.span_end,
+      offset_unit: seed.evidence.offset_unit, relation: seed.evidence.relation,
+    };
+    await assertFakeLinkFailure(evidenceRecord, 'evidence_links_mismatch', {
+      evidence: [duplicateEvidenceRow, duplicateEvidenceRow],
+    });
+
+    const eventRecord = makeContext(seed, 'read-duplicate-event-links', {
+      evidence: [], revision_states: [], candidate_events: [{ event_id: 'event-duplicate', event_version: 1 }],
+    });
+    await assertFakeLinkFailure(eventRecord, 'candidate_event_links_mismatch', {
+      events: [
+        { context_dataset_kind: 'synthetic', event_dataset_kind: 'synthetic', event_id: 'event-duplicate', event_version: 1 },
+        { context_dataset_kind: 'synthetic', event_dataset_kind: 'synthetic', event_id: 'event-duplicate', event_version: 1 },
+      ],
+    });
+
+    const decisionRecord = makeContext(seed, 'read-duplicate-decision-links', {
+      evidence: [], revision_states: [], prior_decision_ids: ['decision-duplicate'],
+    });
+    await assertFakeLinkFailure(decisionRecord, 'prior_decision_links_mismatch', {
+      decisions: [
+        { context_dataset_kind: 'synthetic', decision_dataset_kind: 'synthetic', decision_id: 'decision-duplicate' },
+        { context_dataset_kind: 'synthetic', decision_dataset_kind: 'synthetic', decision_id: 'decision-duplicate' },
+      ],
+    });
+  });
+
+  it('rejects malformed and cross-dataset persisted link rows with redacted errors', async () => {
+    const seed = await seedCandidate('read-malformed-links');
+    const evidenceRecord = makeContext(seed, 'read-malformed-evidence-link');
+    await assertFakeLinkFailure(evidenceRecord, 'evidence_links_mismatch', {
+      evidence: [{
+        context_dataset_kind: 'synthetic', evidence_dataset_kind: 'synthetic',
+        report_revision_id: seed.reportRevisionId, permitted_text_hash: 'private report text',
+        span_start: 0, span_end: 1, offset_unit: 'unicode_code_points', relation: 'supports',
+      }],
+    }, 'private report text');
+
+    const crossDatasetEvidence = makeContext(seed, 'read-cross-dataset-evidence-link', {
+      evidence: [], revision_states: [],
+    });
+    await assertFakeLinkFailure(crossDatasetEvidence, 'evidence_links_mismatch', {
+      evidence: [{
+        context_dataset_kind: 'synthetic', evidence_dataset_kind: 'historical',
+        report_revision_id: seed.reportRevisionId, permitted_text_hash: seed.evidence.permitted_text_hash,
+        span_start: 0, span_end: 1, offset_unit: 'unicode_code_points', relation: 'supports',
+      }],
+    });
+
+    const crossDatasetEvent = makeContext(seed, 'read-cross-dataset-event-link', {
+      evidence: [], revision_states: [], candidate_events: [{ event_id: 'event-cross-dataset', event_version: 1 }],
+    });
+    await assertFakeLinkFailure(crossDatasetEvent, 'candidate_event_links_mismatch', {
+      events: [{
+        context_dataset_kind: 'synthetic', event_dataset_kind: 'historical',
+        event_id: 'event-cross-dataset', event_version: 1,
+      }],
+    });
+
+    const crossDatasetDecision = makeContext(seed, 'read-cross-dataset-decision-link', {
+      evidence: [], revision_states: [], prior_decision_ids: ['decision-cross-dataset'],
+    });
+    await assertFakeLinkFailure(crossDatasetDecision, 'prior_decision_links_mismatch', {
+      decisions: [{
+        context_dataset_kind: 'synthetic', decision_dataset_kind: 'historical',
+        decision_id: 'decision-cross-dataset',
+      }],
+    });
   });
 
   it('returns the stable prior record on retry and a typed conflict on payload or link drift', async () => {
@@ -273,6 +491,9 @@ describe('L2 canonical grounding-context persistence', () => {
     try {
       const first = await ports.groundingContexts.createOrVerify(record);
       assert.deepEqual(await ports.groundingContexts.createOrVerify(record), first);
+      const beforeRead = await readContextSnapshot(database, record);
+      assert.deepEqual(await ports.groundingContexts.findById(record.dataset_kind, record.context_id), record);
+      assert.deepEqual(await readContextSnapshot(database, record), beforeRead);
       assert.deepEqual(await readEventDecisionLinks(database, record), {
         events: [{ event_id: target.eventId, event_version: 1 }],
         decisions: [target.decisionId],
@@ -306,6 +527,24 @@ describe('L2 canonical grounding-context persistence', () => {
         'AND context_id = \'' + record.context_id + '\'');
     } finally {
       await database.executor.execute('RESET ROLE');
+    }
+
+    for (const roleName of [
+      'waspada_public_reader',
+      'waspada_l1_pipeline',
+      'waspada_l2_grounding_reader',
+      'waspada_l3_coordinator',
+    ]) {
+      await database.executor.execute('SET ROLE ' + roleName);
+      try {
+        await assertReadFailure(record, 'storage_read_failed');
+        await assertPermissionDenied(
+          'SELECT record_json FROM waspada.grounding_contexts ' +
+            'WHERE dataset_kind = \'synthetic\' AND context_id = \'context-writer\'',
+        );
+      } finally {
+        await database.executor.execute('RESET ROLE');
+      }
     }
   });
 
@@ -528,6 +767,88 @@ describe('L2 canonical grounding-context persistence', () => {
     );
   }
 
+  async function insertRawContextWithJson(
+    db: TestDatabase,
+    record: GroundingContextRecord,
+    recordJson: unknown,
+  ): Promise<void> {
+    await db.executor.query(
+      'INSERT INTO waspada.grounding_contexts ' +
+        '(dataset_kind, context_id, trace_id, candidate_id, retrieval_version, index_version, sufficient, record_json) ' +
+        'VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)',
+      [record.dataset_kind, record.context_id, record.trace_id, record.candidate_id,
+        record.retrieval_version, record.index_version, record.sufficient, JSON.stringify(recordJson)],
+    );
+  }
+
+  async function evidenceRefId(reference: GroundingEvidenceReference): Promise<string> {
+    const result = await database.executor.query<{ evidence_ref_id: string }>(
+      'SELECT evidence_ref_id::text AS evidence_ref_id FROM waspada.evidence_references ' +
+        'WHERE dataset_kind = $1 AND report_revision_id = $2 AND permitted_text_hash = $3 ' +
+        'AND span_start = $4 AND span_end = $5 AND offset_unit = $6 AND relation = $7',
+      [
+        'synthetic', reference.report_revision_id, reference.permitted_text_hash,
+        reference.span_start, reference.span_end, reference.offset_unit, reference.relation,
+      ],
+    );
+    assert.equal(result.rows.length, 1);
+    return result.rows[0]!.evidence_ref_id;
+  }
+
+  async function linkEvidence(db: TestDatabase, record: GroundingContextRecord, evidenceRefIdValue: string): Promise<void> {
+    await db.executor.query(
+      'INSERT INTO waspada.grounding_evidence (dataset_kind, context_id, evidence_ref_id) VALUES ($1, $2, $3)',
+      [record.dataset_kind, record.context_id, evidenceRefIdValue],
+    );
+  }
+
+  async function linkCandidateEvent(
+    db: TestDatabase,
+    record: GroundingContextRecord,
+    eventId: string,
+    eventVersion: number,
+  ): Promise<void> {
+    await db.executor.query(
+      'INSERT INTO waspada.grounding_candidate_events ' +
+        '(dataset_kind, context_id, event_id, event_version) VALUES ($1, $2, $3, $4)',
+      [record.dataset_kind, record.context_id, eventId, eventVersion],
+    );
+  }
+
+  async function linkPriorDecision(db: TestDatabase, record: GroundingContextRecord, decisionId: string): Promise<void> {
+    await db.executor.query(
+      'INSERT INTO waspada.grounding_prior_decisions (dataset_kind, context_id, decision_id) VALUES ($1, $2, $3)',
+      [record.dataset_kind, record.context_id, decisionId],
+    );
+  }
+
+  async function readContextSnapshot(db: TestDatabase, record: GroundingContextRecord): Promise<unknown> {
+    const parent = await db.executor.query(
+      'SELECT dataset_kind, context_id, trace_id, candidate_id, retrieval_version, index_version, ' +
+        'sufficient, record_json FROM waspada.grounding_contexts WHERE dataset_kind = $1 AND context_id = $2',
+      [record.dataset_kind, record.context_id],
+    );
+    const evidence = await db.executor.query(
+      'SELECT link.evidence_ref_id::text AS evidence_ref_id, evidence.dataset_kind, evidence.report_revision_id, ' +
+        'evidence.permitted_text_hash, evidence.span_start, evidence.span_end, evidence.offset_unit, evidence.relation ' +
+        'FROM waspada.grounding_evidence AS link JOIN waspada.evidence_references AS evidence ' +
+        'ON evidence.dataset_kind = link.dataset_kind AND evidence.evidence_ref_id = link.evidence_ref_id ' +
+        'WHERE link.dataset_kind = $1 AND link.context_id = $2 ORDER BY link.evidence_ref_id',
+      [record.dataset_kind, record.context_id],
+    );
+    const events = await db.executor.query(
+      'SELECT dataset_kind, context_id, event_id, event_version FROM waspada.grounding_candidate_events ' +
+        'WHERE dataset_kind = $1 AND context_id = $2 ORDER BY event_id, event_version',
+      [record.dataset_kind, record.context_id],
+    );
+    const decisions = await db.executor.query(
+      'SELECT dataset_kind, context_id, decision_id FROM waspada.grounding_prior_decisions ' +
+        'WHERE dataset_kind = $1 AND context_id = $2 ORDER BY decision_id',
+      [record.dataset_kind, record.context_id],
+    );
+    return { parent: parent.rows, evidence: evidence.rows, events: events.rows, decisions: decisions.rows };
+  }
+
   async function assertValidationError(record: unknown): Promise<void> {
     await assert.rejects(
       ports.groundingContexts.createOrVerify(record as GroundingContextRecord),
@@ -579,6 +900,74 @@ describe('L2 canonical grounding-context persistence', () => {
       [record.context_id],
     );
     assert.equal(count.rows[0]?.count, '0');
+  }
+
+  async function assertReadFailure(
+    record: GroundingContextRecord,
+    reason: GroundingContextReadError['reason'],
+    redactedText?: string,
+  ): Promise<void> {
+    await assert.rejects(
+      ports.groundingContexts.findById(record.dataset_kind, record.context_id),
+      (error: unknown) => {
+        assert.ok(error instanceof GroundingContextReadError);
+        assert.equal(error.code, 'grounding_context_read_error');
+        assert.equal(error.reason, reason);
+        assert.equal(error.message, 'grounding_context_read_error:' + reason);
+        if (redactedText) assert.equal(error.message.includes(redactedText), false);
+        return true;
+      },
+    );
+  }
+
+  async function assertFakeLinkFailure(
+    record: GroundingContextRecord,
+    reason: GroundingContextReadError['reason'],
+    linkRows: {
+      readonly evidence?: readonly Record<string, unknown>[];
+      readonly events?: readonly Record<string, unknown>[];
+      readonly decisions?: readonly Record<string, unknown>[];
+    },
+    redactedText?: string,
+  ): Promise<void> {
+    const parent = {
+      dataset_kind: record.dataset_kind,
+      context_id: record.context_id,
+      trace_id: record.trace_id,
+      candidate_id: record.candidate_id,
+      retrieval_version: record.retrieval_version,
+      index_version: record.index_version,
+      sufficient: record.sufficient,
+      record_json: record,
+    };
+    const transaction: SqlExecutor = {
+      query: async <Row extends object = Record<string, unknown>>(statement: string) => {
+        if (statement.includes('FROM waspada.grounding_contexts')) {
+          return { rows: [parent] as unknown as readonly Row[] };
+        }
+        if (statement.includes('FROM waspada.grounding_evidence')) {
+          return { rows: (linkRows.evidence ?? []) as readonly Row[] };
+        }
+        if (statement.includes('FROM waspada.grounding_candidate_events')) {
+          return { rows: (linkRows.events ?? []) as readonly Row[] };
+        }
+        if (statement.includes('FROM waspada.grounding_prior_decisions')) {
+          return { rows: (linkRows.decisions ?? []) as readonly Row[] };
+        }
+        throw new Error('unexpected fixture query');
+      },
+      execute: async () => undefined,
+    };
+    const executor = {
+      transaction: async <Result>(work: (value: SqlExecutor) => Promise<Result>) => work(transaction),
+    } as unknown as TransactionalSqlExecutor;
+    const repository = createSqlGroundingContextRepository(executor);
+    await assert.rejects(repository.findById(record.dataset_kind, record.context_id), (error: unknown) => {
+      assert.ok(error instanceof GroundingContextReadError);
+      assert.equal(error.reason, reason);
+      assert.equal(error.message.includes(redactedText ?? '\u0000'), false);
+      return true;
+    });
   }
 
   async function evidenceCount(seed: Seed): Promise<string> {
