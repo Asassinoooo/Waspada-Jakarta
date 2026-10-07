@@ -1,5 +1,9 @@
 # Delivery log
 
+## PUB-01-MANUAL-GATE-CORE assigned — 7 October 2026
+
+Root audited the current Layer 4 boundary and confirmed the deterministic publication policy and atomic writer are accepted but have no service composing them. The assigned local slice will rerun the policy against exact proposal/context/current retrieval and explicit moderator authorization, then construct the existing writer command through an injected port. It uses authored synthetic/live-shaped fixtures only, adds no route or database behavior, and preserves the demo's read-only moderation. Source rights, human-labelled EVAL-01 cases, authenticated review, and hosted behavior remain outside this task.
+
 ## EVAL-01-CASEBOOK-CLI-CORE accepted — 7 October 2026
 
 Root accepted the fast-forward of `work/EVAL-01-CASEBOOK-CLI-CORE` from assigned base `bdc850de9a01dcfc607a9f71a0d40e42d883068d`, preserving implementation commit `81fa414b46c0d67a263beeb373f2a9824473afa1` (`feat(EVAL-01): add bounded casebook CLI`) and handoff commit `062459a7dd924478b23b4e35e916a0114377fc91` (`docs(EVAL-01): record casebook CLI handoff`). The command accepts one local JSON path, reads at most 5 MiB, calls the existing validator and readiness checker, and exposes only the four assigned result fields or fixed redacted error codes. It does not establish source rights, reviewer identity, adjudication, label quality, data independence, or a held-out freeze.
