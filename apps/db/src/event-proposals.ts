@@ -60,6 +60,12 @@ export interface EventProposal {
 export interface EventProposalRepository {
   createOrVerify(input: EventProposal): Promise<EventProposal>;
 }
+
+/** Read-only capability for the exact persisted live proposal used by Layer 4. */
+export interface EventProposalReader {
+  readLive(proposalId: string): Promise<EventProposal | null>;
+}
+
 export type EventProposalReferenceKind = 'trace' | 'candidate' | 'context' | 'evidence' | 'origin' | 'event' | 'investigation';
 
 export class EventProposalValidationError extends Error {
@@ -85,6 +91,16 @@ export class EventProposalStorageError extends Error {
   constructor() { super('event_proposal_storage_error'); this.name = 'EventProposalStorageError'; }
 }
 
+export type EventProposalReaderFailure = 'invalid_proposal_id' | 'invalid_persisted_proposal' | 'proposal_read_failed';
+
+export class EventProposalReaderError extends Error {
+  readonly code = 'event_proposal_reader_error' as const;
+  constructor(readonly failure: EventProposalReaderFailure) {
+    super('event_proposal_reader_error');
+    this.name = 'EventProposalReaderError';
+  }
+}
+
 const DATASETS = new Set(['live', 'historical', 'synthetic']);
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH = /^[a-f0-9]{64}$/;
@@ -105,6 +121,70 @@ export function createSqlEventProposalRepository(executor: TransactionalSqlExecu
   }
   return new SqlEventProposalRepository(executor);
 }
+
+interface EventProposalRow {
+  readonly dataset_kind: unknown;
+  readonly proposal_id: unknown;
+  readonly trace_id: unknown;
+  readonly candidate_id: unknown;
+  readonly context_id: unknown;
+  readonly event_id: unknown;
+  readonly base_event_version: unknown;
+  readonly record_json: unknown;
+}
+
+/** Reads only the exact live proposal columns already granted to the L4 writer role. */
+export function createSqlEventProposalReader(executor: SqlExecutor): EventProposalReader {
+  if (!executor || typeof executor.query !== 'function') {
+    throw new TypeError('Event proposal reading requires a SQL executor');
+  }
+
+  return {
+    async readLive(proposalId: string): Promise<EventProposal | null> {
+      try {
+        id(proposalId, 'proposal.proposal_id');
+      } catch {
+        throw new EventProposalReaderError('invalid_proposal_id');
+      }
+
+      let rows: readonly EventProposalRow[];
+      try {
+        const result = await executor.query<EventProposalRow>(
+          'SELECT dataset_kind, proposal_id, trace_id, candidate_id, context_id, event_id, base_event_version, record_json ' +
+          "FROM waspada.event_proposals WHERE dataset_kind = 'live' AND proposal_id = $1",
+          [proposalId],
+        );
+        rows = result.rows;
+      } catch {
+        throw new EventProposalReaderError('proposal_read_failed');
+      }
+
+      if (rows.length === 0) return null;
+      if (rows.length !== 1) throw new EventProposalReaderError('invalid_persisted_proposal');
+
+      try {
+        const row = rows[0]!;
+        const proposal = snapshotProposal(row.record_json);
+        if (row.dataset_kind !== 'live'
+          || row.proposal_id !== proposalId
+          || row.dataset_kind !== proposal.dataset_kind
+          || row.proposal_id !== proposal.proposal_id
+          || row.trace_id !== proposal.trace_id
+          || row.candidate_id !== proposal.candidate_id
+          || row.context_id !== proposal.context_id
+          || row.event_id !== proposal.event_id
+          || row.base_event_version !== proposal.base_event_version) {
+          throw new EventProposalReaderError('invalid_persisted_proposal');
+        }
+        return proposal;
+      } catch (error) {
+        if (error instanceof EventProposalReaderError) throw error;
+        throw new EventProposalReaderError('invalid_persisted_proposal');
+      }
+    },
+  };
+}
+
 class SqlEventProposalRepository implements EventProposalRepository {
   constructor(private readonly executor: TransactionalSqlExecutor) {}
   async createOrVerify(input: EventProposal): Promise<EventProposal> {
