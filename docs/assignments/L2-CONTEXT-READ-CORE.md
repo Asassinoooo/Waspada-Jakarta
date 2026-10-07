@@ -1,6 +1,6 @@
 # L2-CONTEXT-READ-CORE — exact lookup of persisted grounding context
 
-- **Status:** Assigned for implementation
+- **Status:** Accepted
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/L2-CONTEXT-READ-CORE`
 - **Worktree:** `.codex-build/worktrees/l2-context-read-core`

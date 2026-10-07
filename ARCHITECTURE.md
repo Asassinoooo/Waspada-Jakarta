@@ -8,6 +8,8 @@ L3-PROGRESS-FINGERPRINT-CORE adds a case-pinned key identifier, purpose-separate
 
 `L2-CONTEXT-READ-CORE` is accepted at main fast-forward `9069d76`. The exact Layer 2 context reader validates the closed schema 2.0 record, normalized identity columns, and same-dataset evidence, event-version, and decision links using existing grants. It does not expose context content to the L3 database role or configure a Workflow runtime. Persisted records remain refs-only, so a future resumable Workflow must reconstruct excerpt-bearing context inside Layer 2 from those exact references.
 
+`ADR-049` defines that restart boundary: Layer 2 re-reads a persisted context by exact dataset and ID, resolves only its bounded saved evidence identities, rechecks pinned revision states and current source eligibility, reloads current timestamps and origin lineage, then reads each exact span before returning an ephemeral reasoning request. Any missing, duplicate, invalidated, or changed identity fails closed and requires fresh retrieval; the refs-only record and Workflow payload remain unchanged. The assigned `L2-CONTEXT-RESUME-CORE` is local library/database verification only and does not register a Workflow or invoke a model.
+
 L1 also contains an accepted, pure CAP 1.2 XML parser over caller-buffered synthetic input. It enforces the CAP namespace and parser bounds, rejects DTDs, preserves source-declared fields and separate timestamps, and validates only source-described polygons. This does not provide BMKG source approval, field mapping, source acquisition, signature verification, evidence validation, or event publication; the connector remains disabled.
 
 ## 1. Architecture and boundaries
