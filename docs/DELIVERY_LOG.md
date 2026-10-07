@@ -1,5 +1,9 @@
 # Delivery log
 
+## EVAL-01-CASEBOOK-CLI-CORE assigned — 7 October 2026
+
+Root audited the evaluation tooling and confirmed the casebook contract and validator are accepted, but can currently be called only as imported TypeScript functions. The next local task adds a bounded, redacted `npm run eval:casebook -- <path>` command with stable output and exit codes. It is limited to metadata-only JSON and authored synthetic tests; it creates no rights approvals, human labels, source access, dependency, API, or provider integration. Source/data rights remain pending for EVAL-01. The task is pinned to the root planning commit before implementation; no runtime check is claimed yet.
+
 ## Freshness-only transitions remain outside `/updates` — 7 October 2026
 
 Team 12 decided that a freshness status change without a new moderator-reviewed publication version stays visible on the current event and directly affected impact views; it does not create an update entry or advance the update-feed cursor. The `/updates` feed remains limited to moderator-reviewed published-version changes with an approved label and summary. This preserves the distinction between current evidence status and event-version history and requires no API/DTO or database change. The existing Layer 4 updates projector consumes only latest-approved history candidates and emits the unchanged `HistoryEntry`; the freshness overlay is read through current event projections. Root documented the decision in ADR-026, the UX/API specification, architecture, plan, backlog, and current checkpoint. In WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`, direct focused update-reader, update-projection, and source-freshness projection tests passed **14/14**; `git diff --check` passed. No application code, API/DTO, database, runtime, dependency, or deployment behavior changed.
