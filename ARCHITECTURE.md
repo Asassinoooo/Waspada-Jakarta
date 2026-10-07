@@ -6,6 +6,8 @@ Status: target architecture with partial local implementation. The local code in
 
 L3-PROGRESS-FINGERPRINT-CORE adds a case-pinned key identifier, purpose-separated action and grounding HMACs, and append-only progress snapshots. Grounding projection version 2 excludes free-form missing-field/conflict text and includes bounded counts only, so wording changes with the same counts do not register as progress. The no-progress stop is conservative and escalates to review. The stateless bounded coordinator composition is accepted; production key configuration, source-to-L1/L2 dispatch, and Worker/Workflow runtime composition remain unimplemented.
 
+`L2-CONTEXT-READ-CORE` is assigned to add exact `(dataset_kind, context_id)` rehydration through the existing Layer 2 context-writer capability. It will verify the closed record, normalized columns, and exact persisted relation links without exposing context content to the L3 database role or changing Workflow/runtime configuration.
+
 L1 also contains an accepted, pure CAP 1.2 XML parser over caller-buffered synthetic input. It enforces the CAP namespace and parser bounds, rejects DTDs, preserves source-declared fields and separate timestamps, and validates only source-described polygons. This does not provide BMKG source approval, field mapping, source acquisition, signature verification, evidence validation, or event publication; the connector remains disabled.
 
 ## 1. Architecture and boundaries
