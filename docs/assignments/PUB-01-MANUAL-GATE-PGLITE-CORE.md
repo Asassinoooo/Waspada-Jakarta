@@ -1,6 +1,6 @@
 # PUB-01-MANUAL-GATE-PGLITE-CORE — persisted publication composition proof
 
-- **Status:** Ready for implementation; test-only synthetic composition
+- **Status:** Blocked pending Team 12's publication-label decision; no implementation changes made
 - **Backlog ID:** `PUB-01-MANUAL-GATE-PGLITE-CORE`
 - **Parent:** `PUB-01`
 - **Dependencies:** Accepted `PUB-01-MANUAL-GATE-CORE`, `PUB-WRITE-CORE`, `MOD-01-WRITER-ROLE-CORE`, and the DB PGlite harness
@@ -63,3 +63,9 @@ Stop if the existing moderator publication writer role cannot execute the compos
 ## Implementation handoff
 
 The implementer records the assigned branch/worktree and exact base, commit SHA(s) and exact messages, changed paths, behavior, WSL runtime/package versions, actual check results, limitations, migration/configuration impact, and remaining decisions here. Root independently reviews and records acceptance.
+
+### Root review — blocked before implementation
+
+The implementer correctly stopped at the writer boundary, but the initial report's migration detail needed correction: migration 023 already permits `under_review` in private `proposal_claims`, as specified by ADR-036. The actual mismatch is that the L2 bridge and manual gate require the draft label `under_review`, while `SqlPublicationWriter` accepts only the four public evidence labels and projects the proposal label into the published claim. `PublicationWriteCommand` has no explicit moderator-reviewed public label, so there is no authorized value to pass through without inventing or inferring one. The writer currently fails closed.
+
+No changes or commits were made on `work/PUB-01-MANUAL-GATE-PGLITE-CORE`; its worktree remains clean at assigned base `877fbc8281ef3334a6bb23001b98d29a17b32bd5`. Root has requested Team 12's rule for labels on published claims. Keep this composition blocked until that answer establishes whether publication requires an explicit moderator-selected label per claim or remains unavailable pending a later design. Do not widen the public-label enum to include `under_review`.
