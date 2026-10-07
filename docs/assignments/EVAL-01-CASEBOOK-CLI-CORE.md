@@ -61,4 +61,33 @@ Stop and report to root if this command would require a schema or public contrac
 
 ## Implementation handoff
 
-The implementer records branch/worktree and base, commit SHAs and exact messages, changed paths, behavior, actual checks/results, limitations, migration/configuration impact, and remaining decisions here. Root performs independent review and acceptance.
+**Branch:** `work/EVAL-01-CASEBOOK-CLI-CORE`
+
+**Worktree:** `D:\Projects\RPL\.codex-build\worktrees\eval-01-casebook-cli-core`
+
+**Assigned base:** `bdc850de9a01dcfc607a9f71a0d40e42d883068d`
+
+**Implementation commit:** `81fa414b46c0d67a263beeb373f2a9824473afa1` — `feat(EVAL-01): add bounded casebook CLI`
+
+**Handoff commit message:** `docs(EVAL-01): record casebook CLI handoff`
+
+**Changed paths:** `tools/evaluation/casebook-cli.ts`, `tools/evaluation/casebook-cli.test.ts`, `tools/evaluation/tsconfig.json`, root `package.json`, `docs/evaluation/CASEBOOK.md`, and this handoff section.
+
+**Behavior:** The `npm run eval:casebook -- <path>` command accepts one absolute or working-directory-relative local JSON file, bounds the read to 5 MiB, and calls the existing `validateCasebook` and `evaluateReleaseReadiness` functions. Its result contains only `valid`, `metadata_ready`, `issue_codes`, and `readiness_reasons`. Usage, read, size, UTF-8, JSON, and unexpected failures use fixed stderr error codes without path, input, or exception details. Invalid metadata returns the redacted result with exit status 2; valid but not-ready metadata returns status 1; status 0 is reserved for metadata that passes the existing readiness checks.
+
+**Checks:** WSL Ubuntu-26.04, Node v24.21.0 and npm v11.19.0; existing `tsx` 4.23.15, TypeScript 7.0.2, and `@types/node` 24.13.6. No dependency installation or version change.
+
+- Focused CLI tests: 7/7 passed.
+- `npm test`: passed, including web 60, Worker 431, DB 41/41 files, and evaluation 19/19 tests.
+- `npm run typecheck`: passed.
+- `npm run build`: passed; Vite production build and Wrangler dry-run completed.
+- `npm run eval:casebook -- docs/evaluation/fixtures/synthetic-casebook.json`: expected exit status 1; output had `valid: true`, `metadata_ready: false`, and readiness reason codes.
+- `git diff --check bdc850de9a01dcfc607a9f71a0d40e42d883068d..HEAD`: passed for the implementation commit. The final assigned-base diff check will be rerun after this handoff commit.
+
+**Limitations:** The CLI checks only declared metadata; it cannot establish external rights, reviewer identity, that reviews or adjudication occurred, label quality, independence, or freeze governance. Only the checked-in synthetic fixture and temporary authored metadata were used. No metadata-ready casebook was constructed or smoke-run because that would require invented rights or human-review assertions; the status-0 mapping is tested from closed boolean result states only. The synthetic fixture remains valid but not-ready. Source/data rights and real human labels remain pending.
+
+**Migration/configuration impact:** No database migration, runtime configuration, dependency, API, Worker, or web behavior changed. The root package gained only the CLI/test scripts; the evaluation TypeScript include list and casebook local-use documentation were updated.
+
+**Remaining decisions:** No implementation contract decision remains. EVAL-01 source/data rights and independent human review are still separate pending gates. Root review and acceptance remain outstanding.
+
+Root performs independent review and acceptance.
