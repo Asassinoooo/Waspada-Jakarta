@@ -32,6 +32,8 @@ export interface ResumeInvestigationAdvance extends InvestigationStepReplayKeys 
 
 export interface SufficientContextAdvance {
   readonly kind: 'sufficient_context';
+  /** Present when this sufficient result is associated with an existing investigation case. */
+  readonly investigationId?: string;
   readonly context: GroundingContext;
   readonly persistedRecord: GroundingContextRecord;
 }
@@ -87,7 +89,8 @@ export type InvestigationCoordinatorReviewReason =
   | 'invalid_refreshed_context'
   | 'material_dispute'
   | 'no_progress'
-  | 'ledger_uncertain';
+  | 'ledger_uncertain'
+  | 'advance_review_pending';
 
 export type InvestigationCoordinatorOutcome =
   | {

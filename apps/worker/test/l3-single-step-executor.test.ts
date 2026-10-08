@@ -708,6 +708,8 @@ function makeLedger(config: {
       if (config.latestError) throw config.latestError;
       return latestCheckpoint;
     },
+    async getAdvanceReviewPending() { return null; },
+    async markAdvanceReviewPending() { throw new Error('unexpected review-pending marker'); },
     async getFingerprintKeyId() {
       return 'fixture-hmac-v1';
     },
@@ -719,6 +721,7 @@ function makeLedger(config: {
       if (config.inFlightError) throw config.inFlightError;
       return config.inFlightReservation ?? null;
     },
+    async getActionReservation() { return null; },
     async reserveAction(input) {
       calls.push('reserve');
       reserveInputs.push(input);

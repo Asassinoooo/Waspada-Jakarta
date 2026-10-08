@@ -3,11 +3,13 @@ import test from 'node:test';
 import type { GroundingContextRecord } from '../../db/src/grounding-contexts.js';
 import {
   InvestigationLedgerError,
+  type AdvanceReviewPendingRecord,
   type CreateInvestigationInput,
   type InvestigationCheckpointRecord,
   type InvestigationLedgerRepository,
   type InvestigationProgressOperationResult,
   type InvestigationProgressSnapshotRecord,
+  type ReservationRecord,
   type RefreshGroundingProgressInput,
 } from '../../db/src/investigation-ledger.js';
 import type {
@@ -151,7 +153,7 @@ test('preserves previously accepted long reasoning reservation timestamps', asyn
   assert.equal(harness.actionCalls.length, 1);
 });
 
-test('invalid, throwing, impossible-date, and earlier action clocks preserve the planner checkpoint', async (t) => {
+test('invalid, throwing, impossible-date, and earlier action clocks latch the reconciled planner stage', async (t) => {
   const plannerTime = '2026-09-29T12:03:00.123456789Z';
   const cases: Array<{ readonly name: string; readonly plannerTime?: string; readonly wallNow: () => string }> = [
     { name: 'malformed timestamp', wallNow: () => 'not-rfc3339' },
@@ -176,11 +178,13 @@ test('invalid, throwing, impossible-date, and earlier action clocks preserve the
 
       assert.equal(result.status, 'review_required');
       if (result.status !== 'review_required') assert.fail('expected a closed review result');
-      assert.equal(result.reason, 'ledger_uncertain');
+      assert.equal(result.reason, 'advance_review_pending');
       assert.equal(result.checkpoint, harness.ledger.latest);
       assert.equal(result.checkpoint?.checkpoint_version, 3);
       assert.equal(result.checkpoint?.updated_at, checkpointTime);
       assert.equal(result.checkpoint?.case_status, 'open');
+      assert.equal(harness.ledger.marker?.stage, 'planning');
+      assert.equal(harness.ledger.marker?.reason, 'invalid_action_timestamp');
       assert.equal(harness.wallNowCalls, 1);
       assert.equal(harness.actionCalls.length, 0);
       assert.equal(harness.refreshCalls.length, 0);
@@ -197,9 +201,12 @@ test('does not sample action time for malformed planner timestamps or proposals'
 
     assert.equal(result.status, 'review_required');
     if (result.status !== 'review_required') assert.fail('expected a closed review result');
-    assert.equal(result.reason, 'ledger_uncertain');
+    assert.equal(result.reason, 'advance_review_pending');
     assert.equal(result.checkpoint, harness.ledger.latest);
     assert.equal(result.checkpoint?.updated_at, plannerTime);
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(harness.ledger.marker?.stage, 'planning');
+    assert.equal(harness.ledger.marker?.reason, 'planner_result_uncertain');
     assert.equal(harness.wallNowCalls, 0);
     assert.equal(harness.actionCalls.length, 0);
     assert.equal(harness.refreshCalls.length, 0);
@@ -212,9 +219,79 @@ test('does not sample action time for malformed planner timestamps or proposals'
 
     assert.equal(result.status, 'review_required');
     if (result.status !== 'review_required') assert.fail('expected a closed review result');
-    assert.equal(result.reason, 'invalid_context');
+    assert.equal(result.reason, 'advance_review_pending');
     assert.equal(result.checkpoint, harness.ledger.latest);
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(harness.ledger.marker?.stage, 'planning');
+    assert.equal(harness.ledger.marker?.reason, 'planner_result_uncertain');
     assert.equal(harness.wallNowCalls, 0);
+    assert.equal(harness.actionCalls.length, 0);
+    assert.equal(harness.refreshCalls.length, 0);
+  });
+
+  await t.test('malformed planner checkpoint after durable reconciliation', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ planningMode: 'malformed_checkpoint' });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint, harness.ledger.latest);
+    assert.equal(result.checkpoint?.checkpoint_version, 3);
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(harness.ledger.marker?.stage, 'planning');
+    assert.equal(harness.ledger.marker?.reason, 'planner_result_uncertain');
+    assert.equal(harness.actionCalls.length, 0);
+    assert.equal(harness.refreshCalls.length, 0);
+  });
+
+  for (const mode of ['wrong_checkpoint_status', 'wrong_checkpoint_version'] as const) {
+    await t.test(`valid but unexpected planner checkpoint ${mode}`, async () => {
+      const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+      const harness = makeHarness({ planningMode: mode });
+      const result = await harness.coordinator.advance(openInput(context));
+
+      assert.equal(result.status, 'review_required');
+      if (result.status !== 'review_required') assert.fail('expected a closed review result');
+      assert.equal(result.reason, 'advance_review_pending');
+      assert.equal(result.checkpoint, harness.ledger.latest);
+      assert.equal(result.checkpoint?.checkpoint_version, 3);
+      assert.equal(result.checkpoint?.case_status, 'open');
+      assert.equal(harness.ledger.marker?.stage, 'planning');
+      assert.equal(harness.ledger.marker?.reason, 'planner_result_uncertain');
+      assert.equal(harness.actionCalls.length, 0);
+      assert.equal(harness.refreshCalls.length, 0);
+    });
+  }
+
+  await t.test('a failed reservation lookup still attempts the locked marker insert', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ planningMode: 'malformed_proposal', reservationLookupMode: 'throws' });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(harness.ledger.marker?.stage, 'planning');
+    assert.equal(harness.ledger.marker?.reason, 'planner_result_uncertain');
+    assert.equal(harness.actionCalls.length, 0);
+    assert.equal(harness.refreshCalls.length, 0);
+  });
+
+  await t.test('a failed reservation lookup and failed marker insert stay ledger-uncertain', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({
+      planningMode: 'malformed_proposal',
+      reservationLookupMode: 'throws',
+      markerWriteFails: true,
+    });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'ledger_uncertain');
+    assert.equal(harness.ledger.marker, null);
     assert.equal(harness.actionCalls.length, 0);
     assert.equal(harness.refreshCalls.length, 0);
   });
@@ -330,7 +407,7 @@ test('planner rejection, failure, and replay do not sample an action reservation
     { name: 'abstained', mode: 'abstained', expectedWallNowCalls: 0, resultEvent: 'planner_result_rejected' },
     { name: 'budget rejected', mode: 'budget_exhausted', expectedWallNowCalls: 1, resultEvent: 'planner_result_rejected' },
     { name: 'failed', mode: 'failed', expectedWallNowCalls: 1, resultEvent: 'planner_result_rejected' },
-    { name: 'replayed', mode: 'replayed', expectedWallNowCalls: 1, resultEvent: 'planner_result_replayed' },
+    { name: 'replayed', mode: 'replayed', expectedWallNowCalls: 0, resultEvent: 'planner_result_replayed' },
   ];
 
   for (const item of cases) {
@@ -348,25 +425,223 @@ test('planner rejection, failure, and replay do not sample an action reservation
         assert.equal(result.checkpoint?.case_status, 'stopped_for_review');
         assert.equal(result.checkpoint?.updated_at, '2026-09-29T12:10:00.000Z');
       }
+      if (item.mode === 'replayed') {
+        assert.equal(result.reason, 'advance_review_pending');
+        assert.equal(result.checkpoint?.case_status, 'open');
+        assert.equal(harness.ledger.marker?.stage, 'planning');
+      }
       assert.equal(harness.actionCalls.length, 0);
       assert.equal(harness.refreshCalls.length, 0);
     });
   }
 });
 
-test('a replayed planner reservation stops before action or refresh', async () => {
+test('a replayed planner reservation latches before action or refresh', async () => {
   const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
   const harness = makeHarness({ planningMode: 'replayed' });
 
   const result = await harness.coordinator.advance(openInput(context));
 
   assert.equal(result.status, 'review_required');
-  assert.equal(result.reason, 'replayed_planner_step');
-  assert.equal(result.checkpoint?.case_status, 'stopped_for_review');
-  assert.equal(result.checkpoint?.stop_reason, 'awaiting_moderator');
+  assert.equal(result.reason, 'advance_review_pending');
+  assert.equal(result.checkpoint?.case_status, 'open');
+  assert.equal(result.checkpoint?.stop_reason, null);
+  assert.equal(harness.ledger.marker?.reason, 'planner_replayed');
   assert.equal(harness.planningCalls.length, 1);
   assert.equal(harness.actionCalls.length, 0);
   assert.equal(harness.refreshCalls.length, 0);
+});
+
+test('maps a marker-denied action start to pending and leaves the open case untouched', async () => {
+  const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+  const harness = makeHarness({ actionMode: 'marker_denied' });
+
+  const result = await harness.coordinator.advance(openInput(context));
+
+  assert.equal(result.status, 'review_required');
+  assert.equal(result.reason, 'advance_review_pending');
+  assert.equal(result.checkpoint?.case_status, 'open');
+  assert.equal(result.checkpoint?.stop_reason, null);
+  assert.equal(result.checkpoint?.checkpoint_version, 3,
+    'the already-reconciled planner checkpoint remains the latest adopted checkpoint');
+  assert.equal(harness.actionCalls.length, 1);
+  assert.equal(harness.refreshCalls.length, 0);
+  assert.equal(harness.progressCallCount, 0);
+  assert.equal(harness.ledger.reservations.get(harness.actionCalls[0]!.reservationId)?.status, 'reserved');
+  assert.ok(harness.ledger.marker);
+});
+
+test('maps a marker-denied progress write to pending without adopting further progress', async () => {
+  const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+  const harness = makeHarness({ progressMode: 'marker_denied' });
+
+  const result = await harness.coordinator.advance(openInput(context));
+
+  assert.equal(result.status, 'review_required');
+  assert.equal(result.reason, 'advance_review_pending');
+  assert.equal(result.checkpoint?.case_status, 'open');
+  assert.equal(result.checkpoint?.stop_reason, null);
+  assert.equal(result.checkpoint?.checkpoint_version, 5,
+    'the reconciled action checkpoint remains the latest progress checkpoint');
+  assert.equal(harness.refreshCalls.length, 1);
+  assert.equal(harness.progressCallCount, 0);
+  assert.equal(harness.ledger.marker?.stage, 'progress');
+});
+
+test('checks a sticky marker before open replay, stale resume, and case-bound sufficient-context returns', async () => {
+  const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+  const harness = makeHarness();
+  const initialOpen = openInput(context);
+  const first = await harness.coordinator.advance(initialOpen);
+  assert.equal(first.status, 'continue');
+  if (first.status !== 'continue') assert.fail('expected a checkpointed continuation');
+
+  harness.ledger.marker = {
+    datasetKind: first.checkpoint.dataset_kind,
+    investigationId: first.checkpoint.investigation_id,
+    observedCheckpointVersion: first.checkpoint.checkpoint_version,
+    stage: 'progress',
+    reason: 'progress_uncertain',
+    reservationId: initialOpen.actionReservationId,
+    markedAt: BASE_TIME,
+  };
+  const planningCallsBefore = harness.planningCalls.length;
+  const actionCallsBefore = harness.actionCalls.length;
+  const createsBefore = harness.ledger.createCalls.length;
+
+  const openReplay = await harness.coordinator.advance(initialOpen);
+  assert.equal(openReplay.status, 'review_required');
+  assert.equal(openReplay.reason, 'advance_review_pending');
+
+  const stale = { ...first.checkpoint, checkpoint_version: first.checkpoint.checkpoint_version - 1 };
+  const resume = await harness.coordinator.advance({
+    ...resumeInput(first, 'pending-marker'),
+    checkpoint: stale,
+  });
+  assert.equal(resume.status, 'review_required');
+  assert.equal(resume.reason, 'advance_review_pending');
+
+  const sufficient = makeContext({ ...first.context, sufficient: true, missingFields: [], conflicts: [] });
+  const sufficientResult = await harness.coordinator.advance({
+    kind: 'sufficient_context',
+    context: sufficient,
+    persistedRecord: persisted(sufficient),
+    investigationId: first.checkpoint.investigation_id,
+  });
+  assert.equal(sufficientResult.status, 'review_required');
+  assert.equal(sufficientResult.reason, 'advance_review_pending');
+  assert.equal(harness.planningCalls.length, planningCallsBefore);
+  assert.equal(harness.actionCalls.length, actionCallsBefore);
+  assert.equal(harness.ledger.createCalls.length, createsBefore,
+    'the open replay is held before idempotent entry is invoked');
+});
+
+test('latches failures while preparing progress after the action and refresh are durable', async (t) => {
+  await t.test('missing fingerprint key', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ progressMode: 'missing_fingerprint_key' });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(result.checkpoint?.checkpoint_version, 5);
+    assert.equal(harness.refreshCalls.length, 1);
+    assert.equal(harness.progressCallCount, 0);
+    assert.equal(harness.ledger.marker?.stage, 'progress');
+    assert.equal(harness.ledger.marker?.reason, 'progress_uncertain');
+  });
+
+  await t.test('invalid progress timestamp', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    let wallRead = 0;
+    const harness = makeHarness({
+      wallNow: () => {
+        wallRead += 1;
+        return wallRead === 1 ? '2026-09-29T12:04:00Z' : 'not-rfc3339';
+      },
+    });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(result.checkpoint?.checkpoint_version, 5);
+    assert.equal(harness.refreshCalls.length, 1);
+    assert.equal(harness.progressCallCount, 0);
+    assert.equal(harness.ledger.marker?.stage, 'progress');
+    assert.equal(harness.ledger.marker?.reason, 'progress_uncertain');
+  });
+
+  await t.test('timestamp precedes the reconciled action checkpoint', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    let wallRead = 0;
+    const harness = makeHarness({
+      wallNow: () => {
+        wallRead += 1;
+        return wallRead === 1 ? '2026-09-29T12:04:00Z' : '2026-09-29T12:03:59Z';
+      },
+    });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(result.checkpoint?.checkpoint_version, 5);
+    assert.equal(harness.refreshCalls.length, 1);
+    assert.equal(harness.progressCallCount, 0);
+    assert.equal(harness.ledger.marker?.stage, 'progress');
+    assert.equal(harness.ledger.marker?.reason, 'progress_uncertain');
+  });
+});
+
+test('latches malformed progress results and write acknowledgements that may follow a commit', async (t) => {
+  for (const mode of [
+    'null_progress_result', 'malformed_progress_result', 'missing_progress_snapshot',
+    'malformed_progress_snapshot', 'uncertain_progress_write', 'progress_conflict',
+    'context_not_found', 'context_mismatch',
+  ] as const) {
+    await t.test(mode, async () => {
+      const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+      const harness = makeHarness({ progressMode: mode });
+      const result = await harness.coordinator.advance(openInput(context));
+
+      assert.equal(result.status, 'review_required');
+      assert.equal(result.reason, 'advance_review_pending');
+      assert.equal(result.checkpoint?.case_status, 'open');
+      assert.equal(result.checkpoint?.stop_reason, null);
+      assert.equal(harness.refreshCalls.length, 1);
+      assert.equal(harness.ledger.marker?.stage, 'progress');
+      assert.equal(harness.ledger.marker?.reason, 'progress_uncertain');
+      assert.equal(harness.ledger.marker?.reservationId, harness.actionCalls[0]?.reservationId);
+      if (mode === 'uncertain_progress_write') {
+        assert.equal(harness.ledger.latest?.checkpoint_version, 6,
+          'the fake models a committed progress write whose acknowledgement was lost');
+        assert.equal(result.checkpoint?.checkpoint_version, 6,
+          'the review result reports the latest checkpoint after the lost acknowledgement');
+      } else {
+        assert.equal(harness.ledger.latest?.checkpoint_version, 5);
+        assert.equal(result.checkpoint?.checkpoint_version, 5);
+      }
+    });
+  }
+});
+
+test('does not latch only known concurrent or terminal progress denials', async (t) => {
+  for (const mode of ['reservation_in_flight', 'stale_checkpoint'] as const) {
+    await t.test(mode, async () => {
+      const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+      const harness = makeHarness({ progressMode: mode });
+      const result = await harness.coordinator.advance(openInput(context));
+
+      assert.equal(result.status, 'review_required');
+      if (result.status !== 'review_required') assert.fail('expected a closed review result');
+      assert.equal(result.reason, 'ledger_uncertain');
+      assert.equal(result.checkpoint?.case_status, 'open');
+      assert.equal(harness.ledger.marker, null);
+      assert.equal(harness.refreshCalls.length, 1);
+    });
+  }
 });
 
 test('a reconciled timeout gets one L1/L2 refresh then escalates', async () => {
@@ -389,7 +664,47 @@ test('uncertain action results and invalid or stale case identities cannot reach
     const harness = makeHarness({ actionMode: 'uncertain' });
     const result = await harness.coordinator.advance(openInput(context));
     assert.equal(result.status, 'review_required');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(harness.ledger.marker?.stage, 'action');
+    assert.equal(harness.refreshCalls.length, 0);
+  });
+  await t.test('reservation in flight alone is not a review-pending trigger', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ actionMode: 'reservation_in_flight' });
+    const result = await harness.coordinator.advance(openInput(context));
+    assert.equal(result.status, 'review_required');
     assert.equal(result.reason, 'action_uncertain');
+    assert.equal(result.checkpoint?.case_status, 'open');
+    assert.equal(harness.ledger.marker, null);
+    assert.equal(harness.refreshCalls.length, 0);
+  });
+  await t.test('unexpected action status after exact action reconciliation latches', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ actionMode: 'unexpected_result' });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint, harness.ledger.latest);
+    assert.equal(result.checkpoint?.checkpoint_version, 5);
+    assert.equal(harness.ledger.marker?.stage, 'action');
+    assert.equal(harness.ledger.marker?.reason, 'invalid_action_result');
+    assert.equal(harness.refreshCalls.length, 0);
+  });
+  await t.test('malformed executed receipt after exact action reconciliation latches', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ actionMode: 'malformed_receipt' });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint, harness.ledger.latest);
+    assert.equal(result.checkpoint?.checkpoint_version, 5);
+    assert.equal(harness.ledger.marker?.stage, 'action');
+    assert.equal(harness.ledger.marker?.reason, 'invalid_action_result');
     assert.equal(harness.refreshCalls.length, 0);
   });
   await t.test('cross-case context', async () => {
@@ -447,6 +762,52 @@ test('uncertain action results and invalid or stale case identities cannot reach
   });
 });
 
+test('latches refresh failures and invalid results; a racing marker prevents adoption', async (t) => {
+  await t.test('refresh throws after the action is reconciled', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ refreshMode: 'throws' });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(harness.ledger.marker?.stage, 'refresh');
+    assert.equal(harness.ledger.marker?.reason, 'refresh_failed');
+    assert.equal(harness.progressCallCount, 0);
+  });
+
+  await t.test('invalid refreshed context after refresh latches', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const wrongCase = makeContext({ candidateId: 'candidate-invalid-refresh', missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({ refreshResults: [wrongCase] });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(harness.ledger.marker?.stage, 'refresh');
+    assert.equal(harness.ledger.marker?.reason, 'invalid_refreshed_context');
+    assert.equal(harness.progressCallCount, 0);
+  });
+
+  await t.test('marker committed during refresh leaves its persisted context unadopted', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const refreshed = makeContext({ contextId: 'context-persisted-under-race', conflicts: [] });
+    const harness = makeHarness({ refreshResults: [refreshed], refreshMode: 'marker_during_refresh' });
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(result.checkpoint, harness.ledger.latest);
+    assert.equal(harness.ledger.latest?.context_id, context.contextId);
+    assert.equal(harness.ledger.persistedContexts.has(refreshed.contextId), true,
+      'the refresh may persist an L2 context before observing the marker');
+    assert.equal(harness.ledger.marker?.stage, 'refresh');
+    assert.equal(harness.progressCallCount, 0);
+  });
+});
+
 test('replaying an outer open request after the planner advanced cannot call either executor again', async () => {
   const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
   const harness = makeHarness({ actionMode: 'replayed' });
@@ -454,13 +815,14 @@ test('replaying an outer open request after the planner advanced cannot call eit
 
   const first = await harness.coordinator.advance(input);
   assert.equal(first.status, 'review_required');
-  assert.equal(first.reason, 'replayed_action_step');
-  assert.equal(first.checkpoint?.case_status, 'stopped_for_review');
-  assert.equal(first.checkpoint?.stop_reason, 'awaiting_moderator');
+  assert.equal(first.reason, 'advance_review_pending');
+  assert.equal(first.checkpoint?.case_status, 'open');
+  assert.equal(first.checkpoint?.stop_reason, null);
+  assert.equal(harness.ledger.marker?.reason, 'action_replayed');
   const retry = await harness.coordinator.advance(input);
 
   assert.equal(retry.status, 'review_required');
-  assert.equal(retry.reason, 'stale_checkpoint');
+  assert.equal(retry.reason, 'advance_review_pending');
   assert.equal(harness.planningCalls.length, 1);
   assert.equal(harness.actionCalls.length, 1);
   assert.equal(harness.actionCalls[0]?.reservationId, input.actionReservationId);
@@ -495,12 +857,21 @@ test('material disputes are durable review outcomes and operational storage excl
 
 function makeHarness(input: {
   readonly refreshResults?: readonly GroundingContext[];
-  readonly actionMode?: 'success' | 'duplicate' | 'timed_out' | 'uncertain' | 'replayed';
-  readonly planningMode?: 'proposed' | 'abstained' | 'budget_exhausted' | 'failed' | 'malformed_proposal' | 'replayed';
+  readonly actionMode?: 'success' | 'duplicate' | 'timed_out' | 'uncertain' | 'replayed' | 'marker_denied'
+    | 'reservation_in_flight' | 'unexpected_result' | 'malformed_receipt';
+  readonly planningMode?: 'proposed' | 'abstained' | 'budget_exhausted' | 'failed' | 'malformed_proposal'
+    | 'malformed_checkpoint' | 'wrong_checkpoint_status' | 'wrong_checkpoint_version' | 'replayed';
+  readonly progressMode?: 'marker_denied' | 'missing_fingerprint_key' | 'null_progress_result'
+    | 'malformed_progress_result' | 'missing_progress_snapshot' | 'malformed_progress_snapshot'
+    | 'uncertain_progress_write' | 'progress_conflict' | 'context_not_found' | 'context_mismatch'
+    | 'reservation_in_flight' | 'stale_checkpoint';
+  readonly refreshMode?: 'throws' | 'marker_during_refresh';
+  readonly reservationLookupMode?: 'normal' | 'throws';
+  readonly markerWriteFails?: boolean;
   readonly planningCheckpointUpdatedAt?: string;
   readonly wallNow?: () => string;
 } = {}) {
-  const ledger = new MemoryLedger();
+  const ledger = new MemoryLedger(input.progressMode, input.reservationLookupMode, input.markerWriteFails);
   const entry = createInsufficientContextEntryService(ledger.repository, FINGERPRINTS);
   const events: string[] = [];
   const planningCalls: Array<{
@@ -557,9 +928,19 @@ function makeHarness(input: {
         return { status: 'review_required', reason: 'stale_checkpoint', checkpoint: current };
       }
       const checkpoint = ledger.advance(2);
+      ledger.recordReservation(proposal.investigationId, proposal.reservationId, 'reasoning', 'reconciled');
       const reconciledCheckpoint = input.planningCheckpointUpdatedAt === undefined
         ? checkpoint
         : ledger.setUpdatedAt(input.planningCheckpointUpdatedAt);
+      const unexpectedCheckpoint = input.planningMode === 'wrong_checkpoint_status'
+        ? { ...reconciledCheckpoint, case_status: 'paused' as const }
+        : input.planningMode === 'wrong_checkpoint_version'
+          ? {
+            ...reconciledCheckpoint,
+            checkpoint_id: `checkpoint-${reconciledCheckpoint.checkpoint_version + 1}`,
+            checkpoint_version: reconciledCheckpoint.checkpoint_version + 1,
+          }
+          : reconciledCheckpoint;
       events.push('planner_reconciled');
       if (input.planningMode === 'replayed') {
         events.push('planner_result_replayed');
@@ -581,6 +962,36 @@ function makeHarness(input: {
             actionName: 'unregistered_action',
             input: {},
           } as ProposedInvestigationAction,
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, modelVersion: 'fixture-model', promptVersion: 'fixture-prompt' },
+        };
+      }
+      if (input.planningMode === 'malformed_checkpoint') {
+        events.push('planner_result_proposed');
+        return {
+          status: 'proposed',
+          checkpoint: {} as InvestigationCheckpointRecord,
+          proposal: {
+            schemaVersion: INVESTIGATION_PLAN_VERSION,
+            recordType: 'InvestigationPlanResult',
+            outcome: 'proposed',
+            actionName: 'synthetic_search',
+            input: {},
+          } as ProposedInvestigationAction,
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, modelVersion: 'fixture-model', promptVersion: 'fixture-prompt' },
+        };
+      }
+      if (input.planningMode === 'wrong_checkpoint_status' || input.planningMode === 'wrong_checkpoint_version') {
+        events.push('planner_result_proposed');
+        return {
+          status: 'proposed',
+          checkpoint: unexpectedCheckpoint,
+          proposal: {
+            schemaVersion: INVESTIGATION_PLAN_VERSION,
+            recordType: 'InvestigationPlanResult',
+            outcome: 'proposed',
+            actionName: 'synthetic_search',
+            input: {},
+          },
           usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, modelVersion: 'fixture-model', promptVersion: 'fixture-prompt' },
         };
       }
@@ -634,12 +1045,41 @@ function makeHarness(input: {
         return { status: 'review_required', reason: 'duplicate_action', checkpoint: ledger.latest! };
       }
       if (input.actionMode === 'uncertain') {
+        ledger.recordReservation(ledger.latest!.investigation_id, proposal.reservationId, 'tool', 'started');
         return { status: 'review_required', reason: 'reservation_state_uncertain', checkpoint: ledger.latest! };
       }
+      if (input.actionMode === 'reservation_in_flight') {
+        ledger.recordReservation(ledger.latest!.investigation_id, proposal.reservationId, 'tool', 'started');
+        return { status: 'review_required', reason: 'reservation_in_flight', checkpoint: ledger.latest! };
+      }
+      if (input.actionMode === 'marker_denied') {
+        const current = ledger.latest!;
+        ledger.recordReservation(current.investigation_id, proposal.reservationId, 'tool', 'reserved');
+        ledger.marker = {
+          datasetKind: current.dataset_kind,
+          investigationId: current.investigation_id,
+          observedCheckpointVersion: current.checkpoint_version,
+          stage: 'action',
+          reason: 'action_result_uncertain',
+          reservationId: proposal.reservationId,
+          markedAt: BASE_TIME,
+        };
+        throw new InvestigationLedgerError('advance_review_pending');
+      }
       if (input.actionMode === 'replayed') {
+        ledger.recordReservation(ledger.latest!.investigation_id, proposal.reservationId, 'tool', 'reconciled');
         return { status: 'replayed', checkpoint: ledger.latest! };
       }
-      const checkpoint = ledger.advance(2);
+      if (input.actionMode === 'unexpected_result' || input.actionMode === 'malformed_receipt') {
+        ledger.advance(2);
+        const checkpoint = ledger.setUpdatedAt(proposal.reservedAt);
+        ledger.recordReservation(ledger.latest!.investigation_id, proposal.reservationId, 'tool', 'reconciled');
+        if (input.actionMode === 'unexpected_result') return { status: 'unexpected' } as never;
+        return { status: 'executed', checkpoint, receipt: {} } as never;
+      }
+      ledger.advance(2);
+      const checkpoint = ledger.setUpdatedAt(proposal.reservedAt);
+      ledger.recordReservation(ledger.latest!.investigation_id, proposal.reservationId, 'tool', 'reconciled');
       return {
         status: 'executed',
         checkpoint,
@@ -652,7 +1092,13 @@ function makeHarness(input: {
   };
   const refreshPort = {
     async refresh(refreshInput: {
+      readonly datasetKind: 'synthetic';
+      readonly investigationId: string;
       readonly previousContextId: string;
+      readonly traceId: string;
+      readonly candidateId: string;
+      readonly eventId: string | null;
+      readonly eventVersion: number | null;
       readonly outputReferenceIds: readonly string[];
     }) {
       events.push('refresh_invoked');
@@ -660,9 +1106,24 @@ function makeHarness(input: {
         previousContextId: refreshInput.previousContextId,
         outputReferenceIds: refreshInput.outputReferenceIds,
       });
+      if (input.refreshMode === 'throws') throw new Error('synthetic refresh failure');
       const context = refreshResults.shift() ?? makeContext({ conflicts: [] });
       const persistedRecord = persisted(context);
       ledger.registerPersistedContext(context, persistedRecord);
+      if (input.refreshMode === 'marker_during_refresh') {
+        const actionReservation = [...ledger.reservations.values()].find((reservation) =>
+          reservation.investigationId === refreshInput.investigationId && reservation.actionKind === 'tool');
+        assert.ok(actionReservation);
+        ledger.marker = {
+          datasetKind: refreshInput.datasetKind,
+          investigationId: refreshInput.investigationId,
+          observedCheckpointVersion: ledger.latest!.checkpoint_version,
+          stage: 'refresh',
+          reason: 'refresh_failed',
+          reservationId: actionReservation.reservationId,
+          markedAt: BASE_TIME,
+        };
+      }
       return { context, persistedRecord };
     },
   };
@@ -701,10 +1162,21 @@ function makeHarness(input: {
 }
 
 class MemoryLedger {
+  constructor(
+    private readonly progressMode?: 'marker_denied' | 'missing_fingerprint_key' | 'null_progress_result'
+      | 'malformed_progress_result' | 'missing_progress_snapshot' | 'malformed_progress_snapshot'
+      | 'uncertain_progress_write' | 'progress_conflict' | 'context_not_found' | 'context_mismatch'
+      | 'reservation_in_flight' | 'stale_checkpoint',
+    private readonly reservationLookupMode: 'normal' | 'throws' = 'normal',
+    private readonly markerWriteFails = false,
+  ) {}
+
   latest: InvestigationCheckpointRecord | null = null;
+  marker: AdvanceReviewPendingRecord | null = null;
   readonly createCalls: CreateInvestigationInput[] = [];
   readonly progressSnapshots: InvestigationProgressSnapshotRecord[] = [];
   readonly persistedContexts = new Map<string, GroundingContextRecord>();
+  readonly reservations = new Map<string, ReservationRecord>();
   lastProgressWasPersisted = false;
 
   readonly repository: InvestigationLedgerRepository = {
@@ -727,9 +1199,96 @@ class MemoryLedger {
       return checkpoint;
     },
     getLatest: async (_datasetKind, _investigationId) => this.latest,
-    getFingerprintKeyId: async () => this.createCalls[0]?.fingerprintKeyId ?? null,
-    refreshGroundingProgress: async (progressInput) => this.recordProgress(progressInput),
+    getAdvanceReviewPending: async (datasetKind, investigationId) => (
+      this.marker?.datasetKind === datasetKind && this.marker.investigationId === investigationId
+        ? this.marker
+        : null
+    ),
+    markAdvanceReviewPending: async (input) => {
+      if (this.markerWriteFails) throw new Error('synthetic marker write failure');
+      if (!this.latest || this.latest.dataset_kind !== input.datasetKind
+        || this.latest.investigation_id !== input.investigationId
+        || input.observedCheckpointVersion > this.latest.checkpoint_version) {
+        throw new InvestigationLedgerError('investigation_not_found');
+      }
+      if (input.reservationId) {
+        const reservation = this.reservations.get(input.reservationId);
+        if (!reservation || reservation.status === 'released') {
+          throw new InvestigationLedgerError('advance_review_pending_conflict');
+        }
+      }
+      if (this.marker) {
+        const same = this.marker.datasetKind === input.datasetKind
+          && this.marker.investigationId === input.investigationId
+          && this.marker.observedCheckpointVersion === input.observedCheckpointVersion
+          && this.marker.stage === input.stage
+          && this.marker.reason === input.reason
+          && this.marker.reservationId === (input.reservationId ?? null);
+        if (!same) throw new InvestigationLedgerError('advance_review_pending_conflict');
+        return { marker: this.marker, replayed: true };
+      }
+      this.marker = {
+        datasetKind: input.datasetKind,
+        investigationId: input.investigationId,
+        observedCheckpointVersion: input.observedCheckpointVersion,
+        stage: input.stage,
+        reason: input.reason,
+        reservationId: input.reservationId ?? null,
+        markedAt: BASE_TIME,
+      };
+      return { marker: this.marker, replayed: false };
+    },
+    getFingerprintKeyId: async () => this.progressMode === 'missing_fingerprint_key'
+      ? null
+      : this.createCalls[0]?.fingerprintKeyId ?? null,
+    refreshGroundingProgress: async (progressInput) => {
+      if (this.progressMode === 'marker_denied') {
+        const current = this.latest;
+        const actionReservation = [...this.reservations.values()].find((reservation) =>
+          reservation.investigationId === progressInput.investigationId && reservation.actionKind === 'tool');
+        assert.ok(current && actionReservation);
+        this.marker = {
+          datasetKind: current.dataset_kind,
+          investigationId: current.investigation_id,
+          observedCheckpointVersion: current.checkpoint_version,
+          stage: 'progress',
+          reason: 'progress_uncertain',
+          reservationId: actionReservation.reservationId,
+          markedAt: BASE_TIME,
+        };
+        throw new InvestigationLedgerError('advance_review_pending');
+      }
+      if (this.progressMode === 'null_progress_result') return null as unknown as InvestigationProgressOperationResult;
+      if (this.progressMode === 'malformed_progress_result') {
+        return {} as InvestigationProgressOperationResult;
+      }
+      if (this.progressMode === 'missing_progress_snapshot') {
+        return { checkpoint: this.latest! } as InvestigationProgressOperationResult;
+      }
+      if (this.progressMode === 'malformed_progress_snapshot') {
+        return { checkpoint: this.latest!, snapshot: { checkpointVersion: 'broken' } } as unknown as InvestigationProgressOperationResult;
+      }
+      if (this.progressMode === 'progress_conflict') {
+        throw new InvestigationLedgerError('progress_conflict');
+      }
+      if (this.progressMode === 'context_not_found' || this.progressMode === 'context_mismatch'
+        || this.progressMode === 'reservation_in_flight' || this.progressMode === 'stale_checkpoint') {
+        throw new InvestigationLedgerError(this.progressMode);
+      }
+      if (this.progressMode === 'uncertain_progress_write') {
+        await this.recordProgress(progressInput);
+        throw new Error('synthetic progress acknowledgement lost');
+      }
+      return this.recordProgress(progressInput);
+    },
     getInFlightReservation: async () => null,
+    getActionReservation: async (datasetKind, investigationId, reservationId) => {
+      if (this.reservationLookupMode === 'throws') throw new Error('synthetic reservation lookup failure');
+      const reservation = this.reservations.get(reservationId);
+      return reservation?.datasetKind === datasetKind && reservation.investigationId === investigationId
+        ? reservation
+        : null;
+    },
     reserveAction: async () => { throw new Error('unused repository reserveAction'); },
     startAction: async () => { throw new Error('unused repository startAction'); },
     reconcileAction: async () => { throw new Error('unused repository reconcileAction'); },
@@ -741,6 +1300,11 @@ class MemoryLedger {
       const current = this.latest;
       if (!current || current.checkpoint_version !== input.expectedCheckpointVersion) {
         throw new InvestigationLedgerError('stale_checkpoint');
+      }
+      if ([...this.reservations.values()].some((reservation) =>
+        reservation.investigationId === input.investigationId
+          && (reservation.status === 'reserved' || reservation.status === 'started'))) {
+        throw new InvestigationLedgerError('reservation_in_flight');
       }
       this.latest = {
         ...current,
@@ -770,6 +1334,33 @@ class MemoryLedger {
     }
     this.latest = next;
     return next;
+  }
+
+  recordReservation(
+    investigationId: string,
+    reservationId: string,
+    actionKind: 'tool' | 'reasoning',
+    status: ReservationRecord['status'],
+  ): void {
+    const current = this.latest;
+    assert.ok(current);
+    this.reservations.set(reservationId, {
+      datasetKind: current.dataset_kind,
+      reservationId,
+      investigationId,
+      actionKind,
+      actionName: actionKind === 'tool' ? 'synthetic_search' : 'l2_investigation_planning',
+      expectedCheckpointVersion: current.checkpoint_version - (status === 'reconciled' ? 1 : 0),
+      reserved: { toolAttempts: actionKind === 'tool' ? 1 : 0, reasoningTurns: actionKind === 'reasoning' ? 1 : 0,
+        activeSeconds: 1, modelTokens: actionKind === 'reasoning' ? 1 : 0 },
+      status,
+      outcome: status === 'reconciled' ? 'succeeded' : null,
+      actual: { activeSeconds: status === 'reconciled' ? 1 : 0, modelTokens: status === 'reconciled' && actionKind === 'reasoning' ? 1 : 0 },
+      createdAt: BASE_TIME,
+      startedAt: status === 'reserved' ? null : BASE_TIME,
+      finishedAt: status === 'reconciled' ? BASE_TIME : null,
+      reconciledCheckpointVersion: status === 'reconciled' ? current.checkpoint_version : null,
+    });
   }
 
   setUpdatedAt(updatedAt: string): InvestigationCheckpointRecord {

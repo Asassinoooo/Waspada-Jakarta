@@ -221,6 +221,349 @@ describe('L3 durable investigation ledger', () => {
     }));
   });
 
+  it('keeps an append-only review marker outside checkpoints and blocks progress and replayable work', async () => {
+    const fixture = await seedFixture(testDatabase, 'advance-review-marker-only', { sufficient: false });
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const input = makeCreateInput(fixture);
+    const initial = await repository.create(input);
+    const markerInput = {
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      observedCheckpointVersion: initial.checkpoint_version,
+      stage: 'planning' as const,
+      reason: 'invalid_action_timestamp' as const,
+    };
+
+    const marked = await repository.markAdvanceReviewPending(markerInput);
+    assert.equal(marked.replayed, false);
+    const duplicate = await repository.markAdvanceReviewPending(markerInput);
+    assert.equal(duplicate.replayed, true);
+    assert.deepEqual(duplicate.marker, marked.marker);
+    assert.equal(await repository.getAdvanceReviewPending(fixture.datasetKind, input.investigationId)
+      .then((value) => value?.reason), 'invalid_action_timestamp');
+    await assert.rejects(testDatabase.executor.query(
+      `UPDATE waspada.investigation_advance_review_pending
+       SET reason = 'planner_replayed'
+       WHERE dataset_kind = $1 AND investigation_id = $2`,
+      [fixture.datasetKind, input.investigationId],
+    ), /L3 advance review-pending markers are append-only/);
+    await assert.rejects(testDatabase.executor.query(
+      `DELETE FROM waspada.investigation_advance_review_pending
+       WHERE dataset_kind = $1 AND investigation_id = $2`,
+      [fixture.datasetKind, input.investigationId],
+    ), /L3 advance review-pending markers are append-only/);
+    await assertLedgerError('advance_review_pending_conflict', repository.markAdvanceReviewPending({
+      ...markerInput,
+      reason: 'planner_replayed',
+    }));
+
+    const missingReservationFixture = await seedFixture(
+      testDatabase, 'advance-review-marker-missing-reservation', { sufficient: false },
+    );
+    const missingReservationInput = makeCreateInput(missingReservationFixture);
+    await repository.create(missingReservationInput);
+    await assert.rejects(testDatabase.executor.query(
+      `INSERT INTO waspada.investigation_advance_review_pending
+         (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
+       VALUES ($1, $2, 1, 'action', 'action_result_uncertain', 'marker-does-not-exist')`,
+      [missingReservationFixture.datasetKind, missingReservationInput.investigationId],
+    ), /foreign key constraint/i,
+    'the database enforces reservation lineage when a marker names a reservation');
+
+    await assertLedgerError('advance_review_pending', repository.reserveAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'marker-only-reserve',
+      expectedCheckpointVersion: initial.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('marker-only-action'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 5,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:01:00Z',
+    }));
+    await assertLedgerError('advance_review_pending', repository.refreshGroundingProgress({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      contextId: fixture.contextId,
+      fingerprintKeyId: TEST_FINGERPRINT_KEY_ID,
+      digestHex: input.initialGroundingDigestHex,
+      refreshedAt: '2026-09-25T10:01:00Z',
+    }));
+    await assertLedgerError('advance_review_pending', repository.pause({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      pausedAt: '2026-09-25T10:01:00Z',
+    }));
+    await assertLedgerError('advance_review_pending', repository.resume({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      resumedAt: '2026-09-25T10:01:00Z',
+    }));
+    await assertLedgerError('advance_review_pending', repository.terminate({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      status: 'stopped_for_review',
+      stopReason: 'awaiting_moderator',
+      completedAt: '2026-09-25T10:01:00Z',
+    }));
+    assert.deepEqual(await repository.getLatest(fixture.datasetKind, input.investigationId), initial,
+      'marker insertion and blocked operations do not append a checkpoint or change its budget');
+  });
+
+  it('serializes marker and action start while allowing only the exact started result to reconcile', async () => {
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const reservedFirstFixture = await seedFixture(testDatabase, 'advance-review-reserve-first', { sufficient: false });
+    const reservedFirstInput = makeCreateInput(reservedFirstFixture);
+    const reservedFirst = await repository.create(reservedFirstInput);
+    const reservedFirstAction = {
+      datasetKind: reservedFirstFixture.datasetKind,
+      investigationId: reservedFirstInput.investigationId,
+      reservationId: 'marker-reserve-first-action',
+      expectedCheckpointVersion: reservedFirst.checkpoint_version,
+      actionKind: 'tool' as const,
+      actionFingerprint: testFingerprint('marker-reserve-first'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 5,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:01:00Z',
+    };
+    const reserved = await repository.reserveAction(reservedFirstAction);
+    await repository.markAdvanceReviewPending({
+      datasetKind: reservedFirstFixture.datasetKind,
+      investigationId: reservedFirstInput.investigationId,
+      observedCheckpointVersion: reserved.checkpoint.checkpoint_version,
+      stage: 'action',
+      reason: 'action_result_uncertain',
+      reservationId: reservedFirstAction.reservationId,
+    });
+    await assertLedgerError('advance_review_pending', repository.startAction({
+      datasetKind: reservedFirstFixture.datasetKind,
+      investigationId: reservedFirstInput.investigationId,
+      reservationId: reservedFirstAction.reservationId,
+      startedAt: '2026-09-25T10:01:01Z',
+    }));
+    await assertLedgerError('advance_review_pending', repository.reconcileAction({
+      datasetKind: reservedFirstFixture.datasetKind,
+      investigationId: reservedFirstInput.investigationId,
+      reservationId: reservedFirstAction.reservationId,
+      expectedCheckpointVersion: reserved.checkpoint.checkpoint_version,
+      outcome: 'succeeded',
+      actualActiveSeconds: 1,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:01:01Z',
+    }), 'a matching but still-reserved action cannot be reconciled through a marker');
+    assert.equal((await repository.getActionReservation(
+      reservedFirstFixture.datasetKind, reservedFirstInput.investigationId, reservedFirstAction.reservationId,
+    ))?.status, 'reserved');
+    const releasedAfterDeniedStart = await repository.releaseUninvoked({
+      datasetKind: reservedFirstFixture.datasetKind,
+      investigationId: reservedFirstInput.investigationId,
+      reservationId: reservedFirstAction.reservationId,
+      expectedCheckpointVersion: reserved.checkpoint.checkpoint_version,
+      releasedAt: '2026-09-25T10:01:02Z',
+    });
+    assert.equal(releasedAfterDeniedStart.checkpoint.checkpoint_version,
+      reserved.checkpoint.checkpoint_version + 1);
+    assert.deepEqual(releasedAfterDeniedStart.checkpoint.budget.consumed, zeroCounters());
+    assert.deepEqual(releasedAfterDeniedStart.checkpoint.budget.reserved, zeroCounters());
+    assert.equal((await repository.getActionReservation(
+      reservedFirstFixture.datasetKind, reservedFirstInput.investigationId, reservedFirstAction.reservationId,
+    ))?.status, 'released');
+    assert.ok(await repository.getAdvanceReviewPending(
+      reservedFirstFixture.datasetKind, reservedFirstInput.investigationId),
+    'refunding a proven uninvoked reservation does not clear the sticky marker');
+    await assertLedgerError('advance_review_pending', repository.startAction({
+      datasetKind: reservedFirstFixture.datasetKind,
+      investigationId: reservedFirstInput.investigationId,
+      reservationId: reservedFirstAction.reservationId,
+      startedAt: '2026-09-25T10:01:03Z',
+    }));
+    await assertLedgerError('advance_review_pending', repository.releaseUninvoked({
+      datasetKind: reservedFirstFixture.datasetKind,
+      investigationId: reservedFirstInput.investigationId,
+      reservationId: reservedFirstAction.reservationId,
+      expectedCheckpointVersion: releasedAfterDeniedStart.checkpoint.checkpoint_version,
+      releasedAt: '2026-09-25T10:01:02Z',
+    }));
+
+    const startedFirstFixture = await seedFixture(testDatabase, 'advance-review-start-first', { sufficient: false });
+    const startedFirstInput = makeCreateInput(startedFirstFixture);
+    const startedInitial = await repository.create(startedFirstInput);
+    const startedFirstAction = {
+      ...reservedFirstAction,
+      datasetKind: startedFirstFixture.datasetKind,
+      investigationId: startedFirstInput.investigationId,
+      reservationId: 'marker-start-first-action',
+      expectedCheckpointVersion: startedInitial.checkpoint_version,
+      actionFingerprint: testFingerprint('marker-start-first'),
+      reservedAt: '2026-09-25T10:02:00Z',
+    };
+    const startedReservation = await repository.reserveAction(startedFirstAction);
+    const started = await repository.startAction({
+      datasetKind: startedFirstFixture.datasetKind,
+      investigationId: startedFirstInput.investigationId,
+      reservationId: startedFirstAction.reservationId,
+      startedAt: '2026-09-25T10:02:01Z',
+    });
+    assert.equal(started.mayInvoke, true);
+    assert.equal(started.replayed, false);
+
+    const marker = await repository.markAdvanceReviewPending({
+      datasetKind: startedFirstFixture.datasetKind,
+      investigationId: startedFirstInput.investigationId,
+      observedCheckpointVersion: startedReservation.checkpoint.checkpoint_version,
+      stage: 'action',
+      reason: 'action_result_uncertain',
+      reservationId: startedFirstAction.reservationId,
+    });
+    assert.equal(marker.replayed, false);
+    assert.equal((await repository.getLatest(startedFirstFixture.datasetKind,
+      startedFirstInput.investigationId))?.checkpoint_version, startedReservation.checkpoint.checkpoint_version);
+    await assertLedgerError('invalid_state', repository.releaseUninvoked({
+      datasetKind: startedFirstFixture.datasetKind,
+      investigationId: startedFirstInput.investigationId,
+      reservationId: startedFirstAction.reservationId,
+      expectedCheckpointVersion: startedReservation.checkpoint.checkpoint_version,
+      releasedAt: '2026-09-25T10:02:02Z',
+    }));
+    assert.equal((await repository.getActionReservation(
+      startedFirstFixture.datasetKind, startedFirstInput.investigationId, startedFirstAction.reservationId,
+    ))?.status, 'started', 'a pending marker never releases an already-started invocation');
+
+    const reconciled = await repository.reconcileAction({
+      datasetKind: startedFirstFixture.datasetKind,
+      investigationId: startedFirstInput.investigationId,
+      reservationId: startedFirstAction.reservationId,
+      expectedCheckpointVersion: startedReservation.checkpoint.checkpoint_version,
+      outcome: 'succeeded',
+      actualActiveSeconds: 3,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:02:02Z',
+    });
+    assert.equal(reconciled.replayed, false);
+    assert.equal(reconciled.checkpoint.checkpoint_version, startedReservation.checkpoint.checkpoint_version + 1);
+    assert.equal(reconciled.checkpoint.budget.consumed.tool_attempts, 1);
+    assert.equal(reconciled.checkpoint.budget.reserved.tool_attempts, 0);
+    assert.equal((await repository.getActionReservation(
+      startedFirstFixture.datasetKind, startedFirstInput.investigationId, startedFirstAction.reservationId,
+    ))?.status, 'reconciled');
+    assert.ok(await repository.getAdvanceReviewPending(startedFirstFixture.datasetKind,
+      startedFirstInput.investigationId));
+    const reconciledReplay = await repository.reconcileAction({
+      datasetKind: startedFirstFixture.datasetKind,
+      investigationId: startedFirstInput.investigationId,
+      reservationId: startedFirstAction.reservationId,
+      expectedCheckpointVersion: startedReservation.checkpoint.checkpoint_version,
+      outcome: 'succeeded',
+      actualActiveSeconds: 3,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:02:02Z',
+    });
+    assert.equal(reconciledReplay.replayed, true,
+      'the marker permits only the same reservation identity to replay its exact reconciliation');
+    await assertLedgerError('advance_review_pending', repository.reserveAction({
+      ...startedFirstAction,
+      reservationId: 'marker-start-first-next-action',
+      expectedCheckpointVersion: reconciled.checkpoint.checkpoint_version,
+      actionFingerprint: testFingerprint('marker-start-first-next'),
+      reservedAt: '2026-09-25T10:02:03Z',
+    }));
+    await assertLedgerError('advance_review_pending', repository.reconcileInterrupted({
+      datasetKind: startedFirstFixture.datasetKind,
+      investigationId: startedFirstInput.investigationId,
+      reservationId: startedFirstAction.reservationId,
+      expectedCheckpointVersion: startedReservation.checkpoint.checkpoint_version,
+      finishedAt: '2026-09-25T10:02:03Z',
+    }));
+  });
+
+  it('limits marker-time reconciliation to its exact stage-matched reservation', async () => {
+    const fixture = await seedFixture(testDatabase, 'advance-review-reconcile-identity', { sufficient: false });
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const input = makeCreateInput(fixture, {
+      limits: { toolAttempts: 4, reasoningTurns: 2, activeSeconds: 40, modelTokens: 100 },
+    });
+    const initial = await repository.create(input);
+    const priorTool = await repository.reserveAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'marker-reconcile-prior-tool',
+      expectedCheckpointVersion: initial.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('marker-prior-tool'),
+      actionName: 'lookup.prior',
+      reservedActiveSeconds: 5,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:20:00Z',
+    });
+    await repository.startAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'marker-reconcile-prior-tool',
+      startedAt: '2026-09-25T10:20:01Z',
+    });
+    const priorReconciliationInput = {
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'marker-reconcile-prior-tool',
+      expectedCheckpointVersion: priorTool.checkpoint.checkpoint_version,
+      outcome: 'succeeded' as const,
+      actualActiveSeconds: 2,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:20:02Z',
+    };
+    const priorReconciliation = await repository.reconcileAction(priorReconciliationInput);
+    const targetReasoning = await repository.reserveAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'marker-reconcile-planner',
+      expectedCheckpointVersion: priorReconciliation.checkpoint.checkpoint_version,
+      actionKind: 'reasoning',
+      actionName: 'l2_investigation_planning',
+      reservedActiveSeconds: 10,
+      reservedModelTokens: 20,
+      reservedAt: '2026-09-25T10:21:00Z',
+    });
+    await repository.startAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'marker-reconcile-planner',
+      startedAt: '2026-09-25T10:21:01Z',
+    });
+    await repository.markAdvanceReviewPending({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      observedCheckpointVersion: targetReasoning.checkpoint.checkpoint_version,
+      stage: 'planning',
+      reason: 'planner_result_uncertain',
+      reservationId: 'marker-reconcile-planner',
+    });
+
+    await assertLedgerError('advance_review_pending', repository.reconcileAction(priorReconciliationInput),
+      'a prior unrelated reconciled tool cannot replay while the marker names a planner reservation');
+    const plannerReconciliationInput = {
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'marker-reconcile-planner',
+      expectedCheckpointVersion: targetReasoning.checkpoint.checkpoint_version,
+      outcome: 'failed' as const,
+      actualActiveSeconds: 10,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:21:11Z',
+    };
+    const plannerReconciled = await repository.reconcileAction(plannerReconciliationInput);
+    assert.equal(plannerReconciled.replayed, false,
+      'a planning marker permits only the exact reasoning reservation that was already started');
+    const plannerReplay = await repository.reconcileAction(plannerReconciliationInput);
+    assert.equal(plannerReplay.replayed, true);
+    assert.ok(await repository.getAdvanceReviewPending(fixture.datasetKind, input.investigationId));
+  });
+
   it('rejects an exact registered action after a cold restart without consuming more budget', async () => {
     const fixture = await seedFixture(testDatabase, 'duplicate-action', { sufficient: false });
     const firstRepository = createSqlInvestigationLedgerRepository(testDatabase.executor);
@@ -3299,6 +3642,12 @@ function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-async function assertLedgerError(code: InvestigationLedgerError['code'], work: Promise<unknown>): Promise<void> {
-  await assert.rejects(work, (error: unknown) => error instanceof InvestigationLedgerError && error.code === code);
+async function assertLedgerError(
+  code: InvestigationLedgerError['code'],
+  work: Promise<unknown>,
+  message?: string,
+): Promise<void> {
+  await assert.rejects(work,
+    (error: unknown) => error instanceof InvestigationLedgerError && error.code === code,
+    message);
 }

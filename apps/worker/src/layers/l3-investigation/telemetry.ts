@@ -34,12 +34,19 @@ export function createTelemetryInvestigationLedgerRepository(
       (checkpoint) => checkpoint,
     ),
     getLatest: (datasetKind, investigationId) => repository.getLatest(datasetKind, investigationId),
+    getAdvanceReviewPending: (datasetKind, investigationId) => (
+      repository.getAdvanceReviewPending(datasetKind, investigationId)
+    ),
+    markAdvanceReviewPending: (input) => repository.markAdvanceReviewPending(input),
     getFingerprintKeyId: (datasetKind, investigationId) => (
       repository.getFingerprintKeyId(datasetKind, investigationId)
     ),
     refreshGroundingProgress: (input) => repository.refreshGroundingProgress(input),
     getInFlightReservation: (datasetKind, investigationId) => (
       repository.getInFlightReservation(datasetKind, investigationId)
+    ),
+    getActionReservation: (datasetKind, investigationId, reservationId) => (
+      repository.getActionReservation(datasetKind, investigationId, reservationId)
     ),
     reserveAction: (input) => instrument(
       'reserve_action',

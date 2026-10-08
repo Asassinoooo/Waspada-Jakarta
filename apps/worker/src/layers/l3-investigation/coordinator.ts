@@ -1,7 +1,12 @@
 import {
   InvestigationLedgerError,
+  type ActionOutcome,
+  type AdvanceReviewPendingRecord,
   type InvestigationCheckpointRecord,
   type InvestigationLedgerRepository,
+  type MarkAdvanceReviewPendingInput,
+  type InvestigationProgressSnapshotRecord,
+  type ReservationRecord,
   type InvestigationStopReason,
 } from '../../../../db/src/investigation-ledger.js';
 import type { GroundingContextRecord } from '../../../../db/src/grounding-contexts.js';
@@ -15,7 +20,6 @@ import {
 import type { GroundingContext } from '../l2-model-grounding/contracts.js';
 import { validateReasoningRequest } from '../l2-model-grounding/validation.js';
 import {
-  recordGroundingProgress,
   type L3FingerprintService,
 } from './progress-fingerprint.js';
 import type { InsufficientContextEntryService } from './entry.js';
@@ -38,6 +42,9 @@ const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+
 const RFC3339_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?([Zz]|([+-])(\d{2}):(\d{2}))$/;
 const MAX_RFC3339_TIMESTAMP_LENGTH = 40;
 const MAX_QUESTIONS = 20;
+const KNOWN_PREWRITE_PROGRESS_ERRORS: ReadonlySet<InvestigationLedgerError['code']> = new Set([
+  'investigation_not_found', 'invalid_state', 'stale_checkpoint', 'reservation_in_flight',
+]);
 
 interface ParsedRfc3339Instant {
   /** Whole Unix seconds after applying the timestamp's numeric UTC offset. */
@@ -69,6 +76,70 @@ export function createInvestigationCoordinator(
 ): InvestigationCoordinator {
   const actionMenu = copyTrustedActionMenu(options.actionMenu);
 
+  const pendingOutcome = async (
+    datasetKind: DatasetKind,
+    investigationId: string,
+    fallbackCheckpoint?: InvestigationCheckpointRecord,
+  ): Promise<InvestigationCoordinatorOutcome | undefined> => {
+    let marker: AdvanceReviewPendingRecord | null;
+    try {
+      marker = await options.ledger.getAdvanceReviewPending(datasetKind, investigationId);
+    } catch {
+      return review('ledger_uncertain', fallbackCheckpoint);
+    }
+    if (!marker) return undefined;
+
+    let checkpoint = fallbackCheckpoint;
+    try {
+      const latest = await options.ledger.getLatest(datasetKind, investigationId);
+      if (latest) checkpoint = latest;
+    } catch {
+      // The marker is sufficient to stop; the latest checkpoint is optional output context.
+    }
+    return review('advance_review_pending', checkpoint);
+  };
+
+  const latchReview = async (
+    input: MarkAdvanceReviewPendingInput,
+    fallbackCheckpoint?: InvestigationCheckpointRecord,
+  ): Promise<InvestigationCoordinatorOutcome> => {
+    try {
+      await options.ledger.markAdvanceReviewPending(input);
+      let checkpoint = fallbackCheckpoint;
+      try {
+        const latest = await options.ledger.getLatest(input.datasetKind, input.investigationId);
+        if (latest) checkpoint = latest;
+      } catch {
+        // The durable marker is the gate; checkpoint detail is best-effort output context.
+      }
+      return review('advance_review_pending', checkpoint);
+    } catch {
+      return await pendingOutcome(input.datasetKind, input.investigationId, fallbackCheckpoint)
+        ?? review('ledger_uncertain', fallbackCheckpoint);
+    }
+  };
+
+  const latchIfReservationExists = async (
+    input: Omit<MarkAdvanceReviewPendingInput, 'reservationId'> & { readonly reservationId: string },
+    fallbackCheckpoint?: InvestigationCheckpointRecord,
+  ): Promise<InvestigationCoordinatorOutcome | undefined> => {
+    let reservation: ReservationRecord | null;
+    try {
+      reservation = await options.ledger.getActionReservation(
+        input.datasetKind,
+        input.investigationId,
+        input.reservationId,
+      );
+    } catch {
+      // A failed preliminary read is not proof that the reservation is absent. The
+      // locked marker writer revalidates exact reservation lineage before inserting.
+      return await latchReview(input, fallbackCheckpoint);
+    }
+    if (!reservation || reservation.investigationId !== input.investigationId
+      || reservation.status === 'released') return undefined;
+    return latchReview(input, fallbackCheckpoint);
+  };
+
   return {
     async advance(rawInput: InvestigationCoordinatorAdvanceInput): Promise<InvestigationCoordinatorOutcome> {
       try {
@@ -79,6 +150,11 @@ export function createInvestigationCoordinator(
           const contextPair = await validateContextPair(rawInput.context, rawInput.persistedRecord);
           if (!contextPair) return review('invalid_context');
           if (!contextPair.context.sufficient) return review('invalid_context');
+          if (rawInput.investigationId !== undefined) {
+            if (!isId(rawInput.investigationId)) return review('invalid_input');
+            const pending = await pendingOutcome(contextPair.context.datasetKind, rawInput.investigationId);
+            if (pending) return pending;
+          }
           return {
             status: 'sufficient_context',
             context: contextPair.context,
@@ -97,9 +173,26 @@ export function createInvestigationCoordinator(
           if (!pairFromHandoff) return review('invalid_handoff');
           if (pairFromHandoff.context.sufficient) return review('insufficient_context_required');
           contextPair = pairFromHandoff;
-          const opened = await options.entry.open(rawInput.outcome, rawInput.callerValues);
+          const callerInvestigationId = readDataProperty(rawInput.callerValues, 'investigationId');
+          if (isId(callerInvestigationId)) {
+            const pending = await pendingOutcome(pairFromHandoff.context.datasetKind, callerInvestigationId);
+            if (pending) return pending;
+          }
+          let opened;
+          try {
+            opened = await options.entry.open(rawInput.outcome, rawInput.callerValues);
+          } catch {
+            if (isId(callerInvestigationId)) {
+              const pending = await pendingOutcome(pairFromHandoff.context.datasetKind, callerInvestigationId);
+              if (pending) return pending;
+            }
+            return review('entry_rejected');
+          }
           if (opened.status !== 'opened') return review('entry_rejected');
           if (!isCheckpoint(opened.checkpoint)) return review('ledger_uncertain');
+          const pending = await pendingOutcome(opened.checkpoint.dataset_kind, opened.checkpoint.investigation_id,
+            opened.checkpoint);
+          if (pending) return pending;
           // A progressed replay must be resumed with its returned checkpoint and context.
           if (opened.checkpoint.checkpoint_version !== 1) {
             return review('stale_checkpoint', opened.checkpoint);
@@ -118,6 +211,12 @@ export function createInvestigationCoordinator(
           if (!contextPair) return review('invalid_context');
           if (!isCheckpoint(rawInput.checkpoint)) return review('invalid_input');
           const suppliedCheckpoint = rawInput.checkpoint;
+          const pending = await pendingOutcome(
+            suppliedCheckpoint.dataset_kind,
+            suppliedCheckpoint.investigation_id,
+            suppliedCheckpoint,
+          );
+          if (pending) return pending;
           checkpoint = await options.ledger.getLatest(
             suppliedCheckpoint.dataset_kind,
             suppliedCheckpoint.investigation_id,
@@ -170,35 +269,110 @@ export function createInvestigationCoordinator(
             request,
           });
         } catch {
+          const pending = await pendingOutcome(checkpoint.dataset_kind, checkpoint.investigation_id, checkpoint);
+          if (pending) return pending;
           return await reviewAndStop('planner_unavailable', checkpoint);
         }
 
         if (planning.status === 'replayed') {
+          const latched = await latchIfReservationExists({
+            datasetKind: checkpoint.dataset_kind,
+            investigationId: checkpoint.investigation_id,
+            observedCheckpointVersion: checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'planner_replayed',
+            reservationId: replayKeys.reasoningReservationId,
+          }, planning.checkpoint);
+          if (latched) return latched;
           return await reviewAndStop('replayed_planner_step', planning.checkpoint);
         }
         if (planning.status === 'review_required') {
+          if (planning.reason === 'reservation_state_uncertain'
+            || planning.reason === 'start_not_authorized'
+            || planning.reason === 'reconciliation_uncertain'
+            || planning.reason === 'reservation_replayed') {
+            const latched = await latchIfReservationExists({
+              datasetKind: checkpoint.dataset_kind,
+              investigationId: checkpoint.investigation_id,
+              observedCheckpointVersion: checkpoint.checkpoint_version,
+              stage: 'planning',
+              reason: 'planner_result_uncertain',
+              reservationId: replayKeys.reasoningReservationId,
+            }, planning.checkpoint ?? checkpoint);
+            if (latched) return latched;
+          }
           const reason = mapPlannerReviewReason(planning.reason);
           return await reviewAndMaybeStop(reason, planning.checkpoint ?? checkpoint);
         }
         if (planning.status !== 'proposed') return await reviewAndStop('planner_unavailable', checkpoint);
-        if (!isCheckpoint(planning.checkpoint)
-          || planning.checkpoint.case_status !== 'open'
+        if (!isCheckpoint(planning.checkpoint)) {
+          return await latchIfReservationExists({
+            datasetKind: checkpoint.dataset_kind,
+            investigationId: checkpoint.investigation_id,
+            observedCheckpointVersion: checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'planner_result_uncertain',
+            reservationId: replayKeys.reasoningReservationId,
+          }, checkpoint) ?? review('ledger_uncertain', checkpoint);
+        }
+        if (planning.checkpoint.case_status !== 'open'
           || !sameCaseIdentity(planning.checkpoint, contextPair.context)
           || planning.checkpoint.checkpoint_version !== checkpoint.checkpoint_version + 2
           || planning.checkpoint.context_id !== contextPair.context.contextId) {
-          return review('ledger_uncertain', planning.checkpoint);
+          // A proposed result means the planner executor already reconciled this exact
+          // reasoning reservation. Its next checkpoint must be the expected open state;
+          // a contradictory checkpoint is a post-stage uncertainty, not a stale retry.
+          return await latchIfReservationExists({
+            datasetKind: checkpoint.dataset_kind,
+            investigationId: checkpoint.investigation_id,
+            observedCheckpointVersion: checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'planner_result_uncertain',
+            reservationId: replayKeys.reasoningReservationId,
+          }, checkpoint) ?? review('ledger_uncertain', checkpoint);
         }
 
+        const pendingAfterPlanning = await pendingOutcome(
+          planning.checkpoint.dataset_kind,
+          planning.checkpoint.investigation_id,
+          planning.checkpoint,
+        );
+        if (pendingAfterPlanning) return pendingAfterPlanning;
+
         const proposal = parseProposedAction(planning.proposal, actionMenu);
-        if (!proposal) return review('invalid_context', planning.checkpoint);
+        if (!proposal) {
+          return await latchIfReservationExists({
+            datasetKind: planning.checkpoint.dataset_kind,
+            investigationId: planning.checkpoint.investigation_id,
+            observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'planner_result_uncertain',
+            reservationId: replayKeys.reasoningReservationId,
+          }, planning.checkpoint) ?? review('invalid_context', planning.checkpoint);
+        }
         const plannerCheckpointTime = parseRfc3339Instant(planning.checkpoint.updated_at);
-        if (!plannerCheckpointTime) return review('ledger_uncertain', planning.checkpoint);
+        if (!plannerCheckpointTime) {
+          return await latchIfReservationExists({
+            datasetKind: planning.checkpoint.dataset_kind,
+            investigationId: planning.checkpoint.investigation_id,
+            observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'planner_result_uncertain',
+            reservationId: replayKeys.reasoningReservationId,
+          }, planning.checkpoint) ?? review('ledger_uncertain', planning.checkpoint);
+        }
         const actionReservedAt = safeWallNow(options.wallNow);
         const actionReservedTime = parseRfc3339Instant(actionReservedAt);
         if (!actionReservedAt || !actionReservedTime
           || compareRfc3339Instants(actionReservedTime, plannerCheckpointTime) < 0) {
-          // Planning is durable. Keep its checkpoint visible and stop before reserving an action.
-          return review('ledger_uncertain', planning.checkpoint);
+          return latchReview({
+            datasetKind: planning.checkpoint.dataset_kind,
+            investigationId: planning.checkpoint.investigation_id,
+            observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'invalid_action_timestamp',
+            reservationId: replayKeys.reasoningReservationId,
+          }, planning.checkpoint);
         }
 
         let actionResult;
@@ -213,32 +387,106 @@ export function createInvestigationCoordinator(
             input: proposal.input,
           });
         } catch (error) {
+          if (error instanceof InvestigationLedgerError && error.code === 'advance_review_pending') {
+            return review('advance_review_pending', planning.checkpoint);
+          }
+          const pending = await pendingOutcome(
+            planning.checkpoint.dataset_kind,
+            planning.checkpoint.investigation_id,
+            planning.checkpoint,
+          );
+          if (pending) return pending;
           if (error instanceof InvestigationLedgerError && error.code === 'budget_exhausted') {
             return await reviewAndStop('budget_exhausted', planning.checkpoint);
           }
           if (error instanceof InvestigationLedgerError && error.code === 'duplicate_action') {
             return await reviewAndStop('duplicate_action', planning.checkpoint);
           }
+          if (!(error instanceof InvestigationLedgerError)
+            || (error.code !== 'reservation_in_flight'
+              && error.code !== 'stale_checkpoint'
+              && error.code !== 'invalid_state'
+              && error.code !== 'reservation_conflict')) {
+            const latched = await latchIfReservationExists({
+              datasetKind: planning.checkpoint.dataset_kind,
+              investigationId: planning.checkpoint.investigation_id,
+              observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+              stage: 'action',
+              reason: 'action_result_uncertain',
+              reservationId: replayKeys.actionReservationId,
+            }, planning.checkpoint);
+            if (latched) return latched;
+          }
           return await reviewAndStop('action_uncertain', planning.checkpoint);
         }
 
+        if (!isRecord(actionResult)
+          || !['replayed', 'denied', 'review_required', 'executed'].includes(
+            readDataProperty(actionResult, 'status') as string,
+          )) {
+          return await latchIfReservationExists({
+            datasetKind: planning.checkpoint.dataset_kind,
+            investigationId: planning.checkpoint.investigation_id,
+            observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+            stage: 'action',
+            reason: 'invalid_action_result',
+            reservationId: replayKeys.actionReservationId,
+          }, planning.checkpoint) ?? review('action_uncertain', planning.checkpoint);
+        }
+
         if (actionResult.status === 'replayed') {
+          const latched = await latchIfReservationExists({
+            datasetKind: planning.checkpoint.dataset_kind,
+            investigationId: planning.checkpoint.investigation_id,
+            observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+            stage: 'action',
+            reason: 'action_replayed',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
+          if (latched) return latched;
           return await reviewAndStop('replayed_action_step', actionResult.checkpoint);
         }
         if (actionResult.status === 'denied') {
           return await reviewAndStop('action_denied', planning.checkpoint);
         }
         if (actionResult.status === 'review_required') {
+          if (actionResult.reason === 'reservation_state_uncertain'
+            || actionResult.reason === 'reservation_result_uncertain'
+            || actionResult.reason === 'start_not_authorized') {
+            const latched = await latchIfReservationExists({
+              datasetKind: planning.checkpoint.dataset_kind,
+              investigationId: planning.checkpoint.investigation_id,
+              observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+              stage: 'action',
+              reason: 'action_result_uncertain',
+              reservationId: replayKeys.actionReservationId,
+            }, actionResult.checkpoint ?? planning.checkpoint);
+            if (latched) return latched;
+          }
           const reason = mapActionReviewReason(actionResult.reason);
           return await reviewAndMaybeStop(reason, actionResult.checkpoint ?? planning.checkpoint);
         }
-        if (actionResult.status !== 'executed'
-          || !isCheckpoint(actionResult.checkpoint)
+        if (!isCheckpoint(actionResult.checkpoint)
           || actionResult.checkpoint.case_status !== 'open'
           || !sameCaseIdentity(actionResult.checkpoint, contextPair.context)
-          || actionResult.checkpoint.checkpoint_version !== planning.checkpoint.checkpoint_version + 2) {
-          return review('action_uncertain', actionResult.checkpoint);
+          || actionResult.checkpoint.checkpoint_version !== planning.checkpoint.checkpoint_version + 2
+          || !isActionReceipt(actionResult.receipt)) {
+          return latchReview({
+            datasetKind: planning.checkpoint.dataset_kind,
+            investigationId: planning.checkpoint.investigation_id,
+            observedCheckpointVersion: planning.checkpoint.checkpoint_version,
+            stage: 'action',
+            reason: 'invalid_action_result',
+            reservationId: replayKeys.actionReservationId,
+          }, planning.checkpoint);
         }
+
+        const pendingAfterAction = await pendingOutcome(
+          actionResult.checkpoint.dataset_kind,
+          actionResult.checkpoint.investigation_id,
+          actionResult.checkpoint,
+        );
+        if (pendingAfterAction) return pendingAfterAction;
 
         let refreshed;
         try {
@@ -253,36 +501,185 @@ export function createInvestigationCoordinator(
             outputReferenceIds: [...actionResult.receipt.outputReferenceIds],
           });
         } catch {
-          return await reviewAndStop('refresh_failed', actionResult.checkpoint);
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'refresh',
+            reason: 'refresh_failed',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
         }
+
+        // A concurrent marker may arrive while refresh persists its L2 context. The context remains
+        // unadopted here, and this advance stops before progress or any subsequent stage.
+        const pendingAfterRefresh = await pendingOutcome(
+          actionResult.checkpoint.dataset_kind,
+          actionResult.checkpoint.investigation_id,
+          actionResult.checkpoint,
+        );
+        if (pendingAfterRefresh) return pendingAfterRefresh;
 
         const refreshedPair = await validateContextPair(refreshed?.context, refreshed?.persistedRecord);
         if (!refreshedPair || !sameCaseIdentity(actionResult.checkpoint, refreshedPair.context)) {
-          return await reviewAndStop('invalid_refreshed_context', actionResult.checkpoint);
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'refresh',
+            reason: 'invalid_refreshed_context',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
         }
 
         const refreshedAt = safeWallNow(options.wallNow);
-        if (!refreshedAt) return await reviewAndStop('ledger_uncertain', actionResult.checkpoint);
+        if (!refreshedAt) {
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
+        }
+        const refreshedAtInstant = parseRfc3339Instant(refreshedAt);
+        const actionCheckpointInstant = parseRfc3339Instant(actionResult.checkpoint.updated_at);
+        if (!refreshedAtInstant || !actionCheckpointInstant
+          || compareRfc3339Instants(refreshedAtInstant, actionCheckpointInstant) < 0) {
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
+        }
+
+        const pendingBeforeProgress = await pendingOutcome(
+          actionResult.checkpoint.dataset_kind,
+          actionResult.checkpoint.investigation_id,
+          actionResult.checkpoint,
+        );
+        if (pendingBeforeProgress) return pendingBeforeProgress;
+
+        let fingerprintKeyId: string | null;
+        try {
+          fingerprintKeyId = await options.ledger.getFingerprintKeyId(
+            actionResult.checkpoint.dataset_kind,
+            actionResult.checkpoint.investigation_id,
+          );
+        } catch {
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
+        }
+        if (fingerprintKeyId === null) {
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
+        }
+
+        let progressFingerprint;
+        try {
+          options.fingerprints.assertCaseKeyId(fingerprintKeyId);
+          progressFingerprint = await options.fingerprints.fingerprintGrounding({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            keyId: fingerprintKeyId,
+            context: refreshedPair.context,
+          });
+        } catch {
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
+        }
+
         let progress;
         try {
-          progress = await recordGroundingProgress(options.ledger, options.fingerprints, {
+          progress = await options.ledger.refreshGroundingProgress({
             datasetKind: actionResult.checkpoint.dataset_kind,
             investigationId: actionResult.checkpoint.investigation_id,
             expectedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
-            context: refreshedPair.context,
+            contextId: refreshedPair.context.contextId,
+            fingerprintKeyId: progressFingerprint.keyId,
+            digestHex: progressFingerprint.digestHex,
             refreshedAt,
           });
-        } catch {
-          return review('ledger_uncertain', actionResult.checkpoint);
+        } catch (error) {
+          if (error instanceof InvestigationLedgerError && error.code === 'advance_review_pending') {
+            return review('advance_review_pending', actionResult.checkpoint);
+          }
+          const pending = await pendingOutcome(
+            actionResult.checkpoint.dataset_kind,
+            actionResult.checkpoint.investigation_id,
+            actionResult.checkpoint,
+          );
+          if (pending) return pending;
+          if (error instanceof InvestigationLedgerError && KNOWN_PREWRITE_PROGRESS_ERRORS.has(error.code)) {
+            return review('ledger_uncertain', actionResult.checkpoint);
+          }
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
         }
-        if (!isCheckpoint(progress.checkpoint)
-          || progress.checkpoint.checkpoint_version !== actionResult.checkpoint.checkpoint_version + 1
+
+        const pendingAfterProgress = await pendingOutcome(
+          actionResult.checkpoint.dataset_kind,
+          actionResult.checkpoint.investigation_id,
+          actionResult.checkpoint,
+        );
+        if (pendingAfterProgress) return pendingAfterProgress;
+
+        if (!progress || !isCheckpoint(progress.checkpoint) || !isProgressSnapshot(progress.snapshot)) {
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
+        }
+        if (progress.checkpoint.checkpoint_version !== actionResult.checkpoint.checkpoint_version + 1
           || !sameCaseIdentity(progress.checkpoint, refreshedPair.context)
           || progress.checkpoint.context_id !== refreshedPair.context.contextId
+          || progress.snapshot.datasetKind !== actionResult.checkpoint.dataset_kind
+          || progress.snapshot.investigationId !== actionResult.checkpoint.investigation_id
           || progress.snapshot.checkpointVersion !== progress.checkpoint.checkpoint_version
           || progress.snapshot.candidateId !== progress.checkpoint.candidate_id
-          || progress.snapshot.contextId !== refreshedPair.context.contextId) {
-          return review('ledger_uncertain', actionResult.checkpoint);
+          || progress.snapshot.contextId !== refreshedPair.context.contextId
+          || progress.snapshot.fingerprintKeyId !== progressFingerprint.keyId
+          || progress.snapshot.digestHex !== progressFingerprint.digestHex) {
+          return latchReview({
+            datasetKind: actionResult.checkpoint.dataset_kind,
+            investigationId: actionResult.checkpoint.investigation_id,
+            observedCheckpointVersion: actionResult.checkpoint.checkpoint_version,
+            stage: 'progress',
+            reason: 'progress_uncertain',
+            reservationId: replayKeys.actionReservationId,
+          }, actionResult.checkpoint);
         }
 
         if (progress.checkpoint.case_status === 'stopped_for_review'
@@ -328,18 +725,30 @@ export function createInvestigationCoordinator(
     reason: InvestigationCoordinatorReviewReason,
     checkpoint: InvestigationCheckpointRecord | undefined,
   ): Promise<InvestigationCoordinatorOutcome> {
+    if (checkpoint) {
+      const pending = await pendingOutcome(checkpoint.dataset_kind, checkpoint.investigation_id, checkpoint);
+      if (pending) return pending;
+    }
     const stopReason = ledgerStopReason(reason);
     if (!checkpoint || !stopReason) return review(reason, checkpoint);
-    return review(reason, await stopIfCurrent(checkpoint, stopReason));
+    const stopped = await stopIfCurrent(checkpoint, stopReason);
+    const pending = await pendingOutcome(checkpoint.dataset_kind, checkpoint.investigation_id, stopped ?? checkpoint);
+    return pending ?? review(reason, stopped);
   }
 
   async function reviewAndStop(
     reason: InvestigationCoordinatorReviewReason,
     checkpoint: InvestigationCheckpointRecord | undefined,
   ): Promise<InvestigationCoordinatorOutcome> {
+    if (checkpoint) {
+      const pending = await pendingOutcome(checkpoint.dataset_kind, checkpoint.investigation_id, checkpoint);
+      if (pending) return pending;
+    }
     const stopReason = ledgerStopReason(reason) ?? 'awaiting_moderator';
     if (!checkpoint) return review(reason);
-    return review(reason, await stopIfCurrent(checkpoint, stopReason));
+    const stopped = await stopIfCurrent(checkpoint, stopReason);
+    const pending = await pendingOutcome(checkpoint.dataset_kind, checkpoint.investigation_id, stopped ?? checkpoint);
+    return pending ?? review(reason, stopped);
   }
 
   async function stopIfCurrent(
@@ -615,6 +1024,39 @@ function mapActionReviewReason(reason: string): InvestigationCoordinatorReviewRe
   if (reason === 'investigation_not_open') return 'case_not_open';
   if (reason === 'invalid_action_input' || reason === 'invalid_proposal') return 'action_denied';
   return 'action_uncertain';
+}
+
+function isActionReceipt(value: unknown): value is {
+  readonly outcome: ActionOutcome;
+  readonly outputReferenceIds: readonly string[];
+} {
+  return isRecord(value)
+    && (value.outcome === 'succeeded' || value.outcome === 'failed' || value.outcome === 'timed_out'
+      || value.outcome === 'denied' || value.outcome === 'cancelled')
+    && Array.isArray(value.outputReferenceIds)
+    && value.outputReferenceIds.length <= 8
+    && value.outputReferenceIds.every(isId);
+}
+
+function isProgressSnapshot(value: unknown): value is InvestigationProgressSnapshotRecord {
+  try {
+    return isRecord(value)
+      && isDatasetKind(value.datasetKind)
+      && isId(value.investigationId)
+      && isPositiveInteger(value.checkpointVersion)
+      && isId(value.candidateId)
+      && isId(value.contextId)
+      && isId(value.fingerprintKeyId)
+      && typeof value.digestHex === 'string'
+      && /^[a-f0-9]{64}$/.test(value.digestHex)
+      && typeof value.consecutiveNoProgress === 'number'
+      && Number.isSafeInteger(value.consecutiveNoProgress)
+      && value.consecutiveNoProgress >= 0
+      && value.consecutiveNoProgress <= 2
+      && isTimestamp(value.recordedAt);
+  } catch {
+    return false;
+  }
 }
 
 function ledgerStopReason(reason: InvestigationCoordinatorReviewReason): InvestigationStopReason | undefined {

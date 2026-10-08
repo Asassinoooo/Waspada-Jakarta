@@ -203,12 +203,55 @@ export interface InvestigationProgressOperationResult {
   readonly replayed: boolean;
 }
 
+export type AdvanceReviewPendingStage = 'planning' | 'action' | 'refresh' | 'progress';
+export type AdvanceReviewPendingReason =
+  | 'planner_replayed'
+  | 'planner_result_uncertain'
+  | 'invalid_action_timestamp'
+  | 'action_replayed'
+  | 'action_result_uncertain'
+  | 'invalid_action_result'
+  | 'refresh_failed'
+  | 'invalid_refreshed_context'
+  | 'progress_uncertain';
+
+export interface AdvanceReviewPendingRecord {
+  readonly datasetKind: DatasetKind;
+  readonly investigationId: string;
+  readonly observedCheckpointVersion: number;
+  readonly stage: AdvanceReviewPendingStage;
+  readonly reason: AdvanceReviewPendingReason;
+  readonly reservationId: string | null;
+  readonly markedAt: string;
+}
+
+export interface MarkAdvanceReviewPendingInput {
+  readonly datasetKind: DatasetKind;
+  readonly investigationId: string;
+  readonly observedCheckpointVersion: number;
+  readonly stage: AdvanceReviewPendingStage;
+  readonly reason: AdvanceReviewPendingReason;
+  readonly reservationId?: string;
+}
+
+export interface AdvanceReviewPendingOperationResult {
+  readonly marker: AdvanceReviewPendingRecord;
+  readonly replayed: boolean;
+}
+
 export interface InvestigationLedgerRepository {
   create(input: CreateInvestigationInput): Promise<InvestigationCheckpointRecord>;
   getLatest(datasetKind: DatasetKind, investigationId: string): Promise<InvestigationCheckpointRecord | null>;
+  getAdvanceReviewPending(datasetKind: DatasetKind, investigationId: string): Promise<AdvanceReviewPendingRecord | null>;
+  markAdvanceReviewPending(input: MarkAdvanceReviewPendingInput): Promise<AdvanceReviewPendingOperationResult>;
   getFingerprintKeyId(datasetKind: DatasetKind, investigationId: string): Promise<string | null>;
   refreshGroundingProgress(input: RefreshGroundingProgressInput): Promise<InvestigationProgressOperationResult>;
   getInFlightReservation(datasetKind: DatasetKind, investigationId: string): Promise<ReservationRecord | null>;
+  getActionReservation(
+    datasetKind: DatasetKind,
+    investigationId: string,
+    reservationId: string,
+  ): Promise<ReservationRecord | null>;
   reserveAction(input: ReserveActionInput): Promise<ReservationOperationResult>;
   startAction(input: {
     readonly datasetKind: DatasetKind;
@@ -270,7 +313,9 @@ export type InvestigationLedgerErrorCode =
   | 'duplicate_action'
   | 'fingerprint_unavailable'
   | 'fingerprint_key_mismatch'
-  | 'progress_conflict';
+  | 'progress_conflict'
+  | 'advance_review_pending'
+  | 'advance_review_pending_conflict';
 
 export class InvestigationLedgerError extends Error {
   constructor(readonly code: InvestigationLedgerErrorCode) {
@@ -367,6 +412,16 @@ interface ProgressSnapshotRow {
   digest_hex: string;
   consecutive_no_progress: number;
   recorded_at: string;
+}
+
+interface AdvanceReviewPendingRow {
+  dataset_kind: DatasetKind;
+  investigation_id: string;
+  observed_checkpoint_version: number;
+  stage: AdvanceReviewPendingStage;
+  reason: AdvanceReviewPendingReason;
+  reservation_id: string | null;
+  marked_at: string;
 }
 
 export function createSqlInvestigationLedgerRepository(
@@ -530,6 +585,56 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     return row ? mapCheckpoint(row.record_json) : null;
   }
 
+  async getAdvanceReviewPending(
+    datasetKind: DatasetKind,
+    investigationId: string,
+  ): Promise<AdvanceReviewPendingRecord | null> {
+    validateDatasetAndId(datasetKind, investigationId, 'investigation ID');
+    const row = await loadAdvanceReviewPending(this.executor, datasetKind, investigationId);
+    return row ? mapAdvanceReviewPending(row) : null;
+  }
+
+  async markAdvanceReviewPending(
+    input: MarkAdvanceReviewPendingInput,
+  ): Promise<AdvanceReviewPendingOperationResult> {
+    validateAdvanceReviewPendingInput(input);
+    return this.executor.transaction(async (transaction) => {
+      const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      if (input.observedCheckpointVersion > state.checkpoint.checkpoint_version) fail('invalid_input');
+
+      const existing = await loadAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
+      if (existing) {
+        if (!matchesAdvanceReviewPending(existing, input)) fail('advance_review_pending_conflict');
+        return { marker: mapAdvanceReviewPending(existing), replayed: true };
+      }
+
+      if (input.reservationId) {
+        const reservation = await findReservation(transaction, input.datasetKind, input.reservationId, true);
+        if (!reservation || reservation.investigation_id !== input.investigationId
+          || reservation.reservation_status === 'released') {
+          fail('advance_review_pending_conflict');
+        }
+      }
+
+      const inserted = await transaction.query<AdvanceReviewPendingRow>(
+        `INSERT INTO waspada.investigation_advance_review_pending
+           (dataset_kind, investigation_id, observed_checkpoint_version,
+            stage, reason, reservation_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (dataset_kind, investigation_id) DO NOTHING
+         RETURNING dataset_kind, investigation_id, observed_checkpoint_version,
+                   stage, reason, reservation_id, marked_at::text AS marked_at`,
+        [input.datasetKind, input.investigationId, input.observedCheckpointVersion,
+          input.stage, input.reason, input.reservationId ?? null],
+      );
+      if (inserted.rows[0]) return { marker: mapAdvanceReviewPending(inserted.rows[0]), replayed: false };
+
+      const raced = await loadAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
+      if (!raced || !matchesAdvanceReviewPending(raced, input)) fail('advance_review_pending_conflict');
+      return { marker: mapAdvanceReviewPending(raced), replayed: true };
+    });
+  }
+
   async getFingerprintKeyId(datasetKind: DatasetKind, investigationId: string): Promise<string | null> {
     validateDatasetAndId(datasetKind, investigationId, 'investigation ID');
     const result = await this.executor.query<{ fingerprint_key_id: string | null }>(
@@ -553,6 +658,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     validateProgressInput(input);
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      await ensureNoAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
 
       const targetVersion = input.expectedCheckpointVersion + 1;
       const replay = await loadProgressSnapshot(transaction, input.datasetKind, input.investigationId, targetVersion);
@@ -637,10 +743,22 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     return row ? mapReservation(row) : null;
   }
 
+  async getActionReservation(
+    datasetKind: DatasetKind,
+    investigationId: string,
+    reservationId: string,
+  ): Promise<ReservationRecord | null> {
+    validateDatasetAndId(datasetKind, investigationId, 'investigation ID');
+    validateId(reservationId, 'reservation ID');
+    const row = await findReservation(this.executor, datasetKind, reservationId, false);
+    return row?.investigation_id === investigationId ? mapReservation(row) : null;
+  }
+
   async reserveAction(input: ReserveActionInput): Promise<ReservationOperationResult> {
     validateReserveInput(input);
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      await ensureNoAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
       const alreadyReserved = await findReservation(transaction, input.datasetKind, input.reservationId, true);
       if (alreadyReserved) {
         if (!matchesReservationInput(alreadyReserved, input)) fail('reservation_conflict');
@@ -749,6 +867,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     validateTimestamp(input.startedAt, 'startedAt');
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      await ensureNoAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
       const reservation = await findReservation(transaction, input.datasetKind, input.reservationId, true);
       if (!reservation || reservation.investigation_id !== input.investigationId) fail('reservation_conflict');
       if (reservation.reservation_status === 'started') {
@@ -783,11 +902,29 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
   }
 
   async reconcileAction(input: ReconcileActionInput): Promise<LedgerOperationResult> {
+    return this.reconcileActionWithReviewPolicy(input, true);
+  }
+
+  private async reconcileActionWithReviewPolicy(
+    input: ReconcileActionInput,
+    allowPendingReviewReconciliation: boolean,
+  ): Promise<LedgerOperationResult> {
     validateReconcileInput(input);
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      const reviewPending = await loadAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
+      if (reviewPending && (!allowPendingReviewReconciliation
+        || reviewPending.reservation_id !== input.reservationId)) {
+        fail('advance_review_pending');
+      }
       const reservation = await findReservation(transaction, input.datasetKind, input.reservationId, true);
       if (!reservation || reservation.investigation_id !== input.investigationId) fail('reservation_conflict');
+      if (reviewPending) {
+        const expectedKind = reviewPending.stage === 'planning' ? 'reasoning' : 'tool';
+        if (reservation.action_kind !== expectedKind || reservation.reservation_status === 'reserved') {
+          fail('advance_review_pending');
+        }
+      }
       if (reservation.reservation_status === 'reconciled') {
         if (!matchesReconciliation(reservation, input)) fail('reservation_conflict');
         try {
@@ -855,7 +992,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
   }): Promise<LedgerOperationResult> {
     const reservation = await this.findReservationForCase(input.datasetKind, input.investigationId, input.reservationId);
     if (!reservation) fail('reservation_conflict');
-    return this.reconcileAction({
+    return this.reconcileActionWithReviewPolicy({
       datasetKind: input.datasetKind,
       investigationId: input.investigationId,
       reservationId: input.reservationId,
@@ -864,7 +1001,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
       actualActiveSeconds: reservation.reserved.activeSeconds,
       actualModelTokens: reservation.reserved.modelTokens,
       finishedAt: input.finishedAt,
-    });
+    }, false);
   }
 
   async releaseUninvoked(input: {
@@ -882,7 +1019,9 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
       const reservation = await findReservation(transaction, input.datasetKind, input.reservationId, true);
       if (!reservation || reservation.investigation_id !== input.investigationId) fail('reservation_conflict');
+      const reviewPending = await loadAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
       if (reservation.reservation_status === 'released') {
+        if (reviewPending) fail('advance_review_pending');
         if (!reservation.finished_at || Date.parse(reservation.finished_at) !== Date.parse(input.releasedAt)) {
           fail('reservation_conflict');
         }
@@ -893,6 +1032,9 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
         };
       }
       if (reservation.reservation_status !== 'reserved') fail('invalid_state');
+      // A marker may deny start after reserve. Under the same request lock, release
+      // only that still-uninvoked reservation to refund its reserved budget; the
+      // sticky marker continues to block every new start and actionable replay.
       ensureExpectedVersion(state, input.expectedCheckpointVersion);
       if (Date.parse(input.releasedAt) < Date.parse(reservation.created_at)) fail('invalid_input');
       const nextBudget = releaseBudget(state.budget, reservation);
@@ -924,6 +1066,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     validateTransitionInput(input.datasetKind, input.investigationId, input.expectedCheckpointVersion, input.pausedAt);
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      await ensureNoAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
       ensureExpectedVersion(state, input.expectedCheckpointVersion);
       if (state.checkpoint.case_status !== 'open') fail('invalid_state');
       const started = await transaction.query<{ reservation_id: string }>(
@@ -965,6 +1108,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     if (input.progressFingerprint !== undefined) fail('invalid_input');
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      await ensureNoAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
       ensureExpectedVersion(state, input.expectedCheckpointVersion);
       if (state.checkpoint.case_status !== 'paused') fail('invalid_state');
       const context = await findContext(transaction, input.datasetKind, state.checkpoint.context_id);
@@ -997,6 +1141,7 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
     if (!STOP_REASONS.has(input.stopReason)) fail('invalid_input');
     return this.executor.transaction(async (transaction) => {
       const state = await loadState(transaction, input.datasetKind, input.investigationId, true);
+      await ensureNoAdvanceReviewPending(transaction, input.datasetKind, input.investigationId);
       ensureExpectedVersion(state, input.expectedCheckpointVersion);
       if (state.checkpoint.case_status !== 'open' && state.checkpoint.case_status !== 'paused') fail('invalid_state');
       const active = await transaction.query<{ reservation_id: string }>(
@@ -1063,6 +1208,31 @@ async function findReservation(
     [datasetKind, reservationId],
   );
   return result.rows[0] ?? null;
+}
+
+async function loadAdvanceReviewPending(
+  executor: SqlExecutor,
+  datasetKind: DatasetKind,
+  investigationId: string,
+): Promise<AdvanceReviewPendingRow | null> {
+  const result = await executor.query<AdvanceReviewPendingRow>(
+    `SELECT dataset_kind, investigation_id, observed_checkpoint_version,
+            stage, reason, reservation_id, marked_at::text AS marked_at
+     FROM waspada.investigation_advance_review_pending
+     WHERE dataset_kind = $1 AND investigation_id = $2`,
+    [datasetKind, investigationId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function ensureNoAdvanceReviewPending(
+  executor: SqlExecutor,
+  datasetKind: DatasetKind,
+  investigationId: string,
+): Promise<void> {
+  if (await loadAdvanceReviewPending(executor, datasetKind, investigationId)) {
+    fail('advance_review_pending');
+  }
 }
 
 async function loadState(
@@ -1465,6 +1635,30 @@ function mapReservation(row: ReservationRow): ReservationRecord {
   };
 }
 
+function mapAdvanceReviewPending(row: AdvanceReviewPendingRow): AdvanceReviewPendingRecord {
+  return {
+    datasetKind: row.dataset_kind,
+    investigationId: row.investigation_id,
+    observedCheckpointVersion: Number(row.observed_checkpoint_version),
+    stage: row.stage,
+    reason: row.reason,
+    reservationId: row.reservation_id,
+    markedAt: formatTimestamp(row.marked_at),
+  };
+}
+
+function matchesAdvanceReviewPending(
+  row: AdvanceReviewPendingRow,
+  input: MarkAdvanceReviewPendingInput,
+): boolean {
+  return row.dataset_kind === input.datasetKind
+    && row.investigation_id === input.investigationId
+    && Number(row.observed_checkpoint_version) === input.observedCheckpointVersion
+    && row.stage === input.stage
+    && row.reason === input.reason
+    && row.reservation_id === (input.reservationId ?? null);
+}
+
 function assertCheckpointMatchesCurrent(
   checkpoint: InvestigationCheckpointRecord,
   request: RequestRow,
@@ -1718,6 +1912,24 @@ function validateProgressInput(input: RefreshGroundingProgressInput): void {
   if (!FINGERPRINT_KEY_ID_PATTERN.test(input.fingerprintKeyId)) fail('fingerprint_unavailable');
   if (!DIGEST_HEX_PATTERN.test(input.digestHex)) fail('invalid_input');
   validateTimestamp(input.refreshedAt, 'refreshedAt');
+}
+
+function validateAdvanceReviewPendingInput(input: MarkAdvanceReviewPendingInput): void {
+  validateDatasetAndId(input.datasetKind, input.investigationId, 'investigation ID');
+  validateVersion(input.observedCheckpointVersion, 'observedCheckpointVersion');
+  if (input.reservationId !== undefined) validateId(input.reservationId, 'reservation ID');
+  const valid = input.stage === 'planning'
+    ? input.reason === 'planner_replayed'
+      || input.reason === 'planner_result_uncertain'
+      || input.reason === 'invalid_action_timestamp'
+    : input.stage === 'action'
+      ? input.reason === 'action_replayed'
+        || input.reason === 'action_result_uncertain'
+        || input.reason === 'invalid_action_result'
+      : input.stage === 'refresh'
+        ? input.reason === 'refresh_failed' || input.reason === 'invalid_refreshed_context'
+        : input.stage === 'progress' && input.reason === 'progress_uncertain';
+  if (!valid) fail('invalid_input');
 }
 
 function validateReconcileInput(input: ReconcileActionInput): void {

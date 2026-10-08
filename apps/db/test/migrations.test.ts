@@ -39,7 +39,8 @@ describe('DATA-01 migrations', () => {
       && version !== '031_source_revision_review_candidate_reader'
       && version !== '032_source_revision_freshness_transitions'
       && version !== '033_source_revision_freshness_run_state'
-      && version !== '034_source_revision_withdrawn_freshness');
+      && version !== '034_source_revision_withdrawn_freshness'
+      && version !== '035_l3_advance_review_pending');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -84,7 +85,8 @@ describe('DATA-01 migrations', () => {
         && version !== '031_source_revision_review_candidate_reader'
         && version !== '032_source_revision_freshness_transitions'
         && version !== '033_source_revision_freshness_run_state'
-        && version !== '034_source_revision_withdrawn_freshness');
+        && version !== '034_source_revision_withdrawn_freshness'
+        && version !== '035_l3_advance_review_pending');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -216,6 +218,7 @@ describe('DATA-01 migrations', () => {
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
+      '035_l3_advance_review_pending',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -364,6 +367,7 @@ describe('DATA-01 migrations', () => {
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
+      '035_l3_advance_review_pending',
     ]);
   });
 
@@ -396,12 +400,13 @@ describe('DATA-01 migrations', () => {
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
+      '035_l3_advance_review_pending',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '34');
+    assert.equal(count.rows[0]?.count, '35');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -420,7 +425,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 034_source_revision_withdrawn_freshness/,
+      /Cannot apply migration 000_late_backfill before already applied migration 035_l3_advance_review_pending/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -461,6 +466,7 @@ describe('DATA-01 migrations', () => {
       { version: '032_source_revision_freshness_transitions' },
       { version: '033_source_revision_freshness_run_state' },
       { version: '034_source_revision_withdrawn_freshness' },
+      { version: '035_l3_advance_review_pending' },
     ]);
   });
 
@@ -490,6 +496,7 @@ describe('DATA-01 migrations', () => {
       '032_source_revision_freshness_transitions',
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
+      '035_l3_advance_review_pending',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -510,7 +517,8 @@ describe('DATA-01 migrations', () => {
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       const snapshotExistingRoles = async () => {
         const roleState = await migrationDatabase.executor.query<{ state: string }>(
           `SELECT rolname || ':' || rolinherit || ':' || rolcanlogin || ':' || rolsuper
@@ -579,7 +587,8 @@ describe('DATA-01 migrations', () => {
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       assert.deepEqual(applied.applied, ['028_report_revision_impact_reader']);
       assert.deepEqual(await snapshotExistingRoles(), before,
         'migration 028 does not broaden or alter an existing role');
@@ -619,7 +628,8 @@ describe('DATA-01 migrations', () => {
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       const snapshotExistingSecurity = async () => {
         const roles = await migrationDatabase.executor.query<{ state: string }>(
           `SELECT rolname || ':' || rolinherit || ':' || rolcanlogin || ':' || rolsuper
@@ -678,7 +688,8 @@ describe('DATA-01 migrations', () => {
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       assert.deepEqual(applied.applied, ['029_source_revision_observations']);
       assert.deepEqual(await snapshotExistingSecurity(), before,
         'migration 029 does not change existing role attributes, memberships, schema grants, or object grants');
@@ -807,7 +818,8 @@ describe('DATA-01 migrations', () => {
           && version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
 
       const snapshotUnchangedAccess = async () => {
         const [roles, schemas, memberships, otherObjects, otherObservationGrants] = await Promise.all([
@@ -881,7 +893,8 @@ describe('DATA-01 migrations', () => {
         migrations.filter(({ version }) => version !== '031_source_revision_review_candidate_reader'
           && version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       assert.deepEqual(applied.applied, ['030_l2_source_revision_grounding_gate']);
       assert.deepEqual(await snapshotUnchangedAccess(), before,
         'migration 030 changes no existing role, membership, schema, or non-L2 table grants');
@@ -949,7 +962,8 @@ describe('DATA-01 migrations', () => {
         migrations.filter(({ version }) => version !== candidateMigration.version
           && version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
 
       const snapshotExistingSecurity = async () => {
         const [roles, schemas, memberships, otherObjects, otherObservationGrants] = await Promise.all([
@@ -1026,7 +1040,8 @@ describe('DATA-01 migrations', () => {
       const applied = await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== '032_source_revision_freshness_transitions'
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       assert.deepEqual(applied.applied, ['031_source_revision_review_candidate_reader']);
       assert.deepEqual(await snapshotExistingSecurity(), before,
         'migration 031 changes no role, membership, schema, unrelated object, or other-role grant');
@@ -1120,7 +1135,8 @@ describe('DATA-01 migrations', () => {
       await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== transitionMigration.version
           && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
 
       const snapshotPriorAccess = async () => {
         const [roles, memberships, transitionGrants, observationGrants] = await Promise.all([
@@ -1188,7 +1204,8 @@ describe('DATA-01 migrations', () => {
       const before = await snapshotPriorAccess();
       const applied = await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       assert.deepEqual(applied.applied, ['032_source_revision_freshness_transitions']);
       assert.deepEqual(await snapshotPriorAccess(), before,
         'migration 032 creates no role or membership and preserves every pre-existing grant');
@@ -1236,13 +1253,14 @@ describe('DATA-01 migrations', () => {
     }
   });
   it('extends only the private freshness reason/status constraint for withdrawn observations', async () => {
-    const withdrawnMigration = migrations.find(({ version }) =>
+      const withdrawnMigration = migrations.find(({ version }) =>
       version === '034_source_revision_withdrawn_freshness');
     assert.ok(withdrawnMigration, 'the withdrawn freshness migration is loaded');
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== withdrawnMigration.version));
+        migrations.filter(({ version }) => version !== withdrawnMigration.version
+          && version !== '035_l3_advance_review_pending'));
 
       const accessSnapshot = async () => {
         const [roles, memberships, grants] = await Promise.all([
@@ -1289,7 +1307,8 @@ describe('DATA-01 migrations', () => {
       };
 
       const before = await accessSnapshot();
-      const applied = await applyMigrations(migrationDatabase.executor, migrations);
+      const applied = await applyMigrations(migrationDatabase.executor,
+        migrations.filter(({ version }) => version !== '035_l3_advance_review_pending'));
       assert.deepEqual(applied.applied, ['034_source_revision_withdrawn_freshness']);
       assert.deepEqual(await accessSnapshot(), before,
         'migration 034 adds no role, membership, or new grant');
@@ -1973,7 +1992,7 @@ describe('DATA-01 migrations', () => {
        WHERE table_schema.nspname = 'waspada'
          AND table_class.relname IN ('extraction_results', 'grounding_contexts',
            'investigation_requests', 'investigation_checkpoints', 'investigation_action_reservations',
-           'investigation_progress_snapshots')
+           'investigation_progress_snapshots', 'investigation_advance_review_pending')
          AND column_meta.attnum > 0 AND NOT column_meta.attisdropped
        ORDER BY table_class.relname, column_meta.attname`,
     );
@@ -2034,6 +2053,12 @@ describe('DATA-01 migrations', () => {
     ];
     expect('investigation_progress_snapshots', 'select', progressSnapshotColumns);
     expect('investigation_progress_snapshots', 'insert', progressSnapshotColumns);
+    const advanceReviewPendingColumns = [
+      'dataset_kind', 'investigation_id', 'observed_checkpoint_version', 'stage', 'reason',
+      'reservation_id', 'marked_at',
+    ];
+    expect('investigation_advance_review_pending', 'select', advanceReviewPendingColumns);
+    expect('investigation_advance_review_pending', 'insert', advanceReviewPendingColumns.slice(0, -1));
 
     const granted = new Set<string>();
     for (const row of columns.rows) {
@@ -2044,6 +2069,65 @@ describe('DATA-01 migrations', () => {
       }
     }
     assert.deepEqual([...granted].sort(), [...expected].sort());
+
+    const markerAccess = await testDatabase.executor.query<{
+      role_name: string;
+      can_select: boolean;
+      can_insert: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+    }>(
+      `SELECT role_name,
+              has_table_privilege(role_name, 'waspada.investigation_advance_review_pending', 'SELECT')
+                OR EXISTS (
+                  SELECT 1 FROM pg_attribute AS attribute
+                  WHERE attribute.attrelid = 'waspada.investigation_advance_review_pending'::regclass
+                    AND attribute.attnum > 0 AND NOT attribute.attisdropped
+                    AND has_column_privilege(role_name, attribute.attrelid, attribute.attnum, 'SELECT')
+                ) AS can_select,
+              has_table_privilege(role_name, 'waspada.investigation_advance_review_pending', 'INSERT')
+                OR EXISTS (
+                  SELECT 1 FROM pg_attribute AS attribute
+                  WHERE attribute.attrelid = 'waspada.investigation_advance_review_pending'::regclass
+                    AND attribute.attnum > 0 AND NOT attribute.attisdropped
+                    AND has_column_privilege(role_name, attribute.attrelid, attribute.attnum, 'INSERT')
+                ) AS can_insert,
+              has_table_privilege(role_name, 'waspada.investigation_advance_review_pending', 'UPDATE')
+                OR EXISTS (
+                  SELECT 1 FROM pg_attribute AS attribute
+                  WHERE attribute.attrelid = 'waspada.investigation_advance_review_pending'::regclass
+                    AND attribute.attnum > 0 AND NOT attribute.attisdropped
+                    AND has_column_privilege(role_name, attribute.attrelid, attribute.attnum, 'UPDATE')
+                ) AS can_update,
+              has_table_privilege(role_name, 'waspada.investigation_advance_review_pending', 'DELETE') AS can_delete
+       FROM unnest(ARRAY[
+         'waspada_public_reader', 'waspada_l1_pipeline', 'waspada_l2_grounding_reader',
+         'waspada_l2_grounding_writer', 'waspada_l4_publication_writer'
+       ]) AS roles(role_name)
+       ORDER BY role_name`,
+    );
+    assert.ok(markerAccess.rows.length > 0);
+    assert.ok(markerAccess.rows.every(({ can_select, can_insert, can_update, can_delete }) =>
+      !can_select && !can_insert && !can_update && !can_delete),
+    'public, L1, L2, and L4 roles receive no marker access');
+
+    const publicMarkerAccess = await testDatabase.executor.query<{ has_access: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_class AS relation,
+           LATERAL aclexplode(COALESCE(relation.relacl, '{}'::aclitem[])) AS privilege
+         WHERE relation.oid = 'waspada.investigation_advance_review_pending'::regclass
+           AND privilege.grantee = 0 AND privilege.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+       ) OR EXISTS (
+         SELECT 1 FROM pg_attribute AS attribute,
+           LATERAL aclexplode(COALESCE(attribute.attacl, '{}'::aclitem[])) AS privilege
+         WHERE attribute.attrelid = 'waspada.investigation_advance_review_pending'::regclass
+           AND attribute.attnum > 0 AND NOT attribute.attisdropped
+           AND privilege.grantee = 0
+           AND privilege.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+       ) AS has_access`,
+    );
+    assert.equal(publicMarkerAccess.rows[0]?.has_access, false,
+      'PUBLIC receives no table or column grant on the marker');
 
     const tables = await testDatabase.executor.query<{
       table_name: string;
@@ -2082,7 +2166,8 @@ describe('DATA-01 migrations', () => {
     try {
       await applyMigrations(migrationDatabase.executor,
         migrations.filter(({ version }) => version !== runStateMigration.version
-          && version !== '034_source_revision_withdrawn_freshness'));
+          && version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
 
       const snapshotPriorAccess = async () => {
         const [roles, memberships, observationGrants] = await Promise.all([
@@ -2129,7 +2214,8 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotPriorAccess();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '034_source_revision_withdrawn_freshness'));
+        migrations.filter(({ version }) => version !== '034_source_revision_withdrawn_freshness'
+          && version !== '035_l3_advance_review_pending'));
       assert.deepEqual(applied.applied, ['033_source_revision_freshness_run_state']);
       assert.deepEqual(await snapshotPriorAccess(), before,
         'migration 033 creates no role or membership and preserves every observation grant');

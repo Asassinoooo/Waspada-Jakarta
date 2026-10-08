@@ -434,9 +434,12 @@ function makeRepository(
   const defaults: InvestigationLedgerRepository = {
     create: async () => checkpoint,
     getLatest: async () => checkpoint,
+    getAdvanceReviewPending: async () => null,
+    markAdvanceReviewPending: async () => ({ marker: {} as never, replayed: false }),
     getFingerprintKeyId: async () => 'fixture-hmac-v1',
     refreshGroundingProgress: async () => ({ checkpoint, snapshot: {} as never, replayed: false }),
     getInFlightReservation: async () => reservation,
+    getActionReservation: async () => reservation,
     reserveAction: async () => reservationResult,
     startAction: async () => reservationResult,
     reconcileAction: async () => ledgerResult,
