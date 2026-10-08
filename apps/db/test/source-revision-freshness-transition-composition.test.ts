@@ -12,6 +12,16 @@ import { createSourceRevisionReviewCandidateReader } from '../src/source-revisio
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 import { createSourceRevisionFreshnessTransitionCoordinator } from '../../worker/src/layers/l4-application-integration/source-revision-freshness-transition.js';
+import {
+  handlePublicApiRequest,
+  type WorkerEnvironment,
+} from '../../worker/src/layers/l4-application-integration/api.js';
+import type { EventDetail, EventPage, EventView, PublicFeatureCollection } from '../../worker/src/contracts/public-api.js';
+import type { TelemetryRecord } from '../../worker/src/layers/l5-evaluation-monitoring/telemetry.js';
+import { createPublicEventListRuntime } from '../../worker/src/runtime/public-event-list-runtime.js';
+import { createPublicEventDetailRuntime } from '../../worker/src/runtime/public-event-detail-runtime.js';
+import { createPublicEventGeoJSONRuntime } from '../../worker/src/runtime/public-event-geojson-runtime.js';
+import type { SqlExecutor } from '../src/sql.js';
 
 const TRACE_ID = 'trace-source-revision-freshness-transition';
 const EVALUATION_TRACE_ID = 'trace-source-revision-freshness-evaluation';
@@ -21,8 +31,12 @@ const EVENT_ID = 'event-source-revision-freshness';
 const IMPACT_DIRECT = 'impact-source-revision-direct';
 const IMPACT_UNRELATED = 'impact-source-revision-unrelated';
 const SOURCE_ID = 'source-source-revision-freshness';
+const PLACE_ID = 'place-source-revision-freshness-fixture';
 const PRIVATE_SOURCE_TEXT = 'AUTHORED_PRIVATE_SOURCE_FIXTURE_ONLY';
 const PRIVATE_CLAIM_TEXT = 'AUTHORED_PRIVATE_CLAIM_FIXTURE_ONLY';
+const TEST_CONNECTION_STRING = 'postgresql://test-user:test-password@hyperdrive.example.invalid/waspada?sslmode=require';
+const TEST_CURSOR_HMAC_KEY_HEX = Array.from({ length: 32 }, (_, index) =>
+  (index + 1).toString(16).padStart(2, '0')).join('');
 
 describe('PGlite source-revision freshness transition composition', () => {
   it('writes withdrawn freshness for exact directly supported targets without changing immutable publications', async () => {
@@ -171,6 +185,7 @@ describe('PGlite source-revision freshness transition composition', () => {
 
       assert.deepEqual(await immutableSnapshot(database), before,
         'event and impact records, publication decision, and history remain unchanged');
+      await assertPublicApiReads(database);
       assert.equal(evidenceRefId.length > 0, true);
       await verifyWriterBoundary(database, ledger);
     } finally {
@@ -178,6 +193,151 @@ describe('PGlite source-revision freshness transition composition', () => {
     }
   });
 });
+
+async function assertPublicApiReads(database: TestDatabase): Promise<void> {
+  let sqlOperations = 0;
+  const withSqlExecutor = async <Result>(
+    connectionString: string,
+    operation: (executor: SqlExecutor) => Promise<Result>,
+  ): Promise<Result> => {
+    assert.equal(connectionString, TEST_CONNECTION_STRING);
+    sqlOperations += 1;
+    return operation(database.executor);
+  };
+  const runtimeConfiguration = {
+    datasetMode: 'live',
+    connectionString: TEST_CONNECTION_STRING,
+  } as const;
+  const listRuntime = await createPublicEventListRuntime({
+    ...runtimeConfiguration,
+    cursorHmacKeyHex: TEST_CURSOR_HMAC_KEY_HEX,
+  }, { withSqlExecutor, now: () => Date.parse(NOW) });
+  const detailRuntime = createPublicEventDetailRuntime(runtimeConfiguration, { withSqlExecutor });
+  const geoJSONRuntime = createPublicEventGeoJSONRuntime(runtimeConfiguration, { withSqlExecutor });
+  assert.ok(listRuntime);
+  assert.ok(detailRuntime);
+  assert.ok(geoJSONRuntime);
+
+  const environment: WorkerEnvironment = { DATASET_MODE: 'live' };
+  const telemetry: TelemetryRecord[] = [];
+  const telemetrySink = { record: (record: TelemetryRecord) => telemetry.push(record) };
+  const listOperations = sqlOperations;
+  const listResponse = await handlePublicApiRequest(
+    new Request('https://api.example.invalid/api/v1/events?q=source%20freshness%20event'),
+    environment,
+    telemetrySink,
+    listRuntime,
+    detailRuntime,
+    undefined,
+    geoJSONRuntime,
+  );
+  assert.equal(listResponse.status, 200);
+  assert.equal(sqlOperations - listOperations, 1, 'the live list uses one request-scoped SQL operation');
+  const listPage = await listResponse.json() as EventPage;
+  assert.equal(listPage.data.length, 1);
+  const listEvent = listPage.data[0]!;
+
+  const detailOperations = sqlOperations;
+  const detailResponse = await handlePublicApiRequest(
+    new Request(`https://api.example.invalid/api/v1/events/${EVENT_ID}`),
+    environment,
+    telemetrySink,
+    listRuntime,
+    detailRuntime,
+    undefined,
+    geoJSONRuntime,
+  );
+  assert.equal(detailResponse.status, 200);
+  assert.equal(sqlOperations - detailOperations, 1, 'the live detail uses one request-scoped SQL operation');
+  const detail = await detailResponse.json() as EventDetail;
+
+  const geoJSONOperations = sqlOperations;
+  const geoJSONResponse = await handlePublicApiRequest(
+    new Request('https://api.example.invalid/api/v1/events.geojson'),
+    environment,
+    telemetrySink,
+    listRuntime,
+    detailRuntime,
+    undefined,
+    geoJSONRuntime,
+  );
+  assert.equal(geoJSONResponse.status, 200);
+  assert.equal(sqlOperations - geoJSONOperations, 1, 'the live GeoJSON read uses one request-scoped SQL operation');
+  assert.equal(geoJSONResponse.headers.get('content-type'), 'application/geo+json');
+  const geoJSON = await geoJSONResponse.json() as PublicFeatureCollection;
+
+  assert.equal(listEvent.event_id, EVENT_ID);
+  assert.equal(listEvent.version, 1);
+  assert.equal(listEvent.title, 'Authored fictional source freshness event');
+  assert.equal(listEvent.lifecycle, 'unknown', 'freshness does not change the published lifecycle');
+  assert.equal(listEvent.freshness.status, 'needs_update');
+  assert.deepEqual(impactFreshness(listEvent), [
+    [IMPACT_DIRECT, 'needs_update'],
+    [IMPACT_UNRELATED, 'current'],
+  ]);
+  assert.equal(listEvent.claims[0]?.text, PRIVATE_CLAIM_TEXT,
+    'the published claim remains visible after the freshness transition');
+
+  assert.equal(detail.event_id, EVENT_ID);
+  assert.equal(detail.version, 1);
+  assert.equal(detail.title, listEvent.title);
+  assert.equal(detail.lifecycle, listEvent.lifecycle);
+  assert.equal(detail.freshness.status, 'needs_update');
+  assert.deepEqual(impactFreshness(detail), impactFreshness(listEvent));
+  assert.deepEqual(detail.claims, listEvent.claims);
+  assert.deepEqual(detail.geometries, [], 'the authored fixture has no source-supported geometry');
+
+  assert.deepEqual(geoJSON, { type: 'FeatureCollection', features: [] },
+    'no supported geometry is represented as an empty collection, not a safety statement');
+  const publicResponseJson = JSON.stringify({ listPage, detail, geoJSON });
+  for (const privateMarker of [
+    'observation-w-withdrawn',
+    'revision-source-target',
+    'revision-current',
+    'revision-w-withdrawn',
+    SOURCE_ID,
+    PRIVATE_SOURCE_TEXT,
+    'source_observation_id',
+    'source_report_withdrawn',
+    'freshness_transitions',
+    'transition_sequence',
+    'idempotency_key',
+    'request_fingerprint',
+  ]) {
+    assert.equal(publicResponseJson.includes(privateMarker), false,
+      `public API projection leaked ${privateMarker}`);
+  }
+
+  assert.equal(telemetry.length, 3);
+  for (const record of telemetry) {
+    assert.deepEqual(Object.keys(record).sort(), ['durationMs', 'eventName', 'route', 'status']);
+    assert.equal(record.eventName, 'api_request');
+    assert.equal('route' in record && record.route === 'events', true);
+    assert.equal('status' in record && record.status === 200, true);
+    assert.equal('durationMs' in record && Number.isFinite(record.durationMs)
+      && record.durationMs >= 0, true);
+  }
+  const telemetryJson = JSON.stringify(telemetry);
+  for (const privateMarker of [
+    'observation-w-withdrawn',
+    'revision-source-target',
+    SOURCE_ID,
+    PRIVATE_SOURCE_TEXT,
+    PRIVATE_CLAIM_TEXT,
+    'source_observation_id',
+    'source_url',
+    TEST_CONNECTION_STRING,
+  ]) {
+    assert.equal(telemetryJson.includes(privateMarker), false,
+      `API telemetry leaked ${privateMarker}`);
+  }
+}
+
+function impactFreshness(event: Pick<EventView, 'impacts'>): Array<[string, string]> {
+  return [...event.impacts]
+    .sort((left, right) => left.impact_id.localeCompare(right.impact_id))
+    .map((impact) => [impact.impact_id, impact.freshness.status]);
+}
 
 async function seedFixture(database: TestDatabase): Promise<string> {
   await database.executor.query(
@@ -227,6 +387,35 @@ async function seedFixture(database: TestDatabase): Promise<string> {
   );
   const evidenceRefId = evidence.rows[0]?.evidence_ref_id;
   assert.ok(evidenceRefId);
+  const unrelatedEvidence = await database.executor.query<{ evidence_ref_id: string }>(
+    `INSERT INTO waspada.evidence_references
+       (dataset_kind, trace_id, report_revision_id, permitted_text_hash, span_start, span_end,
+        offset_unit, relation)
+     VALUES ('live', $1, 'revision-current', $2, 0, 8, 'unicode_code_points', 'supports')
+     RETURNING evidence_ref_id::text AS evidence_ref_id`,
+    [TRACE_ID, hash(`${PRIVATE_SOURCE_TEXT} revision-current`)],
+  );
+  const unrelatedEvidenceRefId = unrelatedEvidence.rows[0]?.evidence_ref_id;
+  assert.ok(unrelatedEvidenceRefId);
+
+  for (const [index, revisionId, referenceId] of [
+    [1, 'revision-source-target', evidenceRefId],
+    [2, 'revision-current', unrelatedEvidenceRefId],
+  ] as const) {
+    await database.executor.query(
+      `INSERT INTO waspada.public_attribution_review_decisions
+         (review_decision_id, dataset_kind, evidence_ref_id, report_revision_id,
+          permitted_text_hash, span_start, span_end, offset_unit, relation, review_version,
+          decision_status, rights_basis_ref, public_display_name, source_url, source_published_at,
+          source_observed_at, reviewer_id, decision_reason, reviewed_at)
+       VALUES ($1, 'live', $2, $3, $4, 0, 8, 'unicode_code_points', 'supports', 1,
+         'approved', 'authored test fixture rights basis', 'Authored fictional source',
+         'https://source.example.invalid/authored-only', $5, $5, 'reviewer-synthetic',
+         'Authored test attribution', $5)`,
+      [`attribution-review-source-freshness-fixture-${index}`, referenceId, revisionId,
+        hash(`${PRIVATE_SOURCE_TEXT} ${revisionId}`), NOW],
+    );
+  }
 
   const observations = [
     { id: 'observation-w-withdrawn', assertion: 'revision-w-withdrawn', state: 'withdrawn', replacement: null },
@@ -266,21 +455,69 @@ async function seedFixture(database: TestDatabase): Promise<string> {
      VALUES ('live', $1, $2, $3, $4, $5, '{"fixture":"authored-only"}'::jsonb)`,
     [proposalId, TRACE_ID, candidateId, contextId, NOW],
   );
+  await database.executor.query(
+    `INSERT INTO waspada.scope_name_review_decisions
+       (review_decision_id, entity_type, entity_id, locale, review_version, decision_status,
+        display_name, provenance_ref, reviewer_id, decision_reason, reviewed_at)
+     VALUES ('scope-review-source-freshness-fixture', 'place', $1, 'id-ID', 1, 'approved',
+       'Authored fictional place', 'authored fixture', 'reviewer-synthetic',
+       'Authored test display name', $2)`,
+    [PLACE_ID, NOW],
+  );
 
   await database.executor.transaction(async (transaction) => {
     await transaction.execute('SET CONSTRAINTS ALL DEFERRED');
+    const supportReference = {
+      report_revision_id: 'revision-source-target',
+      permitted_text_hash: hash(`${PRIVATE_SOURCE_TEXT} revision-source-target`),
+      span_start: 0,
+      span_end: 8,
+      offset_unit: 'unicode_code_points',
+      relation: 'supports',
+    };
+    const unrelatedSupportReference = {
+      report_revision_id: 'revision-current',
+      permitted_text_hash: hash(`${PRIVATE_SOURCE_TEXT} revision-current`),
+      span_start: 0,
+      span_end: 8,
+      offset_unit: 'unicode_code_points',
+      relation: 'supports',
+    };
+    const fixtureScope = {
+      place_ids: [PLACE_ID], service_ids: [], institution_ids: [], audience_ids: [], geometry_ids: [],
+    };
     const eventRecord = {
       schema_version: '2.0', trace_id: TRACE_ID, record_type: 'Event', dataset_kind: 'live',
       event_id: EVENT_ID, version: 1, supersedes_version: null,
       title: 'Authored fictional source freshness event', summary: 'Authored fixture only.',
-      category: 'transport_road_incidents', lifecycle: 'unknown',
-      claims: [{ claim_id: 'claim-source-target', text: PRIVATE_CLAIM_TEXT }],
+      category: 'transport_road_incidents', tags: [], lifecycle: 'unknown',
+      freshness: { status: 'current', evaluated_at: NOW, review_due_at: FUTURE, basis: 'manual_review' },
+      event_time: { start: null, end: null, precision: 'unknown' },
+      validity: { valid_from: null, valid_until: FUTURE },
+      scope: fixtureScope,
+      claims: [
+        {
+          claim_id: 'claim-source-target', text: PRIVATE_CLAIM_TEXT,
+          event_time: { start: null, end: null, precision: 'unknown' },
+          validity: { valid_from: null, valid_until: FUTURE },
+          scope: fixtureScope,
+          qualifiers: [], support: [supportReference], contradictions: [], context_evidence: [],
+          origin_ids: ['origin-source-freshness-fixture'], evidence_label: 'attributed_report',
+        },
+        {
+          claim_id: 'claim-source-unrelated',
+          text: 'Authored unrelated claim remains supported by a current report.',
+          event_time: { start: null, end: null, precision: 'unknown' },
+          validity: { valid_from: null, valid_until: FUTURE },
+          scope: fixtureScope,
+          qualifiers: [], support: [unrelatedSupportReference], contradictions: [], context_evidence: [],
+          origin_ids: ['origin-source-freshness-unrelated-fixture'], evidence_label: 'attributed_report',
+        },
+      ],
       impact_refs: [
         { impact_id: IMPACT_DIRECT, version: 1 },
         { impact_id: IMPACT_UNRELATED, version: 1 },
       ],
-      freshness: { status: 'current', evaluated_at: NOW, review_due_at: FUTURE, basis: 'manual_review' },
-      validity: { valid_from: null, valid_until: FUTURE },
       publication_status: 'published', withdrawal_reason: null,
       publication_decision_id: 'decision-source-freshness-fixture', published_at: NOW, withdrawn_at: null,
     };
@@ -302,26 +539,37 @@ async function seedFixture(database: TestDatabase): Promise<string> {
          'decision-source-freshness-fixture', $3, NULL, $4::jsonb)`,
       [EVENT_ID, TRACE_ID, NOW, JSON.stringify(eventRecord)],
     );
-    await transaction.query(
-      `INSERT INTO waspada.event_claims
-         (dataset_kind, event_id, event_version, claim_id, claim_text, evidence_label, record_json)
-       VALUES ('live', $1, 1, 'claim-source-target', $2, 'attributed_report', $3::jsonb)`,
-      [EVENT_ID, PRIVATE_CLAIM_TEXT, JSON.stringify({ claim_id: 'claim-source-target', text: PRIVATE_CLAIM_TEXT })],
-    );
-    await transaction.query(
-      `INSERT INTO waspada.event_claim_evidence
-         (dataset_kind, event_id, event_version, claim_id, evidence_kind, evidence_ref_id)
-       VALUES ('live', $1, 1, 'claim-source-target', 'support', $2::bigint)`,
-      [EVENT_ID, evidenceRefId],
-    );
+    for (const claim of eventRecord.claims) {
+      const isDirectClaim = claim.claim_id === 'claim-source-target';
+      await transaction.query(
+        `INSERT INTO waspada.event_claims
+           (dataset_kind, event_id, event_version, claim_id, claim_text, evidence_label, record_json)
+         VALUES ('live', $1, 1, $2, $3, 'attributed_report', $4::jsonb)`,
+        [EVENT_ID, claim.claim_id, claim.text,
+          JSON.stringify(claim)],
+      );
+      await transaction.query(
+        `INSERT INTO waspada.event_claim_evidence
+           (dataset_kind, event_id, event_version, claim_id, evidence_kind, evidence_ref_id)
+         VALUES ('live', $1, 1, $2, 'support', $3::bigint)`,
+        [EVENT_ID, claim.claim_id, isDirectClaim ? evidenceRefId : unrelatedEvidenceRefId],
+      );
+    }
     for (const [impactId, isDirect, validUntil] of [
       [IMPACT_DIRECT, true, FUTURE], [IMPACT_UNRELATED, false, FUTURE],
     ] as const) {
       const impactRecord = {
         schema_version: '2.0', trace_id: TRACE_ID, record_type: 'Impact', dataset_kind: 'live',
         impact_id: impactId, version: 1, event_id: EVENT_ID, event_version: 1,
+        impact_type: 'road_closure',
+        title: impactId === IMPACT_DIRECT ? 'Authored directly affected impact' : 'Authored unrelated impact',
+        description: 'Authored impact fixture only.', lifecycle: 'unknown',
         freshness: { status: 'current', evaluated_at: NOW, review_due_at: FUTURE, basis: 'manual_review' },
+        event_time: { start: null, end: null, precision: 'unknown' },
         validity: { valid_from: null, valid_until: validUntil },
+        scope: fixtureScope,
+        supporting_claim_ids: [isDirect ? 'claim-source-target' : 'claim-source-unrelated'],
+        published_at: NOW,
       };
       await transaction.query(
         `INSERT INTO waspada.impact_versions
@@ -336,14 +584,12 @@ async function seedFixture(database: TestDatabase): Promise<string> {
          VALUES ('live', $1, 1, $2, 1)`,
         [EVENT_ID, impactId],
       );
-      if (isDirect) {
-        await transaction.query(
-          `INSERT INTO waspada.impact_claim_support
-             (dataset_kind, impact_id, impact_version, event_id, event_version, claim_id)
-           VALUES ('live', $1, 1, $2, 1, 'claim-source-target')`,
-          [impactId, EVENT_ID],
-        );
-      }
+      await transaction.query(
+        `INSERT INTO waspada.impact_claim_support
+           (dataset_kind, impact_id, impact_version, event_id, event_version, claim_id)
+         VALUES ('live', $1, 1, $2, 1, $3)`,
+        [impactId, EVENT_ID, isDirect ? 'claim-source-target' : 'claim-source-unrelated'],
+      );
     }
 
     const roleEvent = {
