@@ -2,7 +2,7 @@
 
 **Backlog ID:** `L3-CONTEXT-RESUME-COORDINATOR-CORE`
 
-**Status:** Assigned; synthetic test-only proof
+**Status:** Accepted on local `main` at root integration commit `5359b36354048002b7ac1237c7cc74c545cb0149`; synthetic test-only proof
 
 **Branch:** `work/L3-CONTEXT-RESUME-COORDINATOR-CORE`
 
