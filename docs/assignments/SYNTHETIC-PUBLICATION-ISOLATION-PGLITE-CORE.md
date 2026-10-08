@@ -1,6 +1,6 @@
 # SYNTHETIC-PUBLICATION-ISOLATION-PGLITE-CORE — prove synthetic drafts stay private
 
-- **Status:** Implementation verification in progress; pending root review.
+- **Status:** Accepted locally on `main` at root merge `d7568a833b861b8dc867ac8c1a0f421ce3af9b48`.
 - **Backlog ID:** `SYNTHETIC-PUBLICATION-ISOLATION-PGLITE-CORE`
 - **Depends on:** L1 fixture processing/extraction persistence; `RAG-CORE`, `RAG-ACCESS-01`, L2 context assembly/persistence/direct reasoning/proposal persistence/bridge; `PUB-01-MANUAL-GATE-PGLITE-CORE`; `API-PUBLIC-DETAIL-RUNTIME-CORE`; `DB-TEST-RUNNER-ISOLATION`.
 - **Requirements:** FR-03/05/06/07/08/09/13; NFR-01/05/07.
@@ -37,3 +37,11 @@ Compose accepted local components in a disposable PGlite database to prove an au
 ## Stop conditions
 
 Stop and report to root if any positive publication path would require changing the synthetic/live boundary, if a moderator identity is needed, or if the test requires production/schema/grant/contract changes or external services. Do not substitute a permissive mock for the strict live-only reader or public role. Do not escalate models without an attempted Luna/max solution and a substantive unresolved technical difficulty.
+
+## Root review and acceptance
+
+The implementation branch was `work/SYNTHETIC-PUBLICATION-ISOLATION-PGLITE-CORE`, based on `931ebef205166dd273e507ba3fe397c16309338d`, in its dedicated worktree. Root integrated it in merge `d7568a833b861b8dc867ac8c1a0f421ce3af9b48`, preserving agent implementation commit `7082fea9d3c2a02751878d8702872bae82f255fc` (`test(SYNTHETIC-PUBLICATION-ISOLATION): prove synthetic draft isolation`) and handoff commit `03202442da2ee618de9d675bb517947a7cf9dd05` (`docs(SYNTHETIC-PUBLICATION-ISOLATION): record PGlite handoff`). The only agent branch paths were the allowed new PGlite test and handoff.
+
+Peer review found no actionable issues. Root independently reran the focused composition (**1/1**) before merge. After integrating both current test branches, root passed the full WSL workspace `npm test` (web, Worker **451**, DB **44/44 files**, casebook/evaluation **19/19**), `npm run typecheck`, `npm run build` (Vite production output and Wrangler **4.137.0** dry-run), and `git diff --check 931ebef205166dd273e507ba3fe397c16309338d..HEAD`. The agent passed all assigned checks on final source: focused composition, `npm run db:test` (**44/44 files**), full `npm test`, typecheck, build and assigned-base diff check. A typecheck-only closure fix was followed by these final-source checks.
+
+This test proves negative-path isolation in disposable PGlite only. It does not test successful publication, reviewer identity, factual quality, source rights, hosted Neon behavior, configured provider use, or production route wiring. The moderator-selected label policy remains enforced by its separate accepted L4 slice; this test does not exercise that policy. No migration, grant, public API, dependency, production code, or configuration changed.
