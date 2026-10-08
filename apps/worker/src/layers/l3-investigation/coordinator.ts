@@ -31,8 +31,10 @@ import type {
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ACTION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/;
+const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 // This bounded RFC3339 app profile matches the L2 timestamp contract: at most 40 code units
 // and 1–9 fractional digits. It intentionally rejects leap seconds and longer RFC3339 fractions.
+// Use it only for the planner checkpoint and trusted action clock, not existing caller timestamps.
 const RFC3339_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?([Zz]|([+-])(\d{2}):(\d{2}))$/;
 const MAX_RFC3339_TIMESTAMP_LENGTH = 40;
 const MAX_QUESTIONS = 20;
@@ -696,9 +698,8 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isTimestamp(value: unknown): value is string {
   return typeof value === 'string'
-    && value[10] === 'T'
-    && !value.endsWith('z')
-    && parseRfc3339Instant(value) !== undefined;
+    && TIMESTAMP_PATTERN.test(value)
+    && Number.isFinite(Date.parse(value));
 }
 
 function safeWallNow(wallNow: () => string): string | undefined {
@@ -716,7 +717,7 @@ function parseRfc3339Instant(value: unknown): ParsedRfc3339Instant | undefined {
   // Bound both representation length and fractional precision before comparing caller-visible time.
   if (typeof value !== 'string' || value.length > MAX_RFC3339_TIMESTAMP_LENGTH) return undefined;
   const match = RFC3339_TIMESTAMP_PATTERN.exec(value);
-  if (!match) return undefined;
+  if (!match || match[0] !== value) return undefined;
 
   const year = Number(match[1]);
   const month = Number(match[2]);

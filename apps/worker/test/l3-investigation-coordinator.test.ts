@@ -133,10 +133,29 @@ test('canonicalizes a lowercase RFC3339 wall clock before passing it to the acti
   assert.equal(harness.actionCalls[0]?.reservedAt, '2026-09-29T12:03:00.123456789Z');
 });
 
+test('preserves previously accepted long reasoning reservation timestamps', async () => {
+  const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+  const reasoningReservedAt = '2026-09-29T12:00:10.123456789012345678901234567890Z';
+  assert.ok(reasoningReservedAt.length > 40);
+  assert.ok(Number.isFinite(Date.parse(reasoningReservedAt)));
+  const harness = makeHarness();
+
+  const result = await harness.coordinator.advance({
+    ...openInput(context),
+    reasoningReservedAt,
+  });
+
+  assert.equal(result.status, 'continue');
+  assert.equal(harness.planningCalls.length, 1);
+  assert.equal(harness.planningCalls[0]?.reservedAt, reasoningReservedAt);
+  assert.equal(harness.actionCalls.length, 1);
+});
+
 test('invalid, throwing, impossible-date, and earlier action clocks preserve the planner checkpoint', async (t) => {
   const plannerTime = '2026-09-29T12:03:00.123456789Z';
   const cases: Array<{ readonly name: string; readonly plannerTime?: string; readonly wallNow: () => string }> = [
     { name: 'malformed timestamp', wallNow: () => 'not-rfc3339' },
+    { name: 'trailing newline', wallNow: () => `${plannerTime}\n` },
     { name: 'fraction exceeds the bounded nine-digit profile', wallNow: () => '2026-09-29T12:03:00.1234567890Z' },
     { name: 'throwing clock', wallNow: () => { throw new Error('private clock failure'); } },
     { name: 'impossible calendar date', wallNow: () => '2026-02-30T12:03:00.123456789Z' },
@@ -484,7 +503,11 @@ function makeHarness(input: {
   const ledger = new MemoryLedger();
   const entry = createInsufficientContextEntryService(ledger.repository, FINGERPRINTS);
   const events: string[] = [];
-  const planningCalls: Array<{ readonly request: InvestigationPlanRequest; readonly reservationId: string }> = [];
+  const planningCalls: Array<{
+    readonly request: InvestigationPlanRequest;
+    readonly reservationId: string;
+    readonly reservedAt: string;
+  }> = [];
   const actionCalls: Array<{
     readonly actionName: string;
     readonly input: unknown;
@@ -511,9 +534,14 @@ function makeHarness(input: {
         readonly investigationId: string;
         readonly expectedCheckpointVersion: number;
         readonly reservationId: string;
+        readonly reservedAt: string;
         readonly request: InvestigationPlanRequest;
       };
-      planningCalls.push({ request: proposal.request, reservationId: proposal.reservationId });
+      planningCalls.push({
+        request: proposal.request,
+        reservationId: proposal.reservationId,
+        reservedAt: proposal.reservedAt,
+      });
       if (input.planningMode === 'abstained') {
         const checkpoint = ledger.stopDirectly('awaiting_moderator');
         events.push('planner_result_rejected');
