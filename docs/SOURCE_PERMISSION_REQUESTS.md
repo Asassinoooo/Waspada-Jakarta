@@ -1,7 +1,7 @@
 # Source permission and data-use request drafts
 
 **Status:** Internal drafts only; no request has been sent and no source is approved.
-**Prepared:** 4 October 2026
+**Prepared:** 4 October 2026; terms reviewed and draft updated 8 October 2026
 **Related:** [SPEC-01 source feasibility](SOURCE_FEASIBILITY.md), [source verification plan](../SOURCE_VERIFICATION_PLAN.md), and [ADR-005 retention](decisions/ADR-005-source-retention.md)
 
 Use these drafts to request written terms from each source owner or dataset steward. Fill in the team contact and supervisor details, verify each recipient through the source's official site, and retain the written reply with the source registry decision. Access to a public page, API endpoint, or RSS feed is not itself approval for Waspada's proposed collection and processing.
@@ -55,6 +55,7 @@ Could you please confirm:
 4. Whether model-provider processing is allowed, including temporary transfer of report text, and whether any provider, region, or retention restrictions apply.
 5. The required retention/deletion behavior for reports, excerpts, vectors, backups, and derived claims after correction, removal, or license termination.
 6. How to identify and process report updates, removals, and corrections without implying that an empty response means there are no incidents.
+7. Which license governs data returned by the current API: the [user agreement](https://docs.petabencana.id/perjanjian-lisensi-pengguna) and [non-commercial page](https://docs.petabencana.id/informasi-lisensi-data/penggunaan-non-komersial-cc-by-nc-4.0) state CC BY-NC 4.0 for non-commercial use, while the PetaBencana organization repository's [`LICENSING.md`](https://github.com/petabencana/petabencana-meta/blob/master/petabencana.id/LICENSING.md) states CC BY 4.0 for collected data. Please clarify which terms apply to current API data and to any user-submitted or third-party content included in a report.
 
 We will keep the connector disabled and use authored synthetic fixtures until we have recorded the applicable terms and confirmed that our design complies. Please let us know if you require a different attribution or a written agreement.
 
@@ -94,7 +95,7 @@ Yth. Pengelola Satu Data Jakarta dan wali data dataset terkait,
 
 Kami dari Team 12 sedang menilai katalog Satu Data Jakarta untuk proyek akademik Waspada Jakarta. Kami menemukan judul katalog “Data Angka Kriminalitas yang Tertangani”, tetapi belum dapat memverifikasi skema dan granularitasnya. Kami juga menemukan data CRM yang berupa agregat periodik, yang tidak akan kami gunakan sebagai bukti untuk kejadian individual.
 
-Mohon bantuannya mengonfirmasi URL dan versi dataset yang benar, definisi setiap kolom, periode dan cakupan geografis, jadwal pembaruan, serta apakah dataset berisi data agregat atau catatan per kejadian. Mohon tunjukkan lisensi/ketentuan khusus dataset, atribusi, batas penggunaan API/unduhan, dan apakah penyimpanan, transformasi, publikasi ulang, atau pemrosesan menggunakan model pihak ketiga diizinkan.
+Mohon bantuannya mengonfirmasi URL dan versi dataset yang benar, definisi setiap kolom, periode dan cakupan geografis, jadwal pembaruan, serta apakah dataset berisi data agregat atau catatan per kejadian. Entri yang terlihat menandai data sebagai `Terbuka` dan menampilkan endpoint API, tetapi kami belum menemukan lisensi atau ketentuan penggunaan ulang yang berlaku untuk dataset tersebut. Mohon tunjukkan lisensi/ketentuan khusus dataset, atribusi, batas penggunaan API/unduhan, dan apakah penyimpanan, transformasi, publikasi ulang, atau pemrosesan menggunakan model pihak ketiga diizinkan.
 
 Kami tidak akan menganggap data agregat sebagai bukti adanya kejadian tertentu atau zona bahaya terkini. Mohon pula informasikan cara memperoleh pembaruan, koreksi, versi historis, atau penarikan data. Kami tidak akan mengimpor dataset sebelum skema dan persyaratan penggunaannya terdokumentasi.
 
