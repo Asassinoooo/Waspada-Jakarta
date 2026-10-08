@@ -66,4 +66,16 @@ Stop and report to root if accepted service seams cannot produce the initial/cor
 
 ## Implementation handoff
 
-The implementation agent appends branch/worktree, exact base, commit SHAs/messages, changed paths, behavior, checks actually run, limitations, migration/configuration impact and remaining decisions. Root independently reviews and accepts the branch.
+Implementation handoff:
+
+- **Branch/worktree:** `work/PUB-01-PUBLIC-READ-CHAIN-PGLITE-CORE` at `D:\Projects\RPL\.codex-build\worktrees\pub-01-public-read-chain-pglite-core` (WSL: `/mnt/d/Projects/RPL/.codex-build/worktrees/pub-01-public-read-chain-pglite-core`)
+- **Exact base:** `a30f4605a4fa29d91066797d5a81a683d0cc86bd`
+- **Implementation commit:** `0cc93d6` — `test(PUB-01): exercise publication public read chain`
+- **Changed paths:** `apps/db/test/manual-publication-public-read-chain.test.ts`; this assignment handoff section.
+- **Behavior:** One disposable PGlite composition uses the strict stored proposal reader, accepted manual publication gate, and real SQL writer for the initial publication and a corrected version. Exact-version fictional review metadata is added only to that test database; moderator-selected claim evidence labels are asserted independently from each version's history disclosure. Existing public history and update-feed projections return matching version identities, reviewed change types and summaries while excluding reviewer IDs and private proposal, trace, source, evidence, moderation, and sequence fields.
+- **Checks run in WSL Ubuntu-26.04:** `npm exec -- tsx --test apps/db/test/manual-publication-public-read-chain.test.ts` passed (3/3); `npm run db:test` passed (43/43 files); `npm test` passed (web and Worker suites, DB 43/43 files, and evaluation casebook 19/19); `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler `--dry-run`). `git diff --check a30f4605a4fa29d91066797d5a81a683d0cc86bd..HEAD` is run after the handoff commit and its result is included in the root handoff. Runtime/dependency versions: WSL Ubuntu-26.04, Node v24.21.0, npm 11.19.0, Git 2.53.0, and lockfile `@electric-sql/pglite` 0.5.8.
+- **Limitations:** Reviewer IDs, review decisions, and disclosure summaries are fictional test fixtures; this does not claim a real reviewer, identity check, or authorization. The database is ephemeral and no hosted service or real source is used.
+- **Migration/configuration impact:** None. No production code, migration, public contract, route, configuration, package, or dependency changed.
+- **Remaining decisions:** None. The required moderator-selected public claim labels are supplied explicitly per claim in the synthetic approval fixture, per settled ADR-052 policy.
+
+Root independently reviews and accepts the branch.
