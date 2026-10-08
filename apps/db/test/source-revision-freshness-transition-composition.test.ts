@@ -26,6 +26,7 @@ import type { SqlExecutor } from '../src/sql.js';
 const TRACE_ID = 'trace-source-revision-freshness-transition';
 const EVALUATION_TRACE_ID = 'trace-source-revision-freshness-evaluation';
 const NOW = '2026-10-01T10:00:00.000000Z';
+const TRANSITION_AT = '2026-10-01T10:05:00.000000Z';
 const FUTURE = '2026-10-02T10:00:00.000000Z';
 const EVENT_ID = 'event-source-revision-freshness';
 const IMPACT_DIRECT = 'impact-source-revision-direct';
@@ -54,7 +55,7 @@ describe('PGlite source-revision freshness transition composition', () => {
         ledger,
       });
       const result = await coordinator.processPage({
-        datasetKind: 'live', now: NOW, limit: 100, traceId: EVALUATION_TRACE_ID,
+        datasetKind: 'live', now: TRANSITION_AT, limit: 100, traceId: EVALUATION_TRACE_ID,
       });
 
       assert.deepEqual(result, {
@@ -128,7 +129,7 @@ describe('PGlite source-revision freshness transition composition', () => {
         previousStatus: 'current',
         resultingStatus: 'needs_update',
         reason: 'source_report_withdrawn',
-        evaluatedAt: NOW,
+        evaluatedAt: TRANSITION_AT,
         traceId: EVALUATION_TRACE_ID,
         idempotencyKey: impactTransition.idempotency_key,
         evidenceReferenceIds: [],
@@ -211,7 +212,7 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
   const listRuntime = await createPublicEventListRuntime({
     ...runtimeConfiguration,
     cursorHmacKeyHex: TEST_CURSOR_HMAC_KEY_HEX,
-  }, { withSqlExecutor, now: () => Date.parse(NOW) });
+  }, { withSqlExecutor, now: () => Date.parse(TRANSITION_AT) });
   const detailRuntime = createPublicEventDetailRuntime(runtimeConfiguration, { withSqlExecutor });
   const geoJSONRuntime = createPublicEventGeoJSONRuntime(runtimeConfiguration, { withSqlExecutor });
   assert.ok(listRuntime);
@@ -270,10 +271,19 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
   assert.equal(listEvent.version, 1);
   assert.equal(listEvent.title, 'Authored fictional source freshness event');
   assert.equal(listEvent.lifecycle, 'unknown', 'freshness does not change the published lifecycle');
-  assert.equal(listEvent.freshness.status, 'needs_update');
+  assert.deepEqual(listEvent.freshness, {
+    status: 'needs_update',
+    evaluated_at: NOW,
+    review_due_at: FUTURE,
+    basis: 'manual_review',
+  });
   assert.deepEqual(impactFreshness(listEvent), [
-    [IMPACT_DIRECT, 'needs_update'],
-    [IMPACT_UNRELATED, 'current'],
+    [IMPACT_DIRECT, {
+      status: 'needs_update', evaluated_at: NOW, review_due_at: FUTURE, basis: 'manual_review',
+    }],
+    [IMPACT_UNRELATED, {
+      status: 'current', evaluated_at: NOW, review_due_at: FUTURE, basis: 'manual_review',
+    }],
   ]);
   assert.equal(listEvent.claims[0]?.text, PRIVATE_CLAIM_TEXT,
     'the published claim remains visible after the freshness transition');
@@ -282,7 +292,7 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
   assert.equal(detail.version, 1);
   assert.equal(detail.title, listEvent.title);
   assert.equal(detail.lifecycle, listEvent.lifecycle);
-  assert.equal(detail.freshness.status, 'needs_update');
+  assert.deepEqual(detail.freshness, listEvent.freshness);
   assert.deepEqual(impactFreshness(detail), impactFreshness(listEvent));
   assert.deepEqual(detail.claims, listEvent.claims);
   assert.deepEqual(detail.geometries, [], 'the authored fixture has no source-supported geometry');
@@ -333,10 +343,10 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
   }
 }
 
-function impactFreshness(event: Pick<EventView, 'impacts'>): Array<[string, string]> {
+function impactFreshness(event: Pick<EventView, 'impacts'>): Array<[string, EventView['freshness']]> {
   return [...event.impacts]
     .sort((left, right) => left.impact_id.localeCompare(right.impact_id))
-    .map((impact) => [impact.impact_id, impact.freshness.status]);
+    .map((impact) => [impact.impact_id, impact.freshness]);
 }
 
 async function seedFixture(database: TestDatabase): Promise<string> {
