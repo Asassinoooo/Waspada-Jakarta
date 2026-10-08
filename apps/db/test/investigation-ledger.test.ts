@@ -59,10 +59,14 @@ import { createInvestigationCoordinator } from '../../worker/src/layers/l3-inves
 import { createInsufficientContextEntryService } from '../../worker/src/layers/l3-investigation/entry.js';
 import {
   createReasoningStepExecutor,
+  type ReasoningStepExecutor,
   type ReasoningStepExecutorClock,
   type ReasoningStepExecutorTimer,
 } from '../../worker/src/layers/l3-investigation/reasoning-step-executor.js';
-import { createSingleStepExecutor } from '../../worker/src/layers/l3-investigation/single-step-executor.js';
+import {
+  createSingleStepExecutor,
+  type SingleStepExecutor,
+} from '../../worker/src/layers/l3-investigation/single-step-executor.js';
 import type { InvestigationActionMenuEntry } from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
@@ -872,6 +876,227 @@ describe('L3 durable investigation ledger', () => {
     const plannerReplay = await repository.reconcileAction(plannerReconciliationInput);
     assert.equal(plannerReplay.replayed, true);
     assert.ok(await repository.getAdvanceReviewPending(fixture.datasetKind, input.investigationId));
+  });
+
+  it('blocks a restarted coordinator on the persisted review marker before ports or state writes', async () => {
+    const suffix = 'advance-review-coordinator';
+    const fixture = await seedFixture(testDatabase, suffix, { sufficient: false, seedContext: false });
+    const contextRepository = createSqlGroundingContextRepository(testDatabase.executor);
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const withRole = async <Result>(role: string, work: () => Promise<Result>): Promise<Result> => {
+      await testDatabase.executor.execute('SET ROLE ' + role);
+      try {
+        return await work();
+      } finally {
+        await testDatabase.executor.execute('RESET ROLE');
+      }
+    };
+    const makeRecord = (contextId: string, sufficient: boolean): GroundingContextRecord => ({
+      schema_version: '2.0',
+      trace_id: fixture.traceId,
+      record_type: 'GroundingContext',
+      dataset_kind: fixture.datasetKind,
+      context_id: contextId,
+      candidate_id: fixture.candidateId,
+      evidence: [],
+      revision_states: [],
+      candidate_events: [],
+      prior_decision_ids: [],
+      missing_fields: sufficient ? [] : ['synthetic_status'],
+      conflicts: [],
+      retrieval_version: 'retrieval-synthetic-review-marker-v1',
+      index_version: 'index-synthetic-review-marker-v1',
+      sufficient,
+    });
+    const contextFromRecord = (record: GroundingContextRecord): GroundingContext => ({
+      schemaVersion: record.schema_version,
+      recordType: record.record_type,
+      datasetKind: record.dataset_kind,
+      traceId: record.trace_id,
+      contextId: record.context_id,
+      candidateId: record.candidate_id,
+      evidence: [],
+      revisionStates: [],
+      candidateEvents: [],
+      priorDecisionIds: [],
+      missingFields: [...record.missing_fields],
+      conflicts: [...record.conflicts],
+      retrievalVersion: record.retrieval_version,
+      indexVersion: record.index_version,
+      sufficient: record.sufficient,
+    });
+    const insufficientRecord = makeRecord(fixture.contextId, false);
+    const sufficientRecord = makeRecord(fixture.contextId + '-sufficient', true);
+    const loadedContexts = await withRole('waspada_l2_grounding_writer', async () => {
+      await contextRepository.createOrVerify(insufficientRecord);
+      await contextRepository.createOrVerify(sufficientRecord);
+      return {
+        insufficient: await contextRepository.findById(fixture.datasetKind, fixture.contextId),
+        sufficient: await contextRepository.findById(fixture.datasetKind, sufficientRecord.context_id),
+      };
+    });
+    const persistedInsufficient = loadedContexts.insufficient;
+    const persistedSufficient = loadedContexts.sufficient;
+    assert.deepEqual(persistedInsufficient, insufficientRecord);
+    assert.deepEqual(persistedSufficient, sufficientRecord);
+    assert.ok(persistedInsufficient);
+    assert.ok(persistedSufficient);
+    const insufficientContext = contextFromRecord(persistedInsufficient);
+    const sufficientContext = contextFromRecord(persistedSufficient);
+
+    const investigationInput = makeCreateInput(fixture);
+    const reservationId = 'reservation-' + suffix + '-started';
+    const durableSetup = await withRole('waspada_l3_coordinator', async () => {
+      await repository.create(investigationInput);
+      const reserved = await repository.reserveAction({
+        datasetKind: fixture.datasetKind,
+        investigationId: investigationInput.investigationId,
+        reservationId,
+        expectedCheckpointVersion: 1,
+        actionKind: 'tool',
+        actionFingerprint: testFingerprint('review-pending-coordinator-action'),
+        actionName: 'lookup.synthetic',
+        reservedActiveSeconds: 5,
+        reservedModelTokens: 0,
+        reservedAt: '2026-09-25T10:01:00Z',
+      });
+      const started = await repository.startAction({
+        datasetKind: fixture.datasetKind,
+        investigationId: investigationInput.investigationId,
+        reservationId,
+        startedAt: '2026-09-25T10:01:01Z',
+      });
+      assert.equal(started.mayInvoke, true);
+      assert.equal(started.replayed, false);
+      const marked = await repository.markAdvanceReviewPending({
+        datasetKind: fixture.datasetKind,
+        investigationId: investigationInput.investigationId,
+        observedCheckpointVersion: reserved.checkpoint.checkpoint_version,
+        stage: 'action',
+        reason: 'action_result_uncertain',
+        reservationId,
+      });
+      assert.equal(marked.replayed, false);
+      const checkpoint = await repository.getLatest(fixture.datasetKind, investigationInput.investigationId);
+      const reservation = await repository.getActionReservation(
+        fixture.datasetKind,
+        investigationInput.investigationId,
+        reservationId,
+      );
+      const marker = await repository.getAdvanceReviewPending(fixture.datasetKind, investigationInput.investigationId);
+      assert.ok(checkpoint);
+      assert.ok(reservation);
+      assert.ok(marker);
+      assert.equal(reservation.status, 'started');
+      assert.equal(marker.reservationId, reservationId);
+      return { checkpoint, reservation, marker };
+    });
+
+    const readDurableState = () => withRole('waspada_l3_coordinator', async () => {
+      const checkpoint = await repository.getLatest(fixture.datasetKind, investigationInput.investigationId);
+      const reservation = await repository.getActionReservation(
+        fixture.datasetKind,
+        investigationInput.investigationId,
+        reservationId,
+      );
+      const marker = await repository.getAdvanceReviewPending(fixture.datasetKind, investigationInput.investigationId);
+      const progress = await testDatabase.executor.query<{
+        readonly checkpoint_version: number;
+        readonly context_id: string;
+        readonly fingerprint_key_id: string;
+        readonly digest_hex: string;
+        readonly consecutive_no_progress: number;
+      }>(
+        'SELECT checkpoint_version, context_id, fingerprint_key_id, '
+          + "encode(grounding_fingerprint, 'hex') AS digest_hex, consecutive_no_progress "
+          + 'FROM waspada.investigation_progress_snapshots '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2',
+        [fixture.datasetKind, investigationInput.investigationId],
+      );
+      return {
+        checkpoint,
+        reservation,
+        marker,
+        progress: progress.rows,
+        requestAndCheckpoint: await readLedgerJson(
+          testDatabase,
+          fixture.datasetKind,
+          investigationInput.investigationId,
+        ),
+      };
+    });
+    const before = await readDurableState();
+    assert.deepEqual(before.checkpoint, durableSetup.checkpoint);
+    assert.deepEqual(before.reservation, durableSetup.reservation);
+    assert.deepEqual(before.marker, durableSetup.marker);
+    assert.equal(before.reservation?.status, 'started');
+
+    const calls = { planner: 0, action: 0, refresh: 0 };
+    const reasoningStep: ReasoningStepExecutor = {
+      async plan() {
+        calls.planner += 1;
+        throw new Error('unexpected synthetic planner call');
+      },
+    };
+    const singleStep: SingleStepExecutor = {
+      async execute() {
+        calls.action += 1;
+        throw new Error('unexpected synthetic action call');
+      },
+    };
+    const coordinator = createInvestigationCoordinator({
+      entry: createInsufficientContextEntryService(repository, TEST_FINGERPRINTS),
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      reasoningStep,
+      singleStep,
+      refreshPort: {
+        async refresh() {
+          calls.refresh += 1;
+          throw new Error('unexpected synthetic refresh call');
+        },
+      },
+      actionMenu: [{ name: 'lookup.synthetic', description: 'Synthetic fixture action.' }],
+      wallNow: () => '2026-09-25T10:02:00Z',
+    });
+    const resumeAdvance = {
+      kind: 'resume',
+      checkpoint: durableSetup.checkpoint,
+      context: insufficientContext,
+      persistedRecord: persistedInsufficient,
+      reasoningReservationId: 'reservation-' + suffix + '-planner-replay',
+      reasoningReservedAt: '2026-09-25T10:02:00Z',
+      actionReservationId: 'reservation-' + suffix + '-action-replay',
+    } as const;
+
+    const first = await withRole('waspada_l3_coordinator', () => coordinator.advance(resumeAdvance));
+    assert.equal(first.status, 'review_required');
+    if (first.status !== 'review_required') assert.fail('expected a durable review-pending hold');
+    assert.equal(first.reason, 'advance_review_pending');
+    assert.deepEqual(first.checkpoint, durableSetup.checkpoint);
+    assert.deepEqual(calls, { planner: 0, action: 0, refresh: 0 });
+
+    const replay = await withRole('waspada_l3_coordinator', () => coordinator.advance(resumeAdvance));
+    assert.deepEqual(replay, first, 'replaying the same advance returns the same closed hold');
+    assert.deepEqual(calls, { planner: 0, action: 0, refresh: 0 });
+
+    const sufficientOutcome = await withRole('waspada_l3_coordinator', () => coordinator.advance({
+      kind: 'sufficient_context',
+      investigationId: investigationInput.investigationId,
+      context: sufficientContext,
+      persistedRecord: persistedSufficient,
+    }));
+    assert.equal(sufficientOutcome.status, 'review_required');
+    if (sufficientOutcome.status !== 'review_required') {
+      assert.fail('sufficient context must not bypass a durable review-pending hold');
+    }
+    assert.equal(sufficientOutcome.reason, 'advance_review_pending');
+    assert.deepEqual(sufficientOutcome.checkpoint, durableSetup.checkpoint);
+    assert.deepEqual(calls, { planner: 0, action: 0, refresh: 0 });
+
+    const after = await readDurableState();
+    assert.deepEqual(after, before,
+      'resume, replay, and sufficient-context paths leave checkpoint, budget, marker, reservation, and progress unchanged');
   });
 
   it('rejects an exact registered action after a cold restart without consuming more budget', async () => {

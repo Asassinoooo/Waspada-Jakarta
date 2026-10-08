@@ -56,3 +56,14 @@ Stop if success requires a production contract, migration, privilege, coordinato
 ## Implementer handoff
 
 Append exact branch/worktree, base, commit SHAs/messages, changed paths, behavior, actual checks, versions, limitations and remaining decisions here after committing.
+
+### Implementer result
+
+- **Branch/worktree:** `work/L3-ADVANCE-REVIEW-PENDING-COORDINATOR-PGLITE-CORE` at `.codex-build/worktrees/l3-advance-review-pending-coordinator-pglite-core`.
+- **Base:** `3b6f9b15834047775054154f0454521a48b94ea3`.
+- **Test commit:** `531e0fa40f85a3dab4b40956fa100e5d86d434f2` — `test(L3-ADVANCE-REVIEW-PENDING): verify persisted marker blocks coordinator`.
+- **Changed paths:** `apps/db/test/investigation-ledger.test.ts`; this assignment's implementer handoff section.
+- **Behavior:** Added a PGlite composition that persists synthetic grounding contexts, a started action reservation, and the exact review-pending marker through the SQL repositories. A newly constructed coordinator returns the durable hold for resume, replay, and sufficient-context entry, calls no planner/action/refresh ports, and leaves checkpoint, request/budget JSON, marker, reservation, and progress snapshot unchanged. No runtime, contract, schema, migration, grant, configuration, or provider behavior changed.
+- **Toolchain:** WSL Ubuntu-26.04; Node.js `v24.21.0`; npm `11.19.0`. The build reported Vite `8.3.0` and Wrangler `4.137.0`.
+- **Checks:** Focused `npm exec tsx -- --test apps/db/test/investigation-ledger.test.ts` passed 19/19 after the final test-source cleanup. `npm run typecheck` passed after that cleanup. `npm run build` passed after that cleanup; Vite completed and Wrangler dry-run exited successfully. `npm run db:test` passed all 44/44 files, and `npm test` passed (451 non-DB tests, 44/44 DB files, and 19 evaluation tests); these two full-suite runs preceded only the final TypeScript null-narrowing cleanup that bound already-asserted persisted lookup results to local variables. The focused test, typecheck, and build were rerun after it. `git diff --check 3b6f9b15834047775054154f0454521a48b94ea3..HEAD` passed for the test commit; it will be repeated after this handoff commit.
+- **Limitations / remaining decisions:** This proves local synthetic PGlite composition only. It does not prove hosted Neon or Cloudflare execution, cross-process behavior, action cancellation/fencing, safe retry, or marker clearing. The marker remains a sticky hold; any recovery, reconciliation, or terminal-proof policy remains outside this assignment. No migration or configuration impact. The requested ADR-049 filename was absent; the existing `docs/decisions/ADR-049-l2-grounding-context-resume.md` was read instead.
