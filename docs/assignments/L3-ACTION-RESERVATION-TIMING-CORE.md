@@ -1,12 +1,12 @@
 # L3-ACTION-RESERVATION-TIMING-CORE — create action time after planning
 
-- **Status:** Assigned for implementation
+- **Status:** Accepted locally on `main`
 - **Backlog ID:** `L3-ACTION-RESERVATION-TIMING-CORE`
 - **Parent:** FR-07; NFR-01/02/05/07
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch:** `work/L3-ACTION-RESERVATION-TIMING-CORE`
 - **Worktree:** `.codex-build/worktrees/l3-action-reservation-timing-core`
-- **Base:** To be pinned by root immediately before dispatch; implementation must start from the exact commit named in the dispatch.
+- **Base:** `6478e7427e00d3325528fa1f42773e05ce2cf78c`
 - **Contract baseline:** Internal L3 coordinator port only. Keep schema 2.0, database schema, API/OpenAPI, Layer 2 model contracts, and reservation-ledger behavior unchanged.
 - **Dependencies:** L3-COORDINATOR-CORE, L3-REASONING-STEP-CORE, L3-SINGLE-STEP-EXECUTOR-CORE, ADR-014/017/029/031/051.
 
@@ -70,9 +70,15 @@ Implemented on branch `work/L3-ACTION-RESERVATION-TIMING-CORE` in worktree `D:\P
 - **Timestamp profile:** the parser deliberately matches the bounded L2 app profile: at most 40 code units and 1–9 fractional digits. It rejects impossible Gregorian dates and leap seconds; the latter and longer fractional forms are outside this app profile even though RFC3339 permits them.
 - **Runtime:** checks ran in WSL Ubuntu-26.04 with Linux Node `v24.21.0` and npm `11.19.0`, using existing dependencies.
 - **Checks:** focused coordinator test (`tsx --test apps/worker/test/l3-investigation-coordinator.test.ts`) passed, 35/35; `npm run typecheck` passed; `npm run build` passed, including Vite production build and Wrangler dry run; `git diff --check 6478e7427e00d3325528fa1f42773e05ce2cf78c..HEAD` passed after the implementation commit.
-- **Full suite:** `npm test` exited 1. The database harness reported 40/41 files passing; `investigation-ledger.test.ts` failed in “composes one bounded synthetic investigation through exact-context private proposal persistence and replay” with `InvestigationLedgerError: reservation_conflict`. Its direct replay fixture still supplies the old `10:03` action reservation, while the coordinator now reserves at `10:04` after planning. That DB test is outside this assignment's allowed paths and was left unchanged for root integration to address separately.
+- **Initial full suite:** `npm test` reported 40/41 database files passing because `investigation-ledger.test.ts` still replayed the old `10:03` timestamp while the coordinator now sampled `10:04` after planning. Root corrected that test-only fixture in `e516b3f` (`test(L3): align PGlite replay with coordinator-owned time`); the direct replay now uses the canonical planned action timestamp and verifies the persisted instant.
 - **Migration/configuration impact:** none. No DB, schema, API, dependency, runtime-binding, or deployment changes.
-- **Remaining decision:** root integration should update the stale test-only replay timestamp and rerun the full suite. This task does not implement reservation recovery or Workflow runtime behavior.
+- **Root review:** independent review found and fixed a trailing-newline acceptance bug in the strict timestamp parser and restored the prior `reasoningReservedAt` validation profile. Root preserved the reviewed follow-up commits as `54cbf54` (`fix(L3): preserve reasoning timestamp validation`) and `7b7d566` (`docs(L3): record timestamp validation follow-up`).
+
+### Root integration and acceptance
+
+Root accepted the branch on local `main`, preserving the agent's four commits above in root commits `765ae52` (`fix(L3): reserve action time after planning`), `d3da8ae` (`docs(L3): record action reservation timing handoff`), `54cbf54` (`fix(L3): preserve reasoning timestamp validation`), and `7b7d566` (`docs(L3): record timestamp validation follow-up`). Root added the PGlite fixture correction separately as `e516b3f` (`test(L3): align PGlite replay with coordinator-owned time`).
+
+In WSL Ubuntu-26.04 with Linux Node `v24.21.0` and npm `11.19.0`, root independently passed the focused coordinator suite (37/37), the PGlite investigation-ledger file (13/13), the integrated `npm test` (web 60/60, Worker 448/448, DB 41/41 files, evaluation 19/19; command exit 0), `npm run typecheck`, `npm run build` (Vite production build and Wrangler dry run), and `git diff --check 6478e7427e00d3325528fa1f42773e05ce2cf78c..HEAD`. The operation changes no migration, grant, API/public schema, dependency, runtime binding, or deployment configuration. Hosted Neon, Cloudflare Workflow execution/recovery, live sources, and model/provider behavior remain unverified. This slice does not implement reservation recovery or Workflow runtime behavior.
 
 ### Follow-up review fixes
 
