@@ -27,6 +27,8 @@ Local Layer 1 wires the typed, append-only schema 2.0 extraction repository into
 
 **Purpose:** Direct development of the complete prototype from requirements through implementation, review, evaluation and deployment.
 
+The bounded coordinator outcome telemetry design is recorded in [ADR-050](docs/decisions/ADR-050-l3-coordinator-outcome-telemetry.md) and assigned as `OBS-01-L3-COORDINATOR-TELEMETRY-CORE`. It will expose only a fixed outcome and elapsed duration through an opt-in Layer 5 wrapper; no runtime or external log sink is configured.
+
 This Software Development Plan (SDP) is the project's main engineering document. It combines the release scope, a requirements baseline, work breakdown, delivery process and acceptance gates. The detailed architecture and source-verification specifications remain linked supporting documents. A separate Software Requirements Specification (SRS) can later be extracted from the requirements here if the course requires it; duplicating the same requirements now would create competing versions.
 
 The accepted `ING-CAP-PARSE-CORE` adds bounded, namespace-aware CAP 1.2 parsing for authored synthetic XML in Layer 1. It extracts source-declared fields only; it does not fetch or persist source records, verify issuer authenticity, infer event meaning, or enable the BMKG connector. Source terms and field mapping remain activation gates.
