@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -32,11 +32,21 @@ import type {
 } from '../../worker/src/layers/l4-application-integration/publication-policy.js';
 import { createPublicEventHistoryProjectionService } from '../../worker/src/layers/l4-application-integration/public-event-history-projection-service.js';
 import { createPublicEventUpdatesService } from '../../worker/src/layers/l4-application-integration/public-event-updates-service.js';
+import {
+  handlePublicApiRequest,
+  type WorkerEnvironment,
+} from '../../worker/src/layers/l4-application-integration/api.js';
+import type { EventDetail, EventPage } from '../../worker/src/contracts/public-api.js';
+import { createPublicEventListRuntime } from '../../worker/src/runtime/public-event-list-runtime.js';
+import { createPublicEventDetailRuntime } from '../../worker/src/runtime/public-event-detail-runtime.js';
 import type { EvidenceReference, GroundingContext, ProposedClaim } from '../../worker/src/layers/l2-model-grounding/contracts.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const NOW = '2026-10-08T03:00:00Z';
 const CORRECTION_AT = '2026-10-08T03:15:00.123456Z';
+const TEST_CONNECTION_STRING = 'postgresql://test-user:test-password@hyperdrive.example.invalid/waspada?sslmode=require';
+const PUBLIC_SOURCE_DISPLAY_NAME = 'Authored synthetic attribution fixture only';
+const PUBLIC_SOURCE_URL = 'https://example.invalid/authored-attribution-fixture';
 const FIRST_DISCLOSURE_SUMMARY = 'Fictional reviewed disclosure for synthetic version one.';
 const CORRECTION_DISCLOSURE_SUMMARY = 'Fictional reviewed correction disclosure for synthetic version two.';
 const REPORT_TEXT = 'Synthetic fixture claim one; Synthetic fixture claim two.';
@@ -113,7 +123,7 @@ describe('PUB-01 manual publication and public read-chain PGlite composition', (
 
   after(async () => db?.close());
 
-  it('publishes both versions through the gate, then reads exact reviewed history and updates', async () => {
+  it('publishes both versions through the gate, then reads the correction through public handlers, history, and updates', async () => {
     const scenario = await seedScenario(db, 'positive');
     const reader = createSqlEventProposalReader(db.executor);
     const writer = new SqlPublicationWriter(db.executor);
@@ -256,7 +266,20 @@ describe('PUB-01 manual publication and public read-chain PGlite composition', (
       readonly supersedes_version: number | null;
       readonly published_at: string;
       readonly summary: string;
-      readonly record_json: { readonly claims: readonly { readonly claim_id: string; readonly evidence_label: string }[] };
+      readonly record_json: {
+        readonly event_id: string;
+        readonly version: number;
+        readonly title: string;
+        readonly summary: string;
+        readonly category: string;
+        readonly lifecycle: string;
+        readonly published_at: string;
+        readonly claims: readonly {
+          readonly claim_id: string;
+          readonly text: string;
+          readonly evidence_label: string;
+        }[];
+      };
     }>(
       `SELECT version, supersedes_version, record_json->>'published_at' AS published_at,
               summary, record_json
@@ -280,6 +303,14 @@ describe('PUB-01 manual publication and public read-chain PGlite composition', (
       'Authored synthetic summary; no real incident is asserted.',
       'Authored synthetic corrected summary; no real incident is asserted.',
     ]);
+
+    // These owner-only rows are fictional test fixtures for the existing
+    // public-reader views. They do not grant real source rights, names, or
+    // reviewer identity, and are confined to this disposable PGlite database.
+    await seedFictionalPublicLookups(db.executor, correction);
+    const correctedRecord = storedVersions.rows.find(({ version }) => version === 2)?.record_json;
+    assert.ok(correctedRecord, 'the corrected event version was persisted');
+    await assertPublishedCorrectionHandlers(db, scenario, correction, correctedRecord);
 
     const historyService = createPublicEventHistoryProjectionService({
       candidates: createPublicEventHistoryRepository(db.executor),
@@ -630,6 +661,231 @@ async function seedFictionalDisclosure(
       "VALUES ('live', $1, $2, 'approved', $3, $4, 'fictional-reviewer-fixture-only', $5)",
     [input.eventId, input.eventVersion, input.changeType, input.summary, input.reviewedAt],
   );
+}
+
+async function seedFictionalPublicLookups(executor: SqlExecutor, scenario: Scenario): Promise<void> {
+  for (const claim of scenario.claimFixtures) {
+    await executor.query(
+      `INSERT INTO waspada.public_attribution_review_decisions
+         (review_decision_id, dataset_kind, evidence_ref_id, report_revision_id,
+          permitted_text_hash, span_start, span_end, offset_unit, relation, review_version,
+          decision_status, rights_basis_ref, public_display_name, source_url,
+          source_published_at, source_observed_at, reviewer_id, decision_reason, reviewed_at)
+       VALUES ($1, 'live', $2, $3, $4, $5, $6, 'unicode_code_points', 'supports', 1,
+         'approved', $7, $8, $9, NULL, NULL, $10, $11, $12)`,
+      [
+        `fictional-attribution-${claim.claimId}`,
+        claim.evidenceReferenceId,
+        claim.policyEvidence.reportRevisionId,
+        claim.policyEvidence.permittedTextHash,
+        claim.policyEvidence.spanStart,
+        claim.policyEvidence.spanEnd,
+        'synthetic-test-only-no-real-rights-asserted',
+        PUBLIC_SOURCE_DISPLAY_NAME,
+        PUBLIC_SOURCE_URL,
+        'fictional-reviewer-fixture-only',
+        'Authored fixture decision; no source rights or real review are asserted.',
+        CORRECTION_AT,
+      ],
+    );
+  }
+
+  const scope = scenario.input.eventDraft.scope;
+  const scopeEntities = [
+    ...scope.place_ids.map((id) => ['place', id] as const),
+    ...scope.service_ids.map((id) => ['service', id] as const),
+    ...scope.institution_ids.map((id) => ['institution', id] as const),
+    ...scope.audience_ids.map((id) => ['audience', id] as const),
+  ];
+  for (const [index, [entityType, entityId]] of scopeEntities.entries()) {
+    await executor.query(
+      `INSERT INTO waspada.scope_name_review_decisions
+         (review_decision_id, entity_type, entity_id, locale, review_version,
+          decision_status, display_name, provenance_ref, reviewer_id, decision_reason, reviewed_at)
+       VALUES ($1, $2, $3, 'id-ID', 1, 'approved', $4, $5, $6, $7, $8)`,
+      [
+        `fictional-scope-name-${index + 1}`,
+        entityType,
+        entityId,
+        `Authored synthetic ${entityType} name fixture`,
+        'synthetic-test-only-no-real-provenance-asserted',
+        'fictional-reviewer-fixture-only',
+        'Authored fixture decision; no real name review is asserted.',
+        CORRECTION_AT,
+      ],
+    );
+  }
+}
+
+async function assertPublishedCorrectionHandlers(
+  database: TestDatabase,
+  initial: Scenario,
+  correction: Scenario,
+  persistedCurrent: {
+    readonly event_id: string;
+    readonly version: number;
+    readonly title: string;
+    readonly summary: string;
+    readonly category: string;
+    readonly lifecycle: string;
+    readonly published_at: string;
+    readonly claims: readonly {
+      readonly claim_id: string;
+      readonly text: string;
+      readonly evidence_label: string;
+    }[];
+  },
+): Promise<void> {
+  let sqlOperations = 0;
+  const withSqlExecutor = async <Result>(
+    connectionString: string,
+    operation: (executor: SqlExecutor) => Promise<Result>,
+  ): Promise<Result> => {
+    assert.equal(connectionString, TEST_CONNECTION_STRING);
+    sqlOperations += 1;
+    return runAsPublicReader(database, () => operation(database.executor));
+  };
+  const runtimeConfiguration = {
+    datasetMode: 'live',
+    connectionString: TEST_CONNECTION_STRING,
+  } as const;
+  const cursorHmacKeyHex = randomBytes(32).toString('hex');
+  const listRuntime = await createPublicEventListRuntime({
+    ...runtimeConfiguration,
+    cursorHmacKeyHex,
+  }, { withSqlExecutor, now: () => Date.parse(CORRECTION_AT) });
+  const detailRuntime = createPublicEventDetailRuntime(runtimeConfiguration, { withSqlExecutor });
+  assert.ok(listRuntime);
+  assert.ok(detailRuntime);
+
+  const environment: WorkerEnvironment = { DATASET_MODE: 'live' };
+  const listOperations = sqlOperations;
+  const listResponse = await handlePublicApiRequest(
+    new Request('https://api.example.invalid/api/v1/events?limit=10'),
+    environment,
+    undefined,
+    listRuntime,
+    detailRuntime,
+  );
+  assert.equal(listResponse.status, 200);
+  assert.equal(sqlOperations - listOperations, 1,
+    'the public list handler uses one injected SQL operation under the public-reader role');
+  const page = await listResponse.json() as EventPage;
+  assert.equal(page.data.length, 1);
+  const listed = page.data[0];
+  assert.ok(listed);
+
+  const detailOperations = sqlOperations;
+  const detailResponse = await handlePublicApiRequest(
+    new Request(`https://api.example.invalid/api/v1/events/${encodeURIComponent(correction.ids.eventId)}`),
+    environment,
+    undefined,
+    listRuntime,
+    detailRuntime,
+  );
+  assert.equal(detailResponse.status, 200);
+  assert.equal(sqlOperations - detailOperations, 1,
+    'the public detail handler uses one injected SQL operation under the public-reader role');
+  const detail = await detailResponse.json() as EventDetail;
+
+  assert.equal(persistedCurrent.event_id, correction.ids.eventId);
+  for (const event of [listed, detail]) {
+    assert.equal(event.event_id, persistedCurrent.event_id);
+    assert.equal(event.version, persistedCurrent.version);
+    assert.equal(event.title, persistedCurrent.title);
+    assert.equal(event.summary, persistedCurrent.summary);
+    assert.equal(event.category, persistedCurrent.category);
+    assert.equal(event.lifecycle, persistedCurrent.lifecycle);
+    assert.equal(event.published_at, persistedCurrent.published_at);
+    assert.deepEqual(event.claims.map(({ claim_id, text, evidence_label }) => ({
+      claim_id, text, evidence_label,
+    })), persistedCurrent.claims.map(({ claim_id, text, evidence_label }) => ({
+      claim_id, text, evidence_label,
+    })));
+    assert.deepEqual(event.claims.map(({ claim_id, evidence_label }) => [claim_id, evidence_label]), [
+      ['claim-001', EXPECTED_LABELS['claim-001']],
+      ['claim-002', EXPECTED_LABELS['claim-002']],
+    ]);
+  }
+  assert.equal(listed.version, 2, 'the list returns the corrected current event version');
+  assert.equal(detail.version, 2, 'the detail route returns the corrected current event version');
+  assert.deepEqual(listed, (() => {
+    const { geometries: _geometries, ...event } = detail;
+    return event;
+  })(), 'list and detail expose the same current public EventView');
+  assert.deepEqual(detail.geometries, [], 'no unsupported geometry is inferred for the synthetic fixture');
+  const expectedPublicScope = {
+    places: [],
+    services: ['Authored synthetic service name fixture'],
+    institutions: [],
+    audiences: ['Authored synthetic audience name fixture'],
+  };
+
+  const eventViewKeys = [
+    'category', 'claims', 'event_id', 'event_time', 'freshness', 'impacts', 'lifecycle',
+    'published_at', 'scope', 'summary', 'tags', 'title', 'validity', 'version',
+  ].sort();
+  assert.deepEqual(Object.keys(listed).sort(), eventViewKeys);
+  assert.deepEqual(Object.keys(detail).sort(), [...eventViewKeys, 'geometries'].sort());
+  for (const event of [listed, detail]) {
+    assert.deepEqual(event.scope, expectedPublicScope);
+    assert.deepEqual(Object.keys(event.scope).sort(), ['audiences', 'institutions', 'places', 'services']);
+    assert.deepEqual(Object.keys(event.freshness).sort(), ['basis', 'evaluated_at', 'review_due_at', 'status']);
+    for (const tag of event.tags) assert.deepEqual(Object.keys(tag).sort(), ['namespace', 'value']);
+    for (const claim of event.claims) {
+      assert.deepEqual(Object.keys(claim).sort(), [
+        'claim_id', 'event_time', 'evidence_label', 'qualifiers', 'scope', 'sources', 'text', 'validity',
+      ]);
+      assert.deepEqual(Object.keys(claim.scope).sort(), ['audiences', 'institutions', 'places', 'services']);
+      assert.deepEqual(claim.scope, expectedPublicScope);
+      assert.equal(claim.sources.length, 1);
+      assert.deepEqual(Object.keys(claim.sources[0]!).sort(), [
+        'display_name', 'excerpt', 'observed_at', 'published_at', 'url',
+      ]);
+      assert.equal(claim.sources[0]?.display_name, PUBLIC_SOURCE_DISPLAY_NAME);
+      assert.equal(claim.sources[0]?.url, PUBLIC_SOURCE_URL);
+      assert.equal(claim.sources[0]?.excerpt, null, 'source excerpts are not public in these fixtures');
+    }
+    for (const impact of event.impacts) {
+      assert.deepEqual(Object.keys(impact).sort(), [
+        'description', 'event_time', 'freshness', 'impact_id', 'impact_type', 'lifecycle',
+        'scope', 'title', 'validity', 'version',
+      ]);
+      assert.deepEqual(Object.keys(impact.scope).sort(), ['audiences', 'institutions', 'places', 'services']);
+      assert.deepEqual(impact.scope, expectedPublicScope);
+    }
+  }
+  for (const item of page.data) {
+    assert.deepEqual(Object.keys(item).sort(), eventViewKeys);
+  }
+
+  const serializedPublicResult = JSON.stringify({ page, detail });
+  for (const privateField of [
+    'dataset_kind', 'trace_id', 'proposal_id', 'candidate_id', 'context_id',
+    'publication_decision_id', 'reviewer_id', 'report_revision_id', 'permitted_text_hash',
+    'span_start', 'span_end', 'evidence_ref_id', 'origin_ids', 'moderatorDecision',
+  ]) {
+    assert.equal(serializedPublicResult.includes(privateField), false,
+      `public list/detail projections omit private field ${privateField}`);
+  }
+  for (const privateValue of [
+    initial.proposal.proposal_id,
+    initial.proposal.trace_id,
+    initial.proposal.candidate_id,
+    initial.proposal.context_id,
+    correction.proposal.proposal_id,
+    correction.proposal.trace_id,
+    correction.proposal.candidate_id,
+    correction.proposal.context_id,
+    ...initial.claimFixtures.flatMap(({ sourceId, originId }) => [sourceId, originId]),
+    ...correction.claimFixtures.flatMap(({ sourceId, originId }) => [sourceId, originId]),
+    'fictional-reviewer-fixture-only',
+    'synthetic-reviewer-fixture-only',
+    REPORT_TEXT,
+  ]) {
+    assert.equal(serializedPublicResult.includes(privateValue), false,
+      'public list/detail projections omit private proposal, source, evidence, and reviewer values');
+  }
 }
 
 function makeProposal(overrides: Partial<EventProposal> = {}): EventProposal {
