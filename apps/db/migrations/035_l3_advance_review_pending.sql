@@ -41,10 +41,20 @@ SET search_path = pg_catalog
 AS $$
 DECLARE
   reservation_kind text;
+  reservation_status_value text;
   expected_kind text;
 BEGIN
-  IF NEW.reservation_id IS NULL THEN
-    RETURN NEW;
+  -- Serialize every marker insert with reservation/start/progress operations,
+  -- including reservation-less markers, using the shared request-row lock.
+  PERFORM 1
+  FROM waspada.investigation_requests AS request
+  WHERE request.dataset_kind = NEW.dataset_kind
+    AND request.investigation_id = NEW.investigation_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'L3 advance review-pending investigation does not exist'
+      USING ERRCODE = '23503';
   END IF;
 
   expected_kind := CASE
@@ -52,14 +62,30 @@ BEGIN
     WHEN NEW.stage IN ('action', 'refresh', 'progress') THEN 'tool'
   END;
 
-  SELECT reservation.action_kind
-    INTO reservation_kind
+  IF NEW.reservation_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Preserve the request -> reservation lock order used by the repository API.
+  SELECT reservation.action_kind, reservation.reservation_status
+    INTO reservation_kind, reservation_status_value
   FROM waspada.investigation_action_reservations AS reservation
   WHERE reservation.dataset_kind = NEW.dataset_kind
     AND reservation.investigation_id = NEW.investigation_id
-    AND reservation.reservation_id = NEW.reservation_id;
+    AND reservation.reservation_id = NEW.reservation_id
+  FOR UPDATE;
 
-  IF FOUND AND reservation_kind IS DISTINCT FROM expected_kind THEN
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'L3 advance review-pending reservation does not exist'
+      USING ERRCODE = '23503';
+  END IF;
+
+  IF reservation_status_value = 'released' THEN
+    RAISE EXCEPTION 'L3 advance review-pending reservation is released'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF reservation_kind IS DISTINCT FROM expected_kind THEN
     RAISE EXCEPTION 'L3 advance review-pending stage does not match reservation kind'
       USING ERRCODE = '23514';
   END IF;

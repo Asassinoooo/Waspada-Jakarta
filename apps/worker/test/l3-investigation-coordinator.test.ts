@@ -509,6 +509,45 @@ test('latches a planner throw or malformed status only when the exact reasoning 
   }
 });
 
+test('planner throw checks durable reservation even when the marker read fails', async (t) => {
+  await t.test('latches after a reasoning reservation was started', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({
+      planningMode: 'throws_after_start',
+      markerReadFailureAfterPlannerThrow: true,
+    });
+
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'advance_review_pending');
+    assert.equal(harness.ledger.marker?.stage, 'planning');
+    assert.equal(harness.ledger.marker?.reservationId, harness.planningCalls[0]?.reservationId);
+    assert.equal(harness.ledger.reservations.get(harness.planningCalls[0]!.reservationId)?.status, 'started');
+    assert.equal(result.checkpoint?.checkpoint_version, 1);
+    assert.equal(result.checkpoint?.case_status, 'open');
+  });
+
+  await t.test('preserves ledger uncertainty when no reservation exists', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness({
+      planningMode: 'throws_before_reservation',
+      markerReadFailureAfterPlannerThrow: true,
+    });
+
+    const result = await harness.coordinator.advance(openInput(context));
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected a closed review result');
+    assert.equal(result.reason, 'ledger_uncertain');
+    assert.equal(harness.ledger.marker, null);
+    assert.equal(harness.ledger.reservations.size, 0);
+    assert.equal(result.checkpoint?.checkpoint_version, 1);
+    assert.equal(result.checkpoint?.case_status, 'open');
+  });
+});
+
 test('a replayed planner reservation latches before action or refresh', async () => {
   const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
   const harness = makeHarness({ planningMode: 'replayed' });
@@ -941,11 +980,13 @@ function makeHarness(input: {
     | 'reservation_in_flight' | 'stale_checkpoint';
   readonly refreshMode?: 'throws' | 'marker_during_refresh';
   readonly reservationLookupMode?: 'normal' | 'throws';
+  readonly markerReadFailureAfterPlannerThrow?: boolean;
   readonly markerWriteFails?: boolean;
   readonly planningCheckpointUpdatedAt?: string;
   readonly wallNow?: () => string;
 } = {}) {
-  const ledger = new MemoryLedger(input.progressMode, input.reservationLookupMode, input.markerWriteFails);
+  const ledger = new MemoryLedger(input.progressMode, input.reservationLookupMode, input.markerWriteFails,
+    input.markerReadFailureAfterPlannerThrow);
   const entry = createInsufficientContextEntryService(ledger.repository, FINGERPRINTS);
   const events: string[] = [];
   const planningCalls: Array<{
@@ -989,6 +1030,7 @@ function makeHarness(input: {
       });
       if (input.planningMode === 'throws_before_reservation') {
         events.push('planner_threw_before_reservation');
+        if (input.markerReadFailureAfterPlannerThrow) ledger.failNextAdvanceReviewPendingRead();
         throw new Error('synthetic planner failure before reservation');
       }
       if (input.planningMode === 'abstained') {
@@ -1008,6 +1050,7 @@ function makeHarness(input: {
       if (input.planningMode === 'throws_after_start') {
         ledger.recordReservation(proposal.investigationId, proposal.reservationId, 'reasoning', 'started');
         events.push('planner_started');
+        if (input.markerReadFailureAfterPlannerThrow) ledger.failNextAdvanceReviewPendingRead();
         throw new Error('synthetic planner failure after start');
       }
       const checkpoint = ledger.advance(2);
@@ -1261,6 +1304,7 @@ class MemoryLedger {
       | 'reservation_in_flight' | 'stale_checkpoint',
     private readonly reservationLookupMode: 'normal' | 'throws' = 'normal',
     private readonly markerWriteFails = false,
+    private readonly markerReadFailureAfterPlannerThrow = false,
   ) {}
 
   latest: InvestigationCheckpointRecord | null = null;
@@ -1270,6 +1314,11 @@ class MemoryLedger {
   readonly persistedContexts = new Map<string, GroundingContextRecord>();
   readonly reservations = new Map<string, ReservationRecord>();
   lastProgressWasPersisted = false;
+  private failNextPendingRead = false;
+
+  failNextAdvanceReviewPendingRead(): void {
+    if (this.markerReadFailureAfterPlannerThrow) this.failNextPendingRead = true;
+  }
 
   readonly repository: InvestigationLedgerRepository = {
     create: async (createInput) => {
@@ -1291,11 +1340,15 @@ class MemoryLedger {
       return checkpoint;
     },
     getLatest: async (_datasetKind, _investigationId) => this.latest,
-    getAdvanceReviewPending: async (datasetKind, investigationId) => (
-      this.marker?.datasetKind === datasetKind && this.marker.investigationId === investigationId
+    getAdvanceReviewPending: async (datasetKind, investigationId) => {
+      if (this.failNextPendingRead) {
+        this.failNextPendingRead = false;
+        throw new Error('synthetic marker read failure');
+      }
+      return this.marker?.datasetKind === datasetKind && this.marker.investigationId === investigationId
         ? this.marker
-        : null
-    ),
+        : null;
+    },
     markAdvanceReviewPending: async (input) => {
       if (this.markerWriteFails) throw new Error('synthetic marker write failure');
       if (!this.latest || this.latest.dataset_kind !== input.datasetKind

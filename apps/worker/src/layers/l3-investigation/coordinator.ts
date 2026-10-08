@@ -272,7 +272,7 @@ export function createInvestigationCoordinator(
           });
         } catch {
           const pending = await pendingOutcome(checkpoint.dataset_kind, checkpoint.investigation_id, checkpoint);
-          if (pending) return pending;
+          if (pending?.status === 'review_required' && pending.reason === 'advance_review_pending') return pending;
           const latched = await latchIfReservationExists({
             datasetKind: checkpoint.dataset_kind,
             investigationId: checkpoint.investigation_id,
@@ -282,6 +282,11 @@ export function createInvestigationCoordinator(
             reservationId: replayKeys.reasoningReservationId,
           }, checkpoint);
           if (latched) return latched;
+          // A failed marker read is not evidence that no marker exists. We still
+          // attempted the locked marker write above; without a reservation to
+          // anchor it, preserve that original ledger uncertainty and do not stop
+          // or otherwise advance the case.
+          if (pending) return pending;
           return await reviewAndStop('planner_unavailable', checkpoint);
         }
 

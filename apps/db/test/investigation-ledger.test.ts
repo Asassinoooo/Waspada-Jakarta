@@ -338,6 +338,31 @@ describe('L3 durable investigation ledger', () => {
       reservedModelTokens: 0,
       reservedAt: '2026-09-25T10:02:01Z',
     });
+    const releasedFixture = await seedFixture(testDatabase, 'advance-review-marker-sql-released', { sufficient: false });
+    const releasedInput = makeCreateInput(releasedFixture);
+    const releasedInitial = await repository.create(releasedInput);
+    const releasedReservation = await repository.reserveAction({
+      datasetKind: releasedFixture.datasetKind,
+      investigationId: releasedInput.investigationId,
+      reservationId: 'marker-kind-sql-released',
+      expectedCheckpointVersion: releasedInitial.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('marker-kind-sql-released'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 2,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:02:02Z',
+    });
+    const released = await repository.releaseUninvoked({
+      datasetKind: releasedFixture.datasetKind,
+      investigationId: releasedInput.investigationId,
+      reservationId: 'marker-kind-sql-released',
+      expectedCheckpointVersion: releasedReservation.checkpoint.checkpoint_version,
+      releasedAt: '2026-09-25T10:02:03Z',
+    });
+    assert.equal((await repository.getActionReservation(
+      releasedFixture.datasetKind, releasedInput.investigationId, 'marker-kind-sql-released',
+    ))?.status, 'released');
     await testDatabase.executor.execute('SET ROLE waspada_l3_coordinator');
     try {
       await assert.rejects(testDatabase.executor.query(
@@ -356,6 +381,14 @@ describe('L3 durable investigation ledger', () => {
           reasoningReservation.checkpoint.checkpoint_version, 'marker-kind-sql-reasoning'],
       ), /stage does not match reservation kind/i,
       'the trigger rejects a coordinator-role progress marker bound to reasoning');
+      await assert.rejects(testDatabase.executor.query(
+        `INSERT INTO waspada.investigation_advance_review_pending
+           (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
+         VALUES ($1, $2, $3, 'action', 'action_result_uncertain', $4)`,
+        [releasedFixture.datasetKind, releasedInput.investigationId,
+          released.checkpoint.checkpoint_version, 'marker-kind-sql-released'],
+      ), /reservation is released/i,
+      'the coordinator-role trigger rejects a marker bound to a released reservation');
       await testDatabase.executor.query(
         `INSERT INTO waspada.investigation_advance_review_pending
            (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
@@ -369,6 +402,8 @@ describe('L3 durable investigation ledger', () => {
     assert.equal((await repository.getAdvanceReviewPending(directFixture.datasetKind,
       directInput.investigationId))?.stage, 'planning',
     'the coordinator-role trigger accepts the exact reasoning/planning pairing');
+    assert.equal(await repository.getAdvanceReviewPending(releasedFixture.datasetKind, releasedInput.investigationId), null,
+      'the coordinator-role trigger does not create a marker for a released reservation');
 
     const missingReservationFixture = await seedFixture(
       testDatabase, 'advance-review-marker-missing-reservation', { sufficient: false },
@@ -380,7 +415,7 @@ describe('L3 durable investigation ledger', () => {
          (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
        VALUES ($1, $2, 1, 'action', 'action_result_uncertain', 'marker-does-not-exist')`,
       [missingReservationFixture.datasetKind, missingReservationInput.investigationId],
-    ), /foreign key constraint/i,
+    ), /reservation does not exist/i,
     'the database enforces reservation lineage when a marker names a reservation');
 
     await assertLedgerError('advance_review_pending', repository.reserveAction({
