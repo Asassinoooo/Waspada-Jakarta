@@ -76,3 +76,9 @@ The implementation agent appends branch/worktree, exact base, commit SHAs and me
 - **Limitations:** authored synthetic data exists only in the temporary PGlite database and uses the live dataset tag only to exercise exact-live predicates. The fixture has no supported geometry, so the GeoJSON assertion covers the empty-collection case.
 - **Configuration/migration impact:** none. No production, API, schema, dependency, or runtime configuration files changed.
 - **Remaining decisions:** none for this test-only task; root independently reviews and accepts the branch.
+
+## Root review and acceptance
+
+Root reviewed agent commits `a17ab1d4eec40ec67207527d08e011219f8dac7a` and `3a4e5aeb13808961dcbf5e996252e80ca9ba1295` from base `0baa6a835ba1fc7d3d575cfc7b5571ded4176fd7`, preserving them on `main` as `a6f8a79` and `69e128d`. Independent review found that the API assertions checked freshness statuses but did not prove event and impact metadata (`evaluated_at`, `review_due_at`, and `basis`) stayed unchanged when a source-withdrawal transition occurred later. Root changed the transition instant to `2026-10-01T10:05:00.000000Z`, kept the published metadata at `2026-10-01T10:00:00.000000Z`, asserted the full event/impact `Freshness` values, and recorded the exact handoff commit identity in root commit `1ed1210`.
+
+Root independently passed the focused composition test (1/1), workspace `npm run typecheck`, and `git diff --check 0baa6a835ba1fc7d3d575cfc7b5571ded4176fd7..HEAD` in WSL Ubuntu-26.04 using Node `24.21.0`/npm `11.19.0`. The agent's WSL verification also passed `npm run db:test` (42/42 DB files), `npm test` (web 60, Worker 451, DB 42 files, evaluation 19), typecheck, build, and its final assigned-base diff check. The branch is accepted locally. The synthetic fixture has no source-supported geometry, so GeoJSON is correctly empty; PGlite does not verify hosted Neon or real source behavior.
