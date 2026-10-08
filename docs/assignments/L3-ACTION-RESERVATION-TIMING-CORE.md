@@ -73,3 +73,13 @@ Implemented on branch `work/L3-ACTION-RESERVATION-TIMING-CORE` in worktree `D:\P
 - **Full suite:** `npm test` exited 1. The database harness reported 40/41 files passing; `investigation-ledger.test.ts` failed in “composes one bounded synthetic investigation through exact-context private proposal persistence and replay” with `InvestigationLedgerError: reservation_conflict`. Its direct replay fixture still supplies the old `10:03` action reservation, while the coordinator now reserves at `10:04` after planning. That DB test is outside this assignment's allowed paths and was left unchanged for root integration to address separately.
 - **Migration/configuration impact:** none. No DB, schema, API, dependency, runtime-binding, or deployment changes.
 - **Remaining decision:** root integration should update the stale test-only replay timestamp and rerun the full suite. This task does not implement reservation recovery or Workflow runtime behavior.
+
+### Follow-up review fixes
+
+Applied on the same branch/worktree, based on `43f5b107afc514c943843298d10017ff3c8c5774`.
+
+- **Implementation commit:** `56abca1702174e709113653a2b497260344c298d` — `fix(L3): preserve reasoning timestamp validation`
+- **Changed paths:** `apps/worker/src/layers/l3-investigation/coordinator.ts` and `apps/worker/test/l3-investigation-coordinator.test.ts`.
+- **Behavior and regressions:** strict planner/action timestamp parsing now also requires the regex match to equal the complete string, so a trailing newline fails before action invocation. Existing caller-supplied `reasoningReservedAt` validation is restored to its prior `TIMESTAMP_PATTERN` plus `Date.parse` behavior; a 30-digit fractional timestamp remains accepted and reaches the planner unchanged.
+- **Runtime and checks:** WSL Ubuntu-26.04, Linux Node `v24.21.0`, npm `11.19.0`; focused coordinator test passed, 37/37; `npm run typecheck` passed; `npm run build` passed (Vite production build and Wrangler dry run); `git diff --check 43f5b107afc514c943843298d10017ff3c8c5774..HEAD` passed after the implementation commit.
+- **Full suite:** not rerun for this follow-up. The previously recorded `npm test` failure remains the single out-of-scope stale replay fixture in `investigation-ledger.test.ts`; the DB test was not changed.
