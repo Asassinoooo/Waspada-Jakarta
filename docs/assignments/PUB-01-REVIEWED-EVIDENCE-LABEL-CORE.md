@@ -1,14 +1,14 @@
 # PUB-01-REVIEWED-EVIDENCE-LABEL-CORE — carry explicit public labels through the manual gate
 
-- **Status:** Assigned design; implementation pending
+- **Status:** Assigned for implementation
 - **Backlog ID:** `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE`
 - **Parent:** `PUB-01`
 - **Dependencies:** Accepted `PUB-01-MANUAL-GATE-CORE`, `PUB-WRITE-CORE`, `L2-PROPOSAL-PERSIST-CORE`, `L2-PROPOSAL-REASONING-BRIDGE-CORE`, `MOD-01-WRITER-ROLE-CORE`, and `DB-TEST-RUNNER-ISOLATION`; [ADR-003](../decisions/ADR-003-domain-publication-evidence.md), [ADR-013](../decisions/ADR-013-publication-write-transaction.md), [ADR-036](../decisions/ADR-036-event-proposal-persistence.md), and [ADR-052](../decisions/ADR-052-moderator-selected-public-evidence-labels.md)
-- **Sequencing prerequisite:** Root must pin the assigned base after `L3-ADVANCE-REVIEW-PENDING-CORE` migration 035 and its handoff are integrated. This is a base-state requirement only; do not edit shared state or take on that task.
+- **Assigned base:** `d50626b8b548cbbf35b8e792ce47d7ae300bfe09` (`docs(L3): record accepted review-pending marker`), which includes migration 035 and the completed L3 handoff.
 - **Contract baseline:** Private `EventProposal` and `PublicationDecision`, `PublicationWriteCommand`, and `Event` schema version `2.0`; existing public evidence-label enum and normalized `event_claims.evidence_label` column
 - **Implementation model:** GPT-6 Luna, max reasoning
-- **Branch placeholder:** `work/PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` (root pins the actual branch/base in dispatch)
-- **Worktree placeholder:** `.codex-build/worktrees/pub-01-reviewed-evidence-label-core` (root pins the actual isolated worktree in dispatch)
+- **Branch:** `work/PUB-01-REVIEWED-EVIDENCE-LABEL-CORE`
+- **Worktree:** `.codex-build/worktrees/pub-01-reviewed-evidence-label-core`
 
 ## Objective
 
