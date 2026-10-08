@@ -53,4 +53,20 @@ Stop if the task needs a new public contract, review mutation, source rights, re
 
 ## Implementer handoff
 
-Append exact branch/worktree, base, commit SHAs/messages, changed paths, behavior, checks actually run, limitations, configuration impact, and remaining decisions here after committing.
+### Implementation handoff
+
+- **Branch/worktree:** `work/API-01-LIFE-01-UPDATE-FEED-BOUNDARY-PGLITE-CORE` at `.codex-build/worktrees/api-01-life-01-update-feed-boundary-pglite-core`.
+- **Exact base:** pushed `main`, `3e1370927c80f1673c3801e043230d1c8d7a737b`.
+- **Implementation commit:** `72eb8f9eb35d709000bb0f3d7e3059ce89cc361e` — `test(API-01-LIFE-01): verify freshness does not advance updates`.
+- **Changed paths:** `apps/db/test/source-revision-freshness-transition-composition.test.ts` and this handoff section only.
+- **Behavior:** the PGlite composition captures the exact-live updates cursor before source withdrawal, preserves its existing current list/detail/GeoJSON checks, then calls the existing updates handler with that cursor. It verifies an empty page and unchanged decoded sequence, fixed page shape, one request-scoped SQL operation per updates request, and no private source, transition, or signing values in the updates response or bounded telemetry.
+- **Verification environment:** WSL Ubuntu-26.04; Node `v24.21.0`, npm `11.19.0`, Git `2.53.0`; existing DB manifest pins `@electric-sql/pglite` `0.5.8`.
+- **Checks actually run:**
+  - `npm exec -- tsx --test apps/db/test/source-revision-freshness-transition-composition.test.ts` — passed, 1/1.
+  - `npm run db:test` — passed, 44/44 DB test files.
+  - `npm test` — passed, including the web suite and 44/44 DB test files.
+  - `npm run typecheck` — passed.
+  - `npm run build` — passed; Vite and Wrangler dry-run completed.
+  - `git diff --check 3e1370927c80f1673c3801e043230d1c8d7a737b..HEAD` — passed in WSL for the implementation commit.
+- **Limitations/configuration impact:** test-only, synthetic fixture and disposable PGlite; no production, API/DTO/OpenAPI, schema/migration/grant, dependency, configuration, source, or runtime behavior change. No credentials, live data, or external services used.
+- **Remaining decision:** none for the assigned slice; root review and integration remain pending. The handoff-document commit SHA is supplied in the root task handoff because a commit cannot contain its own SHA.
