@@ -8,6 +8,7 @@
 - **Contract baseline:** Schema 2.0 `EventProposal`, `PublicationDecision`, label-aware `ManualPublicationServiceInput`, label-aware `PublicationWriteCommand`, and the existing moderator writer role in migration 017; no database schema or migration change
 - **Implementation model:** GPT-6 Luna, max reasoning
 - **Branch/worktree:** `work/PUB-01-MANUAL-GATE-PGLITE-CORE` / `.codex-build/worktrees/pub-01-manual-gate-pglite-core`; agent works only in this isolated WSL-accessible worktree
+- **Allowed paths:** `apps/db/test/manual-publication-gate-composition.test.ts` (new) and `docs/assignments/PUB-01-MANUAL-GATE-PGLITE-CORE-HANDOFF.md` (new). The DB test runner discovers `*.test.ts` automatically, so do not edit package manifests or runner code.
 
 ## Objective
 
@@ -62,7 +63,7 @@ Root owns architecture, backlog, SDP, checkpoint, delivery log, and any scope ch
 - Tests verify the proposal used by the gate came from the strict DB reader, no fake writer substitutes for the real writer in the positive path, and no route/runtime or demo wiring changed.
 - Fixtures and comments clearly state that all source/evidence/reviewer values are authored synthetic test values and make no real source-rights, reviewer-identity, or quality assertion.
 - In WSL Ubuntu-26.04 with existing dependencies only, record Node/npm and PGlite versions; run the focused composition test, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check <assigned-base>..HEAD`. Do not install dependencies or call external services.
-- Commit the test and package registration, then the completed handoff, as separate descriptive commits on the assigned branch. Leave the worktree clean. Do not merge or push; root independently reviews and accepts.
+- The DB test runner discovers the new `*.test.ts` file automatically. Commit the test, then the completed handoff, as separate descriptive commits on the assigned branch. Leave the worktree clean. Do not edit outside allowed paths, merge, or push; root independently reviews and accepts.
 
 ## Stop and escalation conditions
 
@@ -70,7 +71,7 @@ Stop if the existing moderator publication writer role cannot execute the compos
 
 ## Implementation handoff
 
-The implementer records the assigned branch/worktree and exact base, commit SHA(s) and exact messages, changed paths, behavior, WSL runtime/package versions, actual check results, limitations, migration/configuration impact, and remaining decisions here. Root independently reviews and records acceptance.
+The implementer records the assigned branch/worktree and exact base, commit SHA(s) and exact messages, changed paths, behavior, WSL runtime/package versions, actual check results, limitations, migration/configuration impact, and remaining decisions in the allowed handoff file. Root independently reviews and records acceptance here.
 
 ### Root review — original blocker before label decision
 
