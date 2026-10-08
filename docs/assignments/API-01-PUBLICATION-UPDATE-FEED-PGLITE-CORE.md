@@ -41,3 +41,14 @@ Stop and report the exact gap if the actual handler/runtime cannot use the exist
 ## Implementation handoff
 
 Append the branch/worktree, exact base, commit SHAs and messages, changed paths, behavior, actual WSL checks, runtime versions, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+
+### Completed implementation handoff
+
+- **Branch/worktree:** `work/API-01-PUBLICATION-UPDATE-FEED-PGLITE-CORE` at `.codex-build/worktrees/api-01-publication-update-feed-pglite-core`; exact assigned base: `f1f057b722ea9f9f0d16fe61de834316cfe4c39b`.
+- **Commits:** `a4e6b11c85762744b47aee9b49c1bfc2d4ae3ff4` (`test(API-01): exercise publication updates route feed`); handoff commit message: `docs(API-01): record publication updates feed handoff` (its full SHA is reported with the final handoff).
+- **Changed paths:** `apps/db/test/manual-publication-public-read-chain.test.ts`; this assignment handoff section only.
+- **Behavior:** The disposable PGlite composition now captures an empty baseline cursor through the actual exact-live `GET /api/v1/updates` handler before either L4 write, then verifies the initial publication and correction through the handler/runtime and continues from the returned cursor without duplicates. It checks exact disclosure fields and publication timestamps, closed page/entry keys, cursor advancement, request-time/expiry separation, private-value exclusion, and one injected SQL operation with a repeatable-read/read-only transaction per request. Existing public list/detail/history assertions remain in place.
+- **Verification environment:** WSL `Ubuntu-26.04`, Linux Node `v24.21.0`, npm `11.19.0`; runtime selected from the preinstalled `/home/perry/.local/share/waspada-node-v24.21.0/bin`.
+- **Actual checks:** `npm exec --no -- tsx --test apps/db/test/manual-publication-public-read-chain.test.ts` passed 3/3 on final source; `npm run db:test` passed 44/44 files; `npm test` exited 0 on final source (web 60, Worker 464, DB 44/44 files, evaluation 19); `npm run typecheck` passed; `npm run build` passed, including Vite production build and Wrangler Worker dry-run; the assigned-base `git diff --check f1f057b722ea9f9f0d16fe61de834316cfe4c39b..HEAD` passed in WSL after the handoff commit.
+- **Limitations/configuration:** Synthetic authored rows and disposable PGlite only. No production/API/DTO/OpenAPI/database/dependency/configuration change; no migration or grant impact. Hosted Neon, source rights, authenticated reviewer identity, and deployed Worker behavior are not established by this test.
+- **Remaining decisions:** None within this test-only assignment; root review and integration remain pending.
