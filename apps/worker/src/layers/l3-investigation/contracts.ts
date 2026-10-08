@@ -11,9 +11,8 @@ export interface InvestigationStepReplayKeys {
   /** Reuse these exact values when retrying the same coordinator invocation. */
   readonly reasoningReservationId: string;
   readonly reasoningReservedAt: string;
-  /** Reuse this action reservation ID and timestamp exactly when retrying the same advance. */
+  /** Reuse this action reservation ID when retrying the same advance. */
   readonly actionReservationId: string;
-  readonly actionReservedAt: string;
 }
 
 export interface OpenInvestigationAdvance extends InvestigationStepReplayKeys {

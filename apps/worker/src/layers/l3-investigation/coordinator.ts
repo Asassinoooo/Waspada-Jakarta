@@ -10,6 +10,7 @@ import {
   INVESTIGATION_PLAN_VERSION,
   type InvestigationActionMenuEntry,
   type InvestigationPlanRequest,
+  type ProposedInvestigationAction,
 } from '../l2-model-grounding/investigation-planner.js';
 import type { GroundingContext } from '../l2-model-grounding/contracts.js';
 import { validateReasoningRequest } from '../l2-model-grounding/validation.js';
@@ -30,8 +31,18 @@ import type {
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ACTION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/;
-const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+// This bounded RFC3339 app profile matches the L2 timestamp contract: at most 40 code units
+// and 1–9 fractional digits. It intentionally rejects leap seconds and longer RFC3339 fractions.
+const RFC3339_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?([Zz]|([+-])(\d{2}):(\d{2}))$/;
+const MAX_RFC3339_TIMESTAMP_LENGTH = 40;
 const MAX_QUESTIONS = 20;
+
+interface ParsedRfc3339Instant {
+  /** Whole Unix seconds after applying the timestamp's numeric UTC offset. */
+  readonly epochSeconds: number;
+  /** Fractional second with insignificant trailing zeros removed. */
+  readonly fractionalSecond: string;
+}
 
 export interface InvestigationCoordinatorOptions {
   readonly entry: InsufficientContextEntryService;
@@ -176,6 +187,18 @@ export function createInvestigationCoordinator(
           return review('ledger_uncertain', planning.checkpoint);
         }
 
+        const proposal = parseProposedAction(planning.proposal, actionMenu);
+        if (!proposal) return review('invalid_context', planning.checkpoint);
+        const plannerCheckpointTime = parseRfc3339Instant(planning.checkpoint.updated_at);
+        if (!plannerCheckpointTime) return review('ledger_uncertain', planning.checkpoint);
+        const actionReservedAt = safeWallNow(options.wallNow);
+        const actionReservedTime = parseRfc3339Instant(actionReservedAt);
+        if (!actionReservedAt || !actionReservedTime
+          || compareRfc3339Instants(actionReservedTime, plannerCheckpointTime) < 0) {
+          // Planning is durable. Keep its checkpoint visible and stop before reserving an action.
+          return review('ledger_uncertain', planning.checkpoint);
+        }
+
         let actionResult;
         try {
           actionResult = await options.singleStep.execute({
@@ -183,9 +206,9 @@ export function createInvestigationCoordinator(
             investigationId: planning.checkpoint.investigation_id,
             expectedCheckpointVersion: planning.checkpoint.checkpoint_version,
             reservationId: replayKeys.actionReservationId,
-            reservedAt: replayKeys.actionReservedAt,
-            actionName: planning.proposal.actionName,
-            input: planning.proposal.input,
+            reservedAt: actionReservedAt,
+            actionName: proposal.actionName,
+            input: proposal.input,
           });
         } catch (error) {
           if (error instanceof InvestigationLedgerError && error.code === 'budget_exhausted') {
@@ -494,19 +517,55 @@ function parseReplayKeys(value: Record<string, unknown>): {
   readonly reasoningReservationId: string;
   readonly reasoningReservedAt: string;
   readonly actionReservationId: string;
-  readonly actionReservedAt: string;
 } | undefined {
   try {
     const reasoningReservationId = value.reasoningReservationId;
     const reasoningReservedAt = value.reasoningReservedAt;
     const actionReservationId = value.actionReservationId;
-    const actionReservedAt = value.actionReservedAt;
     if (!isId(reasoningReservationId)
       || !isTimestamp(reasoningReservedAt)
       || !isId(actionReservationId)
-      || !isTimestamp(actionReservedAt)
       || reasoningReservationId === actionReservationId) return undefined;
-    return { reasoningReservationId, reasoningReservedAt, actionReservationId, actionReservedAt };
+    return { reasoningReservationId, reasoningReservedAt, actionReservationId };
+  } catch {
+    return undefined;
+  }
+}
+
+function parseProposedAction(
+  value: unknown,
+  actionMenu: readonly InvestigationActionMenuEntry[],
+): ProposedInvestigationAction | undefined {
+  try {
+    if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) return undefined;
+    const keys = Reflect.ownKeys(value);
+    const expectedKeys = ['schemaVersion', 'recordType', 'outcome', 'actionName', 'input'];
+    if (keys.length !== expectedKeys.length || keys.some((key) => typeof key !== 'string')) return undefined;
+    const stringKeys = keys as string[];
+    if (expectedKeys.some((key) => !stringKeys.includes(key))) return undefined;
+
+    const fields: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const key of expectedKeys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) return undefined;
+      Object.defineProperty(fields, key, { value: descriptor.value, enumerable: true });
+    }
+    if (fields.schemaVersion !== INVESTIGATION_PLAN_VERSION
+      || fields.recordType !== 'InvestigationPlanResult'
+      || fields.outcome !== 'proposed'
+      || typeof fields.actionName !== 'string'
+      || !actionMenu.some((entry) => entry.name === fields.actionName)
+      || !isRecord(fields.input)) return undefined;
+    const inputPrototype = Object.getPrototypeOf(fields.input);
+    if (inputPrototype !== Object.prototype && inputPrototype !== null) return undefined;
+
+    return {
+      schemaVersion: INVESTIGATION_PLAN_VERSION,
+      recordType: 'InvestigationPlanResult',
+      outcome: 'proposed',
+      actionName: fields.actionName,
+      input: fields.input as ProposedInvestigationAction['input'],
+    };
   } catch {
     return undefined;
   }
@@ -636,16 +695,83 @@ function isPositiveInteger(value: unknown): value is number {
 }
 
 function isTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && TIMESTAMP_PATTERN.test(value) && Number.isFinite(Date.parse(value));
+  return typeof value === 'string'
+    && value[10] === 'T'
+    && !value.endsWith('z')
+    && parseRfc3339Instant(value) !== undefined;
 }
 
 function safeWallNow(wallNow: () => string): string | undefined {
   try {
     const value = wallNow();
-    return isTimestamp(value) ? value : undefined;
+    if (!parseRfc3339Instant(value)) return undefined;
+    const normalized = `${value.slice(0, 10)}T${value.slice(11)}`;
+    return normalized.endsWith('z') ? `${normalized.slice(0, -1)}Z` : normalized;
   } catch {
     return undefined;
   }
+}
+
+function parseRfc3339Instant(value: unknown): ParsedRfc3339Instant | undefined {
+  // Bound both representation length and fractional precision before comparing caller-visible time.
+  if (typeof value !== 'string' || value.length > MAX_RFC3339_TIMESTAMP_LENGTH) return undefined;
+  const match = RFC3339_TIMESTAMP_PATTERN.exec(value);
+  if (!match) return undefined;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (month < 1 || month > 12
+    || day < 1 || day > daysInMonth(year, month)
+    || hour > 23 || minute > 59 || second > 59) return undefined;
+
+  let offsetSeconds = 0;
+  if (match[9]) {
+    const offsetHour = Number(match[10]);
+    const offsetMinute = Number(match[11]);
+    if (offsetHour > 23 || offsetMinute > 59) return undefined;
+    const sign = match[9] === '+' ? 1 : -1;
+    offsetSeconds = sign * (offsetHour * 60 + offsetMinute) * 60;
+  }
+
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, 0);
+  const utcMilliseconds = date.getTime();
+  if (!Number.isFinite(utcMilliseconds)) return undefined;
+
+  return {
+    epochSeconds: utcMilliseconds / 1_000 - offsetSeconds,
+    fractionalSecond: (match[7] ?? '').replace(/0+$/, ''),
+  };
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leapYear ? 29 : 28;
+  }
+  return month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
+}
+
+function compareRfc3339Instants(left: ParsedRfc3339Instant, right: ParsedRfc3339Instant): number {
+  if (left.epochSeconds < right.epochSeconds) return -1;
+  if (left.epochSeconds > right.epochSeconds) return 1;
+  const length = Math.max(left.fractionalSecond.length, right.fractionalSecond.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftDigit = index < left.fractionalSecond.length
+      ? left.fractionalSecond.charCodeAt(index)
+      : 48;
+    const rightDigit = index < right.fractionalSecond.length
+      ? right.fractionalSecond.charCodeAt(index)
+      : 48;
+    if (leftDigit < rightDigit) return -1;
+    if (leftDigit > rightDigit) return 1;
+  }
+  return 0;
 }
 
 function review(
