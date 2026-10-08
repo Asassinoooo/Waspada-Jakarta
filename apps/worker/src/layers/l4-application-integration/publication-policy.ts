@@ -37,6 +37,17 @@ export interface CurrentEventVersionSnapshot {
   readonly version: number;
 }
 
+export type PublicEvidenceLabel =
+  | "issuer_notice"
+  | "attributed_report"
+  | "independent_corroboration"
+  | "crowdsourced_observation";
+
+export interface ModeratorClaimEvidenceLabel {
+  readonly claimId: string;
+  readonly evidenceLabel: PublicEvidenceLabel;
+}
+
 /** The authorization boolean is asserted by the trusted L4 caller; this module does not authenticate. */
 export interface ExplicitModeratorDecision {
   readonly action: "approve" | "hold" | "reject";
@@ -44,6 +55,8 @@ export interface ExplicitModeratorDecision {
   readonly decidedAt: string;
   readonly reason: string;
   readonly trustedCallerAuthorized: boolean;
+  /** Required by the manual publication service for every claim it will publish. */
+  readonly claimEvidenceLabels?: readonly ModeratorClaimEvidenceLabel[];
 }
 
 export interface PublicationPolicyInput {

@@ -13,7 +13,11 @@ import { type CurrentEvidenceState, type ExplicitModeratorDecision, type Publica
 const SUPPORT: EvidenceReference = { reportRevisionId: "revision-synthetic-support", permittedTextHash: "a".repeat(64), spanStart: 0, spanEnd: 9, offsetUnit: "unicode_code_points", relation: "supports" };
 const CONTRADICTION: EvidenceReference = { reportRevisionId: "revision-synthetic-contradiction", permittedTextHash: "b".repeat(64), spanStart: 0, spanEnd: 9, offsetUnit: "unicode_code_points", relation: "contradicts" };
 const CONTEXT: EvidenceReference = { reportRevisionId: "revision-synthetic-context", permittedTextHash: "c".repeat(64), spanStart: 0, spanEnd: 9, offsetUnit: "unicode_code_points", relation: "context" };
-const DECISION: ExplicitModeratorDecision = { action: "approve", actorId: "moderator-synthetic-1", decidedAt: "2026-09-25T09:00:00+07:00", reason: "Synthetic manual review decision.", trustedCallerAuthorized: true };
+const DECISION: ExplicitModeratorDecision = {
+  action: "approve", actorId: "moderator-synthetic-1", decidedAt: "2026-09-25T09:00:00+07:00",
+  reason: "Synthetic manual review decision.", trustedCallerAuthorized: true,
+  claimEvidenceLabels: [{ claimId: "claim-001", evidenceLabel: "issuer_notice" }],
+};
 const MODEL_RUN: ReasoningResult["modelRun"] = { capability: "reasoning", modelVersion: "synthetic-model-v1", promptVersion: "synthetic-prompt-v1", inputTokens: 17, outputTokens: 9 };
 
 interface Fixture { readonly input: ManualPublicationServiceInput; readonly proposal: EventProposal; }
@@ -57,15 +61,18 @@ function makeFixture(options: {
   readonly target?: PublicationEventTarget;
   readonly investigationId?: string | null;
   readonly claim?: ProposedClaim;
+  readonly claims?: readonly ProposedClaim[];
   readonly decision?: ExplicitModeratorDecision | null;
+  readonly claimEvidenceLabels?: ExplicitModeratorDecision["claimEvidenceLabels"];
   readonly datasetKind?: "live" | "historical" | "synthetic";
   readonly contextRelationUpdates?: boolean;
 } = {}): Fixture {
   const target = options.target ?? { kind: "new" as const };
   const contextReference = options.contextRelationUpdates ? { ...CONTEXT, relation: "updates" as const } : CONTEXT;
   const references = [SUPPORT, CONTRADICTION, contextReference];
-  const claim = makeClaim({ ...(options.claim ?? {}), contextEvidence: [contextReference] });
-  const reasoningResult: ReasoningResult = { outcome: "proposed", claims: [claim], unresolvedFields: [], conflicts: [], modelRun: MODEL_RUN, provider: "synthetic-only" };
+  const claims = (options.claims ?? [options.claim ?? makeClaim()]).map((claim) =>
+    makeClaim({ ...claim, contextEvidence: [contextReference] }));
+  const reasoningResult: ReasoningResult = { outcome: "proposed", claims, unresolvedFields: [], conflicts: [], modelRun: MODEL_RUN, provider: "synthetic-only" };
   const datasetKind = options.datasetKind ?? "live";
   const context: GroundingContext = {
     schemaVersion: "2.0", recordType: "GroundingContext", datasetKind, traceId: "trace-synthetic-001", contextId: "context-synthetic-001", candidateId: "candidate-synthetic-001",
@@ -87,10 +94,19 @@ function makeFixture(options: {
   const currentEvidenceStates: readonly CurrentEvidenceState[] = candidates.map((candidate) => ({
     datasetKind, evidenceReferenceId: candidate.evidenceReferenceId, sourceId: candidate.source.sourceId, remit: "in_scope", freshness: "current",
   }));
+  const defaultLabels = claims.map((_, index) => ({
+    claimId: "claim-" + String(index + 1).padStart(3, "0"),
+    evidenceLabel: (["issuer_notice", "attributed_report", "independent_corroboration", "crowdsourced_observation"] as const)[index % 4]!,
+  }));
+  const claimEvidenceLabels = options.claimEvidenceLabels ?? defaultLabels;
+  const moderatorDecision = options.decision === undefined
+    ? { ...DECISION, claimEvidenceLabels }
+    : options.decision === null ? null
+      : { ...options.decision, claimEvidenceLabels: options.claimEvidenceLabels ?? options.decision.claimEvidenceLabels };
   const policyInput: PublicationPolicyInput = {
     groundingContext: context, reasoningResult, retrieval, currentEvidenceStates, target,
     currentEvent: target.kind === "update" ? { eventId: target.eventId, version: target.baseVersion } : null,
-    moderatorDecision: options.decision === undefined ? DECISION : options.decision,
+    moderatorDecision,
   };
   const eventId = target.kind === "update" ? target.eventId : "event-synthetic-new";
   const eventVersion = target.kind === "update" ? target.baseVersion + 1 : 1;
@@ -104,20 +120,21 @@ function makeFixture(options: {
   const impact: PublicationImpactVersionDraft = {
     impact_id: "impact-synthetic-001", version: 1, event_id: eventId, event_version: eventVersion, impact_type: "road_closure",
     title: "Synthetic road access impact", description: "Synthetic impact description.", lifecycle: "ongoing", freshness: event.freshness,
-    event_time: event.event_time, validity: event.validity, scope: event.scope, supporting_claim_ids: ["claim-001"], published_at: event.published_at,
+    event_time: event.event_time, validity: event.validity, scope: event.scope,
+    supporting_claim_ids: claims.map((_, index) => "claim-" + String(index + 1).padStart(3, "0")), published_at: event.published_at,
   };
   const proposal: EventProposal = {
     schema_version: "2.0", trace_id: context.traceId, record_type: "EventProposal", dataset_kind: datasetKind,
     proposal_id: "proposal-synthetic-001", candidate_id: context.candidateId, context_id: context.contextId,
     event_id: target.kind === "update" ? target.eventId : null, base_event_version: target.kind === "update" ? target.baseVersion : null,
     investigation_id: options.investigationId ?? null,
-    claims: [{
-      claim_id: "claim-001", text: claim.text, event_time: toProposalTime(claim.eventTime),
+    claims: claims.map((claim, index) => ({
+      claim_id: "claim-" + String(index + 1).padStart(3, "0"), text: claim.text, event_time: toProposalTime(claim.eventTime),
       validity: { valid_from: claim.validity.validFrom, valid_until: claim.validity.validUntil },
       scope: { place_ids: [...claim.scope.placeIds], service_ids: [...claim.scope.serviceIds], institution_ids: [...claim.scope.institutionIds], audience_ids: [...claim.scope.audienceIds], geometry_ids: [...claim.scope.geometryIds] },
       qualifiers: [...claim.qualifiers], support: claim.support.map(toProposalEvidence), contradictions: claim.contradictions.map(toProposalEvidence),
       context_evidence: claim.contextEvidence.map(toProposalEvidence), origin_ids: ["origin-synthetic-support"], support_assessment: claim.supportAssessment, evidence_label: "under_review",
-    }],
+    })),
     unresolved_fields: [...reasoningResult.unresolvedFields],
     model_runs: [{ capability: "reasoning", model_version: MODEL_RUN.modelVersion, prompt_version: MODEL_RUN.promptVersion, input_tokens: MODEL_RUN.inputTokens, output_tokens: MODEL_RUN.outputTokens }],
     proposed_at: "2026-09-25T08:50:00+07:00",
@@ -159,12 +176,61 @@ test("one gate covers direct and investigated proposals for new and update targe
       decisionId: "decision-synthetic-001", policyVersion: "publication-policy-synthetic-v1",
       expectedTarget: { event_id: entry.target.kind === "update" ? entry.target.eventId : null, base_event_version: entry.target.kind === "update" ? entry.target.baseVersion : null },
       moderatorApproval: { action: "approve", trusted_caller_authorized: true, actor_id: DECISION.actorId, decided_at: DECISION.decidedAt, reason: DECISION.reason },
-      claimDecisions: [{ claim_id: "claim-001", disposition: "publish", reason_codes: ["explicit_moderator_approval"], evidence: references.map((reference) => ({
+      claimDecisions: [{ claim_id: "claim-001", disposition: "publish", reason_codes: ["explicit_moderator_approval"], evidence_label: "issuer_notice", evidence: references.map((reference) => ({
         report_revision_id: reference.reportRevisionId, permitted_text_hash: reference.permittedTextHash, span_start: reference.spanStart,
         span_end: reference.spanEnd, offset_unit: reference.offsetUnit, relation: reference.relation,
       })) }],
       event: fixture.input.eventDraft, impacts: fixture.input.impactDrafts,
     });
+  }
+});
+
+test("maps all four public labels by exact claim ID regardless of approval-list order", async () => {
+  const labels = [
+    { claimId: "claim-004", evidenceLabel: "crowdsourced_observation" },
+    { claimId: "claim-002", evidenceLabel: "attributed_report" },
+    { claimId: "claim-003", evidenceLabel: "independent_corroboration" },
+    { claimId: "claim-001", evidenceLabel: "issuer_notice" },
+  ] as const;
+  const fixture = makeFixture({
+    claims: ["one", "two", "three", "four"].map((value) => makeClaim({ text: `Synthetic claim ${value}.` })),
+    claimEvidenceLabels: labels,
+  });
+  const ports = makePorts(fixture.proposal);
+  const result = await createManualPublicationService(ports.reader, ports.writer).publish(fixture.input);
+  assert.equal(result.status, "written");
+  assert.deepEqual(ports.calls[0]?.claimDecisions.map(({ claim_id, evidence_label }) => ({ claim_id, evidence_label })), [
+    { claim_id: "claim-001", evidence_label: "issuer_notice" },
+    { claim_id: "claim-002", evidence_label: "attributed_report" },
+    { claim_id: "claim-003", evidence_label: "independent_corroboration" },
+    { claim_id: "claim-004", evidence_label: "crowdsourced_observation" },
+  ]);
+});
+
+test("missing, duplicate, unknown, extra, malformed, and invalid moderator labels deny before the writer", async () => {
+  const fixture = makeFixture();
+  const valid = [{ claimId: "claim-001", evidenceLabel: "issuer_notice" }];
+  const invalidChoices: readonly [string, unknown][] = [
+    ["missing", []],
+    ["duplicate", [...valid, ...valid]],
+    ["unknown", [{ claimId: "claim-999", evidenceLabel: "issuer_notice" }]],
+    ["extra", [...valid, { claimId: "claim-002", evidenceLabel: "attributed_report" }]],
+    ["malformed", [{ claimId: "claim-001", evidenceLabel: "issuer_notice", sourceId: "source-synthetic" }]],
+    ["invalid", [{ claimId: "claim-001", evidenceLabel: "under_review" }]],
+  ];
+  for (const [name, choices] of invalidChoices) {
+    const input = {
+      ...fixture.input,
+      policyInput: {
+        ...fixture.input.policyInput,
+        moderatorDecision: { ...DECISION, claimEvidenceLabels: choices as ExplicitModeratorDecision["claimEvidenceLabels"] },
+      },
+    } as unknown as ManualPublicationServiceInput;
+    const ports = makePorts(fixture.proposal);
+    assert.deepEqual(await createManualPublicationService(ports.reader, ports.writer).publish(input), {
+      status: "denied", code: "invalid_write_draft",
+    }, name);
+    assert.deepEqual(ports.calls, [], name);
   }
 });
 

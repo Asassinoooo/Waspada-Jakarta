@@ -22,6 +22,7 @@ import type { EvidenceReference, GroundingContext, ReasoningResult } from "../l2
 import {
   assessPublicationPolicy,
   type AssessedEvidenceReference,
+  type ModeratorClaimEvidenceLabel,
   type PublicationPolicyInput,
 } from "./publication-policy.js";
 
@@ -406,6 +407,7 @@ function buildWriteCommand(
     || claims.length !== proposal.claims.length) {
     throw new InvalidWriteDraft();
   }
+  const evidenceLabels = parseClaimEvidenceLabels(decision.claimEvidenceLabels, proposal);
   const claimDecisions: PublicationClaimDecision[] = proposal.claims.map((proposalClaim, index) => {
     const assessment = claims[index];
     if (!assessment || assessment.claimIndex !== index || assessment.disposition !== "publish") {
@@ -428,6 +430,7 @@ function buildWriteCommand(
         : [CLAIM_APPROVAL_REASON],
       evidence: assessedReferences.map((entry) =>
         toPublicationEvidence(entry.reference)),
+      evidence_label: evidenceLabels.get(proposalClaim.claim_id)!,
     };
   });
 
@@ -453,6 +456,30 @@ function buildWriteCommand(
     event: input.eventDraft,
     impacts: input.impactDrafts,
   };
+}
+
+function parseClaimEvidenceLabels(
+  value: unknown,
+  proposal: EventProposal,
+): ReadonlyMap<string, ModeratorClaimEvidenceLabel["evidenceLabel"]> {
+  if (!Array.isArray(value) || value.length > proposal.claims.length) throw new InvalidWriteDraft();
+  const allowedClaimIds = new Set(proposal.claims.map((claim) => claim.claim_id));
+  const labels = new Map<string, ModeratorClaimEvidenceLabel["evidenceLabel"]>();
+  const allowedLabels = new Set<ModeratorClaimEvidenceLabel["evidenceLabel"]>([
+    "issuer_notice", "attributed_report", "independent_corroboration", "crowdsourced_observation",
+  ]);
+  for (const entry of value) {
+    const choice = exactRecord(entry, ["claimId", "evidenceLabel"]);
+    if (!isIdentifier(choice.claimId) || !allowedClaimIds.has(choice.claimId)
+      || typeof choice.evidenceLabel !== "string"
+      || !allowedLabels.has(choice.evidenceLabel as ModeratorClaimEvidenceLabel["evidenceLabel"])
+      || labels.has(choice.claimId)) {
+      throw new InvalidWriteDraft();
+    }
+    labels.set(choice.claimId, choice.evidenceLabel as ModeratorClaimEvidenceLabel["evidenceLabel"]);
+  }
+  if (labels.size !== allowedClaimIds.size) throw new InvalidWriteDraft();
+  return labels;
 }
 
 function toPublicationEvidence(reference: EvidenceReference): PublicationClaimDecision["evidence"][number] {

@@ -29,7 +29,14 @@ export interface PublicationClaimDecision {
   readonly disposition: PublicationDisposition;
   readonly reason_codes: readonly string[];
   readonly evidence: readonly PublicationEvidenceReference[];
+  readonly evidence_label?: PublicationEvidenceLabel;
 }
+
+export type PublicationEvidenceLabel =
+  | 'issuer_notice'
+  | 'attributed_report'
+  | 'independent_corroboration'
+  | 'crowdsourced_observation';
 
 export interface TrustedModeratorApproval {
   readonly action: 'approve';
@@ -225,7 +232,7 @@ interface VersionRow {
 interface StoredProposalClaim {
   readonly claimId: string;
   readonly assessment: 'supported' | 'uncertain' | 'disputed';
-  readonly evidenceLabel: 'issuer_notice' | 'attributed_report' | 'independent_corroboration' | 'crowdsourced_observation';
+  readonly evidenceLabel: PublicationEvidenceLabel | 'under_review';
   readonly claimText: string;
   readonly record: ProposalClaimDocument;
 }
@@ -247,6 +254,7 @@ interface ProposalClaimDocument {
 
 interface ResolvedClaim {
   readonly proposal: StoredProposalClaim;
+  readonly evidenceLabel: PublicationEvidenceLabel;
   readonly publishedClaim: Readonly<Record<string, unknown>>;
   readonly evidenceByKind: Readonly<{
     support: readonly string[];
@@ -274,7 +282,7 @@ const referenceKinds = new Map<PublicationEvidenceReference['relation'], Proposa
   ['context', 'context'],
 ]);
 const recordLabels = new Set<StoredProposalClaim['evidenceLabel']>([
-  'issuer_notice', 'attributed_report', 'independent_corroboration', 'crowdsourced_observation',
+  'issuer_notice', 'attributed_report', 'independent_corroboration', 'crowdsourced_observation', 'under_review',
 ]);
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
@@ -496,6 +504,7 @@ async function resolvePublishedClaims(
       invalidEvidence(`Publication decision evidence must preserve every stored reference for claim ${claim.claimId}`);
     }
     if (decision.disposition === 'publish') {
+      if (!decision.evidence_label) invalid('Every published claim decision needs a public evidence label');
       const supportKeys = claim.record.support.map(evidenceKey);
       if (claim.assessment !== 'supported' || supportKeys.length === 0
         || !supportKeys.every((key) => decisionRefs.includes(key))) {
@@ -516,7 +525,8 @@ async function resolvePublishedClaims(
       }
       resolved.push({
         proposal: claim,
-        publishedClaim: publishedClaimRecord(claim.record),
+        evidenceLabel: decision.evidence_label,
+        publishedClaim: publishedClaimRecord(claim.record, decision.evidence_label),
         evidenceByKind,
       });
     }
@@ -710,7 +720,7 @@ async function writeEventVersion(
           claim_text, evidence_label, record_json)
        VALUES ($1, $2, $3, $4, 'published', $5, $6, $7::jsonb)`,
       ['live', event.event_id, event.version, proposalClaim.claimId, proposalClaim.claimText,
-        proposalClaim.evidenceLabel, JSON.stringify(claim.publishedClaim)],
+        claim.evidenceLabel, JSON.stringify(claim.publishedClaim)],
     );
     for (const evidenceRefId of claim.evidenceByKind.support) {
       await insertEventClaimEvidence(transaction, command, proposalClaim.claimId, 'support', evidenceRefId);
@@ -946,7 +956,10 @@ function parseProposalClaim(value: unknown): ProposalClaimDocument {
   };
 }
 
-function publishedClaimRecord(record: ProposalClaimDocument): Readonly<Record<string, unknown>> {
+function publishedClaimRecord(
+  record: ProposalClaimDocument,
+  evidenceLabel: PublicationEvidenceLabel,
+): Readonly<Record<string, unknown>> {
   return {
     claim_id: record.claim_id,
     text: record.text,
@@ -958,7 +971,7 @@ function publishedClaimRecord(record: ProposalClaimDocument): Readonly<Record<st
     contradictions: record.contradictions,
     context_evidence: record.context_evidence,
     origin_ids: [...record.origin_ids],
-    evidence_label: record.evidence_label,
+    evidence_label: evidenceLabel,
   };
 }
 
@@ -1023,8 +1036,17 @@ function parseClaimDecisions(value: unknown): readonly ParsedClaimDecision[] {
   if (!Array.isArray(value)) invalid('claimDecisions must be an array');
   const decisions = value.map((entry, index) => {
     const record = objectRecord(entry, `claimDecisions[${index}]`);
-    assertKeys(record, ['claim_id', 'disposition', 'reason_codes', 'evidence'], `claimDecisions[${index}]`);
+    assertKeys(record, ['claim_id', 'disposition', 'reason_codes', 'evidence'], `claimDecisions[${index}]`, ['evidence_label']);
     const disposition = enumValue(record.disposition, [...dispositions], 'claim disposition');
+    const evidenceLabel = Object.prototype.hasOwnProperty.call(record, 'evidence_label')
+      ? enumValue(record.evidence_label, ['issuer_notice', 'attributed_report', 'independent_corroboration', 'crowdsourced_observation'], 'claim evidence_label')
+      : undefined;
+    if (disposition === 'publish' && evidenceLabel === undefined) {
+      invalid('Every published claim decision needs a public evidence label');
+    }
+    if (disposition !== 'publish' && evidenceLabel !== undefined) {
+      invalid('Only published claim decisions may carry a public evidence label');
+    }
     const reasonCodes = parseTextArray(record.reason_codes, 'claim reason_codes', 120, 50);
     if (reasonCodes.length === 0) invalid('Every claim disposition needs a reason code');
     return {
@@ -1032,6 +1054,7 @@ function parseClaimDecisions(value: unknown): readonly ParsedClaimDecision[] {
       disposition,
       reason_codes: reasonCodes,
       evidence: parseReferenceArray(record.evidence, 'claim decision evidence'),
+      ...(evidenceLabel === undefined ? {} : { evidence_label: evidenceLabel }),
     } satisfies ParsedClaimDecision;
   });
   if (new Set(decisions.map((decision) => decision.claim_id)).size !== decisions.length) {
@@ -1361,8 +1384,13 @@ function objectRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function assertKeys(record: Record<string, unknown>, keys: readonly string[], label: string): void {
-  const expected = new Set(keys);
+function assertKeys(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+  label: string,
+  optionalKeys: readonly string[] = [],
+): void {
+  const expected = new Set([...keys, ...optionalKeys]);
   for (const key of Object.keys(record)) {
     if (!expected.has(key)) invalid(`${label} has an unsupported field: ${key}`);
   }

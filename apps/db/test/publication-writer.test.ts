@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createRepositoryPorts } from '../src/ports.js';
@@ -146,6 +147,28 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
     await database.close();
   });
 
+  it('keeps schema-2.0 decision labels optional for legacy records and closed to the public enum', () => {
+    type DecisionClaimSchema = {
+      readonly required: readonly string[];
+      readonly additionalProperties: boolean;
+      readonly properties: { readonly evidence_label: { readonly enum: readonly string[] } };
+    };
+    type ContractSchema = {
+      readonly $defs: {
+        readonly PublicationDecision: {
+          readonly allOf: readonly [unknown, unknown, { readonly properties: { readonly claim_decisions: { readonly items: DecisionClaimSchema } } }];
+        };
+      };
+    };
+    const schema = JSON.parse(readFileSync(new URL('../../../docs/contracts.schema.json', import.meta.url), 'utf8')) as ContractSchema;
+    const claimSchema = schema.$defs.PublicationDecision.allOf[2].properties.claim_decisions.items;
+    assert.equal(claimSchema.required.includes('evidence_label'), false, 'legacy claim decisions omit the optional field');
+    assert.equal(claimSchema.additionalProperties, false);
+    assert.deepEqual(claimSchema.properties.evidence_label.enum, [
+      'issuer_notice', 'attributed_report', 'independent_corroboration', 'crowdsourced_observation',
+    ]);
+  });
+
   it('writes and replays a complete event and impact set under the dedicated capability role', async () => {
     const command = makeCommand({ idempotencyKey: 'pub-write-create-key' });
     const first = await runAsModeratorPublicationWriter(database, () => writer.publish(command));
@@ -172,6 +195,32 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
     assert.deepEqual((eventRecord.event_time as Record<string, unknown>), {
       start: '2026-09-25', end: '2026-09-25T05:00:00Z', precision: 'range',
     });
+    const publishedClaim = (eventRecord.claims as Record<string, unknown>[])[0]!;
+    assert.equal(publishedClaim.evidence_label, 'attributed_report');
+
+    const decision = await database.executor.query<{ record_json: Record<string, unknown> }>(
+      `SELECT record_json FROM waspada.publication_decisions
+       WHERE dataset_kind = 'live' AND decision_id = $1`,
+      [command.decisionId],
+    );
+    const decisionClaim = (decision.rows[0]?.record_json.claim_decisions as Record<string, unknown>[])[0]!;
+    assert.equal(decisionClaim.evidence_label, 'attributed_report');
+
+    const normalizedClaim = await database.executor.query<{ evidence_label: string; record_json: Record<string, unknown> }>(
+      `SELECT evidence_label, record_json FROM waspada.event_claims
+       WHERE dataset_kind = 'live' AND event_id = $1 AND event_version = 1 AND claim_id = $2`,
+      [fixtureEventId, fixtureClaimId],
+    );
+    assert.equal(normalizedClaim.rows[0]?.evidence_label, 'attributed_report');
+    assert.equal(normalizedClaim.rows[0]?.record_json.evidence_label, 'attributed_report');
+
+    const privateProposalClaim = await database.executor.query<{ evidence_label: string; record_json: Record<string, unknown> }>(
+      `SELECT evidence_label, record_json FROM waspada.proposal_claims
+       WHERE dataset_kind = 'live' AND proposal_id = $1 AND claim_id = $2`,
+      [command.proposalId, fixtureClaimId],
+    );
+    assert.equal(privateProposalClaim.rows[0]?.evidence_label, 'under_review');
+    assert.equal(privateProposalClaim.rows[0]?.record_json.evidence_label, 'under_review');
 
     const eventEvidence = await database.executor.query<{ evidence_kind: string; count: string }>(
       `SELECT evidence_kind, count(*)::text AS count
@@ -215,6 +264,119 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
     ]);
     assert.equal(outbox.rows[0]!.row.event_kind, 'event_version_published');
     assert.equal(outbox.rows[0]!.row.trace_id, fixtureTraceId);
+  });
+
+  it('carries exact labels only for published claims in a mixed decision set', async () => {
+    const claimIds = [
+      fixtureClaimId, 'claim-pub-write-mixed-two', 'claim-pub-write-mixed-three', 'claim-pub-write-mixed-four',
+      'claim-pub-write-mixed-review', 'claim-pub-write-mixed-reject',
+    ] as const;
+    const proposalId = 'proposal-pub-write-mixed-labels';
+    const commandBase = makeCommand({
+      proposalId,
+      decisionId: 'decision-pub-write-mixed-labels',
+      idempotencyKey: 'pub-write-mixed-labels-key',
+      event: eventDraft(1, null, 'event-pub-write-mixed-labels'),
+      impact: impactDraft(1, 1, 'event-pub-write-mixed-labels', 'impact-pub-write-mixed-labels'),
+    });
+    const selections = [
+      ['issuer_notice', claimIds[0]],
+      ['attributed_report', claimIds[1]],
+      ['independent_corroboration', claimIds[2]],
+      ['crowdsourced_observation', claimIds[3]],
+    ] as const;
+    const command: PublicationWriteCommand = {
+      ...commandBase,
+      claimDecisions: [
+        ...selections.map(([label, claimId]) => claimDecision('publish', claimId, label)),
+        claimDecision('review', claimIds[4]),
+        claimDecision('reject', claimIds[5]),
+      ],
+    };
+    await seedProposal(database, proposalId, null, claimIds);
+
+    assert.deepEqual(await runAsModeratorPublicationWriter(database, () => writer.publish(command)), {
+      outcome: 'written', decisionId: command.decisionId, eventId: command.event.event_id, eventVersion: 1,
+    });
+    const event = await database.executor.query<{ record_json: Record<string, unknown> }>(
+      `SELECT record_json FROM waspada.event_versions
+       WHERE dataset_kind = 'live' AND event_id = $1 AND version = 1`,
+      [command.event.event_id],
+    );
+    const publishedClaims = event.rows[0]?.record_json.claims as Record<string, unknown>[];
+    assert.deepEqual(publishedClaims.map(({ claim_id, evidence_label }) => [claim_id, evidence_label]), selections.map(([label, claimId]) => [claimId, label]));
+    assert.equal(publishedClaims.some(({ claim_id }) => claim_id === claimIds[4] || claim_id === claimIds[5]), false);
+
+    const decision = await database.executor.query<{ record_json: Record<string, unknown> }>(
+      `SELECT record_json FROM waspada.publication_decisions
+       WHERE dataset_kind = 'live' AND decision_id = $1`,
+      [command.decisionId],
+    );
+    const decisionClaims = decision.rows[0]?.record_json.claim_decisions as Record<string, unknown>[];
+    assert.deepEqual(decisionClaims.map(({ claim_id, evidence_label }) => [claim_id, evidence_label]), [
+      ...selections.map(([label, claimId]) => [claimId, label]),
+      [claimIds[4], undefined],
+      [claimIds[5], undefined],
+    ]);
+    assert.equal(Object.hasOwn(decisionClaims[4]!, 'evidence_label'), false);
+    assert.equal(Object.hasOwn(decisionClaims[5]!, 'evidence_label'), false);
+    const normalizedClaims = await database.executor.query<{ claim_id: string; evidence_label: string }>(
+      `SELECT claim_id, evidence_label FROM waspada.event_claims
+       WHERE dataset_kind = 'live' AND event_id = $1 AND event_version = 1 ORDER BY claim_id`,
+      [command.event.event_id],
+    );
+    assert.deepEqual(normalizedClaims.rows.map((row) => [row.claim_id, row.evidence_label]).sort(([left], [right]) => String(left).localeCompare(String(right))),
+      selections.map(([label, claimId]) => [claimId, label]).sort(([left], [right]) => String(left).localeCompare(String(right))));
+  });
+
+  it('rejects missing publish labels and extra non-publish labels without writing rows', async () => {
+    const claimIds = [fixtureClaimId, 'claim-pub-write-label-review', 'claim-pub-write-label-reject'] as const;
+    const proposalId = 'proposal-pub-write-label-validation';
+    await seedProposal(database, proposalId, null, claimIds);
+    const base = makeCommand({
+      proposalId,
+      decisionId: 'decision-pub-write-label-validation',
+      idempotencyKey: 'pub-write-label-validation-key',
+      event: eventDraft(1, null, 'event-pub-write-label-validation'),
+      impact: impactDraft(1, 1, 'event-pub-write-label-validation', 'impact-pub-write-label-validation'),
+    });
+    const mixed: PublicationWriteCommand = {
+      ...base,
+      claimDecisions: [
+        claimDecision('publish', claimIds[0], 'issuer_notice'),
+        claimDecision('review', claimIds[1]),
+        claimDecision('reject', claimIds[2]),
+      ],
+    };
+    const malformed: readonly PublicationWriteCommand[] = [
+      { ...mixed, idempotencyKey: 'pub-write-label-missing-key', claimDecisions: [{ ...mixed.claimDecisions[0]!, evidence_label: undefined }, mixed.claimDecisions[1]!, mixed.claimDecisions[2]!] },
+      { ...mixed, idempotencyKey: 'pub-write-label-extra-review-key', claimDecisions: [mixed.claimDecisions[0]!, { ...mixed.claimDecisions[1]!, evidence_label: 'attributed_report' }, mixed.claimDecisions[2]!] },
+      { ...mixed, idempotencyKey: 'pub-write-label-extra-reject-key', claimDecisions: [mixed.claimDecisions[0]!, mixed.claimDecisions[1]!, { ...mixed.claimDecisions[2]!, evidence_label: 'attributed_report' }] },
+      { ...mixed, idempotencyKey: 'pub-write-label-unknown-key', claimDecisions: [claimDecision('publish', 'claim-pub-write-unknown', 'issuer_notice'), claimDecision('review', claimIds[1]), claimDecision('reject', claimIds[2])] },
+      { ...mixed, idempotencyKey: 'pub-write-label-duplicate-key', claimDecisions: [mixed.claimDecisions[0]!, claimDecision('review', claimIds[0]), mixed.claimDecisions[2]!] },
+      { ...mixed, idempotencyKey: 'pub-write-label-under-review-key', claimDecisions: [{ ...mixed.claimDecisions[0]!, evidence_label: 'under_review' as never }, mixed.claimDecisions[1]!, mixed.claimDecisions[2]!] },
+    ];
+    for (const command of malformed) {
+      await assert.rejects(
+        runAsModeratorPublicationWriter(database, () => writer.publish(command)),
+        (error: unknown) => error instanceof PublicationWriteError && error.code === 'invalid_command',
+      );
+    }
+    for (const [table, predicate] of [
+      ['publication_decisions', "decision_id = 'decision-pub-write-label-validation'"],
+      ['publication_claim_decisions', "decision_id = 'decision-pub-write-label-validation'"],
+      ['event_versions', "event_id = 'event-pub-write-label-validation'"],
+      ['event_claims', "event_id = 'event-pub-write-label-validation'"],
+      ['impact_versions', "impact_id = 'impact-pub-write-label-validation'"],
+      ['audit_records', "entity_id = 'event-pub-write-label-validation:1'"],
+      ['publication_outbox', "event_id = 'event-pub-write-label-validation'"],
+      ['publication_write_receipts', "idempotency_key LIKE 'pub-write-label-%-key'"],
+    ] as const) {
+      const count = await database.executor.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM waspada.${table} WHERE dataset_kind = 'live' AND ${predicate}`,
+      );
+      assert.equal(count.rows[0]?.count, '0', `${table} must remain empty after invalid labels`);
+    }
   });
 
   it('updates only the exact current version and appends the next impact version', async () => {
@@ -384,13 +546,35 @@ describe('PUB-WRITE-CORE manual publication writer', () => {
       decisionId: 'decision-pub-write-conflict-create',
       idempotencyKey: 'pub-write-conflict-create-key',
       event: eventDraft(1, null, 'event-pub-write-conflict'),
-      impact: impactDraft(1, 1, 'event-pub-write-conflict', 'impact-pub-write-conflict'),
+      impact: impactDraft(1, 1, 'event-pub-write-conflict', 'impact-pub-write-conflict-create'),
     });
     await seedProposal(database, created.proposalId, null);
     assert.equal((await runAsModeratorPublicationWriter(database, () => writer.publish(created))).outcome, 'written');
 
     const changedPayload = { ...created, event: { ...created.event, title: 'Different approved title' } };
     assert.deepEqual(await runAsModeratorPublicationWriter(database, () => writer.publish(changedPayload)), { outcome: 'conflict', code: 'idempotency_key_reused' });
+
+    const changedLabel = {
+      ...created,
+      claimDecisions: [{ ...created.claimDecisions[0]!, evidence_label: 'crowdsourced_observation' as const }],
+    };
+    assert.deepEqual(await runAsModeratorPublicationWriter(database, () => writer.publish(changedLabel)), { outcome: 'conflict', code: 'idempotency_key_reused' });
+    for (const [table, predicate, expected] of [
+      ['publication_decisions', "decision_id = 'decision-pub-write-conflict-create'", '1'],
+      ['publication_claim_decisions', "decision_id = 'decision-pub-write-conflict-create'", '1'],
+      ['publication_decision_evidence', "decision_id = 'decision-pub-write-conflict-create'", '3'],
+      ['event_versions', "event_id = 'event-pub-write-conflict' AND version = 1", '1'],
+      ['event_claims', "event_id = 'event-pub-write-conflict' AND event_version = 1", '1'],
+      ['impact_versions', "impact_id = 'impact-pub-write-conflict-create' AND version = 1", '1'],
+      ['audit_records', "entity_id = 'event-pub-write-conflict:1'", '1'],
+      ['publication_outbox', "event_id = 'event-pub-write-conflict' AND event_version = 1", '1'],
+      ['publication_write_receipts', "idempotency_key = 'pub-write-conflict-create-key'", '1'],
+    ] as const) {
+      const count = await database.executor.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM waspada.${table} WHERE dataset_kind = 'live' AND ${predicate}`,
+      );
+      assert.equal(count.rows[0]?.count, expected, `${table} must not gain a second row for a changed label`);
+    }
 
     const duplicateCreate = { ...created, idempotencyKey: 'pub-write-duplicate-event-key' };
     assert.deepEqual(await runAsModeratorPublicationWriter(database, () => writer.publish(duplicateCreate)), { outcome: 'conflict', code: 'event_version_exists' });
@@ -770,8 +954,9 @@ async function seedProposal(
   database: TestDatabase,
   proposalId: string,
   target: { readonly eventId: string; readonly baseVersion: number } | null,
+  claimIds: readonly string[] = [fixtureClaimId],
 ): Promise<void> {
-  const claim = proposalClaimRecord();
+  const claims = claimIds.map((claimId) => proposalClaimRecord(claimId));
   const eventProposal = {
     schema_version: '2.0',
     trace_id: fixtureTraceId,
@@ -783,7 +968,7 @@ async function seedProposal(
     event_id: target?.eventId ?? null,
     base_event_version: target?.baseVersion ?? null,
     investigation_id: null,
-    claims: [claim],
+    claims,
     unresolved_fields: [],
     model_runs: [],
     proposed_at: '2026-09-25T05:00:00Z',
@@ -797,37 +982,39 @@ async function seedProposal(
     [proposalId, fixtureTraceId, target?.eventId ?? null, target?.baseVersion ?? null,
       JSON.stringify(eventProposal)],
   );
-  await database.executor.query(
-    `INSERT INTO waspada.proposal_claims
-       (dataset_kind, proposal_id, claim_id, support_assessment, evidence_label, claim_text, record_json)
-     VALUES ('live', $1, $2, 'supported', 'issuer_notice', $3, $4::jsonb)`,
-    [proposalId, fixtureClaimId, claim.text, JSON.stringify(claim)],
-  );
   const references: readonly [EvidenceReferenceFixture['relation'], EvidenceReferenceFixture][] = [
     ['supports', supportReferences.support],
     ['contradicts', supportReferences.contradicts],
     ['context', supportReferences.context],
   ];
-  for (const [relation, reference] of references) {
-    const evidenceKind = relation === 'supports' ? 'support' : relation === 'contradicts' ? 'contradiction' : 'context';
+  for (const claim of claims) {
     await database.executor.query(
-      `INSERT INTO waspada.proposal_claim_evidence
-         (dataset_kind, proposal_id, claim_id, evidence_kind, evidence_ref_id)
-       VALUES ('live', $1, $2, $3, $4)`,
-      [proposalId, fixtureClaimId, evidenceKind, reference.id],
+      `INSERT INTO waspada.proposal_claims
+         (dataset_kind, proposal_id, claim_id, support_assessment, evidence_label, claim_text, record_json)
+       VALUES ('live', $1, $2, $3, $4, $5, $6::jsonb)`,
+      [proposalId, claim.claim_id, claim.support_assessment, claim.evidence_label, claim.text, JSON.stringify(claim)],
+    );
+    for (const [relation, reference] of references) {
+      const evidenceKind = relation === 'supports' ? 'support' : relation === 'contradicts' ? 'contradiction' : 'context';
+      await database.executor.query(
+        `INSERT INTO waspada.proposal_claim_evidence
+           (dataset_kind, proposal_id, claim_id, evidence_kind, evidence_ref_id)
+         VALUES ('live', $1, $2, $3, $4)`,
+        [proposalId, claim.claim_id, evidenceKind, reference.id],
+      );
+    }
+    await database.executor.query(
+      `INSERT INTO waspada.proposal_claim_origins
+         (dataset_kind, proposal_id, claim_id, origin_id)
+       VALUES ('live', $1, $2, $3)`,
+      [proposalId, claim.claim_id, fixtureOriginId],
     );
   }
-  await database.executor.query(
-    `INSERT INTO waspada.proposal_claim_origins
-       (dataset_kind, proposal_id, claim_id, origin_id)
-     VALUES ('live', $1, $2, $3)`,
-    [proposalId, fixtureClaimId, fixtureOriginId],
-  );
 }
 
-function proposalClaimRecord(): Record<string, unknown> {
+function proposalClaimRecord(claimId = fixtureClaimId): Record<string, unknown> {
   return {
-    claim_id: fixtureClaimId,
+    claim_id: claimId,
     text: 'Authored synthetic fixture: station entry is temporarily closed.',
     event_time: { start: '2026-09-25T04:30:00Z', end: null, precision: 'exact' },
     validity: { valid_from: '2026-09-25T04:00:00Z', valid_until: '2026-09-25T06:00:00Z' },
@@ -844,7 +1031,7 @@ function proposalClaimRecord(): Record<string, unknown> {
     context_evidence: [supportReferences.context.record],
     origin_ids: [fixtureOriginId],
     support_assessment: 'supported',
-    evidence_label: 'issuer_notice',
+    evidence_label: 'under_review',
   };
 }
 
@@ -877,9 +1064,13 @@ function makeCommand(options: {
   };
 }
 
-function claimDecision(disposition: PublicationClaimDecision['disposition'] = 'publish'): PublicationClaimDecision {
+function claimDecision(
+  disposition: PublicationClaimDecision['disposition'] = 'publish',
+  claimId = fixtureClaimId,
+  evidenceLabel: PublicationClaimDecision['evidence_label'] = 'attributed_report',
+): PublicationClaimDecision {
   return {
-    claim_id: fixtureClaimId,
+    claim_id: claimId,
     disposition,
     reason_codes: ['manual_fixture_review'],
     evidence: [
@@ -887,6 +1078,7 @@ function claimDecision(disposition: PublicationClaimDecision['disposition'] = 'p
       supportReferences.contradicts.record,
       supportReferences.context.record,
     ],
+    ...(disposition === 'publish' && evidenceLabel ? { evidence_label: evidenceLabel } : {}),
   };
 }
 
