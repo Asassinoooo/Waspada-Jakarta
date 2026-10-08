@@ -1,5 +1,11 @@
 # Implementation backlog
 
+## Newly assigned
+
+| ID | Objective | Dependency / design | Status |
+| --- | --- | --- | --- |
+| L3-ACTION-RESERVATION-TIMING-CORE | Generate action reservation time only after planner reconciliation and reject a regressing clock before action invocation | L3-COORDINATOR-CORE, L3-REASONING-STEP-CORE, L3-SINGLE-STEP-EXECUTOR-CORE, ADR-014/017/029/031/051; [assignment](assignments/L3-ACTION-RESERVATION-TIMING-CORE.md) | Assigned to an isolated GPT-6 Luna/max branch; no Workflow runtime or recovery is in scope |
+
 Baseline: 24 September 2026. Development is authorized. SPEC-01, SPEC-02 and SPEC-03 design baselines are root-reviewed; BOOT-01's local synthetic runtime skeleton is accepted after root review. The root planner changes statuses after actual review. Requirements refer to [the SDP](../SOFTWARE_DEVELOPMENT_PLAN.md). PLAN-00 received a GPT-6 Luna/max gap review and final consistency review, followed by root acceptance. Local agent instructions are excluded from tracking. The local repository's origin is https://github.com/Asassinoooo/Waspada-Jakarta.git.
 
 | ID | Work package | Depends on | Requirement coverage | Acceptance/handoff | Status |
