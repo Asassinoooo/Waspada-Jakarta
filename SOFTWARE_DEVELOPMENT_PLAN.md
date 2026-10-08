@@ -310,6 +310,8 @@ Weeks are relative estimates inherited from the semester plan, not committed cal
 
 Build L4 policy foundations and UI using reviewed fixtures before M5; M5 is the integration gate, not the start of that work. Instrumentation and evaluation cases begin in M1/M2. Finish a narrow end-to-end path before expanding connector breadth.
 
+Current local assurance work covers two remaining integration boundaries with synthetic PGlite fixtures: the published-correction path through the actual `/api/v1/updates` route, and exact planner-result reconciliation when a review hold is recorded during an already-started reasoning call. See the [backlog](docs/IMPLEMENTATION_BACKLOG.md) and the [API assignment](docs/assignments/API-01-PUBLICATION-UPDATE-FEED-PGLITE-CORE.md) and [L3 assignment](docs/assignments/L3-ADVANCE-REVIEW-PENDING-PLANNER-RECONCILIATION-PGLITE-CORE.md). These tests do not clear source rights or establish hosted Neon/Cloudflare behavior.
+
 Use separate local development, isolated demo/staging and any later live configuration with distinct databases, secrets and source-enable flags. The first integrated slice is moderator-approved. Source-specific automatic publication is a later reviewed gate within the prototype, never the default for unassessed model output. Release changes through a versioned build, database migration plan, health check and rollback procedure; recovery must account for migrations that cannot simply be reversed. The demo must stay within Cloudflare/Neon Free quotas and remain reconstructible from synthetic fixtures. Live-source activation remains gated on permissions, quota monitoring, and a tested free off-provider backup/deletion path.
 
 ## 9. Team and agent responsibilities
