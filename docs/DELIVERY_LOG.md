@@ -1,5 +1,11 @@
 # Delivery log
 
+## SPEC-01 source clearance gate prepared — 8 October 2026
+
+Following Team 12's choice to prepare source reuse/retention as the next gate, root added [SOURCE_CLEARANCE_PLAN.md](SOURCE_CLEARANCE_PLAN.md) and linked it from the source-feasibility and permission-request documents. The plan ranks BMKG as the first request, then PetaBencana, ANTARA, Satu Data Jakarta and Korlantas; it separates automated access, model processing, public display, retention, attribution, fees, deletion, and evaluation rights. It restates the ADR-005 retention baseline as proposed defaults subordinate to source terms and sets explicit clearance and EVAL-01 exit criteria. Root reviewed current first-party BMKG, PetaBencana, ANTARA, and Satu Data materials in the browser; the findings remain a documentation review, not a legal opinion or source approval.
+
+The planner did not contact publishers, send permission requests, fetch report/feed bodies, acquire datasets, or enable connectors. Team 12 must fill the sender/university/supervisor placeholders and send the BMKG request through an official channel; its written response and any terms for other sources are external gates. Root ran WSL Ubuntu-26.04 `git diff --check` successfully. Commit `9697dee` (`docs(SPEC-01): prepare source clearance gate`) is pushed to `origin/main`. No code, source data, provider, dependency, migration, configuration, or hosted service changed.
+
 ## SPEC-01 source reuse and retention re-check — 8 October 2026
 
 Root refreshed the first-party source terms, current API/RSS documentation, and dataset metadata in [SPEC-01](SOURCE_FEASIBILITY.md) and [REFERENCES.md](../REFERENCES.md), updated the internal [permission-request drafts](SOURCE_PERMISSION_REQUESTS.md), and recorded the status in the plan, backlog, and checkpoint. Three GPT-6 Luna Max subagents performed bounded read-only checks for BMKG/Korlantas, PetaBencana, and ANTARA/Satu Data Jakarta; they made no repository changes and contacted no publisher. They fetched no feed body, report API response, or dataset export; the Korlantas check used HTTP HEAD only. Browser search results exposed excerpts from an ANTARA article and a small embedded CRM preview; the article was not opened and neither excerpts nor aggregate values were retained in the repository.

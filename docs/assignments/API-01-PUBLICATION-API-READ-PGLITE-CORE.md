@@ -1,0 +1,57 @@
+# API-01-PUBLICATION-API-READ-PGLITE-CORE — read a published correction through list and detail handlers
+
+- **Status:** Assigned for a test-only local composition.
+- **Backlog ID:** `API-01-PUBLICATION-API-READ-PGLITE-CORE`
+- **Dependencies:** PUB-01-MANUAL-GATE-CORE, PUB-01-REVIEWED-EVIDENCE-LABEL-CORE, PUB-01-MANUAL-GATE-PGLITE-CORE, API-PUBLIC-EVENT-LIST-RUNTIME-CORE, API-PUBLIC-DETAIL-RUNTIME-CORE, DB-TEST-RUNNER-ISOLATION; ADR-012/013/028/052.
+- **Requirements:** FR-08/09/10/13; NFR-01/05/07.
+- **Contract baseline:** EventProposal, Event, EventPage and EventDetail schema 2.0/public DTOs. Do not change API/OpenAPI contracts.
+- **Branch/worktree:** Create `work/API-01-PUBLICATION-API-READ-PGLITE-CORE` in its own worktree under `.codex-build/worktrees/api-01-publication-api-read-pglite-core`, based on pushed `main` after this assignment commit. Do not edit through the root checkout.
+- **Model:** GPT-6 Luna, max reasoning.
+
+## Objective
+
+Extend the accepted synthetic publication/read-chain proof so an initial event and its correction, written through the existing manual gate and SQL writer, are readable as the current version through the existing exact-live public list and detail handler paths. This is a disposable PGlite test only; it does not enable moderator writes in the course demo.
+
+## Read first
+
+- `AGENTS.md`
+- `SOFTWARE_DEVELOPMENT_PLAN.md`
+- `docs/IMPLEMENTATION_BACKLOG.md`
+- `docs/decisions/ADR-012-public-projection-boundary.md`
+- `docs/decisions/ADR-013-publication-write-transaction.md`
+- `docs/decisions/ADR-028-read-only-moderator-demo.md`
+- `docs/decisions/ADR-052-moderator-selected-public-evidence-labels.md`
+- `docs/assignments/PUB-01-PUBLIC-READ-CHAIN-PGLITE-CORE.md`
+- `docs/assignments/PUB-01-MANUAL-GATE-PGLITE-CORE.md`
+- `docs/assignments/API-PUBLIC-EVENT-LIST-RUNTIME-CORE.md`
+- `docs/assignments/API-PUBLIC-DETAIL-RUNTIME-CORE.md`
+- `apps/db/test/manual-publication-public-read-chain.test.ts`
+- the existing event-list and event-detail runtime tests/handlers.
+
+## Required behavior
+
+1. Extend only the existing publication/history PGlite composition in `apps/db/test/manual-publication-public-read-chain.test.ts`. Use the actual accepted persisted-proposal reader, manual publication gate, SQL writer, and existing public list/detail handler/runtime seams.
+2. Publish the initial version and correction through the same accepted L4 path with explicit moderator-selected labels for each published claim. Do not insert published event rows directly to bypass the gate.
+3. Use exact-live request context only inside the ephemeral PGlite test database and call the existing `GET /api/v1/events` and `GET /api/v1/events/{event_id}` handler paths with injected test runtimes. Verify both identify the corrected current version, with version and public fields consistent with what the writer persisted.
+4. Assert public allowlists exclude private proposal, evidence/source body, trace, reviewer, and moderator fields. Preserve existing history/update-feed assertions and their reviewed summaries/disclosure rules.
+5. Keep every row and reviewer identity fictional, test-only, and database-local. Do not add a browser fixture, demo/live data blend, route registration, moderator identity, runtime wiring, or successful publication behavior in the shipped demo.
+6. If accepted reader seams cannot be composed without production/schema/auth changes, stop and report the specific gap.
+
+## Allowed paths
+
+- `apps/db/test/manual-publication-public-read-chain.test.ts`
+- `docs/assignments/API-01-PUBLICATION-API-READ-PGLITE-CORE.md` (handoff section only)
+
+No production code, UI, route, schema, migration, grant, API/OpenAPI/DTO, package/dependency, runtime configuration, source/provider, identity/auth, external service, or deployment change is authorized.
+
+## Acceptance and verification
+
+- The successful L4-written corrected event is visible as current through both public list and detail handlers using exact existing projections and allowlists; existing history/update checks continue to pass.
+- Run in WSL Ubuntu-26.04 with existing dependencies: focused composition test, `npm run db:test`, `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check <assigned-base>..HEAD`. Record actual versions and results.
+- Commit the test and handoff on the task branch. Do not push or merge. Root independently reviews and integrates accepted work.
+
+Stop if the composition requires changing the public contract, adding a route/runtime, bypassing L4 authorization, source rights, real moderator identity, hosted Neon or new dependencies. Escalate to GPT-6 Astra xhigh only after a Luna/max attempt leaves a substantive technical issue unresolved.
+
+## Implementer handoff
+
+Append exact branch/worktree, base, commit SHAs/messages, changed paths, behavior, actual checks, versions, limitations and remaining decisions here after committing.
