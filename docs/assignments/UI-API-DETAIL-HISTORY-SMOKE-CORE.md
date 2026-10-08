@@ -45,7 +45,7 @@ Verified in WSL Ubuntu-26.04 using the existing Linux Node runtime (`v24.21.0`, 
 - `npm test`: passed (web 60/60, Worker 451/451, DB 43/43 test files, and the remaining workspace checks; exit code 0).
 - `npm run typecheck`: passed.
 - `npm run build`: passed, including Vite production build and Wrangler Worker dry-run.
-- `git diff --check`: passed before commit; assigned-base range check is recorded in the implementation handoff after commit.
+- `git diff --check`: passed before commit; root also verified the exact assigned-base commit range after implementation.
 
 No install, external service, or browser automation was used.
 
@@ -55,4 +55,12 @@ Stop and report to root if the local route responses cannot be rendered under th
 
 ## Implementation handoff
 
-The change is limited to the smoke test, this assignment, and the backlog row. The API contracts, production UI, fixture data, dependencies, runtime gates, and configuration are unchanged. The smoke covers local synthetic data only and makes no live-data, source-evidence, or safety claim. No migration/configuration impact or design decision remains.
+The implementation commit is `8a60c31eac7d88a334c2c7bba570e76a0391293b` — `test(UI-API-DETAIL-HISTORY-SMOKE): verify local detail/history UI flow` — on branch `work/UI-API-DETAIL-HISTORY-SMOKE-CORE` in `/mnt/d/Projects/RPL/.codex-build/worktrees/ui-api-detail-history-smoke-core`, based on `931ebef205166dd273e507ba3fe397c16309338d`. It changes `apps/web/test/smoke-local.tsx`, this assignment, and `docs/IMPLEMENTATION_BACKLOG.md` only. The smoke fetches context, list, detail and history through the Vite proxy, renders the real `EventDetail`, and checks returned identity, title, summary, event time, reviewed history label/summary and exact timestamps while retaining honest demo, empty-evidence, empty-geometry and no-safety messaging.
+
+The agent passed `npm run dev` with `npm run smoke`, focused web tests (23/23), full `npm test` (web 60/60, Worker 451/451, DB 43/43 files, evaluation 19/19), typecheck and build (Vite plus Wrangler dry run) in WSL Ubuntu-26.04 with Node `v24.21.0` and npm `11.19.0`. Root independently ran the local Vite/Worker smoke successfully, reran the focused web tests (23/23), and passed `git diff --check 931ebef205166dd273e507ba3fe397c16309338d..8a60c31eac7d88a334c2c7bba570e76a0391293b` in WSL. The independent reviewer found no implementation issue and requested complete commit-range handoff details; root added the details above before acceptance.
+
+The smoke covers only the existing local synthetic routes and fixtures. It does not establish live database reads, source evidence, source rights, current conditions, or deployment behavior. No migration, configuration, contract, dependency, production UI, runtime, or fixture change was made; no product decision remains.
+
+## Root review and acceptance
+
+Root accepted the branch and fast-forwarded it onto local `main` at `8a60c31eac7d88a334c2c7bba570e76a0391293b`, preserving the agent commit and its exact message. Root independently inspected the exact-base diff and changed paths, ran `npm run dev` and `npm run smoke` in WSL Ubuntu-26.04, passed the focused web tests (23/23), and passed the assigned-base diff check. An independent read-only review found no implementation issue; it identified only the missing handoff metadata, which root completed in this acceptance record. The work is accepted locally. No API/OpenAPI/DTO, production, migration, dependency, fixture, runtime, or external-service behavior changed.
