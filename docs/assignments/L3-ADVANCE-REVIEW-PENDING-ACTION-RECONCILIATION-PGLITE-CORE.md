@@ -57,3 +57,25 @@ Stop if success requires a production contract, migration, privilege, coordinato
 ## Implementer handoff
 
 Append exact branch/worktree, base, commit SHAs/messages, changed paths, behavior, checks actually run, limitations, configuration impact, and remaining decisions here after committing.
+
+### Implementer handoff — 2026-10-09
+
+- **Backlog item:** `L3-ADVANCE-REVIEW-PENDING-ACTION-RECONCILIATION-PGLITE-CORE` (test implementation complete; root review pending).
+- **Branch:** `work/L3-ADVANCE-REVIEW-PENDING-ACTION-RECONCILIATION-PGLITE-CORE`.
+- **Worktree:** `D:\Projects\RPL\.codex-build\worktrees\l3-advance-review-pending-action-reconciliation-pglite-core`.
+- **Assigned base:** pushed `main` at `3e1370927c80f1673c3801e043230d1c8d7a737b`.
+- **Implementation commit:** `07efe2d26d18772c1fb40ed65913255adc1ee36c`, `test(L3-ADVANCE-REVIEW-PENDING): cover exact action reconciliation`.
+- **Handoff documentation commit:** this section is committed separately with message `docs(L3-ADVANCE-REVIEW-PENDING): record reconciliation handoff`; its exact SHA is included in the implementer-to-reviewer handoff accompanying this commit.
+- **Changed paths:** `apps/db/test/investigation-ledger.test.ts`; this assignment's handoff section only.
+- **Behavior verified:** a real PGlite ledger, single-step executor, and coordinator start the exact action before its handler writes the action-stage `action_result_uncertain` marker. The known result reconciles exactly once, accounts for the reservation budget and checkpoint, and preserves the marker. The coordinator then returns `review_required` / `advance_review_pending` without refresh or progress writes. Replaying returns the same hold without another planner, action, handler, or refresh call, with durable state unchanged.
+- **Verification runtime/dependencies:** WSL Ubuntu-26.04; Node `v24.21.0`; npm `11.19.0`; Linux `x86_64` under WSL2. Existing locked dependencies were reused: PGlite `0.5.8`, tsx `4.23.15`, TypeScript `7.0.2`, Vite `8.3.0`, and Wrangler `4.137.0`. No dependencies were installed.
+- **Checks actually run:**
+  - `npm exec --no -- tsx --test apps/db/test/investigation-ledger.test.ts` — passed, 20/20 tests.
+  - `npm run db:test` — passed, 44/44 DB test files (exit 0).
+  - `npm test` — passed, 464/464 general tests, nested DB suite 44/44 files, and casebook suite 19/19 (exit 0).
+  - `npm run typecheck` — passed (exit 0).
+  - `npm run build` — passed; web Vite production build and Worker Wrangler dry run succeeded (exit 0).
+  - `git diff --check 3e1370927c80f1673c3801e043230d1c8d7a737b..HEAD` — passed after both commits (exit 0; no whitespace errors).
+- **Limitations:** this is deterministic local SQL/executor ordering coverage only. It does not establish remote cancellation, action retry, marker clearing, hosted locking/fencing, Workflow recovery, or source-dependent evaluation readiness.
+- **Migration/configuration impact:** none; no production code, schema, migration, grants, runtime, dependency, or configuration changed.
+- **Remaining decisions:** root review and acceptance. Source rights and EVAL-01 human-labeled casebook rights remain pending and are not addressed by this credential-free local test.
