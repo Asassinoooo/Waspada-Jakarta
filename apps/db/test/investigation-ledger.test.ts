@@ -257,6 +257,119 @@ describe('L3 durable investigation ledger', () => {
       reason: 'planner_replayed',
     }));
 
+    const mismatchFixture = await seedFixture(testDatabase, 'advance-review-marker-kind-api', { sufficient: false });
+    const mismatchInput = makeCreateInput(mismatchFixture);
+    const mismatchInitial = await repository.create(mismatchInput);
+    const toolReservation = await repository.reserveAction({
+      datasetKind: mismatchFixture.datasetKind,
+      investigationId: mismatchInput.investigationId,
+      reservationId: 'marker-kind-api-tool',
+      expectedCheckpointVersion: mismatchInitial.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('marker-kind-api-tool'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 2,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:01:00Z',
+    });
+    await assertLedgerError('advance_review_pending_conflict', repository.markAdvanceReviewPending({
+      datasetKind: mismatchFixture.datasetKind,
+      investigationId: mismatchInput.investigationId,
+      observedCheckpointVersion: toolReservation.checkpoint.checkpoint_version,
+      stage: 'planning',
+      reason: 'planner_result_uncertain',
+      reservationId: 'marker-kind-api-tool',
+    }));
+    const releasedTool = await repository.releaseUninvoked({
+      datasetKind: mismatchFixture.datasetKind,
+      investigationId: mismatchInput.investigationId,
+      reservationId: 'marker-kind-api-tool',
+      expectedCheckpointVersion: toolReservation.checkpoint.checkpoint_version,
+      releasedAt: '2026-09-25T10:01:01Z',
+    });
+    const reasoningForToolStage = await repository.reserveAction({
+      datasetKind: mismatchFixture.datasetKind,
+      investigationId: mismatchInput.investigationId,
+      reservationId: 'marker-kind-api-reasoning',
+      expectedCheckpointVersion: releasedTool.checkpoint.checkpoint_version,
+      actionKind: 'reasoning',
+      actionName: 'l2_investigation_planning',
+      reservedActiveSeconds: 2,
+      reservedModelTokens: 5,
+      reservedAt: '2026-09-25T10:01:01Z',
+    });
+    await assertLedgerError('advance_review_pending_conflict', repository.markAdvanceReviewPending({
+      datasetKind: mismatchFixture.datasetKind,
+      investigationId: mismatchInput.investigationId,
+      observedCheckpointVersion: reasoningForToolStage.checkpoint.checkpoint_version,
+      stage: 'progress',
+      reason: 'progress_uncertain',
+      reservationId: 'marker-kind-api-reasoning',
+    }));
+    assert.equal(await repository.getAdvanceReviewPending(mismatchFixture.datasetKind, mismatchInput.investigationId), null,
+      'the repository rejects either stage/reservation kind mismatch');
+
+    const directFixture = await seedFixture(testDatabase, 'advance-review-marker-kind-sql-reasoning', { sufficient: false });
+    const directInput = makeCreateInput(directFixture);
+    const directInitial = await repository.create(directInput);
+    const reasoningReservation = await repository.reserveAction({
+      datasetKind: directFixture.datasetKind,
+      investigationId: directInput.investigationId,
+      reservationId: 'marker-kind-sql-reasoning',
+      expectedCheckpointVersion: directInitial.checkpoint_version,
+      actionKind: 'reasoning',
+      actionName: 'l2_investigation_planning',
+      reservedActiveSeconds: 3,
+      reservedModelTokens: 10,
+      reservedAt: '2026-09-25T10:02:00Z',
+    });
+    const directToolFixture = await seedFixture(testDatabase, 'advance-review-marker-kind-sql-tool', { sufficient: false });
+    const directToolInput = makeCreateInput(directToolFixture);
+    const directToolInitial = await repository.create(directToolInput);
+    const toolReservationForSql = await repository.reserveAction({
+      datasetKind: directToolFixture.datasetKind,
+      investigationId: directToolInput.investigationId,
+      reservationId: 'marker-kind-sql-tool',
+      expectedCheckpointVersion: directToolInitial.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('marker-kind-sql-tool'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 2,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:02:01Z',
+    });
+    await testDatabase.executor.execute('SET ROLE waspada_l3_coordinator');
+    try {
+      await assert.rejects(testDatabase.executor.query(
+        `INSERT INTO waspada.investigation_advance_review_pending
+           (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
+         VALUES ($1, $2, $3, 'planning', 'planner_result_uncertain', $4)`,
+        [directToolFixture.datasetKind, directToolInput.investigationId,
+          toolReservationForSql.checkpoint.checkpoint_version, 'marker-kind-sql-tool'],
+      ), /stage does not match reservation kind/i,
+      'the trigger rejects a coordinator-role planning marker bound to a tool');
+      await assert.rejects(testDatabase.executor.query(
+        `INSERT INTO waspada.investigation_advance_review_pending
+           (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
+         VALUES ($1, $2, $3, 'progress', 'progress_uncertain', $4)`,
+        [directFixture.datasetKind, directInput.investigationId,
+          reasoningReservation.checkpoint.checkpoint_version, 'marker-kind-sql-reasoning'],
+      ), /stage does not match reservation kind/i,
+      'the trigger rejects a coordinator-role progress marker bound to reasoning');
+      await testDatabase.executor.query(
+        `INSERT INTO waspada.investigation_advance_review_pending
+           (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
+         VALUES ($1, $2, $3, 'planning', 'planner_result_uncertain', $4)`,
+        [directFixture.datasetKind, directInput.investigationId,
+          reasoningReservation.checkpoint.checkpoint_version, 'marker-kind-sql-reasoning'],
+      );
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+    assert.equal((await repository.getAdvanceReviewPending(directFixture.datasetKind,
+      directInput.investigationId))?.stage, 'planning',
+    'the coordinator-role trigger accepts the exact reasoning/planning pairing');
+
     const missingReservationFixture = await seedFixture(
       testDatabase, 'advance-review-marker-missing-reservation', { sufficient: false },
     );
@@ -315,7 +428,7 @@ describe('L3 durable investigation ledger', () => {
       'marker insertion and blocked operations do not append a checkpoint or change its budget');
   });
 
-  it('serializes marker and action start while allowing only the exact started result to reconcile', async () => {
+  it('verifies local marker/start orderings and exact-started reconciliation', async () => {
     const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
     const reservedFirstFixture = await seedFixture(testDatabase, 'advance-review-reserve-first', { sufficient: false });
     const reservedFirstInput = makeCreateInput(reservedFirstFixture);

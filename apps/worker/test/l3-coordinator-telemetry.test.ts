@@ -16,6 +16,7 @@ import {
 
 const input = {
   kind: 'sufficient_context',
+  investigationId: null,
   context: 'input-secret-marker',
   persistedRecord: 'input-secret-marker',
 } as unknown as InvestigationCoordinatorAdvanceInput;
@@ -61,6 +62,26 @@ test('each valid coordinator status emits one closed outcome and preserves resul
       assert.ok(!serialized.includes(marker), marker);
     }
   }
+});
+
+test('preserves the closed advance-review-pending outcome in telemetry', async () => {
+  const result = {
+    status: 'review_required',
+    reason: 'advance_review_pending',
+    checkpoint: { privateCheckpoint: 'checkpoint-secret-marker' },
+  } as unknown as InvestigationCoordinatorOutcome;
+  const records: TelemetryRecord[] = [];
+  const decorated = createTelemetryInvestigationCoordinator({
+    advance: async () => result,
+  }, recorder(records), tickingClock());
+
+  assert.strictEqual(await decorated.advance(input), result);
+  assert.equal(records.length, 1);
+  assert.deepEqual(coordinatorRecord(records[0]), {
+    eventName: L3_COORDINATOR_ADVANCE_EVENT_NAME,
+    outcome: 'review_required',
+    durationMs: 1,
+  });
 });
 
 test('a thrown coordinator error is rethrown by identity with one error record', async () => {

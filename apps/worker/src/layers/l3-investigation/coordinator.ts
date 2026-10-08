@@ -147,11 +147,13 @@ export function createInvestigationCoordinator(
         if (!isRecord(rawInput)) return review('invalid_input');
 
         if (rawInput.kind === 'sufficient_context') {
+          if (rawInput.investigationId !== null && !isId(rawInput.investigationId)) {
+            return review('invalid_input');
+          }
           const contextPair = await validateContextPair(rawInput.context, rawInput.persistedRecord);
           if (!contextPair) return review('invalid_context');
           if (!contextPair.context.sufficient) return review('invalid_context');
-          if (rawInput.investigationId !== undefined) {
-            if (!isId(rawInput.investigationId)) return review('invalid_input');
+          if (rawInput.investigationId !== null) {
             const pending = await pendingOutcome(contextPair.context.datasetKind, rawInput.investigationId);
             if (pending) return pending;
           }
@@ -271,6 +273,15 @@ export function createInvestigationCoordinator(
         } catch {
           const pending = await pendingOutcome(checkpoint.dataset_kind, checkpoint.investigation_id, checkpoint);
           if (pending) return pending;
+          const latched = await latchIfReservationExists({
+            datasetKind: checkpoint.dataset_kind,
+            investigationId: checkpoint.investigation_id,
+            observedCheckpointVersion: checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'planner_result_uncertain',
+            reservationId: replayKeys.reasoningReservationId,
+          }, checkpoint);
+          if (latched) return latched;
           return await reviewAndStop('planner_unavailable', checkpoint);
         }
 
@@ -304,7 +315,18 @@ export function createInvestigationCoordinator(
           const reason = mapPlannerReviewReason(planning.reason);
           return await reviewAndMaybeStop(reason, planning.checkpoint ?? checkpoint);
         }
-        if (planning.status !== 'proposed') return await reviewAndStop('planner_unavailable', checkpoint);
+        if (planning.status !== 'proposed') {
+          const latched = await latchIfReservationExists({
+            datasetKind: checkpoint.dataset_kind,
+            investigationId: checkpoint.investigation_id,
+            observedCheckpointVersion: checkpoint.checkpoint_version,
+            stage: 'planning',
+            reason: 'planner_result_uncertain',
+            reservationId: replayKeys.reasoningReservationId,
+          }, isCheckpoint(planning.checkpoint) ? planning.checkpoint : checkpoint);
+          if (latched) return latched;
+          return await reviewAndStop('planner_unavailable', checkpoint);
+        }
         if (!isCheckpoint(planning.checkpoint)) {
           return await latchIfReservationExists({
             datasetKind: checkpoint.dataset_kind,

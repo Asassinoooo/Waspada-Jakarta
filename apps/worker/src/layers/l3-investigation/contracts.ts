@@ -32,8 +32,8 @@ export interface ResumeInvestigationAdvance extends InvestigationStepReplayKeys 
 
 export interface SufficientContextAdvance {
   readonly kind: 'sufficient_context';
-  /** Present when this sufficient result is associated with an existing investigation case. */
-  readonly investigationId?: string;
+  /** Null for standalone context; otherwise the exact associated investigation case. */
+  readonly investigationId: string | null;
   readonly context: GroundingContext;
   readonly persistedRecord: GroundingContextRecord;
 }

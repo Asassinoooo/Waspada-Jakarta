@@ -42,6 +42,7 @@ const COORDINATOR_REVIEW_REASONS = new Set<InvestigationCoordinatorReviewReason>
   'material_dispute',
   'no_progress',
   'ledger_uncertain',
+  'advance_review_pending',
 ]);
 
 /** Add opt-in, content-free measurements around one bounded coordinator advance. */

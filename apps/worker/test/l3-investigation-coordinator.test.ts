@@ -26,6 +26,7 @@ import {
   createInvestigationCoordinator,
 } from '../src/layers/l3-investigation/coordinator.js';
 import type {
+  InvestigationCoordinatorAdvanceInput,
   InvestigationCoordinatorOutcome,
   OpenInvestigationAdvance,
   ResumeInvestigationAdvance,
@@ -60,6 +61,7 @@ test('sufficient context bypasses entry, planner, action and refresh', async () 
   const harness = makeHarness();
   const result = await harness.coordinator.advance({
     kind: 'sufficient_context',
+    investigationId: null,
     context,
     persistedRecord: persisted(context),
   });
@@ -71,6 +73,42 @@ test('sufficient context bypasses entry, planner, action and refresh', async () 
   assert.equal(harness.actionCalls.length, 0);
   assert.equal(harness.refreshCalls.length, 0);
   assert.deepEqual(Object.keys(harness.coordinator).sort(), ['advance']);
+});
+
+test('sufficient context requires explicit case association and gates associated cases', async (t) => {
+  await t.test('missing association is rejected at runtime', async () => {
+    const context = makeContext({ sufficient: true, missingFields: [], conflicts: [] });
+    const harness = makeHarness();
+    const result = await harness.coordinator.advance({
+      kind: 'sufficient_context',
+      context,
+      persistedRecord: persisted(context),
+    } as unknown as InvestigationCoordinatorAdvanceInput);
+
+    assert.equal(result.status, 'review_required');
+    if (result.status !== 'review_required') assert.fail('expected invalid input');
+    assert.equal(result.reason, 'invalid_input');
+    assert.equal(harness.ledger.latest, null);
+  });
+
+  await t.test('associated case with no marker preserves sufficient result', async () => {
+    const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+    const harness = makeHarness();
+    const prior = await harness.coordinator.advance(openInput(context));
+    assert.equal(prior.status, 'continue');
+    if (prior.status !== 'continue') assert.fail('expected a checkpointed case');
+    const sufficient = makeContext({ ...prior.context, sufficient: true, missingFields: [], conflicts: [] });
+
+    const result = await harness.coordinator.advance({
+      kind: 'sufficient_context',
+      investigationId: prior.checkpoint.investigation_id,
+      context: sufficient,
+      persistedRecord: persisted(sufficient),
+    });
+
+    assert.equal(result.status, 'sufficient_context');
+    assert.equal(harness.ledger.marker, null);
+  });
 });
 
 test('opens a validated handoff and performs one planner call, action, and L1/L2 refresh', async () => {
@@ -430,6 +468,41 @@ test('planner rejection, failure, and replay do not sample an action reservation
         assert.equal(result.checkpoint?.case_status, 'open');
         assert.equal(harness.ledger.marker?.stage, 'planning');
       }
+      assert.equal(harness.actionCalls.length, 0);
+      assert.equal(harness.refreshCalls.length, 0);
+    });
+  }
+});
+
+test('latches a planner throw or malformed status only when the exact reasoning reservation exists', async (t) => {
+  const cases: Array<{
+    readonly name: string;
+    readonly mode: 'throws_before_reservation' | 'throws_after_start' | 'throws_after_reconciliation' | 'unknown_status';
+    readonly expectedMarker: boolean;
+    readonly expectedCheckpointVersion: number;
+  }> = [
+    { name: 'throw before reservation', mode: 'throws_before_reservation', expectedMarker: false, expectedCheckpointVersion: 2 },
+    { name: 'throw after durable start', mode: 'throws_after_start', expectedMarker: true, expectedCheckpointVersion: 1 },
+    { name: 'throw after reconciliation', mode: 'throws_after_reconciliation', expectedMarker: true, expectedCheckpointVersion: 3 },
+    { name: 'unknown status after reconciliation', mode: 'unknown_status', expectedMarker: true, expectedCheckpointVersion: 3 },
+  ];
+
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const context = makeContext({ missingFields: ['private gap'], conflicts: [] });
+      const harness = makeHarness({ planningMode: item.mode });
+      const result = await harness.coordinator.advance(openInput(context));
+
+      assert.equal(result.status, 'review_required');
+      if (result.status !== 'review_required') assert.fail('expected a closed review result');
+      assert.equal(result.reason, item.expectedMarker ? 'advance_review_pending' : 'planner_unavailable');
+      assert.equal(harness.ledger.marker !== null, item.expectedMarker);
+      if (item.expectedMarker) {
+        assert.equal(harness.ledger.marker?.stage, 'planning');
+        assert.equal(harness.ledger.marker?.reason, 'planner_result_uncertain');
+        assert.equal(harness.ledger.marker?.reservationId, harness.planningCalls[0]?.reservationId);
+      }
+      assert.equal(result.checkpoint?.checkpoint_version, item.expectedCheckpointVersion);
       assert.equal(harness.actionCalls.length, 0);
       assert.equal(harness.refreshCalls.length, 0);
     });
@@ -860,7 +933,8 @@ function makeHarness(input: {
   readonly actionMode?: 'success' | 'duplicate' | 'timed_out' | 'uncertain' | 'replayed' | 'marker_denied'
     | 'reservation_in_flight' | 'unexpected_result' | 'malformed_receipt';
   readonly planningMode?: 'proposed' | 'abstained' | 'budget_exhausted' | 'failed' | 'malformed_proposal'
-    | 'malformed_checkpoint' | 'wrong_checkpoint_status' | 'wrong_checkpoint_version' | 'replayed';
+    | 'malformed_checkpoint' | 'wrong_checkpoint_status' | 'wrong_checkpoint_version' | 'replayed'
+    | 'throws_before_reservation' | 'throws_after_start' | 'throws_after_reconciliation' | 'unknown_status';
   readonly progressMode?: 'marker_denied' | 'missing_fingerprint_key' | 'null_progress_result'
     | 'malformed_progress_result' | 'missing_progress_snapshot' | 'malformed_progress_snapshot'
     | 'uncertain_progress_write' | 'progress_conflict' | 'context_not_found' | 'context_mismatch'
@@ -913,6 +987,10 @@ function makeHarness(input: {
         reservationId: proposal.reservationId,
         reservedAt: proposal.reservedAt,
       });
+      if (input.planningMode === 'throws_before_reservation') {
+        events.push('planner_threw_before_reservation');
+        throw new Error('synthetic planner failure before reservation');
+      }
       if (input.planningMode === 'abstained') {
         const checkpoint = ledger.stopDirectly('awaiting_moderator');
         events.push('planner_result_rejected');
@@ -926,6 +1004,11 @@ function makeHarness(input: {
       if (current.checkpoint_version !== proposal.expectedCheckpointVersion) {
         events.push('planner_result_rejected');
         return { status: 'review_required', reason: 'stale_checkpoint', checkpoint: current };
+      }
+      if (input.planningMode === 'throws_after_start') {
+        ledger.recordReservation(proposal.investigationId, proposal.reservationId, 'reasoning', 'started');
+        events.push('planner_started');
+        throw new Error('synthetic planner failure after start');
       }
       const checkpoint = ledger.advance(2);
       ledger.recordReservation(proposal.investigationId, proposal.reservationId, 'reasoning', 'reconciled');
@@ -942,6 +1025,15 @@ function makeHarness(input: {
           }
           : reconciledCheckpoint;
       events.push('planner_reconciled');
+      if (input.planningMode === 'throws_after_reconciliation') {
+        throw new Error('synthetic planner failure after reconciliation');
+      }
+      if (input.planningMode === 'unknown_status') {
+        return {
+          status: 'future_planner_status',
+          checkpoint: reconciledCheckpoint,
+        } as unknown as Awaited<ReturnType<ReasoningStepExecutor['plan']>>;
+      }
       if (input.planningMode === 'replayed') {
         events.push('planner_result_replayed');
         return { status: 'replayed', checkpoint: reconciledCheckpoint };
@@ -1213,7 +1305,8 @@ class MemoryLedger {
       }
       if (input.reservationId) {
         const reservation = this.reservations.get(input.reservationId);
-        if (!reservation || reservation.status === 'released') {
+        const expectedKind = input.stage === 'planning' ? 'reasoning' : 'tool';
+        if (!reservation || reservation.status === 'released' || reservation.actionKind !== expectedKind) {
           throw new InvestigationLedgerError('advance_review_pending_conflict');
         }
       }

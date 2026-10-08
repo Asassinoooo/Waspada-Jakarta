@@ -33,6 +33,47 @@ ALTER TABLE waspada.investigation_advance_review_pending
   FOREIGN KEY (dataset_kind, investigation_id, reservation_id)
   REFERENCES waspada.investigation_action_reservations (dataset_kind, investigation_id, reservation_id);
 
+CREATE FUNCTION waspada.enforce_investigation_advance_review_pending_reservation_kind()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  reservation_kind text;
+  expected_kind text;
+BEGIN
+  IF NEW.reservation_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  expected_kind := CASE
+    WHEN NEW.stage = 'planning' THEN 'reasoning'
+    WHEN NEW.stage IN ('action', 'refresh', 'progress') THEN 'tool'
+  END;
+
+  SELECT reservation.action_kind
+    INTO reservation_kind
+  FROM waspada.investigation_action_reservations AS reservation
+  WHERE reservation.dataset_kind = NEW.dataset_kind
+    AND reservation.investigation_id = NEW.investigation_id
+    AND reservation.reservation_id = NEW.reservation_id;
+
+  IF FOUND AND reservation_kind IS DISTINCT FROM expected_kind THEN
+    RAISE EXCEPTION 'L3 advance review-pending stage does not match reservation kind'
+      USING ERRCODE = '23514';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER investigation_advance_review_pending_reservation_kind
+  BEFORE INSERT ON waspada.investigation_advance_review_pending
+  FOR EACH ROW EXECUTE FUNCTION waspada.enforce_investigation_advance_review_pending_reservation_kind();
+
+REVOKE ALL ON FUNCTION waspada.enforce_investigation_advance_review_pending_reservation_kind() FROM PUBLIC;
+
 CREATE FUNCTION waspada.guard_investigation_advance_review_pending_append_only()
 RETURNS trigger
 LANGUAGE plpgsql

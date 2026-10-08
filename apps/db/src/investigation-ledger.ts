@@ -610,8 +610,10 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
 
       if (input.reservationId) {
         const reservation = await findReservation(transaction, input.datasetKind, input.reservationId, true);
+        const expectedKind = input.stage === 'planning' ? 'reasoning' : 'tool';
         if (!reservation || reservation.investigation_id !== input.investigationId
-          || reservation.reservation_status === 'released') {
+          || reservation.reservation_status === 'released'
+          || reservation.action_kind !== expectedKind) {
           fail('advance_review_pending_conflict');
         }
       }
