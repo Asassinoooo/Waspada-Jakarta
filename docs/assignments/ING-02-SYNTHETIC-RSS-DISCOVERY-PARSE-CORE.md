@@ -57,4 +57,13 @@ Stop and report if the existing XML parser cannot enforce the required namespace
 
 ## Implementer handoff
 
-Append exact branch/worktree, base, commit SHAs/messages, changed paths, behavior, actual checks, versions, limitations and remaining decisions here after committing.
+### Handoff
+
+- **Branch/worktree:** `work/ING-02-SYNTHETIC-RSS-DISCOVERY-PARSE-CORE` — `D:\Projects\RPL\.codex-build\worktrees\ing-02-synthetic-rss-discovery-parse-core`
+- **Base:** `3b6f9b15834047775054154f0454521a48b94ea3` (`docs(plan): assign three local integration slices`)
+- **Implementation commit:** `b97ee43` — `feat(ING-02): add synthetic RSS discovery parser`
+- **Implementation paths:** `apps/worker/src/layers/l1-data-knowledge/rss-discovery.ts`, `apps/worker/test/rss-discovery.test.ts`, and test registration only in `apps/worker/package.json`.
+- **Behavior:** SAX parsing of buffered, unnamespaced RSS 2.0 with a required channel; fixed byte/element/depth/text/item/field/time bounds; DOCTYPE rejection; closed redacted errors; no partial output. Output includes only item title, opaque link/GUID, raw `pubDate` text and caller retrieval time. Unknown namespaces and non-discovery bodies are omitted. No fetch, persistence, source approval or activation was added.
+- **Verification (WSL Ubuntu-26.04):** focused RSS tests pass (13/13); `npm test --workspace=@waspada/worker` passes (464/464); root `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check 3b6f9b15834047775054154f0454521a48b94ea3..HEAD` pass. Runtime/tool versions: Node `24.21.0`, npm `11.19.0`, `saxes` `6.0.0`, `tsx` `4.23.15`, TypeScript `7.0.2`, Wrangler `4.137.0`, Vite `8.3.0`. The build ran Wrangler dry-run only. No dependency was installed or version changed; a temporary worktree link to the existing dependency directory was removed after checks.
+- **Impact and limitations:** no migration, lockfile, configuration, or source registry change. This is an isolated parser core; callers, acquisition, persistence and source approval remain out of scope. Tests use authored synthetic strings only and confer no reuse rights or evidence/freshness claims.
+- **Remaining decision:** root review and acceptance; no contract or source-authorization change is proposed.
