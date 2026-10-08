@@ -1099,6 +1099,281 @@ describe('L3 durable investigation ledger', () => {
       'resume, replay, and sufficient-context paths leave checkpoint, budget, marker, reservation, and progress unchanged');
   });
 
+  it('reconciles the exact started action under a marker, then holds before refresh and progress', async () => {
+    const suffix = 'advance-review-action-reconcile';
+    const fixture = await seedFixture(testDatabase, suffix, { sufficient: false, seedContext: false });
+    const contextRepository = createSqlGroundingContextRepository(testDatabase.executor);
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const withRole = async <Result>(role: string, work: () => Promise<Result>): Promise<Result> => {
+      await testDatabase.executor.execute('SET ROLE ' + role);
+      try {
+        return await work();
+      } finally {
+        await testDatabase.executor.execute('RESET ROLE');
+      }
+    };
+
+    const persistedRecord: GroundingContextRecord = {
+      schema_version: '2.0',
+      trace_id: fixture.traceId,
+      record_type: 'GroundingContext',
+      dataset_kind: fixture.datasetKind,
+      context_id: fixture.contextId,
+      candidate_id: fixture.candidateId,
+      evidence: [],
+      revision_states: [],
+      candidate_events: [],
+      prior_decision_ids: [],
+      missing_fields: ['synthetic_status'],
+      conflicts: [],
+      retrieval_version: 'retrieval-synthetic-action-reconcile-v1',
+      index_version: 'index-synthetic-action-reconcile-v1',
+      sufficient: false,
+    };
+    await withRole('waspada_l2_grounding_writer', () => contextRepository.createOrVerify(persistedRecord));
+    const context: GroundingContext = {
+      schemaVersion: persistedRecord.schema_version,
+      recordType: persistedRecord.record_type,
+      datasetKind: persistedRecord.dataset_kind,
+      traceId: persistedRecord.trace_id,
+      contextId: persistedRecord.context_id,
+      candidateId: persistedRecord.candidate_id,
+      evidence: [],
+      revisionStates: [],
+      candidateEvents: [],
+      priorDecisionIds: [],
+      missingFields: [...persistedRecord.missing_fields],
+      conflicts: [],
+      retrievalVersion: persistedRecord.retrieval_version,
+      indexVersion: persistedRecord.index_version,
+      sufficient: persistedRecord.sufficient,
+    };
+    const investigationInput = makeCreateInput(fixture);
+    const initial = await withRole('waspada_l3_coordinator', () => repository.create(investigationInput));
+    const actionReservationId = `reservation-${suffix}-action`;
+    const outputReferenceId = `synthetic-output-${suffix}`;
+    const actionMenu: readonly InvestigationActionMenuEntry[] = [
+      { name: 'lookup.synthetic', description: 'Perform one synthetic lookup.' },
+    ];
+
+    let wallMilliseconds = Date.parse('2026-09-25T10:01:00.000Z');
+    let monotonicMilliseconds = 0;
+    const wallNow = (): string => new Date((wallMilliseconds += 1_000)).toISOString();
+    const clock = {
+      wallNow,
+      monotonicNow: () => {
+        const current = monotonicMilliseconds;
+        monotonicMilliseconds += 100;
+        return current;
+      },
+    };
+    const timer = {
+      setTimeout(_callback: () => void, _delayMs: number): unknown {
+        return Symbol('synthetic-action-deadline');
+      },
+      clearTimeout(_handle: unknown): void {},
+    };
+
+    let plannerCalls = 0;
+    let reasoningStepCalls = 0;
+    let singleStepCalls = 0;
+    let handlerCalls = 0;
+    let refreshCalls = 0;
+    let markerCheckpointVersion: number | null = null;
+    const planner = createInvestigationPlanner({
+      async plan(request) {
+        plannerCalls += 1;
+        assert.deepEqual(request.questions, ['missing_field_1']);
+        return {
+          result: {
+            schemaVersion: '1.0',
+            recordType: 'InvestigationPlanResult',
+            outcome: 'proposed',
+            actionName: 'lookup.synthetic',
+            input: { query: 'synthetic action reconciliation' },
+          },
+          inputTokens: 2,
+          outputTokens: 3,
+        };
+      },
+    }, {
+      modelVersion: '@synthetic/action-reconcile-planner-v1',
+      promptVersion: 'synthetic/action-reconcile-prompt-v1',
+    });
+    const realReasoningStep = createReasoningStepExecutor({
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      planner,
+      maxActiveSeconds: 10,
+      maxModelTokens: 32,
+      clock,
+      timer,
+    });
+    const reasoningStep: ReasoningStepExecutor = {
+      async plan(proposal) {
+        reasoningStepCalls += 1;
+        return realReasoningStep.plan(proposal);
+      },
+    };
+    const realSingleStep = createSingleStepExecutor({
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      registry: [{
+        name: 'lookup.synthetic',
+        enabled: true,
+        maxActiveSeconds: 5,
+        parseInput: (input) => ({ ok: true, value: input }),
+        async handler(input) {
+          handlerCalls += 1;
+          assert.deepEqual(input, { query: 'synthetic action reconciliation' });
+
+          const startedReservation = await repository.getActionReservation(
+            fixture.datasetKind,
+            investigationInput.investigationId,
+            actionReservationId,
+          );
+          const checkpointAtStart = await repository.getLatest(
+            fixture.datasetKind,
+            investigationInput.investigationId,
+          );
+          assert.ok(startedReservation);
+          assert.ok(checkpointAtStart);
+          assert.equal(startedReservation.status, 'started',
+            'the real executor invokes this handler only after startAction grants it');
+          assert.equal(startedReservation.expectedCheckpointVersion + 1, checkpointAtStart.checkpoint_version,
+            'the action reservation checkpoint is durable before handler entry');
+
+          markerCheckpointVersion = checkpointAtStart.checkpoint_version;
+          const marker = await repository.markAdvanceReviewPending({
+            datasetKind: fixture.datasetKind,
+            investigationId: investigationInput.investigationId,
+            observedCheckpointVersion: markerCheckpointVersion,
+            stage: 'action',
+            reason: 'action_result_uncertain',
+            reservationId: actionReservationId,
+          });
+          assert.equal(marker.replayed, false);
+          assert.equal(marker.marker.reservationId, actionReservationId);
+          return { status: 'succeeded', outputReferenceIds: [outputReferenceId] };
+        },
+      }],
+      clock,
+      timer,
+    });
+    const singleStep: SingleStepExecutor = {
+      async execute(proposal) {
+        singleStepCalls += 1;
+        return realSingleStep.execute(proposal);
+      },
+    };
+    const coordinator = createInvestigationCoordinator({
+      entry: createInsufficientContextEntryService(repository, TEST_FINGERPRINTS),
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      reasoningStep,
+      singleStep,
+      refreshPort: {
+        async refresh() {
+          refreshCalls += 1;
+          assert.fail('a persisted marker must stop the advance before refresh');
+        },
+      },
+      actionMenu,
+      wallNow,
+    });
+    const advance = {
+      kind: 'resume',
+      checkpoint: initial,
+      context,
+      persistedRecord,
+      reasoningReservationId: `reservation-${suffix}-planner`,
+      reasoningReservedAt: '2026-09-25T10:00:11Z',
+      actionReservationId,
+    } as const;
+
+    const readDurableState = () => withRole('waspada_l3_coordinator', async () => {
+      const checkpoint = await repository.getLatest(fixture.datasetKind, investigationInput.investigationId);
+      const reservation = await repository.getActionReservation(
+        fixture.datasetKind,
+        investigationInput.investigationId,
+        actionReservationId,
+      );
+      const marker = await repository.getAdvanceReviewPending(fixture.datasetKind, investigationInput.investigationId);
+      const progress = await testDatabase.executor.query<{
+        readonly checkpoint_version: number;
+        readonly context_id: string;
+        readonly fingerprint_key_id: string;
+        readonly digest_hex: string;
+        readonly consecutive_no_progress: number;
+      }>(
+        'SELECT checkpoint_version, context_id, fingerprint_key_id, '
+          + "encode(grounding_fingerprint, 'hex') AS digest_hex, consecutive_no_progress "
+          + 'FROM waspada.investigation_progress_snapshots '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY checkpoint_version',
+        [fixture.datasetKind, investigationInput.investigationId],
+      );
+      return {
+        checkpoint,
+        reservation,
+        marker,
+        progress: progress.rows,
+        requestAndCheckpoint: await readLedgerJson(
+          testDatabase,
+          fixture.datasetKind,
+          investigationInput.investigationId,
+        ),
+      };
+    });
+    const before = await readDurableState();
+    assert.deepEqual(before.checkpoint, initial);
+    assert.equal(before.reservation, null);
+    assert.equal(before.marker, null);
+
+    const first = await withRole('waspada_l3_coordinator', () => coordinator.advance(advance));
+    assert.equal(first.status, 'review_required');
+    if (first.status !== 'review_required') assert.fail('expected the sticky review-pending hold');
+    assert.equal(first.reason, 'advance_review_pending');
+
+    const afterFirst = await readDurableState();
+    const reconciledCheckpoint = afterFirst.checkpoint;
+    const reconciledReservation = afterFirst.reservation;
+    const pendingMarker = afterFirst.marker;
+    assert.ok(reconciledCheckpoint);
+    assert.ok(reconciledReservation);
+    assert.ok(pendingMarker);
+    assert.deepEqual(first.checkpoint, reconciledCheckpoint);
+    assert.equal(reconciledReservation.status, 'reconciled');
+    assert.equal(reconciledReservation.outcome, 'succeeded');
+    assert.equal(reconciledReservation.reconciledCheckpointVersion, reconciledCheckpoint.checkpoint_version);
+    assert.equal(reconciledCheckpoint.checkpoint_version, reconciledReservation.expectedCheckpointVersion + 2);
+    assert.equal(reconciledCheckpoint.budget.consumed.reasoning_turns, 1);
+    assert.equal(reconciledCheckpoint.budget.consumed.tool_attempts, 1);
+    assert.equal(reconciledCheckpoint.budget.consumed.model_tokens, 5);
+    assert.deepEqual(reconciledCheckpoint.budget.reserved, zeroCounters());
+    assert.equal(pendingMarker.stage, 'action');
+    assert.equal(pendingMarker.reason, 'action_result_uncertain');
+    assert.equal(pendingMarker.reservationId, actionReservationId);
+    assert.equal(pendingMarker.observedCheckpointVersion, markerCheckpointVersion);
+    assert.equal(markerCheckpointVersion, reconciledReservation.expectedCheckpointVersion + 1);
+    assert.deepEqual(afterFirst.progress, before.progress,
+      'the coordinator stops before persisting a grounding-progress snapshot');
+    assert.equal(plannerCalls, 1);
+    assert.equal(reasoningStepCalls, 1);
+    assert.equal(singleStepCalls, 1);
+    assert.equal(handlerCalls, 1);
+    assert.equal(refreshCalls, 0);
+
+    const replay = await withRole('waspada_l3_coordinator', () => coordinator.advance(advance));
+    assert.deepEqual(replay, first, 'the same advance replays the durable hold and reconciled checkpoint');
+    assert.deepEqual(await readDurableState(), afterFirst,
+      'replay leaves the checkpoint, budget, reservation, marker, progress, and persisted JSON unchanged');
+    assert.equal(plannerCalls, 1);
+    assert.equal(reasoningStepCalls, 1);
+    assert.equal(singleStepCalls, 1);
+    assert.equal(handlerCalls, 1, 'the already-reconciled handler is never invoked a second time');
+    assert.equal(refreshCalls, 0);
+  });
+
   it('rejects an exact registered action after a cold restart without consuming more budget', async () => {
     const fixture = await seedFixture(testDatabase, 'duplicate-action', { sufficient: false });
     const firstRepository = createSqlInvestigationLedgerRepository(testDatabase.executor);
