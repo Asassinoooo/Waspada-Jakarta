@@ -1,8 +1,11 @@
 # L3-CONTEXT-RESUME-COORDINATOR-CORE implementation handoff
 
-**Backlog ID:** `L3-CONTEXT-RESUME-COORDINATOR-CORE`  
-**Branch:** `work/L3-CONTEXT-RESUME-COORDINATOR-CORE`  
-**Worktree:** `D:\Projects\RPL\.codex-build\worktrees\l3-context-resume-coordinator-core`  
+**Backlog ID:** `L3-CONTEXT-RESUME-COORDINATOR-CORE`
+
+**Branch:** `work/L3-CONTEXT-RESUME-COORDINATOR-CORE`
+
+**Worktree:** `D:\Projects\RPL\.codex-build\worktrees\l3-context-resume-coordinator-core`
+
 **Assigned base:** `eaeed50100ef95c452e2ebbb826e080def1ac29c`
 
 ## Changes
