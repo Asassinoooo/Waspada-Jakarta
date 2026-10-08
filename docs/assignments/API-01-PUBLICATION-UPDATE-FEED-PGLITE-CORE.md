@@ -1,6 +1,6 @@
 # API-01-PUBLICATION-UPDATE-FEED-PGLITE-CORE — publish corrections through the updates route
 
-- **Status:** Assigned for a test-only local composition.
+- **Status:** Accepted locally after root review; synthetic PGlite test-only composition.
 - **Backlog ID:** `API-01-PUBLICATION-UPDATE-FEED-PGLITE-CORE`
 - **Objective:** Prove an L4-written correction is returned by the existing exact-live `GET /api/v1/updates` handler and runtime from the public update feed.
 - **Dependencies:** `API-01-PUBLICATION-API-READ-PGLITE-CORE`, `PUB-01-PUBLIC-READ-CHAIN-PGLITE-CORE`, `LIFE-01-CORRECTION-READ-CHAIN-CORE`, `API-PUBLIC-UPDATES-RUNTIME-CORE`, `API-PUBLIC-UPDATES-READER-CORE`, `API-PUBLIC-UPDATES-PROJECTION-CORE`, `PUB-01-MANUAL-GATE-PGLITE-CORE`, `PUB-WRITE-CORE`, `DB-TEST-RUNNER-ISOLATION`; ADR-020/026/028/052.
@@ -51,4 +51,8 @@ Append the branch/worktree, exact base, commit SHAs and messages, changed paths,
 - **Verification environment:** WSL `Ubuntu-26.04`, Linux Node `v24.21.0`, npm `11.19.0`; runtime selected from the preinstalled `/home/perry/.local/share/waspada-node-v24.21.0/bin`.
 - **Actual checks:** `npm exec --no -- tsx --test apps/db/test/manual-publication-public-read-chain.test.ts` passed 3/3 on final source; `npm run db:test` passed 44/44 files; `npm test` exited 0 on final source (web 60, Worker 464, DB 44/44 files, evaluation 19); `npm run typecheck` passed; `npm run build` passed, including Vite production build and Wrangler Worker dry-run; the assigned-base `git diff --check f1f057b722ea9f9f0d16fe61de834316cfe4c39b..HEAD` passed in WSL after the handoff commit.
 - **Limitations/configuration:** Synthetic authored rows and disposable PGlite only. No production/API/DTO/OpenAPI/database/dependency/configuration change; no migration or grant impact. Hosted Neon, source rights, authenticated reviewer identity, and deployed Worker behavior are not established by this test.
-- **Remaining decisions:** None within this test-only assignment; root review and integration remain pending.
+- **Remaining decisions:** None within this test-only assignment. Root review and integration are recorded below.
+
+### Root review and acceptance — 9 October 2026
+
+Root accepted the task branch at merge `b63e418e93faf25af70d82b2131915279d6c94c2`, preserving implementation commit `a4e6b11c85762744b47aee9b49c1bfc2d4ae3ff4` (`test(API-01): exercise publication updates route feed`) and handoff commit `f48dc4cf565d5afc4bdda911ab5b98ca0a8c0070` (`docs(API-01): record publication updates feed handoff`). Root reviewed the test-only diff and independently reran the final focused PGlite composition in WSL Ubuntu-26.04; it passed 3/3. The assigned-base WSL diff check passed, and the task branch was clean with only its two allowed paths changed. Agent checks passed the DB suite (44/44 files), full `npm test` (web 60, Worker 464, DB 44/44 files, evaluation 19), typecheck, and Vite/Wrangler build. This verifies the authored local PGlite composition only; hosted Neon, live source rights, moderator identity, and deployed Worker behavior remain unverified. No production, API, database, migration, grant, dependency, or configuration change occurred.
