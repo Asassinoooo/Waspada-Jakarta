@@ -836,10 +836,11 @@ describe('L3 durable investigation ledger', () => {
     const entry = createInsufficientContextEntryService(repository, TEST_FINGERPRINTS);
     const modelTokens = 100;
     let monotonicMilliseconds = 0;
+    const plannedActionTime = '2026-09-25T10:04:00Z';
     const wallTimes = [
       '2026-09-25T10:01:00Z',
       '2026-09-25T10:02:00Z',
-      '2026-09-25T10:04:00Z',
+      plannedActionTime,
       '2026-09-25T10:05:00Z',
       '2026-09-25T10:06:00Z',
     ];
@@ -1165,7 +1166,6 @@ describe('L3 durable investigation ledger', () => {
       reasoningReservationId: 'reservation-coordinator-composition-plan',
       reasoningReservedAt: '2026-09-25T10:00:01Z',
       actionReservationId: 'reservation-coordinator-composition-action',
-      actionReservedAt: '2026-09-25T10:03:00Z',
     } as const;
     const result = await coordinator.advance(advanceInput);
 
@@ -1320,12 +1320,25 @@ describe('L3 durable investigation ledger', () => {
     assert.deepEqual(await protectedWriteCounts(), protectedWritesBefore,
       'the investigated private proposal path writes no public, publication, audit, outbox, or moderator rows');
 
+    const stableActionReservation = await testDatabase.executor.query<{
+      reserved_tool_attempts: number;
+      reserved_at: string;
+    }>(
+      'SELECT reserved_tool_attempts, created_at::text AS reserved_at '
+        + 'FROM waspada.investigation_action_reservations '
+        + 'WHERE dataset_kind = $1 AND reservation_id = $2',
+      [fixture.datasetKind, 'reservation-coordinator-composition-action'],
+    );
+    assert.equal(stableActionReservation.rows.length, 1);
+    assert.equal(stableActionReservation.rows[0]?.reserved_tool_attempts, 1);
+    assert.equal(Date.parse(stableActionReservation.rows[0]!.reserved_at), Date.parse(plannedActionTime));
+
     const repeatedAction = await singleStep.execute({
       datasetKind: fixture.datasetKind,
       investigationId: checkpoint.investigation_id,
       expectedCheckpointVersion: 3,
       reservationId: advanceInput.actionReservationId,
-      reservedAt: advanceInput.actionReservedAt,
+      reservedAt: plannedActionTime,
       actionName: 'synthetic_search',
       input: { query: privateActionInput },
     });
@@ -1380,18 +1393,6 @@ describe('L3 durable investigation ledger', () => {
     assert.equal(plannerReservation.reserved_reasoning_turns, 1);
     assert.equal(plannerReservation.actual_model_tokens, 9);
     assert.equal(actionReservation.reservation_status, 'reconciled');
-    const stableActionReservation = await testDatabase.executor.query<{
-      reserved_tool_attempts: number;
-      reserved_at: string;
-    }>(
-      'SELECT reserved_tool_attempts, created_at::text AS reserved_at '
-        + 'FROM waspada.investigation_action_reservations '
-        + 'WHERE dataset_kind = $1 AND reservation_id = $2',
-      [fixture.datasetKind, 'reservation-coordinator-composition-action'],
-    );
-    assert.equal(stableActionReservation.rows[0]?.reserved_tool_attempts, 1);
-    assert.equal(Date.parse(stableActionReservation.rows[0]!.reserved_at), Date.parse('2026-09-25T10:03:00Z'));
-
     const persistedRevision = await roundtrip.ports.reportRevisions.findById(fixture.datasetKind, reportRevisionId);
     assert.ok(persistedRevision);
     assert.equal(persistedRevision.traceId, fixture.traceId);
@@ -1757,7 +1758,6 @@ describe('L3 durable investigation ledger', () => {
         reasoningReservationId: 'reservation-context-resume-plan',
         reasoningReservedAt: '2026-09-25T10:01:00Z',
         actionReservationId: 'reservation-context-resume-action',
-        actionReservedAt: '2026-09-25T10:01:02Z',
       };
       return {
         status: 'advanced' as const,
