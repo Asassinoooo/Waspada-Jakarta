@@ -62,4 +62,14 @@ Stop if correct replay requires a DB/schema change, recovery from an uncertain s
 
 ## Implementation handoff
 
-Not started.
+Implemented on branch `work/L3-ACTION-RESERVATION-TIMING-CORE` in worktree `D:\Projects\RPL\.codex-build\worktrees\l3-action-reservation-timing-core` (`/mnt/d/Projects/RPL/.codex-build/worktrees/l3-action-reservation-timing-core`), starting from exact base `6478e7427e00d3325528fa1f42773e05ce2cf78c`.
+
+- **Implementation commit:** `6eb3675c98d3a023182cf80a83957e24ee309c6c` — `fix(L3): reserve action time after planning`
+- **Changed implementation paths:** `apps/worker/src/layers/l3-investigation/contracts.ts`, `apps/worker/src/layers/l3-investigation/coordinator.ts`, and `apps/worker/test/l3-investigation-coordinator.test.ts`.
+- **Behavior:** removed caller-supplied `actionReservedAt`; the coordinator now validates the planner proposal and checkpoint timestamp before sampling trusted wall time. It compares RFC3339 instants with their full fractional precision after applying offsets, normalizes lowercase `t`/`z` before invoking the existing executor, and returns the existing `ledger_uncertain` review result with the planner's durable checkpoint if time is malformed, throwing, or earlier. These cases make no action or refresh call. The action reservation ID and one-planner/one-action/refresh flow remain unchanged.
+- **Timestamp profile:** the parser deliberately matches the bounded L2 app profile: at most 40 code units and 1–9 fractional digits. It rejects impossible Gregorian dates and leap seconds; the latter and longer fractional forms are outside this app profile even though RFC3339 permits them.
+- **Runtime:** checks ran in WSL Ubuntu-26.04 with Linux Node `v24.21.0` and npm `11.19.0`, using existing dependencies.
+- **Checks:** focused coordinator test (`tsx --test apps/worker/test/l3-investigation-coordinator.test.ts`) passed, 35/35; `npm run typecheck` passed; `npm run build` passed, including Vite production build and Wrangler dry run; `git diff --check 6478e7427e00d3325528fa1f42773e05ce2cf78c..HEAD` passed after the implementation commit.
+- **Full suite:** `npm test` exited 1. The database harness reported 40/41 files passing; `investigation-ledger.test.ts` failed in “composes one bounded synthetic investigation through exact-context private proposal persistence and replay” with `InvestigationLedgerError: reservation_conflict`. Its direct replay fixture still supplies the old `10:03` action reservation, while the coordinator now reserves at `10:04` after planning. That DB test is outside this assignment's allowed paths and was left unchanged for root integration to address separately.
+- **Migration/configuration impact:** none. No DB, schema, API, dependency, runtime-binding, or deployment changes.
+- **Remaining decision:** root integration should update the stale test-only replay timestamp and rerun the full suite. This task does not implement reservation recovery or Workflow runtime behavior.
