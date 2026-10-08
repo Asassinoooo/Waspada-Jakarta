@@ -1,6 +1,6 @@
 # L3-ADVANCE-REVIEW-PENDING-CORE — durable hold for uncertain partial advances
 
-- **Status:** Assigned for implementation
+- **Status:** Accepted locally on `main` after independent root review
 - **Backlog ID:** `L3-ADVANCE-REVIEW-PENDING-CORE`
 - **Parent:** FR-07; NFR-01/02/05/07
 - **Implementation model:** GPT-6 Luna, max reasoning
@@ -85,4 +85,15 @@ Stop and report if a safe implementation requires an execution fence/terminal pr
 
 ## Root handoff record
 
-Root will record the accepted implementation commit(s), exact messages, changed paths, actual WSL checks, limitations, and migration impact here after independent review. The implementer must return those details and must not merge or push.
+The implementer worked on branch `work/L3-ADVANCE-REVIEW-PENDING-CORE` in `.codex-build/worktrees/l3-advance-review-pending-core`, based on `1a5382e9b1b047409cb081348b6a8635fd98e47d`. Agent commits, preserved on the task branch, were:
+
+- `d563a61a386319fe397b6dfd2aaefba344f0ac9c` — `feat(L3): add durable advance review hold`
+- `bb5e993c1cbf914a30ef916a2e8c01a8522fbe9c` — `fix(L3): close review marker identity and telemetry gaps`
+- `1b010ef61b7f6415a9f945fc10cd5b937b82da35` — `fix(L3): serialize review markers and preserve planner uncertainty`
+- `eb07866c4aba92b60b27655c2f5145f9dde8acca` — `fix(L3): bind pending markers to the exact started reservation`
+
+Root cherry-picked these as `40dc18b3ecc3c2f44328b8f1df283e7f6eb14ef4` (`feat(L3): add durable advance review hold`), `01098da4870e8c3790a9ad80b6a144756b1a95c5` (`fix(L3): close review marker identity and telemetry gaps`), `a08a1d6e77baa5570524ae9d7785e94631ccc6d9` (`fix(L3): serialize review markers and preserve planner uncertainty`), and `f22e58170e8337b18e83157ade58ef2cf6e6c24f` (`fix(L3): bind pending markers to the exact started reservation`). The implementation changes 14 paths: migration `apps/db/migrations/035_l3_advance_review_pending.sql`; DB ledger and tests in `apps/db/src/investigation-ledger.ts`, `apps/db/test/investigation-ledger.test.ts`, `apps/db/test/migrations.test.ts`, and `apps/db/test/public-event-updates.test.ts`; L3 contracts, coordinator, and telemetry in `apps/worker/src/layers/l3-investigation/`; and the corresponding five focused Worker test files.
+
+Migration 035 adds a private append-only per-investigation marker with L3-coordinator-only read/insert grants and request-row serialization. The coordinator checks it before replay and early-return paths, after reconciliation, and before subsequent work. It blocks new reservations, starts, progress, and actionable replays. A started action remains authorized to finish; a marker created during that action must identify its exact reservation, which can reconcile against its original checkpoint and budget. It does not cancel an in-flight handler, establish terminal state, or authorize retry. No public contract, schema 2.0 checkpoint, Workflow binding, or deployment configuration changed.
+
+In WSL Ubuntu-26.04 using Node `v22.23.2` and npm `12.0.2`, the agent reported focused DB tests **37/37**, focused Worker tests **117/117**, full `npm test`, `npm run typecheck`, `npm run build`, and the assigned-base `git diff --check` passing. Root independently passed the focused DB suite **37/37**, focused Worker suite **88/88**, `npm run build` (workspace typecheck, Vite production build, and Wrangler dry-run), and reviewed the final code and both lock orderings. PGlite proves local ordering and role behavior only; it does not prove independent-session hosted PostgreSQL locking, Workflow fencing, or production recovery. Migration 035 is the only schema change; no new grant outside the L3 coordinator role or runtime/configuration change was made. No unresolved local design decision remains; hosted concurrency and recovery remain unverified.
