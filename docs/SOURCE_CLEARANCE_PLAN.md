@@ -62,3 +62,5 @@ The clearance gate is complete for a connector only when its permission basis an
 ## Current decision
 
 **No live source is cleared.** Use synthetic fixtures for demos and tests. BMKG is the recommended first written request because its official CAP interface is narrow and documented; PetaBencana should follow to resolve its license conflict. ANTARA, Satu Data, and Korlantas requests remain source-specific. No requests have been sent and this plan does not authorize contacting source owners on behalf of Team 12.
+
+Team 12 chose to leave the sender, university, and supervisor placeholders in the BMKG draft for the team to complete before sending.
