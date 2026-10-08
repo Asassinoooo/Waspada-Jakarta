@@ -41,13 +41,13 @@ Stop and report the exact gap if the existing ledger/executor cannot model this 
 
 ### Implementer handoff — 2026-10-09
 
-- **Backlog item:** `L3-ADVANCE-REVIEW-PENDING-PLANNER-RECONCILIATION-PGLITE-CORE` (test implementation complete; root review pending).
+- **Backlog item:** `L3-ADVANCE-REVIEW-PENDING-PLANNER-RECONCILIATION-PGLITE-CORE` (accepted on local `main`; see root review below).
 - **Requirements:** FR-07; NFR-01/02/05/07, following the corrected scope.
 - **Branch:** `work/L3-ADVANCE-REVIEW-PENDING-PLANNER-RECONCILIATION-PGLITE-CORE`.
 - **Worktree:** `D:\Projects\RPL\.codex-build\worktrees\l3-advance-review-pending-planner-reconciliation-pglite-core`.
 - **Assigned base:** pushed `main` at `f1f057b722ea9f9f0d16fe61de834316cfe4c39b`.
 - **Implementation commit:** `fe737704bb27af49f6950aacbf0b06f7348e4172`, `test(L3-ADVANCE-REVIEW-PENDING): cover planner reconciliation`.
-- **Handoff documentation commit:** committed separately as `docs(L3-ADVANCE-REVIEW-PENDING): record planner reconciliation handoff`; its exact SHA is included in the implementer-to-root handoff accompanying this commit.
+- **Handoff documentation commit:** `10c3b1d88011308d61407bd0fa0fc41dd7d54298` — `docs(L3-ADVANCE-REVIEW-PENDING): record planner reconciliation handoff`.
 - **Changed paths:** `apps/db/test/investigation-ledger.test.ts`; this implementation handoff section only.
 - **Behavior verified:** a synthetic provider seam confirms the real reasoning reservation is `started`, then appends a `planning` / `planner_result_uncertain` marker for that reservation before returning a valid proposal. The real reasoning-step executor reconciles that known result once, persisting one reasoning turn, 3 active seconds, 5 model tokens, its model-run provenance, and a zeroed reserved budget while leaving the marker present. The coordinator returns `review_required` / `advance_review_pending` before single-step execution, handler invocation, refresh, or progress persistence. Replaying through the coordinator returns the same hold without another provider call, and the checkpoint, reservation, marker, progress, budget, and request/checkpoint JSON are unchanged.
 - **Verification runtime/dependencies:** WSL Ubuntu-26.04, Linux `x86_64`; Node `v24.21.0`, npm `11.19.0`. Existing dependencies used: PGlite `0.5.8`, tsx `4.23.15`, TypeScript `7.0.2`, Vite `8.3.0`, and Wrangler `4.137.0`. No dependencies were installed or changed.
@@ -60,6 +60,8 @@ Stop and report the exact gap if the existing ledger/executor cannot model this 
   - `git diff --check f1f057b722ea9f9f0d16fe61de834316cfe4c39b..HEAD` — passed after both commits.
 - **Limitations:** this demonstrates synthetic local PGlite/executor ordering only. It does not establish provider cancellation, retries, hosted Workflow behavior, execution fencing, terminal proof, or safety to retry.
 - **Migration/configuration impact:** none. No production, schema, migration, grant, public/API, dependency, source/provider, runtime, or deployment configuration changed.
-- **Remaining decisions:** root review and acceptance.
+- **Remaining decisions:** none for this local slice; hosted Workflow behavior remains unverified.
 
-Append the branch/worktree, exact base, commit SHAs and messages, changed paths, behavior, actual WSL checks, runtime versions, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+### Root review and acceptance — 2026-10-09
+
+Root reviewed and accepted `work/L3-ADVANCE-REVIEW-PENDING-PLANNER-RECONCILIATION-PGLITE-CORE` at merge `713d4bf5a93ade0c48a9145a7c4d6dc50bc31b1f`, preserving implementation commit `fe737704bb27af49f6950aacbf0b06f7348e4172` (`test(L3-ADVANCE-REVIEW-PENDING): cover planner reconciliation`) and handoff commit `10c3b1d88011308d61407bd0fa0fc41dd7d54298` (`docs(L3-ADVANCE-REVIEW-PENDING): record planner reconciliation handoff`). The independent review caught and corrected the assignment's FR mapping before implementation; this slice covers FR-07 only. Root independently passed the focused PGlite test (21/21) from integrated `main` and the assigned-base WSL `git diff --check`. The agent passed `npm run db:test` (44/44 files), full `npm test` (web 60, Worker 464, DB 44/44 files, evaluation 19), `npm run typecheck`, `npm run build` (Vite and Wrangler dry-run), and the assigned-base diff check in WSL Ubuntu-26.04 using Node 24.21.0/npm 11.19.0. The result proves local synthetic ordering only; hosted Workflow behavior, cancellation, execution fencing, terminal proof, and retry safety remain unverified. No production code, schema, migration, grant, public contract, dependency, source, or configuration changed.
