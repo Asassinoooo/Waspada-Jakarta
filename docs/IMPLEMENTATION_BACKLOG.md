@@ -4,7 +4,7 @@
 
 | ID | Objective | Dependency / design | Status |
 | --- | --- | --- | --- |
-| L3-ADVANCE-REVIEW-PENDING-CORE | Persist a sticky review-pending marker for uncertain partial advances and gate new L3 work without changing checkpoint versions | L3-COORDINATOR-CORE, L3-CONTEXT-RESUME-COORDINATOR-CORE, L3-ACTION-RESERVATION-TIMING-CORE, ADR-014/017/031/051; [assignment](assignments/L3-ADVANCE-REVIEW-PENDING-CORE.md) | Ready for isolated assignment after ADR-051 update; marker is not a fence, terminal proof, or retry authorization; no Workflow runtime is in scope |
+| L3-ADVANCE-REVIEW-PENDING-CORE | Persist a sticky review-pending marker for uncertain partial advances and gate new L3 work without changing checkpoint versions | L3-COORDINATOR-CORE, L3-CONTEXT-RESUME-COORDINATOR-CORE, L3-ACTION-RESERVATION-TIMING-CORE, ADR-014/017/031/051; [assignment](assignments/L3-ADVANCE-REVIEW-PENDING-CORE.md) | Assigned to `work/L3-ADVANCE-REVIEW-PENDING-CORE` at `1a5382e9b1b047409cb081348b6a8635fd98e47d`; isolated worktree `.codex-build/worktrees/l3-advance-review-pending-core`; marker is not a fence, terminal proof, or retry authorization; no Workflow runtime is in scope |
 
 Baseline: 24 September 2026. Development is authorized. SPEC-01, SPEC-02 and SPEC-03 design baselines are root-reviewed; BOOT-01's local synthetic runtime skeleton is accepted after root review. The root planner changes statuses after actual review. Requirements refer to [the SDP](../SOFTWARE_DEVELOPMENT_PLAN.md). PLAN-00 received a GPT-6 Luna/max gap review and final consistency review, followed by root acceptance. Local agent instructions are excluded from tracking. The local repository's origin is https://github.com/Asassinoooo/Waspada-Jakarta.git.
 
