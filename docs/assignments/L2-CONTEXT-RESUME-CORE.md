@@ -62,4 +62,12 @@ Do not spawn additional agents. Stop and report to root if an exact persisted na
 
 ## Implementation handoff
 
-Pending implementation. Root will add branch, commit IDs/messages, changed paths, actual test output, limitations, and configuration impact after review.
+Implemented on branch `work/L2-CONTEXT-RESUME-CORE` in `.codex-build/worktrees/l2-context-resume-core`.
+
+- **Implementation commit:** `20c09ea606e424d91a8e15ffaf5a3bde94b3d1ab` — `feat(L2-CONTEXT-RESUME): rehydrate pinned context`
+- **Changed paths:** `apps/db/src/evidence-retrieval.ts`; `apps/db/test/l2-context-resumption-composition.test.ts`; `apps/worker/src/layers/l2-model-grounding/context-resumption.ts`; `apps/worker/test/l2-grounding-context-resumption.test.ts`.
+- **Behavior:** Layer 2 reads one exact refs-only context, resolves at most eight saved evidence identities in one bounded query, requires exact same-dataset/candidate identity and unchanged revision states, requires the current source registry to be active and approved, reloads source timestamps and origin lineage, and reads every exact span through the existing source-revision invalidation gate. It returns only an in-memory schema 2.0 `ReasoningRequest` after closed-contract validation. Source health is preserved as metadata and does not block resume. Failures use stable content-free codes.
+- **Focused checks:** Node `v24.21.0`, npm `11.19.0`; `npx tsx --test apps/db/test/evidence-retrieval.test.ts apps/db/test/l2-context-resumption-composition.test.ts apps/worker/test/l2-grounding-context.test.ts apps/worker/test/l2-grounding-context-resumption.test.ts` — 36/36 passed.
+- **Full checks:** `npm run db:test` — 41/41 DB files passed; `npm test` — web 60, Worker 440, DB 41 files, evaluation 19, all passed; `npm run typecheck` — exit 0; `npm run build` — exit 0, including Vite production build and Wrangler dry-run. `git diff --check b56392ac48032e1816b560a66f56fa04c89a9d30..20c09ea606e424d91a8e15ffaf5a3bde94b3d1ab` — exit 0. The final assigned-base check including this handoff commit will be run before delivery.
+- **Migration/configuration impact:** None. Existing L2 reader grants support evidence/source/origin reads and exact-span invalidation; the context lookup uses the existing context repository boundary. No schema, grants, API, runtime, provider, source, dependency, or deployment configuration changed.
+- **Limitations and remaining decisions:** Local synthetic PGlite and injected-reader behavior only; hosted Neon isolation/concurrency and any deployed Worker/Workflow behavior remain unverified. Root review and integration are pending; no additional design decision is required by this implementation.
