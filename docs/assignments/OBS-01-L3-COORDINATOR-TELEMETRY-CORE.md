@@ -63,6 +63,7 @@ Implemented on branch `work/OBS-01-L3-COORDINATOR-TELEMETRY-CORE` in worktree `/
 
 - **Implementation commit:** `5505d80dd8f10538d2c29e818949c88d0b5f356a` — `feat(OBS-01): add coordinator advance telemetry`
 - **Handoff commit:** `fb2104d229b22542e1cf6b5aef8c0c401aa535f0` — `docs(OBS-01): record coordinator telemetry handoff`
+- **Final handoff metadata commit:** `41ddb5bf216cc4b7ac6dde91929257190117fd96` — `docs(OBS-01): complete coordinator handoff metadata`
 - **Changed paths:** `apps/worker/package.json`; `apps/worker/src/layers/l3-investigation/coordinator-telemetry.ts`; `apps/worker/src/layers/l5-evaluation-monitoring/telemetry.ts`; `apps/worker/test/l3-coordinator-telemetry.test.ts`; this handoff section.
 
 The opt-in decorator wraps the existing coordinator port and emits one `l3_coordinator_advance` record with a closed outcome and finite, non-negative duration. It passes the exact result object or thrown error through unchanged, maps malformed outcomes and thrown errors to `error`, and isolates clock and sink failures. Validation checks the closed status envelope, status-specific exact top-level keys, required own plain-record presence, and the closed review-reason set. It deliberately leaves nested record semantics to the coordinator, L2, and database contracts. The existing no-op sink remains the default; console output is built from an exact allowlist and drops forged fields and unknown outcomes.
@@ -73,6 +74,10 @@ Checks ran in WSL Ubuntu-26.04 with Node.js `v24.21.0` and npm `11.19.0`:
 - `npm test` — passed, exit 0; Worker 448 tests, database 40/40 files, evaluation 19 tests; web workspace also ran.
 - `npm run typecheck` — passed, exit 0.
 - `npm run build` — passed, exit 0; includes typecheck, Vite build, and Wrangler dry-run.
-- `git diff --check bf4eafa99f11f207be140bdfb4492cc43cd0bc20..fb2104d229b22542e1cf6b5aef8c0c401aa535f0` — passed, exit 0, on the handoff commit.
+- `git diff --check bf4eafa99f11f207be140bdfb4492cc43cd0bc20..41ddb5bf216cc4b7ac6dde91929257190117fd96` — passed, exit 0, on the final handoff metadata commit (independently verified during review).
 
-No migration, configuration, dependency, runtime composition, API/public contract, provider/source, or external-service change was needed. No Worker caller or remote log destination was added. Hosted logging and Cloudflare execution remain unverified; the telemetry is operational and makes no quality, cost, or safety claim. No additional design decision is outstanding; root review and acceptance remain pending.
+No migration, configuration, dependency, runtime composition, API/public contract, provider/source, or external-service change was needed. No Worker caller or remote log destination was added. Hosted logging and Cloudflare execution remain unverified; the telemetry is operational and makes no quality, cost, or safety claim.
+
+## Root review and acceptance
+
+Root reviewed and integrated the three agent commits on local `main` as `9c2f06f` (implementation), `9762a60` (handoff), and `c6a26b4` (final handoff metadata). Independent code review found no actionable implementation issue; its environment lacked a Linux Node runtime, so the reviewer could not reproduce tests. Root independently ran the full suite, typecheck, build, and final assigned-base diff check in WSL Ubuntu-26.04 with the toolchain listed above. The task remains opt-in with no runtime caller, remote sink, or hosted behavior claim.
