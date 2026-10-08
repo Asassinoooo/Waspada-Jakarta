@@ -3,6 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { createSqlGeometryWriter } from "../src/geometry-writer.js";
 import { applyMigrations, readMigrations } from "../src/migrations.js";
 import { createRepositoryPorts } from "../src/ports.js";
+import { JOB_QUEUE_POLICY } from "../src/queue.js";
 import { SqlSourcePollScheduler } from "../src/source-poll-scheduler.js";
 import { createTestDatabase, type TestDatabase } from "./harness.js";
 import {
@@ -628,6 +629,267 @@ describe("L1 synthetic fixture pipeline PGlite composition", () => {
     assert.deepEqual(publishedState.rows[0], { events: "0", publications: "0" });
     assert.equal(JSON.stringify(replayed).includes(pollUrl), false);
     assert.equal(JSON.stringify(replayed).includes(permittedText), false);
+  });
+
+  it("recovers a synthetic source poll after partial writes and an interrupted failure transition", async () => {
+    const pollAt = "2026-09-25T03:05:00.000Z";
+    const leaseExpiresAt = "2026-09-25T03:05:01.000Z";
+    const recoveryAt = leaseExpiresAt;
+    const retryAt = "2026-09-25T03:05:31.000Z";
+    const traceId = "trace-poll-partial-recovery";
+    const sourceId = "source-poll-partial-recovery";
+    const reportRevisionId = "revision-poll-partial-recovery";
+    const candidateId = "candidate-poll-partial-recovery";
+    const geometryId = "geometry-poll-partial-recovery";
+    const pollFixture = makeFixture({
+      sourceId,
+      url: "https://synthetic.invalid/polls/partial-recovery",
+      candidateId,
+      reportRevisionId,
+      geometryId,
+      retrievedAt: pollAt,
+      observedAt: pollAt,
+    });
+    await ports.tracesAndAudit.createTrace(makeTrace(traceId, "synthetic"));
+    await database.executor.query(
+      `INSERT INTO waspada.source_registry
+         (source_id, trace_id, registry_version, display_name, source_kind, remit,
+          access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+          approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
+          polling_interval_seconds)
+       VALUES ($1, $2, 1, 'Authored synthetic recovery fixture', 'authority',
+          ARRAY['authored local test'], 'api', ARRAY['synthetic.invalid'],
+          ARRAY['synthetic fixture only'], ARRAY['authored fixture'],
+          'active', 'approved', 'unknown', true, 'never', 300)`,
+      [sourceId, traceId],
+    );
+    const queued = await ports.acquisitionJobs.enqueueSourcePoll({
+      datasetKind: "synthetic",
+      idempotencyKey: "fixture-source-poll:partial-recovery",
+      traceId,
+      sourceId,
+      requestedAt: pollAt,
+    });
+    assert.equal(queued.outcome, "enqueued");
+    if (queued.outcome !== "enqueued") return;
+
+    let extractionAdapterCalls = 0;
+    const pollPipelinePorts: FixturePipelinePorts = {
+      ...pipelinePorts,
+      modelAdapter: {
+        async extract(request) {
+          extractionAdapterCalls += 1;
+          return pipelinePorts.modelAdapter.extract(request);
+        },
+      },
+    };
+    const catalog = new InMemorySyntheticSourcePollFixtureCatalog([pollFixture]);
+    let evidenceReferenceCalls = 0;
+    let firstEvidenceReferenceId: string | null = null;
+    const partialReportRevisions = new Proxy(pollPipelinePorts.reportRevisions, {
+      get(target, property, receiver) {
+        if (property === "createEvidenceReference") {
+          return async (...args: Parameters<typeof target.createEvidenceReference>) => {
+            evidenceReferenceCalls += 1;
+            if (evidenceReferenceCalls === 2) throw new Error("synthetic reference-write interruption");
+            const id = await target.createEvidenceReference(...args);
+            firstEvidenceReferenceId ??= id;
+            return id;
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    let failureTransitionCalls = 0;
+    const interruptedJobs = new Proxy(pollPipelinePorts.acquisitionJobs, {
+      get(target, property, receiver) {
+        if (property === "fail") {
+          return async (...args: Parameters<typeof target.fail>) => {
+            failureTransitionCalls += 1;
+            if (failureTransitionCalls === 1) throw new Error("synthetic failure-transition interruption");
+            return target.fail(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const firstAttemptPorts: FixturePipelinePorts = {
+      ...pollPipelinePorts,
+      reportRevisions: partialReportRevisions,
+      acquisitionJobs: interruptedJobs,
+    };
+    const claimedTokens: string[] = [];
+    let originalLeaseToken = "";
+    let staleCompletionDuringReplacement: Awaited<ReturnType<typeof ports.acquisitionJobs.complete>> | null = null;
+    const pollQueue = {
+      async claimDueSyntheticSourcePoll(now: string) {
+        const job = await ports.acquisitionJobs.claimDueSyntheticSourcePoll(
+          now, JOB_QUEUE_POLICY.minLeaseDurationMs,
+        );
+        if (job?.leaseToken) {
+          claimedTokens.push(job.leaseToken);
+          if (claimedTokens.length === 2) {
+            assert.equal(job.jobId, queued.job.jobId);
+            assert.equal(job.status, "leased");
+            assert.equal(job.attemptCount, 2);
+            assert.notEqual(job.leaseToken, originalLeaseToken);
+            staleCompletionDuringReplacement = await ports.acquisitionJobs.complete(
+              "synthetic", job.jobId, originalLeaseToken, now,
+            );
+          }
+        }
+        return job;
+      },
+    };
+    const failed = await runAsL1(database, () => runSyntheticSourcePollJob({
+      now: pollAt, queue: pollQueue, catalog, pipelinePorts: firstAttemptPorts,
+    }));
+    assert.deepEqual(failed, {
+      outcome: "failed", code: "fixture_persistence_failed", queueOutcome: "not_acknowledged",
+    });
+    assert.equal(failureTransitionCalls, 1);
+    assert.equal(extractionAdapterCalls, 1);
+    assert.equal(claimedTokens.length, 1);
+    const firstLeaseToken = claimedTokens[0];
+    assert.ok(firstLeaseToken);
+    originalLeaseToken = firstLeaseToken;
+    assert.ok(firstEvidenceReferenceId);
+
+    const readCounts = async () => {
+      const result = await database.executor.query<{
+        reports: string; refs: string; uniqueRefs: string; candidates: string;
+        links: string; chunks: string; geometries: string; events: string; publications: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text FROM waspada.report_revisions
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = $1) AS reports,
+           (SELECT count(*)::text FROM waspada.evidence_references
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = $1) AS refs,
+           (SELECT count(*)::text FROM (
+              SELECT report_revision_id, permitted_text_hash, span_start, span_end, offset_unit, relation
+              FROM waspada.evidence_references
+              WHERE dataset_kind = 'synthetic' AND report_revision_id = $1
+              GROUP BY report_revision_id, permitted_text_hash, span_start, span_end, offset_unit, relation
+            ) AS unique_refs) AS "uniqueRefs",
+           (SELECT count(*)::text FROM waspada.extraction_results
+            WHERE dataset_kind = 'synthetic' AND candidate_id = $2) AS candidates,
+           (SELECT count(*)::text FROM waspada.extraction_evidence
+            WHERE dataset_kind = 'synthetic' AND candidate_id = $2) AS links,
+           (SELECT count(*)::text FROM waspada.evidence_chunks
+            WHERE dataset_kind = 'synthetic' AND report_revision_id = $1) AS chunks,
+           (SELECT count(*)::text FROM waspada.geometries
+            WHERE dataset_kind = 'synthetic' AND geometry_id = $3) AS geometries,
+           (SELECT count(*)::text FROM waspada.event_versions WHERE trace_id = $4) AS events,
+           (SELECT count(*)::text FROM waspada.publication_decisions WHERE trace_id = $4) AS publications`,
+        [reportRevisionId, candidateId, geometryId, traceId],
+      );
+      return result.rows[0];
+    };
+    const readSource = async () => {
+      const result = await database.executor.query<{
+        registry_status: string; approval_status: string; auto_acquisition_enabled: boolean;
+        auto_publication_policy: string; polling_interval_seconds: number; health_status: string;
+        last_checked_at: string | null; last_success_at: string | null;
+      }>(
+        `SELECT registry_status, approval_status, auto_acquisition_enabled,
+                auto_publication_policy, polling_interval_seconds, health_status,
+                last_checked_at::text AS last_checked_at,
+                last_success_at::text AS last_success_at
+         FROM waspada.source_registry WHERE source_id = $1`,
+        [sourceId],
+      );
+      return result.rows[0];
+    };
+    const assertSourcePolicy = (source: Awaited<ReturnType<typeof readSource>>) => {
+      assert.ok(source);
+      assert.deepEqual([
+        source.registry_status, source.approval_status, source.auto_acquisition_enabled,
+        source.auto_publication_policy, source.polling_interval_seconds,
+      ], ["active", "approved", true, "never", 300]);
+    };
+
+    assert.deepEqual(await readCounts(), {
+      reports: "1", refs: "1", uniqueRefs: "1", candidates: "0", links: "0",
+      chunks: "0", geometries: "0", events: "0", publications: "0",
+    });
+    const partialRefs = await database.executor.query<{ evidence_ref_id: string }>(
+      `SELECT evidence_ref_id::text AS evidence_ref_id FROM waspada.evidence_references
+       WHERE dataset_kind = 'synthetic' AND report_revision_id = $1`,
+      [reportRevisionId],
+    );
+    assert.deepEqual(partialRefs.rows.map((row) => row.evidence_ref_id), [firstEvidenceReferenceId]);
+    const leased = await ports.acquisitionJobs.findById("synthetic", queued.job.jobId);
+    assert.equal(leased?.status, "leased");
+    assert.equal(leased?.attemptCount, 1);
+    assert.equal(leased?.leaseToken, originalLeaseToken);
+    assert.equal(Date.parse(leased?.leaseExpiresAt ?? "invalid"), Date.parse(leaseExpiresAt));
+    const afterInterruptedFailure = await readSource();
+    assertSourcePolicy(afterInterruptedFailure);
+    assert.equal(afterInterruptedFailure?.health_status, "unknown");
+    assert.equal(afterInterruptedFailure?.last_checked_at, null);
+    assert.equal(afterInterruptedFailure?.last_success_at, null);
+
+    const recoveredCount = await runAsL1(database, async () => {
+      const role = await database.executor.query<{ role_name: string }>(
+        "SELECT current_user AS role_name",
+      );
+      assert.equal(role.rows[0]?.role_name, "waspada_l1_pipeline");
+      return ports.acquisitionJobs.recoverExpiredLeases(recoveryAt);
+    });
+    assert.equal(recoveredCount, 1);
+    const recovered = await ports.acquisitionJobs.findById("synthetic", queued.job.jobId);
+    assert.equal(recovered?.status, "retry");
+    assert.equal(recovered?.attemptCount, 1);
+    assert.equal(recovered?.lastFailureCode, "lease_expired");
+    assert.equal(recovered?.leaseToken, null);
+    assert.equal(recovered?.leaseExpiresAt, null);
+    assert.equal(Date.parse(recovered?.availableAt ?? "invalid"), Date.parse(retryAt));
+    const afterRecovery = await readSource();
+    assertSourcePolicy(afterRecovery);
+    assert.equal(afterRecovery?.health_status, "degraded");
+    assert.equal(Date.parse(afterRecovery?.last_checked_at ?? "invalid"), Date.parse(recoveryAt));
+    assert.equal(afterRecovery?.last_success_at, null);
+
+    const replayed = await runAsL1(database, () => runSyntheticSourcePollJob({
+      now: retryAt, queue: pollQueue, catalog, pipelinePorts: pollPipelinePorts,
+    }));
+    assert.deepEqual(replayed, {
+      outcome: "completed", empty: false, reportCount: 1,
+      evidenceReferenceCount: 5, chunkCount: 1, geometryCount: 1,
+    });
+    assert.equal(extractionAdapterCalls, 2);
+    assert.equal(claimedTokens.length, 2);
+    const replayLeaseToken = claimedTokens[1];
+    assert.ok(replayLeaseToken);
+    assert.notEqual(replayLeaseToken, originalLeaseToken);
+    assert.deepEqual(staleCompletionDuringReplacement, { outcome: "not_owned" });
+    assert.deepEqual(await readCounts(), {
+      reports: "1", refs: "5", uniqueRefs: "5", candidates: "1", links: "4",
+      chunks: "1", geometries: "1", events: "0", publications: "0",
+    });
+    const finalRefs = await database.executor.query<{ evidence_ref_id: string }>(
+      `SELECT evidence_ref_id::text AS evidence_ref_id FROM waspada.evidence_references
+       WHERE dataset_kind = 'synthetic' AND report_revision_id = $1 ORDER BY evidence_ref_id`,
+      [reportRevisionId],
+    );
+    assert.equal(finalRefs.rows.length, 5);
+    assert.equal(new Set(finalRefs.rows.map((row) => row.evidence_ref_id)).size, 5);
+    assert.ok(finalRefs.rows.some((row) => row.evidence_ref_id === firstEvidenceReferenceId));
+
+    const completed = await ports.acquisitionJobs.findById("synthetic", queued.job.jobId);
+    assert.equal(completed?.status, "completed");
+    assert.equal(completed?.attemptCount, 2);
+    assert.equal(completed?.leaseToken, null);
+    const afterSuccess = await readSource();
+    assertSourcePolicy(afterSuccess);
+    assert.equal(afterSuccess?.health_status, "healthy");
+    assert.equal(Date.parse(afterSuccess?.last_checked_at ?? "invalid"), Date.parse(retryAt));
+    assert.equal(Date.parse(afterSuccess?.last_success_at ?? "invalid"), Date.parse(retryAt));
+
+    // Data writes converge idempotently; extraction can run again when its result was not persisted.
+    // This test does not establish exactly-once adapter execution.
   });
 
   it("schedules and persists one exact synthetic poll before acknowledging its queue job", async () => {
