@@ -1,6 +1,6 @@
 # PUB-01-REVIEWED-EVIDENCE-LABEL-CORE — carry explicit public labels through the manual gate
 
-- **Status:** Assigned for implementation
+- **Status:** Accepted locally on `main` after independent root review
 - **Backlog ID:** `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE`
 - **Parent:** `PUB-01`
 - **Dependencies:** Accepted `PUB-01-MANUAL-GATE-CORE`, `PUB-WRITE-CORE`, `L2-PROPOSAL-PERSIST-CORE`, `L2-PROPOSAL-REASONING-BRIDGE-CORE`, `MOD-01-WRITER-ROLE-CORE`, and `DB-TEST-RUNNER-ISOLATION`; [ADR-003](../decisions/ADR-003-domain-publication-evidence.md), [ADR-013](../decisions/ADR-013-publication-write-transaction.md), [ADR-036](../decisions/ADR-036-event-proposal-persistence.md), and [ADR-052](../decisions/ADR-052-moderator-selected-public-evidence-labels.md)
@@ -86,3 +86,9 @@ The implementer records the actual branch/worktree and root-pinned base; commit 
 - **Limitations:** Synthetic unit and PGlite coverage does not establish source rights, moderator identity, hosted Neon behavior, or factual publication quality. The worker dry-run is not a deployment.
 - **Migration/configuration impact:** None. No database table, migration, route/runtime, public DTO/API/OpenAPI, package, or configuration changes.
 - **Remaining decisions:** None identified; root review and acceptance remain pending.
+
+### Root review and acceptance
+
+Root accepted the implementation from `work/PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` in `.codex-build/worktrees/pub-01-reviewed-evidence-label-core`, based on `d50626b8b548cbbf35b8e792ce47d7ae300bfe09`. Agent commits are `262952be104ab3963be8f14650acefe971efd0c6` (`feat(PUB-01): persist moderator-selected evidence labels`), `8588f77aee7a312d2be3e08144682cf43fb31369` (`docs(PUB-01): record completed implementation handoff`), and `644bda699ce08f9a0bd3307c2dcf8a52c8a1fd93` (`docs(PUB-01): record final verification result`). Root preserved them as `0bbef9bd28ca4b8996baf3f37585efab5d3328b5`, `d9705fb6599c6a4d92f0225e0f021a4cfc674b1a`, and `579c70a16bb99a79fb566d5944f81efc70b40ac4` with the same messages.
+
+The implementation changes the five assigned Worker/DB implementation and test files and the optional private schema-2.0 property in `docs/contracts.schema.json`. Root independently passed the focused writer test (15/15), focused service test (11/11), workspace typecheck, and build in WSL Ubuntu-26.04 using Node `v24.21.0`/npm `11.19.0`. Two independent read-only reviews found no remaining issue; a review gap on the mixed `publish`/`review`/`reject` case was fixed and included in the passing final suite. The agent passed `npm run db:test` (41/41 files), full `npm test` (Web 60/60, Worker 451/451, DB 41/41 files, evaluation 19/19), typecheck, build, and assigned-base diff check. PGlite/unit fixtures are synthetic. No migration, table schema, public DTO/API/OpenAPI, route/runtime, identity, dependency, configuration, source, hosted service, or deployment change occurred. Source rights, factual quality, moderator identity, and hosted Neon behavior remain unverified. The dependent PGlite composition may now be assigned.
