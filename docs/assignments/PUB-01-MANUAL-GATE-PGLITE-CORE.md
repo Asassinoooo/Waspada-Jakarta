@@ -1,6 +1,6 @@
 # PUB-01-MANUAL-GATE-PGLITE-CORE — persisted publication composition proof
 
-- **Status:** Assigned on `work/PUB-01-MANUAL-GATE-PGLITE-CORE` from the pinned base below
+- **Status:** Accepted locally on `main` after independent root review
 - **Backlog ID:** `PUB-01-MANUAL-GATE-PGLITE-CORE`
 - **Parent:** `PUB-01`
 - **Dependencies:** Accepted `PUB-01-MANUAL-GATE-CORE`, `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE`, `PUB-WRITE-CORE`, `MOD-01-WRITER-ROLE-CORE`, and the DB PGlite harness
@@ -74,10 +74,20 @@ The implementer records the assigned branch/worktree and exact base, commit SHA(
 
 ### Root review — original blocker before label decision
 
-At the time of the original review, the implementer correctly stopped at the writer boundary. Migration 023 already permits `under_review` in private `proposal_claims`, as specified by ADR-036. The mismatch was that the L2 bridge and manual gate required the draft label `under_review`, while `SqlPublicationWriter` accepted only the four public evidence labels and projected the proposal label into the published claim. `PublicationWriteCommand` had no explicit moderator-reviewed public label, so the writer failed closed. Team 12 resolved this policy in ADR-052, and `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` is implementing the moderator-selected input and projection.
+At the time of the original review, the implementer correctly stopped at the writer boundary. Migration 023 already permits `under_review` in private `proposal_claims`, as specified by ADR-036. The mismatch was that the L2 bridge and manual gate required the draft label `under_review`, while `SqlPublicationWriter` accepted only the four public evidence labels and projected the proposal label into the published claim. `PublicationWriteCommand` had no explicit moderator-reviewed public label, so the writer failed closed. Team 12 resolved this policy in ADR-052, and `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` later implemented and received acceptance for the moderator-selected input and projection.
 
-No changes or commits were made on `work/PUB-01-MANUAL-GATE-PGLITE-CORE`; its worktree remains clean at assigned base `877fbc8281ef3334a6bb23001b98d29a17b32bd5`. The task originally stopped because Team 12's public-label rule was unresolved. ADR-052 has since resolved that policy in favor of an explicit moderator-selected label per published claim. The PGlite composition remains gated only until `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` is accepted and root pins its own assigned base containing the integrated L3 migration 035 and handoff. No policy decision remains open.
+No changes or commits were made during this original attempt; its worktree was clean at assigned base `877fbc8281ef3334a6bb23001b98d29a17b32bd5`. The task stopped because Team 12's public-label rule was unresolved. ADR-052 later resolved that policy in favor of an explicit moderator-selected label per published claim. The composition then remained gated until `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` was accepted and root pinned an assigned base containing that work and the integrated L3 migration 035. Both conditions were met before the current assignment below; no policy decision remains open.
 
 ### Current assignment — 8 October 2026
 
-The label-core implementation has been accepted locally and pushed to `main`. This task is assigned from exact base `3426e21098784417bb9c78303075f36f832d59ed` on `work/PUB-01-MANUAL-GATE-PGLITE-CORE` in `.codex-build/worktrees/pub-01-manual-gate-pglite-core`. Root verified that the existing worktree was clean and that its previous base is an ancestor of the assigned base; it will be advanced to the exact assigned base before implementation. The old blocker above is historical; no public-label policy decision remains open.
+The label-core implementation was accepted and pushed to `main` before this task. The PGlite composition was assigned from exact base `3426e21098784417bb9c78303075f36f832d59ed` on `work/PUB-01-MANUAL-GATE-PGLITE-CORE` in `.codex-build/worktrees/pub-01-manual-gate-pglite-core`; root verified the worktree was clean and fast-forwarded it from its prior base. The earlier label-policy blocker is historical and resolved.
+
+### Root review and acceptance
+
+Root accepted the test from `work/PUB-01-MANUAL-GATE-PGLITE-CORE`. Agent commits are `7ec049a0cae687bc9961542ad69a2c9f4f9d6673` (`test(PUB-01): compose manual gate with SQL writer`) and `53e05ae16f4db498b0b5f14d3ec284c0f64add6f` (`docs(PUB-01): record PGlite composition handoff`). Root preserved them on `main` as `8653f79` and `4100b59` with the same messages.
+
+The test composes the real strict SQL proposal reader, manual gate service, and SQL writer under the existing moderator writer role. It proves a single coherent synthetic publication, exact claim-ID label and evidence lineage, unchanged private proposal labels, exact replay, changed-label idempotency conflict, and stale-evidence denial using fixture-scoped snapshots across all 14 publication tables. Independent read-only review findings (an undefined import and incomplete per-claim lineage assertions) were fixed before acceptance; follow-up reviews found no remaining issue.
+
+Verification ran in WSL Ubuntu-26.04 with Node `v24.21.0`, npm `11.19.0`, and PGlite `0.5.8`. The agent passed the focused test (3/3), `npm run db:test` (42/42 files), full `npm test` (Web 60/60, Worker 451/451, DB 42/42 files, evaluation 19/19), typecheck, build, and assigned-base diff check. The full `npm test` preceded a final test-only type annotation; focused test (3/3), typecheck, build, and diff check passed again afterward. Root independently reran the focused test (3/3) after the final commit and confirmed the task branch was clean and limited to the two allowed paths.
+
+No migration, grant, package, configuration, route/runtime, API/OpenAPI, identity, application-code, source, hosted-service, or deployment change occurred. Synthetic PGlite results do not establish hosted Neon behavior, actual moderator identity/authorization, source rights, factual quality, or network delivery guarantees. No remaining decision is needed for this local test slice; subsequent source-backed evaluation and publication work remain gated by rights-cleared data and human review.

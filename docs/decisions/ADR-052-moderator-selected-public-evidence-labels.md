@@ -1,12 +1,12 @@
 # ADR-052 — Moderator-selected public evidence labels
 
-- **Status:** Accepted by Team 12 on 8 October 2026; implementation remains assigned
+- **Status:** Accepted by Team 12 on 8 October 2026; label implementation and PGlite composition accepted locally on `main`
 - **Owners:** Team 12
 - **Scope:** PUB-01; schema 2.0 private publication decisions and public Event claim projection
 
 ## Context
 
-Schema 2.0 `EventProposal` claims are private drafts and carry `evidence_label: "under_review"` until Layer 4 authorizes publication. The accepted SQL writer rejects that value as a public label, and the accepted manual-gate service has no authorized moderator input that supplies a public label. Inferring a label from the draft would turn a private placeholder into a public assertion without review.
+Schema 2.0 `EventProposal` claims are private drafts and carry `evidence_label: "under_review"` until Layer 4 authorizes publication. At the time of this decision, the accepted SQL writer rejected that value as a public label, and the accepted manual-gate service had no authorized moderator input that supplied a public label. Inferring a label from the draft would turn a private placeholder into a public assertion without review.
 
 ## Decision
 
@@ -23,7 +23,7 @@ Schema 2.0 `EventProposal` claims are private drafts and carry `evidence_label: 
 
 The existing public enum and normalized `event_claims.evidence_label` column already hold the selected values, so no database table schema or migration is needed. The decision is private review metadata; public Event projections continue to expose only the existing label on published claims. No public DTO, API/OpenAPI, identity, route/runtime, source acquisition, live access, or hosted service is authorized by this decision. The implementation must not claim source rights or factual correctness from a selected label alone.
 
-The bounded service/writer implementation and its tests are tracked by [PUB-01-REVIEWED-EVIDENCE-LABEL-CORE](../assignments/PUB-01-REVIEWED-EVIDENCE-LABEL-CORE.md). The real-writer PGlite composition remains a separate dependent task under [PUB-01-MANUAL-GATE-PGLITE-CORE](../assignments/PUB-01-MANUAL-GATE-PGLITE-CORE.md).
+The bounded service/writer implementation and its tests are accepted under [PUB-01-REVIEWED-EVIDENCE-LABEL-CORE](../assignments/PUB-01-REVIEWED-EVIDENCE-LABEL-CORE.md). The real-writer PGlite composition is accepted under [PUB-01-MANUAL-GATE-PGLITE-CORE](../assignments/PUB-01-MANUAL-GATE-PGLITE-CORE.md). Both are local synthetic proofs; they do not establish source rights, factual quality, authenticated reviewer identity, or hosted publication readiness.
 
 ## Affected requirements
 
