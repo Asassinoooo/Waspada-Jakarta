@@ -61,3 +61,18 @@ Stop and report to root if the existing accepted runtime seams cannot exercise t
 ## Implementation handoff
 
 The implementation agent appends branch/worktree, exact base, commit SHAs and messages, changed paths, behavior, checks actually run, limitations, configuration impact, and remaining decisions. Root independently reviews and accepts the branch.
+
+### Handoff record
+
+- **Branch:** `work/API-01-LIFE-01-PUBLIC-READ-PGLITE-CORE`
+- **Worktree:** `D:\Projects\RPL\.codex-build\worktrees\api-01-life-01-public-read-pglite-core` (`/mnt/d/Projects/RPL/.codex-build/worktrees/api-01-life-01-public-read-pglite-core`)
+- **Exact base:** `0baa6a835ba1fc7d3d575cfc7b5571ded4176fd7`
+- **Test commit:** `a17ab1d4eec40ec67207527d08e011219f8dac7a` — `test(API-01-LIFE-01): verify public reads after source withdrawal`
+- **Handoff commit:** this handoff-record update; its exact SHA and message are returned to the root with the completed work package.
+- **Changed paths:** `apps/db/test/source-revision-freshness-transition-composition.test.ts`; this assignment handoff section.
+- **Behavior:** after the existing source-withdrawal transition, the test calls the real public API handler through the exact-live list, detail, and GeoJSON runtimes, all using the same isolated in-memory PGlite executor. It verifies list/detail freshness, direct versus unrelated impact freshness, unchanged published content and lifecycle, empty GeoJSON for a fixture without supported geometry, private transition/source details absent from public outputs, and the existing bounded telemetry fields.
+- **Checks (Ubuntu-26.04, Node 24.21.0, npm 11.19.0):** focused test passed; `npm run db:test` passed (42/42 DB test files); `npm test` passed (60 web tests, 451 worker tests, 42/42 DB test files, 19 evaluation tests); `npm run typecheck` passed; `npm run build` passed including the Wrangler dry run; `git diff --check 0baa6a835ba1fc7d3d575cfc7b5571ded4176fd7..HEAD` passed after the test commit. Focused command: `cd /mnt/d/Projects/RPL/.codex-build/worktrees/api-01-life-01-public-read-pglite-core/apps/db && /mnt/d/Projects/RPL/node_modules/.bin/tsx --test test/source-revision-freshness-transition-composition.test.ts`.
+- **Dependency/runtime record:** existing workspace versions were Node `24.21.0`, npm `11.19.0`, tsx `4.23.15`, TypeScript `7.0.2`, PGlite `0.5.8`, pg `8.16.3`, `@types/pg` `8.23.1`, and Wrangler `4.137.0`. No dependency install or temporary symlink was needed.
+- **Limitations:** authored synthetic data exists only in the temporary PGlite database and uses the live dataset tag only to exercise exact-live predicates. The fixture has no supported geometry, so the GeoJSON assertion covers the empty-collection case.
+- **Configuration/migration impact:** none. No production, API, schema, dependency, or runtime configuration files changed.
+- **Remaining decisions:** none for this test-only task; root independently reviews and accepts the branch.
