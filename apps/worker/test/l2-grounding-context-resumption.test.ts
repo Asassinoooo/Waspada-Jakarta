@@ -223,6 +223,12 @@ it("redacts context, retrieval, and excerpt failures and validates returned span
     resumptionError("excerpt_invalid"),
   );
 
+  const missingSpan = makeFixture(record, undefined, { spanNull: true });
+  await assert.rejects(
+    missingSpan.resumer.resume("synthetic", record.context_id),
+    resumptionError("excerpt_invalid"),
+  );
+
   const invalidKey = makeFixture(record);
   await assert.rejects(
     invalidKey.resumer.resume("synthetic", "source text must never appear"),
@@ -321,6 +327,7 @@ function makeFixture(
     readonly spanError?: Error;
     readonly spanText?: string;
     readonly spanIdentityMismatch?: boolean;
+    readonly spanNull?: boolean;
   } = {},
 ) {
   const referenceReads: ExactEvidenceReferenceReadRequest[] = [];
@@ -355,6 +362,7 @@ function makeFixture(
           ...request,
           text: options.spanText ?? textByEvidenceId[request.evidenceReferenceId] ?? "",
         };
+        if (options.spanNull) return null as unknown as typeof result;
         return options.spanIdentityMismatch ? { ...result, candidateId: "candidate-other" } : result;
       },
     },

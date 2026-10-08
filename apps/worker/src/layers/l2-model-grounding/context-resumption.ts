@@ -140,7 +140,8 @@ export function createGroundingContextResumer(
           }
           throw new GroundingContextResumptionError("excerpt_read_failed");
         }
-        if (!sameExactSpan(span, spanRequest)
+        if (span === null || typeof span !== "object" || Array.isArray(span)
+          || !sameExactSpan(span, spanRequest)
           || typeof span.text !== "string"
           || Array.from(span.text).length !== reference.span_end - reference.span_start
           || Array.from(span.text).length > MAX_EXACT_EVIDENCE_SPAN_CODE_POINTS) {
