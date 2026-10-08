@@ -463,6 +463,168 @@ describe('L3 durable investigation ledger', () => {
       'marker insertion and blocked operations do not append a checkpoint or change its budget');
   });
 
+  it('rejects an anonymous marker while a started action needs exact reconciliation', async () => {
+    const fixture = await seedFixture(testDatabase, 'advance-review-anonymous-started', { sufficient: false });
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const input = makeCreateInput(fixture);
+    const initial = await repository.create(input);
+    const reservation = await repository.reserveAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'anonymous-marker-started-tool',
+      expectedCheckpointVersion: initial.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('anonymous-marker-started-tool'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 5,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:01:00Z',
+    });
+    const started = await repository.startAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'anonymous-marker-started-tool',
+      startedAt: '2026-09-25T10:01:01Z',
+    });
+    assert.equal(started.mayInvoke, true);
+
+    await testDatabase.executor.execute('SET ROLE waspada_l3_coordinator');
+    try {
+      await assert.rejects(testDatabase.executor.query(
+        `INSERT INTO waspada.investigation_advance_review_pending
+           (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
+         VALUES ($1, $2, $3, 'action', 'action_result_uncertain', NULL)`,
+        [fixture.datasetKind, input.investigationId, reservation.checkpoint.checkpoint_version],
+      ), /must identify the exact started reservation/i,
+      'the coordinator-role trigger rejects a reservation-less marker for a started action');
+      await assertLedgerError('advance_review_pending_conflict', repository.markAdvanceReviewPending({
+        datasetKind: fixture.datasetKind,
+        investigationId: input.investigationId,
+        observedCheckpointVersion: reservation.checkpoint.checkpoint_version,
+        stage: 'action',
+        reason: 'action_result_uncertain',
+      }), 'the repository returns a stable conflict for the same anonymous marker');
+      assert.equal(await repository.getAdvanceReviewPending(fixture.datasetKind, input.investigationId), null);
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+
+    const reconciled = await repository.reconcileAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: 'anonymous-marker-started-tool',
+      expectedCheckpointVersion: reservation.checkpoint.checkpoint_version,
+      outcome: 'succeeded',
+      actualActiveSeconds: 2,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:01:03Z',
+    });
+    assert.equal(reconciled.replayed, false);
+    assert.equal(reconciled.checkpoint.checkpoint_version, reservation.checkpoint.checkpoint_version + 1);
+    assert.equal((await repository.getActionReservation(
+      fixture.datasetKind, input.investigationId, 'anonymous-marker-started-tool',
+    ))?.status, 'reconciled');
+    assert.equal(await repository.getAdvanceReviewPending(fixture.datasetKind, input.investigationId), null,
+      'a rejected anonymous marker leaves the exact started reservation reconcilable');
+  });
+
+  it('requires a marker to name the exact started reservation when an older one is reconciled', async () => {
+    const fixture = await seedFixture(testDatabase, 'advance-review-marker-exact-started-id', { sufficient: false });
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const input = makeCreateInput(fixture);
+    const initial = await repository.create(input);
+    const priorReservationId = 'marker-exact-prior-reconciled';
+    const priorReservation = await repository.reserveAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: priorReservationId,
+      expectedCheckpointVersion: initial.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('marker-exact-prior-reconciled'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 5,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:01:00Z',
+    });
+    await repository.startAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: priorReservationId,
+      startedAt: '2026-09-25T10:01:01Z',
+    });
+    const priorReconciled = await repository.reconcileAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: priorReservationId,
+      expectedCheckpointVersion: priorReservation.checkpoint.checkpoint_version,
+      outcome: 'succeeded',
+      actualActiveSeconds: 1,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:01:02Z',
+    });
+    const activeReservationId = 'marker-exact-active-started';
+    const activeReservation = await repository.reserveAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: activeReservationId,
+      expectedCheckpointVersion: priorReconciled.checkpoint.checkpoint_version,
+      actionKind: 'tool',
+      actionFingerprint: testFingerprint('marker-exact-active-started'),
+      actionName: 'lookup.synthetic',
+      reservedActiveSeconds: 5,
+      reservedModelTokens: 0,
+      reservedAt: '2026-09-25T10:02:00Z',
+    });
+    const activeStart = await repository.startAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: activeReservationId,
+      startedAt: '2026-09-25T10:02:01Z',
+    });
+    assert.equal(activeStart.mayInvoke, true);
+
+    await testDatabase.executor.execute('SET ROLE waspada_l3_coordinator');
+    try {
+      await assert.rejects(testDatabase.executor.query(
+        `INSERT INTO waspada.investigation_advance_review_pending
+           (dataset_kind, investigation_id, observed_checkpoint_version, stage, reason, reservation_id)
+         VALUES ($1, $2, $3, 'action', 'action_result_uncertain', $4)`,
+        [fixture.datasetKind, input.investigationId,
+          activeReservation.checkpoint.checkpoint_version, priorReservationId],
+      ), /must identify the exact started reservation/i,
+      'the coordinator-role trigger rejects a marker naming a different reconciled reservation');
+      await assertLedgerError('advance_review_pending_conflict', repository.markAdvanceReviewPending({
+        datasetKind: fixture.datasetKind,
+        investigationId: input.investigationId,
+        observedCheckpointVersion: activeReservation.checkpoint.checkpoint_version,
+        stage: 'action',
+        reason: 'action_result_uncertain',
+        reservationId: priorReservationId,
+      }), 'the repository rejects a marker that does not identify the started reservation');
+      assert.equal(await repository.getAdvanceReviewPending(fixture.datasetKind, input.investigationId), null);
+    } finally {
+      await testDatabase.executor.execute('RESET ROLE');
+    }
+
+    const reconciled = await repository.reconcileAction({
+      datasetKind: fixture.datasetKind,
+      investigationId: input.investigationId,
+      reservationId: activeReservationId,
+      expectedCheckpointVersion: activeReservation.checkpoint.checkpoint_version,
+      outcome: 'succeeded',
+      actualActiveSeconds: 2,
+      actualModelTokens: 0,
+      finishedAt: '2026-09-25T10:02:03Z',
+    });
+    assert.equal(reconciled.replayed, false);
+    assert.equal(reconciled.checkpoint.checkpoint_version, activeReservation.checkpoint.checkpoint_version + 1);
+    assert.equal((await repository.getActionReservation(
+      fixture.datasetKind, input.investigationId, activeReservationId,
+    ))?.status, 'reconciled');
+    assert.equal(await repository.getAdvanceReviewPending(fixture.datasetKind, input.investigationId), null,
+      'rejecting the wrong named marker leaves the exact active reservation reconcilable');
+  });
+
   it('verifies local marker/start orderings and exact-started reconciliation', async () => {
     const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
     const reservedFirstFixture = await seedFixture(testDatabase, 'advance-review-reserve-first', { sufficient: false });

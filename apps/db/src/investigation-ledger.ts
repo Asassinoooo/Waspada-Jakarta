@@ -608,6 +608,22 @@ class SqlInvestigationLedgerRepository implements InvestigationLedgerRepository 
         return { marker: mapAdvanceReviewPending(existing), replayed: true };
       }
 
+      // A pending marker must name any already-started invocation exactly, or
+      // the sticky hold could strand its result behind an anonymous/different ID.
+      // loadState(..., true) holds the request lock first, matching startAction.
+      const started = await transaction.query<{ reservation_id: string }>(
+        `SELECT reservation_id
+         FROM waspada.investigation_action_reservations
+         WHERE dataset_kind = $1 AND investigation_id = $2
+           AND reservation_status = 'started'
+         FOR UPDATE`,
+        [input.datasetKind, input.investigationId],
+      );
+      const startedReservationId = started.rows[0]?.reservation_id;
+      if (startedReservationId && input.reservationId !== startedReservationId) {
+        fail('advance_review_pending_conflict');
+      }
+
       if (input.reservationId) {
         const reservation = await findReservation(transaction, input.datasetKind, input.reservationId, true);
         const expectedKind = input.stage === 'planning' ? 'reasoning' : 'tool';

@@ -43,6 +43,7 @@ DECLARE
   reservation_kind text;
   reservation_status_value text;
   expected_kind text;
+  started_reservation_id text;
 BEGIN
   -- Serialize every marker insert with reservation/start/progress operations,
   -- including reservation-less markers, using the shared request-row lock.
@@ -61,6 +62,19 @@ BEGIN
     WHEN NEW.stage = 'planning' THEN 'reasoning'
     WHEN NEW.stage IN ('action', 'refresh', 'progress') THEN 'tool'
   END;
+
+  SELECT reservation.reservation_id
+    INTO started_reservation_id
+  FROM waspada.investigation_action_reservations AS reservation
+  WHERE reservation.dataset_kind = NEW.dataset_kind
+    AND reservation.investigation_id = NEW.investigation_id
+    AND reservation.reservation_status = 'started'
+  FOR UPDATE;
+
+  IF FOUND AND NEW.reservation_id IS DISTINCT FROM started_reservation_id THEN
+    RAISE EXCEPTION 'L3 advance review-pending marker must identify the exact started reservation'
+      USING ERRCODE = '23514';
+  END IF;
 
   IF NEW.reservation_id IS NULL THEN
     RETURN NEW;
