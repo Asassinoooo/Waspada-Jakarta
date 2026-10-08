@@ -2,6 +2,7 @@ export const API_REQUEST_EVENT_NAME = "api_request" as const;
 export const L2_RETRIEVAL_EVENT_NAME = "l2_retrieval" as const;
 export const L2_DIRECT_REASONING_EVENT_NAME = "l2_direct_reasoning" as const;
 export const L3_LEDGER_OPERATION_EVENT_NAME = "l3_ledger_operation" as const;
+export const L3_COORDINATOR_ADVANCE_EVENT_NAME = "l3_coordinator_advance" as const;
 export const L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME = "l1_synthetic_fixture_job" as const;
 export const SYNTHETIC_SOURCE_POLL_PROCESS_EVENT_NAME = "l1_synthetic_source_poll_process" as const;
 export const FRESHNESS_DUE_SCHEDULE_EVENT_NAME = "freshness_due_schedule" as const;
@@ -23,6 +24,12 @@ export type L3LedgerOperation =
   | "terminate";
 
 export type L3LedgerCaseStatus = "open" | "paused" | "completed" | "stopped_for_review";
+
+export type L3CoordinatorAdvanceOutcome =
+  | "continue"
+  | "sufficient_context"
+  | "review_required"
+  | "error";
 
 export type L3LedgerStopReason =
   | "limit_exhausted"
@@ -125,6 +132,12 @@ export interface L3LedgerOperationErrorTelemetryRecord {
   durationMs: number;
 }
 
+export interface L3CoordinatorAdvanceTelemetryRecord {
+  eventName: typeof L3_COORDINATOR_ADVANCE_EVENT_NAME;
+  outcome: L3CoordinatorAdvanceOutcome;
+  durationMs: number;
+}
+
 export interface L1SyntheticFixtureJobCompletedTelemetryRecord {
   eventName: typeof L1_SYNTHETIC_FIXTURE_JOB_EVENT_NAME;
   outcome: "completed";
@@ -195,6 +208,7 @@ export type TelemetryRecord =
   | L2RetrievalTelemetryRecord
   | L2DirectReasoningTelemetryRecord
   | L3LedgerTelemetryRecord
+  | L3CoordinatorAdvanceTelemetryRecord
   | L1SyntheticFixtureJobTelemetryRecord
   | SyntheticSourcePollProcessTelemetryRecord
   | FreshnessDueScheduleTelemetryRecord;
@@ -335,6 +349,16 @@ function recordConsoleTelemetry(record: TelemetryRecord): void {
     return;
   }
 
+  if (input.eventName === L3_COORDINATOR_ADVANCE_EVENT_NAME) {
+    if (!isL3CoordinatorAdvanceRecord(input)) return;
+    console.log({
+      event_name: L3_COORDINATOR_ADVANCE_EVENT_NAME,
+      outcome: input.outcome,
+      duration_ms: input.durationMs,
+    });
+    return;
+  }
+
   if (input.eventName !== L3_LEDGER_OPERATION_EVENT_NAME) return;
 
   if (input.outcome === "success") {
@@ -405,6 +429,12 @@ const L3_STOP_REASONS = new Set<L3LedgerStopReason>([
   "awaiting_moderator",
   "completed",
 ]);
+const L3_COORDINATOR_ADVANCE_OUTCOMES = new Set<L3CoordinatorAdvanceOutcome>([
+  "continue",
+  "sufficient_context",
+  "review_required",
+  "error",
+]);
 const FRESHNESS_DUE_SCHEDULE_OUTCOMES = new Set<FreshnessDueScheduleOutcome>([
   "completed",
   "failed",
@@ -471,6 +501,12 @@ function isL3LedgerOperationSuccessRecord(value: Record<string, unknown>): boole
 
 function isL3LedgerOperationErrorRecord(value: Record<string, unknown>): boolean {
   return L3_OPERATIONS.has(value.operation as L3LedgerOperation)
+    && isFiniteNonNegative(value.durationMs);
+}
+
+function isL3CoordinatorAdvanceRecord(value: Record<string, unknown>): boolean {
+  return hasExactPlainDataKeys(value, ["eventName", "outcome", "durationMs"])
+    && L3_COORDINATOR_ADVANCE_OUTCOMES.has(value.outcome as L3CoordinatorAdvanceOutcome)
     && isFiniteNonNegative(value.durationMs);
 }
 
