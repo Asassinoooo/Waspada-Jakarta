@@ -37,6 +37,7 @@ Record bounded review intent durably when one coordinator advance has explicit e
 - `apps/db/test/public-event-updates.test.ts` only to keep its intentionally partial migration fixture excluding migration 035 and to preserve the expected list of migrations it explicitly applies
 - `apps/worker/src/layers/l3-investigation/contracts.ts`
 - `apps/worker/src/layers/l3-investigation/coordinator.ts`
+- `apps/worker/src/layers/l3-investigation/coordinator-telemetry.ts` and `apps/worker/test/l3-coordinator-telemetry.test.ts` only to preserve the new closed review outcome
 - `apps/worker/src/layers/l3-investigation/telemetry.ts` and its focused test only if the repository interface change requires it
 - `apps/worker/test/l3-investigation-coordinator.test.ts`
 - `apps/worker/test/l3-reasoning-step-executor.test.ts`
