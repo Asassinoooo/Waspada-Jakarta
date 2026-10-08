@@ -1,13 +1,13 @@
 # PUB-01-MANUAL-GATE-PGLITE-CORE — persisted publication composition proof
 
-- **Status:** Planned after `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` acceptance; no implementation changes made
+- **Status:** Assigned on `work/PUB-01-MANUAL-GATE-PGLITE-CORE` from the pinned base below
 - **Backlog ID:** `PUB-01-MANUAL-GATE-PGLITE-CORE`
 - **Parent:** `PUB-01`
 - **Dependencies:** Accepted `PUB-01-MANUAL-GATE-CORE`, `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE`, `PUB-WRITE-CORE`, `MOD-01-WRITER-ROLE-CORE`, and the DB PGlite harness
-- **Sequence/base requirement:** Assign only after label-core acceptance and root pins a base that includes the integrated `L3-ADVANCE-REVIEW-PENDING-CORE` migration 035 and handoff. This does not authorize work on shared state.
+- **Assigned base:** `3426e21098784417bb9c78303075f36f832d59ed` (contains accepted L3 migration 035 and handoff, moderator-selected label implementation and handoff, and root acceptance record)
 - **Contract baseline:** Schema 2.0 `EventProposal`, `PublicationDecision`, label-aware `ManualPublicationServiceInput`, label-aware `PublicationWriteCommand`, and the existing moderator writer role in migration 017; no database schema or migration change
 - **Implementation model:** GPT-6 Luna, max reasoning
-- **Branch/worktree:** Root pins these in the dispatch; agent works only in that isolated worktree
+- **Branch/worktree:** `work/PUB-01-MANUAL-GATE-PGLITE-CORE` / `.codex-build/worktrees/pub-01-manual-gate-pglite-core`; agent works only in this isolated WSL-accessible worktree
 
 ## Objective
 
@@ -77,3 +77,7 @@ The implementer records the assigned branch/worktree and exact base, commit SHA(
 At the time of the original review, the implementer correctly stopped at the writer boundary. Migration 023 already permits `under_review` in private `proposal_claims`, as specified by ADR-036. The mismatch was that the L2 bridge and manual gate required the draft label `under_review`, while `SqlPublicationWriter` accepted only the four public evidence labels and projected the proposal label into the published claim. `PublicationWriteCommand` had no explicit moderator-reviewed public label, so the writer failed closed. Team 12 resolved this policy in ADR-052, and `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` is implementing the moderator-selected input and projection.
 
 No changes or commits were made on `work/PUB-01-MANUAL-GATE-PGLITE-CORE`; its worktree remains clean at assigned base `877fbc8281ef3334a6bb23001b98d29a17b32bd5`. The task originally stopped because Team 12's public-label rule was unresolved. ADR-052 has since resolved that policy in favor of an explicit moderator-selected label per published claim. The PGlite composition remains gated only until `PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` is accepted and root pins its own assigned base containing the integrated L3 migration 035 and handoff. No policy decision remains open.
+
+### Current assignment — 8 October 2026
+
+The label-core implementation has been accepted locally and pushed to `main`. This task is assigned from exact base `3426e21098784417bb9c78303075f36f832d59ed` on `work/PUB-01-MANUAL-GATE-PGLITE-CORE` in `.codex-build/worktrees/pub-01-manual-gate-pglite-core`. Root verified that the existing worktree was clean and that its previous base is an ancestor of the assigned base; it will be advanced to the exact assigned base before implementation. The old blocker above is historical; no public-label policy decision remains open.
