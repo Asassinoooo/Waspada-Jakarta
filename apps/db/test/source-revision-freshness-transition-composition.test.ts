@@ -18,9 +18,12 @@ import {
 } from '../../worker/src/layers/l4-application-integration/api.js';
 import type { EventDetail, EventPage, EventView, PublicFeatureCollection } from '../../worker/src/contracts/public-api.js';
 import type { TelemetryRecord } from '../../worker/src/layers/l5-evaluation-monitoring/telemetry.js';
+import { createPublicEventUpdatesCursorCodec } from '../../worker/src/layers/l4-application-integration/public-event-updates-cursor.js';
+import type { PublicEventUpdatesPage } from '../../worker/src/layers/l4-application-integration/public-event-updates-service.js';
 import { createPublicEventListRuntime } from '../../worker/src/runtime/public-event-list-runtime.js';
 import { createPublicEventDetailRuntime } from '../../worker/src/runtime/public-event-detail-runtime.js';
 import { createPublicEventGeoJSONRuntime } from '../../worker/src/runtime/public-event-geojson-runtime.js';
+import { createPublicEventUpdatesRuntime } from '../../worker/src/runtime/public-event-updates-runtime.js';
 import type { SqlExecutor } from '../src/sql.js';
 
 const TRACE_ID = 'trace-source-revision-freshness-transition';
@@ -47,6 +50,19 @@ describe('PGlite source-revision freshness transition composition', () => {
       await applyMigrations(database.executor, migrations);
       const evidenceRefId = await seedFixture(database);
       const before = await immutableSnapshot(database);
+      const updatesHarness = await createPublicUpdatesApiHarness(database);
+      const baselineSqlOperations = updatesHarness.sqlOperationCount();
+      const baselineResponse = await updatesHarness.read();
+      assert.equal(baselineResponse.status, 200);
+      assert.equal(updatesHarness.sqlOperationCount() - baselineSqlOperations, 1,
+        'the live updates baseline uses one request-scoped SQL operation');
+      const baselinePage = await baselineResponse.json() as PublicEventUpdatesPage;
+      assert.deepEqual(baselinePage.items, [], 'the baseline contains no earlier update entries');
+      assert.deepEqual(Object.keys(baselinePage).sort(), [
+        'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
+      ]);
+      const baselineCursor = await updatesHarness.decodeCursor(baselinePage.next_cursor);
+      assert.equal(baselineCursor.sequence, '0', 'the fixture begins at the empty updates watermark');
 
       const ledger = createSqlFreshnessTransitionLedger(database.executor);
       const coordinator = createSourceRevisionFreshnessTransitionCoordinator({
@@ -186,7 +202,10 @@ describe('PGlite source-revision freshness transition composition', () => {
 
       assert.deepEqual(await immutableSnapshot(database), before,
         'event and impact records, publication decision, and history remain unchanged');
-      await assertPublicApiReads(database);
+      await assertPublicApiReads(database, updatesHarness, {
+        cursor: baselinePage.next_cursor,
+        sequence: baselineCursor.sequence,
+      });
       assert.equal(evidenceRefId.length > 0, true);
       await verifyWriterBoundary(database, ledger);
     } finally {
@@ -195,7 +214,11 @@ describe('PGlite source-revision freshness transition composition', () => {
   });
 });
 
-async function assertPublicApiReads(database: TestDatabase): Promise<void> {
+async function assertPublicApiReads(
+  database: TestDatabase,
+  updatesHarness: PublicUpdatesApiHarness,
+  baseline: { readonly cursor: string; readonly sequence: string },
+): Promise<void> {
   let sqlOperations = 0;
   const withSqlExecutor = async <Result>(
     connectionString: string,
@@ -220,8 +243,7 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
   assert.ok(geoJSONRuntime);
 
   const environment: WorkerEnvironment = { DATASET_MODE: 'live' };
-  const telemetry: TelemetryRecord[] = [];
-  const telemetrySink = { record: (record: TelemetryRecord) => telemetry.push(record) };
+  const { telemetry, telemetrySink } = updatesHarness;
   const listOperations = sqlOperations;
   const listResponse = await handlePublicApiRequest(
     new Request('https://api.example.invalid/api/v1/events?q=source%20freshness%20event'),
@@ -267,6 +289,21 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
   assert.equal(geoJSONResponse.headers.get('content-type'), 'application/geo+json');
   const geoJSON = await geoJSONResponse.json() as PublicFeatureCollection;
 
+  const updatesSqlOperations = updatesHarness.sqlOperationCount();
+  const updatesResponse = await updatesHarness.read(baseline.cursor);
+  assert.equal(updatesResponse.status, 200);
+  assert.equal(updatesHarness.sqlOperationCount() - updatesSqlOperations, 1,
+    'the live updates continuation uses one request-scoped SQL operation');
+  const updatesPage = await updatesResponse.json() as PublicEventUpdatesPage;
+  assert.deepEqual(updatesPage.items, [], 'a freshness-only transition creates no public update');
+  assert.deepEqual(Object.keys(updatesPage).sort(), [
+    'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
+  ]);
+  const continuedCursor = await updatesHarness.decodeCursor(updatesPage.next_cursor);
+  assert.equal(continuedCursor.sequence, baseline.sequence,
+    'a freshness-only transition does not advance the opaque cursor sequence');
+  assert.equal(updatesPage.cursor_expires_at, continuedCursor.expiresAt);
+
   assert.equal(listEvent.event_id, EVENT_ID);
   assert.equal(listEvent.version, 1);
   assert.equal(listEvent.title, 'Authored fictional source freshness event');
@@ -299,6 +336,27 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
 
   assert.deepEqual(geoJSON, { type: 'FeatureCollection', features: [] },
     'no supported geometry is represented as an empty collection, not a safety statement');
+  const updateResponseJson = JSON.stringify(updatesPage);
+  for (const privateMarker of [
+    'observation-w-withdrawn',
+    'revision-source-target',
+    'revision-current',
+    'revision-w-withdrawn',
+    SOURCE_ID,
+    PRIVATE_SOURCE_TEXT,
+    PRIVATE_CLAIM_TEXT,
+    'source_observation_id',
+    'source_report_withdrawn',
+    'freshness_transitions',
+    'transition_sequence',
+    'idempotency_key',
+    'request_fingerprint',
+    TEST_CURSOR_HMAC_KEY_HEX,
+  ]) {
+    assert.equal(updateResponseJson.includes(privateMarker), false,
+      `public updates response leaked ${privateMarker}`);
+  }
+
   const publicResponseJson = JSON.stringify({ listPage, detail, geoJSON });
   for (const privateMarker of [
     'observation-w-withdrawn',
@@ -318,7 +376,7 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
       `public API projection leaked ${privateMarker}`);
   }
 
-  assert.equal(telemetry.length, 3);
+  assert.equal(telemetry.length, 5, 'baseline, current views, and updates each emit bounded request telemetry');
   for (const record of telemetry) {
     assert.deepEqual(Object.keys(record).sort(), ['durationMs', 'eventName', 'route', 'status']);
     assert.equal(record.eventName, 'api_request');
@@ -337,10 +395,73 @@ async function assertPublicApiReads(database: TestDatabase): Promise<void> {
     'source_observation_id',
     'source_url',
     TEST_CONNECTION_STRING,
+    TEST_CURSOR_HMAC_KEY_HEX,
+    baseline.cursor,
+    updatesPage.next_cursor,
   ]) {
     assert.equal(telemetryJson.includes(privateMarker), false,
       `API telemetry leaked ${privateMarker}`);
   }
+}
+
+interface PublicUpdatesApiHarness {
+  readonly telemetry: TelemetryRecord[];
+  readonly telemetrySink: { record(record: TelemetryRecord): void };
+  read(cursor?: string): Promise<Response>;
+  decodeCursor(cursor: string): Promise<{ readonly sequence: string; readonly expiresAt: string }>;
+  sqlOperationCount(): number;
+}
+
+async function createPublicUpdatesApiHarness(database: TestDatabase): Promise<PublicUpdatesApiHarness> {
+  let sqlOperations = 0;
+  const telemetry: TelemetryRecord[] = [];
+  const telemetrySink = { record: (record: TelemetryRecord) => telemetry.push(record) };
+  const withSqlExecutor = async <Result>(
+    connectionString: string,
+    operation: (executor: SqlExecutor) => Promise<Result>,
+  ): Promise<Result> => {
+    assert.equal(connectionString, TEST_CONNECTION_STRING);
+    sqlOperations += 1;
+    return operation(database.executor);
+  };
+  const now = () => Date.parse(TRANSITION_AT);
+  const updatesRuntime = await createPublicEventUpdatesRuntime({
+    datasetMode: 'live',
+    connectionString: TEST_CONNECTION_STRING,
+    cursorHmacKeyHex: TEST_CURSOR_HMAC_KEY_HEX,
+  }, { withSqlExecutor, now });
+  assert.ok(updatesRuntime);
+
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    Uint8Array.from(TEST_CURSOR_HMAC_KEY_HEX.match(/.{2}/gu)!, (byte) => Number.parseInt(byte, 16)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify'],
+  );
+  const cursorCodec = createPublicEventUpdatesCursorCodec({ key, now });
+  const environment: WorkerEnvironment = { DATASET_MODE: 'live' };
+
+  return {
+    telemetry,
+    telemetrySink,
+    async read(cursor) {
+      const query = cursor === undefined ? '' : `?cursor=${encodeURIComponent(cursor)}`;
+      return handlePublicApiRequest(
+        new Request(`https://api.example.invalid/api/v1/updates${query}`),
+        environment,
+        telemetrySink,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        updatesRuntime,
+      );
+    },
+    decodeCursor: (cursor) => cursorCodec.decode(cursor),
+    sqlOperationCount: () => sqlOperations,
+  };
 }
 
 function impactFreshness(event: Pick<EventView, 'impacts'>): Array<[string, EventView['freshness']]> {
