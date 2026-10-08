@@ -17,7 +17,6 @@ import {
 } from '../src/publication-writer.js';
 import { createPublicEventHistoryRepository } from '../src/public-event-history.js';
 import { createPublicEventHistoryDisclosureRepository } from '../src/public-event-history-disclosure.js';
-import { createPublicEventUpdatesReader } from '../src/public-event-updates.js';
 import type { EvidenceRetrievalCandidate } from '../src/evidence-retrieval.js';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import type { SqlExecutor } from '../src/sql.js';
@@ -31,12 +30,15 @@ import type {
   PublicationPolicyInput,
 } from '../../worker/src/layers/l4-application-integration/publication-policy.js';
 import { createPublicEventHistoryProjectionService } from '../../worker/src/layers/l4-application-integration/public-event-history-projection-service.js';
-import { createPublicEventUpdatesService } from '../../worker/src/layers/l4-application-integration/public-event-updates-service.js';
+import type { PublicEventUpdatesPage } from '../../worker/src/layers/l4-application-integration/public-event-updates-service.js';
 import {
   handlePublicApiRequest,
   type WorkerEnvironment,
 } from '../../worker/src/layers/l4-application-integration/api.js';
 import type { EventDetail, EventPage } from '../../worker/src/contracts/public-api.js';
+import {
+  createPublicEventUpdatesRuntime,
+} from '../../worker/src/runtime/public-event-updates-runtime.js';
 import { createPublicEventListRuntime } from '../../worker/src/runtime/public-event-list-runtime.js';
 import { createPublicEventDetailRuntime } from '../../worker/src/runtime/public-event-detail-runtime.js';
 import type { EvidenceReference, GroundingContext, ProposedClaim } from '../../worker/src/layers/l2-model-grounding/contracts.js';
@@ -44,6 +46,7 @@ import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const NOW = '2026-10-08T03:00:00Z';
 const CORRECTION_AT = '2026-10-08T03:15:00.123456Z';
+const UPDATES_CHECKED_AT = '2026-10-09T00:00:00Z';
 const TEST_CONNECTION_STRING = 'postgresql://test-user:test-password@hyperdrive.example.invalid/waspada?sslmode=require';
 const PUBLIC_SOURCE_DISPLAY_NAME = 'Authored synthetic attribution fixture only';
 const PUBLIC_SOURCE_URL = 'https://example.invalid/authored-attribution-fixture';
@@ -129,18 +132,64 @@ describe('PUB-01 manual publication and public read-chain PGlite composition', (
     const writer = new SqlPublicationWriter(db.executor);
     assert.ok(writer instanceof SqlPublicationWriter, 'the positive path receives the real SQL writer');
     const service = createManualPublicationService(reader, writer);
-    const updateKey = await globalThis.crypto.subtle.generateKey(
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign', 'verify'],
-    );
-    const updateService = createPublicEventUpdatesService({
-      reader: createPublicEventUpdatesReader(db.executor),
-      key: updateKey,
-      now: () => Date.parse(NOW),
+    let updateSqlOperations = 0;
+    const updateSqlStatements: string[][] = [];
+    const withUpdateSqlExecutor = async <Result>(
+      connectionString: string,
+      operation: (executor: SqlExecutor) => Promise<Result>,
+    ): Promise<Result> => {
+      assert.equal(connectionString, TEST_CONNECTION_STRING);
+      updateSqlOperations += 1;
+      const statements: string[] = [];
+      updateSqlStatements.push(statements);
+      const executor: SqlExecutor = {
+        async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
+          statements.push(statement.trim().replace(/\s+/gu, ' '));
+          return db.executor.query<Row>(statement, parameters);
+        },
+        async execute(statement: string) {
+          statements.push(statement.trim().replace(/\s+/gu, ' '));
+          await db.executor.execute(statement);
+        },
+      };
+      return runAsPublicReader(db, () => operation(executor));
+    };
+    const updateRuntime = await createPublicEventUpdatesRuntime({
+      datasetMode: 'live',
+      connectionString: TEST_CONNECTION_STRING,
+      cursorHmacKeyHex: randomBytes(32).toString('hex'),
+    }, {
+      withSqlExecutor: withUpdateSqlExecutor,
+      now: () => Date.parse(UPDATES_CHECKED_AT),
     });
-    const baseline = await runAsPublicReader(db, () => updateService.read());
+    assert.ok(updateRuntime, 'the exact-live updates runtime accepts its injected PGlite seam');
+    const readUpdates = (cursor?: string) => handlePublicApiRequest(
+      new Request(cursor === undefined
+        ? 'https://api.example.invalid/api/v1/updates'
+        : `https://api.example.invalid/api/v1/updates?cursor=${encodeURIComponent(cursor)}&limit=10`),
+      { DATASET_MODE: 'live' },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      updateRuntime,
+    );
+    const baselineResponse = await readUpdates();
+    assert.equal(baselineResponse.status, 200);
+    assert.equal(updateSqlOperations, 1,
+      'the HTTP baseline uses one request-scoped SQL runner operation');
+    assertUpdateRuntimeTransaction(updateSqlStatements[0] ?? [], false);
+    const baseline = await baselineResponse.json() as PublicEventUpdatesPage;
     assert.deepEqual(baseline.items, []);
+    assert.deepEqual(Object.keys(baseline).sort(), [
+      'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
+    ]);
+    assert.equal(baseline.checked_at, '2026-10-09T00:00:00.000Z');
+    assert.equal(baseline.cursor_expires_at, '2026-11-08T00:00:00.000Z');
+    assert.equal(typeof baseline.next_cursor, 'string');
+    assert.notEqual(baseline.next_cursor, '');
 
     const privateBefore = await readPrivateProposal(db.executor, scenario.proposal.proposal_id);
     assertPrivateUnderReview(privateBefore);
@@ -347,26 +396,63 @@ describe('PUB-01 manual publication and public read-chain PGlite composition', (
     assert.notEqual(history.page.data[0]?.summary, storedVersions.rows[0]?.summary);
     assert.notEqual(history.page.data[1]?.summary, storedVersions.rows[1]?.summary);
 
-    const updates = await runAsPublicReader(db, async () =>
-      db.executor.transaction(async (transaction) => {
-        await transaction.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
-        const pageService = createPublicEventUpdatesService({
-          reader: createPublicEventUpdatesReader(transaction),
-          key: updateKey,
-          now: () => Date.parse(NOW),
-        });
-        return pageService.read({ cursor: baseline.next_cursor, limit: 10 });
-      }));
+    const updatesResponse = await readUpdates(baseline.next_cursor);
+    assert.equal(updatesResponse.status, 200);
+    assert.equal(updateSqlOperations, 2,
+      'the feed poll uses one additional request-scoped SQL runner operation');
+    assertUpdateRuntimeTransaction(updateSqlStatements[1] ?? [], true);
+    const updates = await updatesResponse.json() as PublicEventUpdatesPage;
+    assert.deepEqual(updates.items, [
+      {
+        event_id: scenario.ids.eventId,
+        version: 1,
+        change_type: 'published',
+        changed_at: NOW,
+        summary: FIRST_DISCLOSURE_SUMMARY,
+      },
+      {
+        event_id: correction.ids.eventId,
+        version: 2,
+        change_type: 'corrected',
+        changed_at: CORRECTION_AT,
+        summary: CORRECTION_DISCLOSURE_SUMMARY,
+      },
+    ]);
     assert.deepEqual(updates.items, history.page.data);
     assert.deepEqual(Object.keys(updates).sort(), [
       'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
     ]);
+    assert.equal(updates.checked_at, '2026-10-09T00:00:00.000Z');
+    assert.equal(updates.cursor_expires_at, '2026-11-08T00:00:00.000Z');
+    assert.notEqual(updates.next_cursor, baseline.next_cursor,
+      'the page cursor advances beyond the baseline watermark');
+    assert.notEqual(updates.items[0]?.changed_at, updates.checked_at,
+      'the exact event publication time remains separate from request check time');
+    assert.notEqual(updates.items[0]?.changed_at, updates.cursor_expires_at,
+      'the exact event publication time remains separate from cursor expiry');
     for (const item of updates.items) {
       assert.deepEqual(Object.keys(item).sort(), [
         'change_type', 'changed_at', 'event_id', 'summary', 'version',
       ]);
     }
-    const serializedPublicPages = JSON.stringify({ history: history.page, updates });
+    const continuationResponse = await readUpdates(updates.next_cursor);
+    assert.equal(continuationResponse.status, 200);
+    assert.equal(updateSqlOperations, 3,
+      'cursor continuation uses one request-scoped SQL runner operation');
+    assertUpdateRuntimeTransaction(updateSqlStatements[2] ?? [], true);
+    const continuation = await continuationResponse.json() as PublicEventUpdatesPage;
+    assert.deepEqual(continuation.items, [],
+      'continuing from the returned cursor does not repeat either published version');
+    assert.deepEqual(Object.keys(continuation).sort(), [
+      'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
+    ]);
+    assert.equal(continuation.next_cursor, updates.next_cursor);
+    const serializedPublicPages = JSON.stringify({
+      history: history.page,
+      baseline,
+      updates,
+      continuation,
+    });
     for (const privateField of [
       'reviewer_id', 'reviewerId', 'fictional-reviewer-fixture-only',
       'proposal_id', 'trace_id', 'source_id', 'evidence_ref_id',
@@ -661,6 +747,23 @@ async function seedFictionalDisclosure(
       "VALUES ('live', $1, $2, 'approved', $3, $4, 'fictional-reviewer-fixture-only', $5)",
     [input.eventId, input.eventVersion, input.changeType, input.summary, input.reviewedAt],
   );
+}
+
+function assertUpdateRuntimeTransaction(
+  statements: readonly string[],
+  readsCandidates: boolean,
+): void {
+  assert.equal(statements[0], 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  assert.equal(statements[statements.length - 1], 'COMMIT');
+  assert.equal(statements.filter((statement) =>
+    statement === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY').length, 1);
+  assert.equal(statements.filter((statement) => statement === 'COMMIT').length, 1);
+  assert.equal(statements.filter((statement) => statement === 'ROLLBACK').length, 0);
+  assert.equal(statements.filter((statement) =>
+    statement.includes('FROM waspada.public_event_updates_watermark')).length, 1);
+  assert.equal(statements.filter((statement) =>
+    statement.includes('FROM waspada.public_event_updates_candidates AS candidates')).length,
+  readsCandidates ? 1 : 0);
 }
 
 async function seedFictionalPublicLookups(executor: SqlExecutor, scenario: Scenario): Promise<void> {
