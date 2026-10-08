@@ -7,7 +7,16 @@ import {
   InvestigationLedgerError,
   type CreateInvestigationInput,
 } from '../src/investigation-ledger.js';
-import { createSqlExactEvidenceSpanReader } from '../src/evidence-retrieval.js';
+import {
+  createSqlExactEvidenceReferenceReader,
+  createSqlExactEvidenceSpanReader,
+  type ExactEvidenceReferenceReadRequest,
+  type ExactEvidenceSpanRequest,
+} from '../src/evidence-retrieval.js';
+import {
+  createSqlGroundingContextRepository,
+  type GroundingContextRecord,
+} from '../src/grounding-contexts.js';
 import { createSqlGeometryWriter } from '../src/geometry-writer.js';
 import { createRepositoryPorts, type DatasetKind } from '../src/ports.js';
 import {
@@ -21,6 +30,10 @@ import {
 } from '../../worker/src/layers/l2-model-grounding/investigation-planner.js';
 import { createDirectReasoningService } from '../../worker/src/layers/l2-model-grounding/direct-reasoning.js';
 import { createReasoningContextPersister } from '../../worker/src/layers/l2-model-grounding/context-persistence.js';
+import {
+  createGroundingContextResumer,
+  GroundingContextResumptionError,
+} from '../../worker/src/layers/l2-model-grounding/context-resumption.js';
 import { createReasoningProposalBridge } from '../../worker/src/layers/l2-model-grounding/reasoning-proposal-bridge.js';
 import { assembleGroundingReasoningRequest } from '../../worker/src/layers/l2-model-grounding/grounding-context.js';
 import {
@@ -1434,6 +1447,539 @@ describe('L3 durable investigation ledger', () => {
     assert.equal(durable.includes(privateActionInput), false);
     assert.equal(durable.includes(outputReferenceId), false);
     assert.equal(durable.includes(JSON.stringify({ query: privateActionInput })), false);
+  });
+
+  it('reloads a refs-only checkpoint context through L2 before one bounded L3 resume', async () => {
+    const suffix = 'context-resume-coordinator';
+    const fixture = await seedFixture(testDatabase, suffix, { sufficient: false, seedContext: false });
+    const sourceId = `source-l3-${suffix}`;
+    const reportRevisionId = `revision-l3-${suffix}`;
+    const originId = `origin-l3-${suffix}`;
+    const evidenceText = 'Synthetic L3 ledger fixture evidence';
+    const ports = createRepositoryPorts(testDatabase.executor);
+    const contextRepository = createSqlGroundingContextRepository(testDatabase.executor);
+    const withRole = async <Result>(role: string, work: () => Promise<Result>): Promise<Result> => {
+      await testDatabase.executor.execute(`SET ROLE ${role}`);
+      try {
+        return await work();
+      } finally {
+        await testDatabase.executor.execute('RESET ROLE');
+      }
+    };
+
+    await testDatabase.executor.query(
+      "UPDATE waspada.source_registry SET approval_status = 'approved' WHERE source_id = $1",
+      [sourceId],
+    );
+    const evidenceReferenceId = await ports.reportRevisions.createEvidenceReference({
+      datasetKind: fixture.datasetKind,
+      traceId: fixture.traceId,
+      reportRevisionId,
+      permittedTextHash: sha256(evidenceText),
+      spanStart: 0,
+      spanEnd: Array.from(evidenceText).length,
+      relation: 'context',
+    });
+    await testDatabase.executor.query(
+      'INSERT INTO waspada.extraction_evidence (dataset_kind, candidate_id, evidence_ref_id) VALUES ($1, $2, $3)',
+      [fixture.datasetKind, fixture.candidateId, evidenceReferenceId],
+    );
+    await testDatabase.executor.query(
+      `INSERT INTO waspada.evidence_origins
+         (dataset_kind, origin_id, trace_id, origin_kind, actor_label, source_id,
+          lineage_relation, independence_status, record_json)
+       VALUES ($1, $2, $3, 'issuer_statement', NULL, $4, 'original', 'established', $5::jsonb)`,
+      [fixture.datasetKind, originId, fixture.traceId, sourceId,
+        JSON.stringify({ fixture: 'synthetic-test-only' })],
+    );
+    await testDatabase.executor.query(
+      'INSERT INTO waspada.origin_evidence (dataset_kind, origin_id, evidence_ref_id) VALUES ($1, $2, $3)',
+      [fixture.datasetKind, originId, evidenceReferenceId],
+    );
+
+    const persistedRecord: GroundingContextRecord = {
+      schema_version: '2.0',
+      trace_id: fixture.traceId,
+      record_type: 'GroundingContext',
+      dataset_kind: fixture.datasetKind,
+      context_id: fixture.contextId,
+      candidate_id: fixture.candidateId,
+      evidence: [{
+        report_revision_id: reportRevisionId,
+        permitted_text_hash: sha256(evidenceText),
+        span_start: 0,
+        span_end: Array.from(evidenceText).length,
+        offset_unit: 'unicode_code_points',
+        relation: 'context',
+      }],
+      revision_states: [{ report_revision_id: reportRevisionId, revision_status: 'unreviewed' }],
+      candidate_events: [],
+      prior_decision_ids: [],
+      missing_fields: ['synthetic_status'],
+      conflicts: [],
+      retrieval_version: 'retrieval-synthetic-resume-v1',
+      index_version: 'index-synthetic-resume-v1',
+      sufficient: false,
+    };
+    await withRole('waspada_l2_grounding_writer', () => contextRepository.createOrVerify(persistedRecord));
+    const contextJson = JSON.stringify(persistedRecord);
+    assert.equal(contextJson.includes(evidenceText), false, 'the saved context contains references, never excerpts');
+    assert.equal(Object.hasOwn(persistedRecord.evidence[0]!, 'text'), false);
+
+    const repository = createSqlInvestigationLedgerRepository(testDatabase.executor);
+    const initialCheckpoint = await repository.create(makeCreateInput(fixture, {
+      limits: { toolAttempts: 2, reasoningTurns: 2, activeSeconds: 60, modelTokens: 100 },
+    }));
+    const checkpointAfterRestart = await repository.getLatest(fixture.datasetKind, initialCheckpoint.investigation_id);
+    assert.deepEqual(checkpointAfterRestart, initialCheckpoint, 'restart reloads the latest durable checkpoint');
+    assert.ok(checkpointAfterRestart);
+    assert.equal(checkpointAfterRestart.context_id, persistedRecord.context_id);
+    const staleRecord: GroundingContextRecord = {
+      ...persistedRecord,
+      context_id: `${fixture.contextId}-stale-revision`,
+      revision_states: [{ report_revision_id: reportRevisionId, revision_status: 'eligible' }],
+    };
+    await withRole('waspada_l2_grounding_writer', () => contextRepository.createOrVerify(staleRecord));
+    const staleCheckpoint = await repository.create(makeCreateInput({
+      ...fixture,
+      contextId: staleRecord.context_id,
+    }, {
+      investigationId: `investigation-${fixture.candidateId}-stale-revision`,
+    }));
+
+    const exactReferences = createSqlExactEvidenceReferenceReader(testDatabase.executor);
+    const exactSpans = createSqlExactEvidenceSpanReader(testDatabase.executor);
+    const referenceReadInputs: ExactEvidenceReferenceReadRequest[] = [];
+    const spanReadInputs: ExactEvidenceSpanRequest[] = [];
+    const makeResumer = (maskedMissingContextId?: string) => createGroundingContextResumer({
+      contexts: {
+        async findById(datasetKind, contextId) {
+          // Grounding contexts are append-only, so model a missing restart read at this boundary.
+          if (datasetKind === fixture.datasetKind && contextId === maskedMissingContextId) return null;
+          return withRole('waspada_l2_grounding_writer', () =>
+            contextRepository.findById(datasetKind, contextId));
+        },
+      },
+      evidenceReferences: {
+        async readExactReferences(request) {
+          referenceReadInputs.push(structuredClone(request));
+          return withRole('waspada_l2_grounding_reader', () => exactReferences.readExactReferences(request));
+        },
+      },
+      exactSpans: {
+        async readExactSpan(request) {
+          spanReadInputs.push(structuredClone(request));
+          return withRole('waspada_l2_grounding_reader', () => exactSpans.readExactSpan(request));
+        },
+      },
+    });
+
+    let monotonicMilliseconds = 0;
+    const clockBase = Date.parse('2026-09-25T10:01:00.000Z');
+    const clock: ReasoningStepExecutorClock = {
+      wallNow: () => new Date(clockBase + monotonicMilliseconds).toISOString(),
+      monotonicNow: () => monotonicMilliseconds,
+    };
+    const timer: ReasoningStepExecutorTimer = {
+      setTimeout() { return Symbol('synthetic-resume-deadline'); },
+      clearTimeout() {},
+    };
+    const actionMenu: readonly InvestigationActionMenuEntry[] = [
+      { name: 'synthetic_search', description: 'Search one synthetic fixture.' },
+    ];
+    const privateActionInput = 'synthetic private resume query';
+    const outputReferenceId = 'synthetic-resume-output-reference';
+    let plannerCalls = 0;
+    let actionCalls = 0;
+    let refreshCalls = 0;
+    let rehydratedContext: GroundingContext | null = null;
+    const planner = createInvestigationPlanner({
+      async plan(request) {
+        plannerCalls += 1;
+        const evidence = request.groundingContext.evidence[0];
+        assert.ok(evidence);
+        assert.equal(request.groundingContext.contextId, fixture.contextId);
+        assert.equal(request.groundingContext.datasetKind, fixture.datasetKind);
+        assert.equal(request.groundingContext.traceId, fixture.traceId);
+        assert.equal(request.groundingContext.candidateId, fixture.candidateId);
+        assert.equal(request.groundingContext.sufficient, false);
+        assert.deepEqual(evidence.reference, persistedRecord.evidence[0] && {
+          reportRevisionId: persistedRecord.evidence[0].report_revision_id,
+          permittedTextHash: persistedRecord.evidence[0].permitted_text_hash,
+          spanStart: persistedRecord.evidence[0].span_start,
+          spanEnd: persistedRecord.evidence[0].span_end,
+          offsetUnit: persistedRecord.evidence[0].offset_unit,
+          relation: persistedRecord.evidence[0].relation,
+        });
+        assert.equal(evidence.text, evidenceText, 'only the exact persisted span reaches L3');
+        assert.equal(evidence.sourceId, sourceId, 'the source ID comes from current L2 lineage');
+        assert.deepEqual(evidence.origins, [{
+          originId,
+          independenceStatus: 'established',
+          dependsOnOriginIds: [],
+        }]);
+        assert.deepEqual(request.questions, ['missing_field_1']);
+        monotonicMilliseconds += 2_000;
+        return {
+          result: {
+            schemaVersion: '1.0',
+            recordType: 'InvestigationPlanResult',
+            outcome: 'proposed',
+            actionName: 'synthetic_search',
+            input: { query: privateActionInput },
+          },
+          inputTokens: 2,
+          outputTokens: 3,
+        };
+      },
+    }, {
+      modelVersion: '@synthetic/context-resume-planner-v1',
+      promptVersion: 'synthetic/context-resume-prompt-v1',
+    });
+    const reasoningStep = createReasoningStepExecutor({
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      planner,
+      maxActiveSeconds: 10,
+      maxModelTokens: 32,
+      clock,
+      timer,
+    });
+    const singleStep = createSingleStepExecutor({
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      registry: [{
+        name: 'synthetic_search',
+        enabled: true,
+        maxActiveSeconds: 10,
+        parseInput: (input) => ({ ok: true, value: input }),
+        async handler(input) {
+          actionCalls += 1;
+          assert.deepEqual(input, { query: privateActionInput });
+          monotonicMilliseconds += 1_000;
+          return { status: 'succeeded', outputReferenceIds: [outputReferenceId] };
+        },
+      }],
+      clock,
+      timer,
+    });
+    const refreshedRecord: GroundingContextRecord = {
+      ...persistedRecord,
+      context_id: `${fixture.contextId}-refreshed`,
+      missing_fields: [],
+      retrieval_version: 'retrieval-synthetic-resume-v2',
+      index_version: 'index-synthetic-resume-v2',
+      sufficient: true,
+    };
+    const refreshPort = {
+      async refresh(input: {
+        readonly datasetKind: DatasetKind;
+        readonly investigationId: string;
+        readonly traceId: string;
+        readonly candidateId: string;
+        readonly previousContextId: string;
+        readonly eventId: string | null;
+        readonly eventVersion: number | null;
+        readonly outputReferenceIds: readonly string[];
+      }) {
+        refreshCalls += 1;
+        assert.equal(input.datasetKind, fixture.datasetKind);
+        assert.equal(input.investigationId, initialCheckpoint.investigation_id);
+        assert.equal(input.traceId, fixture.traceId);
+        assert.equal(input.candidateId, fixture.candidateId);
+        assert.equal(input.previousContextId, fixture.contextId);
+        assert.equal(input.eventId, null);
+        assert.equal(input.eventVersion, null);
+        assert.deepEqual(input.outputReferenceIds, [outputReferenceId]);
+        assert.ok(rehydratedContext);
+        await withRole('waspada_l2_grounding_writer', () => contextRepository.createOrVerify(refreshedRecord));
+        return {
+          context: {
+            ...rehydratedContext,
+            contextId: refreshedRecord.context_id,
+            missingFields: [],
+            retrievalVersion: refreshedRecord.retrieval_version,
+            indexVersion: refreshedRecord.index_version,
+            sufficient: true,
+          },
+          persistedRecord: refreshedRecord,
+        };
+      },
+    };
+    const coordinator = createInvestigationCoordinator({
+      entry: createInsufficientContextEntryService(repository, TEST_FINGERPRINTS),
+      ledger: repository,
+      fingerprints: TEST_FINGERPRINTS,
+      reasoningStep,
+      singleStep,
+      refreshPort,
+      actionMenu,
+      wallNow: clock.wallNow,
+    });
+
+    const advanceFromCheckpoint = async (
+      resumer: ReturnType<typeof createGroundingContextResumer>,
+      checkpoint: NonNullable<typeof checkpointAfterRestart>,
+    ) => {
+      const request = await resumer.resume(checkpoint.dataset_kind, checkpoint.context_id);
+      if (!request) return { status: 'context_missing' as const };
+      const record = await withRole('waspada_l2_grounding_writer', () =>
+        contextRepository.findById(checkpoint.dataset_kind, checkpoint.context_id));
+      assert.ok(record, 'the exact persisted refs-only record is supplied to the coordinator');
+      rehydratedContext = request.data.groundingContext;
+      const advanceInput = {
+        kind: 'resume' as const,
+        checkpoint,
+        context: request.data.groundingContext,
+        persistedRecord: record,
+        reasoningReservationId: 'reservation-context-resume-plan',
+        reasoningReservedAt: '2026-09-25T10:01:00Z',
+        actionReservationId: 'reservation-context-resume-action',
+        actionReservedAt: '2026-09-25T10:01:02Z',
+      };
+      return {
+        status: 'advanced' as const,
+        request,
+        persistedRecord: record,
+        advanceInput,
+        outcome: await coordinator.advance(advanceInput),
+      };
+    };
+    const portCalls = () => ({ plannerCalls, actionCalls, refreshCalls });
+
+    const missingContext = await makeResumer(checkpointAfterRestart.context_id).resume(
+      checkpointAfterRestart.dataset_kind,
+      checkpointAfterRestart.context_id,
+    );
+    assert.equal(missingContext, null, 'the real L2 resumer returns null for a missing exact checkpoint context');
+    assert.deepEqual(portCalls(), { plannerCalls: 0, actionCalls: 0, refreshCalls: 0 },
+      'a missing exact context stops before every L3 port');
+    assert.equal(referenceReadInputs.length, 0, 'a missing context does not trigger evidence lookup');
+
+    await assert.rejects(
+      advanceFromCheckpoint(makeResumer(), staleCheckpoint),
+      (error: unknown) => {
+        assert.ok(error instanceof GroundingContextResumptionError);
+        assert.equal(error.code, 'revision_state_mismatch');
+        assert.equal(error.message, 'revision_state_mismatch');
+        assert.equal(error.message.includes(evidenceText), false);
+        return true;
+      },
+    );
+    assert.deepEqual(portCalls(), { plannerCalls: 0, actionCalls: 0, refreshCalls: 0 },
+      'a changed pinned revision state stops before every L3 port');
+    assert.equal(spanReadInputs.length, 0, 'stale revision state fails before span reads');
+
+    await testDatabase.executor.query(
+      "UPDATE waspada.source_registry SET registry_status = 'paused' WHERE source_id = $1",
+      [sourceId],
+    );
+    await assert.rejects(
+      advanceFromCheckpoint(makeResumer(), checkpointAfterRestart),
+      (error: unknown) => {
+        assert.ok(error instanceof GroundingContextResumptionError);
+        assert.equal(error.code, 'source_ineligible');
+        assert.equal(error.message, 'source_ineligible');
+        assert.equal(error.message.includes(evidenceText), false);
+        return true;
+      },
+    );
+    assert.deepEqual(portCalls(), { plannerCalls: 0, actionCalls: 0, refreshCalls: 0 },
+      'a stale source eligibility check stops before every L3 port');
+    assert.equal(spanReadInputs.length, 0, 'ineligible sources fail before span reads');
+    await testDatabase.executor.query(
+      "UPDATE waspada.source_registry SET registry_status = 'active' WHERE source_id = $1",
+      [sourceId],
+    );
+
+    const resumed = await advanceFromCheckpoint(makeResumer(), checkpointAfterRestart);
+    assert.equal(resumed.status, 'advanced');
+    if (resumed.status !== 'advanced') assert.fail('expected the exact checkpoint context to rehydrate');
+    assert.deepEqual(resumed.persistedRecord, persistedRecord);
+    assert.equal(resumed.request.data.groundingContext.contextId, checkpointAfterRestart.context_id);
+    assert.equal(resumed.request.data.groundingContext.datasetKind, checkpointAfterRestart.dataset_kind);
+    assert.equal(resumed.request.data.groundingContext.traceId, checkpointAfterRestart.trace_id);
+    assert.equal(resumed.request.data.groundingContext.candidateId, checkpointAfterRestart.candidate_id);
+    assert.equal(resumed.request.data.groundingContext.evidence[0]?.text, evidenceText);
+    assert.deepEqual(referenceReadInputs.at(-1), {
+      datasetKind: fixture.datasetKind,
+      candidateId: fixture.candidateId,
+      references: [{
+        reportRevisionId,
+        permittedTextHash: sha256(evidenceText),
+        spanStart: 0,
+        spanEnd: Array.from(evidenceText).length,
+        offsetUnit: 'unicode_code_points',
+        relation: 'context',
+      }],
+    });
+    assert.equal(spanReadInputs.at(-1)?.evidenceReferenceId, evidenceReferenceId);
+    assert.equal(spanReadInputs.at(-1)?.spanStart, 0);
+    assert.equal(spanReadInputs.at(-1)?.spanEnd, Array.from(evidenceText).length);
+    assert.equal(resumed.outcome.status, 'sufficient_context');
+    if (resumed.outcome.status !== 'sufficient_context') {
+      assert.fail('expected the one authored resume advance to return its refreshed context');
+    }
+    assert.equal(resumed.outcome.checkpoint?.dataset_kind, fixture.datasetKind);
+    assert.equal(resumed.outcome.checkpoint?.investigation_id, initialCheckpoint.investigation_id);
+    assert.equal(resumed.outcome.checkpoint?.trace_id, fixture.traceId);
+    assert.equal(resumed.outcome.checkpoint?.candidate_id, fixture.candidateId);
+    assert.equal(resumed.outcome.checkpoint?.context_id, refreshedRecord.context_id);
+    assert.equal(resumed.outcome.checkpoint?.checkpoint_version, initialCheckpoint.checkpoint_version + 5);
+    assert.equal(resumed.outcome.context.contextId, refreshedRecord.context_id);
+    assert.deepEqual(portCalls(), { plannerCalls: 1, actionCalls: 1, refreshCalls: 1 });
+
+    const stableCheckpoint = await repository.getLatest(fixture.datasetKind, initialCheckpoint.investigation_id);
+    assert.deepEqual(stableCheckpoint, resumed.outcome.checkpoint);
+    const rowsBeforeReplay = await Promise.all([
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_requests '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_checkpoints '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY checkpoint_version',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_action_reservations '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY reservation_id',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
+    ]);
+    const replay = await coordinator.advance(resumed.advanceInput);
+    assert.equal(replay.status, 'review_required');
+    if (replay.status !== 'review_required') assert.fail('expected the original resume checkpoint to be stale');
+    assert.equal(replay.reason, 'stale_checkpoint');
+    assert.deepEqual(await repository.getLatest(fixture.datasetKind, initialCheckpoint.investigation_id), stableCheckpoint);
+    const rowsAfterReplay = await Promise.all([
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_requests '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_checkpoints '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY checkpoint_version',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_action_reservations '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY reservation_id',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
+    ]);
+    assert.deepEqual(rowsAfterReplay.map(({ rows }) => rows), rowsBeforeReplay.map(({ rows }) => rows),
+      'stale-checkpoint replay leaves every ledger, checkpoint, and reservation row unchanged');
+    assert.deepEqual(portCalls(), { plannerCalls: 1, actionCalls: 1, refreshCalls: 1 },
+      'replaying the same resume key does not invoke completed external ports again');
+    assert.equal((await readStoredReservation(
+      testDatabase,
+      fixture.datasetKind,
+      initialCheckpoint.investigation_id,
+      'reservation-context-resume-plan',
+    )).reservation_status, 'reconciled');
+    assert.equal((await readStoredReservation(
+      testDatabase,
+      fixture.datasetKind,
+      initialCheckpoint.investigation_id,
+      'reservation-context-resume-action',
+    )).reservation_status, 'reconciled');
+    const reservationCount = await testDatabase.executor.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM waspada.investigation_action_reservations '
+        + 'WHERE dataset_kind = $1 AND investigation_id = $2',
+      [fixture.datasetKind, initialCheckpoint.investigation_id],
+    );
+    assert.deepEqual(reservationCount.rows, [{ count: '2' }]);
+
+    const assertionRevisionId = `revision-l3-${suffix}-withdrawn-assertion`;
+    const assertionText = 'Synthetic test assertion that the report is withdrawn.';
+    await ports.reportRevisions.create({
+      datasetKind: fixture.datasetKind,
+      reportRevisionId: assertionRevisionId,
+      traceId: fixture.traceId,
+      sourceId,
+      canonicalUrl: `https://synthetic.invalid/${assertionRevisionId}`,
+      sourceRevisionKey: null,
+      contentHash: sha256(`synthetic-raw-${assertionRevisionId}`),
+      permittedText: assertionText,
+      permittedTextHash: sha256(assertionText),
+      normalizationVersion: 'fixture-normalization-v1',
+      publishedAt: null,
+      observedAt: TEST_TIME,
+      retrievedAt: TEST_TIME,
+      validFrom: null,
+      validUntil: null,
+      supersedesId: null,
+      revisionStatus: 'unreviewed',
+      recordJson: { fixture: 'synthetic-test-only' },
+    });
+    await ports.reportRevisionSourceObservations.create({
+      datasetKind: fixture.datasetKind,
+      observationId: `observation-l3-${suffix}-withdrawn`,
+      traceId: fixture.traceId,
+      targetReportRevisionId: reportRevisionId,
+      assertionReportRevisionId: assertionRevisionId,
+      assertedState: 'withdrawn',
+      retrievedAt: TEST_TIME,
+    });
+    const latestCheckpoint = await repository.getLatest(fixture.datasetKind, initialCheckpoint.investigation_id);
+    assert.ok(latestCheckpoint);
+    await assert.rejects(
+      advanceFromCheckpoint(makeResumer(), latestCheckpoint),
+      (error: unknown) => {
+        assert.ok(error instanceof GroundingContextResumptionError);
+        assert.equal(error.code, 'source_invalidated');
+        assert.equal(error.message, 'source_invalidated');
+        assert.equal(error.message.includes(evidenceText), false);
+        return true;
+      },
+    );
+    assert.deepEqual(portCalls(), { plannerCalls: 1, actionCalls: 1, refreshCalls: 1 },
+      'source-invalidated evidence stops before a second L3 advance');
+
+    const contextRows = await testDatabase.executor.query<{ context_id: string; record_json: string }>(
+      'SELECT context_id, record_json::text AS record_json FROM waspada.grounding_contexts '
+        + 'WHERE dataset_kind = $1 AND context_id = ANY($2::text[]) ORDER BY context_id',
+      [fixture.datasetKind, [fixture.contextId, refreshedRecord.context_id, staleRecord.context_id]],
+    );
+    assert.deepEqual(contextRows.rows.map(({ context_id }) => context_id), [
+      fixture.contextId, refreshedRecord.context_id, staleRecord.context_id,
+    ]);
+    const checkpointRows = await testDatabase.executor.query<{ record_json: string }>(
+      'SELECT record_json::text AS record_json FROM waspada.investigation_checkpoints '
+        + 'WHERE dataset_kind = $1 AND investigation_id = ANY($2::text[]) '
+        + 'ORDER BY investigation_id, checkpoint_version',
+      [fixture.datasetKind, [initialCheckpoint.investigation_id, staleCheckpoint.investigation_id]],
+    );
+    const ledgerJson = [
+      await readLedgerJson(testDatabase, fixture.datasetKind, initialCheckpoint.investigation_id),
+      await readLedgerJson(testDatabase, fixture.datasetKind, staleCheckpoint.investigation_id),
+    ].join('\n');
+    const durableJson = [
+      ...contextRows.rows.map(({ record_json }) => record_json),
+      ...checkpointRows.rows.map(({ record_json }) => record_json),
+      ledgerJson,
+    ].join('\n');
+    assert.equal(durableJson.includes(evidenceText), false, 'no refs-only context, checkpoint, or ledger row stores excerpts');
+    assert.equal(durableJson.includes(privateActionInput), false, 'the private action input is not durable');
+    assert.equal(durableJson.includes(outputReferenceId), false, 'the action output reference is not durable');
+    assert.equal(contextRows.rows.some(({ record_json }) => record_json.includes('"text"')), false);
+
+    const protectedWrites = await testDatabase.executor.query<{
+      events: string;
+      decisions: string;
+      outbox: string;
+      reviews: string;
+    }>(
+      'SELECT '
+        + '(SELECT count(*)::text FROM waspada.event_versions) AS events, '
+        + '(SELECT count(*)::text FROM waspada.publication_decisions) AS decisions, '
+        + '(SELECT count(*)::text FROM waspada.publication_outbox) AS outbox, '
+        + '(SELECT count(*)::text FROM waspada.public_event_history_review_decisions) AS reviews',
+    );
+    assert.deepEqual(protectedWrites.rows[0], { events: '0', decisions: '0', outbox: '0', reviews: '0' });
   });
 
   it('counts failed reasoning against configured budgets and appends only successful validated model runs', async () => {
