@@ -73,3 +73,16 @@ Stop and report if any selected-label path requires changing a database table/mi
 ## Implementation handoff
 
 The implementer records the actual branch/worktree and root-pinned base; commit SHAs and exact messages; changed paths; behavior; runtime/package versions; actual checks and results; limitations; migration/configuration impact; and remaining decisions. Root records independent review and acceptance.
+
+### Completed implementation handoff
+
+- **Branch/worktree:** `work/PUB-01-REVIEWED-EVIDENCE-LABEL-CORE` at `D:\Projects\RPL\.codex-build\worktrees\pub-01-reviewed-evidence-label-core`
+- **Assigned base:** `d50626b8b548cbbf35b8e792ce47d7ae300bfe09`
+- **Implementation commit:** `262952be104ab3963be8f14650acefe971efd0c6` — `feat(PUB-01): persist moderator-selected evidence labels`
+- **Changed implementation paths:** `apps/worker/src/layers/l4-application-integration/publication-policy.ts`, `apps/worker/src/layers/l4-application-integration/manual-publication-service.ts`, `apps/worker/test/l4-manual-publication-service.test.ts`, `apps/db/src/publication-writer.ts`, `apps/db/test/publication-writer.test.ts`, and `docs/contracts.schema.json`.
+- **Behavior:** The service maps a closed moderator label choice to each exact published claim ID and denies malformed or incomplete choices before calling the writer. Existing policy and authorization gates are unchanged. The SQL writer requires labels for `publish` decisions, rejects labels on `review`, `reject`, and `retract`, and persists the selected value consistently in the private decision, public Event claim, and normalized claim row. Labels are part of the idempotency fingerprint. Private proposals may still contain `under_review`; schema-2.0 decision labels remain optional for legacy reads.
+- **Runtime versions:** WSL Ubuntu-26.04; Node `v24.21.0`; npm `11.19.0`; PGlite `0.5.8`.
+- **Checks:** Focused manual-publication service tests passed (11/11); focused publication-writer tests passed (15/15); `npm run db:test` passed all 41/41 DB test files; final `npm test` passed Web 60/60, Worker 451/451, DB 41/41 files, and evaluation 19/19; `npm run typecheck` passed; `npm run build` passed (Vite web build and Wrangler Worker dry-run); assigned-base `git diff --check` is recorded after the final handoff commit.
+- **Limitations:** Synthetic unit and PGlite coverage does not establish source rights, moderator identity, hosted Neon behavior, or factual publication quality. The worker dry-run is not a deployment.
+- **Migration/configuration impact:** None. No database table, migration, route/runtime, public DTO/API/OpenAPI, package, or configuration changes.
+- **Remaining decisions:** None identified; root review and acceptance remain pending.
