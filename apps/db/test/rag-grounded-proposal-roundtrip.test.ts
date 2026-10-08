@@ -88,6 +88,7 @@ describe('RAG grounded proposal roundtrip', () => {
   it('grounds persisted evidence before reasoning, then writes and exactly replays one private draft', async () => {
     const protectedBefore = await protectedWriteCounts();
     const assembled = await assembleContext(CONTEXT_ID, true, [], [SYNTHETIC_CONFLICT]);
+    assert.equal(assembled.retrieval.retrievalVersion, 'hybrid-evidence-v2');
     assert.deepEqual(await contextRows(CONTEXT_ID), [], 'reasoning context is not pre-created');
 
     let reasoningCalls = 0;
@@ -158,7 +159,7 @@ describe('RAG grounded proposal roundtrip', () => {
       prior_decision_ids: [],
       missing_fields: [],
       conflicts: [SYNTHETIC_CONFLICT],
-      retrieval_version: 'hybrid-evidence-v1',
+      retrieval_version: 'hybrid-evidence-v2',
       index_version: RETRIEVAL_INDEX_VERSION,
       sufficient: true,
     });
@@ -427,6 +428,10 @@ describe('RAG grounded proposal roundtrip', () => {
         JSON.stringify({
           fixture: 'authored-synthetic-only',
           event_time: { start: EVENT_TIME, end: EVENT_TIME, precision: 'exact' },
+          scope: {
+            place_ids: [], service_ids: [], institution_ids: [],
+            audience_ids: [], geometry_ids: [],
+          },
           contractVersion: '2.0',
         })],
     );

@@ -38,6 +38,14 @@ const syntheticTrace: TraceRecord = {
   outcome: 'open',
   metadata: { fixture: 'synthetic-test-only' },
 };
+const audienceTrace: TraceRecord = {
+  traceId: 'trace-retrieval-audience-synthetic',
+  datasetKind: 'synthetic',
+  startedAt: '2026-09-24T05:00:00Z',
+  endedAt: null,
+  outcome: 'open',
+  metadata: { fixture: 'synthetic-test-only' },
+};
 const historyTrace: TraceRecord = {
   traceId: 'trace-retrieval-history',
   datasetKind: 'historical',
@@ -58,6 +66,7 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
     await applyMigrations(testDatabase.executor, migrations);
     await ports.tracesAndAudit.createTrace(catalogTrace);
     await ports.tracesAndAudit.createTrace(syntheticTrace);
+    await ports.tracesAndAudit.createTrace(audienceTrace);
     await ports.tracesAndAudit.createTrace(historyTrace);
     await addSource('source-syn-alpha', 'active', 'approved', 'healthy');
     await addSource('source-syn-beta', 'paused', 'suspended', 'degraded');
@@ -66,7 +75,7 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
 
     await addFixture({
       datasetKind: 'synthetic',
-      traceId: syntheticTrace.traceId,
+      traceId: audienceTrace.traceId,
       sourceId: 'source-syn-alpha',
       candidateId: 'candidate-syn-alpha',
       reportRevisionId: 'revision-syn-alpha',
@@ -131,6 +140,153 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
       vector: null,
     });
     await addFixture({
+      datasetKind: 'synthetic',
+      traceId: syntheticTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-audience-primary',
+      reportRevisionId: 'revision-syn-audience-primary',
+      text: 'Synthetic group notice: this fictional alert applies to city staff on night shift.',
+      span: 'applies to city staff on night shift',
+      relation: 'supports',
+      revisionStatus: 'eligible',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: '2026-09-24T06:50:00Z',
+      eventTime: { start: null, end: null, precision: 'unknown' },
+      audienceIds: ['audience:city-staff', 'audience:night-shift'],
+      vector: null,
+    });
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: audienceTrace.traceId,
+      sourceId: 'source-syn-beta',
+      candidateId: 'candidate-syn-audience-contradiction',
+      reportRevisionId: 'revision-syn-audience-contradiction',
+      text: 'Synthetic counter-report: this fictional notice does not apply to city staff.',
+      span: 'does not apply to city staff',
+      relation: 'contradicts',
+      revisionStatus: 'eligible',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: '2026-09-24T06:40:00Z',
+      eventTime: { start: null, end: null, precision: 'unknown' },
+      audienceIds: ['audience:city-staff'],
+      vector: null,
+    });
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: audienceTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-audience-near-match',
+      reportRevisionId: 'revision-syn-audience-near-match',
+      text: 'Synthetic note for a different city staff group.',
+      span: 'different city staff group',
+      relation: 'context',
+      revisionStatus: 'eligible',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: '2026-09-24T06:30:00Z',
+      eventTime: { start: null, end: null, precision: 'unknown' },
+      audienceIds: ['audience:city-staff-extra'],
+      vector: null,
+    });
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: audienceTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-audience-malformed',
+      reportRevisionId: 'revision-syn-audience-malformed',
+      text: 'Synthetic malformed scope contains the exact target token.',
+      span: 'exact target token',
+      relation: 'context',
+      revisionStatus: 'eligible',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: '2026-09-24T06:20:00Z',
+      eventTime: { start: null, end: null, precision: 'unknown' },
+      scopeRecord: {
+        place_ids: [], service_ids: [], institution_ids: [],
+        audience_ids: ['audience:city-staff', 'contains spaces'], geometry_ids: [],
+      },
+      vector: null,
+    });
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: audienceTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-audience-non-array',
+      reportRevisionId: 'revision-syn-audience-non-array',
+      text: 'Synthetic malformed scope stores an audience value with the wrong shape.',
+      span: 'wrong shape',
+      relation: 'context',
+      revisionStatus: 'eligible',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: '2026-09-24T06:10:00Z',
+      eventTime: { start: null, end: null, precision: 'unknown' },
+      scopeRecord: {
+        place_ids: [], service_ids: [], institution_ids: [],
+        audience_ids: 'audience:city-staff', geometry_ids: [],
+      },
+      vector: null,
+    });
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: audienceTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-audience-json-string',
+      reportRevisionId: 'revision-syn-audience-json-string',
+      text: 'Synthetic malformed scope stores a string that resembles JSON.',
+      span: 'resembles JSON',
+      relation: 'context',
+      revisionStatus: 'eligible',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: '2026-09-24T06:15:00Z',
+      eventTime: { start: null, end: null, precision: 'unknown' },
+      scopeRecord: {
+        place_ids: [], service_ids: [], institution_ids: [],
+        audience_ids: JSON.stringify(['audience:city-staff']), geometry_ids: [],
+      },
+      vector: null,
+    });
+    await addFixture({
+      datasetKind: 'synthetic',
+      traceId: audienceTrace.traceId,
+      sourceId: 'source-syn-alpha',
+      candidateId: 'candidate-syn-audience-missing',
+      reportRevisionId: 'revision-syn-audience-missing',
+      text: 'Synthetic malformed scope omits its audience list.',
+      span: 'omits its audience list',
+      relation: 'context',
+      revisionStatus: 'eligible',
+      publishedAt: null,
+      observedAt: null,
+      retrievedAt: '2026-09-24T06:00:00Z',
+      eventTime: { start: null, end: null, precision: 'unknown' },
+      scopeRecord: {
+        place_ids: [], service_ids: [], institution_ids: [], geometry_ids: [],
+      },
+      vector: null,
+    });
+    await addFixture({
+      datasetKind: 'historical',
+      traceId: historyTrace.traceId,
+      sourceId: 'source-syn-history',
+      candidateId: 'candidate-history-audience',
+      reportRevisionId: 'revision-history-audience',
+      text: 'Synthetic historical group notice for city staff.',
+      span: 'group notice for city staff',
+      relation: 'context',
+      revisionStatus: 'eligible',
+      publishedAt: '2026-09-20T05:00:00Z',
+      observedAt: '2026-09-20T05:30:00Z',
+      retrievedAt: '2026-09-20T06:00:00Z',
+      eventTime: { start: '2026-09-20', end: '2026-09-20', precision: 'date' },
+      audienceIds: ['audience:city-staff', 'audience:night-shift'],
+      vector: null,
+    });
+    await addFixture({
       datasetKind: 'historical',
       traceId: historyTrace.traceId,
       sourceId: 'source-syn-history',
@@ -177,9 +333,124 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
     assert.equal(Date.parse(alpha.observedAt!), Date.parse('2026-09-25T06:00:00Z'));
     assert.equal(Date.parse(alpha.retrievedAt), Date.parse('2026-09-25T07:00:00Z'));
     assert.equal(alpha.matchFacets.identifiers.length, 1);
+    assert.deepEqual(alpha.matchFacets.audienceIds, []);
     assert.deepEqual(alpha.matchFacets.exactTerms, ['closure', 'Monas']);
     assert.equal('sufficient' in result, false);
     assert.equal('confidence' in alpha, false);
+  });
+
+  it('matches bounded exact audience IDs, retains contradictions, ranks deterministically, and stays dataset-scoped', async () => {
+    const query: EvidenceRetrievalQuery = {
+      datasetKind: 'synthetic',
+      audienceIds: ['audience:city-staff', 'audience:night-shift', 'audience:city-staff'],
+    };
+    const result = await ports.evidenceRetrieval.search(query);
+    assert.equal(result.retrievalVersion, 'hybrid-evidence-v2');
+    assert.deepEqual(result.candidates.map((candidate) => candidate.candidateId), [
+      'candidate-syn-audience-primary', 'candidate-syn-audience-contradiction',
+    ]);
+    const primary = result.candidates[0]!;
+    const contradiction = result.candidates[1]!;
+    assert.deepEqual(primary.matchFacets.audienceIds, ['audience:city-staff', 'audience:night-shift'],
+      'the query facet is deduplicated and the candidate reports exact matched IDs');
+    assert.deepEqual(contradiction.matchFacets.audienceIds, ['audience:city-staff']);
+    assert.equal(contradiction.relation, 'contradicts');
+    assert.equal(primary.geometryMatches.length, 0);
+    assert.equal(primary.matchFacets.exactTerms.length, 0);
+    assert.equal(primary.matchFacets.reportTimeFields.length, 0);
+    assert.equal(primary.matchFacets.eventTime, false);
+    assert.equal(primary.matchFacets.semanticDistance, null);
+    assert.equal('sufficient' in result, false);
+    assert.equal('confidence' in primary, false);
+
+    const repeated = await ports.evidenceRetrieval.search(query);
+    assert.deepEqual(repeated.candidates.map((candidate) => candidate.candidateId),
+      result.candidates.map((candidate) => candidate.candidateId));
+    const limited = await ports.evidenceRetrieval.search({ ...query, maxResults: 1 });
+    assert.equal(limited.candidates[0]?.candidateId, 'candidate-syn-audience-primary');
+    assert.equal(limited.resultTruncated, true);
+    const scanBounded = await ports.evidenceRetrieval.search({ ...query, maxRowsExamined: 1 });
+    assert.equal(scanBounded.rowsExamined, 1);
+    assert.equal(scanBounded.scanTruncated, true);
+    assert.equal(scanBounded.candidates.length, 0,
+      'an audience match beyond the ordinary row bound is not pulled into the result');
+
+    const unrelated = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic', audienceIds: ['audience:city-staff-extra'],
+    });
+    assert.deepEqual(unrelated.candidates.map((candidate) => candidate.candidateId), [
+      'candidate-syn-audience-near-match',
+    ], 'a distinct longer ID matches only when requested exactly');
+    const isolated = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic', audienceIds: ['audience:city-staff', 'audience:night-shift'],
+    });
+    assert.equal(isolated.candidates.some((candidate) => candidate.datasetKind !== 'synthetic'), false);
+    assert.equal(isolated.candidates.some((candidate) => candidate.candidateId === 'candidate-history-audience'), false);
+
+    const ranked = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic',
+      identifiers: [{ kind: 'candidate', value: 'candidate-syn-alpha' }],
+      audienceIds: ['audience:city-staff', 'audience:night-shift'],
+    });
+    assert.deepEqual(ranked.candidates.slice(0, 3).map((candidate) => candidate.candidateId), [
+      'candidate-syn-alpha', 'candidate-syn-audience-primary', 'candidate-syn-audience-contradiction',
+    ], 'identifier matches rank before audience match count');
+    const audienceBeforeTerms = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic', audienceIds: ['audience:city-staff'], exactTerms: ['closure', 'Monas'],
+    });
+    assert.deepEqual(audienceBeforeTerms.candidates.slice(0, 2).map((candidate) => candidate.candidateId), [
+      'candidate-syn-audience-primary', 'candidate-syn-audience-contradiction',
+    ], 'audience match count ranks before exact-term count');
+  });
+
+  it('fails closed for missing or malformed persisted audience scope without blocking exact-term retrieval', async () => {
+    const audienceOnly = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic', audienceIds: ['audience:city-staff'],
+    });
+    for (const candidateId of [
+      'candidate-syn-audience-malformed',
+      'candidate-syn-audience-non-array',
+      'candidate-syn-audience-json-string',
+      'candidate-syn-audience-missing',
+    ]) {
+      assert.equal(audienceOnly.candidates.some((candidate) => candidate.candidateId === candidateId), false,
+        `${candidateId} has no usable audience facet`);
+    }
+
+    const exactTerm = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic', exactTerms: ['exact target token'], audienceIds: ['audience:city-staff'],
+    });
+    const malformed = exactTerm.candidates.find((candidate) => candidate.candidateId === 'candidate-syn-audience-malformed');
+    assert.ok(malformed, 'the exact-term facet remains usable for a row with malformed audience data');
+    assert.deepEqual(malformed.matchFacets.audienceIds, []);
+  });
+
+  it('validates audience query IDs and returns the current version for empty results', async () => {
+    const empty = await ports.evidenceRetrieval.search({ datasetKind: 'synthetic' });
+    assert.deepEqual(empty.candidates, []);
+    assert.equal(empty.retrievalVersion, 'hybrid-evidence-v2');
+    const noAudienceMatch = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic', audienceIds: ['audience:no-match'],
+    });
+    assert.deepEqual(noAudienceMatch.candidates, []);
+    assert.equal(noAudienceMatch.retrievalVersion, 'hybrid-evidence-v2');
+    const maximumAudienceQuery = await ports.evidenceRetrieval.search({
+      datasetKind: 'synthetic',
+      audienceIds: Array.from({ length: 20 }, (_, index) => `audience:bounded-${index}`),
+    });
+    assert.deepEqual(maximumAudienceQuery.candidates, []);
+    assert.equal(maximumAudienceQuery.retrievalVersion, 'hybrid-evidence-v2');
+    await assert.rejects(
+      ports.evidenceRetrieval.search({
+        datasetKind: 'synthetic',
+        audienceIds: Array.from({ length: 21 }, (_, index) => `audience:bounded-${index}`),
+      }),
+      /audience ID count exceeds its bound/,
+    );
+    await assert.rejects(
+      ports.evidenceRetrieval.search({ datasetKind: 'synthetic', audienceIds: ['invalid audience name'] }),
+      /audience IDs must use exact bounded identifiers/,
+    );
   });
 
   it('matches only terms inside the referenced span and leaves missing origin lineage unknown', async () => {
@@ -302,10 +573,18 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
         datasetKind: 'synthetic',
         identifiers: [{ kind: 'candidate', value: 'candidate-syn-beta' }],
       });
+      assert.equal(nonSemantic.retrievalVersion, 'hybrid-evidence-v2');
       const beta = nonSemantic.candidates.find((candidate) => candidate.candidateId === 'candidate-syn-beta');
       assert.ok(beta, 'the non-semantic query returns the copied report');
       assert.equal(beta.origins[0]?.originId, 'origin-syn-beta');
       assert.deepEqual(beta.origins[0]?.dependsOnOriginIds, ['origin-syn-alpha']);
+
+      const audienceOnly = await retriever.search({
+        datasetKind: 'synthetic', audienceIds: ['audience:city-staff'],
+      });
+      assert.deepEqual(audienceOnly.candidates.map((candidate) => candidate.candidateId), [
+        'candidate-syn-audience-primary', 'candidate-syn-audience-contradiction',
+      ], 'the real SQL query can read schema 2.0 scope under the existing L2 reader role');
 
       const existingRelations = await retriever.search({
         datasetKind: 'synthetic',
@@ -901,6 +1180,10 @@ describe('RAG-CORE deterministic evidence retrieval', () => {
         JSON.stringify({
           fixture: 'synthetic-test-only',
           event_time: fixture.eventTime,
+          scope: fixture.scopeRecord === undefined ? {
+            place_ids: [], service_ids: [], institution_ids: [],
+            audience_ids: fixture.audienceIds ?? [], geometry_ids: [],
+          } : fixture.scopeRecord,
           contractVersion: '2.0',
         })],
     );
@@ -1109,6 +1392,8 @@ interface FixtureInput {
   readonly retrievedAt: string;
   readonly validFrom?: string | null;
   readonly validUntil?: string | null;
+  readonly audienceIds?: readonly string[];
+  readonly scopeRecord?: unknown;
   readonly eventTime: { readonly start: string | null; readonly end: string | null; readonly precision: 'exact' | 'date' | 'range' | 'unknown' };
   readonly origin?: {
     readonly originId: string;

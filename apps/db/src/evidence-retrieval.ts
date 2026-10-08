@@ -47,6 +47,8 @@ export interface EvidenceRetrievalFilters {
 export interface EvidenceRetrievalQuery {
   readonly datasetKind: DatasetKind;
   readonly identifiers?: readonly EvidenceRetrievalIdentifier[];
+  /** Exact internal audience IDs from persisted extraction scope; never a preference label. */
+  readonly audienceIds?: readonly string[];
   /** Literal, case-sensitive substrings searched in immutable permitted text. */
   readonly exactTerms?: readonly string[];
   readonly reportTime?: EvidenceRetrievalTimeBounds;
@@ -137,6 +139,8 @@ export interface EvidenceRetrievalCandidate {
   readonly chunk: EvidenceRetrievalChunk | null;
   readonly matchFacets: {
     readonly identifiers: readonly EvidenceRetrievalIdentifier[];
+    /** Exact extraction-scope IDs are discovery hints, not evidence support. */
+    readonly audienceIds: readonly string[];
     readonly exactTerms: readonly string[];
     readonly reportTimeFields: readonly ('published_at' | 'observed_at' | 'retrieved_at')[];
     readonly eventTime: boolean;
@@ -147,7 +151,7 @@ export interface EvidenceRetrievalCandidate {
 
 export interface EvidenceRetrievalResult {
   readonly datasetKind: DatasetKind;
-  readonly retrievalVersion: 'hybrid-evidence-v1';
+  readonly retrievalVersion: 'hybrid-evidence-v2';
   readonly indexVersion: string | null;
   readonly candidates: readonly EvidenceRetrievalCandidate[];
   readonly rowsExamined: number;
@@ -250,7 +254,7 @@ export class ExactEvidenceSpanReadError extends Error {
 
 export const MAX_EXACT_EVIDENCE_SPAN_CODE_POINTS = 40_000;
 
-const RETRIEVAL_VERSION = 'hybrid-evidence-v1' as const;
+const RETRIEVAL_VERSION = 'hybrid-evidence-v2' as const;
 const MAX_IDENTIFIERS = 20;
 const MAX_EXACT_TERMS = 20;
 const MAX_TERM_CODE_POINTS = 128;
@@ -799,6 +803,7 @@ class SqlEvidenceRetrievalRepository implements EvidenceRetrievalRepository {
       }
 
       const exactIdentifiers = matchedIdentifiers(row, normalized.identifiers);
+      const audienceIds = matchedAudienceIds(row, normalized.audienceIds);
       const exactTerms = row.exact_terms ?? [];
       const reportTimeFields = matchingReportTimeFields(row, normalized.reportTime);
       const eventTime = parseEventTime(row.event_time_json);
@@ -811,7 +816,7 @@ class SqlEvidenceRetrievalRepository implements EvidenceRetrievalRepository {
       const semanticMatched = semanticDistance !== null && Number.isFinite(semanticDistance);
       if (semanticMatched) anySemanticMatch = true;
 
-      if (exactIdentifiers.length === 0 && exactTerms.length === 0
+      if (exactIdentifiers.length === 0 && audienceIds.length === 0 && exactTerms.length === 0
         && reportTimeFields.length === 0 && !eventTimeMatched
         && geometryMatches.length === 0 && !semanticMatched) continue;
 
@@ -853,6 +858,7 @@ class SqlEvidenceRetrievalRepository implements EvidenceRetrievalRepository {
             : normalized.semantic ? 'query_vector_missing' : 'no_compatible_embedding' } : null,
         matchFacets: {
           identifiers: exactIdentifiers,
+          audienceIds,
           exactTerms,
           reportTimeFields,
           eventTime: eventTimeMatched,
@@ -886,6 +892,7 @@ class SqlEvidenceRetrievalRepository implements EvidenceRetrievalRepository {
 
 interface NormalizedQuery {
   readonly identifiers: readonly EvidenceRetrievalIdentifier[];
+  readonly audienceIds: readonly string[];
   readonly exactTerms: readonly string[];
   readonly reportTime: ParsedTimeBounds | null;
   readonly eventTime: ParsedTimeBounds | null;
@@ -920,6 +927,16 @@ function validateAndNormalizeQuery(query: EvidenceRetrievalQuery): NormalizedQue
       throw new Error('Evidence retrieval identifiers must use a supported kind and bounded identifier');
     }
   }
+  const audienceIds = query.audienceIds ?? [];
+  if (!Array.isArray(audienceIds) || audienceIds.length > MAX_IDENTIFIERS) {
+    throw new Error('Evidence retrieval audience ID count exceeds its bound');
+  }
+  for (const audienceId of audienceIds) {
+    if (typeof audienceId !== 'string' || !ID_PATTERN.test(audienceId)
+      || codePointCount(audienceId) > MAX_IDENTIFIER_CODE_POINTS) {
+      throw new Error('Evidence retrieval audience IDs must use exact bounded identifiers');
+    }
+  }
   const exactTerms = query.exactTerms ?? [];
   if (exactTerms.length > MAX_EXACT_TERMS || exactTerms.some((term) => !term.trim()
     || codePointCount(term) > MAX_TERM_CODE_POINTS || term.includes('\u0000'))) {
@@ -946,6 +963,7 @@ function validateAndNormalizeQuery(query: EvidenceRetrievalQuery): NormalizedQue
   }
   return {
     identifiers: dedupeIdentifiers(identifiers),
+    audienceIds: [...new Set(audienceIds)],
     exactTerms: [...new Set(exactTerms)],
     reportTime: parseTimeBounds(query.reportTime, 'reportTime'),
     eventTime: parseTimeBounds(query.eventTime, 'eventTime'),
@@ -1108,7 +1126,7 @@ function validateFilters(filters: EvidenceRetrievalFilters): EvidenceRetrievalFi
 }
 
 function hasSearchFacet(query: NormalizedQuery): boolean {
-  return query.identifiers.length > 0 || query.exactTerms.length > 0 || query.reportTime !== null
+  return query.identifiers.length > 0 || query.audienceIds.length > 0 || query.exactTerms.length > 0 || query.reportTime !== null
     || query.eventTime !== null || query.geometry !== null || Boolean(query.semantic?.queryVector);
 }
 
@@ -1199,6 +1217,7 @@ function buildRetrievalSql(hasSemanticVector: boolean, distanceMetric: EvidenceR
     WITH selected AS MATERIALIZED (
       SELECT extraction.dataset_kind, extraction.candidate_id,
              extraction.record_json -> 'event_time' AS event_time_json,
+             extraction.record_json #> '{scope,audience_ids}' AS audience_ids_json,
              reference.evidence_ref_id, reference.report_revision_id, reference.permitted_text_hash,
              reference.span_start, reference.span_end, reference.offset_unit, reference.relation,
              revision.permitted_text, revision.revision_status, revision.source_id,
@@ -1246,7 +1265,8 @@ function buildRetrievalSql(hasSemanticVector: boolean, distanceMetric: EvidenceR
            evidence_chunks.approval_status, evidence_chunks.health_status,
            evidence_chunks.published_at, evidence_chunks.observed_at, evidence_chunks.retrieved_at,
            evidence_chunks.valid_from, evidence_chunks.valid_until, evidence_chunks.report_code_points,
-           evidence_chunks.event_time_json, evidence_chunks.exact_terms, evidence_chunks.geometry_matches,
+           evidence_chunks.event_time_json, evidence_chunks.audience_ids_json,
+           evidence_chunks.exact_terms, evidence_chunks.geometry_matches,
            evidence_chunks.origins, scan_metadata.scan_truncated, evidence_chunks.scan_position,
            chunk_result.chunk_id, chunk_result.chunk_text_hash, chunk_result.chunk_span_start,
            chunk_result.chunk_span_end, chunk_result.chunker_version, chunk_result.embedding_run_id,
@@ -1299,6 +1319,7 @@ interface EvidenceRetrievalRow {
   valid_until: string | null;
   report_code_points: number;
   event_time_json: unknown;
+  audience_ids_json: unknown;
   exact_terms: string[];
   geometry_matches: unknown;
   origins: unknown;
@@ -1382,6 +1403,21 @@ function matchedIdentifiers(row: EvidenceRetrievalRow, identifiers: readonly Evi
   });
 }
 
+function matchedAudienceIds(row: EvidenceRetrievalRow, queryAudienceIds: readonly string[]): string[] {
+  if (queryAudienceIds.length === 0) return [];
+  const persistedAudienceIds = parsePersistedAudienceIds(row.audience_ids_json);
+  const persistedAudienceIdSet = new Set(persistedAudienceIds);
+  return queryAudienceIds.filter((audienceId) => persistedAudienceIdSet.has(audienceId));
+}
+
+function parsePersistedAudienceIds(input: unknown): string[] {
+  if (!Array.isArray(input) || input.some((audienceId) => typeof audienceId !== 'string'
+    || !ID_PATTERN.test(audienceId) || codePointCount(audienceId) > MAX_IDENTIFIER_CODE_POINTS)) {
+    return [];
+  }
+  return [...new Set(input as string[])];
+}
+
 function passesStateFilters(row: EvidenceRetrievalRow, filters: EvidenceRetrievalFilters): boolean {
   return (!filters.revisionStatuses || filters.revisionStatuses.includes(row.revision_status))
     && (!filters.registryStatuses || filters.registryStatuses.includes(row.registry_status))
@@ -1427,6 +1463,8 @@ function parseJsonArray<T>(input: unknown): T[] {
 function compareCandidates(left: EvidenceRetrievalCandidate, right: EvidenceRetrievalCandidate): number {
   const identifierDelta = right.matchFacets.identifiers.length - left.matchFacets.identifiers.length;
   if (identifierDelta !== 0) return identifierDelta;
+  const audienceDelta = right.matchFacets.audienceIds.length - left.matchFacets.audienceIds.length;
+  if (audienceDelta !== 0) return audienceDelta;
   const termDelta = right.matchFacets.exactTerms.length - left.matchFacets.exactTerms.length;
   if (termDelta !== 0) return termDelta;
   const leftTime = left.matchFacets.reportTimeFields.length > 0 || left.matchFacets.eventTime;

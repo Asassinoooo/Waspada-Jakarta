@@ -484,14 +484,14 @@ function makeServiceInput(
     priorDecisionIds: [],
     missingFields: [],
     conflicts: [],
-    retrievalVersion: 'hybrid-evidence-v1',
+    retrievalVersion: 'hybrid-evidence-v2',
     indexVersion: 'synthetic-index-v1',
     sufficient: true,
   };
   const candidates = claims.map((claim) => makeRetrievalCandidate(proposal, claim));
   const retrieval = {
     datasetKind: 'live' as const,
-    retrievalVersion: 'hybrid-evidence-v1' as const,
+    retrievalVersion: 'hybrid-evidence-v2' as const,
     indexVersion: 'synthetic-index-v1',
     candidates,
     rowsExamined: candidates.length,
@@ -625,6 +625,7 @@ function makeRetrievalCandidate(proposal: EventProposal, claim: ClaimFixture): E
     chunk: null,
     matchFacets: {
       identifiers: [],
+      audienceIds: [],
       exactTerms: [],
       reportTimeFields: [],
       eventTime: false,

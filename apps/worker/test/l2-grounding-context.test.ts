@@ -397,6 +397,7 @@ function makeCandidate(input: CandidateFixtureInput): EvidenceRetrievalCandidate
     chunk: null,
     matchFacets: {
       identifiers: [],
+      audienceIds: [],
       exactTerms: [],
       reportTimeFields: [],
       eventTime: false,
@@ -412,7 +413,7 @@ function makeRetrieval(
 ): EvidenceRetrievalResult {
   return {
     datasetKind: "synthetic",
-    retrievalVersion: "hybrid-evidence-v1",
+    retrievalVersion: "hybrid-evidence-v2",
     indexVersion,
     candidates,
     rowsExamined: candidates.length,

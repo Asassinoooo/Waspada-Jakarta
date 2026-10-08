@@ -85,7 +85,7 @@ function makeContext(
     priorDecisionIds: [],
     missingFields: [],
     conflicts: [],
-    retrievalVersion: "hybrid-evidence-v1",
+    retrievalVersion: "hybrid-evidence-v2",
     indexVersion: "synthetic-index-v1",
     // This field is routing metadata; it must not authorize or block L4 publication.
     sufficient: false,
@@ -140,6 +140,7 @@ function makeCandidate(
     chunk: null,
     matchFacets: {
       identifiers: [],
+      audienceIds: [],
       exactTerms: [],
       reportTimeFields: [],
       eventTime: false,
@@ -164,7 +165,7 @@ function makeRetrieval(
 ): EvidenceRetrievalResult {
   return {
     datasetKind: "synthetic",
-    retrievalVersion: "hybrid-evidence-v1",
+    retrievalVersion: "hybrid-evidence-v2",
     indexVersion: "synthetic-index-v1",
     candidates,
     rowsExamined: candidates.length,
