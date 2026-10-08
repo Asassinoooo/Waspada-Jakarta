@@ -4,7 +4,7 @@
 - **Backlog ID:** `L3-ADVANCE-REVIEW-PENDING-PLANNER-RECONCILIATION-PGLITE-CORE`
 - **Objective:** Prove that a known result from the exact already-started reasoning reservation is reconciled once when a sticky planning review marker is recorded during that call, after which the coordinator stops before taking further action.
 - **Dependencies:** `L3-ADVANCE-REVIEW-PENDING-CORE`, `L3-COORDINATOR-CORE`, `L3-REASONING-STEP-CORE`, `L3-REASONING-STEP-PGLITE-CORE`, `L3-LEDGER-CORE`, `L3-INSUFFICIENT-CONTEXT-ENTRY-CORE`, `L2-INVESTIGATION-PLAN-CORE`, `L2-CONTEXT-PERSIST-CORE`, `DB-TEST-RUNNER-ISOLATION`, `L3-ADVANCE-REVIEW-PENDING-COORDINATOR-PGLITE-CORE`, `L3-ADVANCE-REVIEW-PENDING-ACTION-RECONCILIATION-PGLITE-CORE`; ADR-014/017/027/029/031/051.
-- **Requirements:** FR-07/08; NFR-01/02/05/07.
+- **Requirements:** FR-07; NFR-01/02/05/07.
 - **Contract baseline:** Existing private schema-2.0 investigation checkpoint/grounding records, planner contract 1.0, and append-only migration-035 review marker. No public/API, schema, migration, grant, or runtime change.
 - **Branch/worktree:** Use branch `work/L3-ADVANCE-REVIEW-PENDING-PLANNER-RECONCILIATION-PGLITE-CORE` in `.codex-build/worktrees/l3-advance-review-pending-planner-reconciliation-pglite-core`, based on the pushed assignment commit. The root dispatch records the exact base SHA. Do not edit through the root checkout.
 - **Model:** GPT-6 Luna, max reasoning.
