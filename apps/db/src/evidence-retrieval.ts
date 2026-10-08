@@ -162,6 +162,55 @@ export interface EvidenceRetrievalRepository {
   search(query: EvidenceRetrievalQuery): Promise<EvidenceRetrievalResult>;
 }
 
+/** A schema 2.0 reference selected by a persisted grounding context. */
+export interface ExactEvidenceReferenceIdentity {
+  readonly reportRevisionId: string;
+  readonly permittedTextHash: string;
+  readonly spanStart: number;
+  readonly spanEnd: number;
+  readonly offsetUnit: 'unicode_code_points';
+  readonly relation: EvidenceRelation;
+}
+
+export interface ExactEvidenceReferenceReadRequest {
+  readonly datasetKind: DatasetKind;
+  readonly candidateId: string;
+  readonly references: readonly ExactEvidenceReferenceIdentity[];
+}
+
+/** Current state for one exact saved identity; no excerpt text is returned. */
+export interface ExactEvidenceReferenceSnapshot extends ExactEvidenceReferenceIdentity {
+  readonly datasetKind: DatasetKind;
+  readonly candidateId: string;
+  readonly evidenceReferenceId: string;
+  readonly revisionStatus: EvidenceRetrievalRevisionStatus;
+  readonly sourceId: string;
+  readonly registryStatus: EvidenceRetrievalRegistryStatus;
+  readonly approvalStatus: EvidenceRetrievalApprovalStatus;
+  readonly healthStatus: EvidenceRetrievalHealthStatus;
+  readonly publishedAt: string | null;
+  readonly observedAt: string | null;
+  readonly retrievedAt: string;
+  readonly origins: readonly EvidenceRetrievalOrigin[];
+}
+
+export interface ExactEvidenceReferenceReader {
+  /** Resolves no more than eight references in one bounded exact query. */
+  readExactReferences(request: ExactEvidenceReferenceReadRequest): Promise<readonly ExactEvidenceReferenceSnapshot[]>;
+}
+
+export type ExactEvidenceReferenceReadErrorCode =
+  | 'invalid_request'
+  | 'malformed_result'
+  | 'storage_read_failed';
+
+export class ExactEvidenceReferenceReadError extends Error {
+  constructor(readonly code: ExactEvidenceReferenceReadErrorCode) {
+    super(code);
+    this.name = 'ExactEvidenceReferenceReadError';
+  }
+}
+
 /** Exact persisted identity required to safely rehydrate one selected span. */
 export interface ExactEvidenceSpanRequest {
   readonly datasetKind: DatasetKind;
@@ -221,6 +270,308 @@ const RFC3339_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]
 
 export function createSqlEvidenceRetrievalRepository(executor: SqlExecutor): EvidenceRetrievalRepository {
   return new SqlEvidenceRetrievalRepository(executor);
+}
+
+/**
+ * Creates a read-only resolver for references already pinned in a grounding
+ * context. It does not rank, search, replace, or return report excerpts.
+ */
+export function createSqlExactEvidenceReferenceReader(executor: SqlExecutor): ExactEvidenceReferenceReader {
+  return new SqlExactEvidenceReferenceReader(executor);
+}
+
+class SqlExactEvidenceReferenceReader implements ExactEvidenceReferenceReader {
+  constructor(private readonly executor: SqlExecutor) {}
+
+  async readExactReferences(
+    request: ExactEvidenceReferenceReadRequest,
+  ): Promise<readonly ExactEvidenceReferenceSnapshot[]> {
+    validateExactEvidenceReferenceRequest(request);
+    if (request.references.length === 0) return [];
+
+    const values: string[] = [];
+    const parameters: unknown[] = [request.datasetKind, request.candidateId];
+    request.references.forEach((reference, index) => {
+      const firstParameter = parameters.length + 1;
+      values.push(`($${firstParameter}::text, $${firstParameter + 1}::text, ` +
+        `$${firstParameter + 2}::integer, $${firstParameter + 3}::integer, ` +
+        `$${firstParameter + 4}::text, $${firstParameter + 5}::text, ${index}::integer)`);
+      parameters.push(
+        reference.reportRevisionId,
+        reference.permittedTextHash,
+        reference.spanStart,
+        reference.spanEnd,
+        reference.offsetUnit,
+        reference.relation,
+      );
+    });
+
+    let result: { readonly rows: readonly ExactEvidenceReferenceRow[] };
+    try {
+      result = await this.executor.query<ExactEvidenceReferenceRow>(
+        `WITH requested(report_revision_id, permitted_text_hash, span_start, span_end,
+                        offset_unit, relation, request_position) AS (
+           VALUES ${values.join(', ')}
+         )
+         SELECT requested.request_position,
+                current_match.dataset_kind,
+                current_match.candidate_id,
+                current_match.evidence_reference_id,
+                current_match.report_revision_id,
+                current_match.permitted_text_hash,
+                current_match.span_start,
+                current_match.span_end,
+                current_match.offset_unit,
+                current_match.relation,
+                current_match.revision_status,
+                current_match.source_id,
+                current_match.registry_status,
+                current_match.approval_status,
+                current_match.health_status,
+                current_match.published_at,
+                current_match.observed_at,
+                current_match.retrieved_at,
+                current_match.origins
+         FROM requested
+         LEFT JOIN LATERAL (
+           SELECT reference.dataset_kind,
+                  link.candidate_id,
+                  reference.evidence_ref_id::text AS evidence_reference_id,
+                  reference.report_revision_id,
+                  reference.permitted_text_hash,
+                  reference.span_start,
+                  reference.span_end,
+                  reference.offset_unit,
+                  reference.relation,
+                  revision.revision_status,
+                  revision.source_id,
+                  source.registry_status,
+                  source.approval_status,
+                  source.health_status,
+                  to_char(revision.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_at,
+                  to_char(revision.observed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS observed_at,
+                  to_char(revision.retrieved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS retrieved_at,
+                  COALESCE((
+                    SELECT jsonb_agg(jsonb_build_object(
+                      'originId', origin.origin_id,
+                      'originKind', origin.origin_kind,
+                      'sourceId', origin.source_id,
+                      'lineageRelation', origin.lineage_relation,
+                      'independenceStatus', origin.independence_status,
+                      'dependsOnOriginIds', ARRAY(
+                        SELECT dependency.depends_on_origin_id
+                        FROM waspada.origin_dependencies AS dependency
+                        WHERE dependency.dataset_kind = origin.dataset_kind
+                          AND dependency.origin_id = origin.origin_id
+                        ORDER BY dependency.depends_on_origin_id
+                      )
+                    ) ORDER BY origin.origin_id)
+                    FROM waspada.origin_evidence AS origin_link
+                    JOIN waspada.evidence_origins AS origin
+                      ON origin.dataset_kind = origin_link.dataset_kind
+                     AND origin.origin_id = origin_link.origin_id
+                    WHERE origin_link.dataset_kind = reference.dataset_kind
+                      AND origin_link.evidence_ref_id = reference.evidence_ref_id
+                  ), '[]'::jsonb) AS origins
+           FROM waspada.evidence_references AS reference
+           JOIN waspada.extraction_evidence AS link
+             ON link.dataset_kind = reference.dataset_kind
+            AND link.evidence_ref_id = reference.evidence_ref_id
+            AND link.candidate_id = $2::text
+           JOIN waspada.report_revisions AS revision
+             ON revision.dataset_kind = reference.dataset_kind
+            AND revision.report_revision_id = reference.report_revision_id
+            AND revision.permitted_text_hash = reference.permitted_text_hash
+           JOIN waspada.source_registry AS source
+             ON source.source_id = revision.source_id
+           WHERE reference.dataset_kind = $1::text
+             AND reference.report_revision_id = requested.report_revision_id
+             AND reference.permitted_text_hash = requested.permitted_text_hash
+             AND reference.span_start = requested.span_start
+             AND reference.span_end = requested.span_end
+             AND reference.offset_unit = requested.offset_unit
+             AND reference.relation = requested.relation
+           ORDER BY reference.evidence_ref_id
+           LIMIT 2
+         ) AS current_match ON true
+         ORDER BY requested.request_position, current_match.evidence_reference_id`,
+        parameters,
+      );
+    } catch {
+      throw new ExactEvidenceReferenceReadError('storage_read_failed');
+    }
+
+    if (result.rows.length > request.references.length * 2) {
+      throw new ExactEvidenceReferenceReadError('malformed_result');
+    }
+    const snapshots: ExactEvidenceReferenceSnapshot[] = [];
+    for (const row of result.rows) {
+      if (!Number.isInteger(row.request_position)
+        || row.request_position < 0 || row.request_position >= request.references.length) {
+        throw new ExactEvidenceReferenceReadError('malformed_result');
+      }
+      if (row.evidence_reference_id === null) continue;
+      const reference = request.references[row.request_position];
+      if (!reference) throw new ExactEvidenceReferenceReadError('malformed_result');
+      snapshots.push(parseExactEvidenceReferenceRow(row, request, reference));
+    }
+    return snapshots;
+  }
+}
+
+interface ExactEvidenceReferenceRow {
+  readonly request_position: number;
+  readonly dataset_kind: unknown;
+  readonly candidate_id: unknown;
+  readonly evidence_reference_id: unknown;
+  readonly report_revision_id: unknown;
+  readonly permitted_text_hash: unknown;
+  readonly span_start: unknown;
+  readonly span_end: unknown;
+  readonly offset_unit: unknown;
+  readonly relation: unknown;
+  readonly revision_status: unknown;
+  readonly source_id: unknown;
+  readonly registry_status: unknown;
+  readonly approval_status: unknown;
+  readonly health_status: unknown;
+  readonly published_at: unknown;
+  readonly observed_at: unknown;
+  readonly retrieved_at: unknown;
+  readonly origins: unknown;
+}
+
+function validateExactEvidenceReferenceRequest(request: ExactEvidenceReferenceReadRequest): void {
+  if (!request || !['live', 'historical', 'synthetic'].includes(request.datasetKind)
+    || typeof request.candidateId !== 'string' || !ID_PATTERN.test(request.candidateId)
+    || !Array.isArray(request.references) || request.references.length > 8) {
+    throw new ExactEvidenceReferenceReadError('invalid_request');
+  }
+  const identities = new Set<string>();
+  for (const reference of request.references) {
+    if (!reference || typeof reference.reportRevisionId !== 'string' || !ID_PATTERN.test(reference.reportRevisionId)
+      || typeof reference.permittedTextHash !== 'string' || !/^[a-f0-9]{64}$/.test(reference.permittedTextHash)
+      || !Number.isSafeInteger(reference.spanStart) || reference.spanStart < 0
+      || !Number.isSafeInteger(reference.spanEnd) || reference.spanEnd <= reference.spanStart
+      || reference.spanEnd > 10_000_000
+      || reference.offsetUnit !== 'unicode_code_points'
+      || !['supports', 'contradicts', 'updates', 'context'].includes(reference.relation)) {
+      throw new ExactEvidenceReferenceReadError('invalid_request');
+    }
+    const key = exactEvidenceReferenceIdentityKey(reference);
+    if (identities.has(key)) throw new ExactEvidenceReferenceReadError('invalid_request');
+    identities.add(key);
+  }
+}
+
+function parseExactEvidenceReferenceRow(
+  row: ExactEvidenceReferenceRow,
+  request: ExactEvidenceReferenceReadRequest,
+  expected: ExactEvidenceReferenceIdentity,
+): ExactEvidenceReferenceSnapshot {
+  const revisionStatus = row.revision_status;
+  const registryStatus = row.registry_status;
+  const approvalStatus = row.approval_status;
+  const healthStatus = row.health_status;
+  if (row.dataset_kind !== request.datasetKind || row.candidate_id !== request.candidateId
+    || typeof row.evidence_reference_id !== 'string' || !/^[1-9][0-9]{0,18}$/.test(row.evidence_reference_id)
+    || row.report_revision_id !== expected.reportRevisionId
+    || row.permitted_text_hash !== expected.permittedTextHash
+    || row.span_start !== expected.spanStart || row.span_end !== expected.spanEnd
+    || row.offset_unit !== expected.offsetUnit || row.relation !== expected.relation
+    || typeof revisionStatus !== 'string'
+    || !['unreviewed', 'eligible', 'quarantined', 'superseded', 'retracted'].includes(revisionStatus)
+    || typeof row.source_id !== 'string' || !ID_PATTERN.test(row.source_id)
+    || typeof registryStatus !== 'string' || !['active', 'paused', 'retired'].includes(registryStatus)
+    || typeof approvalStatus !== 'string' || !['pending', 'approved', 'suspended', 'revoked'].includes(approvalStatus)
+    || typeof healthStatus !== 'string' || !['unknown', 'healthy', 'degraded', 'unavailable'].includes(healthStatus)
+    || (row.published_at !== null && typeof row.published_at !== 'string')
+    || (row.observed_at !== null && typeof row.observed_at !== 'string')
+    || typeof row.retrieved_at !== 'string') {
+    throw new ExactEvidenceReferenceReadError('malformed_result');
+  }
+
+  return {
+    datasetKind: request.datasetKind,
+    candidateId: request.candidateId,
+    evidenceReferenceId: row.evidence_reference_id,
+    reportRevisionId: expected.reportRevisionId,
+    permittedTextHash: expected.permittedTextHash,
+    spanStart: expected.spanStart,
+    spanEnd: expected.spanEnd,
+    offsetUnit: expected.offsetUnit,
+    relation: expected.relation,
+    revisionStatus: revisionStatus as EvidenceRetrievalRevisionStatus,
+    sourceId: row.source_id,
+    registryStatus: registryStatus as EvidenceRetrievalRegistryStatus,
+    approvalStatus: approvalStatus as EvidenceRetrievalApprovalStatus,
+    healthStatus: healthStatus as EvidenceRetrievalHealthStatus,
+    publishedAt: row.published_at as string | null,
+    observedAt: row.observed_at as string | null,
+    retrievedAt: row.retrieved_at,
+    origins: parseExactEvidenceReferenceOrigins(row.origins),
+  };
+}
+
+function parseExactEvidenceReferenceOrigins(value: unknown): readonly EvidenceRetrievalOrigin[] {
+  let parsed = value;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed) as unknown;
+    } catch {
+      throw new ExactEvidenceReferenceReadError('malformed_result');
+    }
+  }
+  if (!Array.isArray(parsed) || parsed.length > 32) {
+    throw new ExactEvidenceReferenceReadError('malformed_result');
+  }
+  const originIds = new Set<string>();
+  return parsed.map((entry): EvidenceRetrievalOrigin => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new ExactEvidenceReferenceReadError('malformed_result');
+    }
+    const origin = entry as Record<string, unknown>;
+    const fields = ['originId', 'originKind', 'sourceId', 'lineageRelation', 'independenceStatus', 'dependsOnOriginIds'];
+    if (Reflect.ownKeys(origin).length !== fields.length
+      || fields.some((field) => !Object.prototype.hasOwnProperty.call(origin, field))) {
+      throw new ExactEvidenceReferenceReadError('malformed_result');
+    }
+    if (typeof origin.originId !== 'string' || !ID_PATTERN.test(origin.originId)
+      || originIds.has(origin.originId)
+      || typeof origin.originKind !== 'string' || origin.originKind.length === 0
+      || (origin.sourceId !== null && (typeof origin.sourceId !== 'string' || !ID_PATTERN.test(origin.sourceId)))
+      || typeof origin.lineageRelation !== 'string' || origin.lineageRelation.length === 0
+      || typeof origin.independenceStatus !== 'string'
+      || !['established', 'dependent', 'unknown'].includes(origin.independenceStatus)
+      || !Array.isArray(origin.dependsOnOriginIds) || origin.dependsOnOriginIds.length > 64
+      || origin.dependsOnOriginIds.some((dependency) => typeof dependency !== 'string' || !ID_PATTERN.test(dependency))) {
+      throw new ExactEvidenceReferenceReadError('malformed_result');
+    }
+    originIds.add(origin.originId);
+    const dependsOnOriginIds = origin.dependsOnOriginIds as string[];
+    if (new Set(dependsOnOriginIds).size !== dependsOnOriginIds.length) {
+      throw new ExactEvidenceReferenceReadError('malformed_result');
+    }
+    return {
+      originId: origin.originId,
+      originKind: origin.originKind,
+      sourceId: origin.sourceId as string | null,
+      lineageRelation: origin.lineageRelation,
+      independenceStatus: origin.independenceStatus as EvidenceRetrievalOrigin['independenceStatus'],
+      dependsOnOriginIds: [...dependsOnOriginIds],
+    };
+  });
+}
+
+function exactEvidenceReferenceIdentityKey(reference: ExactEvidenceReferenceIdentity): string {
+  return JSON.stringify([
+    reference.reportRevisionId,
+    reference.permittedTextHash,
+    reference.spanStart,
+    reference.spanEnd,
+    reference.offsetUnit,
+    reference.relation,
+  ]);
 }
 
 /**
