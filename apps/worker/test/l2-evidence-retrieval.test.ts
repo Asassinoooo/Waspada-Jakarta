@@ -20,11 +20,12 @@ it('passes a bounded evidence query to the injected read-only repository and pre
   const query: EvidenceRetrievalQuery = {
     datasetKind: 'synthetic',
     identifiers: [{ kind: 'candidate', value: 'candidate-synthetic-only' }],
+    audienceIds: ['audience:synthetic-staff'],
     exactTerms: [queryMarker],
   };
   const result = {
     datasetKind: 'synthetic',
-    retrievalVersion: 'hybrid-evidence-v1',
+    retrievalVersion: 'hybrid-evidence-v2',
     indexVersion: null,
     candidates: [{
       datasetKind: 'synthetic',
@@ -62,6 +63,7 @@ it('passes a bounded evidence query to the injected read-only repository and pre
       chunk: null,
       matchFacets: {
         identifiers: query.identifiers!,
+        audienceIds: query.audienceIds!,
         exactTerms: [],
         reportTimeFields: [],
         eventTime: false,
@@ -96,6 +98,7 @@ it('passes a bounded evidence query to the injected read-only repository and pre
   assert.equal(receivedQuery, query);
   assert.equal(retrieved, result);
   assert.equal(retrieved.candidates[0]?.relation, 'contradicts');
+  assert.deepEqual(receivedQuery?.audienceIds, ['audience:synthetic-staff']);
   assert.equal(retrieved.candidates[0]?.revisionStatus, 'quarantined');
   assert.equal('sufficient' in retrieved, false);
   assert.equal(telemetryRecords.length, 1);
@@ -122,6 +125,7 @@ it('passes a bounded evidence query to the injected read-only repository and pre
   assert.equal(record.resultTruncated, result.resultTruncated);
   assert.equal(record.semanticStatus, result.semanticStatus);
   assert.ok(!JSON.stringify(record).includes(queryMarker));
+  assert.ok(!JSON.stringify(record).includes('audience:synthetic-staff'));
   assert.ok(!JSON.stringify(record).includes(resultMarker));
 });
 
@@ -166,7 +170,7 @@ it('preserves the exact repository error when recording retrieval errors also th
 it('defaults to no-op telemetry unless a caller injects a sink', async () => {
   const result = {
     datasetKind: 'synthetic',
-    retrievalVersion: 'hybrid-evidence-v1',
+    retrievalVersion: 'hybrid-evidence-v2',
     indexVersion: null,
     candidates: [],
     rowsExamined: 0,

@@ -43,7 +43,7 @@ function makeCandidate(reference: EvidenceReference, evidenceReferenceId: string
     publishedAt: null, observedAt: null, retrievedAt: "2026-09-25T08:45:00+07:00", validFrom: null, validUntil: null,
     eventTime: { start: null, end: null, precision: "unknown", status: "unknown" }, origins: [], originLineageStatus: "unknown",
     geometryMatches: [], chunk: null,
-    matchFacets: { identifiers: [], exactTerms: [], reportTimeFields: [], eventTime: false, geometry: false, semanticDistance: null },
+    matchFacets: { identifiers: [], audienceIds: [], exactTerms: [], reportTimeFields: [], eventTime: false, geometry: false, semanticDistance: null },
   };
 }
 
@@ -83,11 +83,11 @@ function makeFixture(options: {
     })),
     revisionStates: references.map((reference) => ({ reportRevisionId: reference.reportRevisionId, revisionStatus: "eligible" })),
     candidateEvents: target.kind === "update" ? [{ eventId: target.eventId, eventVersion: target.baseVersion }] : [],
-    priorDecisionIds: [], missingFields: [], conflicts: [], retrievalVersion: "hybrid-evidence-v1", indexVersion: "synthetic-index-v1", sufficient: true,
+    priorDecisionIds: [], missingFields: [], conflicts: [], retrievalVersion: "hybrid-evidence-v2", indexVersion: "synthetic-index-v1", sufficient: true,
   };
   const candidates = references.map((reference, index) => makeCandidate(reference, "evidence-ref-synthetic-" + String(index + 1)));
   const retrieval: EvidenceRetrievalResult = {
-    datasetKind, retrievalVersion: "hybrid-evidence-v1", indexVersion: "synthetic-index-v1",
+    datasetKind, retrievalVersion: "hybrid-evidence-v2", indexVersion: "synthetic-index-v1",
     candidates: candidates.map((candidate) => ({ ...candidate, datasetKind })), rowsExamined: candidates.length,
     filteredRowsOmitted: 0, invalidSpanRowsOmitted: 0, scanTruncated: false, resultTruncated: false, semanticStatus: "not_requested",
   };
