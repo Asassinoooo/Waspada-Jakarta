@@ -4,6 +4,8 @@
 **Prepared:** 4 October 2026; terms reviewed and draft updated 8 October 2026
 **Related:** [SPEC-01 source feasibility](SOURCE_FEASIBILITY.md), [source verification plan](../SOURCE_VERIFICATION_PLAN.md), and [ADR-005 retention](decisions/ADR-005-source-retention.md)
 
+See the [Source Reuse and Retention Clearance Gate](SOURCE_CLEARANCE_PLAN.md) for the recommended request order, cross-source clearance checklist, retention questions, and acceptance criteria. BMKG is the proposed first request; no request has been sent.
+
 Use these drafts to request written terms from each source owner or dataset steward. Fill in the team contact and supervisor details, verify each recipient through the source's official site, and retain the written reply with the source registry decision. Access to a public page, API endpoint, or RSS feed is not itself approval for Waspada's proposed collection and processing.
 
 ## Proposed project use to disclose
