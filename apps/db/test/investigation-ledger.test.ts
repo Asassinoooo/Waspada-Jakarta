@@ -1450,6 +1450,24 @@ describe('L3 durable investigation ledger', () => {
   });
 
   it('reloads a refs-only checkpoint context through L2 before one bounded L3 resume', async () => {
+    const readProtectedWriteCounts = async () => {
+      const result = await testDatabase.executor.query<{
+        events: string;
+        decisions: string;
+        outbox: string;
+        historyReviews: string;
+      }>(
+        'SELECT '
+          + '(SELECT count(*)::text FROM waspada.event_versions) AS events, '
+          + '(SELECT count(*)::text FROM waspada.publication_decisions) AS decisions, '
+          + '(SELECT count(*)::text FROM waspada.publication_outbox) AS outbox, '
+          + '(SELECT count(*)::text FROM waspada.public_event_history_review_decisions) AS "historyReviews"',
+      );
+      const row = result.rows[0];
+      assert.ok(row);
+      return row;
+    };
+    const protectedWritesBefore = await readProtectedWriteCounts();
     const suffix = 'context-resume-coordinator';
     const fixture = await seedFixture(testDatabase, suffix, { sufficient: false, seedContext: false });
     const sourceId = `source-l3-${suffix}`;
@@ -1596,28 +1614,6 @@ describe('L3 durable investigation ledger', () => {
     const planner = createInvestigationPlanner({
       async plan(request) {
         plannerCalls += 1;
-        const evidence = request.groundingContext.evidence[0];
-        assert.ok(evidence);
-        assert.equal(request.groundingContext.contextId, fixture.contextId);
-        assert.equal(request.groundingContext.datasetKind, fixture.datasetKind);
-        assert.equal(request.groundingContext.traceId, fixture.traceId);
-        assert.equal(request.groundingContext.candidateId, fixture.candidateId);
-        assert.equal(request.groundingContext.sufficient, false);
-        assert.deepEqual(evidence.reference, persistedRecord.evidence[0] && {
-          reportRevisionId: persistedRecord.evidence[0].report_revision_id,
-          permittedTextHash: persistedRecord.evidence[0].permitted_text_hash,
-          spanStart: persistedRecord.evidence[0].span_start,
-          spanEnd: persistedRecord.evidence[0].span_end,
-          offsetUnit: persistedRecord.evidence[0].offset_unit,
-          relation: persistedRecord.evidence[0].relation,
-        });
-        assert.equal(evidence.text, evidenceText, 'only the exact persisted span reaches L3');
-        assert.equal(evidence.sourceId, sourceId, 'the source ID comes from current L2 lineage');
-        assert.deepEqual(evidence.origins, [{
-          originId,
-          independenceStatus: 'established',
-          dependsOnOriginIds: [],
-        }]);
         assert.deepEqual(request.questions, ['missing_field_1']);
         monotonicMilliseconds += 2_000;
         return {
@@ -1722,11 +1718,37 @@ describe('L3 durable investigation ledger', () => {
       checkpoint: NonNullable<typeof checkpointAfterRestart>,
     ) => {
       const request = await resumer.resume(checkpoint.dataset_kind, checkpoint.context_id);
-      if (!request) return { status: 'context_missing' as const };
+      if (!request) return { status: 'context_missing' as const, request };
       const record = await withRole('waspada_l2_grounding_writer', () =>
         contextRepository.findById(checkpoint.dataset_kind, checkpoint.context_id));
       assert.ok(record, 'the exact persisted refs-only record is supplied to the coordinator');
       rehydratedContext = request.data.groundingContext;
+      const resumedContext = request.data.groundingContext;
+      assert.equal(resumedContext.contextId, checkpoint.context_id);
+      assert.equal(resumedContext.datasetKind, checkpoint.dataset_kind);
+      assert.equal(resumedContext.traceId, checkpoint.trace_id);
+      assert.equal(resumedContext.candidateId, checkpoint.candidate_id);
+      assert.equal(resumedContext.sufficient, record.sufficient);
+      const evidence = resumedContext.evidence[0];
+      assert.ok(evidence, 'the exact checkpoint context resolves its persisted evidence reference');
+      const persistedReference = record.evidence[0];
+      assert.ok(persistedReference);
+      assert.deepEqual(evidence.reference, {
+        reportRevisionId: persistedReference.report_revision_id,
+        permittedTextHash: persistedReference.permitted_text_hash,
+        spanStart: persistedReference.span_start,
+        spanEnd: persistedReference.span_end,
+        offsetUnit: persistedReference.offset_unit,
+        relation: persistedReference.relation,
+      });
+      assert.equal(evidence.text, evidenceText, 'the exact current span is checked before coordinator work');
+      assert.equal(evidence.sourceId, sourceId, 'the source ID comes from current L2 lineage');
+      assert.equal(evidence.revisionStatus, 'unreviewed');
+      assert.deepEqual(evidence.origins, [{
+        originId,
+        independenceStatus: 'established',
+        dependsOnOriginIds: [],
+      }]);
       const advanceInput = {
         kind: 'resume' as const,
         checkpoint,
@@ -1747,11 +1769,10 @@ describe('L3 durable investigation ledger', () => {
     };
     const portCalls = () => ({ plannerCalls, actionCalls, refreshCalls });
 
-    const missingContext = await makeResumer(checkpointAfterRestart.context_id).resume(
-      checkpointAfterRestart.dataset_kind,
-      checkpointAfterRestart.context_id,
-    );
-    assert.equal(missingContext, null, 'the real L2 resumer returns null for a missing exact checkpoint context');
+    const missing = await advanceFromCheckpoint(makeResumer(checkpointAfterRestart.context_id), checkpointAfterRestart);
+    assert.equal(missing.status, 'context_missing');
+    if (missing.status !== 'context_missing') assert.fail('expected the exact context read miss to stop composition');
+    assert.equal(missing.request, null, 'the real L2 resumer returns null for a missing exact checkpoint context');
     assert.deepEqual(portCalls(), { plannerCalls: 0, actionCalls: 0, refreshCalls: 0 },
       'a missing exact context stops before every L3 port');
     assert.equal(referenceReadInputs.length, 0, 'a missing context does not trigger evidence lookup');
@@ -1796,11 +1817,6 @@ describe('L3 durable investigation ledger', () => {
     assert.equal(resumed.status, 'advanced');
     if (resumed.status !== 'advanced') assert.fail('expected the exact checkpoint context to rehydrate');
     assert.deepEqual(resumed.persistedRecord, persistedRecord);
-    assert.equal(resumed.request.data.groundingContext.contextId, checkpointAfterRestart.context_id);
-    assert.equal(resumed.request.data.groundingContext.datasetKind, checkpointAfterRestart.dataset_kind);
-    assert.equal(resumed.request.data.groundingContext.traceId, checkpointAfterRestart.trace_id);
-    assert.equal(resumed.request.data.groundingContext.candidateId, checkpointAfterRestart.candidate_id);
-    assert.equal(resumed.request.data.groundingContext.evidence[0]?.text, evidenceText);
     assert.deepEqual(referenceReadInputs.at(-1), {
       datasetKind: fixture.datasetKind,
       candidateId: fixture.candidateId,
@@ -1847,6 +1863,11 @@ describe('L3 durable investigation ledger', () => {
           + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY reservation_id',
         [fixture.datasetKind, initialCheckpoint.investigation_id],
       ),
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_progress_snapshots '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY checkpoint_version',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
     ]);
     const replay = await coordinator.advance(resumed.advanceInput);
     assert.equal(replay.status, 'review_required');
@@ -1869,11 +1890,16 @@ describe('L3 durable investigation ledger', () => {
           + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY reservation_id',
         [fixture.datasetKind, initialCheckpoint.investigation_id],
       ),
+      testDatabase.executor.query<Record<string, unknown>>(
+        'SELECT * FROM waspada.investigation_progress_snapshots '
+          + 'WHERE dataset_kind = $1 AND investigation_id = $2 ORDER BY checkpoint_version',
+        [fixture.datasetKind, initialCheckpoint.investigation_id],
+      ),
     ]);
     assert.deepEqual(rowsAfterReplay.map(({ rows }) => rows), rowsBeforeReplay.map(({ rows }) => rows),
-      'stale-checkpoint replay leaves every ledger, checkpoint, and reservation row unchanged');
+      'stale-checkpoint replay leaves ledger, checkpoint, reservation, and progress-snapshot rows unchanged');
     assert.deepEqual(portCalls(), { plannerCalls: 1, actionCalls: 1, refreshCalls: 1 },
-      'replaying the same resume key does not invoke completed external ports again');
+      'the old checkpoint is rejected as stale before reservation-key replay and invokes no additional ports');
     assert.equal((await readStoredReservation(
       testDatabase,
       fixture.datasetKind,
@@ -1967,19 +1993,8 @@ describe('L3 durable investigation ledger', () => {
     assert.equal(durableJson.includes(outputReferenceId), false, 'the action output reference is not durable');
     assert.equal(contextRows.rows.some(({ record_json }) => record_json.includes('"text"')), false);
 
-    const protectedWrites = await testDatabase.executor.query<{
-      events: string;
-      decisions: string;
-      outbox: string;
-      reviews: string;
-    }>(
-      'SELECT '
-        + '(SELECT count(*)::text FROM waspada.event_versions) AS events, '
-        + '(SELECT count(*)::text FROM waspada.publication_decisions) AS decisions, '
-        + '(SELECT count(*)::text FROM waspada.publication_outbox) AS outbox, '
-        + '(SELECT count(*)::text FROM waspada.public_event_history_review_decisions) AS reviews',
-    );
-    assert.deepEqual(protectedWrites.rows[0], { events: '0', decisions: '0', outbox: '0', reviews: '0' });
+    assert.deepEqual(await readProtectedWriteCounts(), protectedWritesBefore,
+      'the test leaves publication, decision, outbox, and public-history review counts unchanged');
   });
 
   it('counts failed reasoning against configured budgets and appends only successful validated model runs', async () => {

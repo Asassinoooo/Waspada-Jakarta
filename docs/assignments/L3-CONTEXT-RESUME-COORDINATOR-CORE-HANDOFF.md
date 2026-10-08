@@ -10,16 +10,20 @@
 
 ## Changes
 
-Added one synthetic-only PGlite composition test in `apps/db/test/investigation-ledger.test.ts`. It persists a schema 2.0 refs-only grounding context and version 1 L3 checkpoint, reloads the checkpoint, then uses the real L2 `GroundingContextResumer`, SQL exact-reference/span readers, and L3 coordinator to perform one bounded resume through a planner, registered action, and refresh.
+Added one synthetic-only PGlite composition test in `apps/db/test/investigation-ledger.test.ts`. It persists a schema 2.0 refs-only grounding context and version 1 L3 checkpoint, reloads the checkpoint, then uses the real L2 `GroundingContextResumer`, SQL exact-reference/span readers, and L3 coordinator to perform one bounded resume through a planner, registered action, and refresh. The `advanceFromCheckpoint` test wrapper handles a missing context as `context_missing` with the real resumer result `null`, then exits without calling the coordinator. For a found context, it compares checkpoint identity, sufficiency, current source/revision/origin lineage, persisted reference, and exact span before calling `coordinator.advance`.
 
-The test proves that a missing exact context returns `null`; a saved revision-state mismatch, paused source, and explicit withdrawn-source assertion fail closed with `revision_state_mismatch`, `source_ineligible`, and `source_invalidated`; these cases do not call coordinator ports. On success, it checks exact context/case identity, current source lineage and exact span, and confirms one call each to planner/action/refresh. Reusing the old checkpoint returns `review_required: stale_checkpoint`; all request, checkpoint, and reservation rows remain unchanged and no port runs again. It also verifies refs-only durable context/checkpoint/ledger data and zero publication, decision, public event, outbox, or public-history-review writes.
+The test also proves that a saved revision-state mismatch, paused source, and explicit withdrawn-source assertion fail closed with `revision_state_mismatch`, `source_ineligible`, and `source_invalidated`; these cases do not call coordinator ports. The successful advance calls planner/action/refresh once each. Reusing the old checkpoint returns `review_required: stale_checkpoint` before reservation-key replay. Case-scoped request, checkpoint, reservation, and progress-snapshot rows are captured before and after this stale rejection and remain unchanged; coordinator port counts also remain unchanged. This does not claim to exercise reservation-key replay because the old checkpoint is rejected first. The test compares publication, decision, outbox, and public-history-review counts before and after the whole test rather than assuming global counts are initially zero. It also verifies refs-only durable context/checkpoint/ledger data.
 
 Missing context is modeled as an exact read miss at the L2 repository boundary because grounding-context rows are append-only. The context/checkpoint schemas, checkpoint version, production code, migrations, grants, dependencies, and runtime configuration are unchanged. No age-based expiry rule was added. The test uses unique synthetic fixture IDs and makes no model, source, or external-service calls.
 
 ## Commits
 
 - `9efe9baa12a553ff0e043f86cf920c1ddc60706d` — `test(L3-CONTEXT-RESUME): compose refs-only checkpoint restart`
-- The handoff document is committed separately after the implementation commit; its full SHA and exact message are included in the delivery message accompanying this file.
+- `9d34250dfef3aeafbd214432cc9f3edcfba3a096` — `docs(L3-CONTEXT-RESUME): record coordinator resume handoff`
+- `392473dfeebd8fb10b49ce257d60d85ea2242ebc` — `docs(L3-CONTEXT-RESUME): fix handoff whitespace`
+- The follow-up commit message is `test(L3-CONTEXT-RESUME): strengthen replay and side-effect assertions`; its full SHA is included in the delivery message accompanying this file.
+
+Changed paths are `apps/db/test/investigation-ledger.test.ts` and `docs/assignments/L3-CONTEXT-RESUME-COORDINATOR-CORE-HANDOFF.md` only.
 
 ## Verification
 
@@ -27,12 +31,12 @@ All commands ran from the assigned worktree through WSL `Ubuntu-26.04`, using No
 
 | Command | Result |
 | --- | --- |
-| `npm exec tsx -- --test apps/db/test/investigation-ledger.test.ts` | Pass, 13/13 tests, rerun after the final missing-context and replay-row assertions. |
-| `npm run db:test` | Pass, 41/41 DB test files. This ran before the final test-only assertion refinement; the changed test file was rerun afterward as above. |
-| `npm test` | Pass, exit 0; web, worker, all 41 DB files, and remaining test suites passed. This ran before the final test-only assertion refinement; the changed test file was rerun afterward as above. |
-| `npm run typecheck` | Pass, rerun after the final test edits. |
-| `npm run build` | Pass, including web build and Wrangler Worker dry-run. This ran before the final test-only assertion refinement; no production/build input changed. |
-| `git diff --check` | Pass on the implementation diff before commit. The assigned-base-to-HEAD check is recorded in the delivery message after the handoff commit. |
+| `npm exec tsx -- --test apps/db/test/investigation-ledger.test.ts` | Pass, 13/13 tests, rerun after the follow-up including the pre-coordinator sufficiency comparison. |
+| `npm run typecheck` | Pass in the original implementation and follow-up; the follow-up run is recorded after the final test edit. |
+| `git diff --check eaeed50100ef95c452e2ebbb826e080def1ac29c..HEAD` | Pass in WSL after the follow-up commit. |
+| `npm run db:test` | Previous broad run passed, 41/41 DB test files. It predates the final test-only refinements; the changed PGlite test was rerun afterward as above. |
+| `npm test` | Previous combined run passed with exit 0; web, worker, all 41 DB files, and remaining suites passed. It predates the final test-only refinements; the changed PGlite test was rerun afterward as above. |
+| `npm run build` | Previous run passed, including web build and Wrangler Worker dry-run. It predates the final test-only refinements; no production/build input changed. |
 
 ## Limits and remaining decisions
 
