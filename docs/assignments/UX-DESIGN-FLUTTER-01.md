@@ -1,6 +1,6 @@
 # UX-DESIGN-FLUTTER-01 — public experience implementation wave
 
-**Status:** Assigned, 9 October 2026. Root integrates and reviews; implementers use GPT-6 Luna with max reasoning, isolated branches/worktrees, and committed handoffs.
+**Status:** Integrated local wave, 9 October 2026. See the [integration handoff](UX-DESIGN-FLUTTER-01-HANDOFF.md) for actual checks and remaining gates. The ownership and acceptance below retain the assignment baseline. Implementers/reviewers used GPT-6 Luna/max; complex SVG/motion refinement alone used GPT-6.1 Sol/max at the user's request.
 
 **Authorization:** Team 12 asked to implement the UX/design roadmap and mobile port in parallel, then explicitly selected Flutter/Dart for mobile. This activates the local slices below and supersedes the earlier documentation-only boundary for them. Account-free public browsing, existing public API contracts, labelled demo data, evidence/withdrawal rules and free-tier deployment target remain unchanged. No hosted deployment, source activation, push service, account, billing or native-store release is part of this wave.
 
@@ -35,4 +35,4 @@ Implementers must read the SDP product scope, UX/API specification, future exper
 
 ## Review record
 
-Root will fill integration commits, check results, visual findings and unresolved gates in the final handoff. Acceptance of this wave does not accept every future-roadmap story or activate live sources.
+Root's [integration handoff](UX-DESIGN-FLUTTER-01-HANDOFF.md) records integration commits, actual check results, visual findings and unresolved gates. Acceptance of this wave does not accept every future-roadmap story or activate live sources.

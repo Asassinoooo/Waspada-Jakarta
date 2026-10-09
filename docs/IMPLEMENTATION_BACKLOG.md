@@ -2,7 +2,16 @@
 
 ## Public experience wave — 9 October 2026
 
-Team 12 authorized implementation of the future UX/design plan and selected Flutter/Dart for mobile. See [UX-DESIGN-FLUTTER-01](assignments/UX-DESIGN-FLUTTER-01.md) for isolated branches, owned paths, dependencies and acceptance. UI-LANDING-01, UI-EXPERIENCE-01 and MOBILE-FLUTTER-01 are assigned; root owns integration/review. This changes no source, hosted deployment, push, billing or public-account gate.
+Team 12 authorized implementation of the future UX/design plan and selected Flutter/Dart for mobile. The scoped web and Flutter packages are integrated on `codex/ux-design-flutter`; see [assignment](assignments/UX-DESIGN-FLUTTER-01.md) and [integration handoff](assignments/UX-DESIGN-FLUTTER-01-HANDOFF.md) for ownership, commits, actual checks and remaining gates. This changes no source, hosted deployment, push service, billing or public-account gate.
+
+| Package | Integrated local outcome | Remaining boundary |
+| --- | --- | --- |
+| UI-LANDING-01 + UI-HERO-02 | Context-gated account-free landing, scoped evidence preview, original Jakarta SVG and bounded/static motion | Human comprehension and low-end performance study |
+| UI-EXPERIENCE-01 | Optional guide, exact two-key browser reset with verification and focus, browsing filters preserved | Manual assistive-technology and usability study |
+| UI-PUBLIC-POLISH-01 + root | Static feed/detail/evidence/preferences/updates hierarchy; 320px/200% text wrapping and screen navigation focus | Full manual accessibility audit and live-source presentation |
+| MOBILE-FLUTTER-01 | Separate public Flutter reader with exact GET contracts and local interests/privacy; debug build and injected tests | Physical Android/TalkBack, production origin, signed release; maps/PWA/push/offline/update parity deferred |
+
+Acceptance is for this bounded local implementation; broader EXP/DGN story criteria and hosted release are not marked complete by it.
 
 ## Recent task status
 

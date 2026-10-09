@@ -30,7 +30,7 @@ Every event, impact and evidence claim keeps separate meanings visible:
 | Dimension | UI label | Meaning |
 | --- | --- | --- |
 | Event or impact lifecycle | Direncanakan, Berlangsung, Selesai, Dibatalkan, or Belum diketahui | What the evidence says about the event or specific impact. An event and its impacts can differ. |
-| Freshness | Pembaruan dalam batas waktu, Perlu diperbarui, or Batas tinjau lewat | Whether information remains within its review window. Show issuer validity separately. An expired warning leaves the active-warning view; expiry does not mean the condition is safe or an incident is resolved. |
+| Freshness | Dalam batas tinjau saat evaluasi (compact label: Pembaruan dalam batas waktu), Perlu diperbarui, or Masa berlaku sumber berakhir | A missed review deadline means `needs_update`; explicit retraction, supersession or withdrawal also follows the accepted source-invalidation policy. `expired` requires explicit issuer validity to have ended. Show review timing and issuer validity separately. Expiry does not mean the condition is safe or an incident is resolved. |
 | Evidence | Pemberitahuan resmi (sesuai kewenangan), Dilaporkan oleh [source], Laporan warga ([provider]), or Didukung laporan independen | What kind of source supports a specific claim. Show disputed/withdrawn support explicitly when relevant; do not call model confidence “verified”. |
 | Relevance | Terkait dengan [place/service/group] | Why an event appears for this user or filter. Relevance is a match to a selected interest, not a truth or severity rating. |
 

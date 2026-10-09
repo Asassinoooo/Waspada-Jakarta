@@ -6,6 +6,8 @@ This is the local Git repository for the engineering plan and partial prototype.
 
 GitHub remote: [Asassinoooo/Waspada-Jakarta](https://github.com/Asassinoooo/Waspada-Jakarta), configured locally as `origin`. Root periodically pushes reviewed, integrated checkpoints; implementation agents commit on their own task branches and do not push.
 
+The local public-experience wave is integrated on `codex/ux-design-flutter`: a Jakarta landing with bounded SVG motion, optional reading guide, verified local privacy reset, responsive public-screen polish, and a Flutter/Dart Android reader. See the [integration handoff](docs/assignments/UX-DESIGN-FLUTTER-01-HANDOFF.md) for actual checks, branch commits and remaining gates. Public browsing is account-free; the Flutter [setup and parity matrix](apps/mobile/README.md) explains API-origin configuration and deferred capabilities. This is local demo validation, not a deployed or store-ready service.
+
 The current report is the [Google Docs project overview](https://docs.google.com/document/d/1xwSzLJmsHau6jlNGQCZ3deaVnrvCyqS0oNyDZaTv6tM). Google Docs is the maintained report format; the previous LaTeX files are historical and are no longer updated or compiled.
 
 ## Current design documents

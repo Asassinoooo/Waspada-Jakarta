@@ -1,5 +1,7 @@
 # UI-LANDING-01 handoff
 
+**Record scope:** Historical task-branch handoff. Root subsequently wired routing/styles, refined the hero and validated the mounted application; the [integration handoff](UX-DESIGN-FLUTTER-01-HANDOFF.md) supersedes the pending integration statements below.
+
 Implementation is committed on `work/UI-LANDING-01` in commit `ad8ccad` (`feat(UI-LANDING-01): add account-free Jakarta landing`). The branch started from `9851632df57010579eaab56ff9dffeff7414dda8`.
 
 ## Delivered

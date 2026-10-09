@@ -1,5 +1,7 @@
 # UI-EXPERIENCE-01 handoff
 
+**Record scope:** Historical task-branch handoff. Root subsequently wired routing/styles and checked browser reset, focus and responsive behavior; the [integration handoff](UX-DESIGN-FLUTTER-01-HANDOFF.md) supersedes the pending integration statements below.
+
 **Branch:** `work/UI-EXPERIENCE-01`
 
 **Base:** `9851632df57010579eaab56ff9dffeff7414dda8`

@@ -1,5 +1,7 @@
 # UI-PUBLIC-POLISH-01 handoff
 
+**Record scope:** Task-branch checks at its recorded revision. Root subsequently tested populated synthetic API details, corrected narrow/large-text wrapping and checked navigation focus; see the [integration handoff](UX-DESIGN-FLUTTER-01-HANDOFF.md) for those later results.
+
 ## Outcome
 
 Added `apps/web/src/public-polish.css` as a final, additive stylesheet for the public web screens. It uses existing palette variables and class names to clarify the feed, detail, evidence, history, preferences, updates, source, and error hierarchies. Lists remain readable, and the header navigation wraps as Beranda, Panduan, and Privasi links are added.

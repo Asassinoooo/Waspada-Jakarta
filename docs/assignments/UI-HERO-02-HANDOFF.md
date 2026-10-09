@@ -1,6 +1,6 @@
 # UI-HERO-02 — Jakarta illustration and bounded entrance
 
-**Status:** Implementation ready for root integration, 9 October 2026.
+**Status:** Historical task-branch handoff, integrated by root on 9 October 2026. The [integration handoff](UX-DESIGN-FLUTTER-01-HANDOFF.md) records mounted-app acceptance and supersedes the integration instructions below.
 
 **Branch:** `work/UI-HERO-02` · **Base:** `28ea61db4f83532570dea9edabceb74be89b10d4` · **Implementation:** `c40529114c414f44a356be549618f6b915dc4eac`.
 
