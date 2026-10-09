@@ -1,0 +1,313 @@
+.experience-page {
+  width: min(100% - 2rem, 76rem);
+  min-width: 0;
+  min-height: 65vh;
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+  color: var(--tinta-kota, #18323a);
+}
+
+.experience-page h1,
+.experience-page h2,
+.experience-page h3,
+.experience-page p,
+.experience-page ul,
+.experience-page dl {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.experience-page h1 {
+  max-width: 24ch;
+  margin: 0 0 0.65rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.experience-page h2 {
+  margin: 0 0 0.65rem;
+  font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+  line-height: 1.25;
+}
+
+.experience-page h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
+.experience-page p,
+.experience-page li {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.experience-page p:last-child,
+.experience-page ul:last-child {
+  margin-bottom: 0;
+}
+
+.experience-intro {
+  max-width: 68ch;
+  margin-bottom: 1.5rem;
+}
+
+.experience-kicker {
+  margin: 0 0 0.35rem;
+  color: var(--quiet-ink, #52676b);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.experience-page .experience-lead {
+  max-width: 64ch;
+  margin: 0 0 1rem;
+  color: var(--quiet-ink, #52676b);
+  font-size: 1.1rem;
+}
+
+.experience-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.experience-card {
+  min-width: 0;
+  border: 1px solid var(--beton, #d5dedb);
+  border-radius: 0.35rem;
+  background: var(--surface, #fff);
+  padding: 1.1rem;
+}
+
+.experience-card--wide {
+  margin-bottom: 1rem;
+}
+
+.experience-card > p:not(.experience-kicker) {
+  max-width: 76ch;
+}
+
+.experience-note {
+  border-left: 3px solid var(--kali-teal, #087b75);
+  margin: 0.9rem 0 0;
+  padding: 0.35rem 0 0.35rem 0.75rem;
+  color: var(--quiet-ink, #52676b);
+}
+
+.experience-caution {
+  border-left: 4px solid var(--kuning-perhatian, #e7b448);
+  background: #fbf7eb;
+  margin: 1rem 0 0;
+  padding: 0.75rem 0.9rem;
+  font-weight: 650;
+}
+
+.experience-list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0;
+  padding-left: 1.35rem;
+}
+
+.experience-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.experience-action {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--kali-teal, #087b75);
+  border-radius: 0.3rem;
+  background: var(--surface, #fff);
+  color: var(--kali-teal, #087b75);
+  padding: 0.55rem 0.85rem;
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.3;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.experience-action:hover {
+  border-color: var(--tinta-kota, #18323a);
+  background: var(--soft-panel, #eaf0ed);
+  color: var(--tinta-kota, #18323a);
+}
+
+.experience-action:focus-visible,
+.experience-page a:focus-visible,
+.experience-page button:focus-visible {
+  outline: 3px solid var(--kali-teal, #087b75);
+  outline-offset: 3px;
+}
+
+.experience-action--primary {
+  border-color: var(--kali-teal, #087b75);
+  background: var(--kali-teal, #087b75);
+  color: var(--ink-on-teal, #fff);
+}
+
+.experience-action--primary:hover {
+  background: var(--tinta-kota, #18323a);
+  color: #fff;
+}
+
+.experience-action--quiet {
+  border-color: var(--beton, #d5dedb);
+  background: transparent;
+  color: var(--tinta-kota, #18323a);
+}
+
+.experience-action--danger {
+  border-color: #a7433b;
+  background: #a7433b;
+  color: #fff;
+}
+
+.experience-action--danger:hover {
+  border-color: #782d29;
+  background: #782d29;
+  color: #fff;
+}
+
+.experience-storage-list {
+  display: grid;
+  gap: 0;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.experience-storage-item {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--beton, #d5dedb);
+  padding: 0.8rem 0;
+}
+
+.experience-storage-item > div {
+  min-width: 0;
+}
+
+.experience-storage-item strong {
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.experience-storage-item p {
+  margin: 0;
+  color: var(--quiet-ink, #52676b);
+  font-size: 0.95rem;
+}
+
+.experience-storage-status {
+  flex: 0 0 auto;
+  max-width: 14rem;
+  border: 1px solid var(--beton, #d5dedb);
+  border-radius: 999px;
+  background: var(--soft-panel, #eaf0ed);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.experience-section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.experience-section-heading h2 {
+  margin-bottom: 0;
+}
+
+.experience-reset {
+  border-left: 4px solid var(--kuning-perhatian, #e7b448);
+}
+
+.experience-reset-confirm,
+.experience-reset-result {
+  margin-top: 1rem;
+  border: 1px solid var(--beton, #d5dedb);
+  border-radius: 0.3rem;
+  background: #f8faf9;
+  padding: 1rem;
+}
+
+.experience-reset-confirm {
+  border-left: 4px solid var(--kuning-perhatian, #e7b448);
+}
+
+.experience-reset-result > p {
+  margin: 0;
+  font-weight: 650;
+}
+
+.experience-reset-result--success {
+  border-left: 4px solid var(--kali-teal, #087b75);
+}
+
+.experience-reset-result--problem {
+  border-left: 4px solid #a7433b;
+  background: #fdf5f4;
+}
+
+.privacy-page > .experience-actions:last-child {
+  margin-top: 1.2rem;
+}
+
+@media (max-width: 44rem) {
+  .experience-page {
+    width: min(100% - 1.5rem, 76rem);
+    padding-top: 1.35rem;
+  }
+
+  .experience-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .experience-section-heading,
+  .experience-storage-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .experience-storage-status {
+    max-width: 100%;
+  }
+
+  .experience-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .experience-action {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .experience-page {
+    scroll-behavior: auto;
+  }
+}
