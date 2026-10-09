@@ -2,7 +2,7 @@
 
 ## INT-01 synthetic demo-scenario fixture slice assigned — 9 October 2026
 
-Root assigned `INT-01-SYNTHETIC-DEMO-SCENARIO-CORE` to close a visible local demo gap: the plan requires four scenario archetypes, while the current demo API contains only two generic audience notices. The assignment preserves the existing IDs, adds no source/evidence claims or map geometry, and keeps each authored Bahasa Indonesia example explicitly fictional. It is limited to the existing Worker demo fixture module, API tests, local web smoke assertions, and its own handoff. The full INT-01 scenario gate remains incomplete. Source rights, human evaluation, hosted behavior, publication/auth activation, and live connectors remain outside this slice. The exact base is the pushed assignment commit listed in the task document.
+Root assigned `INT-01-SYNTHETIC-DEMO-SCENARIO-CORE` on branch `work/INT-01-SYNTHETIC-DEMO-SCENARIO-CORE` and worktree `.codex-build/worktrees/int-01-synthetic-demo-scenario-core` from exact base `1ecaf5ccfdb69619b79056c5527dc3db80f0161f`. The task closes a visible local demo gap: the plan requires four scenario archetypes, while the current demo API contains only two generic audience notices. The assignment preserves the existing IDs, adds no source/evidence claims or map geometry, and keeps each authored Bahasa Indonesia example explicitly fictional. It is limited to the existing Worker demo fixture module, API tests, local web smoke assertions, and its own handoff. The full INT-01 scenario gate remains incomplete. Source rights, human evaluation, hosted behavior, publication/auth activation, and live connectors remain outside this slice.
 
 ## Three synthetic/local assurance slices accepted — 9 October 2026
 
