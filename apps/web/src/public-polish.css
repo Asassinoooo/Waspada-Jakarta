@@ -332,6 +332,23 @@ button { min-height: 2.75rem; }
 
 .site-footer { line-height: 1.55; }
 
+.map-unavailable { min-width: 0; }
+
+.map-unavailable h3,
+.map-unavailable p {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.detail-heading h1,
+.detail-facts dt,
+.detail-facts dd,
+.demo-banner__detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .site-footer a,
 .landing-footer-links a,
 .landing-report h3 a {
