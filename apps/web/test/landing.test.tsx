@@ -159,3 +159,13 @@ test("reading guide uses user-controlled instructional panels without verificati
   assert.match(markup, /Tidak ada laporan, kecocokan, atau pembaruan bukan bukti bahwa wilayah aman/);
   assert.doesNotMatch(markup, /verified|laporan terverifikasi/i);
 });
+
+test("expired freshness explains that the source validity ended", () => {
+  const event = makeEvent({
+    freshness: { ...makeEvent().freshness, status: "expired" },
+  });
+  const markup = renderLanding({ context: liveContext, events: [event] });
+
+  assert.match(markup, /Masa berlaku sumber berakhir/);
+  assert.doesNotMatch(markup, /Batas tinjau lewat/);
+});

@@ -57,7 +57,7 @@ function freshnessText(value: EventView["freshness"]["status"]) {
     case "needs_update":
       return "Perlu diperbarui";
     case "expired":
-      return "Batas tinjau lewat";
+      return "Masa berlaku sumber berakhir";
   }
 }
 
