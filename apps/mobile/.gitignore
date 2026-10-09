@@ -1,0 +1,25 @@
+# Flutter/Dart generated output
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.iml
+.metadata
+.idea/
+.vscode/
+
+# Local SDKs, Android SDK state and signing material
+flutter_sdk/
+android/local.properties
+android/key.properties
+android/*.jks
+android/*.keystore
+android/app/*.jks
+android/app/*.keystore
+
+# Generated web output
+web/build/
