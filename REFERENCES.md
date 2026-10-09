@@ -1,5 +1,15 @@
 # Waspada Jakarta Reference Register
 
+## Future experience roadmap — reviewed 9 October 2026
+
+- **W3C.** [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/). Reviewed 9 October 2026. Supports the future AA accessibility target, contrast, reflow, keyboard/focus and target-size checks. This is a target, not a conformance assessment of the current application. Waspada's 44 CSS-pixel control target is a product choice, not the AA minimum.
+- **web.dev.** [PWA installation](https://web.dev/learn/pwa/installation). Reviewed 9 October 2026. Explains platform-dependent installation behaviour; supports testing actual Android/browser combinations rather than promising universal installation or background delivery.
+- **web.dev.** [Offline data](https://web.dev/learn/pwa/offline-data). Reviewed 9 October 2026. Explains web storage and caching mechanisms. Waspada's proposed UI/help-only offline cache is a project decision to avoid presenting incident records without current withdrawal/freshness checks; the source does not prescribe that restriction.
+- **MDN Web Docs.** [Using the Notifications API](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API). Reviewed 9 October 2026. Supports contextual user-initiated permission requests, secure-context requirements and permission/support handling. Display permission alone is not a server-side push subscription, matching or delivery service.
+- **Android Developers.** [Notification runtime permission](https://developer.android.com/develop/ui/compose/notifications/notification-permission). Reviewed 9 October 2026; the older views URL redirected to this page. Documents the Android 13/API 33+ runtime permission for non-exempt notifications. A native client still needs permission handling and denial fallback; this does not establish reliable delivery for Waspada.
+
+These sources inform [the future experience roadmap](docs/FUTURE_EXPERIENCE_ROADMAP.md), not a change to the application, contracts, release acceptance or deployment. Recheck platform behaviour and provider terms before implementation. No source was used to justify adding accounts, analytics, native development or paid services.
+
 ## Embedding persistence design — 1 October 2026
 
 - **pgvector maintainers.** [Vector type reference](https://github.com/pgvector/pgvector#vector-type). Reviewed 1 October 2026. Defines finite single-precision vector storage, supporting storage-aware retry comparison in ADR-034. Waspada's 2048-dimensional initial writer budget comes from its existing retrieval implementation; no embedding model, ANN index or hosted extension version is selected by this reference.

@@ -17,6 +17,7 @@ The current report is the [Google Docs project overview](https://docs.google.com
 - [Domain model](docs/DOMAIN_MODEL.md): schema 2.0 relationships, state transitions and domain invariants.
 - [Typed contracts](docs/contracts.schema.json) and [synthetic examples](docs/contracts.examples.json): proposed data boundaries, not a running backend.
 - [UI/API specification](docs/UX_API_SPEC.md) and [OpenAPI definition](docs/api/openapi.yaml): proposed wireframes and public/moderator HTTP contracts.
+- [Future experience roadmap](docs/FUTURE_EXPERIENCE_ROADMAP.md): proposed priorities, user stories and acceptance criteria for entry, privacy, accessibility, trust, updates and mobile delivery; does not change current implementation or release scope.
 - [Cloudflare/Neon Free decision](docs/decisions/ADR-010-cloudflare-neon-free.md): deployment target, hard quotas, degraded behavior and validation gates.
 - [Cloudflare/Neon Free compatibility report](docs/PLATFORM_COMPATIBILITY.md): official limits, local WSL measurements, sensitivity estimates and unverified provider gates.
 - [Architecture diagram](docs/diagrams/five-layer-architecture.svg): editable vector source for the report figure.

@@ -99,6 +99,7 @@ Team 12 selected preserving the exact current published version when a supportin
 | [docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) | Domain relations, independent status dimensions, versioning and service invariants |
 | [docs/UX_API_SPEC.md](docs/UX_API_SPEC.md) and [docs/api/openapi.yaml](docs/api/openapi.yaml) | UI states, public projections, moderator flows and proposed HTTP boundary |
 | [docs/IMPLEMENTATION_BACKLOG.md](docs/IMPLEMENTATION_BACKLOG.md) | Ordered work packages, dependencies and review status |
+| [docs/FUTURE_EXPERIENCE_ROADMAP.md](docs/FUTURE_EXPERIENCE_ROADMAP.md) | Proposed future experience priorities, user stories and acceptance criteria; does not activate work or change current release scope |
 | [docs/PLATFORM_COMPATIBILITY.md](docs/PLATFORM_COMPATIBILITY.md) | Dated Cloudflare/Neon Free limits, local measurements, sensitivity scenarios and unverified integration gates |
 | [docs/decisions/README.md](docs/decisions/README.md) | Architecture decision record (ADR) process and open decisions |
 | Local `AGENTS.md` (Git-ignored) | Planner, implementer and reviewer operating rules for this workspace |
