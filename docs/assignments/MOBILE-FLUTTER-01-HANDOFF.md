@@ -1,6 +1,6 @@
 # MOBILE-FLUTTER-01 handoff
 
-Implementation commits: `33e67dd` (`feat(mobile): add Flutter public reader`) and `126b55b` (`fix(mobile): protect local interest edits`).
+Implementation commits: `33e67dd` (`feat(mobile): add Flutter public reader`), `126b55b` (`fix(mobile): protect local interest edits`), and `840ab6e` (`fix(mobile): localize secondary back controls`).
 
 The new `apps/mobile` Flutter client provides an account-free Jakarta landing page, bounded public event list with documented filters and manual paging, detail/evidence/history, a local reading guide, and optional device-only interests. It waits for the API context before showing records, labels demo data, separates event/observation, publication, context-generation, source-success, validity, lifecycle, and freshness meanings, and keeps empty/error/unavailable states explicit. It draws no maps or inferred geometry and never opens returned source URLs.
 
@@ -15,11 +15,12 @@ Toolchain: Flutter 3.47.7, Dart 3.13.5, OpenJDK 21, Android API 36/build-tools 3
 - `flutter pub get` — passed; `pubspec.lock` is committed. `unorm_dart 0.3.2` is pinned to match backend NFC normalization.
 - `dart format lib test` — passed; no changes needed at final check.
 - `flutter analyze` — passed with no issues.
-- `flutter test --reporter expanded` — all 23 API, preference, stale-retry/save race, async-generation, semantics-state, and widget tests passed, including 320 logical px at 2× text.
+- `flutter test --reporter expanded` — all 24 API, preference, stale-retry/save race, async-generation, semantics-state, and widget tests passed, including 320 logical px at 2× text and Bahasa back-control labels.
 - `flutter build web --debug --no-web-resources-cdn --dart-define=API_ORIGIN=http://localhost:55173 --dart-define=ALLOW_INSECURE_DEBUG_ORIGIN=true` — passed after final source changes. The ignored preview output is `apps/mobile/build/web`.
 - Root-side headless preview of the initial client build confirmed `/context` and `/events` returned HTTP 200 through the local Vite proxy and reviewed the landing screenshot. The final preferences-only changes were rebuilt; a second screenshot pass was not run.
-- `flutter build apk --debug` — passed after final source changes in 69.2 seconds. APK size is 168,928,107 bytes; SHA-256 is `ae514c7a9cdf36867e7800b11fb581fdc24747dac1aa32f47202b1093152b29d`. The ignored APK is `apps/mobile/build/app/outputs/flutter-apk/app-debug.apk`.
-- `git diff --cached --check` — passed before both implementation commits.
+- `flutter build apk --debug` — passed after final source changes in 59.3 seconds. APK size is 168,928,309 bytes; SHA-256 is `27bcdb72e6d3d3219a851f643ba1446b99b6cae721b079a0509f679849cbd3fc`. The ignored APK is `apps/mobile/build/app/outputs/flutter-apk/app-debug.apk`.
+- `aapt dump badging` — confirmed package `id.waspada.waspada_jakarta_mobile`, version `0.1.0+1`, compile/target API 36, and label `Waspada Jakarta`.
+- `git diff --cached --check` — passed before each implementation commit.
 
 The Android build emitted a non-fatal SDK XML v4 compatibility warning from the installed command-line tooling. The shared SDK already contains API 36, build-tools 36.0.0, and NDK 28.2.13676358; no duplicate SDK installer was used. Generated build outputs and signing/local configuration remain ignored.
 
