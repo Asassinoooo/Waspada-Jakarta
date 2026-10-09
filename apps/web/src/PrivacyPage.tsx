@@ -42,8 +42,8 @@ function resultMessage(result: ClearLocalDataResult): string {
   switch (result.status) {
     case "cleared":
       return result.attempted.length > 0
-        ? "Kunci data Waspada yang tercatat sekarang sudah tidak tersimpan di browser ini."
-        : "Tidak ada kunci data Waspada yang masih tersimpan di browser ini."
+        ? "Data lokal Waspada yang tercatat sekarang sudah tidak tersimpan di browser ini."
+        : "Tidak ada data lokal Waspada yang masih tersimpan di browser ini."
     case "partial":
       return "Sebagian data sudah tidak tersimpan. Periksa hasil setiap item; reset belum selesai sepenuhnya."
     case "failed":
@@ -104,7 +104,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
         <p className="experience-kicker">Kontrol privasi · tanpa akun</p>
         <h1 id="privacy-title">Data Waspada di browser ini</h1>
         <p className="experience-lead">
-          Anda dapat memeriksa dua kunci lokal yang dikelola aplikasi dan menghapusnya
+          Anda dapat memeriksa dua jenis data lokal yang dikelola aplikasi dan menghapusnya
           tanpa menghapus data situs lain.
         </p>
       </header>
@@ -125,8 +125,8 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
           daftar itu tidak disinkronkan ke perangkat lain.
         </p>
         <p>
-          Kursor pembaruan hanya menjadi penanda buram untuk melanjutkan pemeriksaan.
-          Ringkasan pembaruan disimpan sementara selama halaman digunakan; isi kursor
+          Penanda pembaruan membantu melanjutkan pemeriksaan. Ringkasan pembaruan
+          disimpan sementara selama halaman digunakan; nilai penanda
           tidak ditampilkan di sini.
         </p>
         <StorageItems items={items} result={false} />
@@ -144,11 +144,12 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
           </li>
           <li>
             Mengubah atau menyimpan minat tidak mengirimkannya. Minat yang dipilih baru
-            dikirim jika Anda sendiri meminta briefing dan mode data persis “live”.
-            Kontrak briefing saat ini menyatakan nilai minat tidak disimpan oleh rute itu.
+            dikirim saat Anda meminta ringkasan, untuk memenuhi permintaan tersebut.
+            Fitur ringkasan tidak menyimpan data minat yang dikirim. Log layanan atau
+            hosting dikelola terpisah.
           </li>
           <li>
-            Pemeriksaan pembaruan mengirim kursor buram dan dapat memuat detail laporan
+            Pemeriksaan pembaruan mengirim penanda teknis dan dapat memuat detail laporan
             publik untuk pencocokan di browser. Daftar minat tidak dikirim saat polling.
           </li>
           <li>
@@ -162,7 +163,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
         <p className="experience-kicker">Penghapusan lokal</p>
         <h2 id="privacy-reset-title">Hapus data Waspada di browser ini</h2>
         <p>
-          Tindakan ini hanya menyasar minat dan kursor pembaruan yang tercantum di atas.
+          Tindakan ini hanya menyasar minat dan penanda pembaruan yang tercantum di atas.
           Data browser lain, laporan pada sumber, dan log layanan atau hosting tidak
           dihapus. Tidak ada penghapusan akun atau langganan notifikasi di sini.
         </p>
@@ -188,10 +189,10 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
           </button>
         ) : (
           <section className="experience-reset-confirm" aria-labelledby="privacy-confirm-title">
-            <h3 id="privacy-confirm-title">Hapus dua kunci lokal Waspada?</h3>
+            <h3 id="privacy-confirm-title">Hapus data lokal Waspada?</h3>
             <p>
-              Minat tersimpan dan kursor pembaruan akan dihapus jika browser mengizinkan.
-              Kami akan memeriksa setiap kunci dan melaporkan jika ada yang masih tersimpan
+              Minat tersimpan dan penanda pembaruan akan dihapus jika browser mengizinkan.
+              Kami akan memeriksa setiap item dan melaporkan jika ada yang masih tersimpan
               atau tidak dapat dipastikan.
             </p>
             <div className="experience-actions">

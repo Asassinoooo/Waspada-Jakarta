@@ -109,7 +109,9 @@ test("privacy page lists only known local values and waits for a second confirma
   assert.match(html, /Tinjau penghapusan data/u);
   assert.doesNotMatch(html, /Ya, hapus data Waspada/u);
   assert.doesNotMatch(html, /private interest value|opaque cursor secret/u);
-  assert.match(html, /Kontrak briefing saat ini menyatakan nilai minat tidak disimpan/u);
+  assert.match(html, /dikirim saat Anda meminta ringkasan, untuk memenuhi permintaan tersebut/u);
+  assert.match(html, /Fitur ringkasan tidak menyimpan data minat yang dikirim/u);
+  assert.doesNotMatch(html, /kontrak briefing|mode data persis/u);
   assert.match(html, /log layanan atau hosting tidak dihapus/u);
   assert.equal(storage.values.get("unrelated:site-key"), "keep this value");
 });

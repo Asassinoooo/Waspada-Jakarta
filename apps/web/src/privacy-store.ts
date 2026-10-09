@@ -14,8 +14,8 @@ export const WASPADA_LOCAL_DATA_ITEMS = [
   {
     id: "updateCursor",
     key: UPDATE_CURSOR_STORAGE_KEY,
-    label: "Kursor pembaruan",
-    description: "Penanda buram untuk melanjutkan pemeriksaan pembaruan. Nilainya tidak ditampilkan.",
+    label: "Penanda pembaruan",
+    description: "Penanda teknis untuk melanjutkan pemeriksaan pembaruan. Nilainya tidak ditampilkan.",
   },
 ] as const;
 
