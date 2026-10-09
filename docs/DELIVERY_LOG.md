@@ -1,5 +1,9 @@
 # Delivery log
 
+## JOB-01 synthetic schedule-to-process composition assigned — 9 October 2026
+
+Root assigned `JOB-01-SYNTHETIC-SCHEDULE-AND-PROCESS-RUNTIME-PGLITE-CORE` on branch `work/JOB-01-SYNTHETIC-SCHEDULE-AND-PROCESS-RUNTIME-PGLITE-CORE`, worktree `.codex-build/worktrees/job-01-synthetic-schedule-process-runtime-pglite-core`, from exact base `0f9d2baabe88448e5448fd255558eb2ba06e49ef`. This independent test-only slice composes the accepted synthetic scheduled-enqueue and fixture-processing runtime factories in a single disposable PGlite database. It uses one fixed time, authored synthetic source/fixture rows, and a fixed L2 extractor. The test is limited to verifying the scheduled job is consumed by exact source ID and yields private L1 persistence without an event/publication; the checked-in Worker remains dormant. No source, provider, external service, runtime, schema, or API change is authorized. See the [assignment](assignments/JOB-01-SYNTHETIC-SCHEDULE-AND-PROCESS-RUNTIME-PGLITE-CORE.md).
+
 ## L3 review-pending reconciliation and update-feed boundary accepted — 9 October 2026
 
 Root reviewed and integrated two independent test-only branches based on pushed `main` at `3e1370927c80f1673c3801e043230d1c8d7a737b`. `L3-ADVANCE-REVIEW-PENDING-ACTION-RECONCILIATION-PGLITE-CORE` is integrated at merge `da2465599094222a7e6668aa890531648f1f2566`, preserving agent commits `07efe2d26d18772c1fb40ed65913255adc1ee36c` (`test(L3-ADVANCE-REVIEW-PENDING): cover exact action reconciliation`) and `0ab8f770986ce5d5c6fb48a2d8ac560da0c256e3` (`docs(L3-ADVANCE-REVIEW-PENDING): record reconciliation handoff`). Its real PGlite ledger/executor/coordinator composition proves that a known exact started-action result reconciles once after the handler records the append-only review marker; the coordinator then stops before refresh or progress, and replay changes neither calls nor durable state.
