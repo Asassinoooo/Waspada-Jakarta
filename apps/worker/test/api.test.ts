@@ -477,8 +477,26 @@ test("event pages use the OpenAPI projection and bounded read filters", async ()
   );
   const secondPage = await readJson<typeof firstPage>(secondResponse);
   assert.equal(secondPage.data[0]?.event_id, "synthetic-demo-02");
-  assert.equal(secondPage.page.next_cursor, null);
-  assert.equal(secondPage.page.cursor_expires_at, null);
+  assert.equal(secondPage.page.next_cursor, "2");
+  assert.ok(secondPage.page.cursor_expires_at);
+
+  const thirdResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/events?cursor=2&limit=1"),
+    demoEnvironment,
+  );
+  const thirdPage = await readJson<typeof firstPage>(thirdResponse);
+  assert.equal(thirdPage.data[0]?.event_id, "synthetic-demo-03");
+  assert.equal(thirdPage.page.next_cursor, "3");
+  assert.ok(thirdPage.page.cursor_expires_at);
+
+  const fourthResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/events?cursor=3&limit=1"),
+    demoEnvironment,
+  );
+  const fourthPage = await readJson<typeof firstPage>(fourthResponse);
+  assert.equal(fourthPage.data[0]?.event_id, "synthetic-demo-04");
+  assert.equal(fourthPage.page.next_cursor, null);
+  assert.equal(fourthPage.page.cursor_expires_at, null);
 
   const emptyResponse = await worker.fetch(
     new Request("http://localhost/api/v1/events?q=no-matching-fiction"),
@@ -487,6 +505,103 @@ test("event pages use the OpenAPI projection and bounded read filters", async ()
   const emptyPage = await readJson<typeof firstPage>(emptyResponse);
   assert.deepEqual(emptyPage.data, []);
   assert.deepEqual(emptyPage.page, { next_cursor: null, cursor_expires_at: null });
+});
+
+test("four labelled synthetic scenarios are available through list, category, and detail routes", async () => {
+  const listResponse = await worker.fetch(new Request("http://localhost/api/v1/events?limit=20"), demoEnvironment);
+  const list = await readJson<EventPage>(listResponse);
+  const expected = [
+    { event_id: "synthetic-demo-01", category: "crime_personal_security" },
+    { event_id: "synthetic-demo-02", category: "demonstrations_public_gatherings" },
+    { event_id: "synthetic-demo-03", category: "disasters_weather" },
+    { event_id: "synthetic-demo-04", category: "group_specific_critical_notices" },
+  ] as const;
+
+  assert.equal(listResponse.status, 200);
+  assert.deepEqual(
+    list.data.map(({ event_id, category }) => ({ event_id, category })),
+    expected,
+  );
+  assert.deepEqual(list.page, { next_cursor: null, cursor_expires_at: null });
+  for (const event of list.data) {
+    assert.match(event.title, /^SIMULASI FIKTIF/);
+    assert.match(event.summary, /^SIMULASI FIKTIF/);
+    assert.deepEqual(event.claims, []);
+  }
+
+  for (const item of expected) {
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/v1/events?category=${item.category}&limit=20`),
+      demoEnvironment,
+    );
+    const page = await readJson<EventPage>(response);
+    assert.equal(response.status, 200, item.category);
+    assert.deepEqual(page.data.map((event) => event.event_id), [item.event_id], item.category);
+  }
+
+  const details = new Map<string, EventDetail>();
+  for (const { event_id } of expected) {
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/v1/events/${event_id}`),
+      demoEnvironment,
+    );
+    const detail = await readJson<EventDetail>(response);
+    assert.equal(response.status, 200, event_id);
+    assert.equal(detail.event_id, event_id);
+    assert.match(detail.title, /^SIMULASI FIKTIF/);
+    assert.deepEqual(detail.claims, []);
+    assert.deepEqual(detail.geometries, []);
+    assert.equal(JSON.stringify(detail).includes("source"), false);
+    details.set(event_id, detail);
+  }
+
+  const historicalCrime = details.get("synthetic-demo-01");
+  assert.ok(historicalCrime);
+  assert.equal(historicalCrime.lifecycle, "resolved");
+  assert.equal(historicalCrime.freshness.status, "needs_update");
+  assert.deepEqual(historicalCrime.event_time, { start: "2026-08-20", end: null, precision: "date" });
+  assert.deepEqual(historicalCrime.validity, { valid_from: null, valid_until: null });
+
+  const gathering = details.get("synthetic-demo-02");
+  assert.ok(gathering);
+  assert.equal(gathering.lifecycle, "planned");
+  assert.equal(gathering.freshness.status, "needs_update");
+  assert.equal(gathering.impacts.length, 1);
+  const transportImpact = gathering.impacts[0];
+  assert.ok(transportImpact);
+  assert.equal(transportImpact.impact_type, "traffic_diversion");
+  assert.match(transportImpact.title, /^SIMULASI FIKTIF/);
+  assert.match(transportImpact.description, /bukan laporan .* yang terjadi/i);
+  assert.notEqual(transportImpact.lifecycle, gathering.lifecycle);
+  assert.equal(transportImpact.freshness.status, "current");
+  assert.notEqual(transportImpact.freshness.status, gathering.freshness.status);
+
+  const weather = details.get("synthetic-demo-03");
+  assert.ok(weather);
+  assert.equal(weather.category, "disasters_weather");
+  assert.equal(weather.lifecycle, "ongoing");
+  assert.equal(weather.freshness.status, "needs_update");
+  assert.equal(weather.impacts.length, 1);
+  const floodImpact = weather.impacts[0];
+  assert.ok(floodImpact);
+  assert.equal(floodImpact.impact_type, "hazard_observation");
+  assert.match(floodImpact.title, /^SIMULASI FIKTIF/);
+  assert.match(floodImpact.description, /bukan pengamatan .* nyata/i);
+  assert.notEqual(floodImpact.lifecycle, weather.lifecycle);
+  assert.equal(floodImpact.freshness.status, "current");
+  assert.notEqual(floodImpact.freshness.status, weather.freshness.status);
+
+  const groupNotice = details.get("synthetic-demo-04");
+  assert.ok(groupNotice);
+  assert.deepEqual(groupNotice.scope, {
+    places: [],
+    services: [],
+    institutions: [],
+    audiences: ["kelompok-simulasi"],
+  });
+  assert.equal(groupNotice.lifecycle, "unknown");
+  assert.equal(groupNotice.freshness.status, "current");
+  assert.deepEqual(groupNotice.impacts, []);
 });
 
 test("injected event-list page service receives route query and returns its exact public page", async () => {
@@ -843,8 +958,8 @@ test("event detail returns the exact synthetic fixture projection without added 
     "geometries",
   ]);
   assert.equal(body.event_id, "synthetic-demo-01");
-  assert.match(body.title, /^Contoh fiktif:/);
-  assert.match(body.summary, /Data contoh/);
+  assert.match(body.title, /^SIMULASI FIKTIF/);
+  assert.match(body.summary, /^SIMULASI FIKTIF/);
   assertKeys(body.freshness, ["status", "evaluated_at", "review_due_at", "basis"]);
   assertKeys(body.event_time, ["start", "end", "precision"]);
   assertKeys(body.validity, ["valid_from", "valid_until"]);
