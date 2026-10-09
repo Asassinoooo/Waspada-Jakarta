@@ -57,7 +57,16 @@ async function runSmoke() {
   assert.equal(context.dataset_mode, "demo");
   assert.equal(context.dataset_label, "synthetic");
   assert.deepEqual(context.sources, []);
-  assert.equal(page.data.length, 2);
+  assert.equal(page.data.length, 4);
+  assert.deepEqual(
+    page.data.map((event) => event.event_id),
+    ["synthetic-demo-01", "synthetic-demo-02", "synthetic-demo-03", "synthetic-demo-04"],
+  );
+  for (const event of page.data) {
+    assert.match(event.title, /^SIMULASI FIKTIF/);
+    assert.match(event.summary, /^SIMULASI FIKTIF/);
+    assert.deepEqual(event.claims, []);
+  }
   const listedEvent = page.data[0];
   assert.ok(listedEvent);
   assert.equal(detail.event_id, listedEvent.event_id, "detail identity should match the listed event requested through the proxy");
@@ -95,7 +104,7 @@ async function runSmoke() {
 
   assert.match(headerMarkup, /DEMO — data sintetis; bukan peringatan langsung/);
   assert.match(feedMarkup, /Tidak ada sumber live yang tersambung/);
-  assert.match(feedMarkup, /Contoh fiktif/);
+  assert.match(feedMarkup, /SIMULASI FIKTIF/);
   assert.match(feedMarkup, /Daftar/);
   assert.match(feedMarkup, /Peta/);
   assert.match(feedMarkup, /Status peta koordinat belum tersedia/);
