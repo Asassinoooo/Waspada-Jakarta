@@ -178,7 +178,7 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
   const unreadable = state.loadStatus === "malformed";
 
   return (
-    <main id="main-content" className="main-shell preferences-page">
+    <main id="main-content" tabIndex={-1} className="main-shell preferences-page">
       <section className="page-intro" aria-labelledby="preferences-title">
         <div>
           <p className="section-kicker">Minat di perangkat ini</p>

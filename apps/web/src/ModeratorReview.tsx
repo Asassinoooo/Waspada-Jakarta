@@ -4,7 +4,7 @@ import { MapPanel } from "./MapPanel.js";
 
 export function ModeratorReview() {
   return (
-    <main id="main-content" className="main-shell moderator-page">
+    <main id="main-content" tabIndex={-1} className="main-shell moderator-page">
       <section className="review-heading" aria-labelledby="review-title">
         <div>
           <p className="section-kicker">Ruang tinjau · contoh UI</p>

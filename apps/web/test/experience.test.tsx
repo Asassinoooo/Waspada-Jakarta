@@ -83,10 +83,13 @@ test("privacy reset verifies ignored removals and distinguishes inaccessible sto
 test("read guide renders as skippable Bahasa help with distinct status, time, and map meanings", () => {
   const html = renderToStaticMarkup(<ReadGuide />);
 
-  assert.match(html, /<main id="main-content"/u);
+  assert.match(html, /<main id="main-content" tabindex="-1"/u);
   assert.match(html, /Lewati panduan, jelajahi laporan/u);
   assert.match(html, /Status kejadian atau dampak/u);
   assert.match(html, /Kesegaran informasi/u);
+  assert.match(html, /Dalam batas tinjau saat evaluasi/u);
+  assert.match(html, /Masa berlaku sumber berakhir/u);
+  assert.doesNotMatch(html, /Batas tinjau lewat/u);
   assert.match(html, /Dukungan untuk klaim/u);
   assert.match(html, /Mengapa laporan muncul/u);
   assert.match(html, /Waktu sistem mengambil sumber/u);
@@ -103,7 +106,7 @@ test("privacy page lists only known local values and waits for a second confirma
 
   const html = renderToStaticMarkup(<PrivacyPage storage={storage} />);
 
-  assert.match(html, /<main id="main-content"/u);
+  assert.match(html, /<main id="main-content" tabindex="-1"/u);
   assert.match(html, /Yang tersimpan di browser/u);
   assert.match(html, /Apa yang dikirim dari browser/u);
   assert.match(html, /Tinjau penghapusan data/u);
@@ -113,5 +116,7 @@ test("privacy page lists only known local values and waits for a second confirma
   assert.match(html, /Fitur ringkasan tidak menyimpan data minat yang dikirim/u);
   assert.doesNotMatch(html, /kontrak briefing|mode data persis/u);
   assert.match(html, /log layanan atau hosting tidak dihapus/u);
+  assert.match(html, /Penanda pembaruan membantu melanjutkan pemeriksaan/u);
+  assert.doesNotMatch(html, /Cursor|cursor|kursor|polling|Penanda teknis/u);
   assert.equal(storage.values.get("unrelated:site-key"), "keep this value");
 });

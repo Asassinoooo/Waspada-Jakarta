@@ -324,6 +324,23 @@ button { min-height: 2.75rem; }
 
 .site-footer { line-height: 1.55; }
 
+.site-footer a,
+.landing-footer-links a,
+.landing-report h3 a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+main#main-content:focus-visible,
+.experience-page #privacy-confirm-title:focus-visible,
+.experience-page .experience-reset-result:focus-visible {
+  outline: 3px solid var(--kali-teal);
+  outline-offset: 3px;
+}
+
 @media (max-width: 56.25rem) {
   .site-header {
     grid-template-columns: minmax(0, 1fr) auto;

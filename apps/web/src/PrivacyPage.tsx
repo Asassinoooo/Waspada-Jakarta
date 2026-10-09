@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   browserPreferencesStorage,
   type PreferencesStorage,
@@ -66,7 +66,9 @@ function StorageItems({
         <li className="experience-storage-item" key={item.id}>
           <div>
             <strong>{item.label}</strong>
-            <p>{item.description}</p>
+            <p>{item.id === "updateCursor"
+              ? "Penanda pembaruan membantu melanjutkan pemeriksaan. Nilainya tidak ditampilkan."
+              : item.description}</p>
           </div>
           <span className="experience-storage-status">
             {result ? resultLabel(item.status) : presenceLabel(item.status)}
@@ -84,6 +86,18 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
   const [items, setItems] = useState(() => inspectWaspadaLocalData(activeStorage));
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<ClearLocalDataResult | null>(null);
+  const reviewButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmHeadingRef = useRef<HTMLHeadingElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const focusAfterRenderRef = useRef<"review" | "confirm" | "result" | null>(null);
+
+  useEffect(() => {
+    const target = focusAfterRenderRef.current;
+    focusAfterRenderRef.current = null;
+    if (target === "review") reviewButtonRef.current?.focus();
+    if (target === "confirm") confirmHeadingRef.current?.focus();
+    if (target === "result") resultRef.current?.focus();
+  }, [confirming, result]);
 
   const refresh = () => {
     setItems(inspectWaspadaLocalData(activeStorage));
@@ -92,6 +106,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
 
   const clear = () => {
     const nextResult = clearWaspadaLocalData(activeStorage);
+    focusAfterRenderRef.current = "result";
     setItems(nextResult.items);
     setResult(nextResult);
     setConfirming(false);
@@ -99,7 +114,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
   };
 
   return (
-    <main id="main-content" className="main-shell experience-page privacy-page">
+    <main id="main-content" tabIndex={-1} className="main-shell experience-page privacy-page">
       <header className="experience-intro" aria-labelledby="privacy-title">
         <p className="experience-kicker">Kontrol privasi · tanpa akun</p>
         <h1 id="privacy-title">Data Waspada di browser ini</h1>
@@ -124,11 +139,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
           Anda pilih. Daftar minat dapat diperiksa dan diubah di halaman Ringkasan saya;
           daftar itu tidak disinkronkan ke perangkat lain.
         </p>
-        <p>
-          Penanda pembaruan membantu melanjutkan pemeriksaan. Ringkasan pembaruan
-          disimpan sementara selama halaman digunakan; nilai penanda
-          tidak ditampilkan di sini.
-        </p>
+        <p>Ringkasan pembaruan disimpan sementara selama halaman digunakan. Nilai penanda tidak ditampilkan.</p>
         <StorageItems items={items} result={false} />
       </section>
 
@@ -149,8 +160,8 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
             hosting dikelola terpisah.
           </li>
           <li>
-            Pemeriksaan pembaruan mengirim penanda teknis dan dapat memuat detail laporan
-            publik untuk pencocokan di browser. Daftar minat tidak dikirim saat polling.
+            Pemeriksaan pembaruan mengirim penanda pembaruan dan dapat memuat laporan
+            publik untuk dicocokkan di browser. Minat tersimpan tidak dikirim dalam pemeriksaan ini.
           </li>
           <li>
             Aplikasi ini tidak meminta lokasi perangkat yang presisi. Membaca laporan
@@ -171,6 +182,8 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
         {result && (
           <div
             className={"experience-reset-result" + (result.status === "cleared" ? " experience-reset-result--success" : " experience-reset-result--problem")}
+            ref={resultRef}
+            tabIndex={-1}
             role={result.status === "cleared" ? "status" : "alert"}
             aria-live={result.status === "cleared" ? "polite" : "assertive"}
           >
@@ -183,13 +196,17 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
           <button
             className="experience-action experience-action--danger"
             type="button"
-            onClick={() => setConfirming(true)}
+            ref={reviewButtonRef}
+            onClick={() => {
+              focusAfterRenderRef.current = "confirm";
+              setConfirming(true);
+            }}
           >
             Tinjau penghapusan data
           </button>
         ) : (
           <section className="experience-reset-confirm" aria-labelledby="privacy-confirm-title">
-            <h3 id="privacy-confirm-title">Hapus data lokal Waspada?</h3>
+            <h3 id="privacy-confirm-title" ref={confirmHeadingRef} tabIndex={-1}>Hapus data lokal Waspada?</h3>
             <p>
               Minat tersimpan dan penanda pembaruan akan dihapus jika browser mengizinkan.
               Kami akan memeriksa setiap item dan melaporkan jika ada yang masih tersimpan
@@ -199,7 +216,10 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
               <button
                 className="experience-action experience-action--quiet"
                 type="button"
-                onClick={() => setConfirming(false)}
+                onClick={() => {
+                  focusAfterRenderRef.current = "review";
+                  setConfirming(false);
+                }}
               >
                 Batalkan
               </button>

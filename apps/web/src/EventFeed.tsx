@@ -111,7 +111,7 @@ export function EventFeed({
   const isDemo = context?.dataset_mode === "demo";
 
   return (
-    <main id="main-content" className="main-shell">
+    <main id="main-content" tabIndex={-1} className="main-shell">
       <section className="page-intro" aria-labelledby="discover-title">
         <div>
           <p className="section-kicker">Jelajah informasi publik</p>

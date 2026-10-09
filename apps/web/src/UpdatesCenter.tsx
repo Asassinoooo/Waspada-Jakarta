@@ -652,7 +652,7 @@ export function UpdateCenterContent({
   onRefresh: () => void;
 }) {
   return (
-    <main id="main-content" className="main-shell updates-center-page">
+    <main id="main-content" tabIndex={-1} className="main-shell updates-center-page">
       <section className="page-intro" aria-labelledby="updates-center-title">
         <div>
           <p className="section-kicker">Pembaruan untuk minat lokal</p>
@@ -680,7 +680,7 @@ export function UpdateCenterContent({
           </section>
 
           {state.resetNotice && (
-            <p className="updates-center-reset" role="status">Cursor diperbarui. Ringkasan pembaruan yang lebih lama tidak lagi tersedia setelah penetapan ulang.</p>
+            <p className="updates-center-reset" role="status">Penanda pembaruan diperbarui. Ringkasan sebelumnya tidak lagi tersedia.</p>
           )}
           {state.status === "loading" && (
             <div className="state-panel state-panel--loading" role="status" aria-live="polite" aria-busy="true">
@@ -689,15 +689,15 @@ export function UpdateCenterContent({
           )}
           {state.status === "unavailable" && (
             <div className="state-panel state-panel--error" role="alert">
-              <strong>{state.failure === "storage" ? "Cursor pembaruan tidak dapat disimpan." : "Pembaruan belum dapat dimuat."}</strong>
+              <strong>{state.failure === "storage" ? "Penanda pembaruan tidak dapat disimpan." : "Pembaruan belum dapat dimuat."}</strong>
               <p>{state.failure === "storage" ? "Periksa izin penyimpanan browser. Tidak ada minat atau isi pembaruan yang disimpan." : "Coba lagi saat koneksi API tersedia. Keadaan keselamatan tidak diketahui."}</p>
               <button className="button button--quiet" type="button" onClick={onRefresh}>Coba lagi</button>
             </div>
           )}
           {state.status === "retry" && (
             <div className="state-panel state-panel--error" role="alert">
-              <strong>{state.failure === "details" ? "Sebagian detail event belum dapat diperiksa." : "Snapshot event belum dapat diperbarui."}</strong>
-              <p>Halaman pembaruan belum diterapkan dan cursor tetap di posisi sebelumnya. Coba lagi tanpa kehilangan halaman ini.</p>
+              <strong>{state.failure === "details" ? "Sebagian detail laporan belum dapat diperiksa." : "Daftar laporan terbaru belum dapat dimuat."}</strong>
+              <p>Pembaruan baru belum dapat diterapkan. Coba lagi; pembaruan yang sudah ditampilkan tetap tersedia.</p>
               <button className="button button--quiet" type="button" onClick={onRefresh}>Coba lagi memuat halaman</button>
             </div>
           )}
@@ -738,9 +738,9 @@ function lifecycleLabel(value: Lifecycle) {
 
 function freshnessLabel(value: FreshnessStatus) {
   switch (value) {
-    case "current": return "Dalam batas tinjau";
+    case "current": return "Dalam batas tinjau saat evaluasi";
     case "needs_update": return "Perlu diperbarui";
-    case "expired": return "Batas tinjau lewat";
+    case "expired": return "Masa berlaku sumber berakhir";
   }
 }
 

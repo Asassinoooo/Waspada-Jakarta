@@ -102,9 +102,9 @@ function lifecycleLabel(value: EventView["lifecycle"]) {
 
 function freshnessLabel(value: EventView["freshness"]["status"]) {
   switch (value) {
-    case "current": return "Dalam batas tinjau";
+    case "current": return "Dalam batas tinjau saat evaluasi";
     case "needs_update": return "Perlu diperbarui";
-    case "expired": return "Batas tinjau lewat";
+    case "expired": return "Masa berlaku sumber berakhir";
   }
 }
 

@@ -327,7 +327,7 @@ function ApiEventDetail({
 
 export function EventDetail({ mode, apiDetail, apiHistory, onRetryDetail, onRetryHistory, context }: EventDetailProps) {
   return (
-    <main id="main-content" className="main-shell detail-page">
+    <main id="main-content" tabIndex={-1} className="main-shell detail-page">
       <a className="back-link" href="#jelajah">Kembali ke daftar</a>
       {mode === "presentation"
         ? <PresentationDetail />

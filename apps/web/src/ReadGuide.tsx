@@ -1,6 +1,6 @@
 export function ReadGuide() {
   return (
-    <main id="main-content" className="main-shell experience-page read-guide">
+    <main id="main-content" tabIndex={-1} className="main-shell experience-page read-guide">
       <header className="experience-intro" aria-labelledby="read-guide-title">
         <p className="experience-kicker">Panduan opsional · bisa dibuka lagi</p>
         <h1 id="read-guide-title">Cara membaca laporan</h1>
@@ -29,10 +29,11 @@ export function ReadGuide() {
           <p className="experience-kicker">02 · Tinjauan</p>
           <h2 id="guide-freshness-title">Kesegaran informasi</h2>
           <p>
-            “Pembaruan dalam batas waktu” berarti informasi masih dalam jendela tinjau.
-            “Perlu diperbarui” berarti batas tinjau lewat. Status “Batas tinjau lewat”
-            berarti masa berlaku dari penerbit telah berakhir; periksa periode berlakunya
-            secara terpisah.
+            “Dalam batas tinjau saat evaluasi” berarti waktu tinjau yang ditetapkan
+            layanan belum lewat saat status dihitung. “Perlu diperbarui” berarti waktu
+            tinjau itu sudah lewat; ini tidak otomatis berarti kejadian selesai.
+            “Masa berlaku sumber berakhir” berarti rentang berlaku yang ditetapkan
+            penerbit telah berakhir; ini berbeda dari waktu tinjau.
           </p>
           <p className="experience-note">
             Kedaluwarsa atau perlu ditinjau ulang tidak berarti kejadian selesai atau wilayah aman.
