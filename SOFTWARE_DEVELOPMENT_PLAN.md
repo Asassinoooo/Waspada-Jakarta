@@ -134,6 +134,8 @@ Validate needs with 6–8 interviews. The initial usability target is at least 8
 
 Historical or synthetic fixtures can fill source gaps in the demonstration, with explicit labels and a separate demo environment/data namespace. A fixture-backed scenario must never be reported as a live integration.
 
+The checked-in demo read model currently contains two generic audience-notice fixtures; it does not yet represent all four scenario archetypes above. `INT-01-SYNTHETIC-DEMO-SCENARIO-CORE` is assigned to add clearly labelled, authored examples through the existing demo-only API fixtures while keeping evidence claims and map geometry empty. It is a presentation-data slice only and does not complete INT-01 or authorize source reuse.
+
 | Scenario/source | Intended delivery mode | Activation and fallback |
 | --- | --- | --- |
 | BMKG weather warnings | Live connector candidate | Fresh access/validity checks required; labelled historical CAP fixtures if unavailable. |

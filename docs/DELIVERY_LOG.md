@@ -1,5 +1,9 @@
 # Delivery log
 
+## INT-01 synthetic demo-scenario fixture slice assigned — 9 October 2026
+
+Root assigned `INT-01-SYNTHETIC-DEMO-SCENARIO-CORE` to close a visible local demo gap: the plan requires four scenario archetypes, while the current demo API contains only two generic audience notices. The assignment preserves the existing IDs, adds no source/evidence claims or map geometry, and keeps each authored Bahasa Indonesia example explicitly fictional. It is limited to the existing Worker demo fixture module, API tests, local web smoke assertions, and its own handoff. The full INT-01 scenario gate remains incomplete. Source rights, human evaluation, hosted behavior, publication/auth activation, and live connectors remain outside this slice. The exact base is the pushed assignment commit listed in the task document.
+
 ## Three synthetic/local assurance slices accepted — 9 October 2026
 
 Root reviewed and integrated three independent GPT-6 Luna/max branches, preserving every agent commit and the assigned-path-only scope. All branches were based on their recorded assignments and kept their own branch/worktree through implementation.
