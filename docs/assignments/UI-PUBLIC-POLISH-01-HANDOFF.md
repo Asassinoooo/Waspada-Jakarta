@@ -10,7 +10,13 @@ The follow-up fixes align the guide, briefing, and update center on distinct rev
 
 ## Integration and validation
 
-Import `public-polish.css` after the existing web stylesheets so its overrides are applied. Root integration screenshot review at desktop, 320px, and 200% text size remains necessary; this handoff does not claim those visual checks were performed.
+Import `public-polish.css` after the existing web stylesheets so its overrides are applied. The narrow and large-text route checks are recorded below; desktop screenshot review remains part of root integration.
+
+The narrow-screen follow-up reproduces the source of the large-text overflow: at a 320px viewport and a 32px root font, the discovery grid's inherited `15rem` minimum expands to 480px, and the evidence metadata's two-column layout collapses its second track. Before the fix, document `scrollWidth` measured 500px on the feed and 361px on evidence review. The mobile rules now set the discovery track to `minmax(0, 1fr)`, stack evidence metadata, wrap long source labels, and constrain the focused skip link to the viewport.
+
+I checked the integrated root `?qa=reflow` page in headless Chrome after injecting this stylesheet. At 320px with `html { font-size: 32px }`, document and body `scrollWidth` were 320px on Jelajah list/map, Preferences, Updates, Guide, Privacy, evidence review, API detail, and presentation detail. Main content measured 280px wide with no internal horizontal overflow on those routes. The standard 16px root-font check also measured 320px document/body width across the feed, preferences, updates, guide, privacy, evidence, and API detail routes. A focus-state pass across 150 visible links and controls in the list/map and public screens found no target outside the viewport; the search input receives its visible ring from the surrounding control.
+
+The test page's API context was unavailable: the API detail stayed in its loading state, and the presentation route showed its unavailable fallback. Those checks cover the shell and fallback layouts, not a populated API detail record. The landing route was outside this stylesheet follow-up.
 
 Validation on this branch:
 
@@ -21,7 +27,7 @@ Validation on this branch:
 - `git diff --check` passed.
 - The existing full web suite currently has two stale copy assertions: `test/ui.test.tsx` expects the prior review-freshness label, and `test/updates-center.test.tsx` expects the prior “Cursor” message. The revised user-facing copy is covered by the focused tests; those legacy test files were outside this assignment's allowed paths.
 
-The production build validates the app entry point currently on this branch; it does not import this new stylesheet yet. The explicit PostCSS parse validates the standalone stylesheet. No route, API, dependency, or app entry-point files were changed.
+The production build validates the app entry point currently on this branch; it does not import this new stylesheet yet. The headless route check injected the updated stylesheet directly into the integrated root QA page, and the explicit PostCSS parse validates the standalone stylesheet. No route, API, dependency, or app entry-point files were changed.
 
 ## Review notes
 
