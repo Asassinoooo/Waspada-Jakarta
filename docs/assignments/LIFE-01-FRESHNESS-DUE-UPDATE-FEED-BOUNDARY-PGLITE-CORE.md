@@ -39,4 +39,21 @@ Stop and report if exact-live API composition requires a production, contract, s
 
 ## Implementation handoff
 
-Append branch/worktree, exact assigned base, commit SHAs/messages, changed paths, behavior, actual WSL checks, runtime versions, limitations, configuration impact, and remaining decisions here. Do not merge or push.
+### Implementation handoff — 2026-10-09
+
+- **Branch/worktree:** `work/LIFE-01-FRESHNESS-DUE-UPDATE-FEED-BOUNDARY-PGLITE-CORE` at `.codex-build/worktrees/life-01-freshness-due-update-feed-boundary-pglite-core`.
+- **Exact assigned base:** `8bc4b919a02a0d29c161aa0ce03538aed7125ac2`.
+- **Implementation commit:** `36612448839ea39ceb9931618a70a32bfda8e804` — `test(LIFE-01-FRESHNESS-DUE-UPDATE-FEED-BOUNDARY): cover due transition feed boundary`.
+- **Handoff commit:** reported to root after commit because a commit cannot contain its own SHA.
+- **Changed paths:** `apps/db/test/freshness-due-evaluator-composition.test.ts` and this handoff section only.
+- **Behavior:** The existing due reader, evaluator, recorder and SQL ledger now run between two calls to the actual exact-live `/api/v1/updates` handler/runtime against one disposable PGlite database. The authored event and impact use `dataset_kind='live'` only inside this ephemeral, live-shaped fixture so the exact-live reader filter is exercised; all values and provenance remain fictional and authored locally, with no source data, source access or shared/hosted database. The current-public event freshness changes from `current` to `needs_update`, and impact freshness changes from `current` to `expired`; event/impact publication versions, decisions and outbox rows remain unchanged. Both update pages are empty, the public page keeps its existing four-key shape, and the cursor codec decodes the same sequence (`0`) before and after evaluation. No moderator history-review decision is fabricated.
+- **Verification environment:** WSL Ubuntu-26.04; Node `v24.21.0`, npm `11.19.0`, Git `2.53.0`, and `@electric-sql/pglite` `0.5.8` from the existing dependency tree. No package or runtime was installed.
+- **Checks actually run:**
+  - `npm exec --no -- tsx --test apps/db/test/freshness-due-evaluator-composition.test.ts` — passed, 1/1.
+  - `git diff --check 8bc4b919a02a0d29c161aa0ce03538aed7125ac2..HEAD` — passed for the implementation commit; the final branch diff check is rerun after this handoff commit.
+  - `npm run db:test` — started and interrupted at root's request to serialize broad validation. Eighteen individual DB test files had passed; the runner had started `migrations.test.ts` when Ctrl-C stopped it. The DB suite as a whole is unverified; this is not a passing result.
+  - `npm test`, `npm run typecheck`, and `npm run build` — not run by the implementer; root will run the shared sequential integrated checks after branch integration.
+- **Limitations and configuration impact:** Test-only PGlite evidence. No production/API/DTO/OpenAPI, schema/migration/grant, dependency, configuration, source/provider, external-service, deployment or shared-database changes. Hosted Neon and Cloudflare behavior remain unverified.
+- **Remaining decisions:** None for this test slice. Root review, integration and its coordinated broad checks remain pending.
+
+Do not merge or push.

@@ -10,9 +10,18 @@ import type {
 } from '../../worker/src/layers/l4-application-integration/freshness-transition-recorder.js';
 import { createFreshnessDueEvaluator } from '../../worker/src/layers/l4-application-integration/freshness-due-evaluator.js';
 import { createFreshnessTransitionRecorder } from '../../worker/src/layers/l4-application-integration/freshness-transition-recorder.js';
+import {
+  handlePublicApiRequest,
+  type WorkerEnvironment,
+} from '../../worker/src/layers/l4-application-integration/api.js';
+import { createPublicEventUpdatesCursorCodec } from '../../worker/src/layers/l4-application-integration/public-event-updates-cursor.js';
+import type { PublicEventUpdatesPage } from '../../worker/src/layers/l4-application-integration/public-event-updates-service.js';
+import { createPublicEventUpdatesRuntime } from '../../worker/src/runtime/public-event-updates-runtime.js';
+import type { SqlExecutor } from '../src/sql.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
-const DATASET_KIND = 'synthetic' as const;
+// The rows stay authored and fictional; the live namespace exists only in this disposable PGlite fixture.
+const DATASET_KIND = 'live' as const;
 const EVENT_ID = 'event-freshness-due-composition-fixture';
 const EVENT_VERSION = 1;
 const IMPACT_ID = 'impact-freshness-due-composition-fixture';
@@ -23,6 +32,9 @@ const EVALUATION_RUN_ID = 'run-freshness-due-composition-fixture';
 const PUBLISHED_AT = '2026-10-01T09:00:00.000000Z';
 const EXPLICIT_NOW = '2026-10-02T10:00:00.000000Z';
 const NOT_DUE_AT = '2026-10-03T00:00:00.000000Z';
+const TEST_CONNECTION_STRING = 'postgresql://test-user:test-password@hyperdrive.example.invalid/waspada?sslmode=require';
+const TEST_CURSOR_HMAC_KEY_HEX = Array.from({ length: 32 }, (_, index) =>
+  (index + 1).toString(16).padStart(2, '0')).join('');
 
 interface PublicationSnapshot {
   readonly event_versions: readonly Record<string, unknown>[] | null;
@@ -73,7 +85,30 @@ describe('PGlite freshness due-evaluator composition', () => {
       assert.equal(publicationBefore.impact_versions?.length, 1);
       assert.equal(publicationBefore.publication_decisions?.length, 1);
       assert.equal(publicationBefore.publication_outbox, null,
-        'the live-only publication outbox has no synthetic fixture rows');
+        'the live-only publication outbox has no authored fixture rows');
+
+      const updatesHarness = await createPublicUpdatesApiHarness(database);
+      const baselineSqlOperations = updatesHarness.sqlOperationCount();
+      const baselineResponse = await updatesHarness.read();
+      assert.equal(baselineResponse.status, 200);
+      assert.equal(updatesHarness.sqlOperationCount() - baselineSqlOperations, 1,
+        'the exact-live updates bootstrap uses one request-scoped public-reader SQL operation');
+      const baselinePage = await baselineResponse.json() as PublicEventUpdatesPage;
+      assert.deepEqual(baselinePage.items, [], 'the authored fixture has no reviewed update entries');
+      assert.deepEqual(Object.keys(baselinePage).sort(), [
+        'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
+      ]);
+      const baselineCursor = await updatesHarness.decodeCursor(baselinePage.next_cursor);
+      assert.equal(baselineCursor.sequence, '0', 'the fixture begins at the empty update-feed watermark');
+
+      const currentPublicBefore = await readCurrentPublicProjection(database);
+      assert.equal(currentPublicBefore.eventRows.length, 1);
+      assert.equal(currentPublicBefore.impactRows.length, 1);
+      const currentEventBefore = currentPublicBefore.eventRows[0]!;
+      const currentImpactBefore = currentPublicBefore.impactRows[0]!;
+      assert.equal(currentEventBefore.freshness_status, 'current');
+      assert.equal((currentEventBefore.record_json.freshness as Record<string, unknown>).status, 'current');
+      assert.equal((currentImpactBefore.record_json.freshness as Record<string, unknown>).status, 'current');
 
       const reader = createFreshnessDueTargetReader(database.executor);
       const dueBefore = await reader.read({
@@ -228,6 +263,8 @@ describe('PGlite freshness due-evaluator composition', () => {
       assert.equal(currentPublic.impactRows.length, 1);
       const currentEvent = currentPublic.eventRows[0]!;
       const projectedEventFreshness = currentEvent.record_json.freshness as Record<string, unknown>;
+      assert.notEqual(currentEvent.freshness_status, currentEventBefore.freshness_status,
+        'the due transition changes the current-public event freshness projection');
       assert.equal(currentEvent.freshness_status, 'needs_update',
         'a current claim set mixed with an issuer-expired impact aggregates conservatively');
       assert.deepEqual(projectedEventFreshness, {
@@ -240,6 +277,9 @@ describe('PGlite freshness due-evaluator composition', () => {
       const currentImpact = currentPublic.impactRows[0]!;
       assert.equal(currentImpact.impact_id, IMPACT_ID);
       assert.equal(currentImpact.impact_version, IMPACT_VERSION);
+      assert.notEqual((currentImpact.record_json.freshness as Record<string, unknown>).status,
+        (currentImpactBefore.record_json.freshness as Record<string, unknown>).status,
+        'the due transition changes the current-public impact freshness projection');
       assert.deepEqual(currentImpact.record_json.freshness, {
         status: 'expired',
         evaluated_at: '2026-10-01T08:00:00.000000Z',
@@ -259,11 +299,98 @@ describe('PGlite freshness due-evaluator composition', () => {
       const publicationAfter = await readImmutablePublicationSnapshot(database);
       assert.deepEqual(publicationAfter, publicationBefore,
         'event/impact versions, decisions, and outbox rows are unchanged by freshness evaluation');
+
+      const updatesSqlOperations = updatesHarness.sqlOperationCount();
+      const updatesResponse = await updatesHarness.read(baselinePage.next_cursor);
+      assert.equal(updatesResponse.status, 200);
+      assert.equal(updatesHarness.sqlOperationCount() - updatesSqlOperations, 1,
+        'the exact-live updates continuation uses one request-scoped public-reader SQL operation');
+      const updatesPage = await updatesResponse.json() as PublicEventUpdatesPage;
+      assert.deepEqual(updatesPage.items, [], 'a due-freshness transition creates no public update entry');
+      assert.deepEqual(Object.keys(updatesPage).sort(), [
+        'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
+      ]);
+      const continuedCursor = await updatesHarness.decodeCursor(updatesPage.next_cursor);
+      assert.equal(continuedCursor.sequence, baselineCursor.sequence,
+        'a due-freshness transition does not advance the decoded opaque cursor sequence');
+      assert.equal(updatesPage.cursor_expires_at, continuedCursor.expiresAt);
+
+      const updatesResponseJson = JSON.stringify(updatesPage);
+      for (const privateMarker of [
+        'freshness_transitions',
+        'source_observation_id',
+        'transition_sequence',
+        'idempotency_key',
+        'request_fingerprint',
+        TEST_CURSOR_HMAC_KEY_HEX,
+      ]) {
+        assert.equal(updatesResponseJson.includes(privateMarker), false,
+          `public updates response leaked ${privateMarker}`);
+      }
     } finally {
       await database.close();
     }
   });
 });
+
+interface PublicUpdatesApiHarness {
+  read(cursor?: string): Promise<Response>;
+  decodeCursor(cursor: string): Promise<{ readonly sequence: string; readonly expiresAt: string }>;
+  sqlOperationCount(): number;
+}
+
+async function createPublicUpdatesApiHarness(database: TestDatabase): Promise<PublicUpdatesApiHarness> {
+  let sqlOperations = 0;
+  const withSqlExecutor = async <Result>(
+    connectionString: string,
+    operation: (executor: SqlExecutor) => Promise<Result>,
+  ): Promise<Result> => {
+    assert.equal(connectionString, TEST_CONNECTION_STRING);
+    sqlOperations += 1;
+    await database.executor.execute('SET ROLE waspada_public_reader');
+    try {
+      return await operation(database.executor);
+    } finally {
+      await database.executor.execute('RESET ROLE');
+    }
+  };
+  const now = () => Date.parse(EXPLICIT_NOW);
+  const updatesRuntime = await createPublicEventUpdatesRuntime({
+    datasetMode: 'live',
+    connectionString: TEST_CONNECTION_STRING,
+    cursorHmacKeyHex: TEST_CURSOR_HMAC_KEY_HEX,
+  }, { withSqlExecutor, now });
+  assert.ok(updatesRuntime);
+
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    Uint8Array.from(TEST_CURSOR_HMAC_KEY_HEX.match(/.{2}/gu)!, (byte) => Number.parseInt(byte, 16)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify'],
+  );
+  const cursorCodec = createPublicEventUpdatesCursorCodec({ key, now });
+  const environment: WorkerEnvironment = { DATASET_MODE: 'live' };
+
+  return {
+    async read(cursor) {
+      const query = cursor === undefined ? '' : `?cursor=${encodeURIComponent(cursor)}`;
+      return handlePublicApiRequest(
+        new Request(`https://api.example.invalid/api/v1/updates${query}`),
+        environment,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        updatesRuntime,
+      );
+    },
+    decodeCursor: (cursor) => cursorCodec.decode(cursor),
+    sqlOperationCount: () => sqlOperations,
+  };
+}
 
 async function seedSyntheticPublicationFixture(database: TestDatabase): Promise<void> {
   const sourceId = 'source-freshness-due-composition-fixture';
