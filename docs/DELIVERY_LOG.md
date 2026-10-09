@@ -1,8 +1,10 @@
 # Delivery log
 
-## INT-01 synthetic demo-scenario fixture slice assigned — 9 October 2026
+## INT-01 synthetic demo-scenario fixture slice accepted — 9 October 2026
 
 Root assigned `INT-01-SYNTHETIC-DEMO-SCENARIO-CORE` on branch `work/INT-01-SYNTHETIC-DEMO-SCENARIO-CORE` and worktree `.codex-build/worktrees/int-01-synthetic-demo-scenario-core` from exact base `1ecaf5ccfdb69619b79056c5527dc3db80f0161f`. The task closes a visible local demo gap: the plan requires four scenario archetypes, while the current demo API contains only two generic audience notices. The assignment preserves the existing IDs, adds no source/evidence claims or map geometry, and keeps each authored Bahasa Indonesia example explicitly fictional. It is limited to the existing Worker demo fixture module, API tests, local web smoke assertions, and its own handoff. The full INT-01 scenario gate remains incomplete. Source rights, human evaluation, hosted behavior, publication/auth activation, and live connectors remain outside this slice.
+
+Root reviewed and merged the branch at `ba207d4e733e4f945b758d52bf9d40d37aa92325`, preserving implementation commit `983e5fce20a5483e58c33f8eebbc7f263faca81e` (`feat(INT-01): add four synthetic demo scenarios`) and handoff commit `5a3f80a41630b7d9b7564c517c5132a154e6514c` (`docs(INT-01): record synthetic scenario handoff`). Root's WSL Ubuntu-26.04 checks passed focused API tests (30/30), local web/API smoke, and assigned-base `git diff --check`. The agent passed Worker tests (465/465), full `npm test` (DB 45/45 files, evaluation 19/19), typecheck, build, and smoke; the full and Worker suites were run before a final test-only assertion refinement, and the focused API test and typecheck were rerun afterward. No migration, API/schema, dependency, source, publication, runtime, or deployment configuration changed. The four authored fictional records improve the demo only; they contain no source claims, evidence, or geometry and do not complete INT-01.
 
 ## Three synthetic/local assurance slices accepted — 9 October 2026
 
