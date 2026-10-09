@@ -26,6 +26,7 @@ test("detail and history requests use encoded IDs and existing read-only API pat
     "/api/v1/events/fictional%20%2F%3F%23%20%26/history",
   ]);
   assert.ok(requests.every(({ init }) => init?.method === undefined));
+  assert.ok(requests.every(({ init }) => init?.cache === "no-store"));
   assert.ok(requests.every(({ init }) => (init?.headers as Record<string, string>).accept === "application/json"));
 });
 

@@ -2,7 +2,7 @@
 /AGENTS.md
 .codex-build/
 .codex-finalizer/
-node_modules/
+node_modules
 .venv/
 venv/
 __pycache__/

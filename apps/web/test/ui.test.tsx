@@ -9,6 +9,22 @@ import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from 
 import { ModeratorReview } from "../src/ModeratorReview.js";
 import type { GeoJSONMapState, MapSelection } from "../src/MapPanel.js";
 import { emptyInterests } from "../src/preferences-store.js";
+import { freshnessLabel, lifecycleLabel, precisionLabel } from "../src/display.js";
+
+test("new entry routes preserve account-free discovery and existing deep links", () => {
+  for (const hash of ["", "#beranda"]) assert.deepEqual(routeFromHash(hash), { screen: "landing" });
+  assert.deepEqual(routeFromHash("#panduan"), { screen: "guide" });
+  assert.deepEqual(routeFromHash("#privasi"), { screen: "privacy" });
+  assert.deepEqual(routeFromHash("#jelajah"), { screen: "discover" });
+  assert.deepEqual(routeFromHash("#detail/api/report%2F01"), { screen: "detail-api", eventId: "report/01" });
+  assert.deepEqual(routeFromHash("#detail/api/%E0%A4%A"), { screen: "detail-api", eventId: "" });
+});
+
+test("public labels distinguish issuer expiry from a review deadline without fixture-only wording", () => {
+  assert.equal(freshnessLabel("expired"), "Masa berlaku sumber berakhir");
+  assert.equal(freshnessLabel("needs_update"), "Perlu diperbarui");
+  assert.doesNotMatch(freshnessLabel("current") + lifecycleLabel("ongoing") + precisionLabel("exact"), /fixture/i);
+});
 
 const demoContext: PublicContext = {
   dataset_mode: "demo",

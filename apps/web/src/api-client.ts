@@ -338,6 +338,7 @@ export function parsePublicGeoJSON(value: unknown): PublicFeatureCollection {
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
     headers: { accept: "application/json" },
+    cache: "no-store",
     ...(signal === undefined ? {} : { signal }),
   });
   if (!response.ok) throw new ApiHttpError(response.status);
@@ -461,7 +462,7 @@ export async function getEventGeoJSON(filters: PublicGeoJSONFilters = {}): Promi
   if (filters.freshness) query.set("freshness", filters.freshness);
   const search = query.toString();
   const path = "/api/v1/events.geojson" + (search ? "?" + search : "");
-  const response = await fetch(path, { headers: { accept: "application/geo+json" } });
+  const response = await fetch(path, { headers: { accept: "application/geo+json" }, cache: "no-store" });
   if (!response.ok) throw new ApiHttpError(response.status);
 
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();

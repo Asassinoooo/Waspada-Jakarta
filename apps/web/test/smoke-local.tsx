@@ -7,7 +7,7 @@ import { EventFeed } from "../src/EventFeed.js";
 import { getEventDetail, getEventHistory, getPublicContext, listEvents } from "../src/api-client.js";
 import { formatEventTime } from "../src/display.js";
 
-const baseUrl = "http://127.0.0.1:5173";
+const baseUrl = process.env.WASPADA_SMOKE_ORIGIN ?? "http://127.0.0.1:5173";
 
 async function withViteApiBase<T>(read: () => Promise<T>): Promise<T> {
   const originalFetch = globalThis.fetch;

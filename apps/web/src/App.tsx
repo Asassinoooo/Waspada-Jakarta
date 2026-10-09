@@ -7,9 +7,15 @@ import { ModeratorReview } from "./ModeratorReview.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
+import { PrivacyPage } from "./PrivacyPage.js";
+import { ReadGuide } from "./ReadGuide.js";
+import { Landing } from "./Landing.js";
 
 type Route =
+  | { screen: "landing" }
   | { screen: "discover" }
+  | { screen: "guide" }
+  | { screen: "privacy" }
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "review" }
@@ -112,6 +118,9 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
 }
 
 export function routeFromHash(hash: string): Route {
+  if (hash === "" || hash === "#beranda") return { screen: "landing" };
+  if (hash === "#panduan") return { screen: "guide" };
+  if (hash === "#privasi") return { screen: "privacy" };
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
@@ -150,14 +159,17 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
     <>
       <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
       <header className="site-header">
-        <a className="brand" href="#jelajah" aria-label="Waspada Jakarta, ke jelajah">
+        <a className="brand" href="#beranda" aria-label="Waspada Jakarta, ke beranda">
           <span className="brand-mark" aria-hidden="true">WJ</span>
           <span><strong>Waspada Jakarta</strong><small>Informasi dengan jejak sumber</small></span>
         </a>
         <nav className="primary-nav" aria-label="Navigasi utama">
+          <a href="#beranda" aria-current={route.screen === "landing" ? "page" : undefined}>Beranda</a>
           <a href="#jelajah" aria-current={onDiscover ? "page" : undefined}>Jelajah</a>
           <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Ringkasan saya</a>
           <a href="#pembaruan" aria-current={route.screen === "updates" ? "page" : undefined}>Pembaruan</a>
+          <a href="#panduan" aria-current={route.screen === "guide" ? "page" : undefined}>Panduan</a>
+          <a href="#privasi" aria-current={route.screen === "privacy" ? "page" : undefined}>Privasi</a>
           <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
         </nav>
         <span className="mode-chip">{modeText}</span>
@@ -180,7 +192,7 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
   }
 
   return (
-    <main id="main-content" className="main-shell">
+    <main id="main-content" tabIndex={-1} className="main-shell">
       <section className="state-panel" role="status">
         <strong>{context === null ? "Status dataset tidak tersedia." : "Fixture presentasi hanya tersedia pada dataset demo."}</strong>
         <p>
@@ -196,6 +208,7 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
+  const [localDataRevision, setLocalDataRevision] = useState(0);
   const [retryKey, setRetryKey] = useState(0);
   const contextRequestKey = route.screen + ":" + retryKey;
   const [contextResult, setContextResult] = useState<{ requestKey: string; value: PublicContext | null } | null>(null);
@@ -219,8 +232,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const updateRoute = () => setRoute(routeFromHash(window.location.hash));
-    if (!window.location.hash) window.history.replaceState(null, "", "#jelajah");
+    const updateRoute = () => {
+      // In-page skip links must not replace the currently selected public screen.
+      if (window.location.hash === "#main-content") return;
+      setRoute(routeFromHash(window.location.hash));
+    };
+    if (!window.location.hash) window.history.replaceState(null, "", "#beranda");
     window.addEventListener("hashchange", updateRoute);
     return () => window.removeEventListener("hashchange", updateRoute);
   }, []);
@@ -239,7 +256,7 @@ export function App() {
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
   useEffect(() => {
-    if (route.screen === "preferences" || route.screen === "updates") return;
+    if (route.screen !== "discover" && route.screen !== "landing") return;
     let cancelled = false;
     setStatus("loading");
 
@@ -350,6 +367,9 @@ export function App() {
   return (
     <div className="app-shell">
       <SiteHeader route={route} context={context} />
+      {route.screen === "landing" && (
+        <Landing context={context} events={events} status={status} onRetry={() => setRetryKey((current) => current + 1)} />
+      )}
       {route.screen === "discover" && (
         <EventFeed
           status={status}
@@ -393,8 +413,12 @@ export function App() {
       {route.screen === "detail-presentation" && (
         <PresentationRoute context={context} />
       )}
-      {route.screen === "preferences" && <Preferences context={context} contextSnapshotId={contextRequestKey} />}
-      {route.screen === "updates" && <UpdatesCenter context={context} refreshCurrentEvents={refreshCurrentEvents} />}
+      {route.screen === "preferences" && <Preferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />}
+      {route.screen === "guide" && <ReadGuide />}
+      {route.screen === "privacy" && <PrivacyPage onCleared={() => {
+        setLocalDataRevision((revision) => revision + 1);
+      }} />}
+      {route.screen === "updates" && <UpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />}
       {route.screen === "review" && <ModeratorReview />}
       <footer className="site-footer">
         <span>
@@ -405,6 +429,8 @@ export function App() {
               : "Status dataset tidak tersedia."}
         </span>
         <a href="#jelajah">Kembali ke jelajah</a>
+        <a href="#panduan">Cara membaca laporan</a>
+        <a href="#privasi">Privasi dan data lokal</a>
       </footer>
     </div>
   );

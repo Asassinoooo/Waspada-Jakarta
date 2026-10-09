@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/api/v1": "http://127.0.0.1:8787",
+      "/api/v1": process.env.WASPADA_DEV_API_ORIGIN ?? "http://127.0.0.1:8787",
     },
   },
 });

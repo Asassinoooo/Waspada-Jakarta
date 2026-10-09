@@ -40,7 +40,7 @@ export function formatEventTime(event: Pick<EventView, "event_time">) {
 export function precisionLabel(value: "exact" | "date" | "range" | "unknown") {
   switch (value) {
     case "exact":
-      return "waktu tepat menurut fixture";
+      return "waktu tepat menurut sumber";
     case "date":
       return "tanggal saja";
     case "range":
@@ -55,7 +55,7 @@ export function lifecycleLabel(value: Lifecycle) {
     case "planned":
       return "Direncanakan";
     case "ongoing":
-      return "Berlangsung (nilai fixture)";
+      return "Berlangsung";
     case "resolved":
       return "Selesai";
     case "cancelled":
@@ -68,11 +68,11 @@ export function lifecycleLabel(value: Lifecycle) {
 export function freshnessLabel(value: FreshnessStatus) {
   switch (value) {
     case "current":
-      return "Dalam batas tinjau saat evaluasi fixture";
+      return "Dalam batas tinjau saat evaluasi";
     case "needs_update":
       return "Perlu diperbarui";
     case "expired":
-      return "Lewat batas tinjau";
+      return "Masa berlaku sumber berakhir";
   }
 }
 
