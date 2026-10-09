@@ -132,10 +132,14 @@ function PublicPreview({
           {datasetText(context)}
           {context.dataset_mode === "demo" && <span> · bukan peringatan langsung</span>}
         </p>
+        <p className="landing-preview__scope">
+          Bila tersedia, cuplikan menampilkan klaim pertama. Label bukti dan sumber hanya merujuk pada klaim itu, bukan verifikasi seluruh laporan.
+        </p>
         <ul className="landing-report-list" aria-label="Cuplikan laporan publik yang dimuat">
           {events.slice(0, 3).map((event) => {
             const firstClaim = event.claims[0];
-            const sourceName = firstClaim?.sources[0]?.display_name;
+            const firstClaimText = firstClaim?.text.trim() ?? "";
+            const firstSourceName = firstClaim?.sources[0]?.display_name.trim();
             return (
               <li key={event.event_id + ":" + event.version}>
                 <article className="landing-report">
@@ -145,10 +149,24 @@ function PublicPreview({
                   <dl className="landing-report__facts">
                     <div><dt>Siklus</dt><dd>{lifecycleText(event.lifecycle)}</dd></div>
                     <div><dt>Kesegaran</dt><dd>{freshnessText(event.freshness.status)}</dd></div>
-                    <div><dt>Bukti</dt><dd>{evidenceLabel(firstClaim?.evidence_label)}</dd></div>
-                    <div><dt>Sumber</dt><dd>{sourceName ?? "Sumber belum tersedia"}</dd></div>
                     <div className="landing-report__time"><dt>Waktu kejadian</dt><dd>{eventTimeText(event)}</dd></div>
                   </dl>
+                  {firstClaim && firstClaimText ? (
+                    <div className="landing-report__claim" role="group" aria-label={`Klaim pertama dari ${event.claims.length}`}>
+                      <p className="landing-report__claim-heading">Klaim 1 dari {event.claims.length}</p>
+                      <p className="landing-report__claim-text">{firstClaimText}</p>
+                      <dl className="landing-report__claim-facts">
+                        <div><dt>Label bukti untuk klaim ini</dt><dd>{evidenceLabel(firstClaim.evidence_label)}</dd></div>
+                        <div><dt>Sumber pertama pada klaim ini</dt><dd>{firstSourceName || "Sumber belum tersedia untuk klaim ini"}</dd></div>
+                      </dl>
+                    </div>
+                  ) : (
+                    <p className="landing-report__claim-empty">
+                      {event.claims.length === 0
+                        ? "Klaim belum tersedia; label bukti dan sumber tidak ditampilkan."
+                        : "Teks klaim pertama belum tersedia; label bukti dan sumber tidak ditampilkan."}
+                    </p>
+                  )}
                 </article>
               </li>
             );
@@ -176,7 +194,7 @@ export function Landing({ context, events, status, onRetry }: LandingProps) {
   const selectedItem = guideItems.find((item) => item.id === selectedGuide) ?? guideItems[0];
 
   return (
-    <main id="main-content" className="main-shell landing-shell">
+    <main id="main-content" className="main-shell landing-shell" tabIndex={-1}>
       <section className="landing-hero" aria-labelledby="landing-title">
         <div className="landing-hero__copy">
           <p className="landing-kicker">Informasi publik Jakarta</p>

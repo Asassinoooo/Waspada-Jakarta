@@ -12,7 +12,7 @@ Implementation is committed on `work/UI-LANDING-01` in commit `ad8ccad` (`feat(U
 
 ## Integration
 
-Keep `SiteHeader` and its persistent mode selector under the app shell. On the landing route, render `Landing` as the page's single `<main>` element; it already owns `id="main-content"`, so do not wrap it in another main or duplicate that ID. Pass the loaded public context and current report page, map request states to `status`, and make `onRetry` refresh both context and reports. Import `apps/web/src/landing.css` from the app entry point; CSS is intentionally not imported by `Landing.tsx` so the Node SSR test can load the component directly.
+Keep `SiteHeader` and its persistent mode selector under the app shell. On the landing route, render `Landing` as the page's single `<main>` element; it already owns the focusable `id="main-content"` target (`tabIndex=-1`), so do not wrap it in another main or duplicate that ID. Pass the loaded public context and current report page, map request states to `status`, and make `onRetry` refresh both context and reports. Import `apps/web/src/landing.css` from the app entry point; CSS is intentionally not imported by `Landing.tsx` so the Node SSR test can load the component directly.
 
 The component links to `#jelajah`, `#ringkasan-saya`, `#panduan`, and `#privasi`; preserve those route/section targets in the app shell. Landing is not wired into the current app entry point in this assignment.
 
@@ -27,3 +27,9 @@ Run from the worktree through WSL Ubuntu 26.04 with Node `v24.21.0` and npm `10.
 - `git diff --check` and `git diff --cached --check` — passed before the implementation commit.
 
 No browser or headless-browser visual review was available in the worktree; no visual result is claimed. The untracked `node_modules` symlink is local setup and is not part of either commit.
+
+## Follow-up review corrections
+
+The report preview now displays the first claim's text, evidence label, and first listed source together, with labels scoped to that claim and a note that they do not verify the whole report. Empty claim and source collections have explicit states. Report-title and footer links have 44px minimum hit height without turning the rows into cards. The main landmark is focusable through the skip link.
+
+After these corrections, `npx tsx --test apps/web/test/landing.test.tsx` passes 9/9, web typecheck passes, and esbuild parses `landing.css`. The added tests cover multi-claim scoping, empty claims/sources, and the main focus target.

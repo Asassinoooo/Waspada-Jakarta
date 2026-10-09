@@ -84,6 +84,7 @@ function renderLanding(options: {
 test("landing provides direct account-free actions and a captioned illustrative hero", () => {
   const markup = renderLanding();
 
+  assert.match(markup, /<main[^>]*tabindex="-1"/);
   assert.match(markup, /Pahami Jakarta sebelum melangkah/);
   assert.match(markup, /href="#jelajah">Jelajahi laporan/);
   assert.match(markup, /href="#ringkasan-saya">Atur minat/);
@@ -168,4 +169,59 @@ test("expired freshness explains that the source validity ended", () => {
 
   assert.match(markup, /Masa berlaku sumber berakhir/);
   assert.doesNotMatch(markup, /Batas tinjau lewat/);
+});
+
+test("claim preview scopes evidence and source to the displayed claim", () => {
+  const templateClaim = makeEvent().claims[0]!;
+  const firstClaim = {
+    ...templateClaim,
+    claim_id: "claim-first",
+    text: "Pernyataan yang didukung penerbit pertama.",
+    evidence_label: "issuer_notice" as const,
+    sources: [
+      { ...templateClaim.sources[0]!, display_name: "Penerbit klaim pertama" },
+      { ...templateClaim.sources[0]!, display_name: "Sumber tambahan klaim pertama" },
+    ],
+  };
+  const secondClaim = {
+    ...templateClaim,
+    claim_id: "claim-second",
+    text: "Pernyataan terpisah yang tidak tampil pada cuplikan.",
+    evidence_label: "independent_corroboration" as const,
+    sources: [{ ...templateClaim.sources[0]!, display_name: "Penerbit klaim kedua" }],
+  };
+  const markup = renderLanding({
+    context: liveContext,
+    events: [makeEvent({ claims: [firstClaim, secondClaim] })],
+  });
+
+  assert.match(markup, /Bila tersedia, cuplikan menampilkan klaim pertama/);
+  assert.match(markup, /bukan verifikasi seluruh laporan/);
+  assert.match(markup, /Klaim 1 dari 2/);
+  assert.match(markup, /Pernyataan yang didukung penerbit pertama/);
+  assert.match(markup, /Label bukti untuk klaim ini/);
+  assert.match(markup, /Pemberitahuan dari penerbit/);
+  assert.match(markup, /Sumber pertama pada klaim ini/);
+  assert.match(markup, /Penerbit klaim pertama/);
+  assert.doesNotMatch(markup, /Pernyataan terpisah yang tidak tampil/);
+  assert.doesNotMatch(markup, /Didukung laporan independen/);
+  assert.doesNotMatch(markup, /Penerbit klaim kedua|Sumber tambahan klaim pertama/);
+});
+
+test("missing claims and sources stay explicit instead of implying evidence", () => {
+  const noClaims = renderLanding({
+    context: liveContext,
+    events: [makeEvent({ claims: [] })],
+  });
+  const templateClaim = makeEvent().claims[0]!;
+  const noSources = renderLanding({
+    context: liveContext,
+    events: [makeEvent({ claims: [{ ...templateClaim, sources: [] }] })],
+  });
+
+  assert.match(noClaims, /Klaim belum tersedia; label bukti dan sumber tidak ditampilkan/);
+  assert.doesNotMatch(noClaims, /Label bukti untuk klaim ini|Sumber pertama pada klaim ini/);
+  assert.match(noSources, /Klaim 1 dari 1/);
+  assert.match(noSources, /Label bukti untuk klaim ini/);
+  assert.match(noSources, /Sumber belum tersedia untuk klaim ini/);
 });
