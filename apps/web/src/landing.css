@@ -37,6 +37,8 @@
   font-weight: 720;
   letter-spacing: -0.055em;
   line-height: 0.99;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .landing-hero__summary {
