@@ -1,5 +1,9 @@
 # Implementation backlog
 
+## Public experience wave — 9 October 2026
+
+Team 12 authorized implementation of the future UX/design plan and selected Flutter/Dart for mobile. See [UX-DESIGN-FLUTTER-01](assignments/UX-DESIGN-FLUTTER-01.md) for isolated branches, owned paths, dependencies and acceptance. UI-LANDING-01, UI-EXPERIENCE-01 and MOBILE-FLUTTER-01 are assigned; root owns integration/review. This changes no source, hosted deployment, push, billing or public-account gate.
+
 ## Recent task status
 
 | ID | Objective | Dependency / design | Status |
