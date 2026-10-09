@@ -60,3 +60,27 @@ Stop if a scenario cannot be represented without fabricated evidence/geometry, a
 ## Implementation handoff
 
 Append branch/worktree, exact base, commit SHAs and messages, changed paths, behavior, actual verification, versions, limitations, configuration impact, and remaining decisions here.
+
+### Delivery record
+
+- **Branch:** `work/INT-01-SYNTHETIC-DEMO-SCENARIO-CORE`
+- **Worktree:** `/mnt/d/Projects/RPL/.codex-build/worktrees/int-01-synthetic-demo-scenario-core`
+- **Assigned base:** `1ecaf5ccfdb69619b79056c5527dc3db80f0161f`
+- **Implementation commit:** `983e5fce20a5483e58c33f8eebbc7f263faca81e` - `feat(INT-01): add four synthetic demo scenarios`
+- **Changed paths:** `apps/worker/src/layers/l4-application-integration/synthetic-fixtures.ts`; `apps/worker/test/api.test.ts`; `apps/web/test/smoke-local.tsx`; this assignment handoff section.
+
+The demo catalog now has four stable Bahasa Indonesia archetypes, retaining `synthetic-demo-01` and `synthetic-demo-02` and adding two stable IDs. Each record is explicitly labelled `SIMULASI FIKTIF`; the fictional crime record is historical/resolved, the gathering has a simulated transport impact, the weather example has a simulated flood observation, and the group notice is audience-scoped only. Lifecycle and freshness remain separate. Claims and source references remain empty, unsupported geometry is absent, and GeoJSON remains an empty FeatureCollection. API/public contract versions, IDs already in use, live-mode behavior, database, providers, and deployment configuration were not changed.
+
+**Verification (WSL Ubuntu-26.04, existing dependencies only):**
+
+- Focused API tests (`tsx --test apps/worker/test/api.test.ts`): passed, 30/30, rerun after the final assertion-only test refinement.
+- `npm test --workspace=@waspada/worker`: passed, 465/465. This ran before the final assertion-only refinement; the implementation code was unchanged afterward.
+- `npm test`: passed with exit code 0. This ran before the final assertion-only refinement; the implementation code was unchanged afterward.
+- `npm run typecheck`: passed, rerun after the final assertion-only test refinement.
+- `npm run build`: passed, including the Vite production build and Wrangler dry run. No live binding was used.
+- `npm run smoke --workspace=@waspada/web`: passed against the local demo API.
+- `git diff --check 1ecaf5ccfdb69619b79056c5527dc3db80f0161f..HEAD`: passed after both commits.
+
+**Runtime/package versions:** WSL Ubuntu 26.04 LTS; Node.js `v24.21.0`; npm `11.19.0`; tsx `4.23.15`; TypeScript `7.0.2`; Vite `8.3.0`; Wrangler `4.137.0`.
+
+**Limitations and impact:** These are authored synthetic interface fixtures, not sourced incident records or evidence and not a completion of parent task `INT-01`. No migration, environment, dependency, or deployment configuration change is needed. No remaining contract/design decision is required for this slice; root review and acceptance remain pending.
