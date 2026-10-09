@@ -1,8 +1,11 @@
 # UX-DESIGN-FLUTTER-01 — integrated local experience
 
-**Date:** 9 October 2026 · Team 12  
-**Integration branch:** `codex/ux-design-flutter`  
-**Status:** Accepted for the bounded local implementation after root review.  
+**Date:** 9 October 2026 · Team 12
+
+**Integration branch:** `codex/ux-design-flutter`
+
+**Status:** Accepted for the bounded local implementation after root review.
+
 **Scope:** Account-free public web experience and Flutter/Dart Android reader. This record supersedes pending integration statements in the individual task-branch handoffs; it does not establish hosted or native-release readiness.
 
 ## Delivered behavior
