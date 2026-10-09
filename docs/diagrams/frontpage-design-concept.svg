@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1260" height="1140" viewBox="0 0 1260 1140" role="img" aria-labelledby="title desc">
+  <title id="title">Waspada Jakarta: proposed desktop and mobile front-page design</title>
+  <desc id="desc">Static planning artwork, not a running interface. Desktop pairs a headline and account-free browse action with an abstract Jakarta river, flyover and Monas illustration. Mobile puts actions before artwork. Captions separate the illustration and educational evidence panels from actual reports. Notes describe a future brief city entrance and user-controlled evidence panels, with static reduced-motion fallback.</desc>
+  <defs>
+    <style>
+      text { font-family: "Segoe UI", Arial, sans-serif; fill: #18323A; }
+      .small { font-size: 14px; }
+      .body { font-size: 15px; }
+      .quiet { fill: #52676B; }
+      .strong { font-weight: 700; }
+      .white { fill: #FFFFFF; }
+    </style>
+    <g id="city">
+      <path d="M0 14 L286 0 L334 38 L327 204 L30 214 L0 184Z" fill="#D5DEDB"/>
+      <path d="M5 8 L278 0 L322 36 L318 194 L28 205 L5 173Z" fill="#EAF0ED"/>
+      <path d="M24 51 H65 V25 H93 V85 H118 V52 H148 V70 H176 V30 H210 V76 H236 V39 H274 V89 H296 V147 H24Z" fill="#D5DEDB"/>
+      <path d="M184 90 L190 37 L196 90 L210 92 V101 H170 V93Z" fill="#18323A"/>
+      <path d="M187 36 L190 20 L194 30 L192 37Z" fill="#E7B448"/>
+      <path d="M-2 172 C67 121 62 79 144 112 C195 133 185 170 323 138 L323 171 C203 191 172 166 130 144 C93 126 72 164 28 192Z" fill="#087B75"/>
+      <path d="M30 165 C72 123 104 151 133 127 C170 98 230 116 292 84" fill="none" stroke="#F4F7F5" stroke-width="26"/>
+      <path d="M30 165 C72 123 104 151 133 127 C170 98 230 116 292 84" fill="none" stroke="#18323A" stroke-width="4"/>
+      <path d="M87 156 V186 M157 132 V161 M237 120 V146" fill="none" stroke="#18323A" stroke-width="4"/>
+      <path d="M42 38 H52 M69 37 H79 M120 77 H132 M225 46 H233 M253 62 H264" fill="none" stroke="#F4F7F5" stroke-width="5"/>
+    </g>
+  </defs>
+
+  <rect width="1260" height="1140" fill="#EAF0ED"/>
+  <text x="24" y="39" font-size="26" class="strong">Jakarta field atlas, in motion</text>
+  <text x="24" y="65" class="body quiet">Front-page concept · Static planning sketch · Current application unchanged</text>
+  <text x="24" y="93" class="small quiet">Desktop composition</text>
+  <text x="918" y="93" class="small quiet">Mobile: actions before artwork</text>
+
+  <rect x="24" y="108" width="860" height="692" rx="14" fill="#F4F7F5" stroke="#D5DEDB"/>
+  <path d="M24 156 H884" stroke="#D5DEDB"/>
+  <rect x="49" y="126" width="19" height="19" rx="5" fill="#087B75"/>
+  <path d="M54 139 L59 130 L64 139Z" fill="#FFFFFF"/>
+  <text x="80" y="141" font-size="17" class="strong">Waspada Jakarta</text>
+  <text x="543" y="140" class="small">Jelajah</text>
+  <text x="623" y="140" class="small">Pembaruan</text>
+  <text x="730" y="140" class="small">Tentang data</text>
+
+  <rect x="49" y="172" width="810" height="36" rx="6" fill="#FFFFFF" stroke="#D5DEDB"/>
+  <rect x="49" y="172" width="4" height="36" fill="#E7B448"/>
+  <text x="65" y="195" class="small strong">DEMO — data historis/sintetis; bukan peringatan langsung.</text>
+
+  <text x="56" y="277" font-size="40" class="strong">Pahami Jakarta</text>
+  <text x="56" y="324" font-size="40" class="strong">sebelum</text>
+  <text x="56" y="371" font-size="40" class="strong">melangkah.</text>
+  <text x="56" y="409" class="body quiet">Baca laporan, waktu kejadian, dan bukti</text>
+  <text x="56" y="432" class="body quiet">untuk memahami dampak pada aktivitasmu.</text>
+  <rect x="56" y="457" width="200" height="46" rx="8" fill="#087B75"/>
+  <text x="82" y="485" class="body white strong">Jelajahi laporan</text>
+  <text x="56" y="532" class="body" fill="#087B75">Atur minat (opsional)</text>
+  <text x="56" y="554" class="small quiet">Buka laporan tanpa akun.</text>
+
+  <rect x="450" y="243" width="382" height="249" rx="12" fill="#18323A"/>
+  <use href="#city" x="475" y="263"/>
+  <path d="M475 489 H808" stroke="#D5DEDB"/>
+  <text x="475" y="515" class="small quiet">Ilustrasi Jakarta — bukan peta kejadian</text>
+  <text x="475" y="538" class="small quiet">Pita kali muncul; bidang kota menyatu.</text>
+  <rect x="733" y="228" width="81" height="27" rx="5" fill="#FFFFFF" stroke="#D5DEDB"/>
+  <text x="741" y="247" class="small">≤1200 ms</text>
+
+  <path d="M49 581 H859" stroke="#D5DEDB"/>
+  <text x="56" y="609" class="small quiet">Contoh cara membaca — bukan laporan aktual</text>
+  <rect x="56" y="626" width="107" height="39" rx="7" fill="#FFFFFF" stroke="#D5DEDB"/>
+  <text x="83" y="651" class="body">Laporan</text>
+  <rect x="171" y="626" width="107" height="39" rx="7" fill="#087B75"/>
+  <text x="202" y="651" class="body white strong">Bukti</text>
+  <rect x="286" y="626" width="107" height="39" rx="7" fill="#FFFFFF" stroke="#D5DEDB"/>
+  <text x="312" y="651" class="body">Konteks</text>
+  <text x="434" y="643" class="body strong">Baca sumber, bukan hanya judul.</text>
+  <text x="434" y="666" class="small quiet">Periksa atribusi, waktu, dan batas informasi.</text>
+  <path d="M49 697 H859" stroke="#D5DEDB"/>
+  <text x="56" y="724" class="body strong">Laporan publik / status ketersediaan</text>
+  <text x="56" y="748" class="small quiet">Tampilkan hanya setelah mode dan data dikonfirmasi; jangan isi dengan laporan buatan.</text>
+  <text x="56" y="778" class="small quiet">Tidak ada laporan bukan berarti wilayah aman.    Privasi    Bantuan aksesibilitas</text>
+
+  <rect x="918" y="108" width="318" height="814" rx="14" fill="#F4F7F5" stroke="#D5DEDB"/>
+  <text x="937" y="141" font-size="17" class="strong">Waspada Jakarta</text>
+  <rect x="1168" y="111" width="55" height="44" rx="7" fill="#F4F7F5" stroke="#D5DEDB"/>
+  <text x="1179" y="141" class="small">Menu</text>
+  <path d="M918 156 H1236" stroke="#D5DEDB"/>
+  <rect x="937" y="172" width="280" height="64" rx="6" fill="#FFFFFF" stroke="#D5DEDB"/>
+  <rect x="937" y="172" width="4" height="64" fill="#E7B448"/>
+  <text x="949" y="195" class="small strong">DEMO — data historis/sintetis;</text>
+  <text x="949" y="218" class="small">bukan peringatan langsung.</text>
+  <text x="937" y="281" font-size="32" class="strong">Pahami Jakarta</text>
+  <text x="937" y="318" font-size="32" class="strong">sebelum</text>
+  <text x="937" y="355" font-size="32" class="strong">melangkah.</text>
+  <text x="937" y="390" font-size="14" class="quiet">Baca laporan, waktu kejadian, dan bukti</text>
+  <text x="937" y="411" font-size="14" class="quiet">untuk memahami dampak aktivitasmu.</text>
+  <rect x="937" y="431" width="280" height="46" rx="8" fill="#087B75"/>
+  <text x="1016" y="459" class="body white strong">Jelajahi laporan</text>
+  <rect x="937" y="489" width="280" height="44" rx="8" fill="#F4F7F5" stroke="#D5DEDB"/>
+  <text x="990" y="517" font-size="14">Atur minat (opsional)</text>
+  <rect x="950" y="542" width="252" height="159" rx="8" fill="#18323A"/>
+  <g transform="translate(963 548) scale(.65)"><use href="#city"/></g>
+  <text x="947" y="724" font-size="14" class="quiet">Ilustrasi Jakarta</text>
+  <text x="947" y="744" font-size="14" class="quiet">bukan peta kejadian</text>
+  <path d="M937 759 H1217" stroke="#D5DEDB"/>
+  <text x="937" y="784" font-size="14" class="quiet">Contoh cara membaca</text>
+  <text x="937" y="804" font-size="14" class="quiet">bukan laporan aktual</text>
+  <rect x="937" y="816" width="88" height="44" rx="7" fill="#FFFFFF" stroke="#D5DEDB"/>
+  <text x="954" y="844" class="small">Laporan</text>
+  <rect x="1033" y="816" width="88" height="44" rx="7" fill="#087B75"/>
+  <text x="1059" y="844" class="small white strong">Bukti</text>
+  <rect x="1129" y="816" width="88" height="44" rx="7" fill="#FFFFFF" stroke="#D5DEDB"/>
+  <text x="1146" y="844" class="small">Konteks</text>
+  <text x="937" y="888" font-size="14" class="strong">Baca sumber, bukan hanya judul.</text>
+  <text x="937" y="909" font-size="14" class="quiet">Periksa atribusi dan batas informasi.</text>
+
+  <rect x="24" y="948" width="398" height="145" rx="10" fill="#FFFFFF"/>
+  <text x="45" y="980" font-size="18" class="strong">One memorable entrance</text>
+  <text x="45" y="1009" class="body quiet">River reveals; flyover and skyline settle.</text>
+  <text x="45" y="1032" class="body quiet">One bounded sequence, no alarm loops.</text>
+  <text x="45" y="1066" class="small">Motion disabled: complete static artwork.</text>
+  <rect x="436" y="948" width="390" height="145" rx="10" fill="#FFFFFF"/>
+  <text x="457" y="980" font-size="18" class="strong">Interaction explains evidence</text>
+  <text x="457" y="1009" class="body quiet">Buttons select an educational panel.</text>
+  <text x="457" y="1032" class="body quiet">Touch and keyboard get the same content.</text>
+  <text x="457" y="1066" class="small">No invented incident, time or source.</text>
+  <rect x="840" y="948" width="396" height="145" rx="10" fill="#FFFFFF"/>
+  <text x="861" y="980" font-size="18" class="strong">Useful before the animation</text>
+  <text x="861" y="1009" class="body quiet">Purpose, mode and browse action stay visible.</text>
+  <text x="861" y="1032" class="body quiet">No account, install or permission gate.</text>
+  <text x="861" y="1066" class="small">Responsive and accessible static fallback.</text>
+  <text x="24" y="1124" class="small quiet">Concept sheet is illustrative, not pixel-perfect UI or performance evidence. No motion is embedded in this SVG.</text>
+</svg>

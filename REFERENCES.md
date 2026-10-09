@@ -1,5 +1,13 @@
 # Waspada Jakarta Reference Register
 
+## Visual design and motion plan — reviewed 9 October 2026
+
+- **Anthropic skill maintainers.** [Frontend Design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md) and [raw source](https://raw.githubusercontent.com/anthropics/skills/main/skills/frontend-design/SKILL.md). Reviewed 9 October 2026 for subject-specific visual direction, compact tokens and concept critique. Used as design guidance, not an instruction to implement the proposed screens now.
+- **Vercel Labs.** [Web Design Guidelines skill](https://github.com/vercel-labs/agent-skills/blob/main/skills/web-design-guidelines/SKILL.md) and [current Web Interface Guidelines](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md). Reviewed 9 October 2026 as a planning checklist for focus, touch, motion and stable layout. This task does not claim a frontend code audit or compliance result.
+- **MDN Web Docs.** [prefers-reduced-motion](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-reduced-motion). Reviewed 9 October 2026. Supports offering reduced/static motion variants according to the user's device preference. Waspada's exact animation durations, amplitudes and transfer budget are proposed project decisions.
+
+The [visual design and motion plan](docs/VISUAL_DESIGN_PLAN.md) reuses the existing colour identity and includes original vector concept artwork. No photograph, font download, animation dependency or external service was added. Accessibility standards remain registered with the future experience roadmap below.
+
 ## Future experience roadmap — reviewed 9 October 2026
 
 - **W3C.** [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/). Reviewed 9 October 2026. Supports the future AA accessibility target, contrast, reflow, keyboard/focus and target-size checks. This is a target, not a conformance assessment of the current application. Waspada's 44 CSS-pixel control target is a product choice, not the AA minimum.

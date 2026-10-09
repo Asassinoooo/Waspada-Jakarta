@@ -8,6 +8,8 @@
 
 This roadmap extends the public experience described in the [Software Development Plan](../SOFTWARE_DEVELOPMENT_PLAN.md) and [UI/API specification](UX_API_SPEC.md). It supplies future user stories and acceptance criteria, not evidence that these capabilities are implemented or released. The current application, API contracts, data model, configuration and implementation backlog remain unchanged. Each selected story needs a scoped implementation assignment before coding.
 
+The companion [visual design and motion plan](VISUAL_DESIGN_PLAN.md) specifies a more expressive Jakarta front page, shared design tokens and bounded animation, with a [desktop/mobile concept sheet](diagrams/frontpage-design-concept.svg). Its proposed design packages supplement these stories without activating implementation.
+
 ## 1. Outcome and boundaries
 
 Help residents and visitors answer four questions quickly: **What was reported? Does it affect me? How current is it? What evidence supports it?** Public discovery, event details, evidence and reviewed history remain accessible without a Waspada account. Choosing interests, completing onboarding, granting permissions or installing an app must never become a condition of browsing.
