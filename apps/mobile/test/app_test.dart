@@ -360,6 +360,21 @@ void main() {
     }
   });
 
+  testWidgets('secondary screens label their back controls in Bahasa',
+      (tester) async {
+    for (final screen in <Widget>[
+      PreferencesScreen(repository: PreferencesRepository(MemoryStorage())),
+      const ReadGuideScreen(),
+    ]) {
+      await tester.pumpWidget(MaterialApp(
+        theme: buildWaspadaTheme(),
+        home: screen,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Kembali'), findsOneWidget);
+    }
+  });
+
   testWidgets(
       'detail shows returned evidence and times while an unavailable history stays separate',
       (tester) async {

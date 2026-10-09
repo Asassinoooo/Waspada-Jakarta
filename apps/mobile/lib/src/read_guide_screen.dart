@@ -7,7 +7,12 @@ class ReadGuideScreen extends StatelessWidget {
   const ReadGuideScreen({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Panduan membaca')),
+        appBar: AppBar(
+            title: const Text('Panduan membaca'),
+            leading: IconButton(
+                tooltip: 'Kembali',
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(Icons.arrow_back))),
         body: ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
             children: [

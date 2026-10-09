@@ -130,14 +130,20 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Minat dan privasi'), actions: [
-          IconButton(
-              tooltip: 'Buka panduan membaca',
-              onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                      builder: (_) => const ReadGuideScreen())),
-              icon: const Icon(Icons.help_outline))
-        ]),
+        appBar: AppBar(
+            title: const Text('Minat dan privasi'),
+            leading: IconButton(
+                tooltip: 'Kembali',
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(Icons.arrow_back)),
+            actions: [
+              IconButton(
+                  tooltip: 'Buka panduan membaca',
+                  onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                          builder: (_) => const ReadGuideScreen())),
+                  icon: const Icon(Icons.help_outline))
+            ]),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
@@ -162,7 +168,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                       const ReadOnlyNotice(
                           title: 'Pilihan tersimpan tidak dapat dibaca.',
                           message:
-                              'Pilihan ini belum dapat dibaca. Simpan pilihan baru untuk mengganti pilihan tersimpan, atau hapus minat untuk membersihkan data aplikasi ini.'),
+                              'Pilihan ini belum dapat dibaca. Simpan pilihan baru untuk mengganti pilihan tersimpan, atau hapus minat yang disimpan aplikasi ini.'),
                     ],
                     if (_loadStatus == PreferenceLoadStatus.unavailable) ...[
                       const SizedBox(height: 12),
