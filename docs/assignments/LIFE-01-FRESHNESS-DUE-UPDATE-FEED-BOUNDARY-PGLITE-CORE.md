@@ -1,6 +1,6 @@
 # LIFE-01-FRESHNESS-DUE-UPDATE-FEED-BOUNDARY-PGLITE-CORE — due transitions stay out of the public update feed
 
-- **Status:** Assigned as a test-only local composition.
+- **Status:** Accepted locally at root merge `0702b4c2affb3a992b4af89c40fbc70147b561c0` after independent review and integrated WSL validation.
 - **Backlog ID:** `LIFE-01-FRESHNESS-DUE-UPDATE-FEED-BOUNDARY-PGLITE-CORE`
 - **Objective:** Prove a Layer 4 due-freshness evaluation changes current-public freshness without creating a public event-version update or advancing the exact-live `/api/v1/updates` cursor.
 - **Dependencies:** `LIFE-01-FRESHNESS-DUE-COMPOSITION-PGLITE-CORE`, `API-PUBLIC-UPDATES-RUNTIME-CORE`, `API-PUBLIC-UPDATES-READER-CORE`, `API-PUBLIC-UPDATES-PROJECTION-CORE`, `DB-TEST-RUNNER-ISOLATION`; ADR-026/032/038.
@@ -54,6 +54,10 @@ Stop and report if exact-live API composition requires a production, contract, s
   - `npm run db:test` — started and interrupted at root's request to serialize broad validation. Eighteen individual DB test files had passed; the runner had started `migrations.test.ts` when Ctrl-C stopped it. The DB suite as a whole is unverified; this is not a passing result.
   - `npm test`, `npm run typecheck`, and `npm run build` — not run by the implementer; root will run the shared sequential integrated checks after branch integration.
 - **Limitations and configuration impact:** Test-only PGlite evidence. No production/API/DTO/OpenAPI, schema/migration/grant, dependency, configuration, source/provider, external-service, deployment or shared-database changes. Hosted Neon and Cloudflare behavior remain unverified.
-- **Remaining decisions:** None for this test slice. Root review, integration and its coordinated broad checks remain pending.
+- **Remaining decisions:** None for this test slice. Root acceptance and integrated checks are recorded below.
+
+### Root review and acceptance — 9 October 2026
+
+Root reviewed the assigned-path diff and accepted the PGlite boundary test at merge `0702b4c2affb3a992b4af89c40fbc70147b561c0`. Agent commits preserved in the merge: `36612448839ea39ceb9931618a70a32bfda8e804` — `test(LIFE-01-FRESHNESS-DUE-UPDATE-FEED-BOUNDARY): cover due transition feed boundary`; `ce8bc364df8ee40420d4da571937ff8db29f0e04` — `docs(LIFE-01-FRESHNESS-DUE-UPDATE-FEED-BOUNDARY): record PGlite handoff`. Root independently reran the focused composition (1/1). Integrated WSL checks passed `npm run db:test` (45/45 files), `npm test` (web 61/61, Worker 464/464, DB 45/45 files, evaluation 19/19), `npm run typecheck`, and `npm run build` (Vite production build and Wrangler dry-run). The agent's broad DB run was interrupted at root's request and is not counted as passing; the integrated sequential rerun passed. All live-shaped rows remained authored and confined to disposable PGlite. Hosted database behavior remains unverified.
 
 Do not merge or push.

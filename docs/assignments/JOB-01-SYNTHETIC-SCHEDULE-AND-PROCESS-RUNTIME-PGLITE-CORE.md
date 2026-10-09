@@ -1,11 +1,11 @@
 # JOB-01-SYNTHETIC-SCHEDULE-AND-PROCESS-RUNTIME-PGLITE-CORE — compose scheduled enqueue and processing
 
 **Parent package:** JOB-01, FR-02/03/13, NFR-01/05/07  
-**Status:** Assigned for local synthetic-only verification  
+**Status:** Accepted locally at root merge `ab24c15b6a11cfdc6690d1a1287f050bfede5323` after independent review and integrated WSL validation
 **Implementation model:** GPT-6 Luna, max reasoning  
 **Branch:** `work/JOB-01-SYNTHETIC-SCHEDULE-AND-PROCESS-RUNTIME-PGLITE-CORE`  
 **Worktree:** `.codex-build/worktrees/job-01-synthetic-schedule-process-runtime-pglite-core` (WSL: `/mnt/d/Projects/RPL/.codex-build/worktrees/job-01-synthetic-schedule-process-runtime-pglite-core`)  
-**Base:** Root records the exact `main` commit in the dispatch/checkpoint record before implementation begins.  
+**Base:** `0f9d2baabe88448e5448fd255558eb2ba06e49ef`
 **Dependencies:** `JOB-01-SCHEDULED-POLL-CORE`, `JOB-01-SYNTHETIC-SCHEDULE-RUNTIME-CORE`, `JOB-01-SYNTHETIC-POLL-CLAIM-CORE`, `JOB-01-SYNTHETIC-POLL-PROCESSOR-CORE`, `JOB-01-SYNTHETIC-POLL-CYCLE-PGLITE-CORE`, `JOB-01-SYNTHETIC-POLL-WORKER-RUNTIME-CORE`, `DATA-01`, and `DB-TEST-RUNNER-ISOLATION`; ADR-002/033/040.  
 **Contract baseline:** Existing scheduler, queue, fixture runner, L1 schema and roles, and synthetic report/extraction contracts. No public, API, or database contract change.
 
@@ -61,3 +61,7 @@ Stop and report if composing the accepted factories requires production changes,
 ## Handoff fields
 
 Report branch/worktree, exact assigned base, commit SHA(s) and exact messages, changed paths, behavior proven, actual checks and results, versions, limitations, migration/configuration impact, failures/reruns, and remaining decisions. Root independently reviews and accepts the result.
+
+## Root review and acceptance — 9 October 2026
+
+Root reviewed the test-only diff and accepted it at merge `ab24c15b6a11cfdc6690d1a1287f050bfede5323`. Agent commits preserved in the merge: `4f2d92e5fa3657ba0a2f2c2fed605d115116ab4e` — `test(JOB-01): compose synthetic schedule and processing runtimes`; `e6236498dd53f7de8447834c99ef2d6d0ceca7ea` — `docs(JOB-01): record schedule-process composition handoff`. Root independently reran the focused PGlite test (1/1). Integrated WSL checks passed `npm run db:test` (45/45 files), `npm test` (web 61/61, Worker 464/464, DB 45/45 files, evaluation 19/19), `npm run typecheck`, and `npm run build` (Vite production build and Wrangler dry-run). The agent's focused test passed 1/1; the agent did not run broad suites, typecheck, or build. The integrated test composes factories only: the Worker entrypoint and Cron remain disabled, and hosted execution is unverified.

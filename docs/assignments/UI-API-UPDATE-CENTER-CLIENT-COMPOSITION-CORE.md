@@ -1,6 +1,6 @@
 # UI-API-UPDATE-CENTER-CLIENT-COMPOSITION-CORE — compose the update poller with its HTTP clients
 
-- **Status:** Assigned as a test-only client-composition slice.
+- **Status:** Accepted locally at root merge `47f8302e4139870e62915acfa47ee5c870868a5f` after independent review and integrated WSL validation.
 - **Backlog ID:** `UI-API-UPDATE-CENTER-CLIENT-COMPOSITION-CORE`
 - **Objective:** Prove the existing browser update-centre poller uses the default HTTP clients correctly for an authored correction and cursor expiry, without injecting replacement request functions.
 - **Dependencies:** `UI-02-UPDATE-CENTER-CORE`, `API-PUBLIC-UPDATES-RUNTIME-CORE`, and root acceptance of `API-01-PUBLICATION-UPDATE-FEED-PGLITE-CORE`; ADR-026.
@@ -51,4 +51,8 @@ Append the branch/worktree, exact assigned base, commit SHAs/messages, changed p
 - **Runtime/tool versions:** WSL Ubuntu `26.04`; Node `v24.21.0`; npm `11.19.0`; Git `2.53.0`; TypeScript `7.0.2`; Vite `8.3.0`; tsx `4.23.15`; Wrangler `4.137.0`.
 - **Limitations:** The interrupted broad suite does not establish full repository test success. No live network, browser, Worker, hosted database, source, provider, or model was used. The temporary `node_modules` symlinks to existing root dependencies were not staged and are removed before final handoff.
 - **Configuration impact:** None. No production code, API contract, route, DTO, OpenAPI, database, dependency, source, or deployment configuration changed. The test exercises only existing cursor storage and local matching behavior.
-- **Remaining decisions:** None within the assigned slice. Root review and integration remain pending.
+- **Remaining decisions:** None within the assigned slice. Root acceptance and integration are recorded below.
+
+### Root review and acceptance — 9 October 2026
+
+Root reviewed the branch diff and accepted the test-only composition at merge `47f8302e4139870e62915acfa47ee5c870868a5f`. Agent commits preserved in the merge: `7dc2e945fdda1b6d857a3374595212a7bb1ed60f` — `test(UI-API-UPDATE-CENTER-CLIENT-COMPOSITION-CORE): verify default-client composition`; `4c0fcf5086c1f3f6924d00d96e2991ff99e935d0` — `docs(UI-API-UPDATE-CENTER-CLIENT-COMPOSITION-CORE): record handoff`. Root independently reran the focused web/API-client test (23/23). Integrated WSL checks passed `npm test` (web 61/61, Worker 464/464, DB 45/45 files, evaluation 19/19), `npm run typecheck`, and `npm run build` (Vite production build and Wrangler dry-run). The agent's intermediate broad test run was interrupted at root's request and is not counted as passing; the integrated sequential rerun passed. No production code, API contract, route, dependency, or configuration changed. Hosted services and live data remain unverified.
