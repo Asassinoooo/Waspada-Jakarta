@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ApiHttpError, type PublicUpdatePage } from "../src/api-client.js";
+import { ApiHttpError, listEvents, type PublicUpdatePage } from "../src/api-client.js";
 import {
   createUpdateCenterPoller,
   hydrateAndMatchUpdates,
@@ -26,7 +26,7 @@ import {
   type BriefingInterests,
   type PreferencesStorage,
 } from "../src/preferences-store.js";
-import type { HistoryEntry, PublicContext, PublicScope, TimeScope } from "@waspada/worker/public-contracts";
+import type { EventDetail, HistoryEntry, PublicContext, PublicScope, TimeScope } from "@waspada/worker/public-contracts";
 
 const liveContext: PublicContext = {
   dataset_mode: "live",
@@ -560,6 +560,177 @@ test("page budget stops after five full pages and continues from the fifth curso
   assert.equal(scheduler.fireNext(), UPDATE_POLL_INTERVAL_MS);
   await poller.refresh();
   assert.equal(requests.at(-1), "cursor-5");
+});
+
+test("default update clients compose correction hydration and 410 cursor recovery", async (t) => {
+  const storage = new MemoryStorage();
+  const scheduler = new FakeScheduler();
+  const captured = captureStates();
+  const eventId = "synthetic-correction-event";
+  const baselineCursor = "fixture-baseline-cursor";
+  const correctionCursor = "fixture-correction-cursor";
+  const rebasedCursor = "fixture-rebased-cursor";
+  const resumedCursor = "fixture-resumed-cursor";
+  const localInterests = interests({ places: ["Pondok Labu"] });
+  const validity = { valid_from: changedAt, valid_until: null };
+  const currentDetail: EventDetail = {
+    event_id: eventId,
+    version: 3,
+    title: "Event sintetis terkini di Pondok Labu",
+    summary: "Detail publik sintetis untuk pencocokan lokal.",
+    category: "disasters_weather",
+    tags: [],
+    lifecycle: "ongoing",
+    freshness: { status: "current", evaluated_at: checkedAt, review_due_at: null, basis: "manual_review" },
+    event_time: eventTime,
+    validity,
+    scope: scope(),
+    claims: [{
+      claim_id: "synthetic-claim-1",
+      text: "Klaim sintetis untuk pengujian pencocokan lingkup.",
+      event_time: eventTime,
+      validity,
+      scope: scope({ places: ["Pondok Labu"] }),
+      qualifiers: [],
+      evidence_label: "issuer_notice",
+      sources: [],
+    }],
+    impacts: [],
+    published_at: checkedAt,
+    geometries: [],
+  };
+  const baselinePage = page([], baselineCursor);
+  const correctionPage = page([
+    change(eventId, 2, "Koreksi sintetis yang ditinjau untuk diuji pada pusat pembaruan."),
+  ], correctionCursor);
+  const rebasedPage = page([], rebasedCursor);
+  const resumedPage = page([], resumedCursor);
+  const requestOrder: string[] = [];
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  let phase: "initial" | "reset" = "initial";
+  const originalFetch = globalThis.fetch;
+  const fixtureOrigin = "https://fixture.invalid";
+  const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    requests.push({ url, init });
+    const parsed = new URL(url, fixtureOrigin);
+    assert.equal(parsed.origin, fixtureOrigin, "all requests must stay on the authored local fixture origin");
+    assert.doesNotMatch(url, /Pondok Labu/u, "local interests must not appear in request URLs");
+    assert.doesNotMatch(JSON.stringify(init?.headers ?? {}), /Pondok Labu/u, "local interests must not appear in request headers");
+    assert.equal(init?.body, undefined, "polling and detail requests must not send a request body");
+
+    if (parsed.pathname === "/api/v1/updates") {
+      const cursor = parsed.searchParams.get("cursor");
+      assert.deepEqual([...parsed.searchParams.keys()], cursor === null ? ["limit"] : ["cursor", "limit"]);
+      assert.equal(parsed.searchParams.get("limit"), "20");
+      assert.equal(init?.method, undefined);
+      assert.deepEqual(init?.headers, { accept: "application/json" });
+      assert.equal(init?.cache, "no-store");
+      requestOrder.push("updates:" + (cursor ?? "baseline"));
+
+      if (phase === "initial" && cursor === null) return jsonResponse(baselinePage);
+      if (phase === "initial" && cursor === baselineCursor) return jsonResponse(correctionPage);
+      if (phase === "reset" && cursor === correctionCursor) {
+        return new Response("private cursor details", { status: 410 });
+      }
+      if (phase === "reset" && cursor === null) {
+        assert.deepEqual(captured.states.at(-1)?.items, [], "the expired feed clears displayed updates before re-baselining");
+        assert.equal(captured.states.at(-1)?.resetNotice, true);
+        return jsonResponse(rebasedPage);
+      }
+      if (phase === "reset" && cursor === rebasedCursor) return jsonResponse(resumedPage);
+      throw new Error("Unexpected update cursor fixture: " + String(cursor));
+    }
+
+    if (parsed.pathname === "/api/v1/events/" + encodeURIComponent(eventId)) {
+      assert.equal(parsed.search, "");
+      requestOrder.push("detail");
+      assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), baselineCursor, "the prior baseline remains stored during detail hydration");
+      assert.deepEqual(storage.writes, [{ key: UPDATE_CURSOR_STORAGE_KEY, value: baselineCursor }], "the correction cursor is not written before hydration completes");
+      assert.equal(captured.states.at(-1)?.phase, "details");
+      assert.deepEqual(captured.states.at(-1)?.items, [], "the correction is not exposed before detail validation");
+      assert.equal(init?.method, undefined);
+      assert.deepEqual(init?.headers, { accept: "application/json" });
+      return jsonResponse(currentDetail);
+    }
+
+    if (parsed.pathname === "/api/v1/events") {
+      assert.equal(parsed.search, "");
+      requestOrder.push("snapshot");
+      assert.equal(init?.method, undefined);
+      assert.deepEqual(init?.headers, { accept: "application/json" });
+      return jsonResponse({ data: [], page: { next_cursor: null, cursor_expires_at: null } });
+    }
+
+    throw new Error("Unexpected fixture route: " + url);
+  }) as typeof fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  assert.equal(storage.values.size, 0, "first use must begin without a stored cursor or any local state");
+
+  const poller = createUpdateCenterPoller({
+    interests: localInterests,
+    storage,
+    scheduler,
+    onState: captured.onState,
+    refreshCurrentEvents: async () => { await listEvents(); },
+  });
+  t.after(() => poller.stop());
+
+  poller.start(true);
+  await poller.refresh();
+
+  assert.deepEqual(requestOrder, ["updates:baseline", "updates:" + baselineCursor, "detail"]);
+  const correctionState = captured.states.at(-1);
+  assert.equal(correctionState?.status, "ready");
+  assert.equal(correctionState?.items.length, 1);
+  assert.equal(correctionState?.items[0]?.change.change_type, "corrected");
+  assert.equal(correctionState?.items[0]?.event.title, currentDetail.title);
+  assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), correctionCursor);
+  assert.deepEqual([...storage.values.keys()], [UPDATE_CURSOR_STORAGE_KEY]);
+  assert.deepEqual(storage.writes.map(({ key, value }) => ({ key, value })), [
+    { key: UPDATE_CURSOR_STORAGE_KEY, value: baselineCursor },
+    { key: UPDATE_CURSOR_STORAGE_KEY, value: correctionCursor },
+  ]);
+  const correctionMarkup = renderToStaticMarkup(<UpdateCenterContent
+    gate="live"
+    state={correctionState!}
+    onRefresh={() => {}}
+  />);
+  assert.match(correctionMarkup, /Koreksi sintetis yang ditinjau untuk diuji pada pusat pembaruan/);
+  assert.match(correctionMarkup, /Event sintetis terkini di Pondok Labu/);
+
+  phase = "reset";
+  requestOrder.length = 0;
+  await poller.refresh();
+
+  assert.deepEqual(requestOrder, [
+    "updates:" + correctionCursor,
+    "updates:baseline",
+    "snapshot",
+    "updates:" + rebasedCursor,
+  ]);
+  const resetState = captured.states.at(-1);
+  assert.equal(resetState?.status, "ready");
+  assert.equal(resetState?.phase, "updates");
+  assert.deepEqual(resetState?.items, []);
+  assert.equal(resetState?.resetNotice, true);
+  assert.equal(storage.values.get(UPDATE_CURSOR_STORAGE_KEY), resumedCursor);
+  assert.deepEqual([...storage.values.keys()], [UPDATE_CURSOR_STORAGE_KEY]);
+  const resetMarkup = renderToStaticMarkup(<UpdateCenterContent
+    gate="live"
+    state={resetState!}
+    onRefresh={() => {}}
+  />);
+  assert.match(resetMarkup, /Cursor diperbarui\. Ringkasan pembaruan yang lebih lama tidak lagi tersedia setelah penetapan ulang\./);
+  assert.doesNotMatch(resetMarkup, /Koreksi sintetis yang ditinjau/);
+  assert.doesNotMatch(resetMarkup, /Event sintetis terkini di Pondok Labu/);
+  for (const { url } of requests) assert.doesNotMatch(url, /Pondok Labu/u);
 });
 
 test("update cards distinguish current event time, published-change time, and system check time", () => {
