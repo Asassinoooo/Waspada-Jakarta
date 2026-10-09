@@ -257,7 +257,7 @@ test("briefing cards keep category, lifecycle, freshness, event time, and public
 
   assert.match(markup, /Bencana dan cuaca/);
   assert.match(markup, /<dt>Siklus<\/dt><dd>Berlangsung<\/dd>/);
-  assert.match(markup, /<dt>Kesegaran<\/dt><dd>Dalam batas tinjau<\/dd>/);
+  assert.match(markup, /<dt>Kesegaran<\/dt><dd>Dalam batas tinjau saat evaluasi<\/dd>/);
   assert.match(markup, /Mengapa muncul/);
   assert.match(markup, /Cocok dengan kategori yang Anda pilih\./);
   assert.match(markup, /href="#detail\/api\/public%2Fid%3F%23%20%26"/);

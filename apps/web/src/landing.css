@@ -1,5 +1,6 @@
 .landing-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(2rem, 5vw, 4.5rem);
   padding-block: clamp(1.25rem, 3vw, 2.75rem) 3rem;
 }
@@ -70,7 +71,7 @@
 }
 
 .landing-button--primary {
-  min-width: 13rem;
+  min-width: 0;
   background: var(--kali-teal);
   color: var(--ink-on-teal);
 }
@@ -579,6 +580,12 @@
 
   .landing-trust {
     padding: 0.9rem;
+  }
+}
+
+@media (max-width: 384px) {
+  .landing-guide__choices {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

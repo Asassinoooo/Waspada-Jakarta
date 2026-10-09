@@ -727,7 +727,7 @@ test("default update clients compose correction hydration and 410 cursor recover
     state={resetState!}
     onRefresh={() => {}}
   />);
-  assert.match(resetMarkup, /Cursor diperbarui\. Ringkasan pembaruan yang lebih lama tidak lagi tersedia setelah penetapan ulang\./);
+  assert.match(resetMarkup, /Penanda pembaruan diperbarui\. Ringkasan sebelumnya tidak lagi tersedia\./);
   assert.doesNotMatch(resetMarkup, /Koreksi sintetis yang ditinjau/);
   assert.doesNotMatch(resetMarkup, /Event sintetis terkini di Pondok Labu/);
   for (const { url } of requests) assert.doesNotMatch(url, /Pondok Labu/u);
