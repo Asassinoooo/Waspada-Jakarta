@@ -23,6 +23,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   bool _writing = false;
   bool _saved = true;
   String? _validationMessage;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -30,9 +31,14 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool retry = false}) async {
+    if (_writing || retry && (!_saved || _loading)) {
+      return;
+    }
+    final generation = ++_loadGeneration;
+    if (retry && mounted) setState(() => _loading = true);
     final result = await widget.repository.load();
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _interests = result.interests;
       _loadStatus = result.status;
@@ -87,7 +93,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Hapus minat dari perangkat ini?'),
         content: const Text(
-            'Tindakan ini menghapus satu kunci preferensi milik Waspada Jakarta pada perangkat ini. Tidak ada data server yang dihapus.'),
+            'Tindakan ini menghapus minat yang disimpan aplikasi pada perangkat ini. Tidak ada data pada layanan yang dihapus.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -156,7 +162,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                       const ReadOnlyNotice(
                           title: 'Pilihan tersimpan tidak dapat dibaca.',
                           message:
-                              'Pilihan ini belum dimuat. Simpan pilihan baru untuk mengganti nilai lokal tersebut, atau gunakan Hapus untuk membersihkan kunci Waspada Jakarta.'),
+                              'Pilihan ini belum dapat dibaca. Simpan pilihan baru untuk mengganti pilihan tersimpan, atau hapus minat untuk membersihkan data aplikasi ini.'),
                     ],
                     if (_loadStatus == PreferenceLoadStatus.unavailable) ...[
                       const SizedBox(height: 12),
@@ -167,7 +173,9 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                       Align(
                           alignment: Alignment.centerLeft,
                           child: TextButton.icon(
-                              onPressed: _load,
+                              onPressed: _writing || _loading || !_saved
+                                  ? null
+                                  : () => _load(retry: true),
                               icon: const Icon(Icons.refresh),
                               label: const Text('Coba baca lagi'))),
                     ],
@@ -329,8 +337,7 @@ class _TextInterestFieldState extends State<_TextInterestField> {
           _message = 'Gunakan paling banyak $maxInterestCharacters karakter.');
       return;
     }
-    if (widget.values
-        .any((value) => value.toLowerCase() == normalized.toLowerCase())) {
+    if (hasEquivalentLocalInterest(widget.values, normalized)) {
       setState(() => _message = 'Pilihan ini sudah ada.');
       return;
     }

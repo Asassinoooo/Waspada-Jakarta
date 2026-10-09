@@ -59,14 +59,20 @@ void main() {
       () async {
     final storage = MemoryStorage()..values['other-app:key'] = 'leave intact';
     final repository = PreferencesRepository(storage);
-    final interests = LocalInterests(
-        places: ['  Jakarta Pusat  ', 'jakarta pusat'],
-        categories: [EventCategory.disastersWeather]);
+    final interests = LocalInterests(places: [
+      '  Jakarta Pusat  ',
+      'jakarta pusat',
+      ' E\u0301vakuasi Selatan ',
+      'ÉVAKUASI SELATAN',
+    ], categories: [
+      EventCategory.disastersWeather
+    ]);
 
     expect(await repository.save(interests), PreferenceWriteStatus.saved);
     final loaded = await repository.load();
     expect(loaded.status, PreferenceLoadStatus.loaded);
-    expect(loaded.interests.places, ['Jakarta Pusat']);
+    expect(
+        loaded.interests.places, ['Jakarta Pusat', 'E\u0301vakuasi Selatan']);
     expect(loaded.interests.categories, [EventCategory.disastersWeather]);
     expect(storage.values.keys, contains(preferencesStorageKey));
     expect(storage.values['other-app:key'], 'leave intact');
@@ -125,6 +131,16 @@ void main() {
   });
 
   test('interest matching is local, field-specific, NFC, and exact', () {
+    expect(normalizeLocalInterestText('  E\u0301vakuasi Selatan  '),
+        normalizeLocalInterestText('Évakuasi Selatan'));
+    expect(
+        hasEquivalentLocalInterest(
+            ['Évakuasi Selatan'], ' E\u0301vakuasi Selatan '),
+        isTrue);
+    expect(normalizeLocalInterestText('Transjakarta   12'),
+        isNot(normalizeLocalInterestText('Transjakarta 12')),
+        reason: 'matching does not collapse internal whitespace');
+
     final event = EventRecord.fromJson(syntheticEvent);
     expect(
         locallyMatches(
@@ -164,6 +180,13 @@ void main() {
             const LocalInterests(places: ['  Évakuasi Selatan  '])),
         isTrue,
         reason: 'claim scopes use NFC, trim, and case-insensitive matching');
+    expect(
+        localMatchReasons(
+            claimOnlyEvent,
+            const LocalInterests(
+                places: ['Évakuasi Selatan', 'E\u0301vakuasi Selatan'])),
+        ['Tempat: Évakuasi Selatan'],
+        reason: 'canonically equivalent interests do not duplicate reasons');
     expect(
         locallyMatches(claimOnlyEvent,
             const LocalInterests(services: ['Évakuasi Selatan'])),

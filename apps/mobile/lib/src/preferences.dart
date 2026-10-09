@@ -10,6 +10,15 @@ const preferencesSchemaVersion = 1;
 const maxTextInterestsPerField = 30;
 const maxInterestCharacters = 128;
 
+String normalizeLocalInterestText(String value) =>
+    unorm.nfc(value).trim().toLowerCase();
+
+bool hasEquivalentLocalInterest(Iterable<String> values, String candidate) {
+  final normalizedCandidate = normalizeLocalInterestText(candidate);
+  return values
+      .any((value) => normalizeLocalInterestText(value) == normalizedCandidate);
+}
+
 abstract interface class KeyValueStorage {
   Future<String?> getString(String key);
   Future<bool> setString(String key, String value);
@@ -123,7 +132,7 @@ List<String> _normalizeValues(Iterable<Object?> values) {
       throw const FormatException();
     }
     if (normalized.isEmpty) continue;
-    final identity = normalized.toLowerCase();
+    final identity = normalizeLocalInterestText(normalized);
     if (seen.add(identity)) result.add(normalized);
   }
   return result;
@@ -270,16 +279,15 @@ List<String> localMatchReasons(EventRecord event, LocalInterests interests) {
   ];
   for (final field in scopeInterests) {
     final returnedNames = scopes.expand(field.read).toSet();
+    final seenInterests = <String>{};
     for (final interest in field.values) {
-      final normalizedInterest = _normalizeMatchText(interest);
-      if (returnedNames
-          .any((name) => _normalizeMatchText(name) == normalizedInterest)) {
+      final normalizedInterest = normalizeLocalInterestText(interest);
+      if (!seenInterests.add(normalizedInterest)) continue;
+      if (returnedNames.any(
+          (name) => normalizeLocalInterestText(name) == normalizedInterest)) {
         reasons.add('${field.label}: $interest');
       }
     }
   }
   return reasons;
 }
-
-String _normalizeMatchText(String value) =>
-    unorm.nfc(value).trim().toLowerCase();
