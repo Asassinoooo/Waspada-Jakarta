@@ -4,6 +4,8 @@ Record a short ADR for consequential changes before dependent implementation. In
 
 ## Baseline constraints
 
+Android framework selection is accepted in [ADR-054](ADR-054-flutter-public-client.md): Flutter/Dart for the local public client, with release and comparative usability gates still open. Complex illustration/animation/SVG assignments may use GPT-6.1 Sol/max at Team 12's explicit direction; other agents remain Luna/max.
+
 The user has requested a five-layer architecture, orchestration confined to L3, Responsible AI across layers, Google Docs for the report, WSL for local project verification, gpt-6-luna/max implementation agents on their own branches with commits, and a no-spend Cloudflare Workers + Neon Free deployment target. These are current constraints; model/provider choices, free-tier compatibility and live-source rights remain open. Usage limits do not justify escalation to Astra.
 
 ## Decisions to close

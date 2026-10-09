@@ -1,14 +1,14 @@
 # Waspada Jakarta — Future Experience Roadmap
 
-**Status:** Proposed planning document; no implementation work activated.
+**Status:** Roadmap with selected local implementation activated on 9 October 2026; release and remaining stories are gated.
 
 **Prepared:** 9 October 2026 · Team 12
 
 **Scope:** Landing, first use, privacy, accessibility, trust, recovery, updates and mobile delivery.
 
-This roadmap extends the public experience described in the [Software Development Plan](../SOFTWARE_DEVELOPMENT_PLAN.md) and [UI/API specification](UX_API_SPEC.md). It supplies future user stories and acceptance criteria, not evidence that these capabilities are implemented or released. The current application, API contracts, data model, configuration and implementation backlog remain unchanged. Each selected story needs a scoped implementation assignment before coding.
+This roadmap extends the public experience described in the [Software Development Plan](../SOFTWARE_DEVELOPMENT_PLAN.md) and [UI/API specification](UX_API_SPEC.md). Team 12 subsequently authorized the [UX-DESIGN-FLUTTER-01 wave](assignments/UX-DESIGN-FLUTTER-01.md): landing, optional guide, local privacy controls, static screen polish and a Flutter public Android client. User stories remain acceptance targets, rather than blanket completion claims. Public API/data contracts and hosted configuration are unchanged; actual results belong in implementation handoffs.
 
-The companion [visual design and motion plan](VISUAL_DESIGN_PLAN.md) specifies a more expressive Jakarta front page, shared design tokens and bounded animation, with a [desktop/mobile concept sheet](diagrams/frontpage-design-concept.svg). Its proposed design packages supplement these stories without activating implementation.
+The companion [visual design and motion plan](VISUAL_DESIGN_PLAN.md) specifies a more expressive Jakarta front page, shared design tokens and bounded animation, with a [desktop/mobile concept sheet](diagrams/frontpage-design-concept.svg). Its assigned local packages are now being implemented. Flutter/Dart is the chosen Android framework under [ADR-054](decisions/ADR-054-flutter-public-client.md); PWA/push and native release remain separate gates.
 
 ## 1. Outcome and boundaries
 
@@ -20,7 +20,7 @@ Current design already covers local interests, explicit transient briefing reque
 
 ## 2. Priorities and delivery sequence
 
-Priority indicates order of investment, not a promised delivery date. All rows are **proposed**. P0 foundations precede expanded engagement; research can run alongside design. For this three-person project, complete one coherent experience slice before adding a new delivery channel.
+Priority indicates order of investment, not a promised delivery date. The table retains the broader sequence; the scoped local wave activates parts of EXP-01/02/04/05/06/07 and the Flutter reader foundation. It does not accept every criterion in those stories. Human studies, permission flows, PWA/push and native release remain proposed. Flutter was selected directly by the team; comparative channel evidence still needs EXP-11 research.
 
 | Priority | Story | Reason and dependency | Evidence needed to proceed |
 | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ Priority indicates order of investment, not a promised delivery date. All rows a
 | P1 | EXP-11 Android delivery study | Recommend a channel pilot from observed needs | Responsive-web study, PWA concept and device/capability matrix; final choice follows pilot evidence |
 | P2 | EXP-10 Optional PWA | Pilot easier return visits with a limited offline shell | EXP-11 recommends a PWA pilot; EXP-04/05/07 pass; actual install/update/offline checks inform final choice |
 | P3 | EXP-09 Optional push | Adds subscriptions, delivery policy and privacy responsibilities | Demonstrated need, consent/data design, public-eligibility and free-tier gates |
-| Conditional | Native Android follow-on | A separate client adds maintenance and distribution work | EXP-11 proves a material requirement unmet by the web/PWA; separate scope decision |
+| Authorized local slice | Flutter Android reader | Team 12 selected Flutter/Dart; separate client maintenance remains explicit | UX-DESIGN-FLUTTER-01 and ADR-054; release still needs device/usability/API-origin evidence |
 
 Prototype P0 screens using labelled synthetic content first. Evaluate them before promoting stories into the active backlog. Installation does not automatically enable push; native Android is not a prerequisite for either public browsing or in-site updates.
 
@@ -158,6 +158,8 @@ The EXP identifiers supplement US-01 Discovery and US-02 Following updates; they
 
 ### EXP-11 · PWA versus native Android decision · P1 study
 
+**Decision update:** Flutter/Dart has been selected by Team 12 for the local Android reader under ADR-054. The criteria below still govern comparative channel research and any release expansion; they are not retroactive claims that such a study has passed. PWA work is not activated by the Flutter implementation.
+
 **As a frequent Android visitor, I want the most dependable way to return to public reports, so that I get useful access without unnecessary setup or a second inconsistent experience.**
 
 1. Compare a responsive-web prototype and a non-installing PWA concept with 6–8 residents/visitors, including assistive-technology and constrained-connectivity tasks. Reuse the core-usability cohort with explicit task coverage; use labelled synthetic examples and report counts/limitations. Native concepts may be evaluated in design; this roadmap authorizes no client implementation.
@@ -172,7 +174,7 @@ The EXP identifiers supplement US-01 Discovery and US-02 Following updates; they
 | --- | --- | --- | --- |
 | Responsive public web | Direct shared links, immediate browsing | Return visits need browser/bookmark navigation; no promised background monitoring | Foundation for all priorities |
 | PWA | Optional home-screen entry and static offline help using the web experience | Install behaviour varies by platform; caches and updates add failure/privacy work; background delivery needs a separate design | Evaluate at P1; implement at P2 only if useful |
-| Native Android | Potentially richer Android integration if a concrete need exists | Separate client testing, permission handling, distribution and release maintenance; no guaranteed timely alerts | Defer unless EXP-11 establishes a capability gap |
+| Flutter Android | Dedicated account-free public reader, chosen by Team 12 | Separate client testing, distribution and release maintenance; no guaranteed timely alerts | Local reader assigned under ADR-054; production release and research remain gated |
 
 PWA-first is a project recommendation, not an accepted architecture change. Initial offline support intentionally excludes incident data. Neither PWA nor native removes source-rights, publication review, freshness, privacy or free-tier constraints. No external service, app-store listing or paid account is created by this plan.
 

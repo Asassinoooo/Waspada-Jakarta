@@ -41,6 +41,16 @@ npm run dev
 
 Vite is served at `http://127.0.0.1:5173/`; it proxies `/api/v1` to the local Worker at `http://127.0.0.1:8787/`. Wrangler's local dev command disables its optional Cloudflare `Request.cf` fetch, and the project disables Wrangler metrics. The runtime does not call an external service.
 
+For a separate concurrent worktree, use distinct local ports without stopping another checkout's services. The experience wave used the commands below in two WSL terminals, with native Linux Node on `PATH`:
+
+```bash
+CLOUDFLARE_CF_FETCH_ENABLED=false node_modules/.bin/wrangler dev --config apps/worker/wrangler.toml --local --ip 127.0.0.1 --port 58787
+WASPADA_DEV_API_ORIGIN=http://127.0.0.1:58787 WASPADA_DEV_POLLING=1 npm run dev --workspace=@waspada/web -- --port 55173 --strictPort
+WASPADA_SMOKE_ORIGIN=http://127.0.0.1:55173 npm run smoke
+```
+
+`WASPADA_DEV_POLLING=1` is optional and useful when Windows edits to a `/mnt/c` checkout do not trigger WSL filesystem notifications. It changes local development watching only. Flutter setup is documented separately in [apps/mobile/README.md](../apps/mobile/README.md); no cloud deployment or account is required for the synthetic Worker.
+
 With the services running, use a second WSL terminal in the worktree for the integrated UI/API smoke test. The remaining commands may also be run with the dev process stopped:
 
 ```bash

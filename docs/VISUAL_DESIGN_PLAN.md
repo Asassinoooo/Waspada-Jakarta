@@ -1,12 +1,12 @@
 # Waspada Jakarta — Visual Design and Motion Plan
 
-**Status:** Proposed; documentation and concept artwork only.
+**Status:** Selected web design packages activated locally under UX-DESIGN-FLUTTER-01; release/usability gates remain open.
 
 **Prepared:** 9 October 2026 · Team 12
 
-Companion to the [future experience roadmap](FUTURE_EXPERIENCE_ROADMAP.md). This plan gives the next design pass a concrete visual direction, front-page composition and motion specification. It changes no current UI, API, dependency or deployment. The user's request for a more eye-catching front page guides this future direction; accepted UI-00 work remains unchanged.
+Companion to the [future experience roadmap](FUTURE_EXPERIENCE_ROADMAP.md). Team 12 authorized implementation of the front-page direction and static public-screen polish. Landing uses original SVG artwork and CSS motion; operational screens retain a calm evidence-led layout. Public API contracts, backend behavior and hosted deployment remain unchanged. Implementation and review evidence are recorded in the wave's assignments/handoffs.
 
-The requested decorative entrance is a proposed landing-only exception to UI-00's quiet-motion guidance. It does not relax that baseline for the current implementation or operational discovery/evidence screens.
+The decorative entrance is an authorized landing-only exception to UI-00's quiet-motion guidance. Operational discovery/evidence screens remain static. The team additionally authorized GPT-6.1 Sol/max specifically for complex illustration/animation/SVG work (UI-HERO-02); other implementation/review agents remain GPT-6 Luna/max.
 
 ## 1. Direction: Jakarta field atlas, in motion
 

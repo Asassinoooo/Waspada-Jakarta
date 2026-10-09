@@ -19,6 +19,7 @@ test-results/
 playwright-report/
 
 # Credentials and local runtime state
+.wrangler/
 .env
 .env.*
 !.env.example

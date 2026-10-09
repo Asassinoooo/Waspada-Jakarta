@@ -6,6 +6,8 @@
 
 ## 1. Product and interaction rules
 
+**Local client extension — 9 October 2026:** the assigned experience wave adds `#beranda` (default entry), `#panduan` and `#privasi` without changing existing discovery/detail/preferences/update deep links or any HTTP contract. Help is optional and reopenable. Privacy reset deletes only the two owned browser keys, verifies each result, invalidates related preference/update memory and preserves browsing filters. Flutter/Dart consumes the same context/list/detail/history projections as a separate Layer 4 Android client; its parity limits are documented in `apps/mobile/README.md` and [ADR-054](decisions/ADR-054-flutter-public-client.md). Moderator UI remains read-only.
+
 The site is a Bahasa Indonesia situational-awareness tool for Jakarta residents, visitors and moderators. Public reading does not require an account. The UI reports sourced information; it does not dispatch responders, guarantee route safety, predict crime or create hazard boundaries. The desktop and mobile layouts share one published-data projection and one set of status meanings.
 
 The category filter uses the ten primary categories below; a record has one primary category plus separately displayed tags. Tags refine discovery and do not replace lifecycle, freshness or evidence labels.

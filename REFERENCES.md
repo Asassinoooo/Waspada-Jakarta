@@ -148,3 +148,13 @@ These are records of published text and access observations, not legal conclusio
 These are provider-published ceilings, not measurements or guarantees for Waspada. No Workflow or Neon resource was configured or deployed during this review. See [ADR-010](docs/decisions/ADR-010-cloudflare-neon-free.md).
 
 The official [Neon Free plan limits and quotas](https://github.com/neondatabase/website/blob/main/content/faqs/free-plan-limits-and-quotas.md) page (updated 23 September 2026) was rechecked on 29 September. It still lists 100 CU-hours, 0.5 GB database storage, and 5 GB public network transfer per project/month, plus scale-to-zero after five idle minutes. These match the previously dated deployment-target review above; no Neon project was created or queried.
+
+## Flutter implementation tooling and client review — 9 October 2026
+
+- [Flutter installation](https://docs.flutter.dev/install/manual) and [SDK archive](https://docs.flutter.dev/install/archive): official Linux tooling/setup references. The [official stable Linux release manifest](https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json) identified Flutter 3.47.7 / Dart 3.13.5; downloaded archive SHA256 was checked before extraction. Tooling was prepared in WSL, without Android Studio or LaTeX installation.
+- [Flutter network requests](https://docs.flutter.dev/cookbook/networking/fetch-data) and [Android deployment](https://docs.flutter.dev/deployment/android): HTTP client and Android INTERNET/build configuration reference. They do not establish Waspada's live-source or store-release readiness.
+- [Android command-line tools](https://developer.android.com/studio#command-tools) and [SDK Manager](https://developer.android.com/tools/sdkmanager): official package installation instructions. Linux tools package 15859902 was checksum-verified; local build used API 36/build-tools 36.0.0 and Flutter-pinned NDK 28.2.13676358.
+- [Dart DateTime.parse](https://api.dart.dev/dart-core/DateTime/parse.html): documents overflow normalization, motivating explicit calendar validation instead of treating successful parsing as validation.
+- [unorm_dart publisher package](https://pub.dev/packages/unorm_dart) and [NFC API](https://pub.dev/documentation/unorm_dart/latest/unorm_dart/nfc.html): pure Dart normalization dependency, version 0.3.2 authorized only in the Flutter client to align composed/decomposed name matching. No model or hosted service is involved.
+
+Design review continues to use the previously recorded Anthropic frontend-design and Vercel web-interface guidelines, subordinate to Team 12's product/trust/motion requirements. Local test/build evidence is recorded in implementation handoffs, not inferred from these references.
