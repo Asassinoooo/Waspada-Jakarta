@@ -1,5 +1,7 @@
 # PLATFORM-01 — Cloudflare Workers and Neon Free compatibility report
 
+**Local context extension — 10 October 2026:** [INT-02](CONTEXT_SOURCE_EXPANSION.md) adds explicit fixed Open-Meteo/USGS reads without a key, new dependency, paid capability or Neon connection. Current local workerd and final dry-run passed; Worker997.75KiB/gzip192.63KiB, web391.73kB/gzip112.18kB, CSS57.41kB/gzip10.14kB. These do not prove hosted Free CPU, source quota, isolate count, traffic limits, latency or deployment compatibility. Cache reuse is isolate-local; a public deployment would still need traffic/source-budget controls and the separate release gate. Existing historical assessment below retains its original scope/date.
+
 **Assessment date:** 24 September 2026
 **Status:** Conditional fit; provider compatibility is not validated
 **Scope:** Local measurements and current official documentation only. No account, database, secret, billing change, deployment, paid model, or live source was used.

@@ -21,3 +21,7 @@ The L1 adapters make two fixed, independently handled requests for the 12-slot O
 Actual WSL Ubuntu-26.04 checks with Node 24.21.0/npm 11.19.0: `node --import tsx --test apps/worker/test/context-sources.test.ts` **13/13 passed**; `npm --prefix apps/worker run typecheck` **passed**; `git diff 481d6ec816c149fde35553b8c42326fd573a16e9..HEAD --check` **passed**. An artifact scan found no literal escaped-newline or CRLF content. All tests use mocked providers; no live source calls were made.
 
 Limitations: real upstream responses after the documented initial bounded probes, deployed Workers behavior, and route/browser composition remain unverified. No migration, new dependency, or configuration change is included. Root owns route registration, package/config wiring, and browser QA before acceptance.
+
+## Root review and acceptance
+
+Accepted locally after independent diff review and WSL focused13/13 plus Worker typecheck. Review required GeoJSON Feature typing and group rejection for malformed duplicate identities; the final committed code/tests implement both. Integrated at `7dc06ff`; root wiring/route and source-to-API-to-client tests are committed at `05a6d7702589902e77fe075ff1df0658e7771745` (`feat(INT-02): wire context preview and verify cross-layer reads`). Final Worker suite494/494 and composition2/2 passed. Local workerd successfully returned real weather12 and valid empty USGS on10October08:30UTC; nonempty real quake records and hosted behavior remain unverified. Full scope, browser checks and limits are in [INT-02](../CONTEXT_SOURCE_EXPANSION.md).

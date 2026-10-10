@@ -1,5 +1,7 @@
 # INT-01: source integration and map demo
 
+The locally accepted [INT-02 context extension](CONTEXT_SOURCE_EXPANSION.md) adds Open-Meteo forecasts and USGS regional catalog metadata behind a second explicit button. Existing OSM/PetaBencana contracts, limits and snapshot behavior remain as documented below. Context records are also isolated from published incidents; the new contracts, terms and acquisition window are defined in that extension.
+
 Status: accepted locally, 10 October 2026; root final suite review is recorded in the delivery log. This slice is an educational source preview; it is not live incident publication or completion of INT-01.
 
 ## Scope and source rights

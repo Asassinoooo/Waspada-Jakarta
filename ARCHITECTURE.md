@@ -1,5 +1,7 @@
 # Waspada Jakarta — five-layer architecture
 
+**Accepted local weather/quake context expansion — 10 October 2026:** [INT-02](docs/CONTEXT_SOURCE_EXPANSION.md) adds two deterministic L1 source adapters, a normalized isolate cache and a distinct gated L4 DTO projection. Open-Meteo forecasts and USGS catalog origins are context objects, not published incident evidence or inferred impact geometry. L5 bounds external requests, validates provenance and exposes partial failure. L2 retrieval/models and L3 investigation remain inactive on this path; the modular extension does not flatten source collection into an agent loop.
+
 Delivery scope, requirements and work sequencing are maintained in [SOFTWARE_DEVELOPMENT_PLAN.md](SOFTWARE_DEVELOPMENT_PLAN.md). This file owns the detailed logical architecture; proposed deployment, missing domain contracts and open decisions are tracked in that plan.
 
 **Separate source/map demo — 10 October 2026:** [INT-01 source preview](docs/DEMO_DATA_INTEGRATION.md) adds deterministic L1 acquisition and normalization of fixed OSM/PetaBencana responses, a distinct L4 read-only preview, and an attributed OSM point map. It has bounded requests, source provenance, timestamp/coordinate validation and privacy limits across the path. It does not use L2 model/RAG, L3 investigation, database persistence or incident publication. Source reports remain unreviewed; OSM facilities are reference objects. This exception does not change the published-only Event/GeoJSON routes or activate production connectors.

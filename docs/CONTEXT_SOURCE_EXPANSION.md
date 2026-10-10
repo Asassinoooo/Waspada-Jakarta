@@ -1,6 +1,6 @@
 # INT-02: bounded weather and regional earthquake context
 
-Status: assigned, 10 October 2026. Expand the educational preview from OSM/PetaBencana to four independently attributed providers. No published Event, incident verification, L2 model/RAG, L3 investigation, persistence or deployment activation.
+Status: accepted locally, 10 October 2026. The educational preview now includes four independently attributed providers: OSM, PetaBencana, Open-Meteo and USGS. No published Event, incident verification, L2 model/RAG, L3 investigation, persistence or deployment activation. Source count does not mean corroboration of one incident.
 
 ## Sources and terms
 
@@ -11,6 +11,23 @@ USGS [copyright policy](https://www.usgs.gov/information-policies-and-instructio
 BMKG, commercial media/news, personal crime reports and Satu Data dataset ingestion are not activated by these terms. Their source-specific gates remain. Further news/crime expansion needs a concrete permitted metadata/redistribution path; source count is not independent corroboration. Existing source-preview-v1 and published v1/schema2.0 stay unchanged.
 
 ## Boundary and flow
+
+```mermaid
+flowchart TD
+  U[Open source demo] --> N[Local not_requested projection: no new source requests]
+  B[Explicit context button] --> G[L4 demo and opt-in gates]
+  G --> W[L1 fixed Open-Meteo request: 12 forecast hours]
+  G --> Q[L1 fixed USGS query: 7 days, regional, max 30]
+  W --> V[L1 validate units, time, coordinates and identities]
+  Q --> V
+  V --> C[Normalized isolate cache: 5 minutes]
+  C --> P[L4 closed context-sources-v1 projection]
+  P --> T[Forecast table: model validity and attribution]
+  P --> M[Quake list and source-point map: origins only]
+  L5[L5 deadlines, body limits, source status and provenance] -.-> V
+  L5 -.-> P
+  X[L2 model and RAG, L3 investigation, publication: not run]
+```
 
 New isolated contract: `context-sources-v1` in `apps/worker/src/contracts/context-sources.ts`, exposed by `GET /api/v1/demo/context-sources`. Exact demo mode and the existing explicit preview flag are required. Default request returns both sources `not_requested`, making zero upstream requests. Exact `?mode=fetch` requests the fixed weather URL and bounded USGS query; no other parameters or methods are accepted. The additional **Ambil konteks cuaca & gempa** button is separate from existing OSM/PetaBencana acquisition. Opening the demo does not fetch new providers automatically. Each explicit context refresh makes at most two requests; fetching both preview groups may make four overall. There is no schedule, retry, fallback or source-owner contact.
 
@@ -33,3 +50,15 @@ Root reviews all three branch diffs, validates Worker/client parity, runs WSL ch
 ## Initial bounded probes
 
 10 October 2026, native WSL Node: fixed Open-Meteo query returned HTTP200,12 model hours, expected units, grid106.856186,-6.221441. Fixed USGS regional query03–10October08:00UTC returned HTTP200 with a valid empty FeatureCollection and absent metadata.count. No report or raw response file was retained; these are access observations, not production or nonempty-record proof.
+
+Actual local workerd composition, 10 October 2026 at `08:30:14.023Z`: `/api/v1/demo/context-sources?mode=fetch` returned HTTP200 and `context-sources-v1`, uncached. Open-Meteo was available with 12 hours, first validity `08:00:00Z`, selected grid106.856186,-6.221441 and acquisition `08:30:14.022Z`; model issue time remained null. USGS returned a valid empty catalog, source generation `08:30:13Z`, acquired `08:30:13.664Z`, query window `2026-10-03T08:30:12.646Z` to `2026-10-10T08:30:12.646Z`. Both rejection counts were0 and neither was limited. Default route first returned both not_requested. This proves local Worker format/transport compatibility, not nonempty USGS coverage, model accuracy, completeness or hosted deployment. No raw report or contemporary earthquake fixture was retained.
+
+## Root acceptance
+
+Reviewed and integrated two Luna/max agent branches and a separately committed root map branch. Agent-thread capacity prevented the third assignment/reuse; the core agent independently reviewed the root map and reran its 9 tests and web typecheck before acceptance. USGS-only callback typing preserves the regional-mode input constraint. Root added route/App/CSS/test registration and two authored source-to-API-to-client composition tests without new dependencies.
+
+Final WSL Ubuntu-26.04 checks: web **105/105**, Worker **494/494**, cross-layer composition **2/2** (included in web), local smoke, all-workspace/evaluation typecheck, Vite build and Wrangler dry-run **passed**. DB/evaluation runtime suites were not rerun for this web/Worker-only change; their source and migrations are unchanged. Two headless browser suites passed six scenario groups each, no page errors, at desktop1440x1000 and mobile390x844. All automated tiles and explicit fixture refreshes were stubbed; nonempty QA quake records are labelled synthetic. The actual local workerd probe above is separate from those mocks.
+
+Visual review confirmed compact provider sections, list-first mobile behavior, scrollable model table and optional regional map. Root changed the condition heading to plain Bahasa, exposed magnitude/count filters even on empty results, and removed a duplicate impact warning when the map supplies its own notice. Browser checks cover loading, null values, query reset, independent failure, empty result, unsafe URL rejection, explicit retry, map selection/pan/zoom/reset, multiple map IDs, and no horizontal page overflow. Screenshots are ignored local QA artifacts, not evidence of a real USGS quake or geographic basemap.
+
+Commits and exact checks are in [the delivery log](DELIVERY_LOG.md). BMKG/news rights, source-quality evaluation, human adjudication (Perry/Jesaya), publication authorization and hosted deployment remain separate unfinished work. No API key, new migration, model provider, cloud binding, source account, Cron or durable database integration was added.
