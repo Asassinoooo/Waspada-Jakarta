@@ -4,13 +4,13 @@ Status: assigned, 10 October 2026. User requests one unified map. Scope is the e
 
 ## Interaction and visual direction
 
-Reuse the existing civic tokens (tinta-kota, kali-teal, merah-tanda, surface, soft-panel, beton), typography, compact labels and visible focus states. Desktop: one introduction/control strip, a compact source-status area, source/kind/search filters, linked list alongside a single persistent map, one selected-record detail and a collapsible hourly weather table. Mobile: list-first with one Daftar/Peta switch; the same map and selected record remain linked. Avoid a second regional map or a duplicate quake feed/detail. Weather model-grid coordinates appear in text only, never as an incident marker.
+Reuse the existing civic tokens (tinta-kota, kali-teal, merah-tanda, surface, soft-panel, beton), typography, compact labels and visible focus states. Desktop: one introduction/control strip, a compact source status/filter toolbar, a large primary map alongside a compact companion panel (Daftar, Detail, Cuaca, Sumber). Mobile: map-first with compact controls and a companion drawer/panel; the same map remains the primary view. No long source metadata or forecast table ahead of the map. Avoid a second regional map or a duplicate quake feed/detail. Weather model-grid coordinates appear in text only, never as an incident marker.
 
 ```text
 Peta sumber Jakarta          [Ambil fasilitas & banjir] [Ambil cuaca & gempa]
 Source status: OSM | PetaBencana | Open-Meteo | USGS  (expand provenance)
 Search                     Source filter             Kind filter
-Linked list: H/P/D/B/G      One OSM map: H/P/D/B/G
+Large primary OSM map: H/P/D/B/G    Companion panel: list/detail/weather/sources
                            [Jakarta awal] [Kawasan gempa]
 Selected record: original source, kind, source-specific timestamps and link
 Weather model context: hourly table, unknowns, attribution; no warning geometry
