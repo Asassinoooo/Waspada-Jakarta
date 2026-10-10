@@ -19,6 +19,70 @@
   font-size: 16px;
 }
 
+/* Keep the source-map route's mobile chrome compact so geography is visible on entry. */
+@media (max-width: 760px) {
+  .app-shell--source-map .site-header {
+    min-height: 0;
+    gap: 0.3rem 0.6rem;
+    padding: 0.4rem 0;
+  }
+
+  .app-shell--source-map .brand {
+    min-width: 0;
+    gap: 0.45rem;
+  }
+
+  .app-shell--source-map .brand-mark {
+    width: 2.15rem;
+    flex-shrink: 0;
+  }
+
+  .app-shell--source-map .brand strong {
+    font-size: 0.93rem;
+  }
+
+  .app-shell--source-map .brand small {
+    display: none;
+  }
+
+  .app-shell--source-map .mode-chip {
+    min-height: 1.55rem;
+    font-size: 0.74rem;
+  }
+
+  .app-shell--source-map .primary-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-top: 0;
+    gap: 0.1rem;
+  }
+
+  .app-shell--source-map .primary-nav a {
+    min-height: 2.2rem;
+    flex-shrink: 0;
+    padding: 0.3rem 0.6rem;
+    white-space: nowrap;
+    font-size: 0.8rem;
+  }
+
+  .app-shell--source-map .demo-banner {
+    display: block;
+    min-height: 0;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+
+  .app-shell--source-map .demo-banner__mark,
+  .app-shell--source-map .demo-banner__detail {
+    display: none;
+  }
+
+  .app-shell--source-map .demo-banner strong {
+    font-size: inherit;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

@@ -359,7 +359,7 @@ export function App() {
     : undefined;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${route.screen === "source-preview" ? " app-shell--source-map" : ""}`}>
       <SiteHeader route={route} context={context} />
       {route.screen === "discover" && (
         <EventFeed
