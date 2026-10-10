@@ -1,0 +1,13 @@
+# UI-01-OSM-MAP-DEMO
+
+Objective: dependency-free interactive OSM tile map for the isolated source preview. Dependencies: `docs/DEMO_DATA_INTEGRATION.md`, source-preview-v1. Existing public v1/schema 2.0 unchanged.
+
+Branch `work/UI-01-OSM-MAP-DEMO`, worktree `.codex-build/worktrees/ui01-osm-demo`. Base: planning commit containing assignment; record exact SHA. Allowed: `apps/web/src/SourcePointMap.tsx`, `apps/web/src/source-point-map.css`, `apps/web/test/source-point-map.test.tsx`, this assignment's handoff only. No App, existing MapPanel, global CSS, package, shared contract edits. Root registers tests.
+
+Interface: `SourcePointMap({points, selectedId, onSelect, onReturnToList?})`, `points: readonly PreviewRecord[]`, selection string|null; callback `(id:string)=>void`; return callback `()=>void`. Import `PreviewRecord` from `@waspada/worker/source-preview-contracts` (root will add export). Use only these source-supported points, default central Jakarta viewport centre `[106.83,-6.19]`, zoom12. Web Mercator tiles, viewport-only HTTPS OSM tiles, ordinary browser cache/Referer, visible copyright/link, no bulk prefetch/offline/service-worker/proxy. Configurable tile template prop optional; strict HTTPS XYZ template if provided. Include pan/zoom/reset with bounds, keyboard and pointer drag controls, category letters/labels beyond colour, selection highlighting and recentering, no radii/geolocation/danger score. Handle ResizeObserver and SSR initial dimensions, mobile sizes, tile failures with useful list fallback. Avoid requests for out-of-world tiles or rendering unbounded tiles. Honour reduced-motion/no animations. Selected controls must not bubble into pan; prevent unintended page scrolling only when map focused. Scoped CSS uses existing civic token palette. Clearly distinguish OSM facility references versus unreviewed citizen reports; source extent centres are approximate. UI can't imply operational response availability.
+
+Verification in WSL Ubuntu-26.04: existing Node v24.21.0 PATH/dependencies; `node --import tsx --test apps/web/test/source-point-map.test.tsx`; relevant typecheck if export available; diff check. Test projection alignment/inverse, bounds/tile counts, labels/attribution/selection/empty state with synthetic fixtures explicitly named as such; no actual tile/source network. Browser screenshot QA done by root with mocked tiles. Stop for contract/scope/dependency changes. Commit implementation plus handoff; no merge/push/deploy/provider configuration/further agents.
+
+## Handoff
+
+Record branch/worktree/base, SHAs/exact messages, paths/behavior, actual checks/versions, limitations. Root acceptance pending.

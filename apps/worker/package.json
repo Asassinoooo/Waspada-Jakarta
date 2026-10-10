@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    "./public-contracts": "./src/contracts/public-api.ts"
+    "./public-contracts": "./src/contracts/public-api.ts",
+    "./source-preview-contracts": "./src/contracts/source-preview.ts"
   },
   "scripts": {
     "dev": "CLOUDFLARE_CF_FETCH_ENABLED=false wrangler dev --local --ip 127.0.0.1 --port 8787",
