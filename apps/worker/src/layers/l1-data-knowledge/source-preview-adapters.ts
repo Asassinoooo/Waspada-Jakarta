@@ -26,7 +26,7 @@ export const SOURCE_PREVIEW_ATTRIBUTION = {
 } as const;
 
 const osmEndpoint = "https://overpass-api.de/api/interpreter";
-const petabencanaEndpoint = "https://api.petabencana.id/reports?admin=ID-JK&geoformat=geojson";
+const petabencanaEndpoint = "https://api.petabencana.id/reports?admin=ID-JK&timeperiod=86400&disaster=flood&geoformat=geojson";
 const osmAttribution = SOURCE_PREVIEW_ATTRIBUTION.osm;
 const osmLicenseUrl = SOURCE_PREVIEW_ATTRIBUTION.osmLicenseUrl;
 const petabencanaAttribution = SOURCE_PREVIEW_ATTRIBUTION.petabencana;
@@ -188,7 +188,10 @@ function createRequestDeadline(clock: SourcePreviewClock): RequestDeadline {
     signal: controller.signal,
     timeoutPromise,
     isExpired: () => expired,
-    dispose: () => clock.cancel(timeoutHandle),
+    dispose() {
+      clock.cancel(timeoutHandle);
+      controller.abort();
+    },
   };
 }
 

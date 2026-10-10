@@ -178,7 +178,7 @@ test("fetch uses the fixed endpoints, bounded query, identifying user agent, and
         ],
       });
     }
-    if (url === "https://api.petabencana.id/reports?admin=ID-JK&geoformat=geojson") {
+    if (url === "https://api.petabencana.id/reports?admin=ID-JK&timeperiod=86400&disaster=flood&geoformat=geojson") {
       return jsonResponse(petabencanaCollection([petabencanaFeature()]));
     }
     throw new Error("unexpected endpoint");
@@ -191,6 +191,8 @@ test("fetch uses the fixed endpoints, bounded query, identifying user agent, and
   const petabencanaCall = calls.find((call) => call.url.includes("api.petabencana.id"));
   assert.ok(osmCall);
   assert.ok(petabencanaCall);
+  assert.equal(petabencanaCall.url,
+    "https://api.petabencana.id/reports?admin=ID-JK&timeperiod=86400&disaster=flood&geoformat=geojson");
   assert.equal(osmCall.init?.method, "POST");
   assert.equal(osmCall.init?.redirect, "error");
   assert.equal(petabencanaCall.init?.method, "GET");
@@ -246,6 +248,53 @@ test("one failed provider remains a sanitized partial-source result", async () =
   assert.equal(source(payload, "petabencana").status, "unavailable");
   assert.equal(source(payload, "petabencana").error, "http_error");
   assert.equal(JSON.stringify(payload).includes("PRIVATE UPSTREAM ERROR BODY"), false);
+});
+
+test("early response rejection aborts that request after cleanup while the peer source succeeds", async () => {
+  const cases = [
+    {
+      failingId: "osm" as const,
+      failingUrl: "https://overpass-api.de/api/interpreter",
+      failingResponse: () => new Response("upstream failure", {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }),
+      expectedError: "http_error",
+    },
+    {
+      failingId: "petabencana" as const,
+      failingUrl: "https://api.petabencana.id/reports?admin=ID-JK&timeperiod=86400&disaster=flood&geoformat=geojson",
+      failingResponse: () => new Response("{}", {
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(SOURCE_PREVIEW_LIMITS.maxBodyBytes + 1),
+        },
+      }),
+      expectedError: "invalid_payload",
+    },
+  ];
+
+  for (const scenario of cases) {
+    const signals = new Map<string, AbortSignal>();
+    const handler = makeHandler(async (input, init) => {
+      const url = String(input);
+      signals.set(url, init?.signal as AbortSignal);
+      if (url === scenario.failingUrl) return scenario.failingResponse();
+      return url.includes("overpass-api")
+        ? jsonResponse(emptyOsm())
+        : jsonResponse(petabencanaCollection([]));
+    });
+
+    const response = await handler(request("?mode=fetch"), demoEnvironment);
+    const payload = await response.json() as { sources: Array<Record<string, unknown>> };
+    const failingSource = source(payload, scenario.failingId);
+    const peerId = scenario.failingId === "osm" ? "petabencana" : "osm";
+    const failedSignal = signals.get(scenario.failingUrl);
+    assert.equal(failingSource.status, "unavailable");
+    assert.equal(failingSource.error, scenario.expectedError);
+    assert.equal(failedSignal?.aborted, true);
+    assert.equal(source(payload, peerId).status, "empty");
+  }
 });
 
 test("provider remarks and application errors are not empty successes", async () => {
@@ -368,7 +417,7 @@ test("per-source 25-second deadlines include body reads and abort only the sourc
   assert.equal(source(payload, "osm").status, "unavailable");
   assert.equal(source(payload, "osm").error, "timeout");
   assert.equal(source(payload, "petabencana").status, "empty");
-  assert.equal(signals[1]?.aborted, false);
+  assert.equal(signals[1]?.aborted, true);
 });
 
 test("concurrent refreshes coalesce and the normalized result is cached for five minutes", async () => {
