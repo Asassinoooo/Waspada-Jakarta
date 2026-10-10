@@ -6,7 +6,7 @@ import type { AdminItem, AdminMapProps } from "../src/admin-types.js";
 import {
   ADMIN_MAP_DEFAULT_VIEW, AdminOperationsMap, adminGeometryBounds, adminGeometryPositions,
   adminItemGeometries, createAdminMapProjection, fitAdminMapBounds,
-  isRenderableAdminGeometry, panAdminMapView, zoomAdminMapView,
+  initialAdminMapFit, isRenderableAdminGeometry, panAdminMapView, placeAdminMapAnnotations, zoomAdminMapView,
 } from "../src/AdminOperationsMap.js";
 
 function item(overrides: Partial<AdminItem> = {}): AdminItem {
@@ -193,6 +193,43 @@ test("camera pan and bounded zoom preserve geometry-independent center and finit
   nearly(zoomed.north - zoomed.south, (view.north - view.south) / 1.5);
   assert.ok(zoomAdminMapView(view, 1e9).north - zoomAdminMapView(view, 1e9).south >= 0.008 - 1e-9);
   assert.ok(zoomAdminMapView(view, 1e-9).north - zoomAdminMapView(view, 1e-9).south <= 2.4 + 1e-9);
+});
+
+test("initial framing waits for the first nonempty geometry snapshot once per mode", () => {
+  const mainland = adminGeometryBounds([geometries[0]!])!;
+  const island = adminGeometryBounds([{ type: "Point", coordinates: [106.45, -5.3] }])!;
+  assert.equal(initialAdminMapFit(null, "simulation", null), null);
+  assert.deepEqual(initialAdminMapFit(null, "simulation", mainland), fitAdminMapBounds(mainland));
+  assert.equal(initialAdminMapFit("simulation", "simulation", island), null, "new data must not reset a manual camera in the same mode");
+  assert.equal(initialAdminMapFit("simulation", "public_api", null), null, "empty first API arrival cannot consume its fit");
+  assert.deepEqual(initialAdminMapFit("simulation", "public_api", island), fitAdminMapBounds(island));
+  assert.equal(initialAdminMapFit("public_api", "public_api", mainland), null);
+});
+
+test("nearby/coincident annotation cards stay distinct, stable, in frame and tied to unchanged projected anchors", () => {
+  for (const plot of [{ left: 64, top: 40, width: 480, height: 440 }, { left: 128, top: 80, width: 112, height: 672 }]) {
+    const anchors = [
+      { id: "a", x: plot.left + plot.width / 2, y: plot.top + 240, width: 70 },
+      { id: "b", x: plot.left + plot.width / 2, y: plot.top + 240, width: 70 },
+      { id: "c", x: plot.left + plot.width / 2 + 2, y: plot.top + 241, width: 70 },
+      { id: "d", x: plot.left + plot.width / 2 + 12, y: plot.top + 248, width: 70 },
+    ];
+    anchors.forEach(Object.freeze);
+    Object.freeze(anchors);
+    const cards = placeAdminMapAnnotations(anchors, plot);
+    assert.deepEqual(cards, placeAdminMapAnnotations([...anchors].reverse(), plot), "record order/selection painting cannot move the cards");
+    for (const card of cards) {
+      const anchor = anchors.find(({ id }) => id === card.id)!;
+      assert.equal(card.x, anchor.x); assert.equal(card.y, anchor.y); assert.equal(card.width, anchor.width);
+      assert.ok(card.left >= plot.left && card.left + card.width <= plot.left + plot.width);
+      assert.ok(card.top >= plot.top && card.top + 44 <= plot.top + plot.height);
+    }
+    for (let i = 0; i < cards.length; i++) for (let j = i + 1; j < cards.length; j++) {
+      const a = cards[i]!; const b = cards[j]!;
+      const intersect = a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + 44 && a.top + 44 > b.top;
+      assert.equal(intersect, false, "cards must not stack when the canvas has room");
+    }
+  }
 });
 
 test("selection labels expose title, category, processing state, stage and provenance with accessible controls", () => {

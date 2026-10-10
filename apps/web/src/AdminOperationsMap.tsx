@@ -6,6 +6,9 @@ import { categoryLabel } from "./display.js";
 
 export interface AdminMapBounds { west: number; south: number; east: number; north: number }
 export interface AdminMapSize { width: number; height: number; textScale?: number }
+export interface AdminMapPlot { left: number; top: number; width: number; height: number }
+export interface AdminMapAnchor { id: string; x: number; y: number; width: number }
+export interface AdminMapAnnotation extends AdminMapAnchor { left: number; top: number }
 
 // Query limits validate incoming positions only. They are never drawn as a boundary.
 const QUERY_LIMITS: AdminMapBounds = { west: 106.32, south: -6.4, east: 106.98, north: -5.16 };
@@ -103,6 +106,54 @@ export function fitAdminMapBounds(bounds: AdminMapBounds): AdminMapBounds {
   const width = Math.max(bounds.east - bounds.west, 0.06) * 1.24;
   const height = Math.max(bounds.north - bounds.south, 0.06) * 1.24;
   return { west: longitude - width / 2, east: longitude + width / 2, south: latitude - height / 2, north: latitude + height / 2 };
+}
+
+export function initialAdminMapFit(fittedMode: AdminMode | null, mode: AdminMode, bounds: AdminMapBounds | null): AdminMapBounds | null {
+  return bounds && fittedMode !== mode ? fitAdminMapBounds(bounds) : null;
+}
+
+/** Place screen-sized cards without changing any source vertex or projected anchor. */
+export function placeAdminMapAnnotations(anchors: readonly AdminMapAnchor[], plot: AdminMapPlot): AdminMapAnnotation[] {
+  const placed: AdminMapAnnotation[] = [];
+  const height = 44;
+  const gap = 8;
+  for (const anchor of [...anchors].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+    const minX = plot.left + 4;
+    const minY = plot.top + 4;
+    const maxX = Math.max(minX, plot.left + plot.width - anchor.width - 4);
+    const maxY = Math.max(minY, plot.top + plot.height - height - 4);
+    const candidates = new Map<string, { left: number; top: number }>();
+    const add = (x: number, y: number) => {
+      const left = Math.max(minX, Math.min(maxX, x));
+      const top = Math.max(minY, Math.min(maxY, y));
+      candidates.set(`${left},${top}`, { left, top });
+    };
+    add(anchor.x + 18, anchor.y - 54);
+    add(anchor.x - anchor.width - 18, anchor.y - 54);
+    add(anchor.x + 18, anchor.y + 10);
+    add(anchor.x - anchor.width - 18, anchor.y + 10);
+    // Bounded fallback slots allow coincident anchors to keep distinct selectable cards.
+    const columns = Math.min(24, Math.floor((maxX - minX) / (anchor.width + gap)) + 1);
+    const rows = Math.min(24, Math.floor((maxY - minY) / (height + gap)) + 1);
+    for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
+      add(minX + column * (anchor.width + gap), minY + row * (height + gap));
+    }
+    let best = { left: minX, top: minY };
+    let bestScore = Infinity;
+    for (const candidate of candidates.values()) {
+      const right = candidate.left + anchor.width;
+      const bottom = candidate.top + height;
+      const overlap = placed.reduce((total, other) => total +
+        Math.max(0, Math.min(right + gap, other.left + other.width) - Math.max(candidate.left - gap, other.left)) *
+        Math.max(0, Math.min(bottom + gap, other.top + height) - Math.max(candidate.top - gap, other.top)), 0);
+      const coveredAnchors = anchors.filter(({ x, y }) => x >= candidate.left - gap && x <= right + gap && y >= candidate.top - gap && y <= bottom + gap).length;
+      const distance = (candidate.left + anchor.width / 2 - anchor.x) ** 2 + (candidate.top + height / 2 - anchor.y) ** 2;
+      const score = overlap * 1e6 + coveredAnchors * 1e4 + distance;
+      if (score < bestScore) { bestScore = score; best = candidate; }
+    }
+    placed.push({ ...anchor, ...best });
+  }
+  return placed;
 }
 
 export function createAdminMapProjection(view: Readonly<AdminMapBounds>, size: AdminMapSize) {
@@ -212,22 +263,14 @@ function Geometry({ geometry, project }: { geometry: PublicGeoJSONGeometry; proj
 
 interface MappedItem { item: AdminItem; geometries: PublicGeoJSONGeometry[]; bounds: AdminMapBounds }
 
-function ItemGeometry({ mapped, selected, mode, project, plot, onSelect }: {
+function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisible, onSelect }: {
   mapped: MappedItem; selected: boolean; project: (position: PublicGeoJSONPosition) => [number, number];
-  mode: AdminMode; plot: { left: number; top: number; width: number; height: number }; onSelect: (id: string) => void;
+  mode: AdminMode; annotation: AdminMapAnnotation; anchorVisible: boolean; onSelect: (id: string) => void;
 }) {
   const { item, geometries } = mapped;
-  const positions = geometries.flatMap(adminGeometryPositions);
-  const onCanvas = (position: PublicGeoJSONPosition) => {
-    const [px, py] = project(position);
-    return px >= plot.left && px <= plot.left + plot.width && py >= plot.top && py <= plot.top + plot.height;
-  };
-  const anchor = positions.find(onCanvas) ?? positions[0]!;
-  const [x, y] = project(anchor);
-  // Annotation cards are screen-sized UI; their anchor remains an exact source vertex.
-  const cardWidth = mode === "simulation" ? 70 : 86;
-  const labelX = Math.max(plot.left + 4, Math.min(plot.left + plot.width - cardWidth - 8, x + 18));
-  const labelY = Math.max(plot.top + 4, Math.min(plot.top + plot.height - 52, y - 54));
+  const { x, y, width: cardWidth, left: labelX, top: labelY } = annotation;
+  const leaderX = Math.max(labelX, Math.min(labelX + cardWidth, x));
+  const leaderY = Math.max(labelY, Math.min(labelY + 44, y));
   const provenance = item.geometryBasis === "synthetic_example" ? "geometri contoh sintetis" : "geometri didukung sumber";
   const operation = mode === "simulation" ? `tahap ${item.layer} ${LAYER_LABELS[item.layer]}; status pemrosesan ${STATE_LABELS[item.state]}` : "proyeksi event publik; record tersedia";
   const label = `${item.title}; kategori ${categoryLabel(item.category)}; ${operation}; ${provenance}; dataset ${DATASET_LABELS[item.datasetKind]}${mode === "public_api" ? " API" : ""}`;
@@ -240,7 +283,7 @@ function ItemGeometry({ mapped, selected, mode, project, plot, onSelect }: {
   >
     <title>{label}</title>
     {geometries.map((geometry, index) => <Geometry key={index} geometry={geometry} project={project} />)}
-    {onCanvas(anchor) && <path className="admin-map__annotation-stem" d={`M${x} ${y}L${labelX + 8} ${labelY + 36}`} />}
+    {anchorVisible && <path className="admin-map__annotation-stem" d={`M${x} ${y}L${leaderX} ${leaderY}`} />}
     <g className="admin-map__annotation" transform={`translate(${labelX} ${labelY})`}>
       <rect className="admin-map__annotation-card" width={cardWidth} height="44" rx="8" />
       <g className="admin-map__stage-glyph" transform="translate(15 22)"><StageGlyph layer={mode === "simulation" ? item.layer : "L4"} /></g>
@@ -257,6 +300,8 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
   const [size, setSize] = useState(INITIAL_SIZE);
   const [view, setView] = useState<AdminMapBounds>({ ...ADMIN_MAP_DEFAULT_VIEW });
   const [announcement, setAnnouncement] = useState("");
+  const fittedMode = useRef<AdminMode | null>(null);
+  const initialView = useRef<AdminMapBounds>({ ...ADMIN_MAP_DEFAULT_VIEW });
   const drag = useRef<{ pointerId: number; x: number; y: number; view: AdminMapBounds; scale: number } | null>(null);
   const mapped = useMemo(() => items.flatMap((item): MappedItem[] => {
     const geometries = adminItemGeometries(item, mode);
@@ -265,12 +310,25 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
   }), [items, mode]);
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const selectedMapped = mapped.find(({ item }) => item.id === selectedId) ?? null;
+  const selectedBoundsKey = selectedMapped ? JSON.stringify(selectedMapped.bounds) : null;
   const allBounds = useMemo(() => adminGeometryBounds(mapped.flatMap(({ geometries }) => geometries)), [mapped]);
   const projection = useMemo(() => createAdminMapProjection(view, size), [view, size]);
   const textScale = size.textScale ?? 1;
   const visible = mapped.filter(({ bounds }) => overlaps(bounds, projection.visibleBounds));
-  const latitudeTicks = gridTicks(projection.visibleBounds.south, projection.visibleBounds.north, Math.max(2, Math.floor(projection.plot.height / 100)));
-  const longitudeTicks = gridTicks(projection.visibleBounds.west, projection.visibleBounds.east, Math.max(2, Math.floor(projection.plot.width / 140)));
+  const anchors = visible.map(({ item, geometries }) => {
+    const positions = geometries.flatMap(adminGeometryPositions);
+    const onCanvas = (position: PublicGeoJSONPosition) => {
+      const [x, y] = projection.project(position);
+      return x >= projection.plot.left && x <= projection.plot.left + projection.plot.width && y >= projection.plot.top && y <= projection.plot.top + projection.plot.height;
+    };
+    const anchor = positions.find(onCanvas) ?? positions[0]!;
+    const [x, y] = projection.project(anchor);
+    return { id: item.id, x, y, width: mode === "simulation" ? 70 : 86, visible: onCanvas(anchor) };
+  });
+  const annotations = new Map(placeAdminMapAnnotations(anchors, projection.plot).map((annotation) => [annotation.id, annotation]));
+  const anchorVisibility = new Map(anchors.map((anchor) => [anchor.id, anchor.visible]));
+  const latitudeTicks = gridTicks(projection.visibleBounds.south, projection.visibleBounds.north, Math.max(2, Math.floor(projection.plot.height / (100 * textScale))));
+  const longitudeTicks = gridTicks(projection.visibleBounds.west, projection.visibleBounds.east, Math.max(1, Math.floor(projection.plot.width / (140 * textScale))));
   const unlocated = items.length - mapped.length;
   const zoom = (ADMIN_MAP_DEFAULT_VIEW.north - ADMIN_MAP_DEFAULT_VIEW.south) / (view.north - view.south);
 
@@ -294,12 +352,18 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  useEffect(() => { setView({ ...ADMIN_MAP_DEFAULT_VIEW }); setAnnouncement(""); drag.current = null; }, [mode]);
+  useEffect(() => { fittedMode.current = null; initialView.current = { ...ADMIN_MAP_DEFAULT_VIEW }; setView(initialView.current); setAnnouncement(""); drag.current = null; }, [mode]);
   useEffect(() => {
-    if (!selectedMapped) return;
-    setView((current) => contains(createAdminMapProjection(current, size).visibleBounds, selectedMapped.bounds)
-      ? current : fitAdminMapBounds(selectedMapped.bounds));
-  }, [selectedMapped, size]);
+    const initial = initialAdminMapFit(fittedMode.current, mode, allBounds);
+    if (initial) { fittedMode.current = mode; initialView.current = initial; setView(initial); }
+  }, [allBounds, mode]);
+  useEffect(() => {
+    if (!selectedBoundsKey) return;
+    const bounds = JSON.parse(selectedBoundsKey) as AdminMapBounds;
+    setView((current) => contains(createAdminMapProjection(current, size).visibleBounds, bounds)
+      ? current : fitAdminMapBounds(bounds));
+    // Equivalent snapshot refreshes and resize must preserve manual camera movement.
+  }, [selectedBoundsKey, selectedId, mode]);
 
   const changeZoom = (factor: number) => {
     setView((current) => zoomAdminMapView(current, factor));
@@ -311,7 +375,7 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
     setView((current) => panAdminMapView(current, horizontal * width * 0.22, vertical * height * 0.22));
     setAnnouncement("Tampilan digeser. Koordinat tampilan diperbarui.");
   };
-  const reset = () => { setView({ ...ADMIN_MAP_DEFAULT_VIEW }); setAnnouncement("Tampilan awal dipulihkan."); };
+  const reset = () => { setView({ ...initialView.current }); setAnnouncement("Tampilan awal dipulihkan."); };
   const fitAll = () => { if (allBounds) { setView(fitAdminMapBounds(allBounds)); setAnnouncement("Semua geometri pada subset dimuat masuk tampilan, termasuk titik di luar tampilan awal."); } };
   const fitSelection = () => { if (selectedMapped) { setView(fitAdminMapBounds(selectedMapped.bounds)); setAnnouncement("Geometri record pilihan masuk tampilan."); } };
   const handleKeys = (event: KeyboardEvent<SVGSVGElement>) => {
@@ -366,8 +430,8 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
             <g className="admin-map__north" transform={`translate(${size.width - 16 * textScale} ${18 * textScale})`}><path d="M0 10V-4m-4 5 4-5 4 5" /><text x="0" y="-8" textAnchor="middle">U</text></g>
           </g>
           <g clipPath={`url(#${id}-clip)`}>
-            {visible.filter(({ item }) => item.id !== selectedId).map((mappedItem) => <ItemGeometry key={mappedItem.item.id} mapped={mappedItem} selected={false} mode={mode} project={projection.project} plot={projection.plot} onSelect={onSelect} />)}
-            {visible.filter(({ item }) => item.id === selectedId).map((mappedItem) => <ItemGeometry key={mappedItem.item.id} mapped={mappedItem} selected mode={mode} project={projection.project} plot={projection.plot} onSelect={onSelect} />)}
+            {visible.filter(({ item }) => item.id !== selectedId).map((mappedItem) => <ItemGeometry key={mappedItem.item.id} mapped={mappedItem} selected={false} mode={mode} project={projection.project} annotation={annotations.get(mappedItem.item.id)!} anchorVisible={anchorVisibility.get(mappedItem.item.id)!} onSelect={onSelect} />)}
+            {visible.filter(({ item }) => item.id === selectedId).map((mappedItem) => <ItemGeometry key={mappedItem.item.id} mapped={mappedItem} selected mode={mode} project={projection.project} annotation={annotations.get(mappedItem.item.id)!} anchorVisible={anchorVisibility.get(mappedItem.item.id)!} onSelect={onSelect} />)}
           </g>
         </svg>
         {mapped.length === 0 && <div className="admin-map__empty" role="status"><span className="admin-map__empty-mark" aria-hidden="true">⌖</span><h3>{items.length === 0 ? "Belum ada record pada subset ini" : "Geometri belum tersedia"}</h3><p>{items.length === 0 ? "Hasil mengikuti mode dan filter saat ini." : "Record tetap dapat dipilih dari antrean. Koordinat tidak ditebak."}</p><span>Hasil kosong bukan pernyataan bahwa area aman.</span></div>}
@@ -390,7 +454,7 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
       <div className="admin-map__legend-content">
         {mode === "simulation" ? <><p className="admin-map__legend-label">Tahap operasi</p><ul className="admin-map__layer-legend">{LAYERS.map((layer) => <li key={layer}><GlyphIcon layer={layer} /><span><strong>{layer}</strong> {LAYER_LABELS[layer]}</span></li>)}</ul><p className="admin-map__legend-label">Status pemrosesan</p><ul className="admin-map__state-legend">{(Object.keys(STATE_LABELS) as AdminItemState[]).map((state) => <li key={state}><GlyphIcon state={state} /><span>{STATE_LABELS[state]}</span></li>)}</ul></> : <><ul className="admin-map__layer-legend"><li><GlyphIcon layer="L4" /><span><strong>PUB</strong> Proyeksi event publik</span></li></ul><p className="admin-map__public-limit">“Record tersedia” berarti record dikembalikan API. Tahap internal dan status pemrosesan tidak tersedia dari endpoint publik.</p></>}
         <div className="admin-map__geometry-legend"><span><i className="admin-map__key-point" aria-hidden="true" />Titik</span><span><i className="admin-map__key-line" aria-hidden="true" />Segmen</span><span><i className="admin-map__key-polygon" aria-hidden="true" />{mode === "simulation" ? "Bidang sintetis" : "Bidang respons"}</span></div>
-        <p id={`${id}-limit`}>{mode === "simulation" ? "Simbol menunjukkan tahap dan status pemrosesan contoh. " : "Simbol PUB menunjukkan proyeksi event publik. "}Warna dan ukuran penanda tidak menilai bahaya atau membuat radius. Bentuk mengikuti koordinat data. Cakupan mengikuti subset dimuat, bukan seluruh Jakarta.</p>
+        <p id={`${id}-limit`}>{mode === "simulation" ? "Simbol menunjukkan tahap dan status pemrosesan contoh. " : "Simbol PUB menunjukkan proyeksi event publik. "}Kartu dapat bergeser di layar; garis tipis menghubungkannya ke koordinat data. Warna dan ukuran penanda tidak menilai bahaya atau membuat radius. Bentuk mengikuti koordinat data. Cakupan mengikuti subset dimuat, bukan seluruh Jakarta.</p>
       </div>
     </details>
     <span className="admin-map__sr-only" role="status" aria-live="polite">{announcement}</span>
