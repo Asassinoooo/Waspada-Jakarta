@@ -43,7 +43,7 @@ const ENDPOINT = "/api/v1/demo/source-preview";
 const REQUEST_DEADLINE_MS = 35_000;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const MAX_RECORDS_PER_SOURCE = 100;
-const MAX_REJECTED_COUNT = 10_000;
+const MAX_REJECTED_COUNT = 500;
 const MAX_ID_LENGTH = 96;
 const MAX_TITLE_LENGTH = 128;
 const MAX_SOURCE_STATUS_LENGTH = 64;
@@ -57,7 +57,7 @@ const browserClock: SourcePreviewClock = {
   setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
   clearTimeout: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>),
 };
-const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
+const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
 const sourceIds: readonly PreviewSourceId[] = ["osm", "petabencana"];
 const allowedKinds: Readonly<Record<PreviewSourceId, readonly PreviewKind[]>> = {
   osm: ["hospital", "police", "fire_station"],
@@ -97,10 +97,20 @@ function isMember<T extends string>(value: unknown, values: readonly T[]): value
 }
 
 function isInstant(value: unknown): value is string {
-  return typeof value === "string"
-    && value.length <= 64
-    && timestampPattern.test(value)
-    && Number.isFinite(Date.parse(value));
+  if (typeof value !== "string" || !timestampPattern.test(value)) return false;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const hour = Number(value.slice(11, 13));
+  const minute = Number(value.slice(14, 16));
+  const second = Number(value.slice(17, 19));
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  calendar.setUTCHours(0, 0, 0, 0);
+  return calendar.getUTCFullYear() === year && calendar.getUTCMonth() === month - 1
+    && calendar.getUTCDate() === day && hour <= 23 && minute <= 59 && second <= 59;
 }
 
 function isOptionalInstant(value: unknown): value is string | null {
@@ -109,14 +119,21 @@ function isOptionalInstant(value: unknown): value is string | null {
 
 function isSafeText(value: unknown, maximumLength: number): value is string {
   return typeof value === "string"
-    && value.length > 0
-    && value.length <= maximumLength
-    && value.trim() === value
-    && !/[\u0000-\u001f\u007f]/u.test(value);
+    && Array.from(value).length > 0
+    && Array.from(value).length <= maximumLength
+    && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
+}
+
+function isSafeProviderStatus(value: unknown): value is string {
+  return typeof value === "string"
+    && Array.from(value).length <= MAX_SOURCE_STATUS_LENGTH
+    && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
 }
 
 function isSafeOsmId(value: string): boolean {
-  return value.length <= MAX_ID_LENGTH && /^osm:(?:node|way|relation)\/[1-9][0-9]{0,19}$/u.test(value);
+  const match = /^osm:(?:node|way|relation)\/([1-9][0-9]*)$/u.exec(value);
+  return value.length <= MAX_ID_LENGTH && match !== null
+    && Number.isSafeInteger(Number(match[1])) && Number(match[1]) > 0;
 }
 
 function isSafePetabencanaId(value: string): boolean {
@@ -145,9 +162,13 @@ function parseRecord(value: unknown, source: PreviewSourceId): PreviewRecord {
     value.coordinates[1] < CRS84_ENVELOPES[source].south || value.coordinates[1] > CRS84_ENVELOPES[source].north ||
     !isMember(value.coordinate_kind, ["source_point", "source_extent_center"] as const) ||
     (source === "petabencana" && value.coordinate_kind !== "source_point") ||
+    (source === "osm" && value.coordinate_kind !== (
+      typeof value.id === "string" && value.id.startsWith("osm:node/") ? "source_point" : "source_extent_center"
+    )) ||
     !isOptionalInstant(value.source_created_at) ||
     (source === "osm" && value.source_created_at !== null) ||
-    !(value.source_status === null || isSafeText(value.source_status, MAX_SOURCE_STATUS_LENGTH)) ||
+    (source === "petabencana" && value.source_created_at === null) ||
+    !(value.source_status === null || isSafeProviderStatus(value.source_status)) ||
     (source === "osm" && value.source_status !== null) ||
     !isSourceUrl(value.source_url, source, value.id)
   ) {
@@ -170,7 +191,7 @@ function parseRecord(value: unknown, source: PreviewSourceId): PreviewRecord {
   };
 }
 
-function parseSource(value: unknown, expectedId: PreviewSourceId): PreviewSource {
+function parseSource(value: unknown, expectedId: PreviewSourceId, generatedAt: string): PreviewSource {
   if (!isObject(value) || !hasExactKeys(value, sourceKeys) || value.id !== expectedId) {
     throw new SourcePreviewPayloadError();
   }
@@ -192,25 +213,42 @@ function parseSource(value: unknown, expectedId: PreviewSourceId): PreviewSource
 
   const records = value.records.map((record) => parseRecord(record, expectedId));
   const fetchedAtMs = value.fetched_at === null ? null : Date.parse(value.fetched_at);
-  const reportTimesAreFresh = expectedId !== "petabencana" || records.every((record) => {
-    if (record.source_created_at === null) return true;
-    if (fetchedAtMs === null) return false;
-    const reportCreatedAtMs = Date.parse(record.source_created_at);
-    return reportCreatedAtMs <= fetchedAtMs && fetchedAtMs - reportCreatedAtMs <= MAX_PETABENCANA_REPORT_AGE_MS;
-  });
+  const timestampsAreConsistent = (value.fetched_at === null
+    || (fetchedAtMs !== null && fetchedAtMs <= Date.parse(generatedAt)))
+    && (value.source_updated_at === null
+      || Date.parse(value.source_updated_at) <= Date.parse(generatedAt))
+    && (value.data_mode !== "fetched" || value.source_updated_at === null
+      || (fetchedAtMs !== null && Date.parse(value.source_updated_at) <= fetchedAtMs))
+    && records.every((record) => {
+      if (expectedId !== "petabencana") return true;
+      if (record.source_created_at === null || fetchedAtMs === null) return false;
+      const reportCreatedAtMs = Date.parse(record.source_created_at);
+      return reportCreatedAtMs <= fetchedAtMs && fetchedAtMs - reportCreatedAtMs <= MAX_PETABENCANA_REPORT_AGE_MS;
+    });
   const statusIsConsistent = (() => {
     switch (value.status) {
       case "available":
-        return records.length > 0 && value.data_mode !== "none" && value.error === null;
+        return value.data_mode === "snapshot"
+          ? expectedId === "osm" && value.fetched_at !== null && value.source_updated_at !== null
+            && value.error === null && value.rejected_count === 0
+          : value.data_mode === "fetched" && value.fetched_at !== null
+            && records.length > 0 && value.error === null;
       case "empty":
-        return records.length === 0 && value.data_mode !== "none" && value.error === null;
+        return value.data_mode === "fetched" && value.fetched_at !== null
+          && records.length === 0 && value.error === null;
       case "unavailable":
-        return records.length === 0 && value.error !== null;
+        return value.data_mode === "fetched" && value.fetched_at !== null
+          && records.length === 0 && value.error !== null;
       case "not_requested":
-        return records.length === 0 && value.data_mode === "none" && value.fetched_at === null && value.error === null;
+        return expectedId === "petabencana" && records.length === 0 && value.data_mode === "none"
+          && value.fetched_at === null && value.source_updated_at === null && value.error === null
+          && value.rejected_count === 0 && !value.limited;
     }
   })();
-  if (!statusIsConsistent || !reportTimesAreFresh) throw new SourcePreviewPayloadError();
+  const uniqueRecordIds = new Set(records.map((record) => record.id));
+  if (!statusIsConsistent || !timestampsAreConsistent || uniqueRecordIds.size !== records.length) {
+    throw new SourcePreviewPayloadError();
+  }
 
   return {
     id: expectedId,
@@ -240,11 +278,15 @@ export function validateSourcePreviewPayload(value: unknown): SourcePreviewPaylo
     throw new SourcePreviewPayloadError();
   }
 
+  const generatedAt = value.generated_at;
   const sources = value.sources.map((source, index) => {
     const sourceId = sourceIds[index];
     if (!sourceId) throw new SourcePreviewPayloadError();
-    return parseSource(source, sourceId);
+    return parseSource(source, sourceId, generatedAt);
   });
+  if (value.cached && sources.some((source) => source.data_mode !== "fetched")) {
+    throw new SourcePreviewPayloadError();
+  }
   return {
     schema_version: "source-preview-v1",
     mode: "source_preview",
