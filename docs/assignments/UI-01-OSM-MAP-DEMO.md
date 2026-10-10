@@ -16,6 +16,8 @@ Verification in WSL Ubuntu-26.04: existing Node v24.21.0 PATH/dependencies; `nod
 
 **Implementation commit:** `4e4df751975bbc2a5557a807e7a74872277b2b8b` — `feat(UI-01): add source preview OSM point map`.
 
+**Review follow-up:** `472ff6e0cb833041b94a3fbf348117268b77a755` — `fix(UI-01): simplify map fallback and referrer policy`. This removes the decorative tile fallback pattern, shortens the map notice to the three source-specific cautions, and sets `strict-origin-when-cross-origin` on tile images.
+
 **Changed paths:** `apps/web/src/SourcePointMap.tsx`, `apps/web/src/source-point-map.css`, `apps/web/test/source-point-map.test.tsx`.
 
 The component renders only the supplied source-supported points on bounded viewport-only Web Mercator OSM tiles. It starts at central Jakarta `[106.83, -6.19]`, zoom 12, and supports keyboard and pointer panning, bounded zoom, reset, selected-point recentering and highlighting, category letters with text labels, OSM attribution, SSR dimensions with `ResizeObserver` updates, tile failure messaging/retry, and an optional return-to-list callback. OSM facility references and unreviewed PetaBencana citizen reports are labelled separately; OSM extent-centre points are described as approximate. No danger radius, geolocation, safety rating, upstream source acquisition, or public incident contract was added.
