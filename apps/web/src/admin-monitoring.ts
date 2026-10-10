@@ -15,6 +15,7 @@ const MAX_CONTEXT_BYTES = 64 * 1024;
 const MAX_EVENTS_BYTES = 768 * 1024;
 const MAX_GEOJSON_BYTES = 2 * 1024 * 1024;
 const MAX_EVENTS = 20;
+const MAX_PUBLIC_ATTRIBUTIONS = 20;
 const MAX_SOURCES = 100;
 const MAX_TEXT = 4_000;
 const MAX_PUBLIC_ID = 256;
@@ -484,6 +485,28 @@ function uniqueSourceNames(event: EventView): string[] {
   for (const claim of event.claims) for (const source of claim.sources) names.add(source.display_name);
   return [...names].slice(0, 20);
 }
+function uniquePublicSources(event: EventView): NonNullable<AdminItem["publicSources"]> {
+  const seen = new Set<string>();
+  const sources: NonNullable<AdminItem["publicSources"]> = [];
+  for (const claim of event.claims) {
+    for (const source of claim.sources) {
+      // Publication and observation times are part of the attribution identity.
+      const key = JSON.stringify([
+        source.display_name, source.url, source.published_at, source.observed_at,
+      ]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      sources.push({
+        displayName: source.display_name,
+        url: source.url,
+        publishedAt: source.published_at,
+        observedAt: source.observed_at,
+      });
+      if (sources.length === MAX_PUBLIC_ATTRIBUTIONS) return sources;
+    }
+  }
+  return sources;
+}
 function sourceObservationTime(event: EventView): string | null {
   for (const claim of event.claims) {
     for (const source of claim.sources) if (source.observed_at) return source.observed_at;
@@ -528,6 +551,7 @@ function makePublicItems(
           ? "Tidak ada geometri yang cocok dengan event dan versi ini; hasil kosong bukan pernyataan bahwa lokasi aman."
           : "Endpoint GeoJSON gagal pada observasi ini; tidak ada geometri yang ditampilkan.",
       sourceNames: evidenceSources, eventVersion: event.version, publicEventId: event.event_id,
+      publicSources: uniquePublicSources(event),
       datasetKind, observedAt: sourceObservationTime(event), fetchedAt: capturedAt,
       publishedAt: event.published_at,
       evidenceSummary: event.claims.length === 0

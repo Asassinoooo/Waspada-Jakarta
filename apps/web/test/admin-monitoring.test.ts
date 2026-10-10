@@ -26,6 +26,7 @@ function eventView(options: {
   dateOnly?: string;
   impossibleDate?: string;
   dateRange?: [string, string];
+  sources?: EventView["claims"][number]["sources"];
 } = {}): EventView {
   const eventId = options.eventId ?? "public-event-01";
   const version = options.version ?? 1;
@@ -59,7 +60,7 @@ function eventView(options: {
       scope,
       qualifiers: ["contoh"],
       evidence_label: "attributed_report",
-      sources: [{
+      sources: options.sources ?? [{
         display_name: "Situs Contoh Publik",
         url: sourceUrl,
         published_at: "2026-10-10T02:10:00.000Z",
@@ -226,6 +227,17 @@ test("public monitoring reads only the bounded read paths and joins every exact 
   assert.equal(latest.current?.snapshot?.items[0]?.additionalGeometries?.length, 1);
   assert.equal(latest.current?.snapshot?.items[0]?.sourceNames[0], "Situs Contoh Publik");
   assert.equal(latest.current?.snapshot?.items[0]?.observedAt, "2026-10-10T02:05:00.000Z");
+  assert.deepEqual(latest.current?.snapshot?.items[0]?.publicSources, [{
+    displayName: "Situs Contoh Publik",
+    url: sourceUrl,
+    publishedAt: "2026-10-10T02:10:00.000Z",
+    observedAt: "2026-10-10T02:05:00.000Z",
+  }]);
+  assert.equal(latest.current?.snapshot?.items[0]?.publishedAt, "2026-10-10T02:15:00.000Z");
+  assert.notEqual(latest.current?.snapshot?.items[0]?.publicSources?.[0]?.publishedAt,
+    latest.current?.snapshot?.items[0]?.publishedAt);
+  assert.notEqual(latest.current?.snapshot?.items[0]?.publicSources?.[0]?.observedAt,
+    latest.current?.snapshot?.items[0]?.fetchedAt);
   assert.equal(latest.current?.snapshot?.items[0]?.eventVersion, 1);
   assert.deepEqual(latest.current?.snapshot?.items[0]?.publicStatus, {
     lifecycle: "ongoing",
@@ -249,6 +261,69 @@ test("public monitoring reads only the bounded read paths and joins every exact 
   monitor.pause();
   assert.deepEqual(scheduler.delays, []);
   assert.equal(latest.current?.status, "paused");
+  monitor.stop();
+});
+
+test("public source attributions deduplicate exact tuples, retain timestamp variants, and cap at 20", async () => {
+  const scheduler = new FakeScheduler();
+  const latest: { current: AdminMonitorState | null } = { current: null };
+  const firstSource: EventView["claims"][number]["sources"][number] = {
+    display_name: "Situs Contoh Publik",
+    url: sourceUrl,
+    published_at: "2026-10-10T02:10:00.000Z",
+    observed_at: "2026-10-10T02:05:00.000Z",
+    excerpt: "Tidak boleh diproyeksikan.",
+  };
+  const timestampVariant = {
+    ...firstSource,
+    published_at: "2026-10-10T02:11:00.000Z",
+  };
+  const sourceList = [
+    firstSource,
+    { ...firstSource },
+    timestampVariant,
+    ...Array.from({ length: 20 }, (_entry, index) => ({
+      display_name: "Sumber Contoh " + String(index + 1),
+      url: "https://source.example.test/notices/" + String(index + 1),
+      published_at: "2026-10-10T02:12:00.000Z",
+      observed_at: "2026-10-10T02:06:00.000Z",
+      excerpt: "Tidak boleh diproyeksikan.",
+    })),
+  ];
+  const monitor = createAdminMonitor({
+    onState: (state) => { latest.current = state; },
+    scheduler,
+    clock: () => NOW,
+    fetch: async (input) => {
+      const path = requestPath(input);
+      if (path === "/api/v1/context") return jsonResponse(context());
+      if (path === "/api/v1/events?limit=20") {
+        return jsonResponse(eventPage([eventView({ sources: sourceList })]));
+      }
+      if (path === "/api/v1/events.geojson") return jsonResponse(featureCollection(), "application/geo+json");
+      throw new Error("Unexpected path.");
+    },
+  });
+
+  await monitor.start();
+
+  const projected = latest.current?.snapshot?.items[0]?.publicSources;
+  assert.equal(projected?.length, 20);
+  assert.deepEqual(projected?.[0], {
+    displayName: "Situs Contoh Publik",
+    url: sourceUrl,
+    publishedAt: "2026-10-10T02:10:00.000Z",
+    observedAt: "2026-10-10T02:05:00.000Z",
+  });
+  assert.deepEqual(projected?.[1], {
+    displayName: "Situs Contoh Publik",
+    url: sourceUrl,
+    publishedAt: "2026-10-10T02:11:00.000Z",
+    observedAt: "2026-10-10T02:05:00.000Z",
+  });
+  assert.equal(projected?.[19]?.displayName, "Sumber Contoh 18");
+  assert.ok(projected?.every((source) => Object.keys(source).sort().join(",")
+    === "displayName,observedAt,publishedAt,url"));
   monitor.stop();
 });
 
