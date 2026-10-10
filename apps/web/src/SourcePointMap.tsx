@@ -482,6 +482,8 @@ export function SourcePointMap({
               className="source-point-map__tile"
               src={createOsmTileUrl(tileTemplate, tile)}
               alt=""
+              width={TILE_SIZE}
+              height={TILE_SIZE}
               draggable={false}
               loading="lazy"
               decoding="async"
