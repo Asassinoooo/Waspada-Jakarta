@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./public-contracts": "./src/contracts/public-api.ts",
-    "./source-preview-contracts": "./src/contracts/source-preview.ts"
+    "./source-preview-contracts": "./src/contracts/source-preview.ts",
+    "./context-sources-contracts": "./src/contracts/context-sources.ts"
   },
   "scripts": {
     "dev": "CLOUDFLARE_CF_FETCH_ENABLED=false wrangler dev --local --ip 127.0.0.1 --port 8787",
