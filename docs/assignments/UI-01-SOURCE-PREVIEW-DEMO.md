@@ -30,3 +30,13 @@ Root review follow-up (10 October 2026):
 - Added a **Coba muat snapshot** action after initial snapshot failure. The browser client now races the fixed endpoint request and streamed body against a 35-second deadline, aborts its internal request on timeout or external/unmount cancellation, and does not await stream cancellation when rejecting an oversized response. Tests use an injected clock and mocked fetch/body streams.
 - Source timestamps now distinguish successful data acquisition from an unavailable request attempt: successful/empty responses say **Data diambil pada**; unavailable responses say **Permintaan dicoba pada**.
 - Follow-up checks: WSL Ubuntu-26.04, Node `v24.21.0`, npm `11.19.0`, existing dependencies; focused tests (15/15 passed) and web typecheck (passed). Base-to-HEAD diff check is recorded after the final handoff commit.
+
+Worker-parity and desktop-layout follow-up (10 October 2026):
+
+- Branch/worktree: `work/UI-01-SOURCE-PREVIEW-DEMO` at `.codex-build/worktrees/ui01-source-preview`; approved base remains `0270af0c0b0233f467bcf680315f3df49f76a331`.
+- Code commit: `8690062ad354e1300bea35ec87656a0dcbffdeec` — `fix(UI-01-SOURCE-PREVIEW-DEMO): align client with worker DTO`.
+- Changed paths: `apps/web/src/SourcePreview.tsx`, `apps/web/src/source-preview-client.ts`, `apps/web/src/source-preview.css`, `apps/web/test/source-preview.test.tsx`.
+- The browser validator now follows the Worker endpoint's source-mode/status rules, timestamp bounds, cached-response semantics, duplicate-ID rejection, source-specific coordinate kinds, PetaBencana creation-time requirement, and rejected-record limit. Regression cases cover invalid mode/status combinations, unavailable attempts, cached snapshots, future timestamps, wrong coordinate kinds, missing PetaBencana creation times, and a valid OSM way.
+- The desktop intro is shorter and smaller; source cards no longer repeat the source name or the generated response timestamp already shown in the summary. Unrequested sources retain their explicit “Belum diminta” state without empty timestamp rows. Mobile list-first behavior and distinct acquisition, provider-update, and physical-event time explanations remain intact.
+- Checks run in WSL Ubuntu-26.04 using Node `v24.21.0`, npm `11.19.0`, and existing dependencies: `node --import tsx --test apps/web/test/source-preview.test.tsx` (17/17 passed); `npm run typecheck --workspace=@waspada/web` (passed); `git diff --check` (passed; Git reports the existing CRLF-to-LF normalization notice for the test file).
+- Limitations/configuration: no live provider request, browser screenshot rerun, dependencies, secrets, configuration changes, or migrations. Root owns integrated browser QA and acceptance.

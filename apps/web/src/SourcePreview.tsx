@@ -83,11 +83,9 @@ function dataModeLabel(source: PreviewSource, cached: boolean): string {
 
 export function SourcePreviewStatusCard({
   source,
-  generatedAt,
   cached,
 }: {
   source: PreviewSource;
-  generatedAt: string;
   cached: boolean;
 }) {
   const isOsm = source.id === "osm";
@@ -109,7 +107,6 @@ export function SourcePreviewStatusCard({
     <article className={"source-preview__source-card source-preview__source-card--" + source.status} aria-labelledby={"source-preview-source-" + source.id}>
       <div className="source-preview__source-heading">
         <div>
-          <p className="source-preview__source-eyebrow">{sourceName(source.id)}</p>
           <h3 id={"source-preview-source-" + source.id}>{sourceTitle}</h3>
         </div>
         <span className="source-preview__source-status">{statusLabel(source)}</span>
@@ -122,20 +119,18 @@ export function SourcePreviewStatusCard({
           {isOsm ? "Data fasilitas belum diminta dari sumber." : "PetaBencana hanya dihubungi setelah tombol Ambil data sumber dipilih."}
         </p>
       )}
-      <dl className="source-preview__source-times">
-        <div>
-          <dt>{sourceFetchedLabel}</dt>
-          <dd>{timeValue(source.fetched_at, "Tidak tersedia dari penyedia.")}</dd>
-        </div>
-        <div>
-          <dt>{sourceUpdatedLabel}</dt>
-          <dd>{timeValue(source.source_updated_at, sourceTimeMissing)}</dd>
-        </div>
-        <div>
-          <dt>Respons demo dibuat</dt>
-          <dd><time dateTime={generatedAt}>{formatTime(generatedAt)}</time></dd>
-        </div>
-      </dl>
+      {source.status !== "not_requested" && (
+        <dl className="source-preview__source-times">
+          <div>
+            <dt>{sourceFetchedLabel}</dt>
+            <dd>{timeValue(source.fetched_at, "Tidak tersedia dari penyedia.")}</dd>
+          </div>
+          <div>
+            <dt>{sourceUpdatedLabel}</dt>
+            <dd>{timeValue(source.source_updated_at, sourceTimeMissing)}</dd>
+          </div>
+        </dl>
+      )}
       {source.limited && <p className="source-preview__source-note">Jumlah record dibatasi; daftar ini tidak lengkap.</p>}
       {source.rejected_count > 0 && (
         <p className="source-preview__source-note">{source.rejected_count} record tidak dimasukkan ke pratinjau karena tidak memenuhi batas sumber.</p>
@@ -356,7 +351,7 @@ export function SourcePreview({ datasetMode, renderMap }: SourcePreviewProps) {
           <p className="section-kicker">Demo sumber · tampilan terpisah</p>
           <h1 id="source-preview-title">Pratinjau data dari sumber</h1>
           <p className="source-preview__intro-copy">
-            Lokasi fasilitas adalah titik rujukan. Laporan warga hanya memperlihatkan titik dari sumber, bukan zona bahaya atau penilaian keselamatan. Jendela demo bukan batas administrasi resmi.
+            Titik fasilitas adalah rujukan; laporan warga bukan zona bahaya. Cakupan demo bukan batas administrasi atau penilaian keselamatan.
           </p>
         </div>
         <p className="source-preview__disclaimer">Pratinjau sumber — belum melalui publikasi Waspada</p>
@@ -418,7 +413,7 @@ export function SourcePreview({ datasetMode, renderMap }: SourcePreviewProps) {
 
           <section className="source-preview__sources" aria-label="Status tiap sumber">
             {payload.sources.map((source) => (
-              <SourcePreviewStatusCard key={source.id} source={source} generatedAt={payload.generated_at} cached={payload.cached} />
+              <SourcePreviewStatusCard key={source.id} source={source} cached={payload.cached} />
             ))}
           </section>
 

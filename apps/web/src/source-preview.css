@@ -13,13 +13,16 @@
 }
 
 .source-preview__intro h1 {
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.4rem;
+  font-size: clamp(1.7rem, 2.35vw, 2.35rem);
+  line-height: 1.1;
 }
 
 .source-preview__intro-copy {
   max-width: 60ch;
   margin-bottom: 0;
   color: var(--quiet-ink);
+  font-size: 0.94rem;
 }
 
 .source-preview__disclaimer {

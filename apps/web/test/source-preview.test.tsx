@@ -164,12 +164,94 @@ test("rejects malformed coordinates, timestamps, and source-status combinations"
   assert.throws(() => validateSourcePreviewPayload(inconsistentStatus), SourcePreviewPayloadError);
 });
 
+test("matches Worker source-mode outcomes, fetched timestamps, and cache rules", () => {
+  const invalidSources: SourcePreviewPayload[] = [
+    payload([
+      source("osm", { status: "not_requested", data_mode: "none", fetched_at: null, source_updated_at: null, records: [] }),
+      source("petabencana"),
+    ]),
+    payload([
+      source("osm"),
+      source("petabencana", { status: "available", data_mode: "snapshot", records: [floodRecord] }),
+    ]),
+    payload([
+      source("osm"),
+      source("petabencana", { status: "unavailable", data_mode: "none", error: "timeout" }),
+    ]),
+    payload([
+      source("osm", { status: "unavailable", data_mode: "fetched", fetched_at: null, records: [], error: "timeout" }),
+      source("petabencana"),
+    ]),
+    payload([
+      source("osm"),
+      source("petabencana", { status: "empty", data_mode: "fetched", fetched_at: instant, rejected_count: 501 }),
+    ]),
+  ];
+  for (const invalid of invalidSources) {
+    assert.throws(() => validateSourcePreviewPayload(invalid), SourcePreviewPayloadError);
+  }
+
+  const cachedSnapshot = clone(payload());
+  cachedSnapshot.cached = true;
+  assert.throws(() => validateSourcePreviewPayload(cachedSnapshot), SourcePreviewPayloadError);
+
+  const futureFetch = payload([
+    source("osm"),
+    source("petabencana", {
+      status: "empty",
+      data_mode: "fetched",
+      fetched_at: "2026-10-10T04:10:48Z",
+    }),
+  ]);
+  assert.throws(() => validateSourcePreviewPayload(futureFetch), SourcePreviewPayloadError);
+
+  const futureSourceUpdate = payload([
+    source("osm", {
+      status: "empty",
+      data_mode: "fetched",
+      records: [],
+      source_updated_at: "2026-10-10T04:10:48Z",
+    }),
+    source("petabencana"),
+  ]);
+  assert.throws(() => validateSourcePreviewPayload(futureSourceUpdate), SourcePreviewPayloadError);
+});
+
+test("requires provider-specific coordinate kinds and PetaBencana report timestamps", () => {
+  const nodeWithExtent = clone(payload());
+  (nodeWithExtent.sources[0]?.records[0] as PreviewRecord).coordinate_kind = "source_extent_center";
+  assert.throws(() => validateSourcePreviewPayload(nodeWithExtent), SourcePreviewPayloadError);
+
+  const wayWithPoint: PreviewRecord = {
+    ...osmRecord,
+    id: "osm:way/123",
+    source_url: "https://www.openstreetmap.org/way/123",
+  };
+  const invalidWay = payload([source("osm", { records: [wayWithPoint] }), source("petabencana")]);
+  assert.throws(() => validateSourcePreviewPayload(invalidWay), SourcePreviewPayloadError);
+
+  const validWay = { ...wayWithPoint, coordinate_kind: "source_extent_center" as const };
+  const validWayPayload = payload([source("osm", { records: [validWay] }), source("petabencana")]);
+  assert.equal(validateSourcePreviewPayload(validWayPayload).sources[0]?.records[0]?.coordinate_kind, "source_extent_center");
+
+  const missingReportTime = payload([
+    source("osm"),
+    source("petabencana", {
+      status: "available",
+      data_mode: "fetched",
+      fetched_at: instant,
+      records: [{ ...floodRecord, source_created_at: null }],
+    }),
+  ]);
+  assert.throws(() => validateSourcePreviewPayload(missingReportTime), SourcePreviewPayloadError);
+});
+
 test("accepts explicit empty and unavailable source outcomes without turning them into safety claims", () => {
   const empty = source("petabencana", { status: "empty", data_mode: "fetched", fetched_at: instant });
   const unavailable = source("osm", {
     status: "unavailable",
     data_mode: "fetched",
-    fetched_at: null,
+    fetched_at: instant,
     source_updated_at: null,
     records: [],
     error: "timeout",
@@ -297,9 +379,13 @@ test("shows snapshot, empty, unavailable, and per-source time labels independent
     error: "http_error",
   });
 
-  const osmMarkup = renderToStaticMarkup(createElement(SourcePreviewStatusCard, { source: osm, generatedAt: instant, cached: false }));
-  const emptyMarkup = renderToStaticMarkup(createElement(SourcePreviewStatusCard, { source: emptyPeta, generatedAt: instant, cached: false }));
-  const unavailableMarkup = renderToStaticMarkup(createElement(SourcePreviewStatusCard, { source: unavailablePeta, generatedAt: instant, cached: false }));
+  const notRequestedMarkup = renderToStaticMarkup(createElement(SourcePreviewStatusCard, {
+    source: source("petabencana"),
+    cached: false,
+  }));
+  const osmMarkup = renderToStaticMarkup(createElement(SourcePreviewStatusCard, { source: osm, cached: false }));
+  const emptyMarkup = renderToStaticMarkup(createElement(SourcePreviewStatusCard, { source: emptyPeta, cached: false }));
+  const unavailableMarkup = renderToStaticMarkup(createElement(SourcePreviewStatusCard, { source: unavailablePeta, cached: false }));
 
   assert.match(osmMarkup, /Snapshot lokal demo/);
   assert.match(osmMarkup, /Waktu basis data OpenStreetMap/);
@@ -307,6 +393,10 @@ test("shows snapshot, empty, unavailable, and per-source time labels independent
   const osmDetailsMarkup = renderToStaticMarkup(createElement(SourcePreviewRecordDetails, { record: osmRecord }));
   assert.match(osmDetailsMarkup, /Perubahan fasilitas/);
   assert.match(osmMarkup, /dateTime="2026-10-10T04:10:47Z"/);
+  assert.doesNotMatch(osmMarkup, /Respons demo dibuat/);
+  assert.match(notRequestedMarkup, /Belum diminta/);
+  assert.doesNotMatch(notRequestedMarkup, /source-preview__source-times/);
+  assert.doesNotMatch(notRequestedMarkup, /Tidak tersedia dari penyedia/);
   assert.match(emptyMarkup, /Respons sumber kosong/);
   assert.match(emptyMarkup, /Hasil kosong tidak berarti Jakarta aman/);
   assert.match(unavailableMarkup, /Sumber tidak tersedia/);
