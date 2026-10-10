@@ -6,9 +6,16 @@ import type { PreviewRecord, PreviewSource, SourcePreviewPayload } from "@waspad
 import {
   getSourcePreview,
   SourcePreviewPayloadError,
+  SourcePreviewTimeoutError,
   validateSourcePreviewPayload,
+  type SourcePreviewClock,
 } from "../src/source-preview-client.js";
-import { SourcePreview, SourcePreviewRecordDetails, SourcePreviewStatusCard } from "../src/SourcePreview.js";
+import {
+  SourcePreview,
+  SourcePreviewRecordDetails,
+  SourcePreviewRequestError,
+  SourcePreviewStatusCard,
+} from "../src/SourcePreview.js";
 
 const instant = "2026-10-10T04:10:47Z";
 const osmRecord: PreviewRecord = {
@@ -71,6 +78,31 @@ function payload(sources = [source("osm"), source("petabencana")]): SourcePrevie
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+function createManualClock() {
+  let deadline: (() => void) | null = null;
+  let delayMs = 0;
+  const clock: SourcePreviewClock = {
+    setTimeout(callback, delay) {
+      deadline = callback;
+      delayMs = delay;
+      return 1;
+    },
+    clearTimeout() {
+      deadline = null;
+    },
+  };
+  return {
+    clock,
+    get delayMs() { return delayMs; },
+    expire() {
+      const expire = deadline;
+      if (!expire) throw new Error("No active request deadline");
+      deadline = null;
+      expire();
+    },
+  };
 }
 
 test("validates the versioned DTO and returns only allowlisted fields", () => {
@@ -166,21 +198,94 @@ test("uses only the fixed snapshot endpoint by default and the explicit fetch qu
 test("passes AbortController signals and rejects oversized or non-JSON responses", async () => {
   const controller = new AbortController();
   let receivedSignal: AbortSignal | null | undefined;
-  const validFetcher: typeof fetch = async (_input, init) => {
+  const deadline = createManualClock();
+  let fetchStarted!: () => void;
+  const started = new Promise<void>((resolve) => { fetchStarted = resolve; });
+  const blockedFetcher: typeof fetch = async (_input, init) => {
     receivedSignal = init?.signal as AbortSignal | null | undefined;
-    return new Response(JSON.stringify(payload()), { headers: { "content-type": "application/json" } });
+    fetchStarted();
+    return new Promise<Response>(() => {});
   };
-  await getSourcePreview({ signal: controller.signal, fetcher: validFetcher });
-  assert.equal(receivedSignal, controller.signal);
+  const pending = getSourcePreview({ signal: controller.signal, fetcher: blockedFetcher, clock: deadline.clock });
+  await started;
+  assert.equal(receivedSignal?.aborted, false);
+  assert.notEqual(receivedSignal, controller.signal);
+  assert.equal(deadline.delayMs, 35_000);
+  controller.abort();
+  await assert.rejects(pending, (error: unknown) => error instanceof Error && error.name === "AbortError");
+  assert.equal(receivedSignal?.aborted, true);
 
-  const oversizedFetcher: typeof fetch = async () => new Response("x".repeat(512 * 1024 + 1), {
+  const oversizedBody = new ReadableStream<Uint8Array>({
+    start(stream) { stream.enqueue(new Uint8Array(512 * 1024 + 1)); },
+    cancel() { return new Promise<void>(() => {}); },
+  });
+  const oversizedFetcher: typeof fetch = async () => new Response(oversizedBody, {
     headers: { "content-type": "application/json" },
   });
-  await assert.rejects(getSourcePreview({ fetcher: oversizedFetcher }), SourcePreviewPayloadError);
+  await assertCompletesWithin(
+    assert.rejects(
+      getSourcePreview({ fetcher: oversizedFetcher, clock: createManualClock().clock }),
+      SourcePreviewPayloadError,
+    ),
+    250,
+  ).then((result) => assert.equal(result, "resolved"));
 
   const wrongTypeFetcher: typeof fetch = async () => new Response("{}", { headers: { "content-type": "text/html" } });
-  await assert.rejects(getSourcePreview({ fetcher: wrongTypeFetcher }), SourcePreviewPayloadError);
+  await assert.rejects(getSourcePreview({ fetcher: wrongTypeFetcher, clock: createManualClock().clock }), SourcePreviewPayloadError);
 });
+
+test("applies the request deadline while waiting for the HTTP response", async () => {
+  const deadline = createManualClock();
+  let receivedSignal: AbortSignal | null | undefined;
+  let fetchStarted!: () => void;
+  const started = new Promise<void>((resolve) => { fetchStarted = resolve; });
+  const fetcher: typeof fetch = async (_input, init) => {
+    receivedSignal = init?.signal as AbortSignal | null | undefined;
+    fetchStarted();
+    return new Promise<Response>(() => {});
+  };
+
+  const pending = getSourcePreview({ fetcher, clock: deadline.clock });
+  await started;
+  deadline.expire();
+  await assert.rejects(pending, SourcePreviewTimeoutError);
+  assert.equal(receivedSignal?.aborted, true);
+});
+
+test("applies the same request deadline while reading a stalled response body", async () => {
+  const deadline = createManualClock();
+  let bodyReadStarted!: () => void;
+  const started = new Promise<void>((resolve) => { bodyReadStarted = resolve; });
+  const body = new ReadableStream<Uint8Array>({
+    pull() {
+      bodyReadStarted();
+      return new Promise<void>(() => {});
+    },
+    cancel() { return new Promise<void>(() => {}); },
+  });
+  const fetcher: typeof fetch = async () => new Response(body, {
+    headers: { "content-type": "application/json" },
+  });
+
+  const pending = getSourcePreview({ fetcher, clock: deadline.clock });
+  await started;
+  deadline.expire();
+  await assert.rejects(pending, SourcePreviewTimeoutError);
+});
+
+async function assertCompletesWithin<T>(promise: Promise<T>, milliseconds: number): Promise<"resolved" | "rejected"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then(() => "resolved" as const, () => "rejected" as const),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("Response cancellation blocked the bounded rejection")), milliseconds);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 test("shows snapshot, empty, unavailable, and per-source time labels independently", () => {
   const osm = source("osm");
@@ -198,12 +303,14 @@ test("shows snapshot, empty, unavailable, and per-source time labels independent
 
   assert.match(osmMarkup, /Snapshot lokal demo/);
   assert.match(osmMarkup, /Waktu basis data OpenStreetMap/);
+  assert.match(osmMarkup, /Data diambil pada/);
   const osmDetailsMarkup = renderToStaticMarkup(createElement(SourcePreviewRecordDetails, { record: osmRecord }));
   assert.match(osmDetailsMarkup, /Perubahan fasilitas/);
   assert.match(osmMarkup, /dateTime="2026-10-10T04:10:47Z"/);
   assert.match(emptyMarkup, /Respons sumber kosong/);
   assert.match(emptyMarkup, /Hasil kosong tidak berarti Jakarta aman/);
   assert.match(unavailableMarkup, /Sumber tidak tersedia/);
+  assert.match(unavailableMarkup, /Permintaan dicoba pada/);
   assert.match(unavailableMarkup, /tidak memberi respons yang dapat digunakan/);
 });
 
@@ -215,6 +322,21 @@ test("labels source report creation time separately from physical event time and
   assert.match(markup, /Status penyedia/);
   assert.match(markup, /belum diverifikasi Waspada/);
   assert.match(markup, /https:\/\/petabencana\.id\//);
+});
+
+test("offers an explicit snapshot retry only after a snapshot request fails", () => {
+  const retrySnapshot = renderToStaticMarkup(createElement(SourcePreviewRequestError, {
+    mode: "snapshot",
+    onRetrySnapshot: () => {},
+  }));
+  const failedFetch = renderToStaticMarkup(createElement(SourcePreviewRequestError, {
+    mode: "fetch",
+    onRetrySnapshot: () => {},
+  }));
+
+  assert.match(retrySnapshot, /Coba muat snapshot/);
+  assert.match(retrySnapshot, /Tidak ada data pengganti yang ditampilkan/);
+  assert.doesNotMatch(failedFetch, /Coba muat snapshot/);
 });
 
 test("does not present source records or request them outside confirmed demo mode", () => {

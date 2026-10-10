@@ -7,6 +7,10 @@ import type {
 } from "@waspada/worker/source-preview-contracts";
 
 export type SourcePreviewRequestMode = "snapshot" | "fetch";
+export interface SourcePreviewClock {
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
 
 export class SourcePreviewHttpError extends Error {
   constructor(readonly status: number) {
@@ -22,7 +26,21 @@ export class SourcePreviewPayloadError extends Error {
   }
 }
 
+export class SourcePreviewTimeoutError extends Error {
+  constructor() {
+    super("Source preview request timed out");
+    this.name = "SourcePreviewTimeoutError";
+  }
+}
+
+function createAbortError(): Error {
+  const error = new Error("Source preview request was aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 const ENDPOINT = "/api/v1/demo/source-preview";
+const REQUEST_DEADLINE_MS = 35_000;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const MAX_RECORDS_PER_SOURCE = 100;
 const MAX_REJECTED_COUNT = 10_000;
@@ -35,6 +53,10 @@ const CRS84_ENVELOPES = {
   petabencana: { west: 106.32, south: -6.4, east: 106.98, north: -5.16 },
 } as const;
 const MAX_PETABENCANA_REPORT_AGE_MS = 24 * 60 * 60 * 1000;
+const browserClock: SourcePreviewClock = {
+  setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+  clearTimeout: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>),
+};
 const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
 const sourceIds: readonly PreviewSourceId[] = ["osm", "petabencana"];
 const allowedKinds: Readonly<Record<PreviewSourceId, readonly PreviewKind[]>> = {
@@ -232,9 +254,10 @@ export function validateSourcePreviewPayload(value: unknown): SourcePreviewPaylo
   };
 }
 
-async function readBoundedResponseText(response: Response): Promise<string> {
+async function readBoundedResponseText(response: Response, signal: AbortSignal): Promise<string> {
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null && /^\d+$/u.test(contentLength) && Number(contentLength) > MAX_RESPONSE_BYTES) {
+    if (response.body) void response.body.cancel().catch(() => {});
     throw new SourcePreviewPayloadError();
   }
   if (!response.body) throw new SourcePreviewPayloadError();
@@ -242,6 +265,9 @@ async function readBoundedResponseText(response: Response): Promise<string> {
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
+  const cancelReader = () => { void reader.cancel().catch(() => {}); };
+  if (signal.aborted) cancelReader();
+  else signal.addEventListener("abort", cancelReader, { once: true });
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -249,7 +275,7 @@ async function readBoundedResponseText(response: Response): Promise<string> {
       if (!value) continue;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_RESPONSE_BYTES) {
-        await reader.cancel().catch(() => {});
+        cancelReader();
         throw new SourcePreviewPayloadError();
       }
       chunks.push(value);
@@ -258,6 +284,7 @@ async function readBoundedResponseText(response: Response): Promise<string> {
     if (error instanceof SourcePreviewPayloadError) throw error;
     throw error;
   } finally {
+    signal.removeEventListener("abort", cancelReader);
     reader.releaseLock();
   }
 
@@ -278,27 +305,58 @@ export async function getSourcePreview(options: {
   mode?: SourcePreviewRequestMode;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
+  clock?: SourcePreviewClock;
 } = {}): Promise<SourcePreviewPayload> {
   const mode = options.mode ?? "snapshot";
   const endpoint = mode === "fetch" ? ENDPOINT + "?mode=fetch" : ENDPOINT;
   const fetcher = options.fetcher ?? fetch;
-  const response = await fetcher(endpoint, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    redirect: "error",
-    cache: mode === "fetch" ? "no-store" : "default",
-    signal: options.signal,
-  });
-  if (!response.ok) throw new SourcePreviewHttpError(response.status);
-  const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
-  if (contentType !== "application/json") throw new SourcePreviewPayloadError();
+  const clock = options.clock ?? browserClock;
+  const requestController = new AbortController();
+  let rejectCancellation!: (reason: Error) => void;
+  const cancellation = new Promise<never>((_resolve, reject) => { rejectCancellation = reject; });
+  const onExternalAbort = () => {
+    requestController.abort();
+    rejectCancellation(createAbortError());
+  };
+  const onDeadline = () => {
+    requestController.abort();
+    rejectCancellation(new SourcePreviewTimeoutError());
+  };
+  const timer = clock.setTimeout(onDeadline, REQUEST_DEADLINE_MS);
+  options.signal?.addEventListener("abort", onExternalAbort, { once: true });
+  if (options.signal?.aborted) onExternalAbort();
 
-  let parsed: unknown;
+  const request = (async () => {
+    if (requestController.signal.aborted) {
+      throw createAbortError();
+    }
+    const response = await fetcher(endpoint, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      redirect: "error",
+      cache: mode === "fetch" ? "no-store" : "default",
+      signal: requestController.signal,
+    });
+    if (requestController.signal.aborted) {
+      throw createAbortError();
+    }
+    if (!response.ok) throw new SourcePreviewHttpError(response.status);
+    const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+    if (contentType !== "application/json") throw new SourcePreviewPayloadError();
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readBoundedResponseText(response, requestController.signal));
+    } catch (error) {
+      if (error instanceof SourcePreviewPayloadError) throw error;
+      throw new SourcePreviewPayloadError();
+    }
+    return validateSourcePreviewPayload(parsed);
+  })();
   try {
-    parsed = JSON.parse(await readBoundedResponseText(response));
-  } catch (error) {
-    if (error instanceof SourcePreviewPayloadError) throw error;
-    throw new SourcePreviewPayloadError();
+    return await Promise.race([request, cancellation]);
+  } finally {
+    clock.clearTimeout(timer);
+    options.signal?.removeEventListener("abort", onExternalAbort);
   }
-  return validateSourcePreviewPayload(parsed);
 }

@@ -93,6 +93,11 @@ export function SourcePreviewStatusCard({
   const isOsm = source.id === "osm";
   const sourceTitle = isOsm ? "OpenStreetMap · fasilitas rujukan" : "PetaBencana.id · laporan warga";
   const sourceUpdatedLabel = isOsm ? "Waktu basis data OpenStreetMap" : "Waktu pembaruan yang disediakan sumber";
+  const sourceFetchedLabel = source.status === "unavailable"
+    ? "Permintaan dicoba pada"
+    : source.status === "available" || source.status === "empty"
+      ? "Data diambil pada"
+      : "Waktu pengambilan sumber";
   const sourceEmptyCopy = isOsm
     ? "Tidak ada fasilitas pada respons ini. Ini bukan gambaran keseluruhan Jakarta."
     : "Tidak ada laporan pada respons ini. Hasil kosong tidak berarti Jakarta aman.";
@@ -119,7 +124,7 @@ export function SourcePreviewStatusCard({
       )}
       <dl className="source-preview__source-times">
         <div>
-          <dt>Waktu pengambilan sumber</dt>
+          <dt>{sourceFetchedLabel}</dt>
           <dd>{timeValue(source.fetched_at, "Tidak tersedia dari penyedia.")}</dd>
         </div>
         <div>
@@ -186,6 +191,30 @@ export function SourcePreviewRecordDetails({ record }: { record: PreviewRecord |
         Buka sumber {sourceName(record.source)} <span aria-hidden="true">↗</span>
       </a>
     </section>
+  );
+}
+
+export function SourcePreviewRequestError({
+  mode,
+  onRetrySnapshot,
+}: {
+  mode: SourcePreviewRequestMode;
+  onRetrySnapshot: () => void;
+}) {
+  return (
+    <div className="source-preview__request-error" role="alert">
+      <strong>{mode === "snapshot" ? "Snapshot demo tidak dapat dimuat." : "Permintaan data sumber gagal."}</strong>
+      <p>
+        {mode === "snapshot"
+          ? "Tidak ada data pengganti yang ditampilkan. Coba muat ulang snapshot lokal atau minta data sumber secara terpisah."
+          : "Tidak ada data pengganti yang ditampilkan. Anda dapat kembali ke snapshot atau meminta sumber lagi."}
+      </p>
+      {mode === "snapshot" && (
+        <button className="button button--quiet" type="button" onClick={onRetrySnapshot}>
+          Coba muat snapshot
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -371,10 +400,7 @@ export function SourcePreview({ datasetMode, renderMap }: SourcePreviewProps) {
         </p>
       )}
       {request.status === "error" && (
-        <div className="source-preview__request-error" role="alert">
-          <strong>{request.mode === "snapshot" ? "Snapshot demo tidak dapat dimuat." : "Permintaan data sumber gagal."}</strong>
-          <p>Tidak ada data pengganti yang ditampilkan. Anda dapat kembali ke snapshot atau meminta sumber lagi.</p>
-        </div>
+        <SourcePreviewRequestError mode={request.mode} onRetrySnapshot={showSnapshot} />
       )}
 
       {payload && request.status === "loaded" && (
