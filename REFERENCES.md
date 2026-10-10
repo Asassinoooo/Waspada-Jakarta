@@ -1,5 +1,9 @@
 # Waspada Jakarta Reference Register
 
+## Local source-preview integration observation — 10 October 2026
+
+Root exercised the fixed OSM/PetaBencana source adapter through local Wrangler after correcting workerd's unsupported redirect mode. OSM returned 100 normalized facilities (possibly truncated) with source database timestamp `2026-10-10T04:48:36Z`, acquisition `2026-10-10T04:50:12.080Z`; PetaBencana's fixed Jakarta/flood/last-24-hour query returned a valid empty FeatureCollection, acquired `2026-10-10T04:50:09.066Z`. The browser consumed the same normalized cached result. These observations support local integration behavior, not factual completeness, a present danger zone or hosted availability. The original committed OSM snapshot records acquisition `04:08:05Z` and dataset timestamp `04:06:43Z`. Source rights and links are in the 10 October demo-source entries below; no PetaBencana report body was persisted or bundled.
+
 ## Embedding persistence design — 1 October 2026
 
 - **pgvector maintainers.** [Vector type reference](https://github.com/pgvector/pgvector#vector-type). Reviewed 1 October 2026. Defines finite single-precision vector storage, supporting storage-aware retry comparison in ADR-034. Waspada's 2048-dimensional initial writer budget comes from its existing retrieval implementation; no embedding model, ANN index or hosted extension version is selected by this reference.

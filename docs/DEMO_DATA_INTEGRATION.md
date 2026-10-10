@@ -1,6 +1,6 @@
 # INT-01: source integration and map demo
 
-Status: implementation assigned, 10 October 2026. This slice is an educational source preview; it is not live incident publication or completion of INT-01.
+Status: accepted locally, 10 October 2026; root final suite review is recorded in the delivery log. This slice is an educational source preview; it is not live incident publication or completion of INT-01.
 
 ## Scope and source rights
 
@@ -43,3 +43,11 @@ Add `#demo-sumber`, linked as **Demo sumber** when the server confirms demo mode
 - `UI-01-SOURCE-PREVIEW-DEMO`: strict client, demo view, linked list, flow/status/timestamp display, responsive CSS and tests. Root wires App navigation.
 
 Root reviews all branch diffs, runs integrated WSL checks, inspects desktop/mobile browser screenshots with tile/source mocks, and records actual limitations before acceptance. No agent may change existing public contracts or install dependencies.
+
+## Observed local integration
+
+The corrected local Worker made the two bounded source requests on 10 October 2026: OSM returned 100 accepted reference records (limited; source database time `04:48:36Z`, acquisition complete `04:50:12.080Z`), and PetaBencana returned a valid empty flood-report response (acquired `04:50:09.066Z`). The browser then consumed the actual normalized cached response and rendered 100 facilities with the explicit empty-report message. The stored OSM snapshot remains the original capture at `04:08:05Z`, with database time `04:06:43Z`; refreshed reports are not committed or persisted.
+
+An initial Worker attempt failed before HTTP because workerd does not support `redirect: "error"`. The adapter now uses `manual` and rejects all non-2xx responses without following a redirect; a mocked 302 regression verifies this rule. Native Node access alone did not prove Worker compatibility. Provider availability and nonempty real flood data are not guaranteed: the nonempty PetaBencana path was exercised with authored mocks, not observed contemporary reports.
+
+Headless WSL Chromium checks use stubbed tiles and controlled failure responses. They verify linked point/list selection, keyboard pan and zoom, filters, source empty/error, snapshot restoration, mobile list/map switching, tile failure, and no horizontal overflow at 390px. Screenshots are layout evidence with visibly labelled test tiles, not proof of real geographic basemap rendering or deployed service behavior. Ordinary browser use requests the real attributed OSM tiles. No model, database binding, Cron, authenticated moderator mutation or cloud deployment was activated.
