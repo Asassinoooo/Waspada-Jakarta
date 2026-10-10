@@ -1,0 +1,537 @@
+.context-sources {
+  border-top: 2px solid var(--kali-teal);
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+}
+
+.context-sources__intro,
+.context-sources__provider-heading,
+.context-sources__forecast-heading,
+.context-sources__detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem 1.2rem;
+}
+
+.context-sources__intro {
+  margin-bottom: 1rem;
+}
+
+.context-sources__intro > div {
+  max-width: 72ch;
+}
+
+.context-sources__intro .section-kicker,
+.context-sources__eyebrow {
+  margin: 0 0 0.25rem;
+  color: var(--kali-teal);
+  font-size: 0.82rem;
+  font-weight: 720;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.context-sources__intro h2 {
+  margin-bottom: 0.45rem;
+}
+
+.context-sources__intro > div > p:last-child,
+.context-sources__forecast-heading > p {
+  margin: 0;
+  color: var(--quiet-ink);
+  font-size: 0.92rem;
+}
+
+.context-sources__stamp {
+  flex: 0 0 auto;
+  border: 1px solid var(--tinta-kota);
+  padding: 0.42rem 0.65rem;
+  color: var(--tinta-kota);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.context-sources__controls,
+.context-sources__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  border: 1px solid var(--beton);
+  background: var(--soft-panel);
+  padding: 0.85rem;
+}
+
+.context-sources__controls > div:first-child,
+.context-sources__summary {
+  min-width: 0;
+}
+
+.context-sources__controls > div:first-child strong,
+.context-sources__controls > div:first-child span,
+.context-sources__summary strong,
+.context-sources__summary span {
+  display: block;
+}
+
+.context-sources__controls > div:first-child strong,
+.context-sources__summary strong {
+  margin-bottom: 0.18rem;
+}
+
+.context-sources__controls > div:first-child span,
+.context-sources__summary span {
+  color: var(--quiet-ink);
+  font-size: 0.875rem;
+}
+
+.context-sources__summary {
+  margin-top: 0.85rem;
+}
+
+.context-sources__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.context-sources__guard,
+.context-sources__loading,
+.context-sources__request-error,
+.context-sources__boundary-note {
+  border-left: 3px solid var(--kuning-perhatian);
+  background: #FBF5E8;
+  margin: 0.85rem 0 0;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.9rem;
+}
+
+.context-sources__request-error {
+  border-color: var(--merah-tanda);
+}
+
+.context-sources__request-error > strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.context-sources__request-error > p {
+  margin: 0;
+  color: var(--quiet-ink);
+}
+
+.context-sources__request-error .context-sources__actions {
+  justify-content: flex-start;
+  margin-top: 0.55rem;
+}
+
+.context-sources__providers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.context-sources__provider {
+  min-width: 0;
+  border: 1px solid var(--beton);
+  border-top: 3px solid var(--kali-teal);
+  background: var(--surface);
+  padding: 0.9rem;
+}
+
+.context-sources__provider--empty {
+  border-top-color: var(--quiet-ink);
+}
+
+.context-sources__provider--unavailable {
+  border-top-color: var(--merah-tanda);
+}
+
+.context-sources__provider-heading {
+  align-items: center;
+  gap: 0.5rem 0.7rem;
+  flex-wrap: wrap;
+}
+
+.context-sources__provider-heading > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.context-sources__provider-heading h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.context-sources__status {
+  flex: 0 0 auto;
+  border: 1px solid var(--kali-teal);
+  padding: 0.26rem 0.5rem;
+  color: var(--kali-teal);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.context-sources__status--empty,
+.context-sources__status--not_requested {
+  border-color: var(--beton);
+  color: var(--quiet-ink);
+}
+
+.context-sources__status--unavailable {
+  border-color: var(--merah-tanda);
+  color: var(--merah-tanda);
+}
+
+.context-sources__mode {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--quiet-ink);
+  font-size: 0.85rem;
+}
+
+.context-sources__times,
+.context-sources__weather-location,
+.context-sources__record-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 0.85rem;
+  margin: 0.75rem 0;
+}
+
+.context-sources__times > div,
+.context-sources__weather-location > div,
+.context-sources__record-facts > div {
+  min-width: 0;
+}
+
+.context-sources__times dt,
+.context-sources__weather-location dt,
+.context-sources__record-facts dt {
+  color: var(--quiet-ink);
+  font-size: 0.79rem;
+}
+
+.context-sources__times dd,
+.context-sources__weather-location dd,
+.context-sources__record-facts dd {
+  margin: 0.08rem 0 0;
+  font-size: 0.86rem;
+  font-weight: 620;
+  overflow-wrap: anywhere;
+}
+
+.context-sources__state-note {
+  border-left: 2px solid var(--beton);
+  margin: 0.7rem 0;
+  padding-left: 0.65rem;
+  color: var(--quiet-ink);
+  font-size: 0.86rem;
+}
+
+.context-sources__forecast {
+  border-top: 1px solid var(--beton);
+  margin-top: 0.9rem;
+  padding-top: 0.85rem;
+}
+
+.context-sources__forecast-heading {
+  align-items: flex-end;
+}
+
+.context-sources__forecast-heading h4,
+.context-sources__earthquake-list h4,
+.context-sources__earthquake-detail h4 {
+  margin: 0;
+}
+
+.context-sources__forecast-heading > p {
+  max-width: 45ch;
+  font-size: 0.82rem;
+}
+
+.context-sources__weather-location {
+  border-bottom: 1px solid var(--beton);
+  padding-bottom: 0.55rem;
+}
+
+.context-sources__table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--beton);
+  background: var(--surface);
+  overscroll-behavior-inline: contain;
+}
+
+.context-sources__forecast-table {
+  width: 100%;
+  min-width: 40rem;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-sources__forecast-table caption {
+  padding: 0.55rem 0.65rem;
+  color: var(--quiet-ink);
+  text-align: left;
+}
+
+.context-sources__forecast-table th,
+.context-sources__forecast-table td {
+  border-top: 1px solid var(--beton);
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.context-sources__forecast-table thead th {
+  background: var(--soft-panel);
+  font-size: 0.78rem;
+}
+
+.context-sources__forecast-table tbody th {
+  min-width: 7.8rem;
+  white-space: nowrap;
+}
+
+.context-sources__quantity-label {
+  display: block;
+  min-width: 9rem;
+}
+
+.context-sources__unknown {
+  color: var(--quiet-ink);
+  font-style: italic;
+}
+
+.context-sources__footnote,
+.context-sources__impact-note {
+  border-left: 3px solid var(--kuning-perhatian);
+  background: #FBF5E8;
+  margin: 0.7rem 0 0;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+.context-sources__quake-window {
+  display: grid;
+  gap: 0.18rem;
+  border-left: 3px solid var(--kali-teal);
+  background: var(--hujan-pagi);
+  margin: 0.65rem 0 0.85rem;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+.context-sources__quake-window > span {
+  color: var(--quiet-ink);
+}
+
+.context-sources__earthquake-list {
+  border-top: 1px solid var(--beton);
+  padding-top: 0.75rem;
+}
+
+.context-sources__earthquake-list ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.context-sources__earthquake-option {
+  display: flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--beton);
+  background: var(--surface);
+  padding: 0.55rem;
+  color: var(--tinta-kota);
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-sources__earthquake-option:hover,
+.context-sources__earthquake-option[aria-pressed="true"] {
+  border-color: var(--kali-teal);
+  background: #F0F6F3;
+}
+
+.context-sources__quake-symbol {
+  display: grid;
+  flex: 0 0 auto;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  border: 1px solid var(--kali-teal);
+  border-radius: 50%;
+  color: var(--kali-teal);
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
+.context-sources__earthquake-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.context-sources__earthquake-copy strong {
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.context-sources__earthquake-copy span {
+  color: var(--quiet-ink);
+  font-size: 0.8rem;
+}
+
+.context-sources__chevron {
+  margin-left: auto;
+  color: var(--quiet-ink);
+  font-size: 1.3rem;
+}
+
+.context-sources__earthquake-detail {
+  border-top: 1px solid var(--beton);
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+}
+
+.context-sources__earthquake-detail > p:not(.context-sources__eyebrow):not(.context-sources__impact-note) {
+  margin: 0.35rem 0 0;
+  color: var(--quiet-ink);
+  font-size: 0.85rem;
+}
+
+.context-sources__detail-heading {
+  align-items: center;
+}
+
+.context-sources__detail-heading h4 {
+  overflow-wrap: anywhere;
+}
+
+.context-sources__record-facts {
+  margin-top: 0.65rem;
+}
+
+.context-sources__source-link {
+  display: inline-flex;
+  min-height: 2.3rem;
+  align-items: center;
+  margin-top: 0.35rem;
+  color: var(--kali-teal);
+  font-size: 0.86rem;
+  font-weight: 680;
+}
+
+.context-sources__map-disclosure {
+  border-top: 1px solid var(--beton);
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+}
+
+.context-sources__map-disclosure summary {
+  min-height: 2.5rem;
+  color: var(--kali-teal);
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.context-sources__map-fallback {
+  border: 1px dashed #849590;
+  background: var(--hujan-pagi);
+  margin: 0.65rem 0 0;
+  padding: 0.75rem;
+  color: var(--quiet-ink);
+  font-size: 0.86rem;
+}
+
+.context-sources__attribution {
+  border-top: 1px solid var(--beton);
+  margin-top: 0.9rem;
+  padding-top: 0.65rem;
+  color: var(--quiet-ink);
+  font-size: 0.8rem;
+}
+
+.context-sources__attribution p {
+  margin: 0.2rem 0;
+  overflow-wrap: anywhere;
+}
+
+.context-sources__attribution a {
+  color: var(--kali-teal);
+  font-weight: 640;
+}
+
+.context-sources__boundary-note {
+  margin-top: 0.85rem;
+  color: var(--tinta-kota);
+}
+
+@media (max-width: 900px) {
+  .context-sources__providers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .context-sources__intro,
+  .context-sources__controls,
+  .context-sources__summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .context-sources__stamp {
+    align-self: flex-start;
+  }
+
+  .context-sources__controls .context-sources__actions {
+    justify-content: stretch;
+  }
+
+  .context-sources__controls .context-sources__actions .button {
+    flex: 1 1 100%;
+  }
+
+  .context-sources__provider-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .context-sources__provider-heading > div {
+    flex: 1 1 100%;
+  }
+
+  .context-sources__times,
+  .context-sources__weather-location,
+  .context-sources__record-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+
+  .context-sources__forecast-heading {
+    display: block;
+  }
+
+  .context-sources__forecast-heading > p {
+    margin-top: 0.45rem;
+  }
+
+  .context-sources__provider {
+    padding: 0.75rem;
+  }
+}
