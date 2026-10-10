@@ -210,6 +210,14 @@
   color: #fff;
 }
 
+.source-point-map__marker[data-kind="earthquake"] .source-point-map__marker-code,
+.source-point-map__legend-code[data-kind="earthquake"] {
+  border: 2px solid var(--tinta-kota);
+  border-radius: 0.2rem;
+  background: var(--surface);
+  color: var(--tinta-kota);
+}
+
 .source-point-map__marker-category,
 .source-point-map__marker-name {
   display: none;
