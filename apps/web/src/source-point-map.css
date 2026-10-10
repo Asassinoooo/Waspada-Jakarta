@@ -415,6 +415,46 @@
   white-space: nowrap;
 }
 
+.source-point-map--unified {
+  gap: 0.55rem;
+}
+
+.source-point-map--unified .source-point-map__header h2 {
+  font-size: 1.15rem;
+}
+
+.source-point-map--unified .source-point-map__notice {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.source-point-map__legend-disclosure {
+  border-top: 1px solid var(--beton);
+  color: var(--quiet-ink);
+  font-size: 0.8rem;
+}
+
+.source-point-map__legend-disclosure summary {
+  padding: 0.6rem 0.1rem;
+  cursor: pointer;
+  font-weight: 730;
+}
+
+.source-point-map__legend-disclosure summary span {
+  margin-left: 0.65rem;
+  color: var(--kali-teal);
+}
+
+.source-point-map__legend-disclosure summary:focus-visible {
+  outline: 3px solid var(--kali-teal);
+  outline-offset: 2px;
+}
+
+.source-point-map__legend-note {
+  margin: 0.65rem 0 0;
+  font-size: 0.78rem;
+}
+
 @media (max-width: 600px) {
   .source-point-map {
     gap: 0.7rem;
