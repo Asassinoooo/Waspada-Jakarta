@@ -1,4 +1,4 @@
-import type { Category, PublicGeoJSONGeometry, PublicContext } from "@waspada/worker/public-contracts";
+import type { Category, Freshness, Lifecycle, PublicGeoJSONGeometry, PublicContext, TimeScope, Validity } from "@waspada/worker/public-contracts";
 
 export type AdminMode = "simulation" | "public_api";
 export type AdminLayer = "L1" | "L2" | "L3" | "L4" | "L5";
@@ -45,6 +45,7 @@ export interface AdminItem {
   nextStep: string;
   budget: AdminBudget | null;
   steps: AdminStep[];
+  publicStatus?: { lifecycle: Lifecycle; freshness: Freshness; eventTime: TimeScope; validity: Validity };
 }
 
 export interface AdminLayerSummary {

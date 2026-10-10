@@ -8,6 +8,8 @@ GitHub remote: [Asassinoooo/Waspada-Jakarta](https://github.com/Asassinoooo/Wasp
 
 The local public-experience wave is integrated on `codex/ux-design-flutter`: a Jakarta landing with bounded SVG motion, optional reading guide, verified local privacy reset, responsive public-screen polish, and a Flutter/Dart Android reader. See the [integration handoff](docs/assignments/UX-DESIGN-FLUTTER-01-HANDOFF.md) for actual checks, branch commits and remaining gates. Public browsing is account-free; the Flutter [setup and parity matrix](apps/mobile/README.md) explains API-origin configuration and deferred capabilities. This is local demo validation, not a deployed or store-ready service.
 
+The [web operations dashboard](docs/ADMIN_DASHBOARD_SPEC.md) is assigned on `codex/admin-map-dashboard`: a map-oriented, read-only five-layer simulation and actual public endpoint observations while the view is active. Team 12 selected this bounded scope; private telemetry/authentication and Flutter admin functionality are not activated. See [ADMIN-MAP-01](docs/assignments/ADMIN-MAP-01.md) and [ADR-055](docs/decisions/ADR-055-web-operations-monitor.md).
+
 The current report is the [Google Docs project overview](https://docs.google.com/document/d/1xwSzLJmsHau6jlNGQCZ3deaVnrvCyqS0oNyDZaTv6tM). Google Docs is the maintained report format; the previous LaTeX files are historical and are no longer updated or compiled.
 
 ## Current design documents

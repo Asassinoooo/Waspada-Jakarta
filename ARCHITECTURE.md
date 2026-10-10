@@ -171,6 +171,8 @@ Public map/feed reads use published views only. Briefings summarize eligible cla
 
 ## 7. Layer 5 — evaluation, monitoring and safeguards
 
+The [web operations dashboard](docs/ADMIN_DASHBOARD_SPEC.md), assigned on 10 October 2026, is an L4 web client that explains the five-layer pipeline using isolated fictional cases and observes existing public endpoints while visible. It is not an authenticated full-stack telemetry reader. Its actual metrics are browser-observed request facts and public source metadata, while private queue/model/audit measurements remain unavailable. L5 console instrumentation and dormant runtime gates remain unchanged; a protected redacted provider is a separate integration requirement under [ADR-055](docs/decisions/ADR-055-web-operations-monitor.md).
+
 Use at least 40 reports spanning at least 12 cases, including all ten categories and the four demonstration scenarios. Keep articles, copied origins and revisions from the same incident in the same evaluation split. Two reviewers reconcile labels; reserve held-out event cases before tuning retrieval, prompts or thresholds. Report counts as well as rates; this sample is not a production-safety claim.
 
 | Layer | Evaluate and monitor | Required failure handling |

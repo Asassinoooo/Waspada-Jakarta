@@ -1,5 +1,9 @@
 # Implementation backlog
 
+## Web operations wave — 10 October 2026
+
+Team 12 selected a comprehensive map-oriented web-only admin demonstration plus actual observation of existing public endpoints. [ADMIN-MAP-01](assignments/ADMIN-MAP-01.md) is assigned on `codex/admin-map-dashboard`, with isolated data/polling, dashboard and complex SVG-map branches. Luna/max handles data/UI and Sol 6.1/max handles the complex map visuals only. Root reviews and integrates. [Specification](ADMIN_DASHBOARD_SPEC.md) and [ADR-055](decisions/ADR-055-web-operations-monitor.md) define the boundary: no private records/authentication, source/model action, review mutation, new backend contract, native change or hosted service.
+
 ## Public experience wave — 9 October 2026
 
 Team 12 authorized implementation of the future UX/design plan and selected Flutter/Dart for mobile. The scoped web and Flutter packages are integrated on `codex/ux-design-flutter`; see [assignment](assignments/UX-DESIGN-FLUTTER-01.md) and [integration handoff](assignments/UX-DESIGN-FLUTTER-01-HANDOFF.md) for ownership, commits, actual checks and remaining gates. This changes no source, hosted deployment, push service, billing or public-account gate.
