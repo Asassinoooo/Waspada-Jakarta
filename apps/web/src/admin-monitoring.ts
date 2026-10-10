@@ -702,7 +702,7 @@ export function createAdminMonitor(options: AdminMonitorOptions): {
   }
   function emitLoading(at: string, probes: AdminProbe[], context: PublicContext | null): void {
     emit({
-      ...state, status: "loading", attemptedAt: at, nextPollAt: null,
+      ...state, status: "loading", snapshot: null, attemptedAt: at, nextPollAt: null,
       currentAttempt: { at, probes: [...probes], context },
     });
   }

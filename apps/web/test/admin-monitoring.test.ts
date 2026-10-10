@@ -423,6 +423,71 @@ test("failed current probes retain a distinct last-success time and back off wit
   monitor.stop();
 });
 
+test("a new attempt hides the prior dataset snapshot until current list and geometry finish", async () => {
+  const scheduler = new FakeScheduler();
+  const latest: { current: AdminMonitorState | null } = { current: null };
+  const observedStates: AdminMonitorState[] = [];
+  const pending: {
+    events: ((response: Response) => void) | null;
+    geometry: ((response: Response) => void) | null;
+  } = { events: null, geometry: null };
+  let cycle = 0;
+  let now = NOW;
+  const monitor = createAdminMonitor({
+    onState: (state) => { latest.current = state; observedStates.push(state); },
+    scheduler,
+    clock: () => now += 5,
+    fetch: async (input) => {
+      const path = requestPath(input);
+      if (path === "/api/v1/context") {
+        cycle += 1;
+        return jsonResponse(cycle === 1 ? context() : context("live", "live", "Current live source"));
+      }
+      if (path === "/api/v1/events?limit=20") {
+        return cycle === 1
+          ? jsonResponse(eventPage())
+          : new Promise<Response>((resolve) => { pending.events = resolve; });
+      }
+      if (path === "/api/v1/events.geojson") {
+        return cycle === 1
+          ? jsonResponse(featureCollection(), "application/geo+json")
+          : new Promise<Response>((resolve) => { pending.geometry = resolve; });
+      }
+      throw new Error("Unexpected path.");
+    },
+  });
+
+  await monitor.start();
+  const previousSuccessAt = latest.current?.lastSuccessAt;
+  assert.equal(latest.current?.snapshot?.datasetMode, "demo");
+  assert.ok(previousSuccessAt);
+
+  const refreshing = monitor.refresh();
+  for (let index = 0; index < 20 && (pending.events === null || pending.geometry === null); index += 1) {
+    await Promise.resolve();
+  }
+  assert.ok(pending.events);
+  assert.ok(pending.geometry);
+  const currentContextLoadingStates = observedStates.filter((state) =>
+    state.status === "loading" && state.currentAttempt?.context?.dataset_mode === "live");
+  assert.ok(currentContextLoadingStates.length > 0);
+  assert.ok(currentContextLoadingStates.every((state) => state.snapshot === null));
+  assert.equal(latest.current?.snapshot, null);
+  assert.equal(latest.current?.lastSuccessAt, previousSuccessAt);
+
+  pending.events?.(jsonResponse(eventPage([eventView({ eventId: "live-event", version: 2 })])));
+  pending.geometry?.(jsonResponse(featureCollection([feature("live-event", 2)]), "application/geo+json"));
+  await refreshing;
+
+  const completedState = latest.current as AdminMonitorState | null;
+  assert.equal(completedState?.status, "connected");
+  assert.equal(completedState?.snapshot?.datasetMode, "live");
+  assert.equal(completedState?.snapshot?.context?.dataset_label, "live");
+  assert.deepEqual(completedState?.snapshot?.items.map((item) => item.id), ["public:live-event:2"]);
+  assert.notEqual(completedState?.lastSuccessAt, previousSuccessAt);
+  monitor.stop();
+});
+
 test("visibility aborts and discards a late response, then resumes one coalesced request", async () => {
   const scheduler = new FakeScheduler();
   const calls: string[] = [];
