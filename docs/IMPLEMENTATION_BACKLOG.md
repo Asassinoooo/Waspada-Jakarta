@@ -2,7 +2,7 @@
 
 ## Web operations wave — 10 October 2026
 
-Team 12 selected a comprehensive map-oriented web-only admin demonstration plus actual observation of existing public endpoints. [ADMIN-MAP-01](assignments/ADMIN-MAP-01.md) is assigned on `codex/admin-map-dashboard`, with isolated data/polling, dashboard and complex SVG-map branches. Luna/max handles data/UI and Sol 6.1/max handles the complex map visuals only. Root reviews and integrates. [Specification](ADMIN_DASHBOARD_SPEC.md) and [ADR-055](decisions/ADR-055-web-operations-monitor.md) define the boundary: no private records/authentication, source/model action, review mutation, new backend contract, native change or hosted service.
+Team 12 selected a comprehensive map-oriented web-only admin demonstration plus actual observation of existing public endpoints. [ADMIN-MAP-01](assignments/ADMIN-MAP-01.md) is **accepted locally** on `codex/admin-map-dashboard`, integrating isolated data/polling, dashboard and complex SVG-map branches. Luna/max handled data/UI and Sol 6.1/max handled the complex map visuals only; root reviewed and integrated. The [handoff](assignments/ADMIN-MAP-01-HANDOFF.md) records 112/112 web tests, full typecheck/build, local smoke and 18 dashboard browser states. [Specification](ADMIN_DASHBOARD_SPEC.md) and [ADR-055](decisions/ADR-055-web-operations-monitor.md) preserve the boundary: private records/authentication, source/model action, review mutations, native admin and hosted release are not activated.
 
 ## Public experience wave — 9 October 2026
 

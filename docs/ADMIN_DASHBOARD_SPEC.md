@@ -4,6 +4,8 @@
 
 **Implementation:** [ADMIN-MAP-01](assignments/ADMIN-MAP-01.md), branch `codex/admin-map-dashboard`. The authorized scope is a complete fictional operations demonstration and actual monitoring of existing public endpoints. This specification adds a web client; it does not activate authentication, private telemetry, source acquisition or publication.
 
+**Local acceptance:** The [integration handoff](assignments/ADMIN-MAP-01-HANDOFF.md) records reviewed commits and actual WSL/build/browser checks. Open `#admin`; the header provides a keyboard-accessible jump to the map/queue workspace. Admin code and styles load with that route only.
+
 ## 1. Admin task and user stories
 
 The dashboard answers: **What is visible in this snapshot? Where is it located? Which processing stage is involved? What evidence or failure explains its state? What can be observed from the current system?** Geographic context organizes the workspace, while the linked queue supports cases without a location. Operations priority means work needs attention; it does not mean a place is dangerous.
@@ -49,7 +51,7 @@ Default refresh interval is **30 seconds** while the dashboard and tab are activ
 
 Each attempt records its observation time and measured duration separately from the last successful observation. Stale data is never relabelled current by ticking a clock. Context failure makes dataset-dependent records unavailable rather than asserting live/demo mode from a stale prior response. A successful HTTP response establishes endpoint response only, not truth, source availability, model success or overall health.
 
-Server deployment dataset (`live`/`demo`) and record kind (`live`/`historical`/`synthetic`) remain separate from whether the HTTP probe is actual. A real request to the demo Worker is displayed as an actual request to a **demo** dataset, not a current incident feed.
+Server deployment dataset (`live`/`demo`) and dataset kind (`live`/`historical`/`synthetic`) remain separate from whether the HTTP probe is actual. The present event DTO has no per-record dataset-kind property; the client derives each displayed item label from validated `context.dataset_label`. A real request to the demo Worker is displayed as an actual request to a **demo** dataset, not a current incident feed.
 
 ## 6. State and recovery matrix
 

@@ -1,6 +1,6 @@
 # ADR-055 — Web-only read-only operations monitoring
 
-- **Status:** Accepted design; implementation under ADMIN-MAP-01
+- **Status:** Accepted design; ADMIN-MAP-01 implemented and accepted locally
 - **Date:** 10 October 2026
 - **Owner:** Team 12 / root planner
 

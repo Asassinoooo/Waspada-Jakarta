@@ -2,7 +2,7 @@
 
 **Date:** 10 October 2026
 
-**Status:** Assigned. Integration branch `codex/admin-map-dashboard`; root plans, reviews, integrates and pushes.
+**Status:** Accepted locally. Integration branch `codex/admin-map-dashboard`; root reviewed and integrated the three task branches. The [integration handoff](ADMIN-MAP-01-HANDOFF.md) records actual checks, commits and remaining gates.
 
 ## Authorized scope
 
