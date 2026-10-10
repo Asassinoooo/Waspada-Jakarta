@@ -409,6 +409,7 @@ test("renders earthquake empty and unavailable source outcomes independently", (
   assert.match(empty, /Respons kosong/u);
   assert.match(empty, /tidak menetapkan keselamatan atau dampak/u);
   assert.match(empty, /Kueri katalog regional · tujuh hari/u);
+  assert.match(empty, /Filter magnitudo ≥ 2,5 · hingga 30 record/u);
   assert.doesNotMatch(empty, /USGS ·/u);
 
   const unavailable = markup(createElement(EarthquakeContextCard, {

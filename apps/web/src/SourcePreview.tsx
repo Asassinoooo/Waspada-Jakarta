@@ -13,6 +13,7 @@ export type SourcePreviewMapRenderer = (
 export interface SourcePreviewProps {
   datasetMode: "demo" | "live" | null;
   renderMap?: SourcePreviewMapRenderer;
+  contextSources?: ReactNode;
 }
 
 type RequestState =
@@ -266,7 +267,7 @@ function SourceRecordList({
   );
 }
 
-export function SourcePreview({ datasetMode, renderMap }: SourcePreviewProps) {
+export function SourcePreview({ datasetMode, renderMap, contextSources }: SourcePreviewProps) {
   const [request, setRequest] = useState<RequestState>(() =>
     datasetMode === "demo" ? { status: "loading", mode: "snapshot" } : { status: "not-requested" },
   );
@@ -353,6 +354,10 @@ export function SourcePreview({ datasetMode, renderMap }: SourcePreviewProps) {
           <p className="source-preview__intro-copy">
             Titik fasilitas adalah rujukan; laporan warga bukan zona bahaya. Cakupan demo bukan batas administrasi atau penilaian keselamatan.
           </p>
+          {contextSources && <a href="#context-sources" onClick={(event) => {
+            event.preventDefault();
+            document.getElementById("context-sources")?.scrollIntoView({ behavior: "instant", block: "start" });
+          }}>Lihat konteks cuaca &amp; gempa ↓</a>}
         </div>
         <p className="source-preview__disclaimer">Pratinjau sumber — belum melalui publikasi Waspada</p>
       </section>
@@ -491,6 +496,7 @@ export function SourcePreview({ datasetMode, renderMap }: SourcePreviewProps) {
         </p>
         <p>Tidak ada teks laporan warga, identitas, foto, atau tautan media sosial yang ditampilkan.</p>
       </section>
+      {contextSources}
     </main>
   );
 }

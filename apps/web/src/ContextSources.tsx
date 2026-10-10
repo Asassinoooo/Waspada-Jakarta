@@ -218,7 +218,7 @@ export function WeatherForecastTable({ source }: { source: WeatherContextSource 
               <th scope="col">Waktu berlaku</th>
               <th scope="col">Suhu</th>
               <th scope="col">Hujan satu jam sebelumnya</th>
-              <th scope="col">Kode cuaca</th>
+              <th scope="col">Kondisi model</th>
               <th scope="col">Angin</th>
             </tr>
           </thead>
@@ -366,6 +366,7 @@ export function EarthquakeContextCard({
         <div className="context-sources__quake-window">
           <strong>Kueri katalog regional · tujuh hari</strong>
           <span>{formatTime(source.window_start)} – {formatTime(source.window_end)}</span>
+          <span>Filter magnitudo ≥ 2,5 · hingga 30 record.</span>
           <span>Wilayah kueri memberi konteks kawasan; bukan batas resmi atau area dampak Jakarta.</span>
         </div>
       )}
@@ -405,9 +406,9 @@ export function EarthquakeContextCard({
           <EarthquakeRecordDetails record={selectedRecord} fetchedAt={source.fetched_at} />
           <details className="context-sources__map-disclosure">
             <summary>Lihat peta kawasan (opsional)</summary>
-            <p className="context-sources__impact-note">
+            {!renderMap && <p className="context-sources__impact-note">
               Episentrum tidak menunjukkan luas guncangan atau dampak. Cakupan katalog regional ini tidak menetapkan dampak di Jakarta.
-            </p>
+            </p>}
             {renderMap
               ? renderMap(source.records, selectedRecord?.id ?? null, selectRecord)
               : <p className="context-sources__map-fallback">Peta belum tersedia. Daftar, metadata, atribusi, dan tautan record tetap dapat digunakan.</p>}

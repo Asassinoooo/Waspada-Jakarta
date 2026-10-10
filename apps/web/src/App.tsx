@@ -8,6 +8,7 @@ import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
 import { SourcePreview } from "./SourcePreview.js";
 import { SourcePointMap } from "./SourcePointMap.js";
+import { ContextSources } from "./ContextSources.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
 
 type Route =
@@ -409,6 +410,12 @@ export function App() {
       {route.screen === "source-preview" && (
         <SourcePreview
           datasetMode={context?.dataset_mode ?? null}
+          contextSources={<ContextSources
+            datasetMode={context?.dataset_mode ?? null}
+            renderMap={(points, selectedId, onSelect) => (
+              <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} viewMode="regional_earthquakes" />
+            )}
+          />}
           renderMap={(points, selectedId, onSelect, onReturnToList) => (
             <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} onReturnToList={onReturnToList} />
           )}

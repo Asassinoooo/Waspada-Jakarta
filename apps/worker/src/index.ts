@@ -15,12 +15,17 @@ import { handleSyntheticPollScheduleTrigger } from "./runtime/synthetic-poll-sch
 import { handleSyntheticSourcePollProcessTrigger } from "./runtime/synthetic-source-poll-process-trigger.js";
 import { handleFreshnessDueScheduleTrigger } from "./runtime/freshness-due-schedule-trigger.js";
 import { createSourcePreviewHandler } from "./layers/l4-application-integration/source-preview-api.js";
+import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
 
 const sourcePreviewHandler = createSourcePreviewHandler();
+const contextSourcesHandler = createContextSourcesHandler();
 
 export default {
   async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/api/v1/demo/context-sources") {
+      return contextSourcesHandler(request, env);
+    }
     if (url.pathname === "/api/v1/demo/source-preview") {
       return sourcePreviewHandler(request, env);
     }
