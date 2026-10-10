@@ -30,6 +30,7 @@ export interface AdminItem {
   operationalPriority: "normal" | "attention" | "blocked";
   placeLabel: string;
   geometry: PublicGeoJSONGeometry | null;
+  additionalGeometries?: PublicGeoJSONGeometry[];
   geometryBasis: "synthetic_example" | "source_supported" | "none";
   geometryNote: string;
   sourceNames: string[];
@@ -103,6 +104,7 @@ export interface AdminMonitorState {
   lastSuccessAt: string | null;
   nextPollAt: string | null;
   consecutiveFailures: number;
+  currentAttempt: { at: string; probes: AdminProbe[] } | null;
 }
 
 export interface AdminMapProps {
