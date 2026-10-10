@@ -11,6 +11,7 @@ import type {
   ContextSourcesPayload, ContextSourceMetadata, ContextSourceStatus, EarthquakeContextRecord, WeatherContextSource,
 }
 from "@waspada/worker/context-sources-contracts";
+import { CONTEXT_SOURCE_POLICY } from "@waspada/worker/context-sources-contracts";
 import {
   ContextSourcesHttpError, ContextSourcesPayloadError, ContextSourcesTimeoutError, getContextSources, type ContextSourcesRequestMode,
 }
@@ -86,6 +87,9 @@ function formatTime(value: string): string {
 }
   ).format(new Date(value)) + " WIB";
 }
+function formatPolicyNumber(value: number): string {
+  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(value);
+}
 function statusLabel(status: ContextSourceStatus | PreviewSource["status"] | "loading" | "error" | "idle"): string {
   switch (status) {
     case "available": return "Ada record";
@@ -144,6 +148,9 @@ export function filterUnifiedSourcePoints( points: readonly SourceMapPoint[], fi
 /** A hidden or reset record cannot resolve to a current detail or map marker. */
 export function resolveVisibleSourceSelection(points: readonly SourceMapPoint[], selectedId: string | null): SourceMapPoint | null {
   return selectedId === null ? null : points.find((point) => point.id === selectedId) ?? null;
+}
+export function retainVisibleSourceSelection(points: readonly SourceMapPoint[], selectedId: string | null): string | null {
+  return resolveVisibleSourceSelection(points, selectedId)?.id ?? null;
 }
 function SourceStatusChip({
   label, status
@@ -319,7 +326,15 @@ function SourceMetadataCard({
     </dd>
     </div>
 }
-  </dl> {
+  </dl>
+  {source.id === "usgs" && (
+    <section className="unified-source-explorer__query-policy" aria-label="Cakupan kueri katalog USGS">
+      <h4>Kueri katalog USGS</h4>
+      <p>{source.data_mode === "fetched" ? "Kueri yang digunakan" : "Batas kueri untuk permintaan berikutnya"}: magnitudo ≥ 2,5 · jendela {CONTEXT_SOURCE_POLICY.earthquakeWindowMs / (24 * 60 * 60_000)} hari · maksimal {CONTEXT_SOURCE_POLICY.maxEarthquakes} record.</p>
+      <p>Batas pencarian: {CONTEXT_SOURCE_POLICY.earthquakeEnvelope.west}° BT–{CONTEXT_SOURCE_POLICY.earthquakeEnvelope.east}° BT, {formatPolicyNumber(Math.abs(CONTEXT_SOURCE_POLICY.earthquakeEnvelope.north))}°–{formatPolicyNumber(Math.abs(CONTEXT_SOURCE_POLICY.earthquakeEnvelope.south))}° LS. Cakupan ini adalah jendela kueri, bukan batas bahaya resmi atau area dampak Jakarta.</p>
+    </section>
+  )}
+ {
     errorCopy && <p className="unified-source-explorer__source-error">{
       errorCopy
 }
@@ -442,33 +457,18 @@ export function UnifiedSourceExplorerView({
   const [kindFilter, setKindFilter] = useState<UnifiedKindFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panel, setPanel] = useState<UnifiedExplorerPanel>(defaultPanel);
-  const lastSourceIds = useRef<ReadonlySet<string>>(new Set());
-  const lastContextIds = useRef<ReadonlySet<string>>(new Set());
-  const previousSourceRequest = useRef(sourceRequest);
-  const previousContextRequest = useRef(contextRequest);
   const usableSourcePayload = datasetMode === "demo" && sourceRequest.status === "loaded" ? sourcePayload : null;
   const usableContextPayload = datasetMode === "demo" && contextRequest.status === "loaded" ? contextPayload : null;
-  if (usableSourcePayload) lastSourceIds.current = new Set(usableSourcePayload.sources.flatMap((source) => source.records.map((record) => record.id)));
-  if (usableContextPayload) lastContextIds.current = new Set(usableContextPayload.sources[1]?.records.map((record) => record.id) ?? []);
-  useEffect(() => {
-    if (sourceRequest.status === "loading" && previousSourceRequest.current.status !== "loading") {
-      setSelectedId((current) => current !== null && lastSourceIds.current.has(current) ? null : current);
-    }
-    previousSourceRequest.current = sourceRequest;
-  }
-  , [sourceRequest]);
-  useEffect(() => {
-    if (contextRequest.status === "loading" && previousContextRequest.current.status !== "loading") {
-      setSelectedId((current) => current !== null && lastContextIds.current.has(current) ? null : current);
-    }
-    previousContextRequest.current = contextRequest;
-  }
-  , [contextRequest]);
   const allPoints = useMemo(() => collectUnifiedSourcePoints(usableSourcePayload, usableContextPayload), [usableSourcePayload, usableContextPayload]);
   const visiblePoints = useMemo(() => filterUnifiedSourcePoints(allPoints, {
     query, source: sourceFilter, kind: kindFilter
 }
   ), [allPoints, query, sourceFilter, kindFilter]);
+  useEffect(() => {
+    if (retainVisibleSourceSelection(visiblePoints, selectedId) !== selectedId) {
+      setSelectedId(null);
+    }
+  }, [selectedId, visiblePoints]);
   const selectedPoint = resolveVisibleSourceSelection(visiblePoints, selectedId);
   const sourceLoading = sourceRequest.status === "loading";
   const contextLoading = contextRequest.status === "loading";
@@ -671,7 +671,7 @@ export function UnifiedSourceExplorerView({
     />
 }
   {
-    panel === "detail" && ( selectedPoint === null ? selectedId !== null ? <p className="unified-source-explorer__empty-panel" role="status">Pilihan tersembunyi oleh filter atau sudah direset. Daftar dan peta mengikuti filter yang sama.</p> : <section className="unified-source-explorer__empty-panel" aria-labelledby="unified-source-detail-title">
+    panel === "detail" && ( selectedPoint === null ? <section className="unified-source-explorer__empty-panel" aria-labelledby="unified-source-detail-title">
     <h2 id="unified-source-detail-title">Detail pilihan</h2>
     <p>Pilih satu fasilitas, laporan, atau episentrum di daftar atau peta untuk melihat asal dan waktunya.</p>
     </section> : quakeRecord !== null ? <EarthquakeRecordDetails record={

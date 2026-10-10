@@ -774,3 +774,25 @@
     max-width: 8rem;
   }
 }
+
+
+.unified-source-explorer__query-policy {
+  display: grid;
+  gap: 0.25rem;
+  border-top: 1px solid var(--beton);
+  padding-top: 0.55rem;
+}
+
+.unified-source-explorer__query-policy h4,
+.unified-source-explorer__query-policy p {
+  margin: 0;
+}
+
+.unified-source-explorer__query-policy h4 {
+  font-size: 0.8rem;
+}
+
+.unified-source-explorer__query-policy p {
+  color: var(--quiet-ink);
+  font-size: 0.75rem;
+}

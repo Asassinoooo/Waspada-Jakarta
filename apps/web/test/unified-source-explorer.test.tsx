@@ -14,6 +14,7 @@ import {
   collectUnifiedSourcePoints,
   filterUnifiedSourcePoints,
   resolveVisibleSourceSelection,
+  retainVisibleSourceSelection,
   UnifiedSourceExplorerView,
   type UnifiedSourceExplorerViewProps,
 } from "../src/UnifiedSourceExplorer.js";
@@ -104,6 +105,16 @@ test("mixed providers share source, kind, and search filtering and hidden select
   assert.equal(resolveVisibleSourceSelection(visible, null), null);
 });
 
+test("selection clears when filtered out and stays cleared after the filter is restored", () => {
+  const points = collectUnifiedSourcePoints(previewPayload, contextPayload);
+  const selectedId = quakeRecord.id;
+
+  assert.equal(retainVisibleSourceSelection(points, selectedId), selectedId);
+  assert.equal(retainVisibleSourceSelection(filterUnifiedSourcePoints(points, { source: "osm" }), selectedId), null);
+  assert.equal(retainVisibleSourceSelection(points, null), null);
+  assert.equal(retainVisibleSourceSelection(filterUnifiedSourcePoints(points, { source: "usgs" }), selectedId), selectedId);
+});
+
 test("renders one map callback before one companion panel with only supported point records", () => {
   const mapCalls: string[][] = [];
   let selectedAtMap: string | null = "unset";
@@ -166,6 +177,24 @@ test("the source panel keeps snapshot mode, provider times, attribution, and lic
   assert.match(markup, /CC BY-NC 4\.0/);
   assert.match(markup, /Lisensi \/ kredit/);
   assert.match(markup, /Tidak tersedia dari penyedia/);
+});
+
+test("the Sumber panel shows USGS scope and its time window for an empty fetched catalogue", () => {
+  const emptyEarthquakeSource: EarthquakeContextSource = { ...quakeSource(), status: "empty", records: [] };
+  const emptyContextPayload: ContextSourcesPayload = {
+    ...contextPayload,
+    sources: [weatherSource(), emptyEarthquakeSource],
+  };
+  const markup = renderView({ defaultPanel: "sumber", contextPayload: emptyContextPayload });
+
+  assert.match(markup, /Respons kosong/);
+  assert.match(markup, /Jendela katalog USGS/);
+  assert.match(markup, /Kueri katalog USGS/);
+  assert.match(markup, /magnitudo ≥ 2,5/);
+  assert.match(markup, /7 hari · maksimal 30 record/);
+  assert.match(markup, /104° BT–110° BT/);
+  assert.match(markup, /4°–9,5° LS/);
+  assert.match(markup, /bukan batas bahaya resmi atau area dampak Jakarta/);
 });
 
 test("the weather panel preserves unknown forecast fields and never adds a weather point", () => {

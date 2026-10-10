@@ -21,9 +21,17 @@ Changed paths:
 
 The screen combines OSM, PetaBencana.id and USGS records into one selection/filter path and invokes the supplied map renderer once. It keeps the map before the companion views on both viewport sizes, exposes Daftar/Detail/Cuaca/Sumber views, starts only snapshot/local requests in exact demo mode, and keeps explicit source/context acquisition, retry and reset states independent. Weather remains context-only. Source timing, attribution/licence, unknown forecast values, bounded/partial results and non-safety semantics remain visible in the relevant panel.
 
-Checks run from WSL Ubuntu-26.04 with Node 24.21.0/npm 11.19.4 and the fixed PATH:
-- node --import tsx --test apps/web/test/unified-source-explorer.test.tsx — 7/7 passed.
+Checks run from WSL Ubuntu-26.04 with Node 24.21.0/npm 11.19.0 and the fixed PATH:
+- node --import tsx --test apps/web/test/unified-source-explorer.test.tsx — 9/9 passed after the follow-up.
 - npm run typecheck --workspace=@waspada/web — passed.
 - git diff --check 95d7537085b08ede9525330252b019341fff8589 — passed for tracked diff; untracked files were subsequently staged for the final whitespace check.
 
 Limitations: app wiring and desktop/mobile browser QA remain with root. No API, provider, dependency or configuration changes. No local Prettier/Biome executable exists, and the installed TypeScript 7 package does not export the compiler-printer API; source was kept multiline without acquiring tooling dependencies. Reviewer may normalize style during integration.
+
+## Follow-up handoff (2026-10-10)
+
+Selection now follows visible identity: a selected record remains selected while it survives shared filters, but a visibility effect clears its ID after filtering, reset, or request-group data clearing removes it. Restoring a filter does not restore selection or recenter the map; the user selects the record again. Detail falls back to the generic choose-a-record prompt.
+
+The Sumber panel now shows the USGS request scope even for an empty fetched catalog: fixed magnitude floor 2.5, the contract policy's seven-day window, 30-record maximum, and the policy envelope. The copy states that this envelope is a retrieval window, not a Jakarta impact area or official danger boundary. The focused tests cover hidden/retained/cleared selection identity and the empty-catalog scope/window.
+
+Final runtime verified in WSL Ubuntu-26.04: Node v24.21.0 and npm 11.19.0. Follow-up commit records these changes; no API, provider, dependency, or configuration changes.
