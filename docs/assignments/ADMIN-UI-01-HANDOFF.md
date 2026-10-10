@@ -1,8 +1,8 @@
 # ADMIN-UI-01 handoff
 
-**Date:** 10 October 2026  
-**Source commit:** `5842ffa` (`feat(admin): add read-only operations dashboard`)  
-**Accessibility follow-up:** `14634e4` (keeps the smallest text action at 44px)  
+**Date:** 10 October 2026
+**Source commit:** `5842ffa` (`feat(admin): add read-only operations dashboard`)
+**Accessibility follow-up:** `14634e4` (keeps the smallest text action at 44px)
 **Status:** Implemented in the assigned UI slice; root owns route/style integration and browser QA.
 
 ## Delivered
@@ -13,6 +13,8 @@ Search and current-result filters link the queue and map selection. Mapped, unma
 
 The dashboard stylesheet uses existing design tokens and system typography, adds narrow-screen map/list switching and stacked panels, keeps controls at least 44px high, exposes focus styling for controls, and honors reduced-motion preferences. No dependencies, external fonts, tiles, or writes were added. The component transfers focus to its main only when focus was on `body` or a detached route fallback, leaving an actual focused control alone.
 
+The API inspector also shows up to 20 validated public source attributions with separate source publication and observation times. External source links suppress referrers; the public event detail link provides the available full attribution. API queue and map coverage use an em dash when the current event list or geometry has not been observed, rather than treating unavailable data as zero. The narrow-screen CSS now allows headings, mode controls, chips, and labels to wrap at 320px and 200% text size.
+
 ## Validation performed
 
 In WSL Ubuntu 26.04 with Node 24.21.0:
@@ -21,6 +23,8 @@ In WSL Ubuntu 26.04 with Node 24.21.0:
 - Web TypeScript check: **passed** using `npm --prefix apps/web run typecheck`.
 
 The UI tests cover filtered selection and coverage, geometry-known versus unknown counts, stale/current-attempt identity even when timestamps collide, loading-time snapshot isolation, separate public status/time semantics, permitted observed-layer summaries, and the single main focus target.
+
+The latest focused UI, map, and monitor suite passed (28/28), including source-attribution labels, no-referrer behavior, the 20-source display cap, and unknown geometry counts. The 320px/200% integrated browser case previously measured document overflow; the wrapping fix is in place and awaits the root integration rerun.
 
 ## Remaining integration checks
 
