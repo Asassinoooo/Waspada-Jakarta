@@ -23,3 +23,10 @@ Implementation handoff (10 October 2026):
 - Limitations and pending work: mocked HTTP only; no live provider request, integrated browser run, map implementation, or App navigation was tested here. Root owns navigation, main entry CSS imports, package export/test registration, integrated browser QA and acceptance.
 - Migration/configuration impact: none; no dependencies or secrets added and no configuration/database migration required.
 - Remaining decision: root review and acceptance after integrated browser QA.
+
+Root review follow-up (10 October 2026):
+
+- Code commit: `d7007f56a8988b3cd7f8a8577e3dd7b111755f9e` — `fix(UI-01-SOURCE-PREVIEW-DEMO): bound requests and retry snapshots`.
+- Added a **Coba muat snapshot** action after initial snapshot failure. The browser client now races the fixed endpoint request and streamed body against a 35-second deadline, aborts its internal request on timeout or external/unmount cancellation, and does not await stream cancellation when rejecting an oversized response. Tests use an injected clock and mocked fetch/body streams.
+- Source timestamps now distinguish successful data acquisition from an unavailable request attempt: successful/empty responses say **Data diambil pada**; unavailable responses say **Permintaan dicoba pada**.
+- Follow-up checks: WSL Ubuntu-26.04, Node `v24.21.0`, npm `11.19.0`, existing dependencies; focused tests (15/15 passed) and web typecheck (passed). Base-to-HEAD diff check is recorded after the final handoff commit.
