@@ -131,6 +131,10 @@ test("map renders synthetic point categories, source distinctions, attribution, 
   assert.match(markup, /data-map-center="106\.834,-6\.194"/);
   assert.match(markup, /data-selected="true"/);
   assert.match(markup, /aria-pressed="true"/);
+  assert.match(markup, /data-kind="hospital"/);
+  assert.match(markup, /data-kind="police"/);
+  assert.match(markup, /data-kind="fire_station"/);
+  assert.match(markup, /data-kind="flood_report"/);
   assert.match(markup, /Rumah sakit/);
   assert.match(markup, /Kepolisian/);
   assert.match(markup, /Pemadam kebakaran/);
