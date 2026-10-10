@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createElement } from "react";
+import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PreviewRecord } from "@waspada/worker/source-preview-contracts";
+import type { EarthquakeContextRecord } from "@waspada/worker/context-sources-contracts";
 import {
   clampMapZoom,
   coordinateToWorldPixels,
@@ -162,4 +163,51 @@ test("an empty synthetic preview has an explicit non-safety empty state", () => 
   assert.match(markup, /data-map-center="106\.83,-6\.19"/);
   assert.match(markup, /data-map-zoom="12"/);
   assert.match(markup, /© OpenStreetMap contributors/);
+});
+
+const SYNTHETIC_QUAKE: EarthquakeContextRecord = {
+  id: "usgs:synthetic1", source: "usgs", kind: "earthquake",
+  title: "Gempa contoh uji, Selat Sunda", coordinates: [105.8, -6.8],
+  coordinate_kind: "source_point", event_time: "2026-10-10T02:00:00Z",
+  updated_at: "2026-10-10T03:00:00Z", magnitude: 3.4, magnitude_type: "mb",
+  depth_km: 12, source_status: "reviewed",
+  source_url: "https://earthquake.usgs.gov/earthquakes/eventpage/synthetic1",
+};
+
+test("regional quake map uses source origins and region-specific defaults without inferred impact", () => {
+  const markup = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: [SYNTHETIC_QUAKE], selectedId: null, onSelect: () => {}, viewMode: "regional_earthquakes",
+  }));
+  assert.match(markup, /data-map-center="106\.8,-6\.8"/);
+  assert.match(markup, /data-map-zoom="6"/);
+  assert.match(markup, /data-source="usgs"/);
+  assert.match(markup, /data-kind="earthquake"/);
+  assert.match(markup, /episentrum dari katalog USGS/);
+  assert.match(markup, /dampak di Jakarta belum ditetapkan/i);
+  assert.match(markup, /bukan batas resmi atau area bahaya/);
+  assert.match(markup, /Regional awal/);
+  assert.match(markup, /© OpenStreetMap contributors/);
+  assert.doesNotMatch(markup, /PetaBencana|kesiapan layanan|Fasilitas rujukan|Pusat cakupan/);
+});
+
+test("quake origins retain their source description when passed to the default map", () => {
+  const markup = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: [SYNTHETIC_QUAKE], selectedId: SYNTHETIC_QUAKE.id, onSelect: () => {},
+  }));
+  assert.match(markup, /data-map-center="105\.8,-6\.8"/);
+  assert.match(markup, /data-source="usgs"/);
+  assert.match(markup, /episentrum dari katalog USGS/);
+  assert.match(markup, /Katalog gempa USGS/);
+  assert.doesNotMatch(markup, /aria-label="Gempa contoh uji, Selat Sunda,[^"]*Laporan warga/);
+});
+
+test("two map instances have unique headings and help IDs", () => {
+  const markup = renderToStaticMarkup(createElement(Fragment, null,
+    createElement(SourcePointMap, { points: [], selectedId: null, onSelect: () => {} }),
+    createElement(SourcePointMap, { points: [], selectedId: null, onSelect: () => {}, viewMode: "regional_earthquakes" }),
+  ));
+  const ids = [...markup.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+  assert.equal(ids.length, 4);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.match(markup, /Hasil kosong tidak menyatakan bahwa wilayah aman/);
 });
