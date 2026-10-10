@@ -78,13 +78,16 @@ export function hasAdminGeometry(item: Pick<AdminItem, "geometry" | "additionalG
 }
 
 export function countAdminGeometry(items: readonly AdminItem[], geometryKnown = true) {
+  if (!geometryKnown) {
+    return { mapped: null, unmapped: null, unknown: items.length, total: items.length };
+  }
   let mapped = 0;
   for (const item of items) if (hasAdminGeometry(item)) mapped += 1;
   const missing = items.length - mapped;
   return {
     mapped,
-    unmapped: geometryKnown ? missing : 0,
-    unknown: geometryKnown ? 0 : missing,
+    unmapped: missing,
+    unknown: 0,
     total: items.length,
   };
 }
@@ -324,6 +327,7 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
   const l3 = mode === "simulation" ? stepForLayer(item, "L3") : null;
   const l4 = mode === "simulation" ? stepForLayer(item, "L4") : null;
   const publishedPublicRecord = mode === "public_api" && item.publicEventId !== null && item.publishedAt !== null;
+  const publicSources = mode === "public_api" ? (item.publicSources ?? []).slice(0, 20) : [];
 
   return (
     <aside className="admin-inspector" aria-labelledby="admin-inspector-title">
@@ -354,8 +358,31 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
             {item.sourceNames.map((name) => <li key={name}>{name}</li>)}
           </ul>
         ) : <p className="admin-muted">Tidak ada nama sumber pada snapshot ini.</p>}
+        {mode === "public_api" && (
+          <div className="admin-attributions">
+            <h4>Atribusi sumber publik</h4>
+            {publicSources.length > 0 ? (
+              <>
+                <ul className="admin-attribution-list">
+                  {publicSources.map((source, index) => (
+                    <li key={`${source.url}-${index}`}>
+                      <a href={source.url} referrerPolicy="no-referrer">{source.displayName}</a>
+                      <dl className="admin-facts admin-facts--compact">
+                        <div><dt>Publikasi sumber</dt><dd>{source.publishedAt ? formatInstant(source.publishedAt) : "Tidak dicantumkan sumber"}</dd></div>
+                        <div><dt>Observasi sumber</dt><dd>{source.observedAt ? formatInstant(source.observedAt) : "Tidak dicantumkan sumber"}</dd></div>
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+                <p className="admin-muted">Maksimum 20 tautan atribusi ditampilkan di sini. Gunakan tautan detail event publik di bawah untuk atribusi lengkap yang tersedia.</p>
+              </>
+            ) : (
+              <p className="admin-muted">Snapshot ini tidak menyediakan tautan atribusi sumber pada halaman event.</p>
+            )}
+          </div>
+        )}
         <dl className="admin-facts admin-facts--compact">
-          <div><dt>{mode === "simulation" ? "Waktu fixture dicatat" : "Salah satu waktu observasi sumber"}</dt><dd>{formatInstant(item.observedAt)}</dd></div>
+          {mode === "simulation" && <div><dt>Waktu fixture dicatat</dt><dd>{formatInstant(item.observedAt)}</dd></div>}
           <div><dt>{mode === "simulation" ? "Waktu fixture diambil" : "Waktu browser membaca proyeksi"}</dt><dd>{formatInstant(item.fetchedAt)}</dd></div>
           {publishedPublicRecord && <div><dt>Waktu publikasi pada record publik</dt><dd>{formatInstant(item.publishedAt)}</dd></div>}
         </dl>
@@ -739,6 +766,8 @@ export function AdminDashboard() {
   const geometryCounts = countAdminGeometry(filteredItems, geometryKnown);
   const lastStep = Math.max(0, SIMULATION_STEPS.length - 1);
   const publicListProbe = viewMonitorState.currentAttempt?.probes.find((probe) => probe.endpoint === "events");
+  const publicListKnown = mode === "simulation" || publicListProbe?.status === "succeeded";
+  const publicGeometryKnown = mode === "simulation" || geometryKnown;
   const apiDatasetReady = apiAttemptIsCurrent && currentApiContext !== null;
   const emptyQueueTitle = sourceItems.length > 0
     ? "Tidak ada record yang cocok dengan filter."
@@ -761,7 +790,7 @@ export function AdminDashboard() {
         ? "Halaman ini tidak mengembalikan record; hasil kosong bukan pernyataan bahwa kondisi aman."
         : publicListProbe?.status === "failed"
           ? "Daftar tidak tersedia pada percobaan ini. Data yang tidak teramati tidak dihitung sebagai 0."
-          : monitorState.status === "paused"
+          : viewMonitorState.status === "paused"
             ? "Pantauan dijeda. Lanjutkan pantauan untuk membaca endpoint."
             : "Kegagalan atau hasil kosong tidak menunjukkan bahwa kondisi aman; periksa status endpoint di bawah.";
 
@@ -965,14 +994,16 @@ export function AdminDashboard() {
         <section className="admin-queue" aria-labelledby="admin-queue-title">
           <div className="admin-panel-heading">
             <div><p className="admin-kicker">{mode === "simulation" ? "Kasus lokal fiktif" : "Record event publik termuat"}</p><h2 id="admin-queue-title">{mode === "simulation" ? "Antrean simulasi" : "Daftar API publik"}</h2></div>
-            <span className="admin-total-count">{filteredItems.length} / {sourceItems.length}</span>
+            <span className="admin-total-count">{publicListKnown ? `${filteredItems.length} / ${sourceItems.length}` : "—"}</span>
           </div>
           <div className="admin-queue__coverage" aria-live="polite">
-            <span><strong>{geometryCounts.mapped}</strong> dipetakan</span>
-            {geometryKnown
-              ? <span><strong>{geometryCounts.unmapped}</strong> tidak dipetakan</span>
-              : <span><strong>{geometryCounts.unknown}</strong> geometri belum teramati</span>}
-            <span>dari {geometryCounts.total} record pada hasil filter</span>
+            <span><strong>{publicListKnown && publicGeometryKnown ? geometryCounts.mapped ?? "—" : "—"}</strong> dipetakan</span>
+            {publicListKnown && publicGeometryKnown
+              ? <span><strong>{geometryCounts.unmapped ?? "—"}</strong> tidak dipetakan</span>
+              : publicListKnown
+                ? <span><strong>{geometryCounts.unknown}</strong> geometri belum teramati</span>
+                : <span><strong>—</strong> geometri belum teramati</span>}
+            <span>{publicListKnown ? `dari ${geometryCounts.total} record pada hasil filter` : "Cakupan event belum teramati"}</span>
           </div>
           {mode === "public_api" && viewMonitorState.lastSuccessAt && (
             <p className="admin-observation-time">Snapshot sukses terakhir: <time dateTime={viewMonitorState.lastSuccessAt}>{formatInstant(viewMonitorState.lastSuccessAt)}</time></p>
@@ -999,11 +1030,12 @@ export function AdminDashboard() {
             <div><p className="admin-kicker">{mode === "simulation" ? "Geografi fiktif" : "Geometri dari GeoJSON publik"}</p><h2 id="admin-map-title">Peta record termuat</h2></div>
             <span className="admin-read-only-chip">{mode === "simulation" ? "Sintetis" : "Sumber saja"}</span>
           </div>
-          {mode === "public_api" && !snapshot && <p className="admin-map-empty-note">Peta menunggu GeoJSON dan daftar event yang berhasil dimuat dari endpoint publik.</p>}
-          <AdminOperationsMap items={filteredItems} selectedId={selectedId} onSelect={selectItem} mode={mode} />
+          {mode === "public_api" && !publicListKnown
+            ? <p className="admin-map-empty-note">Daftar event belum berhasil dimuat dari percobaan terbaru; record peta belum tersedia untuk dihitung.</p>
+            : <AdminOperationsMap items={filteredItems} selectedId={selectedId} onSelect={selectItem} mode={mode} />}
           <p className="admin-map-footnote">{mode === "simulation"
             ? "Koordinat hanya menjelaskan fixture fiktif. Tidak merepresentasikan jalan, batas resmi, atau area bahaya."
-            : !snapshot
+            : !publicListKnown
               ? "Peta menunggu konteks dan record publik dari percobaan terbaru."
             : geometryKnown
               ? "Hanya geometri sumber yang terhubung ke record publik termuat. Tidak dibuat radius bahaya atau geometri pengganti."

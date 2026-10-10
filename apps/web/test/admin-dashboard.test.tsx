@@ -155,6 +155,12 @@ test("public inspector keeps lifecycle, freshness, date precision, validity, and
       eventTime: { start: "2026-10-09", end: null, precision: "date" },
       validity: { valid_from: "2026-10-09T10:00:00.000Z", valid_until: null },
     },
+    publicSources: [{
+      displayName: "BMKG",
+      url: "https://www.bmkg.go.id/",
+      publishedAt: "2026-10-09T09:30:00.000Z",
+      observedAt: "2026-10-09T10:30:00.000Z",
+    }],
   };
   const html = renderToStaticMarkup(<AdminRecordInspector item={publicItem} mode="public_api" geometryKnown />);
 
@@ -163,8 +169,23 @@ test("public inspector keeps lifecycle, freshness, date precision, validity, and
   assert.match(html, /tanggal saja/);
   assert.match(html, /Mulai 9 Okt 2026.*; akhir tidak dinyatakan/);
   assert.match(html, /Waktu browser membaca proyeksi/);
+  assert.match(html, /Waktu publikasi pada record publik/);
+  assert.match(html, /href="https:\/\/www\.bmkg\.go\.id\/" referrerPolicy="no-referrer"/);
+  assert.match(html, /Publikasi sumber/);
+  assert.match(html, /Observasi sumber/);
+  assert.match(html, /Gunakan tautan detail event publik di bawah/);
+  assert.match(html, /href="#detail\/api\/event-101"/);
   assert.match(html, /Status review privat/);
   assert.doesNotMatch(html, /Kelayakan publikasi: layak/u);
+
+  const cappedItem = { ...publicItem, publicSources: Array.from({ length: 21 }, () => publicItem.publicSources?.[0] ?? {
+    displayName: "BMKG",
+    url: "https://www.bmkg.go.id/",
+    publishedAt: null,
+    observedAt: null,
+  }) };
+  const cappedHtml = renderToStaticMarkup(<AdminRecordInspector item={cappedItem} mode="public_api" geometryKnown />);
+  assert.equal((cappedHtml.match(/href="https:\/\/www\.bmkg\.go\.id\/"/g) ?? []).length, 20);
 });
 
 test("API layer cards retain only explicitly observed public summaries", () => {
@@ -196,7 +217,7 @@ test("additional source geometries count as mapped while unmapped records remain
   };
 
   assert.deepEqual(countAdminGeometry([unmapped, multiGeometry]), { mapped: 1, unmapped: 1, unknown: 0, total: 2 });
-  assert.deepEqual(countAdminGeometry([unmapped, multiGeometry], false), { mapped: 1, unmapped: 0, unknown: 1, total: 2 });
+  assert.deepEqual(countAdminGeometry([unmapped, multiGeometry], false), { mapped: null, unmapped: null, unknown: 2, total: 2 });
 });
 
 test("default render is an explicitly fictional read-only simulator with one main focus target", () => {
