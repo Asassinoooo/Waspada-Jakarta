@@ -1032,6 +1032,8 @@ export function AdminDashboard() {
           </div>
           {mode === "public_api" && !publicListKnown
             ? <p className="admin-map-empty-note">Daftar event belum berhasil dimuat dari percobaan terbaru; record peta belum tersedia untuk dihitung.</p>
+            : mode === "public_api" && !geometryKnown
+              ? <p className="admin-map-empty-note" role="status">Geometri belum teramati: GeoJSON belum berhasil dibaca pada percobaan terbaru. Record tetap tersedia di daftar; jumlah yang dipetakan belum diketahui.</p>
             : <AdminOperationsMap items={filteredItems} selectedId={selectedId} onSelect={selectItem} mode={mode} />}
           <p className="admin-map-footnote">{mode === "simulation"
             ? "Koordinat hanya menjelaskan fixture fiktif. Tidak merepresentasikan jalan, batas resmi, atau area bahaya."
