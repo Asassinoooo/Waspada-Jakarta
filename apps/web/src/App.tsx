@@ -11,7 +11,7 @@ import { PrivacyPage } from "./PrivacyPage.js";
 import { ReadGuide } from "./ReadGuide.js";
 import { Landing } from "./Landing.js";
 
-const AdminDashboard = lazy(() => import("./AdminDashboard.js"));
+const AdminDashboard = lazy(() => import("./admin-entry.js"));
 
 type Route =
   | { screen: "landing" }

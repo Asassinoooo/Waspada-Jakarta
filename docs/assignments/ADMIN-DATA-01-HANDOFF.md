@@ -23,6 +23,7 @@ Run under WSL Ubuntu-26.04 with Node.js `v24.21.0` and the prepared workspace de
 ```sh
 npm exec --workspace=@waspada/web -- tsx --test test/admin-monitoring.test.ts
 npm run typecheck --workspace=@waspada/web
+npm exec --workspace=@waspada/web -- tsc --ignoreConfig --noEmit --target ES2022 --lib ES2022,DOM,DOM.Iterable --module ESNext --moduleResolution Bundler --allowImportingTsExtensions --resolveJsonModule --isolatedModules --verbatimModuleSyntax --strict --noUnusedLocals --noUnusedParameters --noFallthroughCasesInSwitch --jsx react-jsx --types node src/admin-monitoring.ts src/admin-fixtures.ts test/admin-monitoring.test.ts
 ```
 
 The focused monitoring suite passed with **14 passed, 0 failed**. TypeScript checking of the changed monitoring, fixture and test files passed with the workspace's strict compiler flags. The full web typecheck is currently blocked by the root-owned `apps/web/src/App.tsx` route import of `./AdminDashboard.js`, which is not present in this data-slice checkout until the UI slice is integrated. `git diff --check` is clean.
