@@ -217,7 +217,9 @@ async function requestOsm(
           accept: "application/json",
         },
         body: `data=${encodeURIComponent(osmQuery)}`,
-        redirect: "error",
+        // workerd supports follow/manual, not the browser-style "error" mode.
+        // Manual mode prevents following; the non-2xx check below rejects 3xx.
+        redirect: "manual",
         signal: deadline.signal,
       }),
       deadline,
@@ -248,7 +250,7 @@ async function requestPetabencana(
           "user-agent": identifyingUserAgent,
           accept: "application/json, application/geo+json",
         },
-        redirect: "error",
+        redirect: "manual",
         signal: deadline.signal,
       }),
       deadline,

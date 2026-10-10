@@ -194,9 +194,9 @@ test("fetch uses the fixed endpoints, bounded query, identifying user agent, and
   assert.equal(petabencanaCall.url,
     "https://api.petabencana.id/reports?admin=ID-JK&timeperiod=86400&disaster=flood&geoformat=geojson");
   assert.equal(osmCall.init?.method, "POST");
-  assert.equal(osmCall.init?.redirect, "error");
+  assert.equal(osmCall.init?.redirect, "manual");
   assert.equal(petabencanaCall.init?.method, "GET");
-  assert.equal(petabencanaCall.init?.redirect, "error");
+  assert.equal(petabencanaCall.init?.redirect, "manual");
   const userAgent = "WaspadaJakarta-Team12-Demo/0.1 (+https://github.com/Asassinoooo/Waspada-Jakarta)";
   assert.equal(new Headers(osmCall.init?.headers).get("user-agent"), userAgent);
   assert.equal(new Headers(petabencanaCall.init?.headers).get("user-agent"), userAgent);
@@ -248,6 +248,28 @@ test("one failed provider remains a sanitized partial-source result", async () =
   assert.equal(source(payload, "petabencana").status, "unavailable");
   assert.equal(source(payload, "petabencana").error, "http_error");
   assert.equal(JSON.stringify(payload).includes("PRIVATE UPSTREAM ERROR BODY"), false);
+});
+
+test("manual redirects are rejected without following the provider location", async () => {
+  let calls = 0;
+  let petabencanaRedirectMode: RequestRedirect | undefined;
+  const handler = makeHandler(async (input, init) => {
+    calls += 1;
+    if (String(input).includes("overpass-api")) return jsonResponse(emptyOsm());
+    petabencanaRedirectMode = init?.redirect;
+    return new Response(null, {
+      status: 302,
+      headers: { location: "https://redirect-target.invalid/private" },
+    });
+  });
+
+  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const payload = await response.json() as { sources: Array<Record<string, unknown>> };
+  assert.equal(calls, 2);
+  assert.equal(petabencanaRedirectMode, "manual");
+  assert.equal(source(payload, "osm").status, "empty");
+  assert.equal(source(payload, "petabencana").status, "unavailable");
+  assert.equal(source(payload, "petabencana").error, "http_error");
 });
 
 test("early response rejection aborts that request after cleanup while the peer source succeeds", async () => {
