@@ -1,5 +1,7 @@
 # Waspada Jakarta — Source Reuse and Retention Clearance Gate
 
+**10 October 2026:** Team 12's requested demo now has a separately bounded [OSM/PetaBencana source-preview scope](DEMO_DATA_INTEGRATION.md), using ODbL and the more restrictive CC BY-NC 4.0 non-commercial licence. Its limited licensed use does not wait for a bespoke permission letter. Broader raw retention, AI transfer, commercial deployment and production incident publication remain outside this exception. BMKG/ANTARA integrations and human-evaluated source casebook gates are unchanged.
+
 **Status:** Prepared for Team 12 review. No live connector is enabled and no source owner has been contacted. A source-specific open license or public-domain statement may provide a reuse basis without a separate permission letter when it clearly covers the exact dataset and intended use.
 **Reviewed:** 9 October 2026
 **Related:** [Source feasibility and retention](SOURCE_FEASIBILITY.md), [permission request drafts](SOURCE_PERMISSION_REQUESTS.md), [source verification plan](../SOURCE_VERIFICATION_PLAN.md), and [ADR-005](decisions/ADR-005-source-retention.md).
