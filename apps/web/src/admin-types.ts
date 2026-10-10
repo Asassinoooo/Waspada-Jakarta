@@ -34,6 +34,13 @@ export interface AdminItem {
   geometryBasis: "synthetic_example" | "source_supported" | "none";
   geometryNote: string;
   sourceNames: string[];
+  /** Bounded public attribution, never raw/private source content. */
+  publicSources?: Array<{
+    displayName: string;
+    url: string;
+    publishedAt: string | null;
+    observedAt: string | null;
+  }>;
   eventVersion: number | null;
   publicEventId: string | null;
   datasetKind: "live" | "historical" | "synthetic";

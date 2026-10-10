@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPublicContext, listEvents, type ApiReadState, type PublicGeoJSONFilters } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
@@ -11,6 +11,8 @@ import { PrivacyPage } from "./PrivacyPage.js";
 import { ReadGuide } from "./ReadGuide.js";
 import { Landing } from "./Landing.js";
 
+const AdminDashboard = lazy(() => import("./AdminDashboard.js"));
+
 type Route =
   | { screen: "landing" }
   | { screen: "discover" }
@@ -19,6 +21,7 @@ type Route =
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "review" }
+  | { screen: "admin" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
 
@@ -124,6 +127,7 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
+  if (hash === "#admin") return { screen: "admin" };
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
     try {
@@ -171,6 +175,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
           <a href="#panduan" aria-current={route.screen === "guide" ? "page" : undefined}>Panduan</a>
           <a href="#privasi" aria-current={route.screen === "privacy" ? "page" : undefined}>Privasi</a>
           <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
+          <a href="#admin">Admin demo</a>
         </nav>
         <span className="mode-chip">{modeText}</span>
       </header>
@@ -287,6 +292,7 @@ export function App() {
   }, [retryKey, route.screen]);
 
   useEffect(() => {
+    if (route.screen === "admin") return;
     let cancelled = false;
 
     getPublicContext()
@@ -300,7 +306,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [contextRequestKey]);
+  }, [contextRequestKey, route.screen]);
 
   const { category, lifecycle, freshness } = discovery.filters;
   useEffect(() => {
@@ -374,6 +380,25 @@ export function App() {
       ? historyState
       : { eventId: route.eventId, status: "loading" as const }
     : undefined;
+
+  if (route.screen === "admin") {
+    return (
+      <div className="app-shell app-shell--admin">
+        <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
+        <Suspense fallback={
+          <main id="main-content" tabIndex={-1} className="main-shell">
+            <section className="state-panel" role="status">
+              <strong>Memuat ruang operasi web…</strong>
+              <p>Simulasi alur dan pantauan endpoint publik, hanya baca.</p>
+              <a className="text-link" href="#beranda">Kembali ke layanan publik</a>
+            </section>
+          </main>
+        }>
+          <AdminDashboard />
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
