@@ -6,15 +6,20 @@ Status: assigned, 10 October 2026. User requests one unified map. Scope is the e
 
 Reuse the existing civic tokens (tinta-kota, kali-teal, merah-tanda, surface, soft-panel, beton), typography, compact labels and visible focus states. Desktop: one introduction/control strip, a compact source status/filter toolbar, a large primary map alongside a compact companion panel (Daftar, Detail, Cuaca, Sumber). Mobile: map-first with compact controls and a companion drawer/panel; the same map remains the primary view. No long source metadata or forecast table ahead of the map. Avoid a second regional map or a duplicate quake feed/detail. Weather model-grid coordinates appear in text only, never as an incident marker.
 
+Existing tokens: tinta-kota `#18323A` (headings/quake outline), kali-teal `#087B75` (focus/reference facilities), merah-tanda `#A7433B` (source-report symbol), surface `#FFFFFF` (controls/panel), soft-panel `#EAF0ED` (quiet background), beton `#D5DEDB` (dividers). Inherit the existing Jakarta Sans/system stack; compact headings, readable body copy and tabular source timestamps. Left alignment, 0.5–0.8rem control gaps and a wider map column keep source reading secondary to geographic exploration; no new fonts, packages or decoration.
+
 ```text
 Peta sumber Jakarta          [Ambil fasilitas & banjir] [Ambil cuaca & gempa]
-Source status: OSM | PetaBencana | Open-Meteo | USGS  (expand provenance)
-Search                     Source filter             Kind filter
+Source status: OSM | PetaBencana | Open-Meteo | USGS
+[Search and source/kind filters: disclosure]
 Large primary OSM map: H/P/D/B/G    Companion panel: list/detail/weather/sources
                            [Jakarta awal] [Kawasan gempa]
-Selected record: original source, kind, source-specific timestamps and link
-Weather model context: hourly table, unknowns, attribution; no warning geometry
+Detail panel: selected source, kind, source-specific timestamps and link
+Cuaca panel: model hourly table, unknowns, attribution; no warning geometry
+Sumber panel: full provenance, snapshot restore and context reset
 ```
+
+Mobile uses the same order with a single compact title/control strip, collapsed filters, primary map, then companion panel. Long provenance and reset controls belong inside Sumber. Source status can scroll within its strip; the page must not overflow horizontally. The map must be visible in the initial mobile viewport, without requiring a map/list switch.
 
 Map starts at Jakarta. One regional extent button and selected-quake centering expose distant epicentres in that same viewport. Returning to Jakarta retains the loaded quake layer and selection identity. All source markers keep separate source descriptions and category symbols; no inferred circles, polygons, event lifecycle or Waspada-verification labels. The legend and notice explain all three point providers. Filter counts describe loaded records, not safety metrics or verified incident counts.
 
