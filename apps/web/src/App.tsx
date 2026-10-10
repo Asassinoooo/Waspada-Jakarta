@@ -127,7 +127,7 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
-  if (hash === "#admin") return { screen: "admin" };
+  if (hash === "#admin" || hash === "#admin-workspace") return { screen: "admin" };
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
     try {
@@ -239,7 +239,7 @@ export function App() {
   useEffect(() => {
     const updateRoute = () => {
       // In-page skip links must not replace the currently selected public screen.
-      if (window.location.hash === "#main-content") return;
+      if (window.location.hash === "#main-content" || window.location.hash === "#admin-workspace") return;
       setRoute(routeFromHash(window.location.hash));
     };
     if (!window.location.hash) window.history.replaceState(null, "", "#beranda");

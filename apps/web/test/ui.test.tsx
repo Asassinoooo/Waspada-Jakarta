@@ -16,6 +16,7 @@ test("new entry routes preserve account-free discovery and existing deep links",
   assert.deepEqual(routeFromHash("#panduan"), { screen: "guide" });
   assert.deepEqual(routeFromHash("#privasi"), { screen: "privacy" });
   assert.deepEqual(routeFromHash("#admin"), { screen: "admin" });
+  assert.deepEqual(routeFromHash("#admin-workspace"), { screen: "admin" });
   assert.deepEqual(routeFromHash("#jelajah"), { screen: "discover" });
   assert.deepEqual(routeFromHash("#detail/api/report%2F01"), { screen: "detail-api", eventId: "report/01" });
   assert.deepEqual(routeFromHash("#detail/api/%E0%A4%A"), { screen: "detail-api", eventId: "" });

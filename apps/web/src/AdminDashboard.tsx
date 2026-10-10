@@ -880,6 +880,7 @@ export function AdminDashboard() {
           <p className="admin-header__lede">Pilih record untuk melihat asal data, tahap yang tercatat, waktu, dan keterbatasan yang diketahui.</p>
         </div>
         <div className="admin-header__actions">
+          <a className="admin-button admin-button--primary" href="#admin-workspace">Langsung ke peta dan daftar</a>
           <a className="admin-button admin-button--quiet" href="#jelajah">Buka informasi publik</a>
           <span className="admin-read-only-chip">Baca saja · tidak ada kontrol tulis</span>
         </div>
@@ -985,7 +986,7 @@ export function AdminDashboard() {
 
       <SnapshotNotice mode={mode} state={viewMonitorState} snapshot={snapshot} onRefresh={refresh} />
 
-      <section id="admin-workspace" className={`admin-workspace admin-workspace--mobile-${mobileView}`} aria-label="Peta, daftar, dan detail record">
+      <section id="admin-workspace" tabIndex={-1} className={`admin-workspace admin-workspace--mobile-${mobileView}`} aria-label="Peta, daftar, dan detail record">
         <div className="admin-mobile-switch" role="group" aria-label="Tampilan ruang operasi">
           <button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}>Daftar record</button>
           <button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}>Peta geometri</button>
