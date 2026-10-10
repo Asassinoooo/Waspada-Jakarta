@@ -133,16 +133,9 @@ function parseTimeScope(value: unknown): TimeScope {
       || (value.end !== null && value.end < value.start)) throw new MonitorPayloadError();
     return { start: value.start, end: value.end, precision: value.precision };
   }
-  const start = value.start;
-  const end = value.end;
-  const startIsDate = isDateOnly(start);
-  const endIsDate = isDateOnly(end);
-  if (!(startIsDate || isInstant(start)) || !(endIsDate || isInstant(end))) throw new MonitorPayloadError();
-  if (startIsDate && endIsDate && (end as string) < (start as string)) throw new MonitorPayloadError();
-  if (!startIsDate && !endIsDate && Date.parse(end as string) < Date.parse(start as string)) {
-    throw new MonitorPayloadError();
-  }
-  return { start: start as string, end: end as string, precision: value.precision };
+  if (!isInstant(value.start) || !isInstant(value.end)
+    || Date.parse(value.end) < Date.parse(value.start)) throw new MonitorPayloadError();
+  return { start: value.start, end: value.end, precision: value.precision };
 }
 function parseScope(value: unknown): PublicScope {
   if (!isRecord(value) || !hasExactKeys(value, ["places", "services", "institutions", "audiences"])

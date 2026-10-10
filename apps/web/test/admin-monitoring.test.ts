@@ -20,12 +20,18 @@ function context(datasetLabel: PublicContext["dataset_label"] = "synthetic", dat
     }],
   };
 }
-function eventView(options: { eventId?: string; version?: number; dateOnly?: string; impossibleDate?: string } = {}): EventView {
+function eventView(options: {
+  eventId?: string;
+  version?: number;
+  dateOnly?: string;
+  impossibleDate?: string;
+  dateRange?: [string, string];
+} = {}): EventView {
   const eventId = options.eventId ?? "public-event-01";
   const version = options.version ?? 1;
-  const start = options.impossibleDate ?? options.dateOnly ?? "2026-10-10T02:00:00.000Z";
-  const precision = options.impossibleDate || options.dateOnly ? "date" : "exact";
-  const time = { start, end: null, precision } as const;
+  const start = options.dateRange?.[0] ?? options.impossibleDate ?? options.dateOnly ?? "2026-10-10T02:00:00.000Z";
+  const precision = options.dateRange ? "range" : options.impossibleDate || options.dateOnly ? "date" : "exact";
+  const time = { start, end: options.dateRange?.[1] ?? null, precision } as const;
   const scope = { places: ["Tempat Contoh, Jakarta (fiktif)"], services: [], institutions: [], audiences: [] };
   const validity = { valid_from: "2026-10-10T01:00:00.000Z", valid_until: null };
   return {
@@ -367,6 +373,36 @@ test("date-only event times are accepted only when valid and impossible calendar
   assert.equal(latest.current?.currentAttempt?.probes.find((probe) => probe.endpoint === "events")?.status, "failed");
   assert.equal(latest.current?.lastSuccessAt, "2026-10-10T03:00:00.000Z");
   monitor.stop();
+});
+
+test("range precision requires ordered instant endpoints and rejects date-only endpoints", async () => {
+  const cases: Array<{ range: [string, string]; accepted: boolean }> = [
+    { range: ["2026-10-10T02:00:00.000Z", "2026-10-10T03:00:00.000Z"], accepted: true },
+    { range: ["2026-10-10", "2026-10-11"], accepted: false },
+  ];
+  for (const scenario of cases) {
+    const latest: { current: AdminMonitorState | null } = { current: null };
+    const monitor = createAdminMonitor({
+      onState: (state) => { latest.current = state; },
+      scheduler: new FakeScheduler(),
+      clock: () => NOW,
+      fetch: async (input) => {
+        const path = requestPath(input);
+        if (path === "/api/v1/context") return jsonResponse(context());
+        if (path === "/api/v1/events?limit=20") return jsonResponse(eventPage([eventView({ dateRange: scenario.range })]));
+        if (path === "/api/v1/events.geojson") return jsonResponse(featureCollection(), "application/geo+json");
+        throw new Error("Unexpected path.");
+      },
+    });
+
+    await monitor.start();
+
+    assert.equal(latest.current?.status, scenario.accepted ? "connected" : "partial");
+    assert.equal(latest.current?.snapshot?.items.length, scenario.accepted ? 1 : 0);
+    assert.equal(latest.current?.currentAttempt?.probes.find((probe) => probe.endpoint === "events")?.status,
+      scenario.accepted ? "succeeded" : "failed");
+    monitor.stop();
+  }
 });
 
 test("failed current probes retain a distinct last-success time and back off without mixing old dataset records", async () => {
