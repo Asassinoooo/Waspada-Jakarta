@@ -39,6 +39,7 @@ import {
 
 export interface WorkerEnvironment {
   DATASET_MODE?: string;
+  SOURCE_PREVIEW_ENABLED?: string;
   HYPERDRIVE?: { readonly connectionString?: string };
   L1_HYPERDRIVE?: { readonly connectionString?: string };
   SYNTHETIC_POLL_SCHEDULER_ENABLED?: string;

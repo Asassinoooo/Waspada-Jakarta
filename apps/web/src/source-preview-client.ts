@@ -213,7 +213,8 @@ function parseSource(value: unknown, expectedId: PreviewSourceId, generatedAt: s
 
   const records = value.records.map((record) => parseRecord(record, expectedId));
   const fetchedAtMs = value.fetched_at === null ? null : Date.parse(value.fetched_at);
-  const timestampsAreConsistent = (value.fetched_at === null
+  const timestampsAreConsistent = (expectedId !== "petabencana" || value.source_updated_at === null)
+    && (value.fetched_at === null
     || (fetchedAtMs !== null && fetchedAtMs <= Date.parse(generatedAt)))
     && (value.source_updated_at === null
       || Date.parse(value.source_updated_at) <= Date.parse(generatedAt))

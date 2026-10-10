@@ -134,7 +134,7 @@ test("snapshot is the default, includes only the validated dated OSM snapshot, a
   const petabencana = source(payload, "petabencana");
   assert.equal(osm.data_mode, "snapshot");
   assert.equal(osm.status, "available");
-  assert.equal(osm.fetched_at, "2026-10-10T04:10:47Z");
+  assert.equal(osm.fetched_at, "2026-10-10T04:08:05Z");
   assert.equal(osm.source_updated_at, "2026-10-10T04:06:43Z");
   assert.equal((osm.records as unknown[]).length, 100);
   assert.equal(petabencana.status, "not_requested");

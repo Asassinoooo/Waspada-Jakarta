@@ -5,6 +5,7 @@ send_metrics = false
 
 [vars]
 DATASET_MODE = "demo"
+SOURCE_PREVIEW_ENABLED = "true"
 
 [observability]
 enabled = true

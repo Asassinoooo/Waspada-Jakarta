@@ -3,6 +3,7 @@
 .codex-build/
 .codex-finalizer/
 node_modules/
+.wrangler/
 .venv/
 venv/
 __pycache__/

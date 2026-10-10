@@ -14,10 +14,16 @@ import { consoleTelemetry } from "./layers/l5-evaluation-monitoring/telemetry.js
 import { handleSyntheticPollScheduleTrigger } from "./runtime/synthetic-poll-schedule-trigger.js";
 import { handleSyntheticSourcePollProcessTrigger } from "./runtime/synthetic-source-poll-process-trigger.js";
 import { handleFreshnessDueScheduleTrigger } from "./runtime/freshness-due-schedule-trigger.js";
+import { createSourcePreviewHandler } from "./layers/l4-application-integration/source-preview-api.js";
+
+const sourcePreviewHandler = createSourcePreviewHandler();
 
 export default {
   async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/api/v1/demo/source-preview") {
+      return sourcePreviewHandler(request, env);
+    }
     const eventListPageService =
       env.DATASET_MODE === "live"
         && request.method === "GET"

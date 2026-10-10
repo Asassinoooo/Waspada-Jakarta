@@ -186,6 +186,10 @@ test("matches Worker source-mode outcomes, fetched timestamps, and cache rules",
       source("osm"),
       source("petabencana", { status: "empty", data_mode: "fetched", fetched_at: instant, rejected_count: 501 }),
     ]),
+    payload([
+      source("osm"),
+      source("petabencana", { status: "empty", data_mode: "fetched", fetched_at: instant, source_updated_at: instant }),
+    ]),
   ];
   for (const invalid of invalidSources) {
     assert.throws(() => validateSourcePreviewPayload(invalid), SourcePreviewPayloadError);

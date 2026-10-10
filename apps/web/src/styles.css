@@ -1992,6 +1992,8 @@ time,
   .primary-nav {
     grid-column: 1 / -1;
     grid-row: 2;
+    flex-wrap: wrap;
+    min-width: 0;
     border-top: 1px solid var(--beton);
     padding-top: 0.25rem;
   }

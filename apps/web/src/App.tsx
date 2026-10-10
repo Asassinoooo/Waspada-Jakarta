@@ -6,6 +6,8 @@ import { DEFAULT_FEED_FILTERS, EventFeed, type FeedFilters, type FeedStatus, typ
 import { ModeratorReview } from "./ModeratorReview.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
+import { SourcePreview } from "./SourcePreview.js";
+import { SourcePointMap } from "./SourcePointMap.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
 
 type Route =
@@ -13,6 +15,7 @@ type Route =
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "review" }
+  | { screen: "source-preview" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
 
@@ -112,6 +115,7 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
 }
 
 export function routeFromHash(hash: string): Route {
+  if (hash === "#demo-sumber") return { screen: "source-preview" };
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
@@ -135,12 +139,17 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
       ? "Mode live"
       : "Status dataset tidak tersedia";
   const bannerLabel = datasetMode === "demo" ? "DEMO" : datasetMode === "live" ? "LIVE" : "—";
-  const bannerTitle = datasetMode === "demo"
+  const sourcePreview = route.screen === "source-preview" && datasetMode === "demo";
+  const bannerTitle = sourcePreview
+    ? "DEMO SUMBER — pratinjau data publik; bukan peringatan Waspada"
+    : datasetMode === "demo"
     ? "DEMO — data sintetis; bukan peringatan langsung"
     : datasetMode === "live"
       ? "LIVE — record berasal dari dataset live API"
       : "Status dataset tidak tersedia.";
-  const bannerDetail = datasetMode === "demo"
+  const bannerDetail = sourcePreview
+    ? "Data referensi dan laporan sumber ditampilkan terpisah dari kejadian sintetis."
+    : datasetMode === "demo"
     ? "Fixture presentasi tetap terpisah dari record API."
     : datasetMode === "live"
       ? "Waktu dan kesegaran tercantum per record; cakupan mengikuti data API yang dimuat."
@@ -156,6 +165,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
         </a>
         <nav className="primary-nav" aria-label="Navigasi utama">
           <a href="#jelajah" aria-current={onDiscover ? "page" : undefined}>Jelajah</a>
+          {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Demo sumber</a>}
           <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Ringkasan saya</a>
           <a href="#pembaruan" aria-current={route.screen === "updates" ? "page" : undefined}>Pembaruan</a>
           <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
@@ -239,7 +249,7 @@ export function App() {
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
   useEffect(() => {
-    if (route.screen === "preferences" || route.screen === "updates") return;
+    if (route.screen === "preferences" || route.screen === "updates" || route.screen === "source-preview") return;
     let cancelled = false;
     setStatus("loading");
 
@@ -396,9 +406,19 @@ export function App() {
       {route.screen === "preferences" && <Preferences context={context} contextSnapshotId={contextRequestKey} />}
       {route.screen === "updates" && <UpdatesCenter context={context} refreshCurrentEvents={refreshCurrentEvents} />}
       {route.screen === "review" && <ModeratorReview />}
+      {route.screen === "source-preview" && (
+        <SourcePreview
+          datasetMode={context?.dataset_mode ?? null}
+          renderMap={(points, selectedId, onSelect, onReturnToList) => (
+            <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} onReturnToList={onReturnToList} />
+          )}
+        />
+      )}
       <footer className="site-footer">
         <span>
-          {context?.dataset_mode === "demo"
+          {route.screen === "source-preview" && context?.dataset_mode === "demo"
+            ? "Demo sumber · cuplikan bertanggal dan laporan penyedia; belum dipublikasikan Waspada."
+            : context?.dataset_mode === "demo"
             ? "Mode demo · record API sintetis dan fixture presentasi ditandai terpisah."
             : context?.dataset_mode === "live"
               ? "Mode live · data berasal dari API; cakupan sesuai halaman yang dimuat."
