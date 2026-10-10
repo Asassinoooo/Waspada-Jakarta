@@ -476,6 +476,7 @@ export function SourcePointMap({
                 aria-pressed={selected}
                 title={pointDescription(point)}
                 data-source={point.source}
+                data-kind={point.kind}
                 data-record-id={point.id}
                 data-selected={selected ? "true" : "false"}
                 onPointerDown={(event) => event.stopPropagation()}
@@ -486,7 +487,7 @@ export function SourcePointMap({
               >
                 <span className="source-point-map__marker-code" aria-hidden="true">{category.letter}</span>
                 <span className="source-point-map__marker-category">{category.label}</span>
-                {selected && <span className="source-point-map__marker-name">{point.title}</span>}
+                <span className="source-point-map__marker-name">{point.title}</span>
               </button>
             );
           })}
@@ -548,7 +549,7 @@ export function SourcePointMap({
           <ul>
             {(["hospital", "police", "fire_station"] as const).map((kind) => (
               <li key={kind}>
-                <span className="source-point-map__legend-code source-point-map__legend-code--osm" aria-hidden="true">{CATEGORY_LABELS[kind].letter}</span>
+                <span className="source-point-map__legend-code source-point-map__legend-code--osm" data-kind={kind} aria-hidden="true">{CATEGORY_LABELS[kind].letter}</span>
                 <span>{CATEGORY_LABELS[kind].label}</span>
                 <span className="source-point-map__legend-count">{categoryCounts[kind]}</span>
               </li>
@@ -560,7 +561,7 @@ export function SourcePointMap({
           <p>Laporan warga PetaBencana</p>
           <ul>
             <li>
-              <span className="source-point-map__legend-code source-point-map__legend-code--report" aria-hidden="true">B</span>
+              <span className="source-point-map__legend-code source-point-map__legend-code--report" data-kind="flood_report" aria-hidden="true">B</span>
               <span>{CATEGORY_LABELS.flood_report.label}</span>
               <span className="source-point-map__legend-count">{categoryCounts.flood_report}</span>
             </li>
