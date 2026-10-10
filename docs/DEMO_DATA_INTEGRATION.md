@@ -13,16 +13,16 @@ PetaBencana report preview uses the more restrictive current CC BY-NC 4.0 terms 
 ```mermaid
 flowchart TD
   A[Open demo: dated OSM reference snapshot] --> D[L4 separate preview projection]
-  B[User selects Ambil data sumber] --> C[L1 fixed bounded API requests\nvalidate / normalize / deduplicate / provenance]
-  C --> E[L2 deterministic identity + time / spatial checks]
-  E --> D
-  E --> F[L3 skipped: structured preview needs no investigation]
+  B[User selects Ambil data sumber] --> C[L1 fixed bounded API requests\nvalidate time / space / identity\nnormalize / deduplicate / provenance]
+  C --> D
+  C -.-> E[L2 model/RAG not invoked]
+  E -.-> F[L3 investigation not invoked]
   D --> G[Linked list + OSM map\nsource reports remain unreviewed]
   H[L5 source outcomes / rejection counts\nprivacy and bounded retention] -.-> C
   H -.-> D
 ```
 
-This demo does not call an LLM, run semantic RAG, persist to Neon, invoke the L3 coordinator or authorize incident publication. Existing incident/demo APIs stay unchanged and synthetic records are never overlaid as real reports. The five-layer design is preserved by separate L1 adapters and L4 source projection; L2 is deterministic here and L3 is explicitly skipped. Future model investigation must enter the existing evidence/proposal/publication gates.
+This demo does not call an LLM, run semantic RAG, persist to Neon, invoke the L3 coordinator or authorize incident publication. Existing incident/demo APIs stay unchanged and synthetic records are never overlaid as real reports. L1 performs deterministic source identity/time/spatial validation; L4 returns a distinct source preview. L2 and L3 are explicitly not invoked in this structured-data slice. L5 displays bounded source outcomes/rejection counts and enforces privacy limits. Future model investigation must enter the existing evidence/proposal/publication gates.
 
 ## Demo contract and operating budget
 
@@ -34,7 +34,7 @@ Free-tier compatibility: no new dependency, secret, hosted service, database, mo
 
 ## UI
 
-Add `#demo-sumber`, linked as **Demo sumber** when the server confirms demo mode. Keep the civic palette (tinta kota, kali teal, hujan pagi, beton, kuning perhatian, merah tanda) and existing typography. Desktop: compact heading/controls and pipeline strip, source status above linked list/map columns, selected-record details with timestamps/attribution. Mobile: list first and a map switch. Facility icons H/P/D and flood symbol B plus text labels distinguish categories. Show snapshot date, fetch time, provider observation time and missing time explicitly. State **Pratinjau sumber — belum melalui publikasi Waspada**. Source-report marker is a point only; no danger radius or safety classification. Facility/reference and citizen-report layers remain visually and textually distinct. Loading, source error, empty, tile failure, disabled/live-mode and offline-snapshot states remain legible without a map.
+Add `#demo-sumber`, linked as **Demo sumber** when the server confirms demo mode. Keep the civic palette (tinta kota, kali teal, hujan pagi, beton, kuning perhatian, merah tanda) and existing typography. Desktop: compact heading/controls and pipeline strip, source status above linked list/map columns, selected-record details with timestamps/attribution. Mobile: list first and a map switch. Facility icons H/P/D and flood symbol B plus text labels distinguish categories. Show snapshot date, fetch time, provider report creation time and missing time explicitly. PetaBencana `created_at` is report creation at the source (`source_created_at` in this new demo DTO); it does not prove the physical incident/observation time, which remains unavailable. State **Pratinjau sumber — belum melalui publikasi Waspada**. Source-report marker is a point only; no danger radius or safety classification. Facility/reference and citizen-report layers remain visually and textually distinct. Loading, source error, empty, tile failure, disabled/live-mode and offline-snapshot states remain legible without a map.
 
 ## Delivery packages
 

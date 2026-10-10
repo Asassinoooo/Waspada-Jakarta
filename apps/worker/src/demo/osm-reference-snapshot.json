@@ -17,7 +17,7 @@
         -6.220703
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/3128699535"
     },
@@ -31,7 +31,7 @@
         -6.1955951
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/3667894085"
     },
@@ -45,7 +45,7 @@
         -6.1628495
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/4883105443"
     },
@@ -59,7 +59,7 @@
         -6.2137239
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/4918074257"
     },
@@ -73,7 +73,7 @@
         -6.1670911
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/5673769070"
     },
@@ -87,7 +87,7 @@
         -6.1763071
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/5673769073"
     },
@@ -101,7 +101,7 @@
         -6.1698218
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/5673769081"
     },
@@ -115,7 +115,7 @@
         -6.1573629
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/5673769083"
     },
@@ -129,7 +129,7 @@
         -6.1660963
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6183143091"
     },
@@ -143,7 +143,7 @@
         -6.1650789
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6187462628"
     },
@@ -157,7 +157,7 @@
         -6.1596305
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6190345394"
     },
@@ -171,7 +171,7 @@
         -6.1424498
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6190359487"
     },
@@ -185,7 +185,7 @@
         -6.1715508
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6210541001"
     },
@@ -199,7 +199,7 @@
         -6.1723055
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6210541003"
     },
@@ -213,7 +213,7 @@
         -6.1906254
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6219136087"
     },
@@ -227,7 +227,7 @@
         -6.1869339
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6222917601"
     },
@@ -241,7 +241,7 @@
         -6.180435
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6239456587"
     },
@@ -255,7 +255,7 @@
         -6.1944616
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6239457088"
     },
@@ -269,7 +269,7 @@
         -6.224733
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6239574385"
     },
@@ -283,7 +283,7 @@
         -6.2102698
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6249607778"
     },
@@ -297,7 +297,7 @@
         -6.206253
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6249775451"
     },
@@ -311,7 +311,7 @@
         -6.2006674
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6249831785"
     },
@@ -325,7 +325,7 @@
         -6.199984
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6249961586"
     },
@@ -339,7 +339,7 @@
         -6.1786115
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6249962520"
     },
@@ -353,7 +353,7 @@
         -6.1735534
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6249969807"
     },
@@ -367,7 +367,7 @@
         -6.1672287
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6251585801"
     },
@@ -381,7 +381,7 @@
         -6.1678872
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6251979491"
     },
@@ -395,7 +395,7 @@
         -6.1698078
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6252777385"
     },
@@ -409,7 +409,7 @@
         -6.1629391
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6255583789"
     },
@@ -423,7 +423,7 @@
         -6.1591314
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6255583803"
     },
@@ -437,7 +437,7 @@
         -6.1489974
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6255753000"
     },
@@ -451,7 +451,7 @@
         -6.2205256
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6259820987"
     },
@@ -465,7 +465,7 @@
         -6.2187898
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6259837786"
     },
@@ -479,7 +479,7 @@
         -6.1871678
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6274252596"
     },
@@ -493,7 +493,7 @@
         -6.151437
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6284647287"
     },
@@ -507,7 +507,7 @@
         -6.1659649
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6393447188"
     },
@@ -521,7 +521,7 @@
         -6.2393705
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/6948483690"
     },
@@ -535,7 +535,7 @@
         -6.2012205
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/8105826697"
     },
@@ -549,7 +549,7 @@
         -6.1604025
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/9064896760"
     },
@@ -563,7 +563,7 @@
         -6.2078757
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/10554018661"
     },
@@ -577,7 +577,7 @@
         -6.1823419
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/10746436417"
     },
@@ -591,7 +591,7 @@
         -6.2282877
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/10758124598"
     },
@@ -605,7 +605,7 @@
         -6.1783544
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/10796251158"
     },
@@ -619,7 +619,7 @@
         -6.1576355
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11578451908"
     },
@@ -633,7 +633,7 @@
         -6.2199462
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11779845210"
     },
@@ -647,7 +647,7 @@
         -6.1698396
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878621854"
     },
@@ -661,7 +661,7 @@
         -6.1686623
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878633338"
     },
@@ -675,7 +675,7 @@
         -6.143789
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878676583"
     },
@@ -689,7 +689,7 @@
         -6.1869354
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878683364"
     },
@@ -703,7 +703,7 @@
         -6.1995871
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878686074"
     },
@@ -717,7 +717,7 @@
         -6.1706549
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878689318"
     },
@@ -731,7 +731,7 @@
         -6.184668
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878691259"
     },
@@ -745,7 +745,7 @@
         -6.1931924
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878691282"
     },
@@ -759,7 +759,7 @@
         -6.1818356
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878695701"
     },
@@ -773,7 +773,7 @@
         -6.1914003
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878695836"
     },
@@ -787,7 +787,7 @@
         -6.1504414
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878701671"
     },
@@ -801,7 +801,7 @@
         -6.1973116
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878704271"
     },
@@ -815,7 +815,7 @@
         -6.1898118
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878704833"
     },
@@ -829,7 +829,7 @@
         -6.1665351
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878706387"
     },
@@ -843,7 +843,7 @@
         -6.1910555
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878707065"
     },
@@ -857,7 +857,7 @@
         -6.1567123
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878707089"
     },
@@ -871,7 +871,7 @@
         -6.1731387
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878708199"
     },
@@ -885,7 +885,7 @@
         -6.1935611
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878709433"
     },
@@ -899,7 +899,7 @@
         -6.2108836
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878714650"
     },
@@ -913,7 +913,7 @@
         -6.1489027
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878716743"
     },
@@ -927,7 +927,7 @@
         -6.1521122
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878718495"
     },
@@ -941,7 +941,7 @@
         -6.1958347
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878722409"
     },
@@ -955,7 +955,7 @@
         -6.1542245
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878725578"
     },
@@ -969,7 +969,7 @@
         -6.1936527
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878731552"
     },
@@ -983,7 +983,7 @@
         -6.1856105
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878734766"
     },
@@ -997,7 +997,7 @@
         -6.2095279
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878744028"
     },
@@ -1011,7 +1011,7 @@
         -6.2316371
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878753760"
     },
@@ -1025,7 +1025,7 @@
         -6.1474995
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11878754351"
     },
@@ -1039,7 +1039,7 @@
         -6.2245705
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11879033486"
     },
@@ -1053,7 +1053,7 @@
         -6.2091793
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11879056884"
     },
@@ -1067,7 +1067,7 @@
         -6.2398349
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11879103566"
     },
@@ -1081,7 +1081,7 @@
         -6.2062623
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11879117977"
     },
@@ -1095,7 +1095,7 @@
         -6.2215235
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11879130107"
     },
@@ -1109,7 +1109,7 @@
         -6.1455694
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/11879176030"
     },
@@ -1123,7 +1123,7 @@
         -6.2119627
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/12923312593"
     },
@@ -1137,7 +1137,7 @@
         -6.1913999
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/13717635847"
     },
@@ -1151,7 +1151,7 @@
         -6.1876
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/13780470601"
     },
@@ -1165,7 +1165,7 @@
         -6.1938425
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/13974452002"
     },
@@ -1179,7 +1179,7 @@
         -6.1772919
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/14104829662"
     },
@@ -1193,7 +1193,7 @@
         -6.1820003
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/14237783601"
     },
@@ -1207,7 +1207,7 @@
         -6.2159444
       ],
       "coordinate_kind": "source_point",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/node/14248026135"
     },
@@ -1221,7 +1221,7 @@
         -6.2306521
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/120495770"
     },
@@ -1235,7 +1235,7 @@
         -6.2096296
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/120498550"
     },
@@ -1249,7 +1249,7 @@
         -6.1981107
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/120509598"
     },
@@ -1263,7 +1263,7 @@
         -6.2199172
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/121129268"
     },
@@ -1277,7 +1277,7 @@
         -6.2094632
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/122152269"
     },
@@ -1291,7 +1291,7 @@
         -6.2185961
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/124163125"
     },
@@ -1305,7 +1305,7 @@
         -6.1572889
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/154078977"
     },
@@ -1319,7 +1319,7 @@
         -6.1936543
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155097709"
     },
@@ -1333,7 +1333,7 @@
         -6.1489007
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155097743"
     },
@@ -1347,7 +1347,7 @@
         -6.2018877
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155098189"
     },
@@ -1361,7 +1361,7 @@
         -6.200106
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155105677"
     },
@@ -1375,7 +1375,7 @@
         -6.1913952
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155109638"
     },
@@ -1389,7 +1389,7 @@
         -6.1935524
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155109641"
     },
@@ -1403,7 +1403,7 @@
         -6.1850708
       ],
       "coordinate_kind": "source_extent_center",
-      "observed_at": null,
+      "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155110648"
     }

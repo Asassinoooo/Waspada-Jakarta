@@ -9,7 +9,7 @@ export interface PreviewRecord {
   title: string;
   coordinates: [number, number]; // CRS84 longitude, latitude
   coordinate_kind: "source_point" | "source_extent_center";
-  observed_at: string | null;
+  source_created_at: string | null; // report creation at provider, not physical event time
   source_status: string | null; // publisher status, never a Waspada verification
   source_url: string;
 }
