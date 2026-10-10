@@ -976,7 +976,7 @@
 .admin-text-button {
   grid-column: 2;
   width: fit-content;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   border: 0;
   padding: 0.25rem 0;
   background: transparent;
