@@ -10,4 +10,22 @@ Verification in WSL Ubuntu-26.04: existing Node v24.21.0 PATH/dependencies; `nod
 
 ## Handoff
 
-Record branch/worktree/base, SHAs/exact messages, paths/behavior, actual checks/versions, limitations. Root acceptance pending.
+**Branch/worktree:** `work/UI-01-OSM-MAP-DEMO`, `.codex-build/worktrees/ui01-osm-demo`.
+
+**Base:** The assignment was created on `95c4113490cf41b920978811184fde312534d43e`. Before implementation, the root fast-forwarded this task branch to `0270af0c0b0233f467bcf680315f3df49f76a331` to include the approved `source_created_at` field correction in `source-preview-v1`; implementation used that corrected contract.
+
+**Implementation commit:** `4e4df751975bbc2a5557a807e7a74872277b2b8b` — `feat(UI-01): add source preview OSM point map`.
+
+**Changed paths:** `apps/web/src/SourcePointMap.tsx`, `apps/web/src/source-point-map.css`, `apps/web/test/source-point-map.test.tsx`.
+
+The component renders only the supplied source-supported points on bounded viewport-only Web Mercator OSM tiles. It starts at central Jakarta `[106.83, -6.19]`, zoom 12, and supports keyboard and pointer panning, bounded zoom, reset, selected-point recentering and highlighting, category letters with text labels, OSM attribution, SSR dimensions with `ResizeObserver` updates, tile failure messaging/retry, and an optional return-to-list callback. OSM facility references and unreviewed PetaBencana citizen reports are labelled separately; OSM extent-centre points are described as approximate. No danger radius, geolocation, safety rating, upstream source acquisition, or public incident contract was added.
+
+**Checks run in WSL Ubuntu-26.04:**
+
+- `node --import tsx --test apps/web/test/source-point-map.test.tsx` — 6/6 passed with synthetic fixtures; no tile or source network was used.
+- `npm run typecheck --workspace=@waspada/web` — passed.
+- `git diff --cached --check` — passed before the implementation commit.
+
+Versions at implementation: Node.js 24.21.0, npm 11.19.0, React/React DOM 19.3.0, tsx 4.23.15, and TypeScript 7.0.2. No dependency was added or installed.
+
+**Impact and remaining work:** No migration, package, runtime configuration, or shared contract change. The root must import the scoped CSS and register the new test, then complete app integration and desktop/mobile screenshot QA with mocked tile requests. Browser behavior against real OSM tiles and live source data was not tested. Root acceptance remains pending.
