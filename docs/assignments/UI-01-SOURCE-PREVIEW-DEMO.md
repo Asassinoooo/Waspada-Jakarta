@@ -11,3 +11,15 @@ Verification WSL Ubuntu-26.04 existing Node v24.21.0 PATH/dependencies: `node --
 ## Handoff
 
 Record branch/worktree/base, SHAs/exact messages, paths, actual checks/versions, limitations and configuration impact. Root acceptance pending.
+
+Implementation handoff (10 October 2026):
+
+- Branch/worktree: `work/UI-01-SOURCE-PREVIEW-DEMO` at `.codex-build/worktrees/ui01-source-preview`.
+- Base: `0270af0c0b0233f467bcf680315f3df49f76a331` (root-approved isolated `source_created_at` DTO refinement; existing public contracts unchanged).
+- Code commit: `7c7b65109571f3be9d29930dbc8abedb613aa43d` — `feat(UI-01-SOURCE-PREVIEW-DEMO): add guarded source preview page`.
+- Changed implementation paths: `apps/web/src/SourcePreview.tsx`, `apps/web/src/source-preview-client.ts`, `apps/web/src/source-preview.css`, `apps/web/test/source-preview.test.tsx`.
+- Behavior: demo-only page defaults to the local snapshot endpoint; source network fetch runs only after explicit user action. The bounded client validates and copies the versioned DTO, source-specific IDs/URLs/licenses/envelopes/times, and rejects oversized or unsafe responses. The UI keeps source state, provider status and report creation time separate from Waspada publication and physical event time; it provides filters, linked selection, a map callback, mobile list/map switch, accessible loading/error/empty states, and source attribution.
+- Checks run in WSL Ubuntu-26.04 using Node `v24.21.0`, npm `11.19.0`, existing dependencies: `node --import tsx --test apps/web/test/source-preview.test.tsx` (12/12 passed); `npm run typecheck --workspace=@waspada/web` (passed); `git diff --check HEAD` (passed; only Git's CRLF-to-LF normalization warning).
+- Limitations and pending work: mocked HTTP only; no live provider request, integrated browser run, map implementation, or App navigation was tested here. Root owns navigation, main entry CSS imports, package export/test registration, integrated browser QA and acceptance.
+- Migration/configuration impact: none; no dependencies or secrets added and no configuration/database migration required.
+- Remaining decision: root review and acceptance after integrated browser QA.
