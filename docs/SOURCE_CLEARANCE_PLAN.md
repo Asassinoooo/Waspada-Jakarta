@@ -1,5 +1,7 @@
 # Waspada Jakarta — Source Reuse and Retention Clearance Gate
 
+**Bounded context exception, 10 October 2026:** [Open-Meteo/USGS preview](CONTEXT_SOURCE_EXPANSION.md) uses published terms for non-commercial Free API forecasts and factual public-domain earthquake metadata. It requires attribution and fixed, transient metadata-only access rather than an additional permission letter. The separate endpoint and UI remain outside production ingestion/publication. This does not clear BMKG/media, raw text, AI-provider transfer, vector storage or historical retention. References and access observations are in [REFERENCES.md](../REFERENCES.md).
+
 **10 October 2026:** Team 12's requested demo now has a separately bounded [OSM/PetaBencana source-preview scope](DEMO_DATA_INTEGRATION.md), using ODbL and the more restrictive CC BY-NC 4.0 non-commercial licence. Its limited licensed use does not wait for a bespoke permission letter. Broader raw retention, AI transfer, commercial deployment and production incident publication remain outside this exception. BMKG/ANTARA integrations and human-evaluated source casebook gates are unchanged.
 
 **Status:** Prepared for Team 12 review. No live connector is enabled and no source owner has been contacted. A source-specific open license or public-domain statement may provide a reuse basis without a separate permission letter when it clearly covers the exact dataset and intended use.

@@ -1,5 +1,14 @@
 # Waspada Jakarta Reference Register
 
+## Weather and earthquake context — 10 October 2026
+
+- [Open-Meteo terms](https://open-meteo.com/en/terms): Free API for non-commercial educational use, no API key, limits below 10,000/day, 5,000/hour and 600/minute. CC BY 4.0 data attribution does not remove the Free API's non-commercial restriction. [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) governs the attributed normalized weather data.
+- [Open-Meteo forecast documentation](https://open-meteo.com/en/docs): model-derived hourly forecasts, source-selected grid coordinates, validity, units and Unix time. Rain millimetres refer to the preceding hour; probabilities are separate values. CPU generation time is not model issue time. The fixed Jakarta probe returned 12 slots and grid 106.856186,-6.221441; neither establishes an observed weather event or official warning.
+- [USGS copyrights and credits](https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits) and [publication FAQ](https://pubs.usgs.gov/documentation/faq): USGS-produced data are US public domain with attribution requested; third-party media and restricted logos are excluded from this integration.
+- [USGS FDSN catalog](https://earthquake.usgs.gov/fdsnws/event/1/) and [GeoJSON event format](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php): fixed seven-day regional query, magnitude filter >=2.5 and limit 30. Origin, update, source generation, magnitude/type and depth are distinct. Initial regional probe returned a valid empty result without metadata.count; no contemporary nonempty catalog record was verified.
+
+These terms support the bounded, transient educational context preview in [INT-02](docs/CONTEXT_SOURCE_EXPANSION.md), not source-independent incident verification, model-provider transfer, historical retention or automated publication. No permission letter is required by the cited terms for this particular scope; BMKG and news-source gates remain unchanged.
+
 ## Local source-preview integration observation — 10 October 2026
 
 Root exercised the fixed OSM/PetaBencana source adapter through local Wrangler after correcting workerd's unsupported redirect mode. OSM returned 100 normalized facilities (possibly truncated) with source database timestamp `2026-10-10T04:48:36Z`, acquisition `2026-10-10T04:50:12.080Z`; PetaBencana's fixed Jakarta/flood/last-24-hour query returned a valid empty FeatureCollection, acquired `2026-10-10T04:50:09.066Z`. The browser consumed the same normalized cached result. These observations support local integration behavior, not factual completeness, a present danger zone or hosted availability. The original committed OSM snapshot records acquisition `04:08:05Z` and dataset timestamp `04:06:43Z`. Source rights and links are in the 10 October demo-source entries below; no PetaBencana report body was persisted or bundled.
