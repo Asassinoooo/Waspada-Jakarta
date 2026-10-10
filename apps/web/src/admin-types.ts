@@ -104,7 +104,7 @@ export interface AdminMonitorState {
   lastSuccessAt: string | null;
   nextPollAt: string | null;
   consecutiveFailures: number;
-  currentAttempt: { at: string; probes: AdminProbe[] } | null;
+  currentAttempt: { at: string; probes: AdminProbe[]; context: PublicContext | null } | null;
 }
 
 export interface AdminMapProps {
