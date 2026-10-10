@@ -135,10 +135,13 @@ test("map renders synthetic point categories, source distinctions, attribution, 
   assert.match(markup, /Kepolisian/);
   assert.match(markup, /Pemadam kebakaran/);
   assert.match(markup, /Laporan banjir/);
+  assert.match(markup, /Fasilitas:.*kesiapan layanan tidak diketahui/);
+  assert.match(markup, /Laporan warga:.*belum ditinjau Waspada/);
+  assert.match(markup, /Pusat cakupan OSM:.*perkiraan/);
   assert.match(markup, /Fasilitas referensi OpenStreetMap/);
   assert.match(markup, /belum ditinjau Waspada/);
   assert.match(markup, /Titik tengah cakupan OSM yang diperkirakan/);
-  assert.match(markup, /Pratinjau sumber — belum melalui publikasi Waspada/);
+  assert.match(markup, /referrerPolicy="strict-origin-when-cross-origin"/);
   assert.match(markup, /https:\/\/www\.openstreetmap\.org\/copyright/);
   assert.match(markup, /© OpenStreetMap contributors/);
   assert.match(markup, /Kembali ke daftar/);

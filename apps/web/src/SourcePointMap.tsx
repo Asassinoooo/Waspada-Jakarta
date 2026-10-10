@@ -421,7 +421,7 @@ export function SourcePointMap({
       </header>
 
       <p className="source-point-map__notice">
-        <strong>Pratinjau sumber — belum melalui publikasi Waspada.</strong> Fasilitas OSM adalah titik rujukan tanpa informasi kesiapan layanan. Laporan banjir PetaBencana adalah laporan warga yang belum ditinjau Waspada. Pusat cakupan untuk sebagian lokasi OSM bersifat perkiraan.
+        <strong>Fasilitas:</strong> titik rujukan; kesiapan layanan tidak diketahui. <strong>Laporan warga:</strong> belum ditinjau Waspada. <strong>Pusat cakupan OSM:</strong> perkiraan.
       </p>
 
       <p id="source-point-map-help" className="source-point-map__sr-only">
@@ -453,6 +453,7 @@ export function SourcePointMap({
               draggable={false}
               loading="lazy"
               decoding="async"
+              referrerPolicy="strict-origin-when-cross-origin"
               data-tile-key={tile.key}
               style={{ left: tile.left, top: tile.top } satisfies CSSProperties}
               onError={() => markTileFailed(tileErrorKey(tileTemplate, tile.key))}
