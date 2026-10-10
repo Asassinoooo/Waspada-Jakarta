@@ -14,7 +14,7 @@ import type { EarthquakeContextRecord } from "@waspada/worker/context-sources-co
 
 export type MapCoordinate = readonly [longitude: number, latitude: number];
 export type SourceMapPoint = PreviewRecord | EarthquakeContextRecord;
-export type SourceMapViewMode = "jakarta" | "regional_earthquakes";
+export type SourceMapViewMode = "jakarta" | "regional_earthquakes" | "unified";
 
 export interface VisibleMapTile {
   key: string;
@@ -197,7 +197,7 @@ function initialMapView(points: readonly SourceMapPoint[], selectedId: string | 
   const selectedPoint = selectedPointFor(points, selectedId);
   return {
     center: selectedPoint ? [selectedPoint.coordinates[0], selectedPoint.coordinates[1]] : mode === "regional_earthquakes" ? REGIONAL_CENTER : INITIAL_CENTER,
-    zoom: mode === "regional_earthquakes" ? REGIONAL_ZOOM : INITIAL_ZOOM,
+    zoom: mode === "regional_earthquakes" || (mode === "unified" && selectedPoint?.source === "usgs") ? REGIONAL_ZOOM : INITIAL_ZOOM,
   };
 }
 
@@ -233,6 +233,8 @@ export function SourcePointMap({
   const titleId = `source-point-map-title-${instanceId}`;
   const helpId = `source-point-map-help-${instanceId}`;
   const regional = viewMode === "regional_earthquakes";
+  const unified = viewMode === "unified";
+  const LegendContainer = unified ? "details" : "div";
   const resetPlace = regional ? "wilayah gempa regional" : "Jakarta";
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragStart | null>(null);
@@ -244,6 +246,7 @@ export function SourcePointMap({
   const selectedPoint = selectedPointFor(points, selectedId);
   const selectedLongitude = selectedPoint?.coordinates[0] ?? null;
   const selectedLatitude = selectedPoint?.coordinates[1] ?? null;
+  const selectedSource = selectedPoint?.source ?? null;
   const validPoints = useMemo(() => points.filter(isValidRecordCoordinate), [points]);
   const templateIsValid = useMemo(() => isValidOsmTileTemplate(tileTemplate), [tileTemplate]);
   const tiles = useMemo(
@@ -297,9 +300,12 @@ export function SourcePointMap({
 
   useEffect(() => {
     if (selectedPoint && selectedLongitude !== null && selectedLatitude !== null) {
-      updateView({ ...viewRef.current, center: [selectedLongitude, selectedLatitude] });
+      updateView({
+        center: [selectedLongitude, selectedLatitude],
+        zoom: viewMode === "unified" ? (selectedSource === "usgs" ? REGIONAL_ZOOM : INITIAL_ZOOM) : viewRef.current.zoom,
+      });
     }
-  }, [selectedId, selectedLongitude, selectedLatitude]);
+  }, [selectedId, selectedLongitude, selectedLatitude, selectedSource, viewMode]);
 
   function updateView(nextView: MapView): void {
     viewRef.current = nextView;
@@ -317,11 +323,16 @@ export function SourcePointMap({
     updateView({
       ...viewRef.current,
       center: [selectedPoint.coordinates[0], selectedPoint.coordinates[1]],
+      zoom: unified ? (selectedPoint.source === "usgs" ? REGIONAL_ZOOM : INITIAL_ZOOM) : viewRef.current.zoom,
     });
   }
 
   function resetMap(): void {
     updateView({ center: regional ? REGIONAL_CENTER : INITIAL_CENTER, zoom: regional ? REGIONAL_ZOOM : INITIAL_ZOOM });
+  }
+
+  function showQuakeRegion(): void {
+    updateView({ center: REGIONAL_CENTER, zoom: REGIONAL_ZOOM });
   }
 
   function panByPixels(horizontal: number, vertical: number): void {
@@ -425,11 +436,11 @@ export function SourcePointMap({
   }, { hospital: 0, police: 0, fire_station: 0, flood_report: 0, earthquake: 0 });
 
   return (
-    <section className="source-point-map" aria-labelledby={titleId}>
+    <section className={`source-point-map${unified ? " source-point-map--unified" : ""}`} aria-labelledby={titleId}>
       <header className="source-point-map__header">
         <div>
-          <p className="source-point-map__kicker">Peta titik dari pratinjau sumber</p>
-          <h2 id={titleId}>{regional ? "Asal gempa regional" : "Lokasi sumber"}</h2>
+          <p className="source-point-map__kicker">{unified ? "OpenStreetMap · PetaBencana · USGS" : "Peta titik dari pratinjau sumber"}</p>
+          <h2 id={titleId}>{unified ? "Jelajah peta sumber" : regional ? "Asal gempa regional" : "Lokasi sumber"}</h2>
         </div>
         <div className="source-point-map__header-actions">
           {onReturnToList && (
@@ -442,7 +453,7 @@ export function SourcePointMap({
       </header>
 
       <p className="source-point-map__notice">
-        {regional ? <><strong>Episentrum USGS:</strong> lokasi asal gempa, bukan zona dampak. Wilayah kueri bukan batas resmi atau area bahaya; dampak di Jakarta belum ditetapkan.</> : <><strong>Fasilitas:</strong> titik rujukan; kesiapan layanan tidak diketahui. <strong>Laporan warga:</strong> belum ditinjau Waspada. <strong>Pusat cakupan OSM:</strong> perkiraan.</>}
+        {unified ? <><strong>H/P/D:</strong> fasilitas rujukan. <strong>B:</strong> laporan banjir belum ditinjau Waspada. <strong>G:</strong> asal gempa, bukan zona dampak. Rincian batas data ada di legenda.</> : regional ? <><strong>Episentrum USGS:</strong> lokasi asal gempa, bukan zona dampak. Wilayah kueri bukan batas resmi atau area bahaya; dampak di Jakarta belum ditetapkan.</> : <><strong>Fasilitas:</strong> titik rujukan; kesiapan layanan tidak diketahui. <strong>Laporan warga:</strong> belum ditinjau Waspada. <strong>Pusat cakupan OSM:</strong> perkiraan.</>}
       </p>
 
       <p id={helpId} className="source-point-map__sr-only">
@@ -452,7 +463,7 @@ export function SourcePointMap({
         ref={viewportRef}
         className="source-point-map__viewport"
         role="region"
-        aria-label={regional ? "Peta episentrum katalog USGS regional" : "Peta titik pratinjau sumber OpenStreetMap dan PetaBencana"}
+        aria-label={unified ? "Peta terpadu fasilitas OpenStreetMap, laporan PetaBencana, dan episentrum USGS" : regional ? "Peta episentrum katalog USGS regional" : "Peta titik pratinjau sumber OpenStreetMap dan PetaBencana"}
         aria-describedby={helpId}
         aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown + - Home"
         tabIndex={0}
@@ -541,7 +552,7 @@ export function SourcePointMap({
         {validPoints.length > 0 && pointPositions.length === 0 && (
           <div className="source-point-map__empty" role="status">
             <strong>Tidak ada titik sumber pada area peta yang terlihat.</strong>
-            <span>Pilih lokasi dari daftar atau kembalikan peta ke {resetPlace}.</span>
+            <span>{unified ? "Pilih titik dari daftar, Jakarta awal, atau Kawasan gempa. Area peta kosong tidak menyatakan wilayah aman." : `Pilih lokasi dari daftar atau kembalikan peta ke ${resetPlace}.`}</span>
             <button className="source-point-map__button" type="button" onClick={resetMap}>Kembalikan peta ke {resetPlace}</button>
           </div>
         )}
@@ -551,6 +562,7 @@ export function SourcePointMap({
           <button className="source-point-map__map-control" type="button" aria-label="Perkecil peta" onClick={() => zoomBy(-1)}>−</button>
           {selectedPoint && <button className="source-point-map__map-control source-point-map__map-control--wide" type="button" onClick={centerOnSelection}>Pusatkan pilihan</button>}
           <button className="source-point-map__map-control source-point-map__map-control--wide" type="button" onClick={resetMap}>{regional ? "Regional awal" : "Jakarta awal"}</button>
+          {unified && <button className="source-point-map__map-control source-point-map__map-control--wide" type="button" onClick={showQuakeRegion}>Kawasan gempa</button>}
         </div>
 
         <a
@@ -564,6 +576,8 @@ export function SourcePointMap({
         </a>
       </div>
 
+      <LegendContainer className={unified ? "source-point-map__legend-disclosure" : "source-point-map__legend-wrapper"}>
+      {unified && <summary>Legenda &amp; sumber <span>H · P · D · B · G</span></summary>}
       <div className="source-point-map__legend" aria-label="Legenda kategori dan sumber">
         {!regional && <>
         <div className="source-point-map__legend-group">
@@ -577,7 +591,7 @@ export function SourcePointMap({
               </li>
             ))}
           </ul>
-          <small>Titik referensi; ketersediaan layanan tidak ditampilkan.</small>
+          <small>Titik referensi; ketersediaan layanan tidak ditampilkan.{unified && " Kesiapan layanan tidak diketahui. Pusat cakupan OSM adalah perkiraan, bukan pintu masuk gedung."}</small>
         </div>
         <div className="source-point-map__legend-group source-point-map__legend-group--reports">
           <p>Laporan warga PetaBencana</p>
@@ -591,7 +605,7 @@ export function SourcePointMap({
           <small>Belum ditinjau atau dipublikasikan oleh Waspada.</small>
         </div>
         </>}
-        {(regional || categoryCounts.earthquake > 0) && <div className="source-point-map__legend-group">
+        {(unified || regional || categoryCounts.earthquake > 0) && <div className="source-point-map__legend-group">
           <p>Katalog gempa USGS</p>
           <ul><li>
             <span className="source-point-map__legend-code source-point-map__legend-code--quake" data-kind="earthquake" aria-hidden="true">G</span>
@@ -601,6 +615,8 @@ export function SourcePointMap({
           <small>Lokasi asal gempa; dampak di Jakarta belum ditetapkan. Sumber: U.S. Geological Survey (USGS).</small>
         </div>}
       </div>
+      {unified && <p className="source-point-map__legend-note">Jumlah mengikuti titik yang dimuat dan filter daftar, bukan jumlah kejadian terverifikasi. Prakiraan cuaca ada di panel Cuaca; titik grid model tidak dipetakan sebagai kejadian.</p>}
+      </LegendContainer>
     </section>
   );
 }

@@ -211,3 +211,53 @@ test("two map instances have unique headings and help IDs", () => {
   assert.equal(new Set(ids).size, ids.length);
   assert.match(markup, /Hasil kosong tidak menyatakan bahwa wilayah aman/);
 });
+
+test("unified map renders all point sources with one viewport and an initially collapsed legend", () => {
+  const quake: EarthquakeContextRecord = { ...SYNTHETIC_QUAKE, coordinates: [106.835, -6.195] };
+  const markup = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: [...SYNTHETIC_SOURCE_POINTS, quake], selectedId: null, onSelect: () => {}, viewMode: "unified",
+  }));
+  assert.equal([...markup.matchAll(/data-map-zoom=/g)].length, 1);
+  assert.match(markup, /data-map-center="106\.83,-6\.19"/);
+  assert.match(markup, /data-map-zoom="12"/);
+  for (const source of ["osm", "petabencana", "usgs"]) assert.match(markup, new RegExp(`data-source="${source}"`));
+  assert.match(markup, /Peta terpadu fasilitas OpenStreetMap, laporan PetaBencana, dan episentrum USGS/);
+  assert.match(markup, /<details class="source-point-map__legend-disclosure"><summary>/);
+  assert.doesNotMatch(markup, /<details[^>]*\bopen/);
+  assert.match(markup, /Jakarta awal/);
+  assert.match(markup, /Kawasan gempa/);
+  assert.match(markup, /Kesiapan layanan tidak diketahui/);
+  assert.match(markup, /Pusat cakupan OSM adalah perkiraan, bukan pintu masuk/);
+  assert.match(markup, /belum ditinjau Waspada/);
+  assert.match(markup, /dampak di Jakarta belum ditetapkan/);
+  assert.match(markup, /titik grid model tidak dipetakan sebagai kejadian/);
+  assert.match(markup, /Jumlah mengikuti titik yang dimuat dan filter daftar/);
+  assert.match(markup, /© OpenStreetMap contributors/);
+});
+
+test("unified selections use the source scale while legacy initial selections keep their mode", () => {
+  for (const [point, zoom] of [[SYNTHETIC_QUAKE, 6], [SYNTHETIC_SOURCE_POINTS[0]!, 12]] as const) {
+    const markup = renderToStaticMarkup(createElement(SourcePointMap, {
+      points: [point], selectedId: point.id, onSelect: () => {}, viewMode: "unified",
+    }));
+    assert.match(markup, new RegExp(`data-map-zoom="${zoom}"`));
+    assert.match(markup, new RegExp(`data-map-center="${point.coordinates.join(",")}"`));
+    assert.match(markup, /data-selected="true"/);
+  }
+  const legacy = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: [SYNTHETIC_QUAKE], selectedId: SYNTHETIC_QUAKE.id, onSelect: () => {},
+  }));
+  assert.match(legacy, /data-map-zoom="12"/);
+});
+
+test("unified empty states retain every source legend without inventing safety or points", () => {
+  const markup = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: [], selectedId: "missing", onSelect: () => {}, viewMode: "unified",
+  }));
+  assert.match(markup, /Hasil kosong tidak menyatakan bahwa wilayah aman/);
+  assert.match(markup, /Fasilitas rujukan OSM/);
+  assert.match(markup, /Laporan warga PetaBencana/);
+  assert.match(markup, /Katalog gempa USGS/);
+  assert.doesNotMatch(markup, /data-record-id=/);
+  assert.doesNotMatch(markup, /data-kind="weather"|data-source="open_meteo"/);
+});
