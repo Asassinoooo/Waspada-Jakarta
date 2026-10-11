@@ -48,3 +48,17 @@ Checks actually run in WSL Ubuntu-26.04 with Node `24.21.0` and npm `11.19.0` fr
 - `git diff --check 1d9100abeab58dbc362fc31b2c57e372638b0d79` — passed.
 
 Implementation used existing locked React/React DOM `19.3.0`, tsx `4.23.15`, TypeScript `7.0.2` and Vite `8.3.0`; no install was run. No dependency, package/lockfile, API, migration or configuration change was made. No provider, model or tile request was made by the checks. The implementation agent did not run the browser/screenshot suite; root owns that verification, including pointer/keyboard expansion focus and mobile layout. Remaining decisions: none in the assigned implementation scope; root review, browser QA and acceptance are outstanding.
+
+## Collision review follow-up — 12 October 2026
+
+The review found coincident provider aggregates could cover one another, and adjacent 64px grid cells could produce nearly identical anchors. Commit `6fee78c` — `fix(UI-04): separate colliding map clusters` — adds a deterministic display-only placement pass before viewport culling. Aggregate button centers keep at least 56px separation in projected world-pixel space, with offsets bounded to a 16-ring candidate grid (±896px per axis); the pass also leaves room around the selected individual marker. The pass is independent of pan and does not alter cluster membership, member coordinates, mean geographic anchors or source-specific zoom behavior. If inputs exceed the documented provider caps, the bounded helper selects its best-clearance candidate; the normal source caps allow a collision-free placement.
+
+Aggregate buttons keep the `source-point-map__cluster` class and expose `data-source`, `data-count`, `data-cluster-id` and `data-layout-offset`. Visible source labels now use `0.625rem` text in 3rem symbols. The short key above the map explains that counts cover loaded records and symbol placement is display-only; the collapsed legend explains that symbols can shift while activation still zooms to the mean member anchor. The test suite now covers coincident sources, adjacent same-provider cells, stable bounded placement, selected-marker clearance, unchanged mean anchors, and distinct SSR button positions/source labels.
+
+Follow-up checks run in the assigned WSL environment:
+
+- `node --import tsx --test apps/web/test/source-point-map.test.tsx` — passed, 21/21.
+- `npm run typecheck --workspace=@waspada/web` — passed.
+- `git diff --check 1d9100abeab58dbc362fc31b2c57e372638b0d79` — passed.
+
+The browser/screenshot suite remains root-owned and was not run from this worktree. Root should verify pointer hit-testing for three coincident source groups at 390px and 320px, expansion zoom and focus return, and the existing UI-03 scenarios before acceptance. No migration, configuration or dependency changes were made.
