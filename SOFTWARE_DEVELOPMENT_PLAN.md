@@ -300,6 +300,8 @@ The [source feasibility matrix](docs/SOURCE_FEASIBILITY.md) and [ADR-005](docs/d
 
 ## 7. AI strategy and verification
 
+The [model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md), researched 12 October 2026, proposes BGE-M3 embeddings plus separate Qwen3 extraction, reasoning and investigation-planning profiles, with a smaller extraction model optional after evaluation. These are candidates, not configured providers or accepted quality/quota results; model roles retain their existing layer boundaries and typed contracts.
+
 Use deterministic parsing for known fields, a low-latency classification/extraction adapter for prose, a dedicated embedding capability, and a reasoning adapter for synthesis/conflict assessment. The grounding and investigation roles may share a reasoning model while having different instructions and permissions. OCR is optional for selected image/scanned-document cases and requires review of uncertain dates and geography. No fine-tuning is planned initially.
 
 Start with exact vector retrieval on the small corpus, combined with source identity, event time, PostGIS and audience/service lookup. The initial limit is 20 candidate chunks and at most 8 evidence chunks to synthesis; preserve relevant contradictions and record truncation/coverage gaps. Any later approximate index must justify its recall trade-off.

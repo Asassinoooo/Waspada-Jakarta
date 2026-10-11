@@ -166,3 +166,14 @@ The source plan therefore distinguishes license-backed reuse from sources that r
 - [PetaBencana user license](https://docs.petabencana.id/perjanjian-lisensi-pengguna) and [non-commercial reuse](https://docs.petabencana.id/informasi-lisensi-data/penggunaan-non-komersial-cc-by-nc-4.0): restrictive CC BY-NC 4.0 basis for this explicitly non-commercial, transient, metadata-only source preview. Attribution, licence link, disclosure of normalization and deletion on termination apply. Earlier broader AI/retention/commercial questions are not cleared by this bounded demo.
 
 No publisher was contacted, source account created, AI-provider transfer made or cloud service configured. See [the demo integration scope](docs/DEMO_DATA_INTEGRATION.md) for acquisition, retention and publication boundaries.
+
+## AI model candidates — 12 October 2026
+
+Read-only first-party documentation review for the [model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md). No inference request, playground execution, model download, source transfer, account change or provider activation occurred.
+
+- [Cloudflare BGE-M3](https://developers.cloudflare.com/workers-ai/models/bge-m3/) and [BAAI original model card](https://huggingface.co/BAAI/bge-m3): multilingual embedding candidate `@cf/baai/bge-m3`; original dense representation is 1,024 dimensions. Hosted and original context-limit descriptions differ; conservative chunk bounds and actual hosted output validation remain required.
+- [Cloudflare Qwen3-30B-A3B-FP8](https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/): candidate `@cf/qwen/qwen3-30b-a3b-fp8`, reasoning, function calling and response-format options. Separate classification/extraction/reasoning/planning contracts remain application responsibilities; valid JSON does not prove grounding or Bahasa accuracy.
+- [Cloudflare Llama3.1-8B-FP8](https://developers.cloudflare.com/workers-ai/models/llama-3.1-8b-instruct-fp8/): optional smaller short-task candidate `@cf/meta/llama-3.1-8b-instruct-fp8`. The old `llama-3.1-8b-instruct-fast` canonical URL redirected to an unavailable-model catalog during this review; older changelog/search results are not acceptance evidence.
+- [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/), updated 9 October 2026: shared 10,000 Neurons/day free allocation and paid-method-only model exclusions. Published eligibility and allocation do not establish this account's access, real workload consumption or hosted fit. No paid fallback is planned.
+
+Local contract audit found L1 embedding persistence accepts at most 2,048 dimensions while L2 permits up to 8,192; the proposed 1,024-dimensional candidate fits the tighter existing boundary. No schema, validator or model identity was changed. Real provider compatibility, Bahasa quality, source-transfer rights, human-reviewed EVAL-01 cases and hosted free-tier behavior remain open.
