@@ -461,6 +461,9 @@ export function SourcePointMap({
   return (
     <section className={`source-point-map${unified ? " source-point-map--unified" : ""}`} aria-labelledby={titleId}>
       {!unified && mapCaption}
+      {unified && <p className="source-point-map__source-key" role="note" aria-label="Arti dan batas titik pada peta">
+        <strong>H/P/D:</strong> fasilitas, kesiapan belum diketahui. <strong>B:</strong> laporan belum ditinjau. <strong>G:</strong> asal gempa, bukan dampak.
+      </p>}
       <p id={helpId} className="source-point-map__sr-only">
         Peta interaktif. Gunakan tombol perbesar dan perkecil, tombol panah saat fokus pada peta, atau seret dengan penunjuk. Tombol Home mengembalikan peta ke {resetPlace}.
       </p>

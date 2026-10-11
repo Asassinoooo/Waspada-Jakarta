@@ -523,7 +523,7 @@ export function UnifiedSourceExplorerView({
   > {
     contextLoading && contextRequest.status === "loading" && contextRequest.mode === "fetch" ? "Meminta cuaca & gempa…" : "Ambil cuaca & gempa"
 }
-  </button> </div> <div className="unified-source-explorer__source-status" aria-label="Status singkat tiap sumber"> <SourceStatusChip label="OSM" status={
+  </button> </div> <div className="unified-source-explorer__source-status" role="region" tabIndex={0} aria-label="Status singkat tiap sumber"> <SourceStatusChip label="OSM" status={
     visibleSourceStatus("osm")
 }
   /> <SourceStatusChip label="PetaBencana" status={

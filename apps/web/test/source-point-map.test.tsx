@@ -233,6 +233,8 @@ test("unified map renders all point sources with one viewport and an initially c
   assert.match(markup, /titik grid model tidak dipetakan sebagai kejadian/);
   assert.match(markup, /Jumlah mengikuti titik yang dimuat dan filter daftar/);
   assert.match(markup, /© OpenStreetMap contributors/);
+  assert.match(markup, /aria-label="Arti dan batas titik pada peta"[\s\S]*?kesiapan belum diketahui[\s\S]*?laporan belum ditinjau[\s\S]*?asal gempa, bukan dampak/);
+  assert.ok(markup.indexOf('class="source-point-map__source-key"') < markup.indexOf('class="source-point-map__viewport"'));
 });
 
 test("unified selections use the source scale while legacy initial selections keep their mode", () => {

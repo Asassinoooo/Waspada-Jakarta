@@ -791,6 +791,11 @@
 }
 
 /* Geographic exploration is primary; provenance stays in the companion panel. */
+.unified-source-explorer__source-status:focus-visible {
+  outline: 2px solid var(--kali-teal);
+  outline-offset: 2px;
+}
+
 .unified-source-explorer__intro .section-kicker,
 .unified-source-explorer__intro p:last-child,
 .unified-source-explorer__not-published,
@@ -899,6 +904,11 @@
   .unified-source-explorer--panel-open .source-point-map__viewport {
     height: 28svh;
     min-height: 14rem;
+  }
+
+  .unified-source-explorer--panel-open .unified-source-explorer__toolbar,
+  .unified-source-explorer--panel-open .unified-source-explorer__filters {
+    display: none;
   }
 
   .app-shell--source-map .site-footer {

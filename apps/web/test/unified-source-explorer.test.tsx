@@ -134,6 +134,7 @@ test("renders one map callback before one companion panel with only supported po
   assert.match(markup, /OpenStreetMap/);
   assert.match(markup, /PetaBencana\.id/);
   assert.match(markup, /USGS/);
+  assert.match(markup, /class="unified-source-explorer__source-status" role="region" tabindex="0" aria-label="Status singkat tiap sumber"/);
   assert.doesNotMatch(markup, /106\.856186/);
 });
 
