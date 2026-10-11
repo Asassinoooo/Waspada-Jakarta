@@ -455,6 +455,11 @@
   font-size: 0.78rem;
 }
 
+.source-point-map__caption {
+  display: grid;
+  gap: 0.55rem;
+}
+
 @media (max-width: 600px) {
   .source-point-map {
     gap: 0.7rem;

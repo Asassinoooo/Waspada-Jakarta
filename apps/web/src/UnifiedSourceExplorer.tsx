@@ -457,6 +457,8 @@ export function UnifiedSourceExplorerView({
   const [kindFilter, setKindFilter] = useState<UnifiedKindFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panel, setPanel] = useState<UnifiedExplorerPanel>(defaultPanel);
+  const [companionOpen, setCompanionOpen] = useState(defaultPanel !== "daftar");
+  const mapContainerRef = useRef<HTMLElement>(null);
   const usableSourcePayload = datasetMode === "demo" && sourceRequest.status === "loaded" ? sourcePayload : null;
   const usableContextPayload = datasetMode === "demo" && contextRequest.status === "loaded" ? contextPayload : null;
   const allPoints = useMemo(() => collectUnifiedSourcePoints(usableSourcePayload, usableContextPayload), [usableSourcePayload, usableContextPayload]);
@@ -477,6 +479,7 @@ export function UnifiedSourceExplorerView({
     if (!visiblePoints.some((visible) => visible.id === point.id)) return;
     setSelectedId(point.id);
     setPanel("detail");
+    setCompanionOpen(true);
   }
   , [visiblePoints]);
   const selectMapPoint = useCallback((id: string) => {
@@ -484,7 +487,7 @@ export function UnifiedSourceExplorerView({
     if (point) selectPoint(point);
   }
   , [selectPoint, visiblePoints]);
-  const returnToList = useCallback(() => setPanel("daftar"), []);
+  const returnToList = useCallback(() => { setPanel("daftar"); setCompanionOpen(true); }, []);
   const sourcePayloadStatus = usableSourcePayload;
   const contextPayloadStatus = usableContextPayload;
   const weatherSource = contextPayloadStatus?.sources[0] ?? null;
@@ -492,7 +495,7 @@ export function UnifiedSourceExplorerView({
   const quakeRecord = selectedPoint?.source === "usgs" ? selectedPoint as EarthquakeContextRecord : null;
   const visibleSourceStatus = (id: PreviewSource["id"]) => requestGroupStatus(sourceRequest, previewSourceStatus(sourcePayloadStatus, id));
   const visibleContextStatus = (id: "openmeteo" | "usgs") => requestGroupStatus(contextRequest, contextSourceStatus(contextPayloadStatus, id));
-  return ( <main id="main-content" className="main-shell unified-source-explorer" aria-busy={
+  return ( <main id="main-content" className={`main-shell unified-source-explorer${companionOpen ? " unified-source-explorer--panel-open" : ""}`} aria-busy={
     sourceLoading || contextLoading
 }
   > <header className="unified-source-explorer__intro"> <div> <p className="section-kicker">Demo sumber · pratinjau terpisah</p> <h1 id="unified-source-explorer-title">Peta sumber Jakarta</h1> <p>Titik fasilitas adalah rujukan;
@@ -576,20 +579,14 @@ export function UnifiedSourceExplorerView({
 }
   </div> <section className="unified-source-explorer__filters" aria-label="Pencarian bersama untuk daftar dan peta"> <details className="unified-source-explorer__filter-disclosure"> <summary>
   <span>Filter dan pencarian</span>
-  <span>{
-    visiblePoints.length
-}
-  dari {
-    allPoints.length
-}
-  record termuat</span>
-  </summary> <div className="unified-source-explorer__filter-controls"> <label className="unified-source-explorer__search" htmlFor="unified-source-search">Cari record <input id="unified-source-search" type="search" autoComplete="off" value={
+  <span>{visiblePoints.length} dari {allPoints.length} titik termuat</span>
+  </summary> <div className="unified-source-explorer__filter-controls"> <label className="unified-source-explorer__search" htmlFor="unified-source-search">Cari lokasi atau laporan <input id="unified-source-search" name="source-search" type="search" autoComplete="off" value={
     query
 }
   onChange={
     (event) => setQuery(event.currentTarget.value)
 }
-  placeholder="Rumah sakit, banjir, gempa…" /> </label> <label htmlFor="unified-source-filter">Sumber <select id="unified-source-filter" value={
+  placeholder="Rumah sakit, banjir, gempa…" /> </label> <label htmlFor="unified-source-filter">Sumber <select id="unified-source-filter" name="source" autoComplete="off" value={
     sourceFilter
 }
   onChange={
@@ -598,7 +595,7 @@ export function UnifiedSourceExplorerView({
   > <option value="all">Semua sumber</option>
   <option value="osm">OpenStreetMap</option>
   <option value="petabencana">PetaBencana.id</option>
-  <option value="usgs">USGS</option> </select> </label> <label htmlFor="unified-kind-filter">Jenis <select id="unified-kind-filter" value={
+  <option value="usgs">USGS</option> </select> </label> <label htmlFor="unified-kind-filter">Jenis <select id="unified-kind-filter" name="kind" autoComplete="off" value={
     kindFilter
 }
   onChange={
@@ -627,7 +624,7 @@ export function UnifiedSourceExplorerView({
     }
   }
   >Hapus filter</button> </div> </details> </section> <div className="unified-source-explorer__layout">
-  <section className="unified-source-explorer__map" aria-label="Peta sumber terpadu">
+  <section ref={mapContainerRef} className="unified-source-explorer__map" aria-label="Peta sumber terpadu">
     {renderMap ? (
       renderMap(visiblePoints, selectedPoint?.id ?? null, selectMapPoint, returnToList)
     ) : (
@@ -647,15 +644,19 @@ export function UnifiedSourceExplorerView({
     type="button" aria-current={
       panel === value ? "page" : undefined
 }
-    onClick={
-      () => setPanel(value)
-}
+  aria-controls="unified-source-panel-content"
+  onClick={() => { setPanel(value); setCompanionOpen(true); }}
     >{
       panelLabels[value]
 }
     </button> ))
 }
-  </nav> <div className="unified-source-explorer__panel-content" aria-live={
+  </nav>
+  <button className="unified-source-explorer__close-panel" type="button" onClick={() => {
+    setCompanionOpen(false);
+    mapContainerRef.current?.querySelector<HTMLElement>('[role="region"][tabindex="0"]')?.focus({ preventScroll: true });
+  }}>Kembali ke peta</button>
+  <div id="unified-source-panel-content" className="unified-source-explorer__panel-content" aria-live={
     panel === "detail" ? "polite" : undefined
 }
   > {
@@ -698,8 +699,8 @@ export function UnifiedSourceExplorerView({
     />
 }
   {
-    panel === "sumber" && ( <div className="unified-source-explorer__source-details"> <p className="unified-source-explorer__dataset-explanation">{datasetMode === "demo" ? "Mode demo terisolasi; snapshot lokal tidak menghubungi penyedia, sedangkan permintaan eksplisit dapat menghasilkan data parsial atau tersimpan sementara." : datasetMode === "live" ? "Mode live tidak menampilkan atau meminta pratinjau demo." : "Mode dataset belum dikonfirmasi; pratinjau dan permintaan sumber tidak dijalankan."}</p> <div className="unified-source-explorer__reset-actions"> <button className="button button--quiet" type="button" disabled={sourceLoading} onClick={() => onSourceRequest("snapshot")}>Reset fasilitas &amp; banjir ke snapshot lokal</button>  <button className="button button--quiet" type="button" disabled={
-      contextLoading
+    panel === "sumber" && ( <div className="unified-source-explorer__source-details"> <p className="unified-source-explorer__dataset-explanation">{datasetMode === "demo" ? "Mode demo terisolasi; snapshot lokal tidak menghubungi penyedia, sedangkan permintaan eksplisit dapat menghasilkan data parsial atau tersimpan sementara." : datasetMode === "live" ? "Mode live tidak menampilkan atau meminta pratinjau demo." : "Mode dataset belum dikonfirmasi; pratinjau dan permintaan sumber tidak dijalankan."}</p> <div className="unified-source-explorer__reset-actions"> <button className="button button--quiet" type="button" disabled={!canUseSources || sourceLoading} onClick={() => onSourceRequest("snapshot")}>Reset fasilitas &amp; banjir ke snapshot lokal</button>  <button className="button button--quiet" type="button" disabled={
+      !canUseSources || contextLoading
 }
     onClick={
       () => onContextRequest("local")

@@ -5,6 +5,7 @@ import "./styles.css";
 import "./source-preview.css";
 import "./source-point-map.css";
 import "./context-sources.css";
+import "./unified-source-explorer.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("The app root element is missing.");

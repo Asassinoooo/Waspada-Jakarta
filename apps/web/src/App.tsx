@@ -6,9 +6,8 @@ import { DEFAULT_FEED_FILTERS, EventFeed, type FeedFilters, type FeedStatus, typ
 import { ModeratorReview } from "./ModeratorReview.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
-import { SourcePreview } from "./SourcePreview.js";
+import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
 import { SourcePointMap } from "./SourcePointMap.js";
-import { ContextSources } from "./ContextSources.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
 
 type Route =
@@ -408,16 +407,10 @@ export function App() {
       {route.screen === "updates" && <UpdatesCenter context={context} refreshCurrentEvents={refreshCurrentEvents} />}
       {route.screen === "review" && <ModeratorReview />}
       {route.screen === "source-preview" && (
-        <SourcePreview
+        <UnifiedSourceExplorer
           datasetMode={context?.dataset_mode ?? null}
-          contextSources={<ContextSources
-            datasetMode={context?.dataset_mode ?? null}
-            renderMap={(points, selectedId, onSelect) => (
-              <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} viewMode="regional_earthquakes" />
-            )}
-          />}
           renderMap={(points, selectedId, onSelect, onReturnToList) => (
-            <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} onReturnToList={onReturnToList} />
+            <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} onReturnToList={onReturnToList} viewMode="unified" />
           )}
         />
       )}

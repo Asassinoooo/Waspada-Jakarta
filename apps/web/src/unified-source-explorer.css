@@ -359,7 +359,14 @@
 .unified-source-explorer__source-details,
 .unified-source-explorer__weather {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.65rem;
+}
+
+.unified-source-explorer__weather > *,
+.unified-source-explorer__weather-heading > div,
+.unified-source-explorer__weather .context-sources__table-scroll {
+  min-width: 0;
 }
 
 .unified-source-explorer__payload-stamp,
@@ -783,9 +790,120 @@
   padding-top: 0.55rem;
 }
 
+/* Geographic exploration is primary; provenance stays in the companion panel. */
+.unified-source-explorer__intro .section-kicker,
+.unified-source-explorer__intro p:last-child,
+.unified-source-explorer__not-published,
+.unified-source-explorer__dataset,
+.unified-source-explorer__map .source-point-map__kicker {
+  display: none;
+}
+
+.unified-source-explorer__intro h1 {
+  margin: 0 0 0.2rem;
+  font-size: 1.65rem;
+}
+
+.unified-source-explorer__toolbar {
+  padding: 0.45rem 0.65rem;
+  gap: 0.35rem 0.65rem;
+}
+
+.unified-source-explorer__filters {
+  padding: 0.25rem 0.65rem;
+}
+
+.unified-source-explorer__map .source-point-map__header h2 {
+  font-size: 1.1rem;
+}
+
+.unified-source-explorer__map .source-point-map__viewport {
+  height: max(26rem, calc(100svh - 25rem));
+}
+
+@media (min-width: 761px) {
+  .unified-source-explorer__toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .unified-source-explorer__actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .unified-source-explorer__source-status {
+    grid-column: 1;
+    grid-row: 1;
+    border: 0;
+    padding: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .unified-source-explorer__intro h1 {
+    font-size: 1.28rem;
+  }
+
+  .unified-source-explorer__map .source-point-map__viewport {
+    height: min(58svh, 34rem);
+    min-height: 24rem;
+  }
+}
+
 .unified-source-explorer__query-policy h4,
 .unified-source-explorer__query-policy p {
   margin: 0;
+}
+
+.unified-source-explorer__close-panel {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .unified-source-explorer__companion {
+    position: fixed;
+    z-index: 10;
+    inset: auto 0 0;
+    border-top: 2px solid var(--kali-teal);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--surface);
+  }
+
+  .unified-source-explorer__panel-content {
+    display: none;
+    max-height: 32svh;
+    min-height: 0;
+  }
+
+  .unified-source-explorer--panel-open .unified-source-explorer__panel-content {
+    display: block;
+  }
+
+  .unified-source-explorer--panel-open .unified-source-explorer__close-panel {
+    display: block;
+    width: 100%;
+    min-height: 2.3rem;
+    border: 0;
+    border-bottom: 1px solid var(--beton);
+    background: var(--surface);
+    color: var(--kali-teal);
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .unified-source-explorer__close-panel:hover {
+    background: var(--soft-panel);
+  }
+
+  .unified-source-explorer--panel-open .source-point-map__viewport {
+    height: 28svh;
+    min-height: 14rem;
+  }
+
+  .app-shell--source-map .site-footer {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .unified-source-explorer__query-policy h4 {

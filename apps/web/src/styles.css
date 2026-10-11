@@ -19,7 +19,24 @@
   font-size: 16px;
 }
 
-/* Keep the source-map route's mobile chrome compact so geography is visible on entry. */
+/* Keep source-map chrome compact so geography is visible on entry. */
+.app-shell--source-map .demo-banner {
+  min-height: 0;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.app-shell--source-map .demo-banner__detail {
+  display: none;
+}
+
+@media (min-width: 761px) {
+  .app-shell--source-map .site-header {
+    min-height: 4rem;
+    padding: 0.4rem 0;
+  }
+}
+
 @media (max-width: 760px) {
   .app-shell--source-map .site-header {
     min-height: 0;

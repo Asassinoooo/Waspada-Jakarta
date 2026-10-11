@@ -435,8 +435,8 @@ export function SourcePointMap({
     return counts;
   }, { hospital: 0, police: 0, fire_station: 0, flood_report: 0, earthquake: 0 });
 
-  return (
-    <section className={`source-point-map${unified ? " source-point-map--unified" : ""}`} aria-labelledby={titleId}>
+  const mapCaption = (
+    <>
       <header className="source-point-map__header">
         <div>
           <p className="source-point-map__kicker">{unified ? "OpenStreetMap · PetaBencana · USGS" : "Peta titik dari pratinjau sumber"}</p>
@@ -455,7 +455,12 @@ export function SourcePointMap({
       <p className="source-point-map__notice">
         {unified ? <><strong>H/P/D:</strong> fasilitas rujukan. <strong>B:</strong> laporan banjir belum ditinjau Waspada. <strong>G:</strong> asal gempa, bukan zona dampak. Rincian batas data ada di legenda.</> : regional ? <><strong>Episentrum USGS:</strong> lokasi asal gempa, bukan zona dampak. Wilayah kueri bukan batas resmi atau area bahaya; dampak di Jakarta belum ditetapkan.</> : <><strong>Fasilitas:</strong> titik rujukan; kesiapan layanan tidak diketahui. <strong>Laporan warga:</strong> belum ditinjau Waspada. <strong>Pusat cakupan OSM:</strong> perkiraan.</>}
       </p>
+    </>
+  );
 
+  return (
+    <section className={`source-point-map${unified ? " source-point-map--unified" : ""}`} aria-labelledby={titleId}>
+      {!unified && mapCaption}
       <p id={helpId} className="source-point-map__sr-only">
         Peta interaktif. Gunakan tombol perbesar dan perkecil, tombol panah saat fokus pada peta, atau seret dengan penunjuk. Tombol Home mengembalikan peta ke {resetPlace}.
       </p>
@@ -578,6 +583,7 @@ export function SourcePointMap({
         </a>
       </div>
 
+      {unified && <div className="source-point-map__caption">{mapCaption}</div>}
       <LegendContainer className={unified ? "source-point-map__legend-disclosure" : "source-point-map__legend-wrapper"}>
       {unified && <summary>Legenda &amp; sumber <span>H · P · D · B · G</span></summary>}
       <div className="source-point-map__legend" aria-label="Legenda kategori dan sumber">
