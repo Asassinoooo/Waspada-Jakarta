@@ -40,6 +40,13 @@ export interface SourceMapCluster {
   osmCategoryCounts: OsmClusterCategoryCounts | null;
 }
 
+export interface SourceMapClusterBadgePlacement {
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 export type SourceMapDisplayItem =
   | { type: "point"; key: string; point: SourceMapPoint }
   | { type: "cluster"; key: string; cluster: SourceMapCluster };
@@ -67,6 +74,14 @@ const DEFAULT_VIEWPORT = { width: 640, height: 400 };
 const DEFAULT_TILE_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SOURCE_MAP_CLUSTER_GRID_PX = 64;
 const SOURCE_MAP_CLUSTER_MAX_ZOOM = 15;
+const SOURCE_MAP_CLUSTER_BADGE_SPACING_PX = 56;
+const SOURCE_MAP_CLUSTER_BADGE_SIZE_PX = 48;
+const SOURCE_MAP_MARKER_MAX_WIDTH_PX = 240;
+const SOURCE_MAP_MARKER_MAX_HEIGHT_PX = 36;
+const SOURCE_MAP_FOCUS_OUTLINE_ALLOWANCE_PX = 5;
+// The assigned source caps allow at most 115 groups (230 records, two per group).
+// A 33x33 candidate grid has enough room for those groups and one selected marker.
+const SOURCE_MAP_CLUSTER_BADGE_MAX_RING = 16;
 
 const CATEGORY_LABELS: Record<PreviewKind | "earthquake", { letter: string; label: string }> = {
   hospital: { letter: "H", label: "Rumah sakit" },
@@ -347,7 +362,7 @@ function clusterAccessibleLabel(cluster: SourceMapCluster): string {
     ? "fasilitas rujukan OpenStreetMap"
     : cluster.source === "petabencana"
       ? "laporan warga PetaBencana"
-      : "catatan katalog gempa USGS";
+      : "gempa dalam katalog USGS";
   const categoryBreakdown = cluster.osmCategoryCounts
     ? ([
       ["hospital", "rumah sakit"],
@@ -359,7 +374,114 @@ function clusterAccessibleLabel(cluster: SourceMapCluster): string {
       .join(", ")
     : "";
   const breakdown = categoryBreakdown ? ` Rincian kategori: ${categoryBreakdown}.` : "";
-  return `Kelompok tampilan berisi ${cluster.count} catatan ${source}.${breakdown} Jumlah ini hanya menghitung catatan yang dimuat, bukan kejadian independen, bukti penguat, tingkat bahaya, atau bahaya saat ini. Posisi kelompok adalah jangkar tampilan, bukan koordinat kejadian atau batas dampak. Tekan Enter atau Spasi untuk memperbesar peta dua tingkat.`;
+  return `Kelompok tampilan berisi ${cluster.count} catatan ${source}.${breakdown} Jumlah ini hanya menghitung catatan yang dimuat, bukan kejadian independen, bukti penguat, tingkat bahaya, atau bahaya saat ini. Simbol kelompok dapat ditempatkan terpisah secara otomatis; posisinya bukan koordinat kejadian atau batas dampak. Aktifkan untuk memperbesar peta dua tingkat ke jangkar rata-rata anggota.`;
+}
+
+function sourceMapClusterBadgeOffsets(): { x: number; y: number }[] {
+  const offsets = [{ x: 0, y: 0 }];
+  const seen = new Set(["0,0"]);
+  for (let ring = 1; ring <= SOURCE_MAP_CLUSTER_BADGE_MAX_RING; ring += 1) {
+    const distance = ring * SOURCE_MAP_CLUSTER_BADGE_SPACING_PX;
+    const cardinal = [
+      { x: -distance, y: 0 },
+      { x: distance, y: 0 },
+      { x: 0, y: -distance },
+      { x: 0, y: distance },
+    ];
+    for (const offset of cardinal) {
+      const key = `${offset.x},${offset.y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      offsets.push(offset);
+    }
+    for (let row = -ring; row <= ring; row += 1) {
+      for (let column = -ring; column <= ring; column += 1) {
+        if (Math.abs(column) !== ring && Math.abs(row) !== ring) continue;
+        const offset = { x: column * SOURCE_MAP_CLUSTER_BADGE_SPACING_PX, y: row * SOURCE_MAP_CLUSTER_BADGE_SPACING_PX };
+        const key = `${offset.x},${offset.y}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        offsets.push(offset);
+      }
+    }
+  }
+  return offsets;
+}
+
+const SOURCE_MAP_CLUSTER_BADGE_OFFSETS = sourceMapClusterBadgeOffsets();
+
+/**
+ * Separates colliding aggregate badges in stable world-pixel space. The returned
+ * offsets affect only badge placement; each cluster retains its mean member anchor.
+ */
+export function layoutSourceMapClusterBadges(
+  clusters: readonly SourceMapCluster[],
+  zoom: number,
+  selectedPointCoordinate: MapCoordinate | null = null,
+): Map<string, SourceMapClusterBadgePlacement> {
+  const boundedZoom = clampMapZoom(zoom);
+  const orderedClusters = [...clusters].sort((left, right) =>
+    compareSource(left.source, right.source) || compareText(left.clusterId, right.clusterId));
+  const placements = new Map<string, SourceMapClusterBadgePlacement>();
+  const occupied: SourceMapClusterBadgePlacement[] = [];
+  const selectedPointPixels = selectedPointCoordinate === null
+    ? null
+    : coordinateToWorldPixels(selectedPointCoordinate, boundedZoom);
+  const selectedClearanceX = (SOURCE_MAP_MARKER_MAX_WIDTH_PX + SOURCE_MAP_CLUSTER_BADGE_SIZE_PX) / 2 + SOURCE_MAP_FOCUS_OUTLINE_ALLOWANCE_PX;
+  const selectedClearanceY = (SOURCE_MAP_MARKER_MAX_HEIGHT_PX + SOURCE_MAP_CLUSTER_BADGE_SIZE_PX) / 2 + SOURCE_MAP_FOCUS_OUTLINE_ALLOWANCE_PX;
+  const clearanceAt = (x: number, y: number): number => {
+    if (selectedPointPixels !== null &&
+      Math.abs(selectedPointPixels.x - x) < selectedClearanceX &&
+      Math.abs(selectedPointPixels.y - y) < selectedClearanceY) return 0;
+    return occupied.length === 0
+      ? Number.POSITIVE_INFINITY
+      : Math.min(...occupied.map((position) => Math.hypot(position.x - x, position.y - y)));
+  };
+
+  for (const cluster of orderedClusters) {
+    const anchor = coordinateToWorldPixels(cluster.anchor, boundedZoom);
+    let chosenOffset: { x: number; y: number } | undefined;
+    for (const offset of SOURCE_MAP_CLUSTER_BADGE_OFFSETS) {
+      const candidateX = anchor.x + offset.x;
+      const candidateY = anchor.y + offset.y;
+      const hasClearance = occupied.every((position) =>
+        Math.hypot(position.x - candidateX, position.y - candidateY) >= SOURCE_MAP_CLUSTER_BADGE_SPACING_PX) &&
+        (selectedPointPixels === null ||
+          Math.abs(selectedPointPixels.x - candidateX) >= selectedClearanceX ||
+          Math.abs(selectedPointPixels.y - candidateY) >= selectedClearanceY);
+      if (hasClearance) {
+        chosenOffset = offset;
+        break;
+      }
+    }
+
+    // Within the assigned 230-record cap, each prior placement rules out at most
+    // four grid positions, and the selected marker rules out at most twelve. This
+    // leaves an open candidate in the 33x33 grid. Callers bypassing source caps
+    // get the candidate with the greatest clearance as a bounded fallback.
+    if (!chosenOffset) {
+      chosenOffset = SOURCE_MAP_CLUSTER_BADGE_OFFSETS.reduce((best, offset) => {
+        const candidateX = anchor.x + offset.x;
+        const candidateY = anchor.y + offset.y;
+        const bestX = anchor.x + best.x;
+        const bestY = anchor.y + best.y;
+        const clearance = clearanceAt(candidateX, candidateY);
+        const bestClearance = clearanceAt(bestX, bestY);
+        return clearance > bestClearance ? offset : best;
+      }, SOURCE_MAP_CLUSTER_BADGE_OFFSETS[0]!);
+    }
+
+    const placement = {
+      x: anchor.x + chosenOffset.x,
+      y: anchor.y + chosenOffset.y,
+      offsetX: chosenOffset.x,
+      offsetY: chosenOffset.y,
+    };
+    placements.set(cluster.clusterId, placement);
+    occupied.push(placement);
+  }
+
+  return placements;
 }
 
 function initialMapView(points: readonly SourceMapPoint[], selectedId: string | null, mode: SourceMapViewMode): MapView {
@@ -422,6 +544,14 @@ export function SourcePointMap({
     () => buildSourceMapDisplayItems(validPoints, selectedId, view.zoom, unified),
     [selectedId, unified, validPoints, view.zoom],
   );
+  const clusterBadgePlacements = useMemo(
+    () => layoutSourceMapClusterBadges(
+      displayItems.flatMap((item) => item.type === "cluster" ? [item.cluster] : []),
+      view.zoom,
+      selectedPoint?.coordinates ?? null,
+    ),
+    [displayItems, selectedPoint?.coordinates, view.zoom],
+  );
   const templateIsValid = useMemo(() => isValidOsmTileTemplate(tileTemplate), [tileTemplate]);
   const tiles = useMemo(
     () => getVisibleMapTiles(viewportSize.width, viewportSize.height, view.center, view.zoom),
@@ -432,12 +562,13 @@ export function SourcePointMap({
   const mapOriginY = centerPixels.y - viewportSize.height / 2;
   const displayPositions = displayItems.flatMap((item) => {
     const coordinate = displayItemCoordinate(item);
-    const pixels = coordinateToWorldPixels(coordinate, view.zoom);
+    const layoutOffset = item.type === "cluster" ? clusterBadgePlacements.get(item.cluster.clusterId) ?? null : null;
+    const pixels = layoutOffset ?? coordinateToWorldPixels(coordinate, view.zoom);
     const left = pixels.x - mapOriginX;
     const top = pixels.y - mapOriginY;
     const cullingMargin = item.type === "cluster" ? 42 : 36;
     if (left < -cullingMargin || top < -cullingMargin || left > viewportSize.width + cullingMargin || top > viewportSize.height + cullingMargin) return [];
-    return [{ item, left, top }];
+    return [{ item, left, top, layoutOffset }];
   });
   const visibleTileErrorCount = tiles.reduce(
     (count, tile) => count + Number(tileErrors.has(tileErrorKey(tileTemplate, tile.key))),
@@ -650,7 +781,7 @@ export function SourcePointMap({
     <section className={`source-point-map${unified ? " source-point-map--unified" : ""}`} aria-labelledby={titleId}>
       {!unified && mapCaption}
       {unified && <p className="source-point-map__source-key" role="note" aria-label="Arti dan batas titik pada peta">
-        <strong>H/P/D:</strong> fasilitas, kesiapan belum diketahui. <strong>B:</strong> laporan belum ditinjau. <strong>G:</strong> asal gempa, bukan dampak. <strong>Kelompok tampilan:</strong> angka catatan; jangkar tampilan, bukan koordinat kejadian atau batas dampak.
+        <strong>H/P/D:</strong> fasilitas, kesiapan belum diketahui. <strong>B:</strong> laporan belum ditinjau. <strong>G:</strong> asal gempa, bukan dampak. <strong>Kelompok:</strong> angka = catatan dimuat; posisi = tampilan.
       </p>}
       <p id={helpId} className="source-point-map__sr-only">
         Peta interaktif. Gunakan tombol perbesar dan perkecil, tombol panah saat fokus pada peta, atau seret dengan penunjuk. Tombol Home mengembalikan peta ke {resetPlace}.
@@ -692,11 +823,11 @@ export function SourcePointMap({
         </div>
 
         <div className="source-point-map__markers">
-          {displayPositions.map(({ item, left, top }) => {
+          {displayPositions.map(({ item, left, top, layoutOffset }) => {
             if (item.type === "cluster") {
               const { cluster } = item;
               const label = clusterAccessibleLabel(cluster);
-              const sourceText = cluster.source === "osm" ? "OSM" : cluster.source === "petabencana" ? "PB" : "USGS";
+              const sourceText = cluster.source === "osm" ? "OSM" : cluster.source === "petabencana" ? "Peta" : "USGS";
               return (
                 <button
                   key={item.key}
@@ -708,6 +839,7 @@ export function SourcePointMap({
                   data-source={cluster.source}
                   data-count={cluster.count}
                   data-cluster-id={cluster.clusterId}
+                  data-layout-offset={layoutOffset ? `${layoutOffset.offsetX},${layoutOffset.offsetY}` : undefined}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -842,7 +974,7 @@ export function SourcePointMap({
           <small>Lokasi asal gempa; dampak di Jakarta belum ditetapkan. Sumber: U.S. Geological Survey (USGS).</small>
         </div>}
       </div>
-      {unified && <p className="source-point-map__legend-note">Jumlah mengikuti catatan yang dimuat dan filter daftar. Kelompok bernomor hanya untuk tampilan: jumlah bukan bukti penguat, tingkat bahaya, bahaya saat ini, atau jumlah kejadian independen; jangkar kelompok bukan koordinat kejadian atau batas dampak. Pilih kelompok untuk memperbesar peta, lalu pilih marker individual atau gunakan daftar untuk membuka catatan. Prakiraan cuaca ada di panel Cuaca; titik grid model tidak dipetakan sebagai kejadian.</p>}
+      {unified && <p className="source-point-map__legend-note">Jumlah mengikuti catatan yang dimuat dan filter daftar. Kelompok bernomor hanya untuk tampilan: jumlah bukan bukti penguat, tingkat bahaya, bahaya saat ini, atau jumlah kejadian independen. Jangkar dihitung dari anggota; simbol kelompok dapat bergeser otomatis agar setiap kelompok berdekatan dapat dipilih, dan bukan koordinat kejadian atau batas dampak. Pilih kelompok untuk memperbesar peta ke jangkar, lalu pilih marker individual atau gunakan daftar untuk membuka catatan. Prakiraan cuaca ada di panel Cuaca; titik grid model tidak dipetakan sebagai kejadian.</p>}
       </LegendContainer>
     </section>
   );

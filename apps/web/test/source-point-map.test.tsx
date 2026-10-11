@@ -12,6 +12,7 @@ import {
   createOsmTileUrl,
   getVisibleMapTiles,
   isValidOsmTileTemplate,
+  layoutSourceMapClusterBadges,
   SourcePointMap,
   type SourceMapPoint,
   worldPixelsToCoordinate,
@@ -216,6 +217,89 @@ test("unified world-grid groups are provider-separated, lossless, and stable whe
   assert.ok(clusters.every((item) => item.type === "cluster" && item.cluster.clusterId.startsWith(`display-${item.cluster.source}-12-`)));
 });
 
+test("coincident provider badges receive stable, bounded, non-overlapping display placements", () => {
+  const clusters = buildSourceMapDisplayItems(CLUSTER_POINTS, null, 12, true)
+    .flatMap((item) => item.type === "cluster" ? [item.cluster] : []);
+  const placements = layoutSourceMapClusterBadges(clusters, 12);
+  const reversedPlacements = layoutSourceMapClusterBadges([...clusters].reverse(), 12);
+  const positioned = clusters.map((cluster) => {
+    const placement = placements.get(cluster.clusterId);
+    assert.ok(placement);
+    return { cluster, placement };
+  });
+
+  assert.equal(positioned.length, 3);
+  assert.deepEqual([...placements], [...reversedPlacements]);
+  for (const { cluster, placement } of positioned) {
+    const anchor = coordinateToWorldPixels(cluster.anchor, 12);
+    assert.ok(Math.hypot(placement.x - anchor.x, placement.y - anchor.y) <= 336);
+    assert.equal(Math.hypot(placement.offsetX, placement.offsetY), Math.hypot(placement.x - anchor.x, placement.y - anchor.y));
+  }
+  for (let left = 0; left < positioned.length; left += 1) {
+    for (let right = left + 1; right < positioned.length; right += 1) {
+      const a = positioned[left]!.placement;
+      const b = positioned[right]!.placement;
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 56);
+    }
+  }
+});
+
+test("cluster symbols stay clear of the selected individual marker", () => {
+  const items = buildSourceMapDisplayItems(CLUSTER_POINTS, "osm-hospital", 12, true);
+  const clusters = items.flatMap((item) => item.type === "cluster" ? [item.cluster] : []);
+  const selected = items.find((item) => item.type === "point" && item.point.id === "osm-hospital");
+  assert.ok(selected && selected.type === "point");
+  const placements = layoutSourceMapClusterBadges(clusters, 12, selected.point.coordinates);
+  const selectedPixels = coordinateToWorldPixels(selected.point.coordinates, 12);
+
+  assert.equal(clusters.length, 3);
+  for (const cluster of clusters) {
+    const placement = placements.get(cluster.clusterId);
+    assert.ok(placement);
+    assert.ok(Math.abs(placement.x - selectedPixels.x) >= 149 || Math.abs(placement.y - selectedPixels.y) >= 47);
+  }
+});
+
+test("nearby groups from adjacent world-grid cells get separate badges without moving their anchors", () => {
+  const zoom = 12;
+  const base = coordinateToWorldPixels([106.831, -6.191], zoom);
+  const boundaryX = (Math.floor(base.x / 64) + 1) * 64;
+  const leftCoordinate = worldPixelsToCoordinate(boundaryX - 1, base.y, zoom);
+  const rightCoordinate = worldPixelsToCoordinate(boundaryX + 1, base.y, zoom);
+  const adjacentCellPoints: SourceMapPoint[] = [
+    { ...SYNTHETIC_SOURCE_POINTS[0]!, id: "osm-left-a", coordinates: [leftCoordinate[0], leftCoordinate[1]] },
+    { ...SYNTHETIC_SOURCE_POINTS[1]!, id: "osm-left-b", coordinates: [leftCoordinate[0], leftCoordinate[1]] },
+    { ...SYNTHETIC_SOURCE_POINTS[0]!, id: "osm-right-a", coordinates: [rightCoordinate[0], rightCoordinate[1]] },
+    { ...SYNTHETIC_SOURCE_POINTS[1]!, id: "osm-right-b", coordinates: [rightCoordinate[0], rightCoordinate[1]] },
+  ];
+  const clusters = buildSourceMapDisplayItems(adjacentCellPoints, null, zoom, true)
+    .flatMap((item) => item.type === "cluster" ? [item.cluster] : []);
+  const anchorsBeforeLayout = clusters.map((cluster) => [...cluster.anchor]);
+  const placements = layoutSourceMapClusterBadges(clusters, zoom);
+
+  assert.equal(clusters.length, 2);
+  assert.deepEqual(clusters.map((cluster) => cluster.count), [2, 2]);
+  assert.equal(Math.abs(
+    coordinateToWorldPixels(clusters[0]!.anchor, zoom).x - coordinateToWorldPixels(clusters[1]!.anchor, zoom).x,
+  ), 2);
+  assert.deepEqual(clusters.map((cluster) => cluster.memberIds), [
+    ["osm-left-a", "osm-left-b"],
+    ["osm-right-a", "osm-right-b"],
+  ]);
+  for (const cluster of clusters) {
+    const memberPixels = cluster.members.map((member) => coordinateToWorldPixels(member.coordinates, zoom));
+    const meanPixels = memberPixels.reduce(
+      (mean, pixels) => ({ x: mean.x + pixels.x / memberPixels.length, y: mean.y + pixels.y / memberPixels.length }),
+      { x: 0, y: 0 },
+    );
+    assert.deepEqual(cluster.anchor, worldPixelsToCoordinate(meanPixels.x, meanPixels.y, zoom));
+  }
+  assert.deepEqual(clusters.map((cluster) => [...cluster.anchor]), anchorsBeforeLayout);
+  const first = placements.get(clusters[0]!.clusterId)!;
+  const second = placements.get(clusters[1]!.clusterId)!;
+  assert.ok(Math.hypot(first.x - second.x, first.y - second.y) >= 56);
+});
+
 test("selected unified points remain individual and do not affect the provider cluster count", () => {
   const items = buildSourceMapDisplayItems(CLUSTER_POINTS, "osm-hospital", 12, true);
   const selected = items.find((item) => item.type === "point" && item.point.id === "osm-hospital");
@@ -258,14 +342,24 @@ test("unified SSR exposes display-group source, count, accessible category break
   const clusterButtons = [...markup.matchAll(/<button\b[^>]*class="[^"]*source-point-map__cluster[^"]*"[^>]*>[\s\S]*?<\/button>/g)];
 
   assert.equal(clusterButtons.length, 3);
+  const badgePositions = clusterButtons.map((match) => {
+    const style = match[0].match(/style="([^"]+)"/)?.[1] ?? "";
+    return style.match(/left:([^;]+);top:([^;]+)/)?.slice(1).join("|") ?? "";
+  });
+  assert.equal(new Set(badgePositions).size, 3);
+  assert.ok(clusterButtons.every((match) => /data-layout-offset="/.test(match[0])));
+  assert.match(clusterButtons.map((match) => match[0]).join(""), /<span class="source-point-map__cluster-source" aria-hidden="true">OSM<\/span>/);
+  assert.match(clusterButtons.map((match) => match[0]).join(""), /<span class="source-point-map__cluster-source" aria-hidden="true">Peta<\/span>/);
+  assert.match(clusterButtons.map((match) => match[0]).join(""), /<span class="source-point-map__cluster-source" aria-hidden="true">USGS<\/span>/);
   assert.match(markup, /data-source="osm"[^>]*data-count="2"[^>]*data-cluster-id="display-osm-12-/);
   assert.match(markup, /data-source="petabencana"[^>]*data-count="2"[^>]*data-cluster-id="display-petabencana-12-/);
   assert.match(markup, /data-source="usgs"[^>]*data-count="2"[^>]*data-cluster-id="display-usgs-12-/);
   assert.match(markup, /Kelompok tampilan berisi 2 catatan fasilitas rujukan OpenStreetMap/);
   assert.match(markup, /Rincian kategori: 1 kepolisian, 1 pemadam kebakaran/);
-  assert.match(markup, /Tekan Enter atau Spasi untuk memperbesar peta dua tingkat/);
+  assert.match(markup, /Aktifkan untuk memperbesar peta dua tingkat ke jangkar rata-rata anggota/);
   assert.match(markup, /data-record-id="osm-hospital"[^>]*data-selected="true"/);
   assert.match(markup, /Kelompok bernomor hanya untuk tampilan/);
+  assert.match(markup, /simbol kelompok dapat bergeser otomatis agar setiap kelompok berdekatan dapat dipilih/);
   assert.doesNotMatch(clusterButtons.map((match) => match[0]).join(""), /aria-pressed|data-record-id|data-selected/);
   assert.ok(markup.indexOf('class="source-point-map__source-key"') < markup.indexOf('class="source-point-map__viewport"'));
 
