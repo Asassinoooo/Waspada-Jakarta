@@ -5,12 +5,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { PreviewRecord } from "@waspada/worker/source-preview-contracts";
 import type { EarthquakeContextRecord } from "@waspada/worker/context-sources-contracts";
 import {
+  buildSourceMapDisplayItems,
   clampMapZoom,
+  clusterZoomTarget,
   coordinateToWorldPixels,
   createOsmTileUrl,
   getVisibleMapTiles,
   isValidOsmTileTemplate,
   SourcePointMap,
+  type SourceMapPoint,
   worldPixelsToCoordinate,
 } from "../src/SourcePointMap.js";
 
@@ -174,6 +177,120 @@ const SYNTHETIC_QUAKE: EarthquakeContextRecord = {
   source_url: "https://earthquake.usgs.gov/earthquakes/eventpage/synthetic1",
 };
 
+const CLUSTER_POINTS: SourceMapPoint[] = [
+  { ...SYNTHETIC_SOURCE_POINTS[0]!, id: "osm-hospital", coordinates: [106.831, -6.191] },
+  { ...SYNTHETIC_SOURCE_POINTS[1]!, id: "osm-police", coordinates: [106.831, -6.191] },
+  { ...SYNTHETIC_SOURCE_POINTS[2]!, id: "osm-fire", coordinates: [106.831, -6.191] },
+  { ...SYNTHETIC_SOURCE_POINTS[3]!, id: "peta-first", coordinates: [106.831, -6.191] },
+  { ...SYNTHETIC_SOURCE_POINTS[3]!, id: "peta-second", coordinates: [106.831, -6.191] },
+  { ...SYNTHETIC_QUAKE, id: "usgs-first", coordinates: [106.831, -6.191] },
+  { ...SYNTHETIC_QUAKE, id: "usgs-second", coordinates: [106.831, -6.191] },
+];
+
+test("unified world-grid groups are provider-separated, lossless, and stable when input order changes", () => {
+  const summarize = (points: readonly SourceMapPoint[]) => buildSourceMapDisplayItems(points, null, 12, true).map((item) => item.type === "cluster"
+    ? {
+      type: item.type,
+      key: item.key,
+      source: item.cluster.source,
+      count: item.cluster.count,
+      memberIds: item.cluster.memberIds,
+      anchor: item.cluster.anchor,
+      osmCategoryCounts: item.cluster.osmCategoryCounts,
+    }
+    : { type: item.type, key: item.key, source: item.point.source, id: item.point.id });
+  const groups = buildSourceMapDisplayItems(CLUSTER_POINTS, null, 12, true);
+  const clusters = groups.filter((item) => item.type === "cluster");
+
+  assert.deepEqual(summarize(CLUSTER_POINTS), summarize([...CLUSTER_POINTS].reverse()));
+  assert.equal(clusters.length, 3);
+  const bySource = new Map(clusters.map((item) => item.type === "cluster" ? [item.cluster.source, item.cluster] as const : ["", undefined] as const));
+  const osm = bySource.get("osm");
+  assert.ok(osm);
+  assert.equal(osm.count, 3);
+  assert.deepEqual(osm.osmCategoryCounts, { hospital: 1, police: 1, fire_station: 1 });
+  assert.deepEqual(osm.memberIds, ["osm-fire", "osm-hospital", "osm-police"]);
+  assert.equal(bySource.get("petabencana")?.count, 2);
+  assert.equal(bySource.get("usgs")?.count, 2);
+  assert.equal(groups.reduce((count, item) => count + (item.type === "cluster" ? item.cluster.count : 1), 0), CLUSTER_POINTS.length);
+  assert.ok(clusters.every((item) => item.type === "cluster" && item.cluster.clusterId.startsWith(`display-${item.cluster.source}-12-`)));
+});
+
+test("selected unified points remain individual and do not affect the provider cluster count", () => {
+  const items = buildSourceMapDisplayItems(CLUSTER_POINTS, "osm-hospital", 12, true);
+  const selected = items.find((item) => item.type === "point" && item.point.id === "osm-hospital");
+  const osm = items.find((item) => item.type === "cluster" && item.cluster.source === "osm");
+
+  assert.ok(selected && selected.type === "point");
+  assert.ok(osm && osm.type === "cluster");
+  assert.equal(osm.cluster.count, 2);
+  assert.deepEqual(osm.cluster.osmCategoryCounts, { hospital: 0, police: 1, fire_station: 1 });
+  assert.deepEqual(osm.cluster.memberIds, ["osm-fire", "osm-police"]);
+  assert.equal(items.reduce((count, item) => count + (item.type === "cluster" ? item.cluster.count : 1), 0), CLUSTER_POINTS.length);
+});
+
+test("unified clusters expand to individual records above zoom 15 and legacy mode never clusters", () => {
+  assert.equal(buildSourceMapDisplayItems(CLUSTER_POINTS, null, 15, true).some((item) => item.type === "cluster"), true);
+  const expanded = buildSourceMapDisplayItems(CLUSTER_POINTS, null, 17, true);
+  assert.equal(expanded.some((item) => item.type === "cluster"), false);
+  assert.deepEqual(expanded.map((item) => item.type === "point" ? item.point.id : ""), [
+    "osm-fire", "osm-hospital", "osm-police", "peta-first", "peta-second", "usgs-first", "usgs-second",
+  ]);
+  assert.deepEqual(buildSourceMapDisplayItems(CLUSTER_POINTS, null, 12, false).map((item) => item.type), Array(7).fill("point"));
+  assert.deepEqual([4, 15, 16, 18].map(clusterZoomTarget), [6, 17, 18, 18]);
+});
+
+test("invalid coordinates do not create display items", () => {
+  const invalidPoints: SourceMapPoint[] = [
+    { ...SYNTHETIC_SOURCE_POINTS[0]!, id: "invalid-nan", coordinates: [Number.NaN, -6.191] },
+    { ...SYNTHETIC_SOURCE_POINTS[0]!, id: "invalid-range", coordinates: [181, 91] },
+  ];
+  assert.deepEqual(buildSourceMapDisplayItems(invalidPoints, null, 12, true), []);
+});
+
+test("unified SSR exposes display-group source, count, accessible category breakdown, and non-selection behavior", () => {
+  const markup = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: CLUSTER_POINTS,
+    selectedId: "osm-hospital",
+    onSelect: () => {},
+    viewMode: "unified",
+  }));
+  const clusterButtons = [...markup.matchAll(/<button\b[^>]*class="[^"]*source-point-map__cluster[^"]*"[^>]*>[\s\S]*?<\/button>/g)];
+
+  assert.equal(clusterButtons.length, 3);
+  assert.match(markup, /data-source="osm"[^>]*data-count="2"[^>]*data-cluster-id="display-osm-12-/);
+  assert.match(markup, /data-source="petabencana"[^>]*data-count="2"[^>]*data-cluster-id="display-petabencana-12-/);
+  assert.match(markup, /data-source="usgs"[^>]*data-count="2"[^>]*data-cluster-id="display-usgs-12-/);
+  assert.match(markup, /Kelompok tampilan berisi 2 catatan fasilitas rujukan OpenStreetMap/);
+  assert.match(markup, /Rincian kategori: 1 kepolisian, 1 pemadam kebakaran/);
+  assert.match(markup, /Tekan Enter atau Spasi untuk memperbesar peta dua tingkat/);
+  assert.match(markup, /data-record-id="osm-hospital"[^>]*data-selected="true"/);
+  assert.match(markup, /Kelompok bernomor hanya untuk tampilan/);
+  assert.doesNotMatch(clusterButtons.map((match) => match[0]).join(""), /aria-pressed|data-record-id|data-selected/);
+  assert.ok(markup.indexOf('class="source-point-map__source-key"') < markup.indexOf('class="source-point-map__viewport"'));
+
+  const legacy = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: CLUSTER_POINTS, selectedId: null, onSelect: () => {}, viewMode: "jakarta",
+  }));
+  assert.doesNotMatch(legacy, /source-point-map__cluster/);
+  for (const point of CLUSTER_POINTS) assert.match(legacy, new RegExp(`data-record-id="${point.id}"`));
+});
+
+test("viewport culling applies after grouping while off-screen records remain counted as loaded", () => {
+  const distantPoints: SourceMapPoint[] = [
+    { ...SYNTHETIC_SOURCE_POINTS[3]!, id: "distant-peta-a", coordinates: [-73.98, 40.75] },
+    { ...SYNTHETIC_SOURCE_POINTS[3]!, id: "distant-peta-b", coordinates: [-73.98, 40.75] },
+  ];
+  assert.equal(buildSourceMapDisplayItems(distantPoints, null, 12, true)[0]?.type, "cluster");
+  const markup = renderToStaticMarkup(createElement(SourcePointMap, {
+    points: distantPoints, selectedId: null, onSelect: () => {}, viewMode: "unified",
+  }));
+
+  assert.doesNotMatch(markup, /data-cluster-id=/);
+  assert.match(markup, /Tidak ada titik sumber pada area peta yang terlihat/);
+  assert.match(markup, /data-map-center="106\.83,-6\.19"/);
+});
+
 test("regional quake map uses source origins and region-specific defaults without inferred impact", () => {
   const markup = renderToStaticMarkup(createElement(SourcePointMap, {
     points: [SYNTHETIC_QUAKE], selectedId: null, onSelect: () => {}, viewMode: "regional_earthquakes",
@@ -231,7 +348,7 @@ test("unified map renders all point sources with one viewport and an initially c
   assert.match(markup, /belum ditinjau Waspada/);
   assert.match(markup, /dampak di Jakarta belum ditetapkan/);
   assert.match(markup, /titik grid model tidak dipetakan sebagai kejadian/);
-  assert.match(markup, /Jumlah mengikuti titik yang dimuat dan filter daftar/);
+  assert.match(markup, /Jumlah mengikuti catatan yang dimuat dan filter daftar/);
   assert.match(markup, /© OpenStreetMap contributors/);
   assert.match(markup, /aria-label="Arti dan batas titik pada peta"[\s\S]*?kesiapan belum diketahui[\s\S]*?laporan belum ditinjau[\s\S]*?asal gempa, bukan dampak/);
   assert.ok(markup.indexOf('class="source-point-map__source-key"') < markup.indexOf('class="source-point-map__viewport"'));

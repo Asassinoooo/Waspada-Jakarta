@@ -25,6 +25,25 @@ export interface VisibleMapTile {
   top: number;
 }
 
+export type SourceMapClusterSource = "osm" | "petabencana" | "usgs";
+export type OsmFacilityKind = "hospital" | "police" | "fire_station";
+export type OsmClusterCategoryCounts = Record<OsmFacilityKind, number>;
+
+/** A display-only group; `anchor` is a UI placement derived from its source points. */
+export interface SourceMapCluster {
+  clusterId: string;
+  source: SourceMapClusterSource;
+  count: number;
+  members: readonly SourceMapPoint[];
+  memberIds: readonly string[];
+  anchor: MapCoordinate;
+  osmCategoryCounts: OsmClusterCategoryCounts | null;
+}
+
+export type SourceMapDisplayItem =
+  | { type: "point"; key: string; point: SourceMapPoint }
+  | { type: "cluster"; key: string; cluster: SourceMapCluster };
+
 export interface SourcePointMapProps {
   points: readonly SourceMapPoint[];
   selectedId: string | null;
@@ -46,6 +65,8 @@ const MAX_VISIBLE_TILES = 100;
 const MAX_TILES_PER_AXIS = Math.floor(Math.sqrt(MAX_VISIBLE_TILES));
 const DEFAULT_VIEWPORT = { width: 640, height: 400 };
 const DEFAULT_TILE_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const SOURCE_MAP_CLUSTER_GRID_PX = 64;
+const SOURCE_MAP_CLUSTER_MAX_ZOOM = 15;
 
 const CATEGORY_LABELS: Record<PreviewKind | "earthquake", { letter: string; label: string }> = {
   hospital: { letter: "H", label: "Rumah sakit" },
@@ -74,6 +95,10 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 export function clampMapZoom(zoom: number): number {
   return clamp(Math.round(zoom), MIN_ZOOM, MAX_ZOOM);
+}
+
+export function clusterZoomTarget(currentZoom: number): number {
+  return clampMapZoom(clampMapZoom(currentZoom) + 2);
 }
 
 function worldSizeAtZoom(zoom: number): number {
@@ -193,6 +218,150 @@ function selectedPointFor(points: readonly SourceMapPoint[], selectedId: string 
   return points.find((point) => point.id === selectedId && isValidRecordCoordinate(point)) ?? null;
 }
 
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareSource(left: SourceMapClusterSource, right: SourceMapClusterSource): number {
+  const order: Record<SourceMapClusterSource, number> = { osm: 0, petabencana: 1, usgs: 2 };
+  return order[left] - order[right];
+}
+
+function compareMapPoints(left: SourceMapPoint, right: SourceMapPoint): number {
+  return compareSource(left.source, right.source) ||
+    compareText(left.id, right.id) ||
+    left.coordinates[1] - right.coordinates[1] ||
+    left.coordinates[0] - right.coordinates[0] ||
+    compareText(left.title, right.title) ||
+    compareText(left.kind, right.kind);
+}
+
+function displayItemCoordinate(item: SourceMapDisplayItem): MapCoordinate {
+  return item.type === "cluster" ? item.cluster.anchor : item.point.coordinates;
+}
+
+function displayItemSource(item: SourceMapDisplayItem): SourceMapClusterSource {
+  return item.type === "cluster" ? item.cluster.source : item.point.source;
+}
+
+function pointDisplayItem(point: SourceMapPoint): SourceMapDisplayItem {
+  return { type: "point", key: `${point.source}:${point.id}`, point };
+}
+
+/**
+ * Makes stable, provider-separated display groups for the unified source map.
+ * The calculation uses fixed Web Mercator world pixels, never viewport position.
+ */
+export function buildSourceMapDisplayItems(
+  points: readonly SourceMapPoint[],
+  selectedId: string | null,
+  zoom: number,
+  unified: boolean,
+): SourceMapDisplayItem[] {
+  const validPoints = points.filter(isValidRecordCoordinate);
+  if (!unified) return validPoints.map(pointDisplayItem);
+
+  const orderedPoints = [...validPoints].sort(compareMapPoints);
+  const boundedZoom = clampMapZoom(zoom);
+  if (boundedZoom > SOURCE_MAP_CLUSTER_MAX_ZOOM) return orderedPoints.map(pointDisplayItem);
+
+  const selectedPoint = selectedPointFor(validPoints, selectedId);
+  const groups = new Map<string, { source: SourceMapClusterSource; column: number; row: number; members: SourceMapPoint[] }>();
+  const displayItems: SourceMapDisplayItem[] = [];
+
+  for (const point of orderedPoints) {
+    if (point === selectedPoint) {
+      displayItems.push(pointDisplayItem(point));
+      continue;
+    }
+
+    const source = point.source;
+    const pixels = coordinateToWorldPixels(point.coordinates, boundedZoom);
+    const column = Math.floor(pixels.x / SOURCE_MAP_CLUSTER_GRID_PX);
+    const row = Math.floor(pixels.y / SOURCE_MAP_CLUSTER_GRID_PX);
+    const key = `${source}:${column}:${row}`;
+    const group = groups.get(key);
+    if (group) {
+      group.members.push(point);
+    } else {
+      groups.set(key, { source, column, row, members: [point] });
+    }
+  }
+
+  for (const { source, column, row, members } of groups.values()) {
+    if (members.length === 1) {
+      displayItems.push(pointDisplayItem(members[0]!));
+      continue;
+    }
+
+    const sortedMembers = [...members].sort(compareMapPoints);
+    const memberPixels = sortedMembers.map((member) => coordinateToWorldPixels(member.coordinates, boundedZoom));
+    const meanPixels = memberPixels.reduce(
+      (mean, pixels) => ({ x: mean.x + pixels.x / memberPixels.length, y: mean.y + pixels.y / memberPixels.length }),
+      { x: 0, y: 0 },
+    );
+    const osmCategoryCounts: OsmClusterCategoryCounts | null = source === "osm"
+      ? { hospital: 0, police: 0, fire_station: 0 }
+      : null;
+    if (osmCategoryCounts) {
+      for (const member of sortedMembers) {
+        if (member.source !== "osm") continue;
+        switch (member.kind) {
+          case "hospital":
+            osmCategoryCounts.hospital += 1;
+            break;
+          case "police":
+            osmCategoryCounts.police += 1;
+            break;
+          case "fire_station":
+            osmCategoryCounts.fire_station += 1;
+            break;
+        }
+      }
+    }
+
+    const clusterId = `display-${source}-${boundedZoom}-${column}-${row}`;
+    const cluster: SourceMapCluster = {
+      clusterId,
+      source,
+      count: sortedMembers.length,
+      members: sortedMembers,
+      memberIds: sortedMembers.map((member) => member.id),
+      anchor: worldPixelsToCoordinate(meanPixels.x, meanPixels.y, boundedZoom),
+      osmCategoryCounts,
+    };
+    displayItems.push({ type: "cluster", key: clusterId, cluster });
+  }
+
+  return displayItems.sort((left, right) => {
+    const sourceOrder = compareSource(displayItemSource(left), displayItemSource(right));
+    if (sourceOrder !== 0) return sourceOrder;
+    const leftPixels = coordinateToWorldPixels(displayItemCoordinate(left), boundedZoom);
+    const rightPixels = coordinateToWorldPixels(displayItemCoordinate(right), boundedZoom);
+    return leftPixels.y - rightPixels.y || leftPixels.x - rightPixels.x || compareText(left.key, right.key);
+  });
+}
+
+function clusterAccessibleLabel(cluster: SourceMapCluster): string {
+  const source = cluster.source === "osm"
+    ? "fasilitas rujukan OpenStreetMap"
+    : cluster.source === "petabencana"
+      ? "laporan warga PetaBencana"
+      : "catatan katalog gempa USGS";
+  const categoryBreakdown = cluster.osmCategoryCounts
+    ? ([
+      ["hospital", "rumah sakit"],
+      ["police", "kepolisian"],
+      ["fire_station", "pemadam kebakaran"],
+    ] as const)
+      .filter(([kind]) => cluster.osmCategoryCounts?.[kind] !== 0)
+      .map(([kind, label]) => `${cluster.osmCategoryCounts?.[kind] ?? 0} ${label}`)
+      .join(", ")
+    : "";
+  const breakdown = categoryBreakdown ? ` Rincian kategori: ${categoryBreakdown}.` : "";
+  return `Kelompok tampilan berisi ${cluster.count} catatan ${source}.${breakdown} Jumlah ini hanya menghitung catatan yang dimuat, bukan kejadian independen, bukti penguat, tingkat bahaya, atau bahaya saat ini. Posisi kelompok adalah jangkar tampilan, bukan koordinat kejadian atau batas dampak. Tekan Enter atau Spasi untuk memperbesar peta dua tingkat.`;
+}
+
 function initialMapView(points: readonly SourceMapPoint[], selectedId: string | null, mode: SourceMapViewMode): MapView {
   const selectedPoint = selectedPointFor(points, selectedId);
   return {
@@ -238,6 +407,7 @@ export function SourcePointMap({
   const resetPlace = regional ? "wilayah gempa regional" : "Jakarta";
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragStart | null>(null);
+  const restoreViewportFocusRef = useRef(false);
   const [view, setView] = useState<MapView>(() => initialMapView(points, selectedId, viewMode));
   const viewRef = useRef(view);
   const [viewportSize, setViewportSize] = useState(DEFAULT_VIEWPORT);
@@ -248,6 +418,10 @@ export function SourcePointMap({
   const selectedLatitude = selectedPoint?.coordinates[1] ?? null;
   const selectedSource = selectedPoint?.source ?? null;
   const validPoints = useMemo(() => points.filter(isValidRecordCoordinate), [points]);
+  const displayItems = useMemo(
+    () => buildSourceMapDisplayItems(validPoints, selectedId, view.zoom, unified),
+    [selectedId, unified, validPoints, view.zoom],
+  );
   const templateIsValid = useMemo(() => isValidOsmTileTemplate(tileTemplate), [tileTemplate]);
   const tiles = useMemo(
     () => getVisibleMapTiles(viewportSize.width, viewportSize.height, view.center, view.zoom),
@@ -256,12 +430,14 @@ export function SourcePointMap({
   const centerPixels = coordinateToWorldPixels(view.center, view.zoom);
   const mapOriginX = centerPixels.x - viewportSize.width / 2;
   const mapOriginY = centerPixels.y - viewportSize.height / 2;
-  const pointPositions = validPoints.flatMap((point) => {
-    const pixels = coordinateToWorldPixels(point.coordinates, view.zoom);
+  const displayPositions = displayItems.flatMap((item) => {
+    const coordinate = displayItemCoordinate(item);
+    const pixels = coordinateToWorldPixels(coordinate, view.zoom);
     const left = pixels.x - mapOriginX;
     const top = pixels.y - mapOriginY;
-    if (left < -36 || top < -36 || left > viewportSize.width + 36 || top > viewportSize.height + 36) return [];
-    return [{ point, left, top }];
+    const cullingMargin = item.type === "cluster" ? 42 : 36;
+    if (left < -cullingMargin || top < -cullingMargin || left > viewportSize.width + cullingMargin || top > viewportSize.height + cullingMargin) return [];
+    return [{ item, left, top }];
   });
   const visibleTileErrorCount = tiles.reduce(
     (count, tile) => count + Number(tileErrors.has(tileErrorKey(tileTemplate, tile.key))),
@@ -307,6 +483,12 @@ export function SourcePointMap({
     }
   }, [selectedId, selectedLongitude, selectedLatitude, selectedSource, viewMode]);
 
+  useEffect(() => {
+    if (!restoreViewportFocusRef.current) return;
+    restoreViewportFocusRef.current = false;
+    viewportRef.current?.focus();
+  }, [view.center, view.zoom]);
+
   function updateView(nextView: MapView): void {
     viewRef.current = nextView;
     setView(nextView);
@@ -316,6 +498,12 @@ export function SourcePointMap({
     const nextZoom = clampMapZoom(viewRef.current.zoom + step);
     if (nextZoom === viewRef.current.zoom) return;
     updateView({ ...viewRef.current, zoom: nextZoom });
+  }
+
+  function zoomIntoCluster(cluster: SourceMapCluster): void {
+    const current = viewRef.current;
+    restoreViewportFocusRef.current = true;
+    updateView({ center: cluster.anchor, zoom: clusterZoomTarget(current.zoom) });
   }
 
   function centerOnSelection(): void {
@@ -462,7 +650,7 @@ export function SourcePointMap({
     <section className={`source-point-map${unified ? " source-point-map--unified" : ""}`} aria-labelledby={titleId}>
       {!unified && mapCaption}
       {unified && <p className="source-point-map__source-key" role="note" aria-label="Arti dan batas titik pada peta">
-        <strong>H/P/D:</strong> fasilitas, kesiapan belum diketahui. <strong>B:</strong> laporan belum ditinjau. <strong>G:</strong> asal gempa, bukan dampak.
+        <strong>H/P/D:</strong> fasilitas, kesiapan belum diketahui. <strong>B:</strong> laporan belum ditinjau. <strong>G:</strong> asal gempa, bukan dampak. <strong>Kelompok tampilan:</strong> angka catatan; jangkar tampilan, bukan koordinat kejadian atau batas dampak.
       </p>}
       <p id={helpId} className="source-point-map__sr-only">
         Peta interaktif. Gunakan tombol perbesar dan perkecil, tombol panah saat fokus pada peta, atau seret dengan penunjuk. Tombol Home mengembalikan peta ke {resetPlace}.
@@ -504,7 +692,35 @@ export function SourcePointMap({
         </div>
 
         <div className="source-point-map__markers">
-          {pointPositions.map(({ point, left, top }) => {
+          {displayPositions.map(({ item, left, top }) => {
+            if (item.type === "cluster") {
+              const { cluster } = item;
+              const label = clusterAccessibleLabel(cluster);
+              const sourceText = cluster.source === "osm" ? "OSM" : cluster.source === "petabencana" ? "PB" : "USGS";
+              return (
+                <button
+                  key={item.key}
+                  className={`source-point-map__cluster source-point-map__cluster--${cluster.source}`}
+                  type="button"
+                  style={{ left, top } satisfies CSSProperties}
+                  aria-label={label}
+                  title={label}
+                  data-source={cluster.source}
+                  data-count={cluster.count}
+                  data-cluster-id={cluster.clusterId}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    zoomIntoCluster(cluster);
+                  }}
+                >
+                  <span className="source-point-map__cluster-count" aria-hidden="true">{cluster.count}</span>
+                  <span className="source-point-map__cluster-source" aria-hidden="true">{sourceText}</span>
+                </button>
+              );
+            }
+
+            const { point } = item;
             const selected = point.id === selectedId;
             const category = CATEGORY_LABELS[point.kind];
             const sourceClass = point.source;
@@ -559,7 +775,7 @@ export function SourcePointMap({
             <span>Hasil kosong tidak menyatakan bahwa wilayah aman.</span>
           </div>
         )}
-        {validPoints.length > 0 && pointPositions.length === 0 && (
+        {validPoints.length > 0 && displayPositions.length === 0 && (
           <div className="source-point-map__empty" role="status">
             <strong>Tidak ada titik sumber pada area peta yang terlihat.</strong>
             <span>{unified ? "Pilih titik dari daftar, Jakarta awal, atau Kawasan gempa. Area peta kosong tidak menyatakan wilayah aman." : `Pilih lokasi dari daftar atau kembalikan peta ke ${resetPlace}.`}</span>
@@ -626,7 +842,7 @@ export function SourcePointMap({
           <small>Lokasi asal gempa; dampak di Jakarta belum ditetapkan. Sumber: U.S. Geological Survey (USGS).</small>
         </div>}
       </div>
-      {unified && <p className="source-point-map__legend-note">Jumlah mengikuti titik yang dimuat dan filter daftar, bukan jumlah kejadian terverifikasi. Prakiraan cuaca ada di panel Cuaca; titik grid model tidak dipetakan sebagai kejadian.</p>}
+      {unified && <p className="source-point-map__legend-note">Jumlah mengikuti catatan yang dimuat dan filter daftar. Kelompok bernomor hanya untuk tampilan: jumlah bukan bukti penguat, tingkat bahaya, bahaya saat ini, atau jumlah kejadian independen; jangkar kelompok bukan koordinat kejadian atau batas dampak. Pilih kelompok untuk memperbesar peta, lalu pilih marker individual atau gunakan daftar untuk membuka catatan. Prakiraan cuaca ada di panel Cuaca; titik grid model tidak dipetakan sebagai kejadian.</p>}
       </LegendContainer>
     </section>
   );

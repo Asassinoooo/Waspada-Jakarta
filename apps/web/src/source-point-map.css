@@ -115,6 +115,68 @@
   pointer-events: none;
 }
 
+.source-point-map__cluster {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  gap: 0.08rem;
+  width: 2.85rem;
+  height: 2.85rem;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--tinta-kota);
+  box-shadow: 0 2px 8px rgba(24, 50, 58, 0.35);
+  padding: 0.18rem;
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  line-height: 1;
+}
+
+.source-point-map__cluster:hover,
+.source-point-map__cluster:focus-visible {
+  z-index: 6;
+  outline: 3px solid var(--surface);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--tinta-kota), 0 3px 10px rgba(24, 50, 58, 0.35);
+}
+
+.source-point-map__cluster--osm {
+  background: var(--kali-teal);
+  color: var(--ink-on-teal);
+}
+
+.source-point-map__cluster--petabencana {
+  background: var(--merah-tanda);
+}
+
+.source-point-map__cluster--usgs {
+  border-color: var(--tinta-kota);
+  background: var(--surface);
+  color: var(--tinta-kota);
+}
+
+.source-point-map__cluster-count,
+.source-point-map__cluster-source {
+  display: block;
+  text-align: center;
+}
+
+.source-point-map__cluster-count {
+  font-size: 0.98rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+}
+
+.source-point-map__cluster-source {
+  font-size: 0.48rem;
+  font-weight: 820;
+  letter-spacing: 0.025em;
+}
+
 .source-point-map__marker {
   position: absolute;
   display: inline-flex;
