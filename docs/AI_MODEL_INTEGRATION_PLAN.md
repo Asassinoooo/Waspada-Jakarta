@@ -66,4 +66,3 @@ Before real integration: choose an account/access method without putting secrets
 - [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/), updated 9 October 2026: shared daily allocation and models requiring paid billing. Quotas are published limits, not project measurements.
 
 See [REFERENCES.md](../REFERENCES.md) for the local source record. This plan does not change implementation contracts or provider configuration.
-

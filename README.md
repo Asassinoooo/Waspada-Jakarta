@@ -6,7 +6,7 @@ This repository contains the engineering plan and partial prototype. The publish
 
 ## Try the source/map demo locally
 
-From WSL Ubuntu-26.04 with native Linux Node on `PATH`, run `npm run dev`, then open [Demo sumber](http://localhost:5173/#demo-sumber). No API key, model service or cloud account is needed. The default contains 100 dated reference points in a bounded central-Jakarta sample; it is incomplete and does not show facility readiness. **Ambil data sumber** explicitly requests OSM facilities and PetaBencana flood reports from the previous 24 hours. A source can return empty or unavailable; neither result establishes safety. Return to the dated snapshot at any time. Internet is required for the basemap and source refreshes.
+From WSL Ubuntu-26.04 with native Linux Node on `PATH`, run `npm run dev`, then open [Demo sumber](http://localhost:5173/#demo-sumber). No API key, model service or cloud account is needed. The default contains 100 dated OSM reference points in a bounded central-Jakarta sample; it is incomplete and does not show facility readiness. **Ambil fasilitas & banjir** explicitly requests OSM facilities and PetaBencana reports; **Ambil cuaca & gempa** requests weather forecasts and the regional USGS catalog. Source points share one map with a linked list. Numbered groups count loaded records per provider, expand on zoom, and do not represent danger or corroboration. A source can return empty or unavailable; neither result establishes safety. Snapshot/context resets require no acquisition. Internet is required for the basemap and source refreshes.
 
 See [data integration and demo flow](docs/DEMO_DATA_INTEGRATION.md) for the source terms, typed preview contract and request limits. This demo performs deterministic L1 acquisition/validation and a separate L4 preview; model/RAG and L3 investigation are not invoked. It does not persist to Neon or deploy to Cloudflare. Ordinary OSM tiles use visible attribution and browser caching; automated browser checks stub tiles rather than downloading them.
 
@@ -18,6 +18,7 @@ The current report is the [Google Docs project overview](https://docs.google.com
 
 - [Project plan](PROJECT_PLAN.md): users, event coverage, application scope, five layers and delivery.
 - [Architecture](ARCHITECTURE.md): layer responsibilities, model/grounding strategy, investigation limits, publication interfaces and monitoring.
+- [AI model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md): proposed embedding/LLM candidates, existing contracts and activation gates; no live provider is configured.
 - [Source acquisition and verification](SOURCE_VERIFICATION_PLAN.md): source combinations, evidence rules, freshness and verification scenarios.
 - [Source feasibility](docs/SOURCE_FEASIBILITY.md): dated endpoint checks, live/manual/demo delivery modes, activation gates and retention rules.
 - [Domain model](docs/DOMAIN_MODEL.md): schema 2.0 relationships, state transitions and domain invariants.

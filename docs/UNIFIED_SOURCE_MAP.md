@@ -1,5 +1,7 @@
 # UI-03: unified source explorer
 
+**UI-04 extension accepted, 12 October 2026:** The unified map now groups loaded records for display; see [clustering assignment and review](assignments/UI-04-SOURCE-MAP-CLUSTERS.md). OSM/PetaBencana/USGS groups are separate, stable while panning and lossless. Numeric controls zoom into their member anchors; the selected record stays individual and zoom16+ renders all valid records individually. Symbols can shift for readability, with no changes to underlying coordinates, evidence or source identity. Twelve mocked browser groups and web126/126 passed; model integration remains proposed only.
+
 Status: accepted locally, 11 October 2026. User requests one unified, map-oriented view. Scope is the existing `#demo-sumber` educational preview, not published Event geometry or new providers. Existing source-preview-v1/context-sources-v1 and acquisition budgets remain unchanged. This replaces the separate UI-01/UI-02 source-preview layouts; the published incident discovery route is outside this slice.
 
 ## Interaction and visual direction

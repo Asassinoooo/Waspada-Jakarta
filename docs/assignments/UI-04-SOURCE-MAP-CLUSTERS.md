@@ -1,6 +1,6 @@
 # UI-04-SOURCE-MAP-CLUSTERS
 
-Status: assigned, 12 October 2026. User authorizes map clustering, followed by advice on models for the AI pipeline. This package implements clustering only; model advice does not authorize a provider, hosted binding, paid usage or model download.
+Status: accepted locally after root review, 12 October 2026. User authorizes map clustering, followed by advice on models for the AI pipeline. This package implements clustering only; model advice does not authorize a provider, hosted binding, paid usage or model download.
 
 ## Objective and dependencies
 
@@ -62,3 +62,29 @@ Follow-up checks run in the assigned WSL environment:
 - `git diff --check 1d9100abeab58dbc362fc31b2c57e372638b0d79` — passed.
 
 The browser/screenshot suite remains root-owned and was not run from this worktree. Root should verify pointer hit-testing for three coincident source groups at 390px and 320px, expansion zoom and focus return, and the existing UI-03 scenarios before acceptance. No migration, configuration or dependency changes were made.
+
+## Root acceptance — 12 October 2026
+
+Accepted on `main` at merge `3c80de9e89a6e63a12e85b63fc6f7f085282f1d9` — `merge(UI-04): integrate reviewed source-map clustering`. Task commits and exact messages, preserved without rewriting history:
+
+- `8cef00bd0cb3a87168fa6f3648c4861a7ff22ef5` — `feat(UI-04): cluster unified source map points`.
+- `27d6e888720b08637041eec06320740ef7313d24` — `docs(UI-04): record cluster implementation handoff`.
+- `6fee78c1554b01fb8ae456d102b6d5b818632db8` — `fix(UI-04): separate colliding map clusters`.
+- `b2fcdcb8572a1f9e08b19f6756da11bbf9ef168b` — `docs(UI-04): record collision review fixes`.
+
+Root reviewed the four allowed paths and the clean worktree, checked integration retained byte-identical component/CSS/test files, and accepted the collision/readability fixes. A separate Luna/max reviewer inspected final code/handoff and desktop/mobile screenshots, independently passed map21/21, web typecheck and assigned-base diff, and found no remaining blockers. Initial provider/adjacent-cell overlap and tiny visible source labels were corrected by the implementer before acceptance; it did not approve its own work.
+
+Root checks in WSL Ubuntu-26.04, native Node24.21.0/npm11.19.0:
+
+- `npm run test --workspace=@waspada/web` from the task worktree —126/126 passed, including map21/21.
+- `npm run typecheck` from that worktree — all workspace/evaluation checks passed.
+- `npm run build:web` — Vite8.3.0 build passed.
+- `npm run smoke` on integrated main — UI/API local smoke passed.
+- `git diff --check 0e0c79b` from root — full-turn integrated diff passed after cleaning documentation EOF whitespace.
+- Ignored headless Playwright harness `.codex-build/checks/source-cluster-browser.mjs` against the task Vite server — twelve scenario groups passed, zero page errors. It reused existing browser/runtime dependencies, mocked all176 OSM tile requests and all5 source/4 context refresh requests; no upstream provider was acquired. Default preview reads used only the dated local snapshot/not-requested context.
+
+Browser cases verify dense snapshot grouping with loaded100 list preserved; stable visible IDs/counts while panning; native Enter/Space expansion and focus return; no acquisition on cluster interactions; coincident source counts3 OSM/4 PetaBencana/3 USGS with distinct, center-hit-testable source buttons on desktop/390/320; activation to the unchanged geographic anchor; selected-record exclusion; all10 coincident identities at zoom16; prior mixed-source/list/filter/reset/independent-error/tile-failure/cancellation/unknown-live guard behavior. Thirteen desktop/mobile PNGs and the result/log record are under ignored `.codex-build/source-cluster-qa/`; root inspected representative desktop/mobile captures, and the independent reviewer inspected four final captures.
+
+The first root browser attempt reached the existing scenarios but stopped when a new synthetic PetaBencana title violated the fixed-title client contract. Root corrected the fixture and USGS ID/URL correspondence, then the full harness passed; no product validator was loosened. The implementer's new adjacent-cell tests initially had readonly tuple type errors; those were corrected before final checks. No failed intermediate attempt is counted as passing.
+
+Limitations: aggregate anchors/spacing are UI-only, not event geometry. World-space layout is bounded to the documented230-record cap; out-of-contract inputs use best-clearance fallback. Viewport-edge symbols can be clipped; panning and the linked list expose their records. Automated basemap tiles and nonempty report/quake cases are mocked and labelled; this does not establish real tile rendering, publisher accuracy/availability, city coverage, hosted free-tier fit or model quality. No API, migration, dependency, source budget, provider acquisition, model activation, auth mutation, database/cloud configuration or deployment changed. No clustering decision remains pending.
