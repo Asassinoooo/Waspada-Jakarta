@@ -1,6 +1,6 @@
 # UI-03: unified source explorer
 
-Status: assigned, 10 October 2026. User requests one unified map. Scope is the existing `#demo-sumber` educational preview, not published Event geometry or new providers. Existing source-preview-v1/context-sources-v1 and acquisition budgets remain unchanged.
+Status: accepted locally, 11 October 2026. User requests one unified, map-oriented view. Scope is the existing `#demo-sumber` educational preview, not published Event geometry or new providers. Existing source-preview-v1/context-sources-v1 and acquisition budgets remain unchanged. This replaces the separate UI-01/UI-02 source-preview layouts; the published incident discovery route is outside this slice.
 
 ## Interaction and visual direction
 
@@ -19,7 +19,7 @@ Cuaca panel: model hourly table, unknowns, attribution; no warning geometry
 Sumber panel: full provenance, snapshot restore and context reset
 ```
 
-Mobile uses the same order with a single compact title/control strip, collapsed filters, primary map, then companion panel. Long provenance and reset controls belong inside Sumber. Source status can scroll within its strip; the page must not overflow horizontally. The map must be visible in the initial mobile viewport, without requiring a map/list switch.
+Mobile uses the same order with a single compact title/control strip, collapsed filters and primary map. A persistent bottom navigation opens the Daftar, Detail, Cuaca or Sumber companion drawer without replacing the map. Selecting a marker opens Detail; Kembali ke peta closes the drawer and returns keyboard focus to the map. While the drawer is open, acquisition/filter controls are hidden to keep the selected point visible; closing restores those controls. The drawer has its own vertical scroll, while only the forecast table scrolls horizontally. Long provenance and reset controls belong inside Sumber. Source status can scroll within its named, keyboard-focusable strip; the page must not overflow horizontally. A compact H/P/D/B/G key and source caveat precede the map, with the longer caption and collapsed legend below it. The map is visible in the initial mobile viewport, without requiring a map/list switch. Legacy modes retain their original order.
 
 Map starts at Jakarta. One regional extent button and selected-quake centering expose distant epicentres in that same viewport. Returning to Jakarta retains the loaded quake layer and selection identity. All source markers keep separate source descriptions and category symbols; no inferred circles, polygons, event lifecycle or Waspada-verification labels. The legend and notice explain all three point providers. Filter counts describe loaded records, not safety metrics or verified incident counts.
 
@@ -36,3 +36,11 @@ Combine only validated OSM/PetaBencana records and USGS records into the existin
 - Root: App/CSS/test registration, cross-review, WSL web tests/typecheck/build/smoke, headless desktop/mobile screenshots and mixed-source/filter/reset/error/selection verification with stubbed tiles/providers, documentation, commits and push. No cloud activation/provider acquisition is needed for this UI-only task.
 
 Detailed assignments define allowed paths, checks and exact branch/worktree bases. Root alone accepts and integrates; no implementer approves its own work.
+
+## Acceptance evidence and limits
+
+Explorer branch commits `d8fbf76` and `b0c7787` are integrated at `5b7cf38`; map branch commits `c866499`, `f5a6fbb` and `d972e3a` are integrated at `fd83ff2`. Root wiring and screenshot-led refinements are committed at `f0395b0` (`feat(UI-03): wire map-first explorer and mobile companion drawer`) and `9ba0dda` (`fix(UI-03): expose map caveats and keyboard source status`). Separate Luna/max code and visual reviewers found no remaining blockers after the two source-key/keyboard findings were resolved. Exact messages, review evidence and process limitations are recorded in the assignments and delivery log.
+
+WSL Ubuntu-26.04, native Node24.21.0/npm11.19.0: web117/117, all-workspace/evaluation typecheck, Vite8.3.0 build, local UI/API smoke and assigned-base diff check passed. Independent final code review reran map/explorer21/21 and web typecheck. Headless browser QA passed ten scenario groups, including mixed source scales/selection, filters, independent failure/retry/reset, held-request navigation cancellation, unknown/live guards, tile failure, and 320/390px mobile drawer/overflow/focus behavior. Desktop1440x1000 and mobile screenshots were visually inspected and refined. Automated basemap tiles and nonempty report/quake fixtures are mocked and labelled; no upstream provider acquisition occurred for this UI task.
+
+This remains an educational source preview. It does not enable L2/RAG, L3 investigation, incident publication, source persistence, auth mutations or cloud deployment, and does not establish factual accuracy, real basemap rendering, source availability, geographic coverage or hosted free-tier behavior. Earlier source acquisitions and UI-01/UI-02 checks remain historical evidence, not checks of this new screen.

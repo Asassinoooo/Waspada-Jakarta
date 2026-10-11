@@ -71,6 +71,8 @@ This working file keeps the sources for the Waspada Jakarta report while the fin
 - **Anthropic skills maintainers.** [Frontend Design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md) and [raw skill file](https://raw.githubusercontent.com/anthropics/skills/main/skills/frontend-design/SKILL.md). Reviewed 24 September 2026. Used for the compact visual direction, named token set, ASCII wireframes, subject-specific design critique, and screenshot review process in UI-00; it does not define Waspada's product requirements.
 - **Vercel Labs.** [Web Design Guidelines skill](https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines); [skill instructions](https://raw.githubusercontent.com/vercel-labs/agent-skills/main/skills/web-design-guidelines/SKILL.md) and [current guideline checklist](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md). Reviewed 24 September 2026. Used for the final UI-00 accessibility, keyboard, responsive layout, interaction, content, and performance review; it does not change the accepted product/API contract.
 
+These three raw UI guidance files were reread on 10 October 2026 for UI-03's map-first design and screenshot/accessibility review. They informed presentation only; the user's map-oriented steer and Waspada source/API rules control product behavior. No skill or formatter dependency was installed.
+
 ## Final citation work
 
 - Decide which claims in the project definition need a source.
