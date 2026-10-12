@@ -9,8 +9,10 @@
   ],
   "scripts": {
     "dev": "concurrently --kill-others --names web,worker --prefix-colors cyan,magenta \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\"",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json",
-    "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json && tsc --noEmit -p tools/ai/tsconfig.json",
+    "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts",
+    "ai:smoke": "tsx tools/ai/run-ninerouter-smoke.ts",
+    "ai:smoke:live": "node --env-file=.env.local --import tsx tools/ai/run-ninerouter-smoke.ts --live",
     "eval:casebook": "tsx tools/evaluation/casebook-cli.ts",
     "db:test": "npm run test --workspace=@waspada/db",
     "smoke": "npm run smoke --workspace=@waspada/web",
