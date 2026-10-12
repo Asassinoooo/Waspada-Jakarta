@@ -12,6 +12,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json && tsc --noEmit -p tools/ai/tsconfig.json && tsc --noEmit -p tools/local-pipeline/tsconfig.json",
     "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts && npm run pipeline:test",
     "pipeline:local": "tsx tools/local-pipeline/run-local-pipeline.ts",
+    "pipeline:serve": "tsx tools/local-pipeline/run-local-server.ts",
+    "dev:pipeline": "concurrently --kill-others --names web,worker,pipeline --prefix-colors cyan,magenta,green \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\" \"npm run pipeline:serve -- --enable --watch --state app-demo --interval-ms 5000 --max-polls 60\"",
     "pipeline:test": "tsx tools/local-pipeline/run-tests.ts",
     "ai:smoke": "tsx tools/ai/run-ninerouter-smoke.ts",
     "ai:smoke:live": "node --env-file=.env.local --import tsx tools/ai/run-ninerouter-smoke.ts --live",
