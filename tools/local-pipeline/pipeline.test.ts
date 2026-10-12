@@ -8,7 +8,7 @@ import { createLocalPipelineStore } from './store.js';
 import { createLocalPipelineProcessor } from './processor.js';
 import { createLocalMockModels } from './mock-models.js';
 import { parseAuthoredFeed } from './feed.js';
-import type { AuthoredFeed, LocalPipelineStore } from './contracts.js';
+import type { AiJob, AuthoredFeed, LocalPipelineStore } from './contracts.js';
 import type { ModelCapabilityAdapter } from '../../apps/worker/src/layers/l2-model-grounding/contracts.js';
 import { runLocalSchedule } from './scheduler.js';
 
@@ -25,6 +25,86 @@ function countModels(adapter: ModelCapabilityAdapter) {
     classify: async (request) => { calls.classification++; return adapter.classify(request); },
   };
   return { adapter: counted, calls };
+}
+
+interface RenewableLocalPipelineStore extends LocalPipelineStore {
+  renewAi(job: AiJob, now: string, leaseDurationMs?: number): Promise<boolean>;
+}
+
+interface RenewalEvent {
+  readonly at: string;
+  readonly result: boolean;
+  readonly threw?: boolean;
+}
+
+function createAsyncQueue<T>() {
+  const values: T[] = [];
+  const readers: Array<(value: T) => void> = [];
+  return {
+    push(value: T): void {
+      const reader = readers.shift();
+      if (reader) reader(value);
+      else values.push(value);
+    },
+    next(timeoutMs = 5_000): Promise<T> {
+      const value = values.shift();
+      if (value !== undefined) return Promise.resolve(value);
+      return new Promise<T>((resolve, reject) => {
+        const reader = (nextValue: T) => {
+          clearTimeout(timer);
+          resolve(nextValue);
+        };
+        const timer = setTimeout(() => {
+          const index = readers.indexOf(reader);
+          if (index >= 0) readers.splice(index, 1);
+          reject(new Error('synthetic_event_timeout'));
+        }, timeoutMs);
+        readers.push(reader);
+      });
+    },
+  };
+}
+
+function observeRenewals(
+  store: RenewableLocalPipelineStore,
+  renew?: (job: AiJob, now: string, leaseDurationMs?: number) => Promise<boolean>,
+) {
+  const events = createAsyncQueue<RenewalEvent>();
+  const observed = new Proxy(store, {
+    get(target, property, receiver) {
+      if (property === 'renewAi') {
+        return async (job: AiJob, now: string, leaseDurationMs?: number) => {
+          try {
+            const result = renew
+              ? await renew(job, now, leaseDurationMs)
+              : await target.renewAi(job, now, leaseDurationMs);
+            events.push({ at: now, result });
+            return result;
+          } catch {
+            events.push({ at: now, result: false, threw: true });
+            throw new Error('synthetic_renewal_failed');
+          }
+        };
+      }
+      const value = Reflect.get(target, property, receiver) as unknown;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as RenewableLocalPipelineStore;
+  return { store: observed, events };
+}
+
+async function withinBound<T>(promise: Promise<T>, timeoutMs = 5_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('synthetic_wait_timeout')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 async function assertPrivateOnly(executor: Awaited<ReturnType<typeof openLocalPipelineDatabase>>['executor']) {
   for (const table of ['event_versions', 'impact_versions', 'publication_decisions', 'publication_claim_decisions',
@@ -243,4 +323,212 @@ test('file-backed restart after proposal commit but before completion reuses eve
     if (isOpen) await database.close();
     await rm(dataDir, { recursive: true, force: true });
   }
+});
+
+test('long AI wait renews the five-minute lease and completes after its original expiry', { timeout: 90_000 }, async () => {
+  const models = createLocalMockModels();
+  const counted = countModels(models.adapter);
+  let now = start;
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+  let finishExtraction!: (outcome: Awaited<ReturnType<ModelCapabilityAdapter['extract']>>) => void;
+  let extractionRequest!: Parameters<ModelCapabilityAdapter['extract']>[0];
+  const adapter: ModelCapabilityAdapter = {
+    ...counted.adapter,
+    extract: async (request) => {
+      counted.calls.extraction++;
+      extractionRequest = request;
+      signalStarted();
+      return await new Promise((resolve) => { finishExtraction = resolve; });
+    },
+  };
+  const database = await openLocalPipelineDatabase({ profileId: models.profileId });
+  try {
+    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    let renewalsInFlight = 0;
+    let maxRenewalsInFlight = 0;
+    const observed = observeRenewals(backingStore, async (job, renewalTime, leaseDurationMs) => {
+      renewalsInFlight++;
+      maxRenewalsInFlight = Math.max(maxRenewalsInFlight, renewalsInFlight);
+      try {
+        await new Promise<void>((resolve) => setTimeout(resolve, 25));
+        return await backingStore.renewAi(job, renewalTime, leaseDurationMs);
+      } finally { renewalsInFlight--; }
+    });
+    const processor = createLocalPipelineProcessor({ store: observed.store, executor: database.executor, ...models,
+      adapter, now: () => now, modelTimeoutMs: 901_000, leaseRenewIntervalMs: 20 });
+    await backingStore.capture(await authoredFeed(), now);
+    await processor.processIngestion();
+    const processing = processor.processAi();
+    await withinBound(started);
+
+    const firstRenewal = await withinBound(observed.events.next());
+    assert.deepEqual(firstRenewal, { at: start, result: true });
+    now = '2026-10-12T07:04:00.000Z';
+    const secondRenewal = await withinBound(observed.events.next());
+    assert.deepEqual(secondRenewal, { at: now, result: true });
+
+    now = '2026-10-12T07:06:00.000Z';
+    const lease = await database.executor.query<{ status: string; lease_expires_at: string }>(
+      'SELECT status, lease_expires_at::text AS lease_expires_at FROM waspada.local_ai_jobs');
+    assert.equal(lease.rows[0]?.status, 'leased');
+    assert.ok(Date.parse(lease.rows[0]!.lease_expires_at) > Date.parse(now));
+    assert.equal(await backingStore.claimAi(now, 5 * 60_000), null, 'another worker cannot claim the renewed job');
+
+    finishExtraction(await models.adapter.extract(extractionRequest));
+    await withinBound(processing, 10_000);
+    const summary = await backingStore.summary();
+    assert.equal(maxRenewalsInFlight, 1, 'slow renewal calls never overlap');
+    assert.equal(summary.ai.completed, 1);
+    assert.equal(summary.proposals, 1);
+    assert.deepEqual(counted.calls, { extraction: 1, embedding: 1, reasoning: 1, classification: 0 });
+  } finally { await database.close(); }
+});
+
+test('lost long-wait renewal cancels late persistence and expired lease recovers', { timeout: 90_000 }, async () => {
+  const models = createLocalMockModels();
+  let now = start;
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+  let finishExtraction!: (outcome: Awaited<ReturnType<ModelCapabilityAdapter['extract']>>) => void;
+  let extractionRequest!: Parameters<ModelCapabilityAdapter['extract']>[0];
+  let cancelCalls = 0;
+  const adapter: ModelCapabilityAdapter = {
+    ...models.adapter,
+    extract: async (request) => {
+      extractionRequest = request;
+      signalStarted();
+      return await new Promise((resolve) => { finishExtraction = resolve; });
+    },
+  };
+  const database = await openLocalPipelineDatabase({ profileId: models.profileId });
+  try {
+    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    const observed = observeRenewals(backingStore, async (job, _requestedAt, leaseDurationMs) =>
+      await backingStore.renewAi(job, now, leaseDurationMs));
+    const processor = createLocalPipelineProcessor({ store: observed.store, executor: database.executor, ...models,
+      adapter, now: () => now, modelTimeoutMs: 901_000, leaseRenewIntervalMs: 100,
+      cancel: () => { cancelCalls++; } });
+    await backingStore.capture(await authoredFeed(), now);
+    await processor.processIngestion();
+    const processing = processor.processAi();
+    await withinBound(started);
+    now = '2026-10-12T07:05:00.000Z';
+    const failedRenewal = await withinBound(observed.events.next());
+    assert.deepEqual(failedRenewal, { at: '2026-10-12T07:05:00.000Z', result: false });
+    await withinBound(processing, 2_000);
+    assert.equal(cancelCalls, 1);
+
+    const receipts = await database.executor.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM waspada.local_ai_receipts');
+    assert.equal(receipts.rows[0]?.count, 0, 'the ignored late model result wrote no stage receipt');
+    assert.equal((await backingStore.summary()).proposals, 0);
+
+    const recovered = await backingStore.recover(now);
+    assert.deepEqual(recovered, { ingestion: 0, ai: 1 });
+    now = '2026-10-12T07:05:30.000Z';
+    const retry = await backingStore.claimAi(now, 5 * 60_000);
+    assert.equal(retry?.attemptCount, 2, 'recovery preserves the attempt and the next claim increments it');
+
+    finishExtraction(await models.adapter.extract(extractionRequest));
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    const stillNoReceipt = await database.executor.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM waspada.local_ai_receipts');
+    assert.equal(stillNoReceipt.rows[0]?.count, 0, 'the old result cannot write under the replacement lease');
+    assert.equal((await backingStore.summary()).proposals, 0);
+  } finally { await database.close(); }
+});
+
+test('renewal exception cancels the provider and fails closed before late stage writes', { timeout: 90_000 }, async () => {
+  const models = createLocalMockModels();
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+  let finishExtraction!: (outcome: Awaited<ReturnType<ModelCapabilityAdapter['extract']>>) => void;
+  let extractionRequest!: Parameters<ModelCapabilityAdapter['extract']>[0];
+  let cancelCalls = 0;
+  const adapter: ModelCapabilityAdapter = {
+    ...models.adapter,
+    extract: async (request) => {
+      extractionRequest = request;
+      signalStarted();
+      return await new Promise((resolve) => { finishExtraction = resolve; });
+    },
+  };
+  const database = await openLocalPipelineDatabase({ profileId: models.profileId });
+  try {
+    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    const observed = observeRenewals(backingStore, async () => { throw new Error('private_renewal_failure'); });
+    const processor = createLocalPipelineProcessor({ store: observed.store, executor: database.executor, ...models,
+      adapter, now: () => start, modelTimeoutMs: 901_000, leaseRenewIntervalMs: 15,
+      cancel: () => { cancelCalls++; } });
+    await backingStore.capture(await authoredFeed(), start);
+    await processor.processIngestion();
+    const processing = processor.processAi();
+    await withinBound(started);
+    const failedRenewal = await withinBound(observed.events.next());
+    assert.deepEqual(failedRenewal, { at: start, result: false, threw: true });
+    await withinBound(processing, 2_000);
+    assert.equal(cancelCalls, 1);
+
+    finishExtraction(await models.adapter.extract(extractionRequest));
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    const receipts = await database.executor.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM waspada.local_ai_receipts');
+    assert.equal(receipts.rows[0]?.count, 0);
+    const jobs = await database.executor.query<{ last_failure_code: string | null }>(
+      'SELECT last_failure_code FROM waspada.local_ai_jobs');
+    assert.equal(jobs.rows[0]?.last_failure_code, null, 'private renewal errors do not enter job state');
+  } finally { await database.close(); }
+});
+
+test('abort settles an ignored model wait and removes the renewal timer', { timeout: 90_000 }, async () => {
+  const models = createLocalMockModels();
+  const counted = countModels(models.adapter);
+  let now = start;
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+  let finishExtraction!: (outcome: Awaited<ReturnType<ModelCapabilityAdapter['extract']>>) => void;
+  let extractionRequest!: Parameters<ModelCapabilityAdapter['extract']>[0];
+  let cancelCalls = 0;
+  const adapter: ModelCapabilityAdapter = {
+    ...counted.adapter,
+    extract: async (request) => {
+      counted.calls.extraction++;
+      extractionRequest = request;
+      signalStarted();
+      return await new Promise((resolve) => { finishExtraction = resolve; });
+    },
+  };
+  const controller = new AbortController();
+  const database = await openLocalPipelineDatabase({ profileId: models.profileId });
+  try {
+    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    const observed = observeRenewals(backingStore);
+    const processor = createLocalPipelineProcessor({ store: observed.store, executor: database.executor, ...models,
+      adapter, now: () => now, signal: controller.signal, cancel: () => { cancelCalls++; },
+      modelTimeoutMs: 901_000, leaseRenewIntervalMs: 15 });
+    await backingStore.capture(await authoredFeed(), now);
+    await processor.processIngestion();
+    const processing = processor.processAi();
+    await withinBound(started);
+    assert.equal((await withinBound(observed.events.next())).result, true);
+
+    controller.abort();
+    await withinBound(processing, 2_000);
+    assert.equal(cancelCalls, 1);
+    assert.equal(counted.calls.extraction, 1);
+    assert.equal(counted.calls.embedding, 0);
+    assert.equal(counted.calls.reasoning, 0);
+    assert.equal((await backingStore.summary()).ai.retry, 1);
+    const renewalsAtReturn = await database.executor.query<{ lease_expires_at: string | null }>(
+      'SELECT lease_expires_at::text AS lease_expires_at FROM waspada.local_ai_jobs');
+    assert.equal(renewalsAtReturn.rows[0]?.lease_expires_at, null, 'cancellation releases the owned retryable job');
+
+    const renewalAfterReturn = await observed.events.next(20).catch(() => null);
+    assert.equal(renewalAfterReturn, null, 'no renewal starts after processor return');
+    finishExtraction(await models.adapter.extract(extractionRequest));
+    const receiptRows = await database.executor.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM waspada.local_ai_receipts');
+    assert.equal(receiptRows.rows[0]?.count, 0);
+  } finally { await database.close(); }
 });

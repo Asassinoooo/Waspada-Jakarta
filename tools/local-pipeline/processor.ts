@@ -37,7 +37,10 @@ import type {
 import { LOCAL_PIPELINE_SCHEMA, LOCAL_SOURCE_ID } from './contracts.js';
 
 const DEFAULT_MODEL_TIMEOUT_MS = 26_000;
-const MAX_MODEL_TIMEOUT_MS = 120_000;
+const MAX_MODEL_TIMEOUT_MS = 901_000;
+const LONG_WAIT_RENEWAL_THRESHOLD_MS = 60_000;
+const DEFAULT_LEASE_RENEW_INTERVAL_MS = 60_000;
+const MAX_LEASE_RENEW_INTERVAL_MS = 60_000;
 const RETRIEVAL_MAX_RESULTS = 8;
 const RETRIEVAL_MAX_ROWS = 16;
 const RETRIEVAL_MAX_SPAN_CODE_POINTS = 2_048;
@@ -49,6 +52,9 @@ export interface LocalPipelineProcessorInput {
   readonly configuration: ModelAdapterConfiguration;
   readonly now: () => string;
   readonly modelTimeoutMs?: number;
+  readonly signal?: AbortSignal;
+  readonly cancel?: () => void;
+  readonly leaseRenewIntervalMs?: number;
 }
 
 export interface LocalPipelineProcessor {
@@ -86,11 +92,38 @@ interface PreparedSnapshot {
   readonly chunks: Awaited<ReturnType<typeof chunkPreparedText>>;
 }
 
+interface LeaseRenewingStore extends LocalPipelineStore {
+  renewAi(job: AiJob, now: string, leaseDurationMs?: number): Promise<boolean>;
+}
+
+interface AiLeaseGuard {
+  readonly leaseLost: boolean;
+  assertActive(): void;
+  markLeaseLost(): void;
+  runFenced<T>(operation: () => Promise<T>): Promise<T>;
+  runRelease<T>(operation: () => Promise<T>): Promise<T>;
+  runModel<T>(operation: () => Promise<T>, timeoutMs: number): Promise<T>;
+  stop(): Promise<void>;
+}
+
+class LeaseControlFailure extends Error {
+  constructor(readonly kind: 'lease_lost' | 'cancelled') {
+    super(kind === 'lease_lost' ? 'lease_expired' : 'model_cancelled');
+    this.name = 'LeaseControlFailure';
+  }
+}
+
 export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput): LocalPipelineProcessor {
   const { store, executor, adapter, configuration, now } = input;
   const modelTimeoutMs = input.modelTimeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   if (!Number.isSafeInteger(modelTimeoutMs) || modelTimeoutMs < 1 || modelTimeoutMs > MAX_MODEL_TIMEOUT_MS) {
     throw new TypeError('modelTimeoutMs is outside the bounded local range');
+  }
+  const leaseRenewIntervalMs = input.leaseRenewIntervalMs ?? DEFAULT_LEASE_RENEW_INTERVAL_MS;
+  if (!Number.isSafeInteger(leaseRenewIntervalMs) || leaseRenewIntervalMs < 1
+    || leaseRenewIntervalMs > MAX_LEASE_RENEW_INTERVAL_MS
+    || leaseRenewIntervalMs >= JOB_QUEUE_POLICY.maxLeaseDurationMs) {
+    throw new TypeError('leaseRenewIntervalMs is outside the bounded local range');
   }
   const basePorts = createRepositoryPorts(executor);
   const exactSpanReader = createSqlExactEvidenceSpanReader(executor);
@@ -167,24 +200,76 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
     },
 
     async processAi(): Promise<unknown> {
+      if (input.signal?.aborted) return await store.summary();
       const job = await store.claimAi(now(), JOB_QUEUE_POLICY.maxLeaseDurationMs);
       if (!job) return await store.summary();
+      const lease = createAiLeaseGuard({
+        job,
+        store,
+        now,
+        signal: input.signal,
+        cancel: input.cancel,
+        renew: modelTimeoutMs > LONG_WAIT_RENEWAL_THRESHOLD_MS,
+        renewIntervalMs: leaseRenewIntervalMs,
+      });
+      let failure: unknown;
       try {
-        await processOneAiJob(job);
-        await store.completeAi(job, now());
+        lease.assertActive();
+        await processOneAiJob(job, lease);
       } catch (error) {
-        const code = error instanceof ProcessorFailure
-          ? error.code
-          : error instanceof ModelTimeout
+        failure = error;
+      }
+      // No timer or in-flight renewal may outlive a completion/failure transition.
+      await lease.stop();
+      if (failure === undefined) {
+        try {
+          const completed = await lease.runFenced(() => store.completeAi(job, now()));
+          if (!completed) {
+            lease.markLeaseLost();
+            failure = new LeaseControlFailure('lease_lost');
+          }
+        } catch (error) {
+          failure = error;
+        }
+      }
+      if (failure !== undefined && !lease.leaseLost) {
+        const code = failure instanceof ProcessorFailure
+          ? failure.code
+          : failure instanceof ModelTimeout
             ? 'model_timeout'
-            : 'persistence_failed';
-        await store.failAi(job, now(), code);
+            : failure instanceof LeaseControlFailure
+              ? failure.kind === 'cancelled' ? 'model_failed' : 'lease_expired'
+              : 'persistence_failed';
+        try {
+          await lease.runRelease(() => store.failAi(job, now(), code));
+        } catch {
+          // The lease may have expired while the processor was stopping. Recovery owns it then.
+        }
       }
       return await store.summary();
     },
   };
 
-  async function processOneAiJob(job: AiJob): Promise<void> {
+  async function checkpointAi(
+    job: AiJob,
+    lease: AiLeaseGuard,
+    stage: AiStage,
+    value: unknown,
+    write?: (transaction: TransactionalSqlExecutor) => Promise<void>,
+  ): Promise<void> {
+    const committed = await lease.runFenced(() => store.checkpoint(job, now(), stage, value, async (transaction) => {
+      lease.assertActive();
+      if (write) await write(transaction);
+      lease.assertActive();
+    }));
+    if (!committed) {
+      lease.markLeaseLost();
+      throw new LeaseControlFailure('lease_lost');
+    }
+  }
+
+  async function processOneAiJob(job: AiJob, lease: AiLeaseGuard): Promise<void> {
+    lease.assertActive();
     if (!job.leaseToken || !job.leaseExpiresAt
       || job.snapshot.sourceId !== LOCAL_SOURCE_ID || job.snapshot.datasetKind !== 'synthetic') {
       throw new ProcessorFailure('lease_expired');
@@ -208,11 +293,11 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
     let extraction = await readStageReceipt<ExtractionResult>(job, 'extraction', snapshotKey,
       (value) => validateExtractionReceipt(value, extractionRequest, configuration));
     if (!extraction) {
-      const outcome = await withinTimeout(() => adapter.extract(extractionRequest), modelTimeoutMs);
+      const outcome = await lease.runModel(() => adapter.extract(extractionRequest), modelTimeoutMs);
       extraction = requireCapability(outcome, 'extraction');
       const receipt = makeReceipt(job, 'extraction', snapshotKey, { result: extraction });
       const record = toExtractionRecord(extraction, snapshot);
-      const committed = await store.checkpoint(job, now(), 'extraction', receipt, async (transaction) => {
+      await checkpointAi(job, lease, 'extraction', receipt, async (transaction) => {
         const tx = joinTransaction(transaction);
         const ports = createRepositoryPorts(tx);
         const originId = originIdFor(snapshot);
@@ -230,7 +315,6 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
         }
         await ports.extractionResults.createOrVerify(record);
       });
-      if (!committed) throw new ProcessorFailure('lease_expired');
     }
 
     const chunk = chunks[0];
@@ -250,16 +334,15 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
     let embedding = await readStageReceipt<EmbeddingResult>(job, 'embedding', snapshotKey,
       (value) => validateEmbeddingReceipt(value, embeddingRequest, configuration));
     if (!embedding) {
-      const outcome = await withinTimeout(() => adapter.embed(embeddingRequest), modelTimeoutMs);
+      const outcome = await lease.runModel(() => adapter.embed(embeddingRequest), modelTimeoutMs);
       embedding = requireCapability(outcome, 'embedding');
       const record = toEmbeddingRecord(embedding, snapshot);
       const receipt = makeReceipt(job, 'embedding', snapshotKey, { result: embedding });
-      const committed = await store.checkpoint(job, now(), 'embedding', receipt, async (transaction) => {
+      await checkpointAi(job, lease, 'embedding', receipt, async (transaction) => {
         const tx = joinTransaction(transaction);
         const ports = createRepositoryPorts(tx);
         await ports.embeddingRuns.createOrVerify(record, embedding!.vector);
       });
-      if (!committed) throw new ProcessorFailure('lease_expired');
     }
 
     const retrieval = await basePorts.evidenceRetrieval.search({
@@ -331,11 +414,10 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
     const groundingReceipt = await readStageReceipt<GroundingContextRecord>(job, 'grounding', snapshotKey,
       (value) => validateGroundingReceipt(value, groundingRecord));
     if (!groundingReceipt) {
-      const committed = await store.checkpoint(job, now(), 'grounding', makeReceipt(job, 'grounding', snapshotKey,
+      await checkpointAi(job, lease, 'grounding', makeReceipt(job, 'grounding', snapshotKey,
         { record: groundingRecord }), async (transaction) => {
         await createRepositoryPorts(joinTransaction(transaction)).groundingContexts.createOrVerify(groundingRecord);
       });
-      if (!committed) throw new ProcessorFailure('lease_expired');
     }
 
     const reasoningRequest = persistedContext.reasoningRequest;
@@ -344,13 +426,21 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
     let reasoning = await readStageReceipt<ReasoningResult>(job, 'reasoning', snapshotKey,
       (value) => validateReasoningReceipt(value, reasoningRequest, configuration));
     if (!reasoning) {
-      const directReasoning = createDirectReasoningService(contextPersistence, adapter);
-      const directOutcome = await withinTimeout(() => directReasoning.reason(reasoningRequest), modelTimeoutMs);
+      lease.assertActive();
+      const directReasoning = createDirectReasoningService({
+        async persist(request) {
+          return await lease.runFenced(() => contextPersistence.persist(request));
+        },
+      }, {
+        async reason(request) {
+          return await lease.runModel(() => adapter.reason(request), modelTimeoutMs);
+        },
+      });
+      const directOutcome = await directReasoning.reason(reasoningRequest);
       if (directOutcome.status === 'investigation_required') throw new ProcessorFailure('context_insufficient');
       reasoning = requireCapability(directOutcome, 'reasoning');
       const reasonReceipt = makeReceipt(job, 'reasoning', snapshotKey, { result: reasoning });
-      const committed = await store.checkpoint(job, now(), 'reasoning', reasonReceipt);
-      if (!committed) throw new ProcessorFailure('lease_expired');
+      await checkpointAi(job, lease, 'reasoning', reasonReceipt);
     }
 
     const proposalId = `proposal-${hash(snapshotKey).slice(0, 40)}`;
@@ -363,6 +453,7 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
     const existingProposalReceipt = await readStageReceipt<typeof proposalPayload>(job, 'proposal', snapshotKey,
       (value) => validateProposalReceipt(value, proposalPayload));
     if (!existingProposalReceipt) {
+      lease.assertActive();
       const proposalInput = {
         capabilityOutcome: { status: 'succeeded', capability: 'reasoning', value: reasoning } as const,
         groundingContext: reasoningRequest.data.groundingContext,
@@ -372,7 +463,7 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
         target: { kind: 'new' } as const,
         investigationId: null,
       };
-      const committed = await store.checkpoint(job, now(), 'proposal', makeReceipt(job, 'proposal', snapshotKey,
+      await checkpointAi(job, lease, 'proposal', makeReceipt(job, 'proposal', snapshotKey,
         { record: proposalPayload }), async (transaction) => {
         const txPorts = createRepositoryPorts(joinTransaction(transaction));
         const txBridge = createReasoningProposalBridge(txPorts.eventProposals);
@@ -387,8 +478,8 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
         );
         if (!traceClosed) throw new ProcessorFailure('persistence_failed');
       });
-      if (!committed) throw new ProcessorFailure('lease_expired');
     }
+    lease.assertActive();
   }
 
   async function prepareSnapshot(snapshot: ReportSnapshot): Promise<PreparedSnapshot> {
@@ -644,16 +735,144 @@ function requireCapability<T, C extends 'extraction' | 'embedding' | 'reasoning'
   throw new ProcessorFailure('model_failed');
 }
 
-async function withinTimeout<T>(operation: () => Promise<T>, timeoutMs: number): Promise<T> {
+function createAiLeaseGuard(options: {
+  readonly job: AiJob;
+  readonly store: LocalPipelineStore;
+  readonly now: () => string;
+  readonly signal?: AbortSignal;
+  readonly cancel?: () => void;
+  readonly renew: boolean;
+  readonly renewIntervalMs: number;
+}): AiLeaseGuard {
+  const { job, store, now, signal, cancel, renew, renewIntervalMs } = options;
+  const leaseStore = store as LeaseRenewingStore;
+  let stopped = false;
+  let leaseLost = false;
+  let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new ModelTimeout()), timeoutMs);
-  });
-  try {
-    return await Promise.race([Promise.resolve().then(operation), timeout]);
-  } finally {
+  let renewalTask: Promise<void> | undefined;
+  let lane: Promise<void> = Promise.resolve();
+  let signalListener: (() => void) | undefined;
+  let cancelInvoked = false;
+  let interrupt!: (failure: LeaseControlFailure) => void;
+  const interrupted = new Promise<LeaseControlFailure>((resolve) => { interrupt = resolve; });
+
+  const cancelTransport = () => {
+    if (cancelInvoked || !cancel) return;
+    cancelInvoked = true;
+    try { cancel(); } catch { /* Transport cancellation is best effort. */ }
+  };
+
+  const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+
+  const markCancelled = () => {
+    if (leaseLost || cancelled) return;
+    cancelled = true;
+    clearTimer();
+    cancelTransport();
+    interrupt(new LeaseControlFailure('cancelled'));
+  };
+
+  const markLeaseLost = () => {
+    if (leaseLost) return;
+    leaseLost = true;
+    clearTimer();
+    cancelTransport();
+    interrupt(new LeaseControlFailure('lease_lost'));
+  };
+
+  const assertActive = () => {
+    if (!leaseLost && !cancelled && signal?.aborted) markCancelled();
+    if (leaseLost) throw new LeaseControlFailure('lease_lost');
+    if (cancelled) throw new LeaseControlFailure('cancelled');
+  };
+
+  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = lane.then(operation);
+    lane = result.then(() => undefined, () => undefined);
+    return result;
+  };
+
+  const runFenced = <T>(operation: () => Promise<T>): Promise<T> => serialize(async () => {
+    assertActive();
+    return await operation();
+  });
+
+  const runRelease = <T>(operation: () => Promise<T>): Promise<T> => serialize(async () => {
+    if (leaseLost) throw new LeaseControlFailure('lease_lost');
+    return await operation();
+  });
+
+  const scheduleRenewal = () => {
+    if (!renew || stopped || leaseLost || cancelled) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      const task = serialize(async () => {
+        if (stopped || leaseLost || cancelled) return;
+        try {
+          assertActive();
+          const renewed = await leaseStore.renewAi(job, now(), JOB_QUEUE_POLICY.maxLeaseDurationMs);
+          if (!renewed) markLeaseLost();
+        } catch {
+          // A failed renewal leaves ownership uncertain, so this attempt fails closed.
+          markLeaseLost();
+        }
+      }).then(() => undefined, () => { markLeaseLost(); });
+      renewalTask = task;
+      void task.then(() => {
+        if (renewalTask === task) renewalTask = undefined;
+        scheduleRenewal();
+      });
+    }, renewIntervalMs);
+  };
+
+  if (signal) {
+    signalListener = () => markCancelled();
+    signal.addEventListener('abort', signalListener, { once: true });
+    if (signal.aborted) markCancelled();
   }
+  scheduleRenewal();
+
+  return {
+    get leaseLost() { return leaseLost; },
+    assertActive,
+    markLeaseLost,
+    runFenced,
+    runRelease,
+    async runModel<T>(operation: () => Promise<T>, timeoutMs: number): Promise<T> {
+      assertActive();
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const work = Promise.resolve().then(() => {
+        assertActive();
+        return operation();
+      });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          cancelTransport();
+          reject(new ModelTimeout());
+        }, timeoutMs);
+      });
+      try {
+        return await Promise.race([
+          work,
+          timeoutPromise,
+          interrupted.then((failure) => { throw failure; }),
+        ]);
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+      }
+    },
+    async stop(): Promise<void> {
+      stopped = true;
+      clearTimer();
+      if (signal && signalListener) signal.removeEventListener('abort', signalListener);
+      const pending = renewalTask;
+      if (pending) await pending;
+    },
+  };
 }
 
 function joinTransaction(transaction: SqlExecutor): TransactionalSqlExecutor {
