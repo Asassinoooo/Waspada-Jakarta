@@ -93,6 +93,8 @@ export interface NinerouterProviderConfiguration {
   readonly chatModel: string;
   readonly embeddingModel: string;
   readonly curationEpoch: string;
+  /** Explicit HTTP opt-in for a syntactically valid 100.64.0.0/10 address; it does not prove tailnet membership. */
+  readonly allowTailnetHttp?: boolean;
   readonly timeoutMs?: number;
   readonly maxHttpRequests?: number;
   readonly onObservation?: (observation: NinerouterObservation) => void;
@@ -651,7 +653,7 @@ interface ParsedChatResponse {
 
 function validateConfiguration(config: NinerouterProviderConfiguration): ValidatedConfiguration {
   if (!isPlainRecord(config)) throw new Error("invalid_configuration");
-  const allowed = new Set(["baseUrl", "apiKey", "chatModel", "embeddingModel", "curationEpoch", "timeoutMs", "maxHttpRequests", "onObservation"]);
+  const allowed = new Set(["baseUrl", "apiKey", "chatModel", "embeddingModel", "curationEpoch", "allowTailnetHttp", "timeoutMs", "maxHttpRequests", "onObservation"]);
   if (Reflect.ownKeys(config).some((key) => typeof key !== "string" || !allowed.has(key))) {
     throw new Error("invalid_configuration");
   }
@@ -661,6 +663,8 @@ function validateConfiguration(config: NinerouterProviderConfiguration): Validat
   const chatModel = readIdentifier(config.chatModel);
   const embeddingModel = readIdentifier(config.embeddingModel);
   const curationEpoch = readString(config.curationEpoch, 64);
+  const allowTailnetHttp = config.allowTailnetHttp === undefined ? false : config.allowTailnetHttp;
+  if (typeof allowTailnetHttp !== "boolean") throw new Error("invalid_configuration");
   if (!API_KEY_PATTERN.test(apiKey)
     || !PROMPT_EPOCH_PATTERN.test(curationEpoch)
     || curationEpoch.toLowerCase().includes(apiKey.toLowerCase())) {
@@ -673,7 +677,11 @@ function validateConfiguration(config: NinerouterProviderConfiguration): Validat
     throw new Error("invalid_configuration");
   }
   const localHost = base.hostname === "localhost" || base.hostname === "127.0.0.1" || base.hostname === "[::1]";
-  if ((base.protocol !== "https:" && !(base.protocol === "http:" && localHost))
+  const loopbackHttp = base.protocol === "http:" && localHost;
+  const tailnetHttp = base.protocol === "http:"
+    && allowTailnetHttp
+    && isCanonicalTailnetIpv4(baseUrl, base.hostname);
+  if ((base.protocol !== "https:" && !loopbackHttp && !tailnetHttp)
     || base.username.length > 0
     || base.password.length > 0
     || base.search.length > 0
@@ -731,6 +739,24 @@ function isSafeModelAlias(model: string, apiKey: string, baseUrl: string, base: 
     base.href,
     base.hostname,
   ].some((sensitiveValue) => normalizedModel.includes(sensitiveValue.toLowerCase()));
+}
+
+function isCanonicalTailnetIpv4(baseUrl: string, parsedHostname: string): boolean {
+  // This is only a syntactic range check. Operators remain responsible for private routing and tailnet ownership.
+  const authority = /^http:\/\/([^/?#]*)/i.exec(baseUrl)?.[1];
+  if (!authority || authority.includes("@")) return false;
+  const firstColon = authority.indexOf(":");
+  if (firstColon !== authority.lastIndexOf(":")) return false;
+  const hostname = firstColon < 0 ? authority : authority.slice(0, firstColon);
+  if (hostname !== parsedHostname) return false;
+
+  const octets = hostname.split(".");
+  if (octets.length !== 4 || octets.some((octet) => !/^(0|[1-9][0-9]{0,2})$/.test(octet))) return false;
+  const values = octets.map(Number);
+  return values.every((octet) => octet <= 255)
+    && values[0] === 100
+    && values[1] >= 64
+    && values[1] <= 127;
 }
 
 function readInteger(value: unknown, minimum: number, maximum: number): number {
