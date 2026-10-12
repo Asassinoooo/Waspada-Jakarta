@@ -62,12 +62,13 @@ The CLI stores a closed private run manifest in ignored `.codex-build/ai-gateway
 | Full smoke, v2 profiles | 7 | Classification, embedding, sufficient reasoning, insufficient reasoner skip and planner accepted. Extraction `timeout` at25,002ms. Overall failure. |
 | Separate v2 extraction latency probe | 1 chat call | `timeout` at45,006ms; no accepted extraction result or measured usage. |
 | User-requested extraction with no client deadline | 1 chat call | Native Node HTTP, `clientDeadlineMs:null`. Completed after75,773ms withHTTP200, but the transport/parser returned `invalid_response` and the adapter returned `provider_error`. No accepted schema2.0 extraction or measured usage. |
+| User-requested extraction with no client deadline or output-limit parameters | 1 chat call | Sent only `model`, `messages`, `stream`. Completed after6,499ms withHTTP200; schema2.0 extraction and exact source lineage accepted. Reported usage927 input /555 output /1,482 total tokens. |
 
-Total:20 application HTTP attempts including catalogs/failed calls, with2 embedding calls. Each full run stayed within its own8-attempt ceiling; the no-deadline diagnostic allowed exactly one extraction request. No application retry/fallback was enabled. Hidden gateway/provider attempts are unknown. These diagnostics do not change the smoke CLI's25-second deadline, local pipeline's25/26-second gateway/wait limits or L3 budgets.
+Total:21 application HTTP attempts including catalogs/failed calls, with2 embedding calls. Each full run stayed within its own8-attempt ceiling; each separately authorized no-deadline diagnostic allowed exactly one extraction request. No application retry/fallback was enabled. Hidden gateway/provider attempts are unknown. These diagnostics do not change the smoke CLI's25-second deadline, local pipeline's25/26-second gateway/wait limits or L3 budgets.
 
 The two ignored full-run manifests are `smoke-20261012T033519680Z.json` and `smoke-20261012T034959318Z.json`. They retain the failed results; the later run took about41.8 seconds in total. Reported model names differed across operations, so the run does not establish a pinned upstream identity; labels alone do not prove which weights ran. Embedding reported the requested native preview identifier and768 dimensions in both runs; token usage remains unavailable.
 
-Before another live test, inspect gateway/upstream availability, queueing and latency for extraction or provide a reviewed faster fixed route. Client deadlines do not prove upstream work terminated. No model/router configuration was changed, and these small samples do not identify the cause of the timeout or establish a failure rate.
+A later extraction-only diagnostic passed, as recorded below; neither complete live smoke passed. Further real tests require their own bounded assignment. Client deadlines do not prove upstream work terminated. No model/router configuration was changed, and these small samples do not identify the cause of the earlier failures or establish a failure rate.
 
 ## Diagnostic and code verification
 
@@ -86,6 +87,21 @@ node --env-file=.env.local --import tsx tools/ai/run-extraction-probe.ts --live 
 The single real request ran08:21:05.897–08:22:21.671UTC and returnedHTTP200 after75.773seconds. It failed as `provider_error` / `invalid_response`; usage remained unavailable and no typed extraction was accepted. The safe ignored manifest is `.codex-build/ai-extraction-probe/probe-d1254051-b3cc-45c9-8b4d-c3375cbc5778.json`. It records the fixture hash/identity, no client deadline, native transport, elapsed time and closed observation, without raw response or errors. The content-free manifest does not identify which response/envelope/content check failed, so this result must not be attributed specifically to malformed model JSON or a particular upstream model. Gateway/upstream/OS/network limits remain outside this client setting. Removing the client deadline did not produce a usable extraction in this attempt; no second request was made.
 
 Luna/max implementation `eea2d90` (`feat(ai): add opt-in no-deadline extraction probe`) on its isolated branch was independently reviewed and merged at `29ca903`. Root focused provider/probe/old smoke-CLI checks45/45, Worker517/517, all workspace/tool typecheck and Worker dry-run passed in WSL. The independent reviewer passed focused28/28, AI/Worker typechecks and disabled CLI. No new dependency, router setting, public/domain contract, hosted resource or database change occurred. See [assignment/handoff](assignments/AI-01-EXTRACTION-NO-DEADLINE-PROBE.md).
+
+### No deadline or output-limit parameters — successful rerun
+
+At the user's follow-on request, an explicit diagnostic flag removes output-control parameters from the extraction request. The trusted provider option defaults false and applies to extraction only. The wire payload contains exactly `model`, `messages` and `stream:false`; it omits `max_tokens`, `max_completion_tokens`, `max_output_tokens`, `stop` and sampling controls. No application timer, retry or other capability is added. The former4,096 output-token acceptance check is skipped only in this mode. The schema2.0 total-usage ceiling of12,000 remains a post-response application validation, not a sent generation parameter; the256KiB response cap also remains.
+
+```sh
+# One explicitly authorized synthetic extraction, without client timers or output-limit fields:
+node --env-file=.env.local --import tsx tools/ai/run-extraction-probe.ts --live --no-timeout --omit-output-limits
+```
+
+Root ran this once at09:17:56.824–09:18:03.324UTC on12October2026. It passed after6,499ms withHTTP200. The manifest confirms the exact three wire keys, `finishReason:stop`, one choice, nonempty JSON content and reported usage927 input /555 output /1,482 total tokens. The typed schema2.0 `ExtractionResult` has matching candidate/revision/hash identity, category `utilities_essential_services`, three tags and one `supports` reference covering the unchanged125-code-point synthetic report. Event-time precision remains unknown and no geographic entity/geometry is produced. This diagnostic validates schema and source-reference identity/ranges; it does not run the separate semantic-support oracle or establish factual quality.
+
+The ignored content-free manifest is `.codex-build/ai-extraction-probe/probe-1045be92-c8de-4ffe-ab42-58f3d9f800be.json`. No raw response, provider error, endpoint or key is retained in it or committed. There were no embedding, reasoning, planner, source, database or publication calls. The successful sample does not prove that removing `max_tokens` caused the improvement: the combo's upstream selection is unpinned and these were separate requests. Earlier failures and production deadlines remain recorded and unchanged; a complete live pipeline is still unverified.
+
+Luna/max implementation `ec6af2ebd84c50096349526503a7866208606ff7` (`feat(ai): omit extraction output limits in probe`) changed the same four assigned paths and was independently reviewed before root merge `45ecded`. Agent and independent reviewer passed focused29/29, AI/Worker typechecks and disabled-default CLI. Root passed expanded focused46/46, Worker518/518, AI/Worker typechecks, Worker Wrangler dry-run and diff checks in WSL Ubuntu-26.04. The unchanged web/DB suites were not rerun for this diagnostic. No dependency, public/domain contract, hosted resource or router configuration changed.
 
 ### Earlier adapter/harness verification
 
