@@ -513,6 +513,103 @@ test("rejects URL-shaped and credential-bearing model configuration before any p
   assert.equal(fetchCount, 0);
 });
 
+test("allows explicit HTTP only for canonical RFC6598 addresses with the private-route opt-in", async () => {
+  const scripted = scriptedFetch(() => embeddingResponse());
+  const provider = createNinerouterProvider({
+    ...baseConfiguration,
+    baseUrl: "http://100.64.0.1:8080",
+    allowTailnetHttp: true,
+  }, scripted.fetchImpl);
+
+  assert.deepEqual(await provider.provider.embed({ data: { chunk: { text: "synthetic" } } } as EmbeddingRequest), { vector: validVector() });
+  assert.equal(scripted.calls.length, 1);
+  assert.equal(scripted.calls[0]?.url.href, "http://100.64.0.1:8080/v1/embeddings");
+});
+
+test("rejects RFC6598 range neighbors, noncanonical IPv4 forms, and all other HTTP hosts", () => {
+  const rejectedUrls = [
+    "http://100.63.255.255",
+    "http://100.128.0.0",
+    "http://100.64.0.256",
+    "http://100.064.0.1",
+    "http://100.64.1",
+    "http://0x64400001",
+    "http://192.168.1.10",
+    "http://8.8.8.8",
+    "http://router.example.invalid",
+  ];
+
+  for (const baseUrl of rejectedUrls) {
+    assert.throws(() => createNinerouterProvider({
+      ...baseConfiguration,
+      baseUrl,
+      allowTailnetHttp: true,
+    }, scriptedFetch(() => embeddingResponse()).fetchImpl), (error: unknown) => {
+      assert.equal(error instanceof Error ? error.message : "", "invalid_configuration");
+      return true;
+    }, baseUrl);
+  }
+
+  for (const baseUrl of ["http://100.64.0.1", "http://100.127.255.255"]) {
+    assert.doesNotThrow(() => createNinerouterProvider({
+      ...baseConfiguration,
+      baseUrl,
+      allowTailnetHttp: true,
+    }, scriptedFetch(() => embeddingResponse()).fetchImpl));
+  }
+
+  for (const baseUrl of ["http://localhost", "http://127.0.0.1", "http://[::1]"]) {
+    assert.doesNotThrow(() => createNinerouterProvider({
+      ...baseConfiguration,
+      baseUrl,
+    }, scriptedFetch(() => embeddingResponse()).fetchImpl));
+  }
+});
+
+test("requires a boolean tailnet HTTP opt-in and keeps public HTTP disabled", () => {
+  for (const allowTailnetHttp of ["true", null, 1]) {
+    assert.throws(() => createNinerouterProvider({
+      ...baseConfiguration,
+      baseUrl: "http://100.64.0.1",
+      allowTailnetHttp,
+    } as unknown as NinerouterProviderConfiguration), /invalid_configuration/);
+  }
+
+  assert.throws(() => createNinerouterProvider({
+    ...baseConfiguration,
+    baseUrl: "http://100.64.0.1",
+  }, scriptedFetch(() => embeddingResponse()).fetchImpl), /invalid_configuration/);
+
+  for (const baseUrl of ["http://100.64.0.1", "http://8.8.8.8", "http://192.168.1.10"]) {
+    assert.throws(() => createNinerouterProvider({
+      ...baseConfiguration,
+      baseUrl,
+      allowTailnetHttp: false,
+    }, scriptedFetch(() => embeddingResponse()).fetchImpl), /invalid_configuration/);
+  }
+});
+
+test("keeps manual redirect rejection enabled for explicitly allowed tailnet HTTP", async () => {
+  const observations: NinerouterObservation[] = [];
+  const scripted = scriptedFetch(() => new Response("", {
+    status: 302,
+    headers: { location: `https://attacker.example.invalid/${baseConfiguration.apiKey}` },
+  }));
+  const provider = createNinerouterProvider({
+    ...baseConfiguration,
+    baseUrl: "http://100.64.0.1",
+    allowTailnetHttp: true,
+    onObservation: (observation) => observations.push(observation),
+  }, scripted.fetchImpl);
+
+  await assert.rejects(provider.provider.embed({ data: { chunk: { text: "synthetic" } } } as EmbeddingRequest), /redirect_rejected/);
+  assert.equal(scripted.calls.length, 1);
+  assert.equal(scripted.calls[0]?.init.redirect, "manual");
+  assert.equal(observations[0]?.reason, "redirect_rejected");
+  assert.equal(JSON.stringify(observations).includes(baseConfiguration.apiKey), false);
+  assert.equal(JSON.stringify(observations).includes("attacker.example.invalid"), false);
+});
+
 test("rejects embedding chunks above the conservative UTF-8 input reservation before HTTP", async () => {
   let fetchCount = 0;
   const observations: NinerouterObservation[] = [];
