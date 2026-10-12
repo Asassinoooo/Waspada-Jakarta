@@ -27,10 +27,6 @@ function countModels(adapter: ModelCapabilityAdapter) {
   return { adapter: counted, calls };
 }
 
-interface RenewableLocalPipelineStore extends LocalPipelineStore {
-  renewAi(job: AiJob, now: string, leaseDurationMs?: number): Promise<boolean>;
-}
-
 interface RenewalEvent {
   readonly at: string;
   readonly result: boolean;
@@ -66,7 +62,7 @@ function createAsyncQueue<T>() {
 }
 
 function observeRenewals(
-  store: RenewableLocalPipelineStore,
+  store: LocalPipelineStore,
   renew?: (job: AiJob, now: string, leaseDurationMs?: number) => Promise<boolean>,
 ) {
   const events = createAsyncQueue<RenewalEvent>();
@@ -89,7 +85,7 @@ function observeRenewals(
       const value = Reflect.get(target, property, receiver) as unknown;
       return typeof value === 'function' ? value.bind(target) : value;
     },
-  }) as RenewableLocalPipelineStore;
+  }) as LocalPipelineStore;
   return { store: observed, events };
 }
 
@@ -251,6 +247,7 @@ test('actual PGlite capture continues during a pending model and timeout leaves 
   let aiStarted!: () => void;
   const started = new Promise<void>((resolve) => { aiStarted = resolve; });
   let firstCall = true;
+  let cancelCalls = 0;
   const adapter: ModelCapabilityAdapter = { ...models.adapter, extract: async (request) => {
     if (firstCall) { firstCall = false; aiStarted(); return new Promise(() => undefined); }
     return models.adapter.extract(request);
@@ -258,7 +255,8 @@ test('actual PGlite capture continues during a pending model and timeout leaves 
   const database = await openLocalPipelineDatabase({ profileId: models.profileId });
   try {
     const store = createLocalPipelineStore(database.executor);
-    const processor = createLocalPipelineProcessor({ store, executor: database.executor, ...models, adapter, now: () => start, modelTimeoutMs: 250 });
+    const processor = createLocalPipelineProcessor({ store, executor: database.executor, ...models, adapter,
+      now: () => start, modelTimeoutMs: 250, cancel: () => { cancelCalls++; } });
     const original = await authoredFeed();
     const changed = { ...original, reports: original.reports.map((report) => ({ ...report, text: `${report.text}\nVersi latihan kedua.` })) };
     let poll = 0;
@@ -278,6 +276,7 @@ test('actual PGlite capture continues during a pending model and timeout leaves 
     assert.equal(summary.ai.retry, 1);
     assert.equal(summary.ai.completed, 1);
     assert.equal(summary.proposals, 1);
+    assert.equal(cancelCalls, 1, 'the processor fallback timeout cancels the active transport');
     await assertPrivateOnly(database.executor);
   } finally { await database.close(); }
 });
@@ -344,7 +343,7 @@ test('long AI wait renews the five-minute lease and completes after its original
   };
   const database = await openLocalPipelineDatabase({ profileId: models.profileId });
   try {
-    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    const backingStore = createLocalPipelineStore(database.executor);
     let renewalsInFlight = 0;
     let maxRenewalsInFlight = 0;
     const observed = observeRenewals(backingStore, async (job, renewalTime, leaseDurationMs) => {
@@ -403,7 +402,7 @@ test('lost long-wait renewal cancels late persistence and expired lease recovers
   };
   const database = await openLocalPipelineDatabase({ profileId: models.profileId });
   try {
-    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    const backingStore = createLocalPipelineStore(database.executor);
     const observed = observeRenewals(backingStore, async (job, _requestedAt, leaseDurationMs) =>
       await backingStore.renewAi(job, now, leaseDurationMs));
     const processor = createLocalPipelineProcessor({ store: observed.store, executor: database.executor, ...models,
@@ -456,7 +455,7 @@ test('renewal exception cancels the provider and fails closed before late stage 
   };
   const database = await openLocalPipelineDatabase({ profileId: models.profileId });
   try {
-    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    const backingStore = createLocalPipelineStore(database.executor);
     const observed = observeRenewals(backingStore, async () => { throw new Error('private_renewal_failure'); });
     const processor = createLocalPipelineProcessor({ store: observed.store, executor: database.executor, ...models,
       adapter, now: () => start, modelTimeoutMs: 901_000, leaseRenewIntervalMs: 15,
@@ -502,7 +501,7 @@ test('abort settles an ignored model wait and removes the renewal timer', { time
   const controller = new AbortController();
   const database = await openLocalPipelineDatabase({ profileId: models.profileId });
   try {
-    const backingStore = createLocalPipelineStore(database.executor) as RenewableLocalPipelineStore;
+    const backingStore = createLocalPipelineStore(database.executor);
     const observed = observeRenewals(backingStore);
     const processor = createLocalPipelineProcessor({ store: observed.store, executor: database.executor, ...models,
       adapter, now: () => now, signal: controller.signal, cancel: () => { cancelCalls++; },

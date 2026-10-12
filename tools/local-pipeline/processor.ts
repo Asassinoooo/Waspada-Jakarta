@@ -92,10 +92,6 @@ interface PreparedSnapshot {
   readonly chunks: Awaited<ReturnType<typeof chunkPreparedText>>;
 }
 
-interface LeaseRenewingStore extends LocalPipelineStore {
-  renewAi(job: AiJob, now: string, leaseDurationMs?: number): Promise<boolean>;
-}
-
 interface AiLeaseGuard {
   readonly leaseLost: boolean;
   assertActive(): void;
@@ -212,27 +208,31 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
         renew: modelTimeoutMs > LONG_WAIT_RENEWAL_THRESHOLD_MS,
         renewIntervalMs: leaseRenewIntervalMs,
       });
+      let failed = false;
       let failure: unknown;
       try {
         lease.assertActive();
         await processOneAiJob(job, lease);
       } catch (error) {
+        failed = true;
         failure = error;
       }
       // No timer or in-flight renewal may outlive a completion/failure transition.
       await lease.stop();
-      if (failure === undefined) {
+      if (!failed) {
         try {
           const completed = await lease.runFenced(() => store.completeAi(job, now()));
           if (!completed) {
             lease.markLeaseLost();
+            failed = true;
             failure = new LeaseControlFailure('lease_lost');
           }
         } catch (error) {
+          failed = true;
           failure = error;
         }
       }
-      if (failure !== undefined && !lease.leaseLost) {
+      if (failed && !lease.leaseLost) {
         const code = failure instanceof ProcessorFailure
           ? failure.code
           : failure instanceof ModelTimeout
@@ -745,7 +745,6 @@ function createAiLeaseGuard(options: {
   readonly renewIntervalMs: number;
 }): AiLeaseGuard {
   const { job, store, now, signal, cancel, renew, renewIntervalMs } = options;
-  const leaseStore = store as LeaseRenewingStore;
   let stopped = false;
   let leaseLost = false;
   let cancelled = false;
@@ -814,7 +813,7 @@ function createAiLeaseGuard(options: {
         if (stopped || leaseLost || cancelled) return;
         try {
           assertActive();
-          const renewed = await leaseStore.renewAi(job, now(), JOB_QUEUE_POLICY.maxLeaseDurationMs);
+          const renewed = await store.renewAi(job, now(), JOB_QUEUE_POLICY.maxLeaseDurationMs);
           if (!renewed) markLeaseLost();
         } catch {
           // A failed renewal leaves ownership uncertain, so this attempt fails closed.
