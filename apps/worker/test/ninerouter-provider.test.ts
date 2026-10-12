@@ -487,6 +487,32 @@ test("rejects oversized embedding input before fetch and validates configuration
   }
 });
 
+test("rejects URL-shaped and credential-bearing model configuration before any provider request", () => {
+  let fetchCount = 0;
+  const scripted = scriptedFetch(() => {
+    fetchCount += 1;
+    return embeddingResponse();
+  });
+  const invalidConfigurations = [
+    { ...baseConfiguration, chatModel: "https://other.example.invalid/model" },
+    { ...baseConfiguration, embeddingModel: "https://other.example.invalid/model" },
+    { ...baseConfiguration, chatModel: `curated/${baseConfiguration.apiKey}` },
+    { ...baseConfiguration, embeddingModel: `google/${baseConfiguration.apiKey}` },
+    { ...baseConfiguration, chatModel: "curated/router.example.invalid/model" },
+    { ...baseConfiguration, curationEpoch: `weekly-${baseConfiguration.apiKey}` },
+  ];
+
+  for (const invalid of invalidConfigurations) {
+    assert.throws(() => createNinerouterProvider(invalid, scripted.fetchImpl), (error: unknown) => {
+      assert.equal(error instanceof Error ? error.message : "", "invalid_configuration");
+      assert.equal(error instanceof Error ? error.message.includes(baseConfiguration.apiKey) : false, false);
+      assert.equal(error instanceof Error ? error.message.includes("router.example.invalid") : false, false);
+      return true;
+    });
+  }
+  assert.equal(fetchCount, 0);
+});
+
 test("rejects embedding chunks above the conservative UTF-8 input reservation before HTTP", async () => {
   let fetchCount = 0;
   const observations: NinerouterObservation[] = [];

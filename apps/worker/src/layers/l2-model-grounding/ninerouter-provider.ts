@@ -661,7 +661,9 @@ function validateConfiguration(config: NinerouterProviderConfiguration): Validat
   const chatModel = readIdentifier(config.chatModel);
   const embeddingModel = readIdentifier(config.embeddingModel);
   const curationEpoch = readString(config.curationEpoch, 64);
-  if (!API_KEY_PATTERN.test(apiKey) || !PROMPT_EPOCH_PATTERN.test(curationEpoch)) {
+  if (!API_KEY_PATTERN.test(apiKey)
+    || !PROMPT_EPOCH_PATTERN.test(curationEpoch)
+    || curationEpoch.toLowerCase().includes(apiKey.toLowerCase())) {
     throw new Error("invalid_configuration");
   }
   let base: URL;
@@ -682,6 +684,9 @@ function validateConfiguration(config: NinerouterProviderConfiguration): Validat
   base.pathname = base.pathname === "/v1" || base.pathname === "/v1/" ? "/v1" : "";
   base.search = "";
   base.hash = "";
+  if ([chatModel, embeddingModel].some((model) => !isSafeModelAlias(model, apiKey, baseUrl, base))) {
+    throw new Error("invalid_configuration");
+  }
 
   const timeoutMs = config.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : readInteger(config.timeoutMs, 1, MAX_TIMEOUT_MS);
   const maxHttpRequests = config.maxHttpRequests === undefined
@@ -714,6 +719,18 @@ function readIdentifier(value: unknown): string {
   const parsed = readString(value, 200);
   if (!IDENTIFIER_PATTERN.test(parsed)) throw new Error("invalid_configuration");
   return parsed;
+}
+
+function isSafeModelAlias(model: string, apiKey: string, baseUrl: string, base: URL): boolean {
+  if (model.includes("://")) return false;
+  const normalizedModel = model.toLowerCase();
+  return ![
+    apiKey,
+    baseUrl,
+    base.origin,
+    base.href,
+    base.hostname,
+  ].some((sensitiveValue) => normalizedModel.includes(sensitiveValue.toLowerCase()));
 }
 
 function readInteger(value: unknown, minimum: number, maximum: number): number {
