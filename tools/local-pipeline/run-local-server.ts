@@ -80,24 +80,32 @@ export async function runLocalPreviewServer(args: readonly string[]): Promise<vo
   }
 
   const stateDirectory = resolve(process.cwd(), '.codex-build', 'local-pipeline', options.state);
-  if (options.realAi) await requireExistingPGliteState(stateDirectory);
-  const models = resolveLocalModels({
-    realAi: options.realAi,
-    omitExtractionOutputLimits: options.omitExtractionOutputLimits,
-    env: options.realAi ? process.env : {},
-  });
-
   let database: LocalPipelineDatabase | undefined;
   let server: LocalPipelinePreviewServerHandle | undefined;
   let schedulerTask: Promise<void> | undefined;
   const controller = new AbortController();
   let resolveStop!: () => void;
   const stopSignal = new Promise<void>((resolvePromise) => { resolveStop = resolvePromise; });
-  const stop = () => { controller.abort(); resolveStop(); };
+  const stop = () => {
+    if (controller.signal.aborted) return;
+    controller.abort();
+    resolveStop();
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
   try {
+    if (options.realAi) await requireExistingPGliteState(stateDirectory);
+    if (controller.signal.aborted) return;
+    const models = resolveLocalModels({
+      realAi: options.realAi,
+      omitExtractionOutputLimits: options.omitExtractionOutputLimits,
+      env: options.realAi ? process.env : {},
+    });
+    if (controller.signal.aborted) return;
     database = options.realAi
       ? await openExistingRealDatabase(stateDirectory, models.profileId)
       : await openLocalPipelineDatabase({ dataDir: stateDirectory, profileId: models.profileId });
+    if (controller.signal.aborted) return;
     const schedulerState: { status: LocalPreviewSchedulerState['status']; polls: number; collectionFailures: number } = {
       status: 'idle', polls: 0, collectionFailures: 0,
     };
@@ -106,8 +114,7 @@ export async function runLocalPreviewServer(args: readonly string[]): Promise<vo
       models: options.realAi ? 'opt_in_gateway' : 'mock',
       scheduler: () => ({ ...schedulerState }),
     });
-    process.on('SIGINT', stop);
-    process.on('SIGTERM', stop);
+    if (controller.signal.aborted) return;
 
     if (options.watch) {
       const store = createLocalPipelineStore(database.executor);

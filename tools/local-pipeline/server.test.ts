@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, lstat, rm } from 'node:fs/promises';
 import test from 'node:test';
 import { request as httpRequest } from 'node:http';
 import type { IncomingHttpHeaders, OutgoingHttpHeaders } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { TransactionalSqlExecutor, SqlExecutor } from '../../apps/db/src/sql.js';
 import { parseLocalServerOptions } from './run-local-server.js';
 import { startLocalPipelinePreviewServer } from './server.js';
@@ -161,3 +167,60 @@ test('scheduler failures become a closed unavailable response', async () => {
     await server.close();
   }
 });
+
+test('server exits cleanly when SIGTERM arrives during database startup', { timeout: 60_000 }, async () => {
+  const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const temporaryRoot = await mkdtemp(join(tmpdir(), 'local-preview-sigterm-'));
+  const state = `signal-${randomUUID().replaceAll('-', '')}`;
+  const stateDirectory = join(temporaryRoot, '.codex-build', 'local-pipeline', state);
+  const loader = resolve(projectRoot, 'node_modules', 'tsx', 'dist', 'loader.mjs');
+  const entrypoint = resolve(projectRoot, 'tools', 'local-pipeline', 'run-local-server.ts');
+  let child: ChildProcess | undefined;
+  let output = '';
+  try {
+    child = spawn(process.execPath, [
+      '--import', loader, entrypoint,
+      '--enable', '--state', state, '--watch', '--interval-ms', '1000', '--max-polls', '2',
+    ], { cwd: temporaryRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout?.setEncoding('utf8').on('data', (chunk: string) => { output += chunk; });
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => { output += chunk; });
+    const exited = childExit(child);
+    const stateCreated = await waitForDirectory(stateDirectory, child, 30_000);
+    assert.equal(stateCreated, true, `database startup did not create its state directory: ${output}`);
+    assert.equal(child.kill('SIGTERM'), true);
+    const result = await exited;
+    assert.equal(result.code, 0, output);
+    assert.equal(result.signal, null, output);
+    assert.equal(output.includes('"status":"listening"'), false, output);
+    assert.equal(output.includes('"status":"collected"'), false, output);
+  } finally {
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await childExit(child);
+    }
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+function childExit(child: ChildProcess): Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
+  }
+  return new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (code, signal) => resolve({ code, signal }));
+  });
+}
+
+async function waitForDirectory(path: string, child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      return (await lstat(path)).isDirectory();
+    } catch {
+      if (child.exitCode !== null || child.signalCode !== null) return false;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+  }
+  return false;
+}
