@@ -1,6 +1,6 @@
 # Private 9router integration test
 
-This local command connects the existing typed L2 capabilities and investigation planner to Team 12's configured gateway. It is a synthetic compatibility test, separate from the map/source demo. It does not acquire source reports, write a database, execute an investigation tool, publish an event, or configure Cloudflare/Neon/Tailscale.
+The standalone smoke command connects typed L2 capabilities and the investigation planner to Team 12's gateway. It is a synthetic compatibility test, separate from the map/source demo, and does not write a database or execute/publish actions. This guide also records the separate durable local pipeline, which persists synthetic L1 evidence and private proposals in disposable PGlite. Neither path acquires a real incident source, publishes an event, or configures Cloudflare/Neon/Tailscale; their commands and timeout policies are distinct.
 
 ## Routes and model profiles
 
@@ -51,7 +51,7 @@ The CLI stores a closed private run manifest in ignored `.codex-build/ai-gateway
 
 ### Actual local probes — 12 October 2026
 
-**No complete live smoke passed.** The latest v2 smoke accepted classification, embedding, sufficient-context reasoning and planner, but extraction timed out. Both full runs correctly returned a nonzero exit code and attempted no action/publication.
+**Neither full live smoke passed.** The latest v2 smoke accepted classification, embedding, sufficient-context reasoning and planner, but extraction timed out. Both full runs correctly returned a nonzero exit code and attempted no action/publication. Separately, the later durable local long-wait pipeline completed extraction → embedding → persisted grounding → reasoning → private persistence on one authored synthetic report; its proposal has zero claims/one unresolved item. That success is narrower than the full classification/planner smoke and does not establish live-source readiness or factual quality.
 
 | Probe | Application HTTP attempts | Actual result |
 | --- | --- | --- |
@@ -64,12 +64,13 @@ The CLI stores a closed private run manifest in ignored `.codex-build/ai-gateway
 | User-requested extraction with no client deadline | 1 chat call | Native Node HTTP, `clientDeadlineMs:null`. Completed after75,773ms withHTTP200, but the transport/parser returned `invalid_response` and the adapter returned `provider_error`. No accepted schema2.0 extraction or measured usage. |
 | User-requested extraction with no client deadline or output-limit parameters | 1 chat call | Sent only `model`, `messages`, `stream`. Completed after6,499ms withHTTP200; schema2.0 extraction and exact source lineage accepted. Reported usage927 input /555 output /1,482 total tokens. |
 | Local durable pipeline/app integration probe | 1 extraction attempt | Transport failure without an accepted HTTP status. L1 retained one snapshot/completed ingestion; AI job `retry`, attempt 1, `model_failed`, no stage receipt/proposal. No embedding/reasoning, automatic retry or publication. |
+| Local durable long-wait pipeline probe | 3 attempts: extraction, embedding, reasoning | All HTTP200; 45.717s / 0.961s / 22.539s respectively. All five stage receipts, completed L1/AI at attempt1, one lease renewal, one private proposal with zero claims/one unresolved item. No publication or retry. |
 
-Total: 22 application HTTP attempts including catalogs/failed calls, with 2 embedding calls. Each full run stayed within its own 8-attempt ceiling; each separately authorized no-deadline diagnostic allowed exactly one extraction request. The new pipeline probe reserved at most three attempts and used only one. No application retry/fallback was enabled in those probes. Hidden gateway/provider attempts are unknown. These diagnostics do not change the smoke CLI's 25-second deadline, local pipeline's 25/26-second gateway/wait limits or L3 budgets.
+Total: **25 application HTTP attempts**, including catalogs/failed calls, with **3 embedding calls**. Each full run stayed within its own 8-attempt ceiling; each separately authorized no-deadline diagnostic allowed exactly one extraction request. The first local pipeline probe used one of its three permitted attempts; the later long-wait probe used exactly three. No application retry/fallback was enabled in those probes. Hidden gateway/provider attempts are unknown. [ADR-057](decisions/ADR-057-local-long-model-waits.md) changes local real once/resume to 900,000/901,000ms with fenced lease renewal; the separate smoke CLI's 25-second deadline, Worker defaults and L3 budgets remain unchanged.
 
 The two ignored full-run manifests are `smoke-20261012T033519680Z.json` and `smoke-20261012T034959318Z.json`. They retain the failed results; the later run took about41.8 seconds in total. Reported model names differed across operations, so the run does not establish a pinned upstream identity; labels alone do not prove which weights ran. Embedding reported the requested native preview identifier and768 dimensions in both runs; token usage remains unavailable.
 
-A later extraction-only diagnostic passed, as recorded below; neither complete live smoke passed. Further real tests require their own bounded assignment. Client deadlines do not prove upstream work terminated. No model/router configuration was changed, and these small samples do not identify the cause of the earlier failures or establish a failure rate.
+A later extraction-only diagnostic and the local long-wait durable attempt passed their typed boundaries, as recorded below; neither full live smoke passed. Further real tests require their own bounded assignment. Client deadlines do not prove upstream work terminated. No model/router configuration was changed, and these small samples do not identify the cause of the earlier failures or establish a failure rate.
 
 ## Diagnostic and code verification
 
@@ -111,6 +112,24 @@ Root ran one authored-synthetic attempt at 13:04:22.695–13:05:46.445 UTC on 12
 State `real-bf6a5d3c-c117-4c5b-bff4-a15f629090c6` retains one snapshot and completed L1 ingestion. Its AI job is `retry`, attempt 1, `model_failed`; no stages, proposal or publication rows exist. No embedding/reasoning request or automatic retry occurred. Ignored receipt: `.codex-build/ai-gateway-smoke/pipeline-4ccbf53f-2c80-4947-b795-884e8be36b49.json`. Tag `app-integration-test-20261012-v1` was process-only and explicitly a test-run tag because no operator curation epoch was configured.
 
 Root opened that exact existing state through the profile-matched, read-only local service after the CLI closed. Browser checks passed for the real retry state, desktop/mobile layout and unchanged job/evidence after manual refresh. This proves failure visibility and retention, not successful AI integration or live-source readiness. The normal mock service was restored afterward. See [local startup and recovery rules](LOCAL_PRIVATE_PIPELINE.md).
+
+### Durable long-wait pipeline — actual result
+
+Following [ADR-057](decisions/ADR-057-local-long-model-waits.md), root ran exactly one fresh authored-synthetic attempt at **13:52:46.001–13:54:24.808 UTC**, 12 October2026. Each provider request had a900,000ms deadline with a901,000ms processor fallback and renewable five-minute private AI lease. No extra retry occurred. Total98.806s includes database startup/closure and is not extraction latency.
+
+| Capability | Outcome / duration | Sent payload keys | Reported usage |
+| --- | --- | --- | --- |
+| Extraction | HTTP200 /45,717ms; typed schema and source lineage accepted | messages, model, stream | 1,391 input +2,630 output =4,021 tokens |
+| Embedding | HTTP200 /961ms; requested preview route,768 dimensions accepted | dimensions, encoding_format, input, model | Unavailable; not zero consumption |
+| Reasoning | HTTP200 /22,539ms; typed result accepted and privately persisted | max_tokens, messages, model, stream | 1,545 input +1,232 output =2,777 tokens |
+
+Database result: one immutable snapshot, one completed L1 job, one completed AI job at attempt1, receipts for extraction/embedding/grounding/reasoning/proposal, one private proposal, one successful renewal and zero lost renewals. The read-only projection confirms **zero claims and one unresolved item**. This is successful local transport and persistence, not proof that the model produced useful or verified claims. Event, impact, publication-decision and outbox tables remain empty. Chat usage totals6,798 reported tokens across the two calls; embedding usage remains unavailable and no shared quota ledger was introduced.
+
+Ignored content-free manifest: `.codex-build/ai-gateway-smoke/long-wait-9b3d08d2-7796-4fe2-855e-249e65d52450.json`. State: `real-d2517cc6-d11a-474f-8c4e-98c689cb751c`. Process-only epoch: `app-long-wait-test-20261012-v1`, explicitly `test_run_tag` because no operator epoch was configured; the alias does not pin upstream weights. No raw prompt/response/error, endpoint, key or vectors were committed.
+
+The45.717-second extraction exceeds the earlier25-second local limit for this sample; it does **not** prove what caused the older `transport_failure`. Root opened the exact completed state through the profile-matched read-only service. Three browser groups passed: actual stored result via the strict client, desktop/mobile layout, and manual refresh preserving jobs/evidence/proposal. Screenshots explicitly display the zero-claim state and unresolved count; the initial harness's unsupported nonempty-claim assertion was corrected without a new model call.
+
+Root WSL verification passed: isolated pipeline58/58, Worker519/519, evaluation/AI41/41, workspace/tool typechecks, Vite/Worker dry-run build and smoke. Independent Luna/max review covered response-body/late/pre-abort cancellation and fenced lease renewal. No UI/schema/grant/dependency or cloud configuration changed. The unchanged web/wider DB suites were not rerun for this slice. Real-source transfer rights, human quality labels, scalable retrieval, hidden gateway retries/identity, global quotas, hosted connectivity/concurrency and production L3/L4 remain gates. See [commands and recovery](LOCAL_PRIVATE_PIPELINE.md) and [handoff](assignments/RAG-01-LOCAL-LONG-WAIT.md).
 
 ### Earlier adapter/harness verification
 
