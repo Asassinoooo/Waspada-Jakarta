@@ -16,6 +16,8 @@ Export `createNinerouterProvider(config: NinerouterProviderConfiguration, fetchI
 
 Configuration fields: `baseUrl`, `apiKey`, `chatModel`, `embeddingModel`, `curationEpoch` (all strings), optional `timeoutMs`, `maxHttpRequests`, `onObservation`. Use fixed768 embedding dimensions/raw-text profile and no prefix mutation. Logical test route/epoch tags in configuration are not reproducible upstream weight IDs. Bundle fields: `provider: UntrustedModelProvider`, `plannerProvider: InvestigationPlanProvider`, `configuration: ModelAdapterConfiguration`, `plannerMetadata: InvestigationPlannerMetadata`, and `discoverModels(): Promise<NinerouterDiscovery>`.
 
+Root compatibility decision after the first live CLI attempt: add private `allowTailnetHttp?:boolean`, default false. HTTPS and loopback HTTP remain allowed. With explicit opt-in only, permit a literal IPv4 address in RFC6598 `100.64.0.0/10`; outside addresses and HTTP DNS names remain denied. The user's configured gateway is in this range; the initial attempt failed before HTTP/inference. This range check is not proof of tailnet membership, so it is restricted to the user-authorized local test; no network/provider configuration changes. Root CLI opts in, reviewer verifies boundaries, and the manifest records the opt-in without storing an endpoint.
+
 Discovery closed fields: `chatFound:boolean`, `embeddingFound:boolean`, `chatContextLength:number|null`, `chatIsCombo:boolean`; inspect only requested aliases via `/v1/models` / `/v1/models/embedding`. No account/credential/configuration reads or writes. Keep base-path handling valid when configured root ends in `/v1` or `/v1/`.
 
 Export a closed non-sensitive `NinerouterObservation` type suitable for a private run manifest: capability/requested route, optional safe reported response model, outcome/reason, HTTP status if available, duration, optional gateway-reported usage or explicit unavailable usage, vector dimensions if available. No URL/key/header/raw input/output/error body, no fabricated usage. The embedding adapter has no usage field; keep its accounting observation separate. Treat chat usage as gateway-reported, not independently measured provider tokens.
@@ -36,3 +38,21 @@ Meaningful mocked tests: route/auth/base-path/dimension/scalar mapping; separate
 WSL Ubuntu-26.04 only; fixed PATH `/home/perry/.nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin`, Node24.21.0/npm11.19.0, existing tsx4.23.15/TypeScript7.0.2. Run `node --import tsx --test apps/worker/test/ninerouter-provider.test.ts`, `npm run typecheck --workspace=@waspada/worker`, staged/base `git diff --check` using correct WSL Git worktree paths. No installs. Root runs integrated checks and bounded live smoke.
 
 Stop/message root for scope/contract conflicts or substantive failures; continue independent work. Commit coherent code/test and handoff on own branch; return exact SHAs/messages, allowed paths, actual checks/limitations/configuration impact. Never merge/push/approve own implementation or use private root env. Unknown user gateway behaviors remain root's probe responsibility.
+
+## Root acceptance — 12 October 2026
+
+Local transport accepted after root and separate Luna/max review; live end-to-end compatibility remains incomplete. Branch `work/RAG-01-NINEROUTER-PROVIDER`, worktree `.codex-build/worktrees/rag01-ninerouter-provider`, base `64bd95af84c417c436c98a16b2b74e901052b59e`; only the provider and test files changed.
+
+Verified task commits and exact messages:
+
+- `d65b3c4abe665cec2fc8d4d7c59e7cd7449241a8` — `feat(RAG-01): add bounded 9router provider transport`
+- `479878e8ed7ec714bc7f56553a05014a17fdf4b1` — `fix(RAG-01): bound embedding input and sanitize model metadata`
+- `1d4acef41c8a827d4db1c182efda13e0011f556c` — `fix(RAG-01): reject unsafe configured route labels`
+- `e62dd957121a8ede3e96f46392eff30cfaf988ce` — `fix(RAG-01): gate private tailnet HTTP explicitly`
+- `df3d7d5623672754ae70cdc597ad79a302466751` — `fix(RAG-01): improve prompt fidelity and bounded chat output`
+
+Root merges preserve all commits: `f30c68cec07add3116a45d25358c444b0abd7307`, `0d42a00a06720c565173413920ebaa9458484962`, and `21e704490ceddd1d35a8f3e680375030784f53db`. No implementer approved or pushed their own work. Independent reviewer reran final provider22/22, Worker typecheck and base diff; root integrated focused39/39 and Worker516/516, workspace/evaluation/AI typecheck, Worker dry-run and UI/API smoke passed in WSL. Node24.21.0/npm11.19.0/existing dependencies only.
+
+Accepted follow-up design: v2 classification/extraction input includes deterministic full-report citation bounds beside unchanged source data, with relation still model-proposed and unsupported facts unknown; v2 reasoning describes exact nested/time/reference types. Output allowance4,096 stays within conservative input/caller/12k bounds. Generic validators, contracts and strict JSON/no-repair behavior are unchanged. HTTP tailnet opt-in is defaultfalse and literal/canonical/range-bounded.
+
+Root-only synthetic probes confirmed both aliases and768-dimensional preview embedding. Latest v2 full smoke accepted classification/reasoning/planner but extraction timed out25s and a separate45s probe also timed out. Both full live smokes remain failed; no source/DB/action/publication/cloud configuration changed. Actual attempts/limitations are in [the guide](../PRIVATE_AI_GATEWAY_TESTING.md). Production routing/accounting, held-out quality and extraction availability remain gates; no schema/migration/dependency impact.

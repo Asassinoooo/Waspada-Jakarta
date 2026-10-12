@@ -10,6 +10,12 @@ From WSL Ubuntu-26.04 with native Linux Node on `PATH`, run `npm run dev`, then 
 
 See [data integration and demo flow](docs/DEMO_DATA_INTEGRATION.md) for the source terms, typed preview contract and request limits. This demo performs deterministic L1 acquisition/validation and a separate L4 preview; model/RAG and L3 investigation are not invoked. It does not persist to Neon or deploy to Cloudflare. Ordinary OSM tiles use visible attribution and browser caching; automated browser checks stub tiles rather than downloading them.
 
+## Test the private AI gateway locally
+
+From the repository root in WSL, `npm run ai:smoke` stays disabled and makes no model calls. The explicit `npm run ai:smoke:live` command loads ignored `.env.local` variables `NINEROUTER_URL` and `NINEROUTER_KEY`, checks the exact `Waspada-Jakarta` / `gemini/gemini-embedding-2-preview` aliases, and exercises five typed capabilities with authored synthetic reports. It writes only a safe private manifest under ignored `.codex-build`; it does not execute investigation tools, persist to Neon or publish events. The map/source demo remains independent. See [the test guide, bounds and actual results](docs/PRIVATE_AI_GATEWAY_TESTING.md).
+
+The local code checks pass, but no complete live smoke has passed: the latest extraction call timed out at25 seconds and a separate45-second probe also timed out. Classification, embedding768, reasoning and planner were accepted in the latest run. Inspect gateway/upstream extraction availability and latency before another live test or production activation.
+
 GitHub remote: [Asassinoooo/Waspada-Jakarta](https://github.com/Asassinoooo/Waspada-Jakarta), configured locally as `origin`. Root periodically pushes reviewed, integrated checkpoints; implementation agents commit on their own task branches and do not push.
 
 The current report is the [Google Docs project overview](https://docs.google.com/document/d/1xwSzLJmsHau6jlNGQCZ3deaVnrvCyqS0oNyDZaTv6tM). Google Docs is the maintained report format; the previous LaTeX files are historical and are no longer updated or compiled.
@@ -18,7 +24,7 @@ The current report is the [Google Docs project overview](https://docs.google.com
 
 - [Project plan](PROJECT_PLAN.md): users, event coverage, application scope, five layers and delivery.
 - [Architecture](ARCHITECTURE.md): layer responsibilities, model/grounding strategy, investigation limits, publication interfaces and monitoring.
-- [AI model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md): proposed embedding/LLM candidates, existing contracts and activation gates; no live provider is configured.
+- [AI model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md): selected local test routes, typed adapter and opt-in synthetic CLI; public/hosted provider activation remains gated.
 - [Source acquisition and verification](SOURCE_VERIFICATION_PLAN.md): source combinations, evidence rules, freshness and verification scenarios.
 - [Source feasibility](docs/SOURCE_FEASIBILITY.md): dated endpoint checks, live/manual/demo delivery modes, activation gates and retention rules.
 - [Domain model](docs/DOMAIN_MODEL.md): schema 2.0 relationships, state transitions and domain invariants.

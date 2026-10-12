@@ -25,3 +25,18 @@ Use injected scripted test providers. Test actual composition/order/call ceiling
 WSL Ubuntu-26.04/fixed native PATH `/home/perry/.nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin`; Node24.21.0/npm11.19.0/existing tsx4.23.15/TypeScript7.0.2. Run `node --import tsx --test tools/ai/ninerouter-smoke.test.ts`, `tsc --noEmit -p tools/ai/tsconfig.json`, staged/base WSL `git diff --check`. No installs. Root registers and reruns integrated tests; root alone uses `.env.local` for a separately bounded synthetic smoke.
 
 Stop/message root for conflicts or contract decisions; continue independent assigned work. Commit coherent implementation/tests and handoff; return exact base/branch/worktree/SHAs/messages/paths/checks/limits/configuration impact. Do not merge/push/deploy/approve own work or spawn agents.
+
+## Root acceptance — 12 October 2026
+
+Local harness accepted after root and independent Luna/max review. Branch `work/AI-01-NINEROUTER-SYNTHETIC-SMOKE`, worktree `.codex-build/worktrees/ai01-ninerouter-synthetic-smoke`, base `64bd95af84c417c436c98a16b2b74e901052b59e`. Only four assigned `tools/ai` files changed; root owns CLI, registration, env template and docs.
+
+- `3e2d404d7999508695a2cc4ea377b91e61f8e02b` — `feat(ai): add synthetic ninerouter smoke harness`
+- `7f967f407105c0b2d252d41154774cea1c42e3fc` — `fix(ai): anchor synthetic citation lineage`
+
+Root merges `a31945d8e9b49a488389985345581ef6d42daf43` and `40a1e669ee92526fe0484df30e6e2eccb1ed5fdc` preserve both commits. Final implementer/independent reviewer harness12/12/AI typecheck/diff passed; peer reviewer checked the initial harness and root CLI guards. Root integrated focused39/39 (22 provider,12 harness,5 no-network CLI), Worker516/516, workspace/evaluation/AI typecheck, Worker dry-run and UI/API smoke passed. Default CLI is disabled and makes no request.
+
+The limited fixture oracle accepts relevant whole-report or multiple narrow spans, with identity/hash/Unicode bounds and at least one supports span containing the authored service-topic anchor. In-range disclaimer/emoji references fail it. This checks citation placement for one fixture, not semantic quality. Both paths persist refs-only memory contexts; insufficient skips reasoning and proposes only, never executing an action/publication.
+
+Both real full smokes failed overall; latest v2 passed four model boundaries while extraction timed out25s and again in a separate45s probe. No complete live pass or production RAG readiness is claimed. [Actual probes](../PRIVATE_AI_GATEWAY_TESTING.md) retain failed manifests and remaining gates. Source rights, held-out human evaluation, query embedding and hosted integration remain outside this slice.
+
+Process note: an early worktree repair briefly rewrote Git pointers to WSL paths; the implementer restored Windows paths and used per-command `GIT_DIR`/`GIT_WORK_TREE`/`GIT_COMMON_DIR` afterward. Root verified identities; no history rewrite occurred. One agent turn disconnected during compaction and resumed the same files/branch. Neither event justified model escalation.
