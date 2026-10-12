@@ -7,7 +7,7 @@ const feed: AuthoredFeed = { schemaVersion: LOCAL_FEED_SCHEMA, sourceId: LOCAL_S
 function schedulerStore(capture: LocalPipelineStore['capture']): LocalPipelineStore {
   const unused = async (): Promise<never> => { throw new Error('unexpected_scheduler_store_call'); };
   return { capture, recover: async () => ({ ingestion: 0, ai: 0 }), claimIngestion: unused, ingestionSnapshot: unused,
-    finishIngestion: unused, failIngestion: unused, claimAi: unused, readReceipt: unused, checkpoint: unused,
+    finishIngestion: unused, failIngestion: unused, claimAi: unused, renewAi: unused, readReceipt: unused, checkpoint: unused,
     completeAi: unused, failAi: unused, summary: unused };
 }
 test('collection captures a changed report while the independent AI worker is still awaiting', async () => {

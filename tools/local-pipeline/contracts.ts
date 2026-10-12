@@ -57,6 +57,7 @@ export interface LocalPipelineStore {
   finishIngestion(job: AcquisitionJobRecord, now: string, write: (tx: TransactionalSqlExecutor, snapshot: ReportSnapshot) => Promise<void>): Promise<boolean>;
   failIngestion(job: AcquisitionJobRecord, now: string, code: SafeFailure): Promise<FailureTransition>;
   claimAi(now: string, leaseDurationMs?: number): Promise<AiJob | null>;
+  renewAi(job: AiJob, now: string, leaseDurationMs?: number): Promise<boolean>;
   readReceipt(jobId: string, stage: AiStage): Promise<unknown | null>;
   checkpoint(job: AiJob, now: string, stage: AiStage, value: unknown, write?: (tx: TransactionalSqlExecutor) => Promise<void>): Promise<boolean>;
   completeAi(job: AiJob, now: string): Promise<boolean>;

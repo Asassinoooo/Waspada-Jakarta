@@ -211,6 +211,211 @@ test('checkpoint receipts are ordered, immutable, replay-safe and lease fenced',
   }
 });
 
+test('AI lease renewal extends work past its original expiry without changing accounting and recovery resumes after renewals stop', async () => {
+  const database = await openLocalPipelineDatabase({ profileId: 'ai-renewal-test' });
+  try {
+    const store = new SqlLocalPipelineStore(database.executor);
+    await store.capture(feed(authoredReport('renewal-report', 'Renewal text')), T0);
+    const ingestion = await store.claimIngestion(T0);
+    assert.ok(ingestion);
+    assert.equal(await store.finishIngestion(ingestion, plusMs(1_000), writeCanonicalRevision), true);
+    const healthBefore = await sourceHealth(database.executor);
+
+    const ai = await store.claimAi(plusMs(2_000), 1_000);
+    assert.ok(ai);
+    assert.equal(ai.leaseExpiresAt, plusMs(3_000));
+    const extraction = { fixture: 'before-renewal', score: 1 };
+    assert.equal(await store.checkpoint(ai, plusMs(2_100), 'extraction', extraction), true);
+
+    const stateBefore = await database.executor.query<{
+      snapshot_id: string;
+      status: string;
+      attempt_count: number;
+      max_attempts: number;
+      available_at: string;
+      lease_token: string | null;
+      lease_started_at: string | null;
+      lease_expires_at: string | null;
+      updated_at: string;
+      finished_at: string | null;
+    }>(
+      `SELECT snapshot_id, status, attempt_count, max_attempts,
+              available_at::text AS available_at, lease_token,
+              lease_started_at::text AS lease_started_at,
+              lease_expires_at::text AS lease_expires_at,
+              updated_at::text AS updated_at, finished_at::text AS finished_at
+       FROM waspada.local_ai_jobs WHERE job_id = $1`,
+      [ai.jobId],
+    );
+    const receiptsBefore = await database.executor.query<{
+      stage: string;
+      receipt_json: unknown;
+      receipt_sha256: string;
+      recorded_at: string;
+    }>(
+      `SELECT stage, receipt_json, receipt_sha256, recorded_at::text AS recorded_at
+       FROM waspada.local_ai_receipts WHERE job_id = $1 ORDER BY stage`,
+      [ai.jobId],
+    );
+    assert.equal(stateBefore.rows.length, 1);
+    assert.equal(receiptsBefore.rows.length, 1);
+
+    assert.equal(await store.renewAi(ai, plusMs(2_500)), true, 'omitted duration defaults to the five-minute maximum');
+    const renewed = await database.executor.query<{
+      snapshot_id: string;
+      status: string;
+      attempt_count: number;
+      max_attempts: number;
+      available_at: string;
+      lease_token: string | null;
+      lease_started_at: string | null;
+      lease_expires_at: string | null;
+      updated_at: string;
+      finished_at: string | null;
+    }>(
+      `SELECT snapshot_id, status, attempt_count, max_attempts,
+              available_at::text AS available_at, lease_token,
+              lease_started_at::text AS lease_started_at,
+              lease_expires_at::text AS lease_expires_at,
+              updated_at::text AS updated_at, finished_at::text AS finished_at
+       FROM waspada.local_ai_jobs WHERE job_id = $1`,
+      [ai.jobId],
+    );
+    const renewedRow = renewed.rows[0];
+    const beforeRow = stateBefore.rows[0];
+    assert.ok(renewedRow && beforeRow);
+    assert.equal(Date.parse(renewedRow.lease_expires_at!), Date.parse(plusMs(302_500)));
+    assert.ok(Date.parse(renewedRow.lease_expires_at!) > Date.parse(ai.leaseExpiresAt!));
+    assert.equal(renewedRow.snapshot_id, beforeRow.snapshot_id);
+    assert.equal(renewedRow.status, beforeRow.status);
+    assert.equal(renewedRow.attempt_count, beforeRow.attempt_count);
+    assert.equal(renewedRow.max_attempts, beforeRow.max_attempts);
+    assert.equal(renewedRow.available_at, beforeRow.available_at);
+    assert.equal(renewedRow.lease_token, beforeRow.lease_token);
+    assert.equal(renewedRow.lease_started_at, beforeRow.lease_started_at);
+    assert.equal(renewedRow.finished_at, beforeRow.finished_at);
+    assert.equal(Date.parse(renewedRow.updated_at), Date.parse(plusMs(2_500)));
+
+    const afterDefaultRenewal = Date.parse(renewedRow.lease_expires_at!);
+    assert.equal(await store.renewAi(ai, plusMs(3_001), 1_000), true,
+      'the current token can renew after the original expiry while a prior renewal remains active');
+    const afterShortRenewal = await database.executor.query<{ lease_expires_at: string; updated_at: string }>(
+      `SELECT lease_expires_at::text AS lease_expires_at, updated_at::text AS updated_at
+       FROM waspada.local_ai_jobs WHERE job_id = $1`,
+      [ai.jobId],
+    ).then((result) => result.rows[0]);
+    assert.ok(afterShortRenewal);
+    assert.equal(Date.parse(afterShortRenewal.lease_expires_at), afterDefaultRenewal,
+      'a shorter requested expiry must preserve the existing later expiry');
+    assert.equal(Date.parse(afterShortRenewal.updated_at), Date.parse(plusMs(3_001)));
+    assert.deepEqual(await database.executor.query(
+      `SELECT stage, receipt_json, receipt_sha256, recorded_at::text AS recorded_at
+       FROM waspada.local_ai_receipts WHERE job_id = $1 ORDER BY stage`,
+      [ai.jobId],
+    ).then((result) => result.rows), receiptsBefore.rows,
+    'renewal must leave stage receipts byte-for-byte equivalent');
+    assert.deepEqual(await sourceHealth(database.executor), healthBefore,
+      'AI lease renewal must not touch source health');
+
+    const oneMsBeforeExpiry = new Date(afterDefaultRenewal - 1).toISOString();
+    assert.deepEqual(await store.recover(oneMsBeforeExpiry), { ingestion: 0, ai: 0 });
+    const atExpiry = new Date(afterDefaultRenewal).toISOString();
+    assert.deepEqual(await store.recover(atExpiry), { ingestion: 0, ai: 1 },
+      'the lease becomes recoverable at its renewed expiry when heartbeats stop');
+
+    const recovered = await database.executor.query<{ available_at: string }>(
+      'SELECT available_at::text AS available_at FROM waspada.local_ai_jobs WHERE job_id = $1',
+      [ai.jobId],
+    ).then((result) => result.rows[0]);
+    assert.ok(recovered);
+    const retryAt = new Date(Date.parse(recovered.available_at)).toISOString();
+    const retry = await store.claimAi(retryAt);
+    assert.ok(retry);
+    assert.equal(retry.attemptCount, 2);
+    assert.notEqual(retry.leaseToken, ai.leaseToken);
+    const retryStart = Date.parse(retryAt);
+    const stages: readonly [AiStage, unknown][] = [
+      ['extraction', extraction],
+      ['embedding', { stage: 'embedding' }],
+      ['grounding', { stage: 'grounding' }],
+      ['reasoning', { stage: 'reasoning' }],
+      ['proposal', { stage: 'proposal' }],
+    ];
+    for (const [index, [stage, value]] of stages.entries()) {
+      assert.equal(await store.checkpoint(retry, new Date(retryStart + (index + 1) * 1_000).toISOString(), stage, value), true);
+    }
+    const completedAt = new Date(retryStart + 6_000).toISOString();
+    assert.equal(await store.completeAi(retry, completedAt), true);
+    assert.equal(await store.renewAi(ai, completedAt), false, 'a completed job cannot be renewed or revived');
+    assert.deepEqual(await sourceHealth(database.executor), healthBefore);
+  } finally {
+    await database.close();
+  }
+});
+
+test('AI renewal fences stale ownership, foreign snapshots, regressing time, lease boundaries, and terminal jobs', async () => {
+  const database = await openLocalPipelineDatabase({ profileId: 'ai-renewal-fencing-test' });
+  try {
+    const store = new SqlLocalPipelineStore(database.executor);
+    await store.capture(feed(authoredReport('renewal-fencing-report', 'Fencing text')), T0);
+    const ingestion = await store.claimIngestion(T0);
+    assert.ok(ingestion);
+    assert.equal(await store.finishIngestion(ingestion, plusMs(1_000), writeCanonicalRevision), true);
+    const ai = await store.claimAi(plusMs(2_000), 1_000);
+    assert.ok(ai);
+
+    await assert.rejects(store.renewAi(ai, plusMs(2_500), 999), /Lease duration/);
+    await assert.rejects(store.renewAi(ai, plusMs(2_500), 300_001), /Lease duration/);
+    assert.equal(await store.renewAi({ ...ai, leaseToken: 'stale-token' }, plusMs(2_500), 1_000), false);
+    assert.equal(await store.renewAi({
+      ...ai,
+      snapshot: { ...ai.snapshot, reportRevisionId: 'foreign-report-revision' },
+    }, plusMs(2_500), 1_000), false, 'caller-supplied snapshot identity must match the exact owned snapshot');
+
+    const successfulRenewalAt = plusMs(2_600);
+    assert.equal(await store.renewAi(ai, successfulRenewalAt, 1_000), true);
+    const renewedExpiry = plusMs(3_600);
+    assert.equal(await store.renewAi(ai, plusMs(2_550), 1_000), false,
+      'updated_at cannot move backward even while the lease itself remains live');
+    assert.equal(await store.renewAi(ai, renewedExpiry, 1_000), false,
+      'expiry is exclusive and a lease cannot renew at its exact boundary');
+    assert.equal(await store.renewAi(ai, plusMs(3_601), 1_000), false,
+      'an expired lease cannot be revived');
+    assert.deepEqual(await store.recover(renewedExpiry), { ingestion: 0, ai: 1 });
+    assert.equal(await store.renewAi(ai, renewedExpiry, 1_000), false,
+      'recovered retry state is not renewable with the old lease');
+
+    let dueAt = await database.executor.query<{ available_at: string }>(
+      'SELECT available_at::text AS available_at FROM waspada.local_ai_jobs WHERE job_id = $1',
+      [ai.jobId],
+    ).then((result) => result.rows[0]).then((row) => {
+      assert.ok(row);
+      return new Date(Date.parse(row.available_at)).toISOString();
+    });
+    for (let attempt = 2; attempt <= 5; attempt += 1) {
+      const current = await store.claimAi(dueAt, 1_000);
+      assert.ok(current);
+      assert.equal(current.attemptCount, attempt);
+      const failedAt = new Date(Date.parse(dueAt) + 100).toISOString();
+      const transition = await store.failAi(current, failedAt, 'model_timeout');
+      assert.equal(transition, attempt === 5 ? 'terminal' : 'retry');
+      if (attempt === 5) {
+        assert.equal(await store.renewAi(current, new Date(Date.parse(failedAt) + 100).toISOString(), 1_000), false,
+          'a terminal job cannot be renewed or revived');
+      } else {
+        const next = await database.executor.query<{ available_at: string }>(
+          'SELECT available_at::text AS available_at FROM waspada.local_ai_jobs WHERE job_id = $1',
+          [ai.jobId],
+        ).then((result) => result.rows[0]);
+        assert.ok(next);
+        dueAt = new Date(Date.parse(next.available_at)).toISOString();
+      }
+    }
+  } finally {
+    await database.close();
+  }
+});
+
 test('expired AI lease cannot write and AI retry exhaustion leaves source health unchanged', async () => {
   const database = await openLocalPipelineDatabase({ profileId: 'ai-retry-test' });
   try {
@@ -325,6 +530,10 @@ function feed(report: AuthoredReport): AuthoredFeed {
     sourceId: LOCAL_SOURCE_ID,
     reports: [report],
   };
+}
+
+function plusMs(milliseconds: number): string {
+  return new Date(Date.parse(T0) + milliseconds).toISOString();
 }
 
 function authoredReport(id: string, text: string): AuthoredReport {

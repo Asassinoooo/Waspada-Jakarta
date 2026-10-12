@@ -388,6 +388,43 @@ export class SqlLocalPipelineStore implements LocalPipelineStore {
     });
   }
 
+  async renewAi(
+    job: AiJob,
+    nowInput: string,
+    leaseDurationMs: number = JOB_QUEUE_POLICY.maxLeaseDurationMs,
+  ): Promise<boolean> {
+    const now = normalizeExplicitTimestamp(nowInput, 'now');
+    validateAiJob(job);
+    validateLeaseDuration(leaseDurationMs);
+    const requestedExpiry = addMilliseconds(now, leaseDurationMs);
+    const result = await this.executor.query<{ job_id: string }>(
+      `UPDATE waspada.local_ai_jobs AS job
+       SET lease_expires_at = GREATEST(job.lease_expires_at, $3::timestamptz),
+           updated_at = $2::timestamptz
+       FROM waspada.local_report_snapshots AS snapshot
+       WHERE job.job_id = $1 AND job.snapshot_id = snapshot.snapshot_id
+         AND snapshot.dataset_kind = 'synthetic' AND snapshot.source_id = $5
+         AND snapshot.report_revision_id = $4
+         AND EXISTS (
+           SELECT 1
+           FROM waspada.local_report_inbox AS inbox
+           JOIN waspada.acquisition_jobs AS source_job
+             ON source_job.job_id = inbox.source_poll_job_id
+           WHERE inbox.snapshot_id = snapshot.snapshot_id
+             AND inbox.dataset_kind = 'synthetic' AND inbox.source_id = $5
+             AND source_job.dataset_kind = 'synthetic'
+             AND source_job.job_kind = 'source_poll' AND source_job.source_id = $5
+         )
+         AND job.status = 'leased' AND job.lease_token = $6
+         AND job.lease_started_at <= $2::timestamptz
+         AND job.lease_expires_at > $2::timestamptz
+         AND job.updated_at <= $2::timestamptz
+       RETURNING job.job_id`,
+      [job.jobId, now, requestedExpiry, job.snapshot.reportRevisionId, LOCAL_SOURCE_ID, job.leaseToken],
+    );
+    return result.rows.length === 1;
+  }
+
   async readReceipt(jobId: string, stage: AiStage): Promise<unknown | null> {
     validateId(jobId, 'jobId');
     validateStage(stage);
