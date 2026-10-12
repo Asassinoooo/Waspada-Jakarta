@@ -1,5 +1,7 @@
 # Waspada Jakarta — five-layer architecture
 
+**Local model-testing direction — 12 October 2026:** [ADR-054](docs/decisions/ADR-054-private-model-gateway-testing.md) selects Google Gemini Embedding 2 at 768 dimensions and a weekly curated Chinese inference alias via the user's private 9router/Tailscale gateway. Separate typed classification/extraction/reasoning/planner profiles remain in L2; L3 retains bounded tool authority and L4 retains publication rules. Provider identities/curation epochs and quota reservations must be auditable, including gateway retries. This is a testing plan, not enabled runtime or a hosted connectivity change; see [capacity and contract fit](docs/AI_MODEL_INTEGRATION_PLAN.md).
+
 **Accepted local weather/quake context expansion — 10 October 2026:** [INT-02](docs/CONTEXT_SOURCE_EXPANSION.md) adds two deterministic L1 source adapters, a normalized isolate cache and a distinct gated L4 DTO projection. Open-Meteo forecasts and USGS catalog origins are context objects, not published incident evidence or inferred impact geometry. L5 bounds external requests, validates provenance and exposes partial failure. L2 retrieval/models and L3 investigation remain inactive on this path; the modular extension does not flatten source collection into an agent loop.
 
 Delivery scope, requirements and work sequencing are maintained in [SOFTWARE_DEVELOPMENT_PLAN.md](SOFTWARE_DEVELOPMENT_PLAN.md). This file owns the detailed logical architecture; proposed deployment, missing domain contracts and open decisions are tracked in that plan.

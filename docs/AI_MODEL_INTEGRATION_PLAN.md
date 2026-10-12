@@ -1,68 +1,78 @@
 # AI pipeline model integration plan
 
-Status: proposed candidates, 12 October 2026. This is model advice requested alongside UI-04 clustering, not acceptance or activation of a real provider. No inference, model download, binding, credential, paid API, source transfer or hosted configuration was performed. Local typed capability adapters and synthetic compositions exist; the four-source map preview remains deterministic L1/L4 and does not call them.
+Status: Team 12's local testing direction, updated 12 October 2026. Google Gemini Embedding 2 and the user's weekly curated Chinese preview model supersede the earlier Cloudflare candidates for local tests. Model/API/gateway compatibility is untested. No inference, model download, credential, router/Tailscale setting, binding or hosted service was changed.
 
-## Minimum model set
+## Model roles
 
-Two distinct models are enough for an initial RAG prototype. Keep classification, extraction, embedding, reasoning and investigation planning as separate typed capabilities even when a single LLM supplies several capabilities. No fine-tuning or independently trained classifier is needed initially.
-
-| Capability | Initial candidate | Purpose and bounds |
+| Capability | Selected testing direction | Contract and bounds |
 | --- | --- | --- |
-| Embedding | Cloudflare `@cf/baai/bge-m3` | Multilingual semantic context lookup and duplicate-candidate discovery. Proposed dense vector dimension 1,024/cosine, checked against actual provider output before acceptance. Similarity does not establish identical incidents, independent corroboration or truth. |
-| Classification and extraction | Cloudflare `@cf/qwen/qwen3-30b-a3b-fp8`, short task-specific profiles | Categorize unstructured reports and extract supported fields/tags/time/scope with exact source spans under the existing extraction contract. Claim proposals belong to reasoning. Use distinct prompts/contracts and small input/output ceilings; return unresolved fields instead of invented facts. Structured OSM/PetaBencana/USGS/weather JSON continues through deterministic adapters without LLM extraction. |
-| Reasoning and synthesis | Same Qwen3 candidate, separate grounded reasoning profile | Consume pre-retrieved evidence, preserve conflicts and source status, propose supported claims or abstain. No autonomous retrieval inside this adapter. |
-| L3 plan selection | Same Qwen3 candidate, distinct planner adapter | Suggest one allowlisted action or abstention only after L2 context is insufficient. Existing coordinator enforces 5 tools/4 turns/60 active seconds/12,000 tokens with failed attempts/resumes counted. No direct publication or unrestricted network tools. |
+| Embedding | Google AI Studio / Gemini API `gemini-embedding-2`, routed through the user's 9router | Start with 768 dimensions/cosine and one input per request. Stable model/dimension/prefix/index identity for chunks and queries. No cross-model fallback or mixing vector spaces. |
+| Classification/extraction | User-curated Chinese preview alias, user-reported minimum 128k context | Distinct short task profiles. Extract only supported category/tags/time/scope/evidence fields; claims belong to reasoning. Exact Unicode source spans, application schema validation and explicit unknowns remain required. |
+| Grounded reasoning | Same curated model, separate profile | L2 retrieves evidence first, preserves contrary evidence/time/source status and invokes reasoning only on sufficient context. Output is a proposal or abstention, with no publication authority. |
+| Investigation plan selection | Same curated model, separate planner profile | Only on insufficient L2 context. Suggest one trusted-menu action or abstention; L3 validates, reserves budget and dispatches registered tools. New acquisitions return through L1/L2. |
 
-This minimum shares weights/provider while separating contracts and budgets; it does not claim the larger reasoning model meets a low-latency extraction target. If measured latency/quota/quality warrants a split, evaluate **`@cf/meta/llama-3.1-8b-instruct-fp8`** for the short classification/extraction path while retaining Qwen3 for complex reasoning/planning. That yields three model families including embeddings. Model size alone does not prove latency or Bahasa Indonesia accuracy.
+Two model families are enough for this test setup. The Chinese model is a rotating selection, not a permanently chosen brand. The user's unmetered access and 128k floor are recorded as supplied facts; provider throughput, output reliability, exact context limits and version availability are not independently measured. No additional classifier, reranker, fine-tuning or vision model is required for the current text pipeline. Structured preview JSON and map clustering continue through deterministic code.
 
-The older canonical `llama-3.1-8b-instruct-fast` URL redirected to an unavailable-model catalog during this review, despite an older changelog describing fast variants as active. It is not the pinned candidate here. Recheck the exact canonical model ID and API access before activation; cached search results and playground presence are not runtime acceptance.
+## Quotas and test capacity
 
-An optional reranker can be evaluated later if held-out retrieval tests show a need; it is not required for the MVP. OCR/vision, speech, translation, predictive-crime models, fine-tuning and separate "fact-checker agents" are outside this phase. Repeating the same LLM judgment is not independent verification.
+The user copied these values from their Free project's AI Studio rate-limit view. Public documentation now directs readers to signed-in project limits; these are not claimed as universal defaults or a reading from this agent's account.
 
-## Five-layer flow and deterministic components
+| Embedding 2 limit | User-reported allowance | Proposed application allocation |
+| --- | --- | --- |
+| Requests/minute | 100 RPM | At most 80 RPM, shared across indexing, queries and retries |
+| Input tokens/minute | 30,000 TPM | At most 24,000 TPM; reserve conservatively when exact usage is unavailable |
+| Requests/day | 1,000 RPD | At most 800 RPD, minus other traffic using the same project |
 
-Proposed logical flow; the diagram does not imply configured provider or investigation runtime. The planner proposes only; trusted L3 code validates and dispatches registered tools.
+The 80% allocation is a proposed margin, not implemented enforcement. Google quotas are project-wide, not per API key; all same-project router connections must share accounting. Daily allowance resets at midnight Pacific time. Stop/defer on exhaustion or 429, use bounded backoff, cache only exact permitted chunk/model/prefix identities, and never select a paid fallback or upgrade billing.
+
+Illustrative single-input calls averaging 500 input tokens, including prefixes: `min(100, 30000 / 500) = 60` requests/minute at the provider ceiling; the proposed margin allows 48/minute. Daily 1,000 calls cover both ingestion and queries. For example, 600 document-chunk calls plus 100 query calls total 700, leaving 100 within the application's proposed 800-call allocation for retries/other test work. This is arithmetic, not a throughput or quota-consumption benchmark. Actual tokenization, other project traffic and provider latency still matter. Do not assume a multi-item HTTP batch counts as one unit of upstream quota.
+
+## Existing contract fit
+
+- Gemini Embedding 2 defaults to 3,072 dimensions; request 768 explicitly. Current L1 persistence accepts at most 2,048 while L2 accepts 8,192, so default output fails the tighter boundary. No validator/schema change is needed for 768.
+- Google documents an 8,192-token embedding input limit. Keep inputs bounded below that, including the task prefix, without silently clipping source spans. Current character limits are not token limits; token budgeting needs a reviewed adapter/chunking policy.
+- Keep embedding identity/model version/dimension/distance/index version together. Re-embed into a separate accepted identity/index when changing the embedding model or representation. Changing only the curated reasoning LLM does not require re-embedding the corpus.
+- Current `embed` requests are evidence-chunk-bound; retrieval accepts an already-computed query vector. Arbitrary free-text query embedding needs a separately typed private port before integration. Never invent report/chunk lineage to send a user query through the evidence adapter. The query-call counts above are a future workload example, not an implemented query service.
+- There is no explicit prefix field in `EmbeddingIdentity`. Before adding a fixed retrieval prefix, define a versioned private embedding profile with compatible document/query formatting and bind its version into `vectorIndexVersion`. Preserve the raw chunk hash/source offsets; record the actual formatted provider-input hash in private test/run metadata. Prefix changes require a new profile/index, not silent reuse.
+- A 128k model capacity does not enlarge our application budget. L2 currently rejects reported input+output usage over 12,000 tokens per LLM call; L3 preserves its 5 tool/4 reasoning turn/60 active second/12,000-token investigation limits. Later adapters must enforce request-side reservations as well as validate returned usage. No full-history prompt or budget increase is authorized here.
+- Resolve and record the underlying model/provider, curation epoch, prompt version and capability set per evaluation/run. Pin a route for an investigation; if unavailable, pause that case rather than silently changing model. A changed weekly selection needs fresh synthetic contract and held-out Bahasa/grounding checks. Do not claim reproducible weights from an unversioned provider alias.
+- Persisted schema-2.0 proposal model runs and planner metadata do not currently store provider plus curation epoch. A private per-run/evaluation manifest must bind trace/case/run identity to resolved provider/model/epoch/profile/prompt versions, including planner calls; a bounded version-string convention can reference that manifest. This manifest is an implementation gate, not an existing database field or permission to alter public/schema-2.0 contracts.
+
+## 9router boundary and private test path
+
+Public upstream source was inspected read-only; the user's installed version is unknown. The current Gemini adapter maps OpenAI-shaped `dimensions` to native `outputDimensionality` and returns one vector per input item. Its documentation still describes dimension control as OpenAI-v3-only, so installed behavior must be probed rather than inferred from that table. The same adapter normalizes embedding token usage to zero; this is not proof of zero consumption. An application adapter needs conservative reservation/accounting and must not present synthetic zero usage as measured upstream tokens.
+
+The existing embedding result has no token-usage field; quota accounting needs separate trusted transport telemetry/reservations and an explicit tokenizer/upper-bound policy. Unknown chat/planner usage must consume the conservative L3 reservation or fail closed, never count as zero. Do not relabel estimated usage as provider-measured usage.
+
+Recommended local path: browser → local WSL backend → authenticated 9router over the user's private tailnet → Google embedding / curated Chinese inference. Backend credentials stay outside browser/Git. Tailscale Serve is tailnet-private; Funnel publishes a service. No Funnel, cloud bridge or network setting is configured by this plan. The later hosted Cloudflare-to-private-router path needs a separate connectivity decision and test.
+
+For evidence-bearing calls, disable gateway prompt injection/token-saving/compression and pin the route. Upstream documents `X-9Router-Token-Saver: off` for chat requests. Verify your version preserves full evidence, contrary reports, exact Unicode and schema instructions. Bound/account router retries and fallback attempts, not only application HTTP calls. No fallback to another embedding model, paid route or unapproved provider. Verify cancellation, deadlines, usage/identity reporting and safe error mapping before L3 composition.
+
+## Five-layer flow
 
 ```mermaid
 flowchart TD
-  D[L1 authorized acquisition, cleaning and metadata] -->|Unstructured text| E[L2 fixed extraction adapter]
+  D[L1 authorized ingestion, cleaning and metadata] -->|Unstructured text| E[L2 fixed extraction profile via 9router]
   D -->|Structured data: deterministic parsing| S
-  E --> S[L1 persistence and source/version lineage]
-  S --> R[L2 spatial/time/identity lookup plus semantic retrieval]
-  Q[Embedding model: stored chunks and query] --> R
+  E --> S[L1 revisions, evidence and provenance]
+  S --> R[L2 spatial/time/identity plus semantic retrieval]
+  Q[Google embedding2: fixed 768-dimensional identity] --> R
   R --> C{Context sufficient?}
-  C -->|No| A[L3 bounded coordinator plus planner model]
-  A -->|L3 validates and dispatches registered acquisition| D
-  C -->|Yes| J[L2 grounded reasoning: supported proposal or abstention]
-  J --> P[L4 deterministic policy and authorized review]
-  P --> U[Published version read by UI]
-  V[L5 contracts, audit, quota, quality evaluation and privacy] -.-> D
+  C -->|Yes| J[L2 grounded reasoning profile]
+  C -->|No| A[L3 bounded coordinator and planner profile]
+  A -->|Trusted registered acquisition| D
+  J --> P[L4 deterministic eligibility and authorized review]
+  P --> U[Published versions read by UI]
+  V[L5 quota, contracts, audit, privacy and quality] -.-> D
   V -.-> R
   V -.-> A
   V -.-> P
 ```
 
-Source scheduling, schema validation, hashing/deterministic duplicates, geospatial indexing, map clustering, source-time freshness, budgets, authorization, audit and publication rules require no AI model. PetaBencana non-commercial transient preview permissions do not automatically authorize durable retention or transfer to a model. No new source/retention scope is cleared by this plan.
+This is a planned connection, not a configured runtime. Responsible AI/source provenance applies across every layer. Free-tier Google pricing marks submitted data as used to improve products; use synthetic/minimized permitted text for tests, and retain existing source-transfer/retention gates. Moderator demo remains read-only, and model output cannot bypass L4.
 
-## Adapter and storage fit
+## Readiness and remaining verification
 
-Existing `ModelAdapterConfiguration` has independent classification/extraction/embedding/reasoning identities. `UntrustedModelProvider` returns unknown values, and validation rejects malformed output. The planner has a separate untrusted action-proposal boundary. A Cloudflare provider adapter still needs explicit request/response mapping, deadlines, cancellation/usage reporting, safe error handling, refusal/quota behavior and synthetic transport tests. Function-calling support is not automatic compatibility with Waspada schemas.
+Enough model coverage and reported embedding capacity for a bounded local integration prototype. Remaining inputs are a backend-reachable 9router base URL, installed version, backend-only credential setup, and discoverable embedding/curated aliases. Do not send keys in chat. Before enabling provider calls: mock the adapter transport/schema/dimension/identity/timeout/quota paths; then authorize a small synthetic-only smoke within configured limits. No stress test, source acquisition or real-data transfer is part of this documentation work. Real case quality remains dependent on EVAL-01 rights and Perry/Jesaya's independent labels.
 
-The database uses dimension-checked `vector` values with model/run/version metadata, not a fixed 1,536-column definition. Pin provider/model version, vector dimension, distance metric and index version together; never compare unrelated models or silently mix dimensions. Query and evidence vectors use the same accepted identity. An ANN index and hosted PostGIS/pgvector behavior remain a separate measured decision. Accepting BGE-M3 does not grant every optional sparse/multivector provider feature.
-
-The current L1 embedding persistence boundary accepts at most 2,048 dimensions, while the L2 adapter permits up to 8,192. An end-to-end candidate must satisfy the tighter L1 limit; BGE-M3's proposed 1,024 dimensions fit both. Larger embeddings need a separately reviewed cross-layer contract change, not just a new model ID. No schema or validator is changed by this plan.
-
-## Free-tier and activation gates
-
-Official Cloudflare pricing, checked 12 October, provides a shared 10,000 Neurons/day free allocation; account/model access and real consumption are untested. The listed BGE-M3/Qwen3/Llama-FP8 candidates are not in that page's explicitly paid-method-only model list, which is not a guarantee of account eligibility or workload fit. Use local token/turn/request caps, cache bounded permitted results, stop on quota exhaustion and show AI unavailable; no paid fallback or automatic upgrade.
-
-Before real integration: choose an account/access method without putting secrets in Git/chat; verify model IDs and schemas with a separately authorized bounded probe; clear each source's model-transfer/retention scope; enforce application schemas and grounding rules; evaluate Bahasa extraction, retrieval and conflicting evidence using the EVAL-01 casebook. Perry and Jesaya's independent labels remain necessary for quality claims. Moderator publication stays read-only in the current demo; model acceptance does not authorize authenticated write routes or remove human publication review.
-
-## Sources checked
-
-- [Cloudflare BGE-M3](https://developers.cloudflare.com/workers-ai/models/bge-m3/) and [BAAI original model card](https://huggingface.co/BAAI/bge-m3): multilingual embeddings and the original dense 1,024-dimensional representation. The original model card and hosted provider advertise different context limits; the integration must use conservative chunk bounds and validate the actual hosted response.
-- [Cloudflare Qwen3-30B-A3B-FP8](https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/): text generation, reasoning, function calling and provider response-format options.
-- [Cloudflare Llama 3.1-8B-FP8](https://developers.cloudflare.com/workers-ai/models/llama-3.1-8b-instruct-fp8/): optional separate smaller text-generation candidate.
-- [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/), updated 9 October 2026: shared daily allocation and models requiring paid billing. Quotas are published limits, not project measurements.
-
-See [REFERENCES.md](../REFERENCES.md) for the local source record. This plan does not change implementation contracts or provider configuration.
+Earlier BGE-M3/Qwen3/Llama-FP8 Cloudflare candidates remain research history in Git and REFERENCES.md; they are not the active local-test choice or an automatic fallback. See [ADR-054](decisions/ADR-054-private-model-gateway-testing.md) and [the local reference register](../REFERENCES.md).
