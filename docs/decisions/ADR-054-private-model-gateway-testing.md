@@ -27,6 +27,8 @@ The user subsequently supplied ignored root `.env.local` variables `NINEROUTER_U
 
 ## Consequences
 
+User-requested diagnostic exception12October2026: explicit trusted `timeoutMs:null` can disable the client deadline for one authored synthetic extraction using a separate native Node HTTP transport, while numeric/default limits remain unchanged. It is disabled by default and requires both live/no-timeout flags. The one actual call took75.773seconds, returnedHTTP200 and failed `invalid_response`; no extraction schema was accepted. This does not authorize unbounded ingestion/production orchestration or solve prior timeouts. See [probe evidence](../PRIVATE_AI_GATEWAY_TESTING.md).
+
 The reported limits are sufficient in principle for a small local corpus. At 500 input tokens per single-input call, TPM caps the ceiling at 60 calls/minute; the proposed margin allows 48. A test day with 600 chunk calls plus 100 query calls uses 700 of the proposed 800-call budget, before other traffic/retries. This is a workload example, not a measured capacity guarantee.
 
 No extra classifier, reranker or fine-tuning is needed to begin. Exact model quality, quota semantics, upstream usage metadata and version availability still need testing. The public Worker remains provider-free and the moderator demo stays read-only. A separate opt-in local CLI composes typed provider capabilities, refs-only memory contexts and the planner without executing actions or publishing events. Per-run manifests bind synthetic hashes/trace/context identities to route/profile tags; reported upstream names remain unversioned. The [local test guide](../PRIVATE_AI_GATEWAY_TESTING.md) records checks and limitations.
