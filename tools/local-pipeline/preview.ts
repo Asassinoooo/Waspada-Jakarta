@@ -418,6 +418,8 @@ async function readLocalPipelinePreviewInTransaction(
 
     const reports: LocalPreviewReport[] = reportBases.map((report) => {
       const stages = report.aiJobId === null ? [] : stagesByJob.get(report.aiJobId) ?? [];
+      if (report.ai?.status === 'completed' && stages.length !== STAGES.length) invalid();
+      if (report.ai?.status === 'pending' && report.ai.attempts === 0 && stages.length !== 0) invalid();
       const proposal = proposalByCandidate.get(report.candidateId);
       if ((proposal !== undefined) !== stages.includes('proposal')) invalid();
       const previewProposal = proposal === undefined
@@ -617,10 +619,11 @@ function groupStages(rows: readonly { job_id: string; stage: string }[], jobIds:
     values.push(row.stage);
     byJob.set(row.job_id, values);
   }
-  return new Map([...byJob].map(([jobId, values]) => [
-    jobId,
-    STAGES.filter((stage) => values.includes(stage)),
-  ]));
+  return new Map([...byJob].map(([jobId, values]) => {
+    const stages = STAGES.filter((stage) => values.includes(stage));
+    if (stages.some((stage, index) => stage !== STAGES[index])) invalid();
+    return [jobId, stages];
+  }));
 }
 
 function groupClaims(rows: readonly ClaimRow[], proposals: readonly ProposalRow[]): Map<string, readonly ClaimRow[]> {

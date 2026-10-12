@@ -6,9 +6,10 @@ import { createLocalPipelineStore } from './store.js';
 import { createLocalPipelineProcessor } from './processor.js';
 import { createLocalMockModels } from './mock-models.js';
 import { parseAuthoredFeed } from './feed.js';
+import { createHash } from 'node:crypto';
 import { preparePermittedText } from '../../apps/worker/src/layers/l1-data-knowledge/text-preparation.js';
 import { readLocalPipelinePreview } from './preview.js';
-import type { TransactionalSqlExecutor } from '../../apps/db/src/sql.js';
+import type { SqlExecutor, TransactionalSqlExecutor } from '../../apps/db/src/sql.js';
 import type { LocalPipelineStore } from './contracts.js';
 
 interface HistoricalEvidence {
@@ -129,6 +130,46 @@ test('preview validates canonical evidence from an older revision outside the ne
     assert.ok(latestReport.proposal.claims.find((claim) => claim.claimId === 'claim-older-valid-reference')
       ?.evidence.some((entry) => entry.reportRevisionId === oldValid.reportRevisionId));
 
+    await assert.rejects(readLocalPipelinePreview({
+      executor: omitAiStage(database.executor, 'extraction'),
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:00:00.000Z',
+    }), /local_preview_unavailable/);
+    await assert.rejects(readLocalPipelinePreview({
+      executor: omitAiStage(database.executor, 'proposal'),
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:00:00.000Z',
+    }), /local_preview_unavailable/);
+
+    now = '2026-10-12T08:01:00.000Z';
+    await store.capture({
+      ...feed,
+      reports: [{ ...baseReport, text: `${baseReport.text}\nPembaruan sintetis versi 22.` }],
+    }, now);
+    await processor.processIngestion();
+    const pendingJob = await database.executor.query<{ job_id: string }>(
+      `SELECT job.job_id FROM waspada.local_ai_jobs AS job
+       JOIN waspada.local_report_snapshots AS snapshot ON snapshot.snapshot_id = job.snapshot_id
+       WHERE snapshot.dataset_kind = 'synthetic' AND snapshot.source_id = 'local-authored-api'
+         AND snapshot.stable_report_id = $1 AND snapshot.version = 22
+         AND job.status = 'pending' AND job.attempt_count = 0`,
+      [baseReport.id],
+    );
+    assert.equal(pendingJob.rows.length, 1);
+    await database.executor.query(
+      `INSERT INTO waspada.local_ai_receipts (job_id, stage, receipt_json, receipt_sha256, recorded_at)
+       VALUES ($1, 'extraction', '{}'::jsonb, $2, $3::timestamptz)`,
+      [pendingJob.rows[0]!.job_id, createHash('sha256').update('{}').digest('hex'), now],
+    );
+    await assert.rejects(readLocalPipelinePreview({
+      executor: database.executor,
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:02:00.000Z',
+    }), /local_preview_unavailable/);
+
     await appendReferenceClaim(database.executor, proposalId, {
       claimId: 'claim-older-invalid-hash',
       claimText: 'An older source with a stale canonical text hash fails closed.',
@@ -144,6 +185,23 @@ test('preview validates canonical evidence from an older revision outside the ne
     await database.close();
   }
 });
+
+function omitAiStage(executor: TransactionalSqlExecutor, omittedStage: string): TransactionalSqlExecutor {
+  const wrap = (inner: SqlExecutor): SqlExecutor => ({
+    async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
+      const result = await inner.query<Row>(statement, parameters);
+      if (!statement.includes('FROM waspada.local_ai_receipts')) return result;
+      return { rows: result.rows.filter((row) => (row as Record<string, unknown>).stage !== omittedStage) };
+    },
+    execute: (statement) => inner.execute(statement),
+  });
+  return {
+    ...wrap(executor),
+    async transaction<Result>(work: (transaction: SqlExecutor) => Promise<Result>): Promise<Result> {
+      return executor.transaction((transaction) => work(wrap(transaction)));
+    },
+  };
+}
 
 async function addHistoricalEvidence(
   store: LocalPipelineStore,
