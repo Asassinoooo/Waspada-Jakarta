@@ -1,13 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createModelCapabilityAdapter } from '../../apps/worker/src/layers/l2-model-grounding/adapter.js';
-import { createNinerouterProvider } from '../../apps/worker/src/layers/l2-model-grounding/ninerouter-provider.js';
 import { openLocalPipelineDatabase } from './database.js';
 import { createLocalPipelineStore } from './store.js';
 import { parseAuthoredFeed } from './feed.js';
-import { createLocalMockModels } from './mock-models.js';
+import { resolveLocalModels } from './models.js';
 import { createLocalPipelineProcessor } from './processor.js';
 import { runLocalSchedule } from './scheduler.js';
 import { LOCAL_FEED_SCHEMA, LOCAL_SOURCE_ID } from './contracts.js';
@@ -16,13 +14,14 @@ export interface LocalCliOptions {
   readonly enabled: boolean;
   readonly status: boolean;
   readonly realAi: boolean;
+  readonly omitExtractionOutputLimits: boolean;
   readonly watch: boolean;
   readonly state: string;
   readonly intervalMs: number;
   readonly maxPolls: number;
 }
 export function parseLocalOptions(args: readonly string[]): LocalCliOptions {
-  const flags = new Set(['--enable', '--status', '--real-ai', '--once', '--watch']);
+  const flags = new Set(['--enable', '--status', '--real-ai', '--omit-extraction-output-limits', '--once', '--watch']);
   const values = new Set(['--state', '--interval-ms', '--max-polls']);
   const seen = new Set<string>();
   const parsed = new Map<string, string>();
@@ -45,11 +44,13 @@ export function parseLocalOptions(args: readonly string[]): LocalCliOptions {
       (seen.has('--once') && seen.has('--watch')) ||
       (!seen.has('--watch') && (maxPolls !== 1 || seen.has('--interval-ms'))) ||
       (seen.has('--status') && (seen.has('--watch') || seen.has('--enable'))) ||
+      (seen.has('--omit-extraction-output-limits') && !seen.has('--real-ai')) ||
       (seen.has('--real-ai') && ((!seen.has('--status') && (!seen.has('--enable') || !seen.has('--once'))) || seen.has('--watch') ||
         (seen.has('--state') && !/^real-[0-9a-f-]{36}$/.test(state)) || (seen.has('--status') && !seen.has('--state'))))) {
     throw new Error('invalid_local_options');
   }
-  return { enabled: seen.has('--enable'), status: seen.has('--status'), realAi: seen.has('--real-ai'), watch: seen.has('--watch'), state, intervalMs, maxPolls };
+  return { enabled: seen.has('--enable'), status: seen.has('--status'), realAi: seen.has('--real-ai'),
+    omitExtractionOutputLimits: seen.has('--omit-extraction-output-limits'), watch: seen.has('--watch'), state, intervalMs, maxPolls };
 }
 
 export async function runLocalCli(args: readonly string[]): Promise<void> {
@@ -58,22 +59,12 @@ export async function runLocalCli(args: readonly string[]): Promise<void> {
     console.log(JSON.stringify({ status: 'disabled', reason: 'explicit_enable_flag_required', datasetKind: 'synthetic' }));
     return;
   }
-  let models = createLocalMockModels();
+  const models = resolveLocalModels({ realAi: options.realAi,
+    omitExtractionOutputLimits: options.omitExtractionOutputLimits,
+    env: options.realAi ? process.env : {},
+  });
   let state = options.state;
   if (options.realAi) {
-    const baseUrl = process.env.NINEROUTER_URL;
-    const apiKey = process.env.NINEROUTER_KEY;
-    const epoch = process.env.NINEROUTER_CURATION_EPOCH;
-    if (!baseUrl || !apiKey || !epoch || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(epoch) || epoch.includes(apiKey) || epoch.includes(baseUrl)) {
-      throw new Error('invalid_local_configuration');
-    }
-    // No discovery request or planner call: the three-call budget is extraction/embedding/reasoning.
-    const bundle = createNinerouterProvider({ baseUrl, apiKey, chatModel: 'Waspada-Jakarta',
-      embeddingModel: 'gemini/gemini-embedding-2-preview', curationEpoch: epoch,
-      maxHttpRequests: 3, timeoutMs: 25_000, allowTailnetHttp: true });
-    const gatewayFingerprint = new URL(baseUrl).href.replace(/\/+$/, '');
-    const profileId = `real-${createHash('sha256').update(JSON.stringify([gatewayFingerprint, bundle.configuration])).digest('hex')}`;
-    models = { adapter: createModelCapabilityAdapter(bundle.provider, bundle.configuration), configuration: bundle.configuration, profileId };
     // New probes get fresh state; explicit resume reuses its pinned synthetic profile.
     state = args.includes('--state') ? options.state : `real-${randomUUID()}`;
   }
