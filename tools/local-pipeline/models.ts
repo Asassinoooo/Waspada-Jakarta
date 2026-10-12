@@ -135,8 +135,19 @@ function createCancellableFetch(fetchImpl: typeof fetch, localSignal: AbortSigna
         error.name = 'AbortError';
         throw error;
       }
-      const request = Promise.resolve().then(() => fetchImpl(input, { ...init, signal: combined.signal }));
+      const request = Promise.resolve().then(() => {
+        if (combined.signal.aborted) throw createAbortError();
+        return fetchImpl(input, { ...init, signal: combined.signal });
+      }).then((response) => {
+        if (!combined.signal.aborted) return response;
+        cancelResponseBody(response);
+        throw createAbortError();
+      });
       const response = await Promise.race([request, aborted]);
+      if (combined.signal.aborted) {
+        cancelResponseBody(response);
+        throw createAbortError();
+      }
       const status = response.status;
       // Provider code rejects these responses before reading their body. Release
       // the source listeners and transport promptly on these closed outcomes.
@@ -185,4 +196,13 @@ function createAbortError(): Error {
   const error = new Error('aborted');
   error.name = 'AbortError';
   return error;
+}
+
+function cancelResponseBody(response: Response): void {
+  if (!response.body) return;
+  try {
+    void response.body.cancel().catch(() => undefined);
+  } catch {
+    // Preserve the closed abort classification if an injected response is already locked.
+  }
 }

@@ -238,6 +238,53 @@ test('model cancellation settles even when an injected fetch ignores its signal'
   assert.equal(observations[0]?.reason, 'aborted');
 });
 
+test('model cancellation disposes a response returned after an injected fetch ignores abort', async () => {
+  let markStarted: (() => void) | undefined;
+  let resolveLateResponse: ((response: Response) => void) | undefined;
+  let receivedSignal: AbortSignal | null | undefined;
+  let markBodyCancelled: (() => void) | undefined;
+  const requestStarted = new Promise<void>((resolve) => { markStarted = resolve; });
+  const lateResponse = new Promise<Response>((resolve) => { resolveLateResponse = resolve; });
+  const bodyCancelled = new Promise<void>((resolve) => { markBodyCancelled = resolve; });
+  const observations: Array<{ capability: string; reason?: string }> = [];
+  const fetchImpl = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    receivedSignal = init?.signal;
+    markStarted?.();
+    return lateResponse;
+  }) as typeof fetch;
+  const models = resolveLocalModels({ realAi: true, omitExtractionOutputLimits: false, env: validEnv, fetchImpl,
+    onObservation: (observation) => observations.push(observation) });
+  const { report } = extractionFixture();
+  const pending = models.adapter.extract({ data: { candidateId: 'candidate-late-response-cancel-1', report } });
+  await requestStarted;
+  models.cancel?.();
+  let settlementTimer: NodeJS.Timeout | undefined;
+  const result = await Promise.race([
+    pending,
+    new Promise<never>((_resolve, reject) => {
+      settlementTimer = setTimeout(() => reject(new Error('late_response_abort_did_not_settle')), 500);
+    }),
+  ]).finally(() => {
+    if (settlementTimer !== undefined) clearTimeout(settlementTimer);
+  });
+  assert.equal(result.status, 'provider_error');
+  assert.equal(receivedSignal?.aborted, true);
+  assert.equal(observations[0]?.reason, 'aborted');
+
+  resolveLateResponse?.(new Response(new ReadableStream<Uint8Array>({
+    pull() { return new Promise<void>(() => undefined); },
+    cancel() { markBodyCancelled?.(); },
+  }), { status: 200, headers: { 'content-type': 'application/json' } }));
+  let cancellationTimer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([bodyCancelled, new Promise<never>((_resolve, reject) => {
+      cancellationTimer = setTimeout(() => reject(new Error('late_response_body_not_cancelled')), 500);
+    })]);
+  } finally {
+    if (cancellationTimer !== undefined) clearTimeout(cancellationTimer);
+  }
+});
+
 test('model cancellation remains active while an injected response body is pending', async () => {
   let markBodyStarted: (() => void) | undefined;
   const bodyStarted = new Promise<void>((resolve) => { markBodyStarted = resolve; });
