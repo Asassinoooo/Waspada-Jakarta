@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { postgis } from '@electric-sql/pglite-postgis';
 import { vector } from '@electric-sql/pglite-pgvector';
@@ -27,6 +27,7 @@ export async function openLocalPipelineDatabase(
   input: OpenLocalPipelineDatabaseInput,
 ): Promise<LocalPipelineDatabase> {
   validateInput(input);
+  if (input.dataDir !== undefined) await mkdir(input.dataDir, { recursive: true });
   const database = await PGlite.create({
     ...(input.dataDir === undefined ? {} : { dataDir: input.dataDir }),
     extensions: { postgis, vector },
