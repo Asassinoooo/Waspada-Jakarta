@@ -167,6 +167,16 @@ test("renders source versions, separate times, escaped claim text, and contrary 
   assert.match(markup, /&lt;script&gt;/);
   assert.doesNotMatch(markup, /<script>/);
   assert.match(markup, /Model menilai klaim|Model menilai ada pertentangan/);
+
+  const retryReport = {
+    ...data.reports[0]!,
+    ai: { ...data.reports[0]!.ai!, status: "retry" as const, failure: "model_timeout" as const },
+  };
+  const retryMarkup = renderToStaticMarkup(createElement(LocalPipelineReportCard, {
+    report: retryReport,
+    reports: data.reports,
+  }));
+  assert.match(retryMarkup, /Menunggu coba ulang/);
 });
 
 test("the disabled local view renders a closed gate and does not expose a source error", () => {

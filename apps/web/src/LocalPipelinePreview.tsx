@@ -12,7 +12,7 @@ type ReadState =
 const jobStatusLabels: Readonly<Record<LocalPreviewJob["status"], string>> = {
   pending: "Menunggu",
   leased: "Sedang diproses",
-  retry: "Akan dicoba ulang",
+  retry: "Menunggu coba ulang",
   completed: "Pekerjaan selesai",
   terminal: "Berhenti setelah percobaan",
 };
