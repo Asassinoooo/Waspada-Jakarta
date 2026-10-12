@@ -62,3 +62,21 @@ test('unbounded or too-frequent schedules are rejected before work', async () =>
       now: () => '', intervalMs, maxPolls }), /invalid_local_schedule/);
   }
 });
+test('fatal worker error stops the sleeping collector and joins it before rejecting', async () => {
+  let captures = 0;
+  const store = schedulerStore(async () => { captures++; return { captured: 1, unchanged: 0 }; });
+  store.recover = async () => { throw new Error('untrusted_fatal_error'); };
+  await assert.rejects(runLocalSchedule({ store,
+    processor: { processIngestion: async () => null, processAi: async () => null },
+    readFeed: async () => feed, now: () => '2026-10-12T00:00:00Z', intervalMs: 3_600_000, maxPolls: 10_000 }), /local_schedule_failed/);
+  assert.equal(captures, 1);
+});
+test('stop during an in-flight read prevents capture', async () => {
+  const controller = new AbortController();
+  let captures = 0;
+  await runLocalSchedule({ store: schedulerStore(async () => { captures++; return { captured: 1, unchanged: 0 }; }),
+    processor: { processIngestion: async () => null, processAi: async () => null },
+    readFeed: async () => { controller.abort(); return feed; }, now: () => '2026-10-12T00:00:00Z',
+    intervalMs: 1000, maxPolls: 1, signal: controller.signal });
+  assert.equal(captures, 0);
+});

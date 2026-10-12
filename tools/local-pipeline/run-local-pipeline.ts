@@ -10,6 +10,7 @@ import { parseAuthoredFeed } from './feed.js';
 import { createLocalMockModels } from './mock-models.js';
 import { createLocalPipelineProcessor } from './processor.js';
 import { runLocalSchedule } from './scheduler.js';
+import { LOCAL_FEED_SCHEMA, LOCAL_SOURCE_ID } from './contracts.js';
 
 export interface LocalCliOptions {
   readonly enabled: boolean;
@@ -43,8 +44,9 @@ export function parseLocalOptions(args: readonly string[]): LocalCliOptions {
       !Number.isSafeInteger(maxPolls) || maxPolls < 1 || maxPolls > 10_000 ||
       (seen.has('--once') && seen.has('--watch')) ||
       (!seen.has('--watch') && (maxPolls !== 1 || seen.has('--interval-ms'))) ||
-      (seen.has('--status') && (seen.has('--real-ai') || seen.has('--watch') || seen.has('--enable'))) ||
-      (seen.has('--real-ai') && (!seen.has('--enable') || !seen.has('--once') || seen.has('--watch') || seen.has('--state')))) {
+      (seen.has('--status') && (seen.has('--watch') || seen.has('--enable'))) ||
+      (seen.has('--real-ai') && ((!seen.has('--status') && (!seen.has('--enable') || !seen.has('--once'))) || seen.has('--watch') ||
+        (seen.has('--state') && !/^real-[0-9a-f-]{36}$/.test(state)) || (seen.has('--status') && !seen.has('--state'))))) {
     throw new Error('invalid_local_options');
   }
   return { enabled: seen.has('--enable'), status: seen.has('--status'), realAi: seen.has('--real-ai'), watch: seen.has('--watch'), state, intervalMs, maxPolls };
@@ -71,8 +73,8 @@ export async function runLocalCli(args: readonly string[]): Promise<void> {
       maxHttpRequests: 3, timeoutMs: 25_000, allowTailnetHttp: true });
     const profileId = `real-${createHash('sha256').update(JSON.stringify(bundle.configuration)).digest('hex')}`;
     models = { adapter: createModelCapabilityAdapter(bundle.provider, bundle.configuration), configuration: bundle.configuration, profileId };
-    // Every real invocation gets a fresh state so old pending jobs cannot consume its bounded budget.
-    state = `real-${randomUUID()}`;
+    // New probes get fresh state; explicit resume reuses its pinned synthetic profile.
+    state = args.includes('--state') ? options.state : `real-${randomUUID()}`;
   }
   const dataDir = resolve(process.cwd(), '.codex-build', 'local-pipeline', state);
   const database = await openLocalPipelineDatabase({ dataDir, profileId: models.profileId });
@@ -88,9 +90,16 @@ export async function runLocalCli(args: readonly string[]): Promise<void> {
     }
     const now = () => new Date().toISOString();
     const processor = createLocalPipelineProcessor({ store, executor: database.executor, ...models, now, modelTimeoutMs: options.realAi ? 26_000 : 5_000 });
+    let realAiAttempts = 0;
+    const boundedProcessor = options.realAi ? {
+      processIngestion: () => processor.processIngestion(),
+      processAi: () => realAiAttempts++ === 0 ? processor.processAi() : Promise.resolve(null),
+    } : processor;
     const fixturePath = fileURLToPath(new URL('./fixtures/feed.json', import.meta.url));
-    const result = await runLocalSchedule({ store, processor, now, intervalMs: options.intervalMs, maxPolls: options.maxPolls, signal: controller.signal,
+    const result = await runLocalSchedule({ store, processor: boundedProcessor, now, intervalMs: options.intervalMs, maxPolls: options.maxPolls, signal: controller.signal,
       readFeed: async () => {
+        // Resumes process the captured snapshot, never a newly edited fixture.
+        if (options.realAi && args.includes('--state')) return { schemaVersion: LOCAL_FEED_SCHEMA, sourceId: LOCAL_SOURCE_ID, datasetKind: 'synthetic', reports: [] };
         const feed = parseAuthoredFeed(await readFile(fixturePath, 'utf8'));
         return options.realAi ? { ...feed, reports: feed.reports.slice(0, 1) } : feed;
       },

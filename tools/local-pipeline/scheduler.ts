@@ -33,6 +33,8 @@ export async function runLocalSchedule(options: LocalScheduleOptions): Promise<{
     throw new Error('invalid_local_schedule');
   }
   const sleep = options.sleep ?? abortableSleep;
+  const fatalStop = new AbortController();
+  const signal = options.signal ? AbortSignal.any([options.signal, fatalStop.signal]) : fatalStop.signal;
   let collectionFinished = false;
   let polls = 0;
   let collectionFailures = 0;
@@ -40,9 +42,10 @@ export async function runLocalSchedule(options: LocalScheduleOptions): Promise<{
   const ready = new Promise<void>((resolve) => { firstPollReady = resolve; });
   const collector = (async () => {
     try {
-      for (; polls < options.maxPolls && !options.signal?.aborted; polls++) {
+      for (; polls < options.maxPolls && !signal.aborted; polls++) {
         try {
           const feed = await options.readFeed();
+          if (signal.aborted) break;
           const result = await options.store.capture(feed, options.now());
           options.onPoll?.(result);
         } catch {
@@ -50,27 +53,27 @@ export async function runLocalSchedule(options: LocalScheduleOptions): Promise<{
           collectionFailures++;
           options.onCollectionError?.();
         } finally { firstPollReady(); }
-        if (polls + 1 < options.maxPolls && !options.signal?.aborted) await sleep(options.intervalMs, options.signal);
+        if (polls + 1 < options.maxPolls && !signal.aborted) await sleep(options.intervalMs, signal);
       }
     } finally { collectionFinished = true; firstPollReady(); }
   })();
   const worker = (async () => {
     await ready;
     do {
-      if (options.signal?.aborted) break;
+      if (signal.aborted) break;
       await options.store.recover(options.now());
       // One pass is finite: max20 authored items and no automatic waiting for retry backoff.
       // Drain ingestion first so model latency cannot strand already collected reports in L1.
-      for (let i = 0; i < 20 && !options.signal?.aborted; i++) await options.processor.processIngestion();
-      for (let i = 0; i < 20 && !options.signal?.aborted; i++) await options.processor.processAi();
-      if (!collectionFinished && !options.signal?.aborted) await sleep(Math.min(options.intervalMs, 1_000), options.signal);
-    } while (!collectionFinished && !options.signal?.aborted);
+      for (let i = 0; i < 20 && !signal.aborted; i++) await options.processor.processIngestion();
+      for (let i = 0; i < 20 && !signal.aborted; i++) await options.processor.processAi();
+      if (!collectionFinished && !signal.aborted) await sleep(Math.min(options.intervalMs, 1_000), signal);
+    } while (!collectionFinished && !signal.aborted);
     // Final capture may occur while the worker is awaiting AI. Finish those L1 jobs too.
-    if (!options.signal?.aborted) {
+    if (!signal.aborted) {
       for (let i = 0; i < 20; i++) await options.processor.processIngestion();
       for (let i = 0; i < 20; i++) await options.processor.processAi();
     }
-  })();
+  })().catch(() => { fatalStop.abort(); throw new Error('local_worker_failed'); });
   // Join both tasks even if the worker fails unexpectedly; never close the DB while
   // collection is still writing. Processors normally record their own job failures.
   const outcomes = await Promise.allSettled([collector, worker]);

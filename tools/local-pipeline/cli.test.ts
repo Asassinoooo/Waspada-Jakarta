@@ -9,8 +9,11 @@ test('default CLI is disabled, explicit mock scheduling is finite', () => {
   assert.deepEqual(parseLocalOptions(['--enable', '--watch', '--max-polls', '3', '--interval-ms', '1000', '--state', 'demo-1']),
     { enabled: true, watch: true, realAi: false, status: false, state: 'demo-1', intervalMs: 1000, maxPolls: 3 });
 });
-test('real gateway requires an explicit one-cycle opt-in and cannot drain existing state', () => {
+test('real gateway requires an explicit one-cycle opt-in or read-only status of its isolated state', () => {
   assert.equal(parseLocalOptions(['--enable', '--once', '--real-ai']).realAi, true);
+  const state = 'real-12345678-1234-1234-1234-123456789012';
+  assert.equal(parseLocalOptions(['--enable', '--once', '--real-ai', '--state', state]).realAi, true);
+  assert.equal(parseLocalOptions(['--status', '--real-ai', '--state', state]).status, true);
   for (const args of [['--real-ai'], ['--enable', '--real-ai'], ['--enable', '--real-ai', '--watch'],
     ['--enable', '--once', '--real-ai', '--state', 'existing'], ['--status', '--real-ai']]) {
     assert.throws(() => parseLocalOptions(args), /invalid_local_options/);
