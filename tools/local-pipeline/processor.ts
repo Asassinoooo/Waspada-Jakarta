@@ -40,7 +40,7 @@ const DEFAULT_MODEL_TIMEOUT_MS = 26_000;
 const MAX_MODEL_TIMEOUT_MS = 120_000;
 const RETRIEVAL_MAX_RESULTS = 8;
 const RETRIEVAL_MAX_ROWS = 16;
-const RETRIEVAL_MAX_SPAN_CODE_POINTS = 4_096;
+const RETRIEVAL_MAX_SPAN_CODE_POINTS = 2_048;
 
 export interface LocalPipelineProcessorInput {
   readonly store: LocalPipelineStore;
@@ -129,14 +129,8 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
             }
           }
 
-          await ports.tracesAndAudit.createTrace({
-            traceId: callbackSnapshot.traceId,
-            datasetKind: 'synthetic',
-            startedAt: callbackSnapshot.capturedAt,
-            endedAt: null,
-            outcome: 'open',
-            metadata: { pipeline: LOCAL_PIPELINE_SCHEMA, sourceId: LOCAL_SOURCE_ID },
-          });
+          // capture() creates this open trace atomically with the immutable snapshot.
+          // Revision and evidence writers enforce that the captured trace exists.
 
           const revisionRecord = makeRevisionRecord(callbackSnapshot, prepared.prepared.permittedText,
             prepared.prepared.permittedTextHash, prepared.prepared.normalizationVersion);
@@ -287,12 +281,21 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
     if (retrieval.scanTruncated || retrieval.resultTruncated || retrieval.invalidSpanRowsOmitted > 0) {
       throw new ProcessorFailure('context_insufficient');
     }
+    // Hybrid retrieval is an OR across identifier and semantic facets, so unrelated semantic matches can be present.
+    // Validate truncation across the full search above, then scope assembly to this synthetic candidate while keeping
+    // every relation and revision returned for that candidate.
+    const scopedRetrieval = {
+      ...retrieval,
+      candidates: retrieval.candidates.filter((candidate) => candidate.datasetKind === 'synthetic'
+        && candidate.candidateId === snapshot.candidateId),
+    };
     const selectedEvidence = extraction.evidence.map((reference) => {
-      const matches = retrieval.candidates.filter((candidate) => candidate.reportRevisionId === snapshot.reportRevisionId
+      const matches = scopedRetrieval.candidates.filter((candidate) => candidate.reportRevisionId === snapshot.reportRevisionId
         && candidate.permittedTextHash === prepared.permittedTextHash
         && candidate.spanStart === reference.spanStart && candidate.spanEnd === reference.spanEnd
         && candidate.relation === reference.relation);
-      if (matches.length !== 1 || matches[0]!.spanTextTruncated) throw new ProcessorFailure('context_insufficient');
+      // Retrieval returns a bounded preview; the grounding assembler rehydrates the full exact span below.
+      if (matches.length !== 1) throw new ProcessorFailure('context_insufficient');
       return { reference, evidenceReferenceId: matches[0]!.evidenceReferenceId };
     });
     if (selectedEvidence.length < 1 || selectedEvidence.length > 8
@@ -306,7 +309,7 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
       .map(({ reference }) => `extraction_contradiction:${snapshot.reportRevisionId}:${reference.spanStart}:${reference.spanEnd}`);
     const contextId = `context-${hash(snapshotKey).slice(0, 40)}`;
     const groundingRequest = await assembleGroundingReasoningRequest(exactSpanReader, {
-      retrieval,
+      retrieval: scopedRetrieval,
       datasetKind: 'synthetic',
       traceId: snapshot.traceId,
       contextId,
