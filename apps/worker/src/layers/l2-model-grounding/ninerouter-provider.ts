@@ -102,6 +102,8 @@ export interface NinerouterProviderConfiguration {
   readonly allowTailnetHttp?: boolean;
   /** Null disables this provider's wall-clock deadline; the injected transport may still impose its own limits. */
   readonly timeoutMs?: number | null;
+  /** Diagnostic-only: omit generation-limit fields from extraction requests; all other capabilities remain capped. */
+  readonly omitExtractionOutputLimits?: boolean;
   readonly maxHttpRequests?: number;
   readonly onObservation?: (observation: NinerouterObservation) => void;
 }
@@ -178,6 +180,7 @@ interface ValidatedConfiguration {
   readonly embeddingModel: string;
   readonly curationEpoch: string;
   readonly timeoutMs: number | null;
+  readonly omitExtractionOutputLimits: boolean;
   readonly maxHttpRequests: number;
   readonly onObservation?: (observation: NinerouterObservation) => void;
 }
@@ -373,12 +376,14 @@ export function createNinerouterProvider(
       throw new ProviderTransportError("budget_exceeded");
     }
     const outputAllowance = Math.min(CHAT_OUTPUT_ALLOWANCE, availableOutput);
-    const body = JSON.stringify({
+    const omitOutputLimits = capability === "extraction" && settings.omitExtractionOutputLimits;
+    const requestPayload: Record<string, unknown> = {
       model: settings.chatModel,
       messages,
       stream: false,
-      max_tokens: outputAllowance,
-    });
+    };
+    if (!omitOutputLimits) requestPayload.max_tokens = outputAllowance;
+    const body = JSON.stringify(requestPayload);
     if (byteLength(body) > MAX_REQUEST_BODY_BYTES) throw new ProviderTransportError("request_too_large");
     return { body, inputReservation, outputAllowance };
   }
@@ -442,7 +447,8 @@ export function createNinerouterProvider(
             throw new ProviderTransportError("invalid_response");
           }
           if (parsed.usage.inputTokens > prepared.inputReservation
-            || parsed.usage.outputTokens > prepared.outputAllowance
+            || (!(capability === "extraction" && settings.omitExtractionOutputLimits)
+              && parsed.usage.outputTokens > prepared.outputAllowance)
             || parsed.usage.totalTokens > callerLimit) {
             throw new ProviderTransportError("invalid_usage", "missing_or_invalid", {
               ...(parsed.reportedResponseModel ? { reportedResponseModel: parsed.reportedResponseModel } : {}),
@@ -683,7 +689,7 @@ interface ParsedChatResponse {
 
 function validateConfiguration(config: NinerouterProviderConfiguration): ValidatedConfiguration {
   if (!isPlainRecord(config)) throw new Error("invalid_configuration");
-  const allowed = new Set(["baseUrl", "apiKey", "chatModel", "embeddingModel", "curationEpoch", "allowTailnetHttp", "timeoutMs", "maxHttpRequests", "onObservation"]);
+  const allowed = new Set(["baseUrl", "apiKey", "chatModel", "embeddingModel", "curationEpoch", "allowTailnetHttp", "timeoutMs", "omitExtractionOutputLimits", "maxHttpRequests", "onObservation"]);
   if (Reflect.ownKeys(config).some((key) => typeof key !== "string" || !allowed.has(key))) {
     throw new Error("invalid_configuration");
   }
@@ -731,6 +737,10 @@ function validateConfiguration(config: NinerouterProviderConfiguration): Validat
     : config.timeoutMs === undefined
       ? DEFAULT_TIMEOUT_MS
       : readInteger(config.timeoutMs, 1, MAX_TIMEOUT_MS);
+  const omitExtractionOutputLimits = config.omitExtractionOutputLimits === undefined
+    ? false
+    : config.omitExtractionOutputLimits;
+  if (typeof omitExtractionOutputLimits !== "boolean") throw new Error("invalid_configuration");
   const maxHttpRequests = config.maxHttpRequests === undefined
     ? MAX_HTTP_REQUESTS
     : readInteger(config.maxHttpRequests, 1, MAX_HTTP_REQUESTS);
@@ -745,6 +755,7 @@ function validateConfiguration(config: NinerouterProviderConfiguration): Validat
     embeddingModel,
     curationEpoch,
     timeoutMs,
+    omitExtractionOutputLimits,
     maxHttpRequests,
     ...(config.onObservation ? { onObservation: config.onObservation } : {}),
   };

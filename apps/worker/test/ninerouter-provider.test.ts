@@ -366,6 +366,68 @@ test("allows at most 4,096 output tokens within the existing 12,000-token reserv
   assert.equal(overLimit.calls[0]?.body?.max_tokens, 4_096);
 });
 
+test("explicit output-limit omission applies only to extraction and retains the total-token budget", async () => {
+  const text = "Synthetic report for output-limit omission.";
+  const report = {
+    reportRevisionId: "report-output-limit-synthetic",
+    permittedTextHash: await sha256Text(text),
+    normalizationVersion: "synthetic-normalization-v1",
+    permittedText: text,
+  };
+  const request: ExtractionRequest = {
+    data: { candidateId: "candidate-output-limit-synthetic", report },
+  };
+  const output = JSON.stringify({
+    category: null,
+    tags: [],
+    eventTime: { start: null, end: null, precision: "unknown" },
+    scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
+    evidence: [],
+    unknownFields: ["category", "event_time"],
+  });
+  const overLegacyOutputCap = {
+    prompt_tokens: 30,
+    completion_tokens: 4_097,
+    total_tokens: 4_127,
+  };
+
+  const defaultFetch = scriptedFetch(() => chatResponse(output, overLegacyOutputCap));
+  const defaultBundle = createNinerouterProvider(baseConfiguration, defaultFetch.fetchImpl);
+  await assert.rejects(defaultBundle.provider.extract(request), /invalid_usage/);
+  assert.equal(defaultFetch.calls[0]?.body?.max_tokens, 4_096);
+
+  const omittedFetch = scriptedFetch(() => chatResponse(output, overLegacyOutputCap));
+  const omittedBundle = createNinerouterProvider({
+    ...baseConfiguration,
+    omitExtractionOutputLimits: true,
+  }, omittedFetch.fetchImpl);
+  const adapter = createModelCapabilityAdapter(omittedBundle.provider, omittedBundle.configuration);
+  const extraction = await adapter.extract(request);
+  assert.equal(extraction.status, "succeeded");
+  assert.deepEqual(Object.keys(omittedFetch.calls[0]?.body ?? {}).sort(), ["messages", "model", "stream"]);
+  assert.equal(omittedFetch.calls[0]?.body?.stream, false);
+
+  const classificationFetch = scriptedFetch(() => chatResponse("{}"));
+  const classificationBundle = createNinerouterProvider({
+    ...baseConfiguration,
+    omitExtractionOutputLimits: true,
+  }, classificationFetch.fetchImpl);
+  await classificationBundle.provider.classify({ data: { report } });
+  assert.equal(classificationFetch.calls[0]?.body?.max_tokens, 4_096);
+
+  const overApplicationBudget = scriptedFetch(() => chatResponse(output, {
+    prompt_tokens: 30,
+    completion_tokens: 12_001,
+    total_tokens: 12_031,
+  }));
+  const budgetBundle = createNinerouterProvider({
+    ...baseConfiguration,
+    omitExtractionOutputLimits: true,
+  }, overApplicationBudget.fetchImpl);
+  await assert.rejects(budgetBundle.provider.extract(request), /invalid_usage/);
+  assert.deepEqual(Object.keys(overApplicationBudget.calls[0]?.body ?? {}).sort(), ["messages", "model", "stream"]);
+});
+
 test("composes with the existing strict validating adapter for real schema-2.0 output", async () => {
   const text = "🚧 Jalan ditutup petugas.";
   const hash = await sha256Text(text);

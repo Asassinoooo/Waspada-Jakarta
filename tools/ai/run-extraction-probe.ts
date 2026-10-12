@@ -15,6 +15,32 @@ const CHAT_MODEL = "Waspada-Jakarta";
 const EMBEDDING_MODEL = "gemini/gemini-embedding-2-preview";
 const MAX_RESPONSE_BODY_BYTES = 256 * 1024;
 const EPOCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+const EXTRACTION_OUTPUT_CONTROL_PARAMETERS = [
+  "max_tokens",
+  "max_output_tokens",
+  "max_completion_tokens",
+  "stop",
+  "temperature",
+  "top_p",
+  "top_k",
+  "frequency_penalty",
+  "presence_penalty",
+] as const;
+const REQUEST_PAYLOAD_KEYS = new Set([
+  "model",
+  "messages",
+  "stream",
+  "max_tokens",
+  ...EXTRACTION_OUTPUT_CONTROL_PARAMETERS,
+]);
+
+type SafeResponseShape = {
+  readonly finishReason: "stop" | "length" | "content_filter" | "tool_calls" | "function_call" | "other" | "missing";
+  readonly jsonValid: boolean;
+  readonly choiceCount: number | null;
+  readonly nonemptyContent: boolean;
+  readonly usagePresent: boolean;
+};
 
 export interface ExtractionProbeOptions {
   readonly argv: readonly string[];
@@ -214,13 +240,19 @@ export async function runExtractionProbe(options: ExtractionProbeOptions): Promi
   const fixtures = await createSyntheticModelSmokeFixtures();
   const observations: NinerouterObservation[] = [];
   let requestCount = 0;
+  let requestPayloadKeys: string[] = [];
+  let responseShape: SafeResponseShape | null = null;
+  const omitOutputLimits = options.argv.includes("--omit-output-limits");
   const transportKind = options.fetchImpl ? "injected_test_transport" : "native_node_http";
   const underlyingFetch = options.fetchImpl ?? createNoTimeoutNodeFetch();
   const guardedFetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     if (requestCount >= 1) throw new Error("request_limit");
     requestCount += 1;
+    requestPayloadKeys = safePayloadKeys(init.body);
     const signal = combineSignals(options.signal, init.signal);
-    return underlyingFetch(input, { ...init, ...(signal ? { signal } : {}) });
+    const response = await underlyingFetch(input, { ...init, ...(signal ? { signal } : {}) });
+    responseShape = await summarizeResponseShape(response);
+    return response;
   }) as typeof fetch;
 
   let outcome;
@@ -232,6 +264,7 @@ export async function runExtractionProbe(options: ExtractionProbeOptions): Promi
       embeddingModel: EMBEDDING_MODEL,
       curationEpoch: epoch,
       timeoutMs: null,
+      omitExtractionOutputLimits: omitOutputLimits,
       maxHttpRequests: 1,
       allowTailnetHttp: true,
       onObservation: (observation) => { observations.push(observation); },
@@ -267,7 +300,6 @@ export async function runExtractionProbe(options: ExtractionProbeOptions): Promi
     : "failed";
   const safeObservation = observation ? {
     capability: "extraction",
-    requestedRoute: CHAT_MODEL,
     outcome: observation.outcome,
     ...(observation.reason ? { reason: observation.reason } : {}),
     ...(observation.httpStatus === undefined ? {} : { httpStatus: observation.httpStatus }),
@@ -275,7 +307,6 @@ export async function runExtractionProbe(options: ExtractionProbeOptions): Promi
     usage: observation.usage,
   } : {
     capability: "extraction",
-    requestedRoute: CHAT_MODEL,
     outcome: "not_observed",
     durationMs: 0,
     usage: { status: "unavailable", reason: "missing_or_invalid" },
@@ -301,6 +332,17 @@ export async function runExtractionProbe(options: ExtractionProbeOptions): Promi
       offsetUnit: "unicode_code_points",
     },
     requestCount,
+    request: {
+      payloadKeys: requestPayloadKeys,
+      allowedPayloadKeys: omitOutputLimits
+        ? ["model", "messages", "stream"]
+        : ["model", "messages", "stream", "max_tokens"],
+      omittedOutputControlParameters: omitOutputLimits ? EXTRACTION_OUTPUT_CONTROL_PARAMETERS : [],
+      outputTokensEnforced: !omitOutputLimits,
+      totalTokensEnforced: true,
+      applicationTotalTokenBudget: 12_000,
+    },
+    responseShape,
     result: value ? {
       status: "succeeded",
       schemaVersion: "2.0",
@@ -362,6 +404,63 @@ export async function runExtractionProbe(options: ExtractionProbeOptions): Promi
   const receipt: ProbeReceipt = { status, requestCount, elapsedMs, manifestPath };
   log({ ...receipt });
   return receipt;
+}
+
+function safePayloadKeys(body: BodyInit | null | undefined): string[] {
+  if (typeof body !== "string") return [];
+  try {
+    const value: unknown = JSON.parse(body);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+    return Object.keys(value).map((key) => REQUEST_PAYLOAD_KEYS.has(key) ? key : "other").sort();
+  } catch {
+    return [];
+  }
+}
+
+async function summarizeResponseShape(response: Response): Promise<SafeResponseShape> {
+  const empty: SafeResponseShape = {
+    finishReason: "missing",
+    jsonValid: false,
+    choiceCount: null,
+    nonemptyContent: false,
+    usagePresent: false,
+  };
+  try {
+    const envelope: unknown = await response.clone().json();
+    if (typeof envelope !== "object" || envelope === null || Array.isArray(envelope)) return empty;
+    const record = envelope as Record<string, unknown>;
+    const choices = Array.isArray(record.choices) ? record.choices : null;
+    const firstChoice = choices?.[0];
+    const choice = typeof firstChoice === "object" && firstChoice !== null && !Array.isArray(firstChoice)
+      ? firstChoice as Record<string, unknown>
+      : undefined;
+    const message = choice?.message;
+    const messageRecord = typeof message === "object" && message !== null && !Array.isArray(message)
+      ? message as Record<string, unknown>
+      : undefined;
+    const content = typeof messageRecord?.content === "string" ? messageRecord.content : "";
+    let jsonValid = false;
+    try {
+      const parsed: unknown = JSON.parse(content);
+      jsonValid = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+    } catch {
+      jsonValid = false;
+    }
+    const rawFinishReason = choice?.finish_reason;
+    const allowedFinishReasons = ["stop", "length", "content_filter", "tool_calls", "function_call"] as const;
+    const finishReason = typeof rawFinishReason === "string"
+      ? allowedFinishReasons.find((reason) => reason === rawFinishReason) ?? "other"
+      : "missing";
+    return {
+      finishReason,
+      jsonValid,
+      choiceCount: choices?.length ?? null,
+      nonemptyContent: content.trim().length > 0,
+      usagePresent: typeof record.usage === "object" && record.usage !== null && !Array.isArray(record.usage),
+    };
+  } catch {
+    return empty;
+  }
 }
 
 function combineSignals(primary?: AbortSignal, secondary?: AbortSignal | null): AbortSignal | undefined {
