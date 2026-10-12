@@ -28,7 +28,7 @@ async function close(server: Server): Promise<void> {
   });
 }
 
-async function validChatResponse(): Promise<string> {
+async function validChatResponse(completionTokens = 30): Promise<string> {
   const fixtures = await createSyntheticModelSmokeFixtures();
   const content = JSON.stringify({
     category: "utilities_essential_services",
@@ -41,7 +41,7 @@ async function validChatResponse(): Promise<string> {
   return JSON.stringify({
     model: "curated/chinese-preview-2026-10-12",
     choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }],
-    usage: { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 },
+    usage: { prompt_tokens: 50, completion_tokens: completionTokens, total_tokens: 50 + completionTokens },
   });
 }
 
@@ -69,11 +69,23 @@ test("probe is disabled without both explicit flags and makes no request", async
 });
 
 test("one delayed local extraction completes with no deadline and writes a safe typed manifest", async () => {
-  const responseBody = await validChatResponse();
+  const responseBody = await validChatResponse(4_097);
   let requestCount = 0;
+  let requestPayload: Record<string, unknown> | undefined;
   const server = createServer((request, response) => {
     requestCount += 1;
-    request.resume();
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    request.on("end", () => {
+      try {
+        const value: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+          requestPayload = value as Record<string, unknown>;
+        }
+      } catch {
+        requestPayload = undefined;
+      }
+    });
     setTimeout(() => {
       if (response.destroyed) return;
       response.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(responseBody) });
@@ -85,7 +97,7 @@ test("one delayed local extraction completes with no deadline and writes a safe 
   const logs: Readonly<Record<string, unknown>>[] = [];
   try {
     const receipt = await runExtractionProbe({
-      argv: ["--live", "--no-timeout"],
+      argv: ["--live", "--no-timeout", "--omit-output-limits"],
       env: env(baseUrl),
       manifestDirectory,
       log: (record) => logs.push(record),
@@ -106,6 +118,21 @@ test("one delayed local extraction completes with no deadline and writes a safe 
       requestCount: number;
       clientDeadlineMs: null;
       transportKind: string;
+      request: {
+        payloadKeys: string[];
+        allowedPayloadKeys: string[];
+        omittedOutputControlParameters: string[];
+        outputTokensEnforced: boolean;
+        totalTokensEnforced: boolean;
+        applicationTotalTokenBudget: number;
+      };
+      responseShape: {
+        finishReason: string;
+        jsonValid: boolean;
+        choiceCount: number | null;
+        nonemptyContent: boolean;
+        usagePresent: boolean;
+      } | null;
       result: { status: string; schemaVersion: string; recordType: string; lineageMatches: boolean; counts: { evidence: number } };
       observation: { capability: string; outcome: string; usage: { status: string } };
       boundaries: { extractionOnly: boolean; semanticOracle: boolean; fullSmoke: boolean };
@@ -114,6 +141,31 @@ test("one delayed local extraction completes with no deadline and writes a safe 
     assert.equal(manifest.requestCount, 1);
     assert.equal(manifest.clientDeadlineMs, null);
     assert.equal(manifest.transportKind, "native_node_http");
+    assert.deepEqual(Object.keys(requestPayload ?? {}).sort(), ["messages", "model", "stream"]);
+    assert.equal(requestPayload?.stream, false);
+    assert.deepEqual(manifest.request.payloadKeys, ["messages", "model", "stream"]);
+    assert.deepEqual(manifest.request.allowedPayloadKeys, ["model", "messages", "stream"]);
+    assert.deepEqual(manifest.request.omittedOutputControlParameters, [
+      "max_tokens",
+      "max_output_tokens",
+      "max_completion_tokens",
+      "stop",
+      "temperature",
+      "top_p",
+      "top_k",
+      "frequency_penalty",
+      "presence_penalty",
+    ]);
+    assert.equal(manifest.request.outputTokensEnforced, false);
+    assert.equal(manifest.request.totalTokensEnforced, true);
+    assert.equal(manifest.request.applicationTotalTokenBudget, 12_000);
+    assert.deepEqual(manifest.responseShape, {
+      finishReason: "stop",
+      jsonValid: true,
+      choiceCount: 1,
+      nonemptyContent: true,
+      usagePresent: true,
+    });
     assert.equal(manifest.result.status, "succeeded");
     assert.equal(manifest.result.schemaVersion, "2.0");
     assert.equal(manifest.result.recordType, "ExtractionResult");
@@ -128,6 +180,7 @@ test("one delayed local extraction completes with no deadline and writes a safe 
     assert.equal(serialized.includes(API_KEY), false);
     assert.equal(serialized.includes(baseUrl), false);
     assert.equal(serialized.includes(responseBody), false);
+    assert.equal(serialized.includes("curated/chinese-preview-2026-10-12"), false);
     assert.equal(JSON.stringify(logs).includes(API_KEY), false);
     assert.equal(JSON.stringify(logs).includes(baseUrl), false);
   } finally {
