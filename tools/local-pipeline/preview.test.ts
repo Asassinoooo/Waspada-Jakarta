@@ -51,13 +51,6 @@ test('preview validates canonical evidence from an older revision outside the ne
       id: 'local-preview-old-valid',
       title: 'Older synthetic canonical source',
       text: 'A previous private synthetic revision supports a test claim.',
-      corruptedTextHash: false,
-    });
-    const oldCorrupt = await addHistoricalEvidence(store, database.executor, {
-      id: 'local-preview-old-corrupt',
-      title: 'Older synthetic source with inconsistent hash',
-      text: 'This synthetic text hash intentionally does not match its canonical text.',
-      corruptedTextHash: true,
     });
 
     const baseReport = feed.reports[0]!;
@@ -76,7 +69,7 @@ test('preview validates canonical evidence from an older revision outside the ne
        JOIN waspada.local_report_snapshots AS snapshot ON snapshot.snapshot_id = inbox.snapshot_id
        WHERE job.job_id = inbox.source_poll_job_id
          AND snapshot.dataset_kind = 'synthetic' AND snapshot.source_id = 'local-authored-api'
-         AND snapshot.stable_report_id IN ('local-preview-old-valid', 'local-preview-old-corrupt')`,
+         AND snapshot.stable_report_id = 'local-preview-old-valid'`,
     );
     for (let index = 0; index < 20; index++) await processor.processIngestion();
     await database.executor.query(
@@ -129,6 +122,18 @@ test('preview validates canonical evidence from an older revision outside the ne
     assert.ok(latestReport.proposal);
     assert.ok(latestReport.proposal.claims.find((claim) => claim.claimId === 'claim-older-valid-reference')
       ?.evidence.some((entry) => entry.reportRevisionId === oldValid.reportRevisionId));
+    await assert.rejects(readLocalPipelinePreview({
+      executor: tamperEvidenceRevisionText(database.executor, oldValid.reportRevisionId),
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:00:00.000Z',
+    }), /local_preview_unavailable/);
+    assert.equal((await readLocalPipelinePreview({
+      executor: database.executor,
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:00:00.000Z',
+    })).reports.length, 20);
 
     await assert.rejects(readLocalPipelinePreview({
       executor: omitAiStage(database.executor, 'extraction'),
@@ -136,12 +141,24 @@ test('preview validates canonical evidence from an older revision outside the ne
       scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
       generatedAt: '2026-10-12T08:00:00.000Z',
     }), /local_preview_unavailable/);
+    assert.equal((await readLocalPipelinePreview({
+      executor: database.executor,
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:00:00.000Z',
+    })).summary.ai.completed, 2);
     await assert.rejects(readLocalPipelinePreview({
       executor: omitAiStage(database.executor, 'proposal'),
       models: 'mock',
       scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
       generatedAt: '2026-10-12T08:00:00.000Z',
     }), /local_preview_unavailable/);
+    assert.equal((await readLocalPipelinePreview({
+      executor: database.executor,
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:00:00.000Z',
+    })).summary.ai.completed, 2);
 
     now = '2026-10-12T08:01:00.000Z';
     await store.capture({
@@ -158,6 +175,14 @@ test('preview validates canonical evidence from an older revision outside the ne
       [baseReport.id],
     );
     assert.equal(pendingJob.rows.length, 1);
+    const pendingBaseline = await readLocalPipelinePreview({
+      executor: database.executor,
+      models: 'mock',
+      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
+      generatedAt: '2026-10-12T08:02:00.000Z',
+    });
+    assert.equal(pendingBaseline.reports.find((report) => report.version === 22)?.ai?.status, 'pending');
+    assert.deepEqual(pendingBaseline.reports.find((report) => report.version === 22)?.stages, []);
     await database.executor.query(
       `INSERT INTO waspada.local_ai_receipts (job_id, stage, receipt_json, receipt_sha256, recorded_at)
        VALUES ($1, 'extraction', '{}'::jsonb, $2, $3::timestamptz)`,
@@ -168,18 +193,6 @@ test('preview validates canonical evidence from an older revision outside the ne
       models: 'mock',
       scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
       generatedAt: '2026-10-12T08:02:00.000Z',
-    }), /local_preview_unavailable/);
-
-    await appendReferenceClaim(database.executor, proposalId, {
-      claimId: 'claim-older-invalid-hash',
-      claimText: 'An older source with a stale canonical text hash fails closed.',
-      evidence: oldCorrupt,
-    });
-    await assert.rejects(readLocalPipelinePreview({
-      executor: database.executor,
-      models: 'mock',
-      scheduler: { status: 'completed', polls: 21, collectionFailures: 0 },
-      generatedAt: '2026-10-12T08:00:00.000Z',
     }), /local_preview_unavailable/);
   } finally {
     await database.close();
@@ -203,10 +216,34 @@ function omitAiStage(executor: TransactionalSqlExecutor, omittedStage: string): 
   };
 }
 
+function tamperEvidenceRevisionText(executor: TransactionalSqlExecutor, revisionId: string): TransactionalSqlExecutor {
+  const wrap = (inner: SqlExecutor): SqlExecutor => ({
+    async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
+      const result = await inner.query<Row>(statement, parameters);
+      if (!statement.includes('FROM waspada.proposal_claim_evidence AS link')) return result;
+      return {
+        rows: result.rows.map((row) => {
+          const value = row as Record<string, unknown>;
+          return value.report_revision_id === revisionId && typeof value.revision_text === 'string'
+            ? { ...value, revision_text: `${value.revision_text} tampered` } as Row
+            : row;
+        }),
+      };
+    },
+    execute: (statement) => inner.execute(statement),
+  });
+  return {
+    ...wrap(executor),
+    async transaction<Result>(work: (transaction: SqlExecutor) => Promise<Result>): Promise<Result> {
+      return executor.transaction((transaction) => work(wrap(transaction)));
+    },
+  };
+}
+
 async function addHistoricalEvidence(
   store: LocalPipelineStore,
   executor: TransactionalSqlExecutor,
-  input: { readonly id: string; readonly title: string; readonly text: string; readonly corruptedTextHash: boolean },
+  input: { readonly id: string; readonly title: string; readonly text: string },
 ): Promise<HistoricalEvidence> {
   const capturedAt = '2026-10-12T06:00:00.000Z';
   const feed = parseAuthoredFeed(JSON.stringify({
@@ -228,8 +265,7 @@ async function addHistoricalEvidence(
   const snapshot = snapshotResult.rows[0];
   assert.ok(snapshot);
   const prepared = await preparePermittedText(input.text);
-  const permittedTextHash = input.corruptedTextHash ? 'f'.repeat(64) : prepared.permittedTextHash;
-  assert.equal(input.corruptedTextHash, permittedTextHash !== prepared.permittedTextHash);
+  const permittedTextHash = prepared.permittedTextHash;
   await executor.query(
     `INSERT INTO waspada.report_revisions
        (dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
