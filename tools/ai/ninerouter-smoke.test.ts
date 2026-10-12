@@ -15,7 +15,13 @@ import { sha256Text } from "../../apps/worker/src/layers/l2-model-grounding/vali
 import { createSyntheticModelSmokeFixtures } from "./ninerouter-fixtures.js";
 import { runSyntheticModelSmoke } from "./ninerouter-smoke.js";
 
-type ReferenceMode = "narrow_multiple" | "wrong_identity" | "out_of_range";
+type ReferenceMode =
+  | "narrow_multiple"
+  | "whole_report"
+  | "wrong_identity"
+  | "out_of_range"
+  | "unrelated_disclaimer"
+  | "unrelated_emoji";
 
 interface ScriptOptions {
   readonly referenceMode?: ReferenceMode;
@@ -51,21 +57,39 @@ function envelope(output: unknown) {
   return { output, usage: { inputTokens: 12, outputTokens: 3 } };
 }
 
+function findPhraseSpan(reportText: string, phrase: string): Pick<EvidenceReference, "spanStart" | "spanEnd"> {
+  const codePoints = Array.from(reportText);
+  const phrasePoints = Array.from(phrase);
+  for (let start = 0; start <= codePoints.length - phrasePoints.length; start += 1) {
+    if (phrasePoints.every((point, offset) => codePoints[start + offset] === point)) {
+      return { spanStart: start, spanEnd: start + phrasePoints.length };
+    }
+  }
+  throw new Error("synthetic_fixture_phrase_missing");
+}
+
 function makeEvidenceReferences(
   canonical: EvidenceReference,
-  reportCodePoints: number,
+  reportText: string,
   mode: ReferenceMode,
 ): readonly EvidenceReference[] {
+  const codePoints = Array.from(reportText);
+  if (mode === "whole_report") return [canonical];
   if (mode === "wrong_identity") {
     return [{ ...canonical, reportRevisionId: "revision_synthetic_wrong" }];
   }
   if (mode === "out_of_range") {
-    return [{ ...canonical, spanEnd: reportCodePoints + 1 }];
+    return [{ ...canonical, spanEnd: codePoints.length + 1 }];
   }
-  const firstEnd = Math.min(24, reportCodePoints - 1);
+  if (mode === "unrelated_disclaimer" || mode === "unrelated_emoji") {
+    const phrase = mode === "unrelated_disclaimer" ? "data ini bukan laporan nyata" : "🧪";
+    return [{ ...canonical, ...findPhraseSpan(reportText, phrase) }];
+  }
+  const anchorSpan = findPhraseSpan(reportText, "layanan air");
+  const placeSpan = findPhraseSpan(reportText, "Zona Uji A");
   return [
-    { ...canonical, spanStart: 0, spanEnd: firstEnd },
-    { ...canonical, spanStart: firstEnd, spanEnd: reportCodePoints },
+    { ...canonical, ...anchorSpan },
+    { ...canonical, ...placeSpan },
   ];
 }
 
@@ -107,7 +131,7 @@ function makeScriptedBoundaries(options: ScriptOptions = {}): ScriptedBoundaries
           category: "utilities_essential_services",
           evidence: makeEvidenceReferences(
             canonical,
-            Array.from(report.permittedText).length,
+            report.permittedText,
             options.referenceMode ?? "narrow_multiple",
           ),
           unknownFields: [],
@@ -136,7 +160,7 @@ function makeScriptedBoundaries(options: ScriptOptions = {}): ScriptedBoundaries
           scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
           evidence: makeEvidenceReferences(
             canonical,
-            Array.from(report.permittedText).length,
+            report.permittedText,
             options.referenceMode ?? "narrow_multiple",
           ),
           unknownFields: [],
@@ -265,6 +289,15 @@ test("smoke composes all five injected boundaries serially and accepts multiple 
   assert.equal(JSON.stringify(summary).includes(fixtures.reportText), false);
 });
 
+test("whole-report citations remain valid for the synthetic source fixture", async () => {
+  const scripted = makeScriptedBoundaries({ referenceMode: "whole_report" });
+  const summary = await runSyntheticModelSmoke({ adapter: scripted.adapter, planner: scripted.planner });
+
+  assert.equal(summary.success, true);
+  assert.equal(summary.lineage.classificationEvidenceMatchesFixture, true);
+  assert.equal(summary.lineage.extractionEvidenceMatchesFixture, true);
+});
+
 test("wrong report identity and out-of-range evidence fail validation without leaking provider output", async (t) => {
   for (const referenceMode of ["wrong_identity", "out_of_range"] as const) {
     await t.test(referenceMode, async () => {
@@ -279,6 +312,25 @@ test("wrong report identity and out-of-range evidence fail validation without le
       assert.deepEqual(scripted.events, ["classification", "extraction", "embedding", "reasoning", "planning"]);
       assert.equal(JSON.stringify(summary).includes("revision_synthetic_wrong"), false);
       assert.equal(JSON.stringify(summary).includes("synthetic_private_provider_detail"), false);
+    });
+  }
+});
+
+test("in-range disclaimer and emoji citations fail the limited synthetic citation oracle", async (t) => {
+  for (const referenceMode of ["unrelated_disclaimer", "unrelated_emoji"] as const) {
+    await t.test(referenceMode, async () => {
+      const scripted = makeScriptedBoundaries({ referenceMode });
+      const summary = await runSyntheticModelSmoke({ adapter: scripted.adapter, planner: scripted.planner });
+      const serialized = JSON.stringify(summary);
+
+      assert.equal(summary.success, false);
+      assert.equal(summary.capabilities.classification.status, "succeeded");
+      assert.equal(summary.capabilities.extraction.status, "succeeded");
+      assert.equal(summary.lineage.classificationEvidenceMatchesFixture, false);
+      assert.equal(summary.lineage.extractionEvidenceMatchesFixture, false);
+      assert.equal(serialized.includes("data ini bukan laporan nyata"), false);
+      assert.equal(serialized.includes("🧪"), false);
+      assert.equal(serialized.includes("Laporan sintetis untuk latihan"), false);
     });
   }
 });
