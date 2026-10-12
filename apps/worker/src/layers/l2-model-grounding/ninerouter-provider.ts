@@ -100,7 +100,8 @@ export interface NinerouterProviderConfiguration {
   readonly curationEpoch: string;
   /** Explicit HTTP opt-in for a syntactically valid 100.64.0.0/10 address; it does not prove tailnet membership. */
   readonly allowTailnetHttp?: boolean;
-  readonly timeoutMs?: number;
+  /** Null disables this provider's wall-clock deadline; the injected transport may still impose its own limits. */
+  readonly timeoutMs?: number | null;
   readonly maxHttpRequests?: number;
   readonly onObservation?: (observation: NinerouterObservation) => void;
 }
@@ -176,7 +177,7 @@ interface ValidatedConfiguration {
   readonly chatModel: string;
   readonly embeddingModel: string;
   readonly curationEpoch: string;
-  readonly timeoutMs: number;
+  readonly timeoutMs: number | null;
   readonly maxHttpRequests: number;
   readonly onObservation?: (observation: NinerouterObservation) => void;
 }
@@ -324,8 +325,9 @@ export function createNinerouterProvider(
           redirect: "manual",
           signal,
         });
-      } catch {
-        throw new ProviderTransportError(signal.aborted ? "aborted" : "request_failed");
+      } catch (error) {
+        const wasAborted = signal.aborted || (error instanceof Error && error.name === "AbortError");
+        throw new ProviderTransportError(wasAborted ? "aborted" : "request_failed");
       }
 
       const status = Number.isInteger(response.status) ? response.status : undefined;
@@ -724,7 +726,11 @@ function validateConfiguration(config: NinerouterProviderConfiguration): Validat
     throw new Error("invalid_configuration");
   }
 
-  const timeoutMs = config.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : readInteger(config.timeoutMs, 1, MAX_TIMEOUT_MS);
+  const timeoutMs = config.timeoutMs === null
+    ? null
+    : config.timeoutMs === undefined
+      ? DEFAULT_TIMEOUT_MS
+      : readInteger(config.timeoutMs, 1, MAX_TIMEOUT_MS);
   const maxHttpRequests = config.maxHttpRequests === undefined
     ? MAX_HTTP_REQUESTS
     : readInteger(config.maxHttpRequests, 1, MAX_HTTP_REQUESTS);
@@ -811,7 +817,7 @@ function byteLength(value: string): number {
 
 async function withDeadline<T>(
   operation: (signal: AbortSignal) => Promise<T>,
-  timeoutMs: number,
+  timeoutMs: number | null,
   externalSignal?: AbortSignal,
 ): Promise<T> {
   if (externalSignal?.aborted) throw new ProviderTransportError("aborted");
@@ -830,11 +836,13 @@ async function withDeadline<T>(
       externalSignal.addEventListener("abort", onAbort, { once: true });
       removeCallerListener = () => externalSignal.removeEventListener("abort", onAbort);
     }
-    timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-      reject(new ProviderTransportError("timeout"));
-    }, timeoutMs);
+    if (timeoutMs !== null) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+        reject(new ProviderTransportError("timeout"));
+      }, timeoutMs);
+    }
   });
   try {
     return await Promise.race([operation(controller.signal), interruption]);

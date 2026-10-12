@@ -738,6 +738,7 @@ test("times out calls and honors planner caller cancellation without leaking fet
   }));
   const cancelledBundle = createNinerouterProvider({
     ...baseConfiguration,
+    timeoutMs: null,
     onObservation: (observation) => cancelledObservations.push(observation),
   }, cancellable.fetchImpl);
   const planner = createInvestigationPlanner(cancelledBundle.plannerProvider, cancelledBundle.plannerMetadata);
@@ -749,6 +750,45 @@ test("times out calls and honors planner caller cancellation without leaking fet
   assert.equal(outcome.status, "provider_error");
   assert.equal(cancelledObservations[0]?.reason, "aborted");
   assert.equal(JSON.stringify(cancelledObservations).includes(baseConfiguration.apiKey), false);
+});
+
+test("explicit null disables only the provider deadline for delayed typed extraction", async () => {
+  const observations: NinerouterObservation[] = [];
+  const text = "Synthetic extraction report for the no-deadline probe.";
+  const report = {
+    reportRevisionId: "report-no-deadline-synthetic",
+    permittedTextHash: await sha256Text(text),
+    normalizationVersion: "synthetic-normalization-v1",
+    permittedText: text,
+  };
+  const extractionRequest: ExtractionRequest = {
+    data: { candidateId: "candidate-no-deadline-synthetic", report },
+  };
+  const output = {
+    category: null,
+    tags: [],
+    eventTime: { start: null, end: null, precision: "unknown" },
+    scope: { placeIds: [], serviceIds: [], institutionIds: [], audienceIds: [], geometryIds: [] },
+    evidence: [],
+    unknownFields: ["category", "event_time"],
+  };
+  const scripted = scriptedFetch(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 35));
+    return chatResponse(JSON.stringify(output));
+  });
+  const bundle = createNinerouterProvider({
+    ...baseConfiguration,
+    timeoutMs: null,
+    maxHttpRequests: 1,
+    onObservation: (observation) => observations.push(observation),
+  }, scripted.fetchImpl);
+  const adapter = createModelCapabilityAdapter(bundle.provider, bundle.configuration);
+  const result = await adapter.extract(extractionRequest);
+
+  assert.equal(result.status, "succeeded");
+  assert.equal(scripted.calls.length, 1);
+  assert.equal(observations[0]?.outcome, "succeeded");
+  assert.ok((observations[0]?.durationMs ?? 0) >= 25);
 });
 
 test("serializes concurrent provider calls and caps the instance at eight requests", async () => {
