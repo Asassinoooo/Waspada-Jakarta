@@ -89,8 +89,9 @@ test('capture hashes canonical report fields and creates a new immutable version
   }
 });
 
-test('file-backed PGlite reopens with the same profile and refuses a different owner', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'rpl-local-pipeline-'));
+test('fresh nested file-backed PGlite state opens, persists, and refuses a different owner', async () => {
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'rpl-local-pipeline-'));
+  const dataDir = join(temporaryDirectory, 'nested', 'new-state');
   try {
     let database = await openLocalPipelineDatabase({ dataDir, profileId: 'durable-profile' });
     const firstStore = new SqlLocalPipelineStore(database.executor);
@@ -122,7 +123,7 @@ test('file-backed PGlite reopens with the same profile and refuses a different o
       /already contains unowned waspada data/,
     );
   } finally {
-    await rm(dataDir, { recursive: true, force: true });
+    await rm(temporaryDirectory, { recursive: true, force: true });
   }
 });
 
