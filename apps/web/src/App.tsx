@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useReducer, useState } from "react";
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPublicContext, listEvents, type ApiReadState, type PublicGeoJSONFilters } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
@@ -16,8 +16,13 @@ type Route =
   | { screen: "updates" }
   | { screen: "review" }
   | { screen: "source-preview" }
+  | { screen: "local-pipeline" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
+
+const LocalPipelinePreview = import.meta.env?.DEV === true
+  ? lazy(() => import("./LocalPipelinePreview.js").then((module) => ({ default: module.LocalPipelinePreview })))
+  : null;
 
 export interface DiscoveryState {
   query: string;
@@ -115,6 +120,7 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
 }
 
 export function routeFromHash(hash: string): Route {
+  if (hash === "#pipeline-lokal" && import.meta.env?.DEV === true) return { screen: "local-pipeline" };
   if (hash === "#demo-sumber") return { screen: "source-preview" };
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
@@ -140,6 +146,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
       : "Status dataset tidak tersedia";
   const bannerLabel = datasetMode === "demo" ? "DEMO" : datasetMode === "live" ? "LIVE" : "—";
   const sourcePreview = route.screen === "source-preview" && datasetMode === "demo";
+  const localPipeline = route.screen === "local-pipeline";
   const bannerTitle = sourcePreview
     ? "DEMO SUMBER — pratinjau data publik; bukan peringatan Waspada"
     : datasetMode === "demo"
@@ -166,6 +173,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
         <nav className="primary-nav" aria-label="Navigasi utama">
           <a href="#jelajah" aria-current={onDiscover ? "page" : undefined}>Jelajah</a>
           {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Demo sumber</a>}
+          {import.meta.env?.DEV === true && datasetMode === "demo" && <a href="#pipeline-lokal" aria-current={localPipeline ? "page" : undefined}>Pipeline lokal</a>}
           <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Ringkasan saya</a>
           <a href="#pembaruan" aria-current={route.screen === "updates" ? "page" : undefined}>Pembaruan</a>
           <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
@@ -249,7 +257,7 @@ export function App() {
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
   useEffect(() => {
-    if (route.screen === "preferences" || route.screen === "updates" || route.screen === "source-preview") return;
+    if (route.screen === "preferences" || route.screen === "updates" || route.screen === "source-preview" || route.screen === "local-pipeline") return;
     let cancelled = false;
     setStatus("loading");
 
@@ -406,6 +414,11 @@ export function App() {
       {route.screen === "preferences" && <Preferences context={context} contextSnapshotId={contextRequestKey} />}
       {route.screen === "updates" && <UpdatesCenter context={context} refreshCurrentEvents={refreshCurrentEvents} />}
       {route.screen === "review" && <ModeratorReview />}
+      {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
+        <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
+          <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />
+        </Suspense>
+      )}
       {route.screen === "source-preview" && (
         <UnifiedSourceExplorer
           datasetMode={context?.dataset_mode ?? null}
