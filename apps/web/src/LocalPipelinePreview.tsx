@@ -203,9 +203,13 @@ export function LocalPipelineReportCard({
                 <p className="local-pipeline__eyebrow">Usulan L2</p>
                 <h3>Usulan privat · belum terbit</h3>
               </div>
-              <span>{formatTime(report.proposal.proposedAt)}</span>
+              <div className="local-pipeline__proposal-time">
+                <span>Acuan waktu usulan (waktu diterima pipeline)</span>
+                <time dateTime={report.proposal.proposedAt}>{formatTime(report.proposal.proposedAt)}</time>
+              </div>
             </div>
             <p className="local-pipeline__proposal-note">
+              Waktu acuan ini mengikuti saat laporan diterima pipeline, bukan waktu selesainya inferensi L2.
               Penilaian model adalah masukan untuk peninjauan; penilaian itu sendiri tidak menyetujui klaim.
               {report.proposal.unresolvedCount > 0 && " " + report.proposal.unresolvedCount + " hal belum terselesaikan."}
             </p>

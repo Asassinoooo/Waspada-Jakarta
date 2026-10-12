@@ -147,6 +147,8 @@ test("renders source versions, separate times, escaped claim text, and contrary 
   assert.match(markup, /Diterima pipeline lokal/);
   assert.match(markup, /Hash konten sumber/);
   assert.match(markup, /Pribadi · belum terbit/);
+  assert.match(markup, /Acuan waktu usulan \(waktu diterima pipeline\)/);
+  assert.match(markup, /bukan waktu selesainya inferensi L2/);
   assert.match(markup, /Mendukung/);
   assert.match(markup, /Bertentangan/);
   assert.match(markup, /Catatan latihan:/);

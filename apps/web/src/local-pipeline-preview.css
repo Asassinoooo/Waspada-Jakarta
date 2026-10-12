@@ -367,10 +367,12 @@
   font-size: 0.98rem;
 }
 
-.local-pipeline__proposal-heading > span {
+.local-pipeline__proposal-time {
   color: var(--quiet-ink);
   font-size: 0.76rem;
   text-align: right;
+  display: grid;
+  gap: 0.15rem;
 }
 
 .local-pipeline__proposal-note {
@@ -635,7 +637,7 @@
     flex-direction: column;
   }
 
-  .local-pipeline__proposal-heading > span {
+  .local-pipeline__proposal-time {
     text-align: left;
   }
 
