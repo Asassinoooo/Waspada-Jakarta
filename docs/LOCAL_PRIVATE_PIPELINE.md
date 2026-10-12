@@ -21,6 +21,8 @@ Models run outside SQL transactions. Each successful stage records a validated r
 
 All revisions remain unreviewed. The one authored origin has unknown independence; retrieval of that exact synthetic candidate proves composition only. An insufficient context stops before reasoning/L3. L4 publication, moderator mutation and public event routes are disconnected. The tool does not change Cloudflare, Neon, real source access, scheduled Worker bindings or the map UI.
 
+Retrieval currently scans at most16 global evidence rows and returns at most8 hybrid matches before selecting the exact candidate. Its preview is limited to2048 code points; selected spans are then rehydrated exactly. Any scan/result truncation, omitted invalid span or missing support stops as `context_insufficient` and can exhaust retries as history grows. This small synthetic proof does not establish scalable historical retrieval. Collection/L1 continue retaining reports during that stop. A terminal L1 version also leaves later versions of the same stable report retained but blocked by the canonical supersedes dependency; other report IDs continue. There is no automatic repair/reset operation in this slice.
+
 ## Startup in WSL Ubuntu-26.04
 
 Use the installed dependencies: Node24.21.0/npm11.19.0, tsx4.23.15, PGlite0.5.8, postgis0.2.8 and pgvector0.0.9. No new package or database server is needed.
@@ -45,6 +47,10 @@ npm run pipeline:test
 ```
 
 To simulate a change during mock polling, edit the authored `tools/local-pipeline/fixtures/feed.json` body under the same report ID. That fixture is explicitly synthetic and contains no inferred geometry. The CLI accepts no network feed URL. State lives under ignored `.codex-build/local-pipeline/<state>`; keep it private and disposable. Each state is pinned to a synthetic namespace and model profile. Stop the process before removing its selected state directory; do not point this tool at an existing application database.
+
+Create fresh disposable state if experimenting with an earlier unreviewed bootstrap draft. This local bootstrap is not a migration/repair interface for legacy application data. It refuses an existing unowned application schema and a different synthetic/model profile before applying canonical migrations.
+
+Use one process per state directory. Stop a watch run before opening the same state for status or another cycle. The tests prove lease behavior within one local PGlite instance and sequential process restarts; they do not prove independent PostgreSQL sessions, simultaneous file-backed PGlite processes or hosted Neon concurrency.
 
 ## Separately opt-in real gateway probe
 

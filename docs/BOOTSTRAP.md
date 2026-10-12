@@ -56,6 +56,8 @@ The smoke test exercises both proxied read routes and renders the actual returne
 
 ## Recorded WSL verification
 
+For the separate opt-in authored-feed/PGlite/private-AI tool, use [the local pipeline startup guide](LOCAL_PRIVATE_PIPELINE.md). `npm run pipeline:local` stays disabled; `--enable --once` runs mocked models against isolated synthetic state. Public Worker/Vite startup remains independent. This Node tool is not a hosted Worker database connection.
+
 Run from the assigned worktree with Node.js `v24.21.0` and npm `11.19.0`:
 
 - `npm ci --offline --no-audit --no-fund` — passed with the populated local npm cache.

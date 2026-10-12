@@ -4,6 +4,8 @@ Status: local provider adapter/CLI accepted, live compatibility partial, updated
 
 ## Model roles
 
+The separate [local private pipeline](LOCAL_PRIVATE_PIPELINE.md) now composes authored-feed collection, file-backed PGlite L1 evidence and typed L2 extraction/embedding/grounding with canonical private proposal persistence; acceptance checks are in progress. Routine verification uses deterministic model doubles. Separately opt-in 9router cycles/resumes use one synthetic AI attempt, a three-request transport budget and a pinned gateway/model/curation profile. This does not activate the public Worker, L3 investigations, Neon, publication or real-source model transfer, and does not resolve the earlier real extraction timeouts.
+
 | Capability | Selected testing direction | Contract and bounds |
 | --- | --- | --- |
 | Embedding | User-selected `gemini/gemini-embedding-2-preview` through 9router; earlier research used stable `gemini-embedding-2` | Request 768 dimensions/cosine and one raw evidence chunk per request. Exact route/model/dimension/index identity is preserved. No substitution to the stable route, cross-model fallback or mixing vector spaces. Query embeddings remain a separate future port. |
