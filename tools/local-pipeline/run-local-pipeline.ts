@@ -71,7 +71,8 @@ export async function runLocalCli(args: readonly string[]): Promise<void> {
     const bundle = createNinerouterProvider({ baseUrl, apiKey, chatModel: 'Waspada-Jakarta',
       embeddingModel: 'gemini/gemini-embedding-2-preview', curationEpoch: epoch,
       maxHttpRequests: 3, timeoutMs: 25_000, allowTailnetHttp: true });
-    const profileId = `real-${createHash('sha256').update(JSON.stringify(bundle.configuration)).digest('hex')}`;
+    const gatewayFingerprint = new URL(baseUrl).href.replace(/\/+$/, '');
+    const profileId = `real-${createHash('sha256').update(JSON.stringify([gatewayFingerprint, bundle.configuration])).digest('hex')}`;
     models = { adapter: createModelCapabilityAdapter(bundle.provider, bundle.configuration), configuration: bundle.configuration, profileId };
     // New probes get fresh state; explicit resume reuses its pinned synthetic profile.
     state = args.includes('--state') ? options.state : `real-${randomUUID()}`;
