@@ -44,9 +44,9 @@ function chatResponse(content: string, usage: Record<string, unknown> = {
   prompt_tokens: 30,
   completion_tokens: 12,
   total_tokens: 42,
-}) {
+}, model = "curated/chinese-preview-2026-10-12") {
   return jsonResponse({
-    model: "curated/chinese-preview-2026-10-12",
+    model,
     choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }],
     usage,
   });
@@ -397,6 +397,39 @@ test("accepts safe native Google embedding identity forms and records their exac
   }
 });
 
+test("never records URL-shaped or credential-bearing provider model metadata", async () => {
+  const maliciousModels = [
+    "https://secret.example.invalid/models/embedding",
+    "router.example.invalid/models/embedding",
+    baseConfiguration.apiKey,
+  ];
+  for (const model of maliciousModels) {
+    const chatObservations: NinerouterObservation[] = [];
+    const chatProvider = createNinerouterProvider({
+      ...baseConfiguration,
+      onObservation: (observation) => chatObservations.push(observation),
+    }, scriptedFetch(() => chatResponse("{}", undefined, model)).fetchImpl);
+    await assert.rejects(
+      chatProvider.provider.classify({ data: { report: { permittedText: "synthetic" } } } as unknown as ClassificationRequest),
+      /invalid_response/,
+    );
+    assert.equal(JSON.stringify(chatObservations).includes(model), false);
+    assert.equal(chatObservations[0]?.reportedResponseModel, undefined);
+
+    const embeddingObservations: NinerouterObservation[] = [];
+    const embeddingProvider = createNinerouterProvider({
+      ...baseConfiguration,
+      onObservation: (observation) => embeddingObservations.push(observation),
+    }, scriptedFetch(() => embeddingResponse(validVector(), model)).fetchImpl);
+    await assert.rejects(
+      embeddingProvider.provider.embed({ data: { chunk: { text: "synthetic" } } } as EmbeddingRequest),
+      /invalid_response/,
+    );
+    assert.equal(JSON.stringify(embeddingObservations).includes(model), false);
+    assert.equal(embeddingObservations[0]?.reportedResponseModel, undefined);
+  }
+});
+
 test("counts failed HTTP attempts, performs no retries, and rejects redirects manually", async () => {
   let fetchCount = 0;
   const observations: NinerouterObservation[] = [];
@@ -423,14 +456,14 @@ test("counts failed HTTP attempts, performs no retries, and rejects redirects ma
   assert.equal(JSON.stringify(observations).includes("secret source marker"), false);
 });
 
-test("bounds request bodies before fetch and validates configuration without exposing credentials", async () => {
+test("rejects oversized embedding input before fetch and validates configuration without exposing credentials", async () => {
   let fetchCount = 0;
   const scripted = scriptedFetch(() => {
     fetchCount += 1;
     return embeddingResponse();
   });
   const provider = createNinerouterProvider(baseConfiguration, scripted.fetchImpl);
-  await assert.rejects(provider.provider.embed({ data: { chunk: { text: "x".repeat(200_000) } } } as EmbeddingRequest), /request_too_large/);
+  await assert.rejects(provider.provider.embed({ data: { chunk: { text: "x".repeat(200_000) } } } as EmbeddingRequest), /budget_exceeded/);
   assert.equal(fetchCount, 0);
 
   for (const invalid of [
@@ -452,6 +485,48 @@ test("bounds request bodies before fetch and validates configuration without exp
       return true;
     });
   }
+});
+
+test("rejects embedding chunks above the conservative UTF-8 input reservation before HTTP", async () => {
+  let fetchCount = 0;
+  const observations: NinerouterObservation[] = [];
+  const scripted = scriptedFetch(() => {
+    fetchCount += 1;
+    return embeddingResponse();
+  });
+  const provider = createNinerouterProvider({
+    ...baseConfiguration,
+    onObservation: (observation) => observations.push(observation),
+  }, scripted.fetchImpl);
+  const text = "🚨".repeat(2_049); // 2,049 code points, 8,196 UTF-8 bytes.
+
+  await assert.rejects(
+    provider.provider.embed({ data: { chunk: { text } } } as EmbeddingRequest),
+    /budget_exceeded/,
+  );
+
+  assert.equal(fetchCount, 0);
+  assert.equal(scripted.calls.length, 0);
+  assert.equal(observations.length, 1);
+  assert.deepEqual(observations[0], {
+    capability: "embedding",
+    requestedRoute: baseConfiguration.embeddingModel,
+    outcome: "failed",
+    reason: "budget_exceeded",
+    durationMs: 0,
+    usage: { status: "unavailable", reason: "not_reported_by_embedding_route" },
+  });
+  assert.equal(JSON.stringify(observations).includes("🚨"), false);
+});
+
+test("allows an embedding chunk exactly at the conservative UTF-8 reservation", async () => {
+  const scripted = scriptedFetch(() => embeddingResponse());
+  const provider = createNinerouterProvider(baseConfiguration, scripted.fetchImpl);
+  const text = "é".repeat(4_096); // 4,096 code points, exactly 8,192 UTF-8 bytes.
+
+  assert.deepEqual(await provider.provider.embed({ data: { chunk: { text } } } as EmbeddingRequest), { vector: validVector() });
+  assert.equal(scripted.calls.length, 1);
+  assert.equal(scripted.calls[0]?.body?.input, text);
 });
 
 test("times out calls and honors planner caller cancellation without leaking fetch errors", async () => {

@@ -25,6 +25,9 @@ const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 const MAX_RESPONSE_BODY_BYTES = 256 * 1024;
 const MAX_CHAT_OUTPUT_BYTES = 128 * 1024;
 const MAX_EMBEDDING_INPUT_BYTES = 192 * 1024;
+// Conservative short-text reservation for Gemini's 8,192-token embedding input limit.
+// UTF-8 bytes are used as a safe upper bound here, not as a tokenizer estimate.
+const MAX_EMBEDDING_INPUT_UTF8_BYTES = 8_192;
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._:/-]{0,199}$/;
 const PROMPT_EPOCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$/;
@@ -417,13 +420,13 @@ export function createNinerouterProvider(
           const envelope = await readJsonResponse(response, MAX_RESPONSE_BODY_BYTES);
           let parsed: ParsedChatResponse;
           try {
-            parsed = parseChatResponse(envelope);
+            parsed = parseChatResponse(envelope, settings);
           } catch (error) {
             if (error instanceof ProviderTransportError) {
               throw new ProviderTransportError(error.code, error.usageUnavailable, {
                 ...(error.details ?? { usage: { status: "unavailable", reason: "missing_or_invalid" } }),
-                ...(safeReportedModel(envelope && isPlainRecord(envelope) ? envelope.model : undefined)
-                  ? { reportedResponseModel: safeReportedModel(envelope && isPlainRecord(envelope) ? envelope.model : undefined) }
+                ...(safeReportedModel(envelope && isPlainRecord(envelope) ? envelope.model : undefined, settings)
+                  ? { reportedResponseModel: safeReportedModel(envelope && isPlainRecord(envelope) ? envelope.model : undefined, settings) }
                   : {}),
               });
             }
@@ -494,6 +497,17 @@ export function createNinerouterProvider(
           });
           throw new ProviderTransportError("invalid_response", "not_reported_by_embedding_route");
         }
+        if (byteLength(chunkText) > MAX_EMBEDDING_INPUT_UTF8_BYTES) {
+          recordObservation({
+            capability: "embedding",
+            requestedRoute: settings.embeddingModel,
+            outcome: "failed",
+            reason: "budget_exceeded",
+            durationMs: 0,
+            usage: { status: "unavailable", reason: "not_reported_by_embedding_route" },
+          });
+          throw new ProviderTransportError("budget_exceeded", "not_reported_by_embedding_route");
+        }
         const body = JSON.stringify({
           model: settings.embeddingModel,
           input: chunkText,
@@ -510,7 +524,7 @@ export function createNinerouterProvider(
           missingUsage: "not_reported_by_embedding_route",
           parse: async (response) => {
             const envelope = await readJsonResponse(response, MAX_RESPONSE_BODY_BYTES);
-            const parsed = parseEmbeddingResponse(envelope);
+            const parsed = parseEmbeddingResponse(envelope, settings);
             if (!isAcceptedEmbeddingResponseModel(parsed.reportedResponseModel, settings.embeddingModel)) {
               throw new ProviderTransportError("response_model_mismatch", "not_reported_by_embedding_route", {
                 reportedResponseModel: parsed.reportedResponseModel,
@@ -830,7 +844,10 @@ function parseCatalog(value: unknown, requestedModel: string, chat: boolean): Ca
   };
 }
 
-function parseEmbeddingResponse(value: unknown): { readonly vector: readonly number[]; readonly reportedResponseModel: string } {
+function parseEmbeddingResponse(
+  value: unknown,
+  settings: ValidatedConfiguration,
+): { readonly vector: readonly number[]; readonly reportedResponseModel: string } {
   if (!isPlainRecord(value) || !Array.isArray(value.data) || value.data.length !== 1) {
     throw new ProviderTransportError("invalid_response", "not_reported_by_embedding_route");
   }
@@ -839,7 +856,7 @@ function parseEmbeddingResponse(value: unknown): { readonly vector: readonly num
     throw new ProviderTransportError("invalid_response", "not_reported_by_embedding_route");
   }
   const dimensions = item.embedding.length;
-  const reportedResponseModel = safeReportedModel(value.model);
+  const reportedResponseModel = safeReportedModel(value.model, settings);
   const details: RequestObservationDetails = {
     ...(reportedResponseModel ? { reportedResponseModel } : {}),
     usage: { status: "unavailable", reason: "not_reported_by_embedding_route" },
@@ -867,7 +884,7 @@ function parseEmbeddingResponse(value: unknown): { readonly vector: readonly num
   };
 }
 
-function parseChatResponse(value: unknown): ParsedChatResponse {
+function parseChatResponse(value: unknown, settings: ValidatedConfiguration): ParsedChatResponse {
   if (!isPlainRecord(value) || value.error !== undefined || !Array.isArray(value.choices) || value.choices.length !== 1) {
     throw new ProviderTransportError("invalid_response");
   }
@@ -881,7 +898,7 @@ function parseChatResponse(value: unknown): ParsedChatResponse {
     || Object.prototype.hasOwnProperty.call(choice.message, "tool_calls")) {
     throw new ProviderTransportError("invalid_response");
   }
-  const reportedResponseModel = safeReportedModel(value.model);
+  const reportedResponseModel = safeReportedModel(value.model, settings);
   if (!reportedResponseModel) throw new ProviderTransportError("invalid_response");
   const usage = parseChatUsage(value.usage);
   if (!usage) {
@@ -935,8 +952,14 @@ function containsKnownUnmeasuredUsage(value: unknown, depth = 0): boolean {
   return false;
 }
 
-function safeReportedModel(value: unknown): string | undefined {
-  return typeof value === "string" && RESPONSE_MODEL_PATTERN.test(value) ? value : undefined;
+function safeReportedModel(value: unknown, settings: ValidatedConfiguration): string | undefined {
+  if (typeof value !== "string" || !RESPONSE_MODEL_PATTERN.test(value) || value.includes("://")) return undefined;
+  const normalized = value.toLowerCase();
+  if (normalized.includes(settings.apiKey.toLowerCase())
+    || normalized.includes(settings.base.origin.toLowerCase())
+    || normalized.includes(settings.base.href.toLowerCase())
+    || normalized.includes(settings.base.hostname.toLowerCase())) return undefined;
+  return value;
 }
 
 function isAcceptedEmbeddingResponseModel(reportedModel: string, requestedModel: string): boolean {
