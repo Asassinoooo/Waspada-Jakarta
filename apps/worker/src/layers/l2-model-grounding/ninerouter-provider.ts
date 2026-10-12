@@ -20,7 +20,7 @@ const EMBEDDING_DIMENSIONS = 768;
 const EMBEDDING_VECTOR_INDEX_VERSION = "ninerouter:gemini-embedding-2:raw-768-cosine:v1";
 const MAX_HTTP_REQUESTS = 8;
 const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_TIMEOUT_MS = 120_000;
+const MAX_TIMEOUT_MS = 900_000;
 const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 const MAX_RESPONSE_BODY_BYTES = 256 * 1024;
 const MAX_CHAT_OUTPUT_BYTES = 128 * 1024;
@@ -351,6 +351,9 @@ export function createNinerouterProvider(
           throw new ProviderTransportError(error.code, error.usageUnavailable, {
             ...(error.details ?? { usage: { status: "unavailable", reason: observed.missingUsage } }),
           });
+        }
+        if (signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+          throw new ProviderTransportError("aborted", observed.missingUsage);
         }
         throw new ProviderTransportError("invalid_response", observed.missingUsage);
       }

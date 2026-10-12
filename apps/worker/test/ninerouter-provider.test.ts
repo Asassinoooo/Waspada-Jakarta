@@ -614,6 +614,30 @@ test("rejects oversized embedding input before fetch and validates configuration
   }
 });
 
+test("preserves the 30-second provider default and accepts the raised numeric ceiling", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let markStarted: (() => void) | undefined;
+  const requestStarted = new Promise<void>((resolve) => { markStarted = resolve; });
+  const neverFetch = (async () => {
+    markStarted?.();
+    return await new Promise<Response>(() => undefined);
+  }) as typeof fetch;
+  const provider = createNinerouterProvider(baseConfiguration, neverFetch);
+  const pending = provider.provider.embed({ data: { chunk: { text: "synthetic" } } } as EmbeddingRequest);
+  let settled = false;
+  void pending.then(() => { settled = true; }, () => { settled = true; });
+  await requestStarted;
+  t.mock.timers.tick(29_999);
+  await Promise.resolve();
+  assert.equal(settled, false);
+  t.mock.timers.tick(1);
+  await assert.rejects(pending, /timeout/);
+  assert.equal(settled, true);
+
+  assert.doesNotThrow(() => createNinerouterProvider({ ...baseConfiguration, timeoutMs: 900_000 }, neverFetch));
+  assert.throws(() => createNinerouterProvider({ ...baseConfiguration, timeoutMs: 900_001 }, neverFetch), /invalid_configuration/);
+});
+
 test("rejects URL-shaped and credential-bearing model configuration before any provider request", () => {
   let fetchCount = 0;
   const scripted = scriptedFetch(() => {

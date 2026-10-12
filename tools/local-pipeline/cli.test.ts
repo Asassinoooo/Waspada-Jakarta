@@ -69,6 +69,28 @@ test('real status resolves the same profile without sending provider HTTP', asyn
     rmSync(stateDir, { recursive: true, force: true });
   }
 });
+
+test('SIGTERM during asynchronous startup stops before scheduling and closes the local database', async () => {
+  const priorCwd = process.cwd();
+  const stateDir = mkdtempSync(join(tmpdir(), 'local-pipeline-stop-startup-'));
+  const output: string[] = [];
+  const logBefore = console.log;
+  const priorListenerCount = process.listenerCount('SIGTERM');
+  try {
+    process.chdir(stateDir);
+    console.log = (...values: unknown[]) => { output.push(values.join(' ')); };
+    const startup = runLocalCli(['--enable', '--once', '--state', 'startup-stop']);
+    assert.equal(process.emit('SIGTERM'), true);
+    await startup;
+    assert.equal(JSON.parse(output.at(-1) ?? '{}').status, 'stopped');
+    assert.equal(process.listenerCount('SIGTERM'), priorListenerCount);
+  } finally {
+    console.log = logBefore;
+    process.chdir(priorCwd);
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
 test('unknown, duplicate, unbounded, conflicting and escaping arguments fail closed', () => {
   for (const args of [['--source', 'https://example.invalid'], ['--enable', '--enable'], ['--state', '../outside'],
     ['--state'], ['--max-polls', '10001'], ['--max-polls', '2'], ['--once', '--watch'], ['--watch', '--interval-ms', '0'], ['--status', '--enable']]) {
