@@ -213,6 +213,31 @@ test('a synthetic extraction can succeed after the former 26-second local deadli
   assert.equal(models.requestTimeoutMs, 900_000);
 });
 
+test('a pre-cancelled model bundle returns aborted without fetch or an unhandled rejection', async () => {
+  let fetchCalls = 0;
+  let unhandledRejections = 0;
+  const observations: Array<{ capability: string; reason?: string }> = [];
+  const onUnhandledRejection = (_reason: unknown) => { unhandledRejections += 1; };
+  const models = resolveLocalModels({ realAi: true, omitExtractionOutputLimits: false, env: validEnv,
+    fetchImpl: (async () => { fetchCalls += 1; throw new Error('provider_http'); }) as typeof fetch,
+    onObservation: (observation) => observations.push(observation) });
+  const { report } = extractionFixture();
+
+  process.on('unhandledRejection', onUnhandledRejection);
+  try {
+    models.cancel?.();
+    const result = await models.adapter.extract({ data: { candidateId: 'candidate-pre-cancelled-1', report } });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(result.status, 'provider_error');
+    assert.equal(fetchCalls, 0);
+    assert.equal(observations[0]?.reason, 'aborted');
+    assert.equal(unhandledRejections, 0);
+  } finally {
+    process.removeListener('unhandledRejection', onUnhandledRejection);
+  }
+});
+
 test('model cancellation settles even when an injected fetch ignores its signal', async () => {
   let markStarted: (() => void) | undefined;
   let receivedSignal: AbortSignal | null | undefined;

@@ -112,15 +112,6 @@ function createCancellableFetch(fetchImpl: typeof fetch, localSignal: AbortSigna
     let cleaned = false;
     let removeBodyAbort = (): void => undefined;
     let rejectOnAbort: (() => void) | undefined;
-    const aborted = new Promise<never>((_resolve, reject) => {
-      rejectOnAbort = () => {
-        const error = new Error('aborted');
-        error.name = 'AbortError';
-        reject(error);
-      };
-      combined.signal.addEventListener('abort', rejectOnAbort, { once: true });
-      if (combined.signal.aborted) rejectOnAbort();
-    });
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
@@ -128,13 +119,20 @@ function createCancellableFetch(fetchImpl: typeof fetch, localSignal: AbortSigna
       if (rejectOnAbort) combined.signal.removeEventListener('abort', rejectOnAbort);
       for (const { signal, abort } of sourceListeners) signal.removeEventListener('abort', abort);
     };
+    if (combined.signal.aborted) {
+      cleanup();
+      throw createAbortError();
+    }
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectOnAbort = () => {
+        const error = createAbortError();
+        reject(error);
+      };
+      combined.signal.addEventListener('abort', rejectOnAbort, { once: true });
+      if (combined.signal.aborted) rejectOnAbort();
+    });
 
     try {
-      if (combined.signal.aborted) {
-        const error = new Error('aborted');
-        error.name = 'AbortError';
-        throw error;
-      }
       const request = Promise.resolve().then(() => {
         if (combined.signal.aborted) throw createAbortError();
         return fetchImpl(input, { ...init, signal: combined.signal });
