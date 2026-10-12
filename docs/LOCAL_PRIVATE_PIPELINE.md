@@ -1,6 +1,6 @@
 # Local synthetic polling → private proposals
 
-Implementation verification pending. Task: [JOB-01-LOCAL-PRIVATE-PIPELINE](assignments/JOB-01-LOCAL-PRIVATE-PIPELINE.md); design: [ADR-055](decisions/ADR-055-local-synthetic-polling-private-proposals.md).
+Local synthetic implementation accepted, 12 October 2026. Task: [JOB-01-LOCAL-PRIVATE-PIPELINE](assignments/JOB-01-LOCAL-PRIVATE-PIPELINE.md); design: [ADR-055](decisions/ADR-055-local-synthetic-polling-private-proposals.md).
 
 This Node-only tool reads one team-authored JSON API fixture. It does not poll a real website. The collection loop detects stable report IDs and changes to title, text, publication time or observation time. It atomically stores each immutable version and its ingestion job in disposable file-backed PGlite. Versions preserve first-capture time and superseding revision identity; unchanged polls do not schedule new work. A→B→A produces three versions. Feed removal is not a retraction or proof of resolution; out-of-order issuer revisions are not established by this authored fixture.
 
@@ -46,6 +46,8 @@ npm run pipeline:local -- --status --state demo-1
 npm run pipeline:test
 ```
 
+`pipeline:test` discovers all owned top-level literal cases and runs each in a fresh Node process. An initial combined run hit a native Node24 V8/WASM allocation assertion while repeatedly opening PGlite in one process; it was recorded as a failure. The isolated rerun passed27/27 with no automatic retries. Unsupported test declarations, child crashes, nonzero exits and interruption fail the runner. Use the registered command for aggregate verification.
+
 To simulate a change during mock polling, edit the authored `tools/local-pipeline/fixtures/feed.json` body under the same report ID. That fixture is explicitly synthetic and contains no inferred geometry. The CLI accepts no network feed URL. State lives under ignored `.codex-build/local-pipeline/<state>`; keep it private and disposable. Each state is pinned to a synthetic namespace and model profile. Stop the process before removing its selected state directory; do not point this tool at an existing application database.
 
 Create fresh disposable state if experimenting with an earlier unreviewed bootstrap draft. This local bootstrap is not a migration/repair interface for legacy application data. It refuses an existing unowned application schema and a different synthetic/model profile before applying canonical migrations.
@@ -65,3 +67,9 @@ This creates fresh isolated state, processes at most one authored report/AI atte
 The command prints its generated `real-<uuid>` state name. For a separately opt-in retry after backoff, add `--state real-<uuid>` to the same real command, keeping the original curation epoch. That resumes only the stored snapshot and at most one AI attempt; it does not collect the edited fixture or drain other jobs. To inspect counts without model calls, use `--status --real-ai --state real-<uuid>` instead of `--enable --once`. Reopening under a different model profile fails closed. A crash with a still-active lease waits for lease expiry and recovery backoff before another attempt.
 
 No real gateway probe has been run for this new slice. Prior extraction timeouts at25 and45seconds remain an open gate; see [gateway testing](PRIVATE_AI_GATEWAY_TESTING.md). Real sources require documented access, reuse/retention and model-transfer terms. Human-reviewed quality evaluation, source authenticity, conflict resolution, spatial retrieval quality, hosted concurrency and the complete live pipeline remain separate gates.
+
+## Actual acceptance evidence
+
+In WSL Ubuntu-26.04: new pipeline27/27; existing web126/126, Worker516/516, DB45/45 test files and evaluation/AI36/36 passed. Full workspace/tool typecheck, Vite build, Wrangler dry-run and local UI/API smoke passed. The original combined `npm test` stopped at the native WASM crash; the unchanged regression suites were not repeated after isolating the new tool suite. The final isolated suite and build/smoke were run separately; this is not a claim that the original command passed.
+
+Actual disabled CLI, finite two-poll mock watch, reopen/unchanged one-cycle and count-only status passed. Reopen retained exactly one snapshot, one completed ingestion job, one completed AI job and one private proposal. Tests cover A→B→A provenance, immutable snapshots, unrelated-job isolation, changed queued content, contradictory evidence/unknowns, pending AI collection, timeout/invalid-output retry, exhausted states, lease fencing, raw-error/credential exclusion and file-backed receipt replay after lost completion acknowledgement. Publication-related SQL tables remain empty on this path. Detailed commits, independent review and fixes are in [the delivery log](DELIVERY_LOG.md).

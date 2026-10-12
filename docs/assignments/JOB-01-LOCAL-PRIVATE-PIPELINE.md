@@ -1,6 +1,6 @@
 # JOB-01-LOCAL-PRIVATE-PIPELINE — bounded local composition
 
-Status: assigned, 12 October 2026. Parent JOB-01 and RAG-01 remain in progress.
+Status: accepted locally, 12 October 2026. Parent JOB-01 and RAG-01 remain in progress.
 
 Objective: opt-in automatic polling of one authored synthetic JSON API fixture, immutable version capture, durable local ingestion, deterministic L1 persistence before AI, then bounded private L2 proposals. No publication or live source activation.
 
@@ -22,7 +22,7 @@ Execute in WSL Ubuntu-26.04, Node 24.21.0, existing dependencies only:
 export PATH=/home/perry/.nvm/versions/node/v24.21.0/bin:$PATH
 npx tsx --test tools/local-pipeline/store.test.ts
 npx tsx --test tools/local-pipeline/processor.test.ts
-npx tsx --test tools/local-pipeline/*.test.ts
+npm run pipeline:test
 npm run typecheck
 npm test
 npm run build
@@ -30,3 +30,11 @@ npm run smoke
 ```
 
 Stop and report contract conflicts, unapproved source access or external configuration needs. Never substitute models, install dependencies, read credentials, call real providers, publish, merge or push from an implementation agent. Coherent task commits and handoff list exact SHA/message/paths/actual checks/limitations. Root accepts task status only after independent review.
+
+## Handoff and root acceptance
+
+Luna/max agents used isolated `codex/job-01-local-inbox` / `.codex-build/worktrees/local-inbox` and `codex/rag-01-local-processor` / `.codex-build/worktrees/local-processor`. A temporary model usage limit interrupted both; they resumed with the same configuration and no escalation/substitution. Inbox commits: `0958a85` — `feat(JOB-01): add local synthetic inbox core`; `d5de32b` — `fix(JOB-01): enforce immutable local snapshots`; `f5a62bc` — `fix(JOB-01): create local state directories`. Processor commits: `8468b75` — `feat(RAG-01): add local private polling processor`; `0a51c37` — `fix(RAG-01): reuse captured trace during L1 processing`.
+
+Root reviewed the diffs and composed them on `codex/local-pipeline-integration`; a separate Luna/max reviewer inspected each implementation/fix plus CLI, scheduler and acceptance tests. Review/integration caught mutable snapshots/source binding, duplicate captured-trace insertion, retrieval preview mismatch, unrelated hybrid candidates, fatal-worker stop, gateway profile identity and new nested-directory startup. All current blockers were resolved. Root acceptance: isolated pipeline27/27, regression suites web126/Worker516/DB45files/evaluation-AI36, typecheck, build/dry-run and UI/API smoke pass. Actual mock watch/reopen/status retains one private proposal without duplicates. No real model/source/cloud/publication action ran. See [startup, exact limits and checks](../LOCAL_PRIVATE_PIPELINE.md).
+
+The initial full test command failed during the new suite with a native Node24 V8/WASM assertion. Root's per-case process isolation rerun passed; old regression suites were already green and were not rerun. Hosted concurrency, scalable retrieval (16 global rows/8 results), real extraction latency, source rights/model transfer and quality evaluation remain open. Terminal L1 predecessor repair has no automatic operation. No migration, grant, dependency version, public API or Worker runtime changed.

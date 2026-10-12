@@ -4,7 +4,7 @@ Status: local provider adapter/CLI accepted, live compatibility partial, updated
 
 ## Model roles
 
-The separate [local private pipeline](LOCAL_PRIVATE_PIPELINE.md) now composes authored-feed collection, file-backed PGlite L1 evidence and typed L2 extraction/embedding/grounding with canonical private proposal persistence; acceptance checks are in progress. Routine verification uses deterministic model doubles. Separately opt-in 9router cycles/resumes use one synthetic AI attempt, a three-request transport budget and a pinned gateway/model/curation profile. This does not activate the public Worker, L3 investigations, Neon, publication or real-source model transfer, and does not resolve the earlier real extraction timeouts.
+The separately accepted [local private pipeline](LOCAL_PRIVATE_PIPELINE.md) composes authored-feed collection, file-backed PGlite L1 evidence and typed L2 extraction/embedding/grounding with canonical private proposal persistence. Routine verification uses deterministic model doubles; pipeline27/27, regression/typecheck/build/smoke and actual mock watch/reopen pass. Separately opt-in 9router cycles/resumes use one synthetic AI attempt, a three-request transport budget and a pinned gateway/model/curation profile; no real probe ran for this slice. This does not activate the public Worker, L3 investigations, Neon, publication or real-source model transfer, and does not resolve the earlier real extraction timeouts. Global16-row/8-result retrieval, terminal predecessor repair, model quality and hosted concurrency remain gated.
 
 | Capability | Selected testing direction | Contract and bounds |
 | --- | --- | --- |

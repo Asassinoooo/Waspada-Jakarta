@@ -1,6 +1,6 @@
 # ADR-055 — Local synthetic polling and private proposals
 
-Accepted design, 12 October 2026; implementation verification pending.
+Accepted design and local synthetic implementation, 12 October 2026. Root pipeline27/27, regression suites, typecheck, build/dry-run and UI/API smoke pass; exact evidence/initial WASM test-run failure and remaining bounds are in [the local guide](../LOCAL_PRIVATE_PIPELINE.md).
 
 Collection reads one authored, bounded JSON API fixture. A report's stable ID and canonical content hash identify changes against its current head; a monotonic version distinguishes A→B→A. First-capture time and immutable snapshot bind each source-poll job to its original content. An atomic inbox/queue write precedes processing. No HTTP source is activated.
 
