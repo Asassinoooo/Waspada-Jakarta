@@ -20,6 +20,44 @@ test('capture hashes canonical report fields and creates a new immutable version
     const a = authoredReport('report-1', 'Initial wording');
     const b = authoredReport('report-1', 'Changed wording');
     assert.deepEqual(await store.capture(feed(a), T0), { captured: 1, unchanged: 0 });
+    const originalSnapshot = await database.executor.query<{
+      snapshot_id: string;
+      content_hash: string;
+      report_text: string;
+    }>(
+      `SELECT snapshot_id, content_hash, report_text
+       FROM waspada.local_report_snapshots WHERE stable_report_id = $1`,
+      [a.id],
+    );
+    const original = originalSnapshot.rows[0];
+    assert.ok(original);
+    await assert.rejects(
+      database.executor.query(
+        'UPDATE waspada.local_report_snapshots SET report_text = $1 WHERE snapshot_id = $2',
+        ['mutated', original.snapshot_id],
+      ),
+      /local report snapshots are append-only/,
+    );
+    await assert.rejects(
+      database.executor.query(
+        'DELETE FROM waspada.local_report_snapshots WHERE snapshot_id = $1',
+        [original.snapshot_id],
+      ),
+      /local report snapshots are append-only/,
+    );
+    assert.deepEqual(
+      await store.capture(feed(a), '2026-10-12T02:00:30.000Z'),
+      { captured: 0, unchanged: 1 },
+      'failed snapshot mutations must not change the canonical capture',
+    );
+    assert.deepEqual(
+      await database.executor.query(
+        `SELECT content_hash, report_text FROM waspada.local_report_snapshots
+         WHERE snapshot_id = $1`,
+        [original.snapshot_id],
+      ).then((result) => result.rows),
+      [{ content_hash: original.content_hash, report_text: original.report_text }],
+    );
     assert.deepEqual(await store.capture(feed(a), '2026-10-12T02:01:00.000Z'), { captured: 0, unchanged: 1 });
     assert.deepEqual(await store.capture(feed(b), '2026-10-12T02:02:00.000Z'), { captured: 1, unchanged: 0 });
     assert.deepEqual(await store.capture(feed(a), '2026-10-12T02:03:00.000Z'), { captured: 1, unchanged: 0 });
