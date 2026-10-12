@@ -110,7 +110,7 @@ function EvidenceRow({
   const excerpt = spanText(evidence, reports);
   const source = reports.find((report) => report.reportRevisionId === evidence.reportRevisionId);
   const sourceLabel = source
-    ? source.reportId + " · versi " + source.version
+    ? source.title + " · versi " + source.version
     : "Versi sumber tidak termasuk dalam 20 versi yang dimuat";
 
   return (
@@ -122,11 +122,14 @@ function EvidenceRow({
       {excerpt === null
         ? <p className="local-pipeline__evidence-missing">Teks cuplikan tidak tersedia pada pratinjau ini.</p>
         : <blockquote>{excerpt}</blockquote>}
-      <dl className="local-pipeline__evidence-facts">
-        <div><dt>Versi sumber</dt><dd><code>{evidence.reportRevisionId}</code></dd></div>
-        <div><dt>Rentang Unicode</dt><dd>{evidence.spanStart}–{evidence.spanEnd} (akhir tidak termasuk)</dd></div>
-        <div><dt>Hash teks sumber</dt><dd><code>{evidence.permittedTextHash}</code></dd></div>
-      </dl>
+      <details className="local-pipeline__disclosure local-pipeline__evidence-disclosure">
+        <summary>Jejak referensi</summary>
+        <dl className="local-pipeline__evidence-facts">
+          <div><dt>Versi sumber</dt><dd><code>{evidence.reportRevisionId}</code></dd></div>
+          <div><dt>Rentang Unicode</dt><dd>{evidence.spanStart}–{evidence.spanEnd} (akhir tidak termasuk)</dd></div>
+          <div><dt>Hash teks sumber</dt><dd><code>{evidence.permittedTextHash}</code></dd></div>
+        </dl>
+      </details>
     </li>
   );
 }
@@ -173,17 +176,20 @@ export function LocalPipelineReportCard({
         </div>
         <span className="local-pipeline__private-chip">Pribadi · belum terbit</span>
       </header>
-      <dl className="local-pipeline__source-facts">
-        <div><dt>ID laporan</dt><dd><code>{report.reportId}</code></dd></div>
-        <div><dt>ID revisi sumber</dt><dd><code>{report.reportRevisionId}</code></dd></div>
-        <div><dt>Hash konten sumber</dt><dd><code>{report.contentHash}</code></dd></div>
-        {report.supersedesId !== null && <div><dt>Menggantikan revisi</dt><dd><code>{report.supersedesId}</code></dd></div>}
-      </dl>
       <dl className="local-pipeline__times">
         <div><dt>Diterbitkan sumber</dt><dd>{timeValue(report.publishedAt, "Tidak dicantumkan sumber")}</dd></div>
         <div><dt>Waktu observasi</dt><dd>{timeValue(report.observedAt, "Tidak dicantumkan sumber")}</dd></div>
         <div><dt>Diterima pipeline lokal</dt><dd>{timeValue(report.capturedAt, "Tidak tersedia")}</dd></div>
       </dl>
+      <details className="local-pipeline__disclosure local-pipeline__source-disclosure">
+        <summary>Identitas dan hash sumber</summary>
+        <dl className="local-pipeline__source-facts">
+          <div><dt>ID laporan</dt><dd><code>{report.reportId}</code></dd></div>
+          <div><dt>ID revisi sumber</dt><dd><code>{report.reportRevisionId}</code></dd></div>
+          <div><dt>Hash konten sumber</dt><dd><code>{report.contentHash}</code></dd></div>
+          {report.supersedesId !== null && <div><dt>Menggantikan revisi</dt><dd><code>{report.supersedesId}</code></dd></div>}
+        </dl>
+      </details>
       <div className="local-pipeline__jobs">
         <JobRow label="Penerimaan dan penyimpanan" layer="L1" job={report.ingestion} />
         <JobRow label="Pemrosesan bukti" layer="L2" job={report.ai} />

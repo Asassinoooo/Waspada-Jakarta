@@ -145,6 +145,17 @@ test("renders source versions, separate times, escaped claim text, and contrary 
   assert.match(markup, /Diterbitkan sumber/);
   assert.match(markup, /Waktu observasi/);
   assert.match(markup, /Diterima pipeline lokal/);
+  assert.match(markup, /<details class="local-pipeline__disclosure local-pipeline__source-disclosure"><summary>Identitas dan hash sumber<\/summary>/);
+  assert.match(markup, /<details class="local-pipeline__disclosure local-pipeline__evidence-disclosure"><summary>Jejak referensi<\/summary>/);
+  assert.doesNotMatch(markup, /<details[^>]* open(?:="")?>/);
+  assert.ok(markup.indexOf("Diterbitkan sumber") < markup.indexOf("<details class=\"local-pipeline__disclosure local-pipeline__source-disclosure\">"));
+  assert.match(markup, /<span>Laporan &lt;latihan&gt; sintetis · versi 1<\/span>/);
+  assert.match(markup, /<blockquote>Laporan latihan menyebut genangan\.<\/blockquote>/);
+  assert.ok(markup.indexOf("<blockquote>Laporan latihan menyebut genangan.</blockquote>")
+    < markup.indexOf("<details class=\"local-pipeline__disclosure local-pipeline__evidence-disclosure\">"));
+  assert.match(markup, /ID laporan/);
+  assert.match(markup, /Rentang Unicode/);
+  assert.match(markup, /Hash teks sumber/);
   assert.match(markup, /Hash konten sumber/);
   assert.match(markup, /Pribadi · belum terbit/);
   assert.match(markup, /Acuan waktu usulan \(waktu diterima pipeline\)/);

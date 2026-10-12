@@ -206,8 +206,27 @@
 
 .local-pipeline__source-facts {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.local-pipeline__disclosure {
+  min-width: 0;
+}
+
+.local-pipeline__disclosure summary {
+  color: var(--quiet-ink);
+  font-size: 0.77rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.local-pipeline__source-disclosure {
+  margin-top: 0.55rem;
   border-top: 1px solid var(--soft-panel);
-  padding-top: 0.6rem;
+  padding-top: 0.45rem;
+}
+
+.local-pipeline__source-disclosure[open] .local-pipeline__source-facts {
+  margin-top: 0.5rem;
 }
 
 .local-pipeline__times {
@@ -476,8 +495,16 @@
 .local-pipeline__evidence-facts {
   grid-template-columns: minmax(12rem, 1.5fr) minmax(11rem, 1fr) minmax(14rem, 2fr);
   margin-top: 0.5rem;
+}
+
+.local-pipeline__evidence-disclosure {
+  margin-top: 0.35rem;
   border-top: 1px solid var(--beton);
-  padding-top: 0.4rem;
+  padding-top: 0.35rem;
+}
+
+.local-pipeline__evidence-disclosure[open] .local-pipeline__evidence-facts {
+  margin-top: 0.4rem;
 }
 
 .local-pipeline__summary {
@@ -605,20 +632,19 @@
     justify-content: space-between;
   }
 
-  .local-pipeline__source-facts,
   .local-pipeline__times,
   .local-pipeline__jobs,
+  .local-pipeline__source-facts,
+  .local-pipeline__evidence-facts,
   .local-pipeline__summary-jobs,
   .local-pipeline__summary-grid {
     grid-template-columns: 1fr;
   }
 
-  .local-pipeline__source-facts,
   .local-pipeline__times {
     gap: 0.45rem;
   }
 
-  .local-pipeline__source-facts > div,
   .local-pipeline__times > div {
     border-top: 1px solid var(--soft-panel);
     padding-top: 0.4rem;
@@ -639,14 +665,6 @@
 
   .local-pipeline__proposal-time {
     text-align: left;
-  }
-
-  .local-pipeline__evidence-facts {
-    grid-template-columns: 1fr;
-  }
-
-  .local-pipeline__evidence-facts > div:last-child:nth-child(odd) {
-    grid-column: auto;
   }
 
   .local-pipeline__summary-jobs dl {
