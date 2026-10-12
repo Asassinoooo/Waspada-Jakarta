@@ -25,6 +25,7 @@ import {
 } from "./ninerouter-fixtures.js";
 
 const MAX_PLANNER_TOKENS = 12_000;
+const SYNTHETIC_SUPPORT_ANCHOR = "layanan air";
 
 export type SyntheticModelSmokeStatus =
   | "succeeded"
@@ -311,13 +312,19 @@ function persistedRecordMatches(
   }
 }
 
+/**
+ * Applies a limited citation oracle for this authored fixture: at least one
+ * supporting span must contain its known service-topic anchor. This checks
+ * citation placement only; it is not a semantic fact-quality evaluation.
+ */
 function evidenceMatchesFixture(
   value: unknown,
   expected: GroundingContext["evidence"][number]["reference"],
-  reportCodePointLength: number,
+  reportText: string,
 ): boolean {
   if (!Array.isArray(value) || value.length === 0) return false;
-  let hasSupportingReference = false;
+  const codePoints = Array.from(reportText);
+  let hasSupportingAnchor = false;
   for (const candidate of value) {
     if (!isPlainRecord(candidate)
       || candidate.reportRevisionId !== expected.reportRevisionId
@@ -329,13 +336,16 @@ function evidenceMatchesFixture(
       || !Number.isSafeInteger(candidate.spanEnd)
       || candidate.spanStart < 0
       || candidate.spanEnd <= candidate.spanStart
-      || candidate.spanEnd > reportCodePointLength
+      || candidate.spanEnd > codePoints.length
       || !["supports", "contradicts", "updates", "context"].includes(String(candidate.relation))) {
       return false;
     }
-    if (candidate.relation === "supports") hasSupportingReference = true;
+    if (candidate.relation === "supports"
+      && codePoints.slice(candidate.spanStart, candidate.spanEnd).join("").includes(SYNTHETIC_SUPPORT_ANCHOR)) {
+      hasSupportingAnchor = true;
+    }
   }
-  return hasSupportingReference;
+  return hasSupportingAnchor;
 }
 
 function reportIdentityMatches(value: unknown, fixtures: SyntheticModelSmokeFixtures): boolean {
@@ -715,7 +725,7 @@ export async function runSyntheticModelSmoke(
       && evidenceMatchesFixture(
         classificationValue.evidence,
         fixtures.supportReference,
-        Array.from(fixtures.reportText).length,
+        fixtures.reportText,
       ),
     extractionReportIdentityMatches: extractionSummary.status === "succeeded"
       && reportIdentityMatches(extractionValue, fixtures)
@@ -727,7 +737,7 @@ export async function runSyntheticModelSmoke(
       && evidenceMatchesFixture(
         extractionValue.evidence,
         fixtures.supportReference,
-        Array.from(fixtures.reportText).length,
+        fixtures.reportText,
       ),
     embeddingChunkIdentityMatches: embeddingSummary.status === "succeeded"
       && embeddingIdentityMatches(embeddingValue, fixtures),
