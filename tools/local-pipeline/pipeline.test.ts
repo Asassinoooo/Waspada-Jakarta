@@ -12,7 +12,7 @@ import type { AuthoredFeed, LocalPipelineStore } from './contracts.js';
 import type { ModelCapabilityAdapter } from '../../apps/worker/src/layers/l2-model-grounding/contracts.js';
 import { runLocalSchedule } from './scheduler.js';
 
-const start = '2026-10-12T01:00:00.000Z';
+const start = '2026-10-12T07:00:00.000Z';
 async function authoredFeed(): Promise<AuthoredFeed> {
   return parseAuthoredFeed(await readFile(new URL('./fixtures/feed.json', import.meta.url), 'utf8'));
 }
@@ -27,7 +27,8 @@ function countModels(adapter: ModelCapabilityAdapter) {
   return { adapter: counted, calls };
 }
 async function assertPrivateOnly(executor: Awaited<ReturnType<typeof openLocalPipelineDatabase>>['executor']) {
-  for (const table of ['event_versions', 'impact_versions', 'publication_decisions', 'publication_claim_decisions']) {
+  for (const table of ['event_versions', 'impact_versions', 'publication_decisions', 'publication_claim_decisions',
+    'publication_outbox', 'public_event_history_review_decisions', 'freshness_transitions']) {
     const result = await executor.query<{ count: number }>(`SELECT count(*)::int AS count FROM waspada.${table}`);
     assert.equal(result.rows[0].count, 0, table);
   }
@@ -67,6 +68,13 @@ test('canonical local composition: unchanged polling, queued snapshots, changed 
     assert.equal(summary.ingestion.completed, 2);
     assert.equal(summary.ai.completed, 2);
     assert.equal(summary.proposals, 2);
+    const contexts = await database.executor.query<{ record: { evidence: { relation: string }[]; missing_fields: string[]; conflicts: string[] } }>(
+      'SELECT record_json AS record FROM waspada.grounding_contexts');
+    assert.equal(contexts.rows.length, 2);
+    assert.ok(contexts.rows.every(({ record }) => record.evidence.some((ref) => ref.relation === 'contradicts') &&
+      record.missing_fields.includes('event_time') && record.conflicts.length > 0), 'contrary evidence and unknown fields survive grounding');
+    const origins = await database.executor.query<{ independence_status: string }>('SELECT independence_status FROM waspada.evidence_origins');
+    assert.ok(origins.rows.every((row) => row.independence_status === 'unknown'));
     const before = { ...counted.calls };
     assert.equal((await store.capture(changed, start)).captured, 0);
     await processor.processIngestion();
@@ -77,6 +85,39 @@ test('canonical local composition: unchanged polling, queued snapshots, changed 
     await processor.processIngestion();
     await processor.processAi();
     assert.equal((await store.summary()).proposals, 3);
+    await assertPrivateOnly(database.executor);
+  } finally { await database.close(); }
+});
+
+test('invalid model output exhausts bounded retries while L1 evidence remains recoverable', { timeout: 90_000 }, async () => {
+  const models = createLocalMockModels();
+  let calls = 0;
+  const adapter: ModelCapabilityAdapter = { ...models.adapter, extract: async () => {
+    calls++;
+    return { status: 'invalid_output', capability: 'extraction', reason: 'synthetic_bad_json' };
+  } };
+  const database = await openLocalPipelineDatabase({ profileId: models.profileId });
+  let now = start;
+  try {
+    const store = createLocalPipelineStore(database.executor);
+    const processor = createLocalPipelineProcessor({ store, executor: database.executor, ...models, adapter, now: () => now });
+    await store.capture(await authoredFeed(), now);
+    await processor.processIngestion();
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await processor.processAi();
+      assert.equal(calls, attempt);
+      await processor.processAi();
+      assert.equal(calls, attempt, 'retry backoff prevents immediate repeated inference');
+      now = new Date(Date.parse(now) + [30_000, 60_000, 120_000, 120_000, 120_000][attempt - 1]).toISOString();
+    }
+    const summary = await store.summary();
+    assert.equal(summary.ingestion.completed, 1);
+    assert.equal(summary.ai.terminal, 1);
+    assert.equal(summary.proposals, 0);
+    const chunks = await database.executor.query<{ count: number }>('SELECT count(*)::int AS count FROM waspada.evidence_chunks');
+    assert.equal(chunks.rows[0].count, 1);
+    const failure = await database.executor.query<{ last_failure_code: string }>('SELECT last_failure_code FROM waspada.local_ai_jobs');
+    assert.equal(failure.rows[0].last_failure_code, 'invalid_output');
     await assertPrivateOnly(database.executor);
   } finally { await database.close(); }
 });
@@ -108,7 +149,7 @@ test('model failure retains L1, later collection succeeds, retry reuses stages a
     await processor.processIngestion();
     await processor.processAi();
     assert.equal((await store.summary()).proposals, 1, 'later report proceeds while earlier AI awaits backoff');
-    now = '2026-10-12T01:01:00.000Z';
+    now = '2026-10-12T07:01:00.000Z';
     await processor.processAi();
     summary = await store.summary();
     assert.equal(summary.ai.completed, 2);
@@ -137,13 +178,19 @@ test('actual PGlite capture continues during a pending model and timeout leaves 
   const database = await openLocalPipelineDatabase({ profileId: models.profileId });
   try {
     const store = createLocalPipelineStore(database.executor);
-    const processor = createLocalPipelineProcessor({ store, executor: database.executor, ...models, adapter, now: () => start, modelTimeoutMs: 50 });
+    const processor = createLocalPipelineProcessor({ store, executor: database.executor, ...models, adapter, now: () => start, modelTimeoutMs: 250 });
     const original = await authoredFeed();
     const changed = { ...original, reports: original.reports.map((report) => ({ ...report, text: `${report.text}\nVersi latihan kedua.` })) };
     let poll = 0;
     await runLocalSchedule({ store, processor, now: () => start, intervalMs: 1000, maxPolls: 2,
       readFeed: async () => ++poll === 1 ? original : changed,
-      sleep: async () => { if (poll === 1) await started; },
+      sleep: async () => {
+        if (poll === 1) {
+          let deadline: ReturnType<typeof setTimeout> | undefined;
+          try { await Promise.race([started, new Promise<never>((_, reject) => { deadline = setTimeout(() => reject(new Error('AI did not start after L1')), 5000); })]); }
+          finally { clearTimeout(deadline); }
+        }
+      },
     });
     const summary = await store.summary();
     assert.equal(summary.snapshots, 2);
@@ -184,8 +231,8 @@ test('file-backed restart after proposal commit but before completion reuses eve
     isOpen = true;
     const reopened = createLocalPipelineStore(database.executor);
     const resumed = createLocalPipelineProcessor({ store: reopened, executor: database.executor, ...models, adapter: counted.adapter,
-      now: () => '2026-10-12T01:01:00.000Z' });
-    assert.deepEqual(await reopened.capture(feed, '2026-10-12T01:01:00.000Z'), { captured: 0, unchanged: 1 });
+      now: () => '2026-10-12T07:01:00.000Z' });
+    assert.deepEqual(await reopened.capture(feed, '2026-10-12T07:01:00.000Z'), { captured: 0, unchanged: 1 });
     await resumed.processIngestion();
     await resumed.processAi();
     assert.deepEqual(counted.calls, priorCalls);

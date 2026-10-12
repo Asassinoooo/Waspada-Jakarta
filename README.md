@@ -22,7 +22,7 @@ The current report is the [Google Docs project overview](https://docs.google.com
 
 ## Current design documents
 
-The [local private pipeline](docs/LOCAL_PRIVATE_PIPELINE.md) is a separate opt-in synthetic polling/PGlite/AI composition under review. `npm run pipeline:local` remains disabled unless `--enable` is provided. It does not alter the source map or public event API.
+The [local private pipeline](docs/LOCAL_PRIVATE_PIPELINE.md) is a separate, locally accepted synthetic polling/PGlite/AI composition. `npm run pipeline:local` remains disabled unless `--enable` is provided; `--enable --once` runs mocked models and private proposals in disposable state. It does not alter the source map or public event API. Startup, tests and remaining source/model/retrieval gates are documented in the guide.
 
 - [Project plan](PROJECT_PLAN.md): users, event coverage, application scope, five layers and delivery.
 - [Architecture](ARCHITECTURE.md): layer responsibilities, model/grounding strategy, investigation limits, publication interfaces and monitoring.
