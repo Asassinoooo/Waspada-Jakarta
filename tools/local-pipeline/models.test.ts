@@ -253,6 +253,7 @@ test('model cancellation remains active while an injected response body is pendi
   const { report } = extractionFixture();
   const pending = models.adapter.extract({ data: { candidateId: 'candidate-body-cancel-1', report } });
   await bodyStarted;
+  await new Promise<void>((resolve) => setImmediate(resolve));
   models.cancel?.();
   const result = await Promise.race([
     pending,
@@ -260,6 +261,35 @@ test('model cancellation remains active while an injected response body is pendi
   ]);
   assert.equal(result.status, 'provider_error');
   assert.equal(observations[0]?.reason, 'aborted');
+});
+
+test('known oversized response length cancels the body before returning the closed size reason', async () => {
+  let markCancelled: (() => void) | undefined;
+  const bodyCancelled = new Promise<void>((resolve) => { markCancelled = resolve; });
+  const responseBody = new ReadableStream<Uint8Array>({
+    pull() { return new Promise<void>(() => undefined); },
+    cancel() { markCancelled?.(); },
+  });
+  const observations: Array<{ capability: string; reason?: string }> = [];
+  const fetchImpl = (async () => new Response(responseBody, {
+    status: 200,
+    headers: { 'content-type': 'application/json', 'content-length': '262145' },
+  })) as typeof fetch;
+  const models = resolveLocalModels({ realAi: true, omitExtractionOutputLimits: false, env: validEnv, fetchImpl,
+    onObservation: (observation) => observations.push(observation) });
+  const text = 'synthetic oversized embedding response';
+  const result = await models.adapter.embed({ data: { chunk: embeddingChunk(text) } });
+
+  assert.equal(result.status, 'provider_error');
+  assert.equal(observations[0]?.reason, 'response_too_large');
+  let cancellationTimer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([bodyCancelled, new Promise<never>((_resolve, reject) => {
+      cancellationTimer = setTimeout(() => reject(new Error('oversized_body_not_cancelled')), 500);
+    })]);
+  } finally {
+    if (cancellationTimer !== undefined) clearTimeout(cancellationTimer);
+  }
 });
 
 test('long default waits use the native no-deadline transport while honoring loopback boundaries', async () => {

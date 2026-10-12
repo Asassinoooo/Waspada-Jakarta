@@ -874,6 +874,7 @@ async function withDeadline<T>(
 async function readJsonResponse(response: Response, maximumBytes: number): Promise<unknown> {
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null && /^\d+$/.test(contentLength) && Number(contentLength) > maximumBytes) {
+    try { await response.body?.cancel(); } catch { /* Preserve the closed size classification. */ }
     throw new ProviderTransportError("response_too_large");
   }
   const stream = response.body;
@@ -894,6 +895,7 @@ async function readJsonResponse(response: Response, maximumBytes: number): Promi
     }
   } catch (error) {
     if (error instanceof ProviderTransportError) throw error;
+    if (error instanceof Error && error.name === "AbortError") throw new ProviderTransportError("aborted");
     throw new ProviderTransportError("invalid_response");
   }
   const bytes = new Uint8Array(total);
