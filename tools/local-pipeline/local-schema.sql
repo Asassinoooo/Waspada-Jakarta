@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS waspada.local_report_heads (
 CREATE TABLE IF NOT EXISTS waspada.local_report_snapshots (
   snapshot_id text PRIMARY KEY CHECK (length(snapshot_id) BETWEEN 1 AND 128),
   dataset_kind text NOT NULL DEFAULT 'synthetic' CHECK (dataset_kind = 'synthetic'),
-  source_id text NOT NULL REFERENCES waspada.source_registry (source_id),
+  source_id text NOT NULL DEFAULT 'local-authored-api'
+    CHECK (source_id = 'local-authored-api')
+    REFERENCES waspada.source_registry (source_id),
   stable_report_id text NOT NULL CHECK (length(stable_report_id) BETWEEN 1 AND 200),
   version integer NOT NULL CHECK (version > 0),
   content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
@@ -46,6 +48,20 @@ CREATE TABLE IF NOT EXISTS waspada.local_report_snapshots (
 
 CREATE INDEX IF NOT EXISTS local_report_snapshots_report_order_idx
   ON waspada.local_report_snapshots (source_id, stable_report_id, version);
+
+CREATE OR REPLACE FUNCTION waspada.reject_local_report_snapshot_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'local report snapshots are append-only' USING ERRCODE = '55000';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS local_report_snapshots_append_only ON waspada.local_report_snapshots;
+CREATE TRIGGER local_report_snapshots_append_only
+  BEFORE UPDATE OR DELETE ON waspada.local_report_snapshots
+  FOR EACH ROW EXECUTE FUNCTION waspada.reject_local_report_snapshot_mutation();
 
 CREATE TABLE IF NOT EXISTS waspada.local_report_inbox (
   source_poll_job_id text PRIMARY KEY REFERENCES waspada.acquisition_jobs (job_id),
