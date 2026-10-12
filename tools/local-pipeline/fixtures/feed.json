@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "local-synthetic-api-v1",
+  "datasetKind": "synthetic",
+  "sourceId": "local-authored-api",
+  "reports": [
+    {
+      "id": "jakarta-flood-drill-001",
+      "title": "Simulasi genangan di sekitar Pasar Minggu",
+      "text": "Laporan simulasi: hujan deras menyebabkan genangan setinggi sekitar 20 cm di ruas Jalan Raya Ragunan dekat Pasar Minggu, Jakarta Selatan. Petugas dalam latihan mengalihkan kendaraan ke Jalan Warung Jati Barat selama 30 menit. Catatan latihan terpisah menyebut ruas yang sama tetap dapat dilalui tanpa genangan; perbedaan catatan ini belum diperiksa. Tidak ada laporan korban; informasi ini hanya latihan sintetis dan tidak menggambarkan kejadian nyata.",
+      "publishedAt": "2026-10-12T06:00:00Z",
+      "observedAt": "2026-10-12T05:55:00Z"
+    }
+  ]
+}
