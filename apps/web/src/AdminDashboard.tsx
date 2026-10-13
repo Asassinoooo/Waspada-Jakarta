@@ -136,6 +136,14 @@ function itemDisplayStatus(item: AdminItem, mode: AdminMode) {
   return item.publicEventId !== null ? "Laporan publik tersedia" : "Rincian proses tidak tersedia";
 }
 
+function operationalPriorityLabel(priority: AdminItem["operationalPriority"]) {
+  switch (priority) {
+    case "normal": return "Urutan biasa";
+    case "attention": return "Perlu perhatian dalam contoh";
+    case "blocked": return "Tertahan dalam contoh";
+  }
+}
+
 function monitorStateLabel(state: AdminMonitorState["status"]) {
   switch (state) {
     case "idle": return "Belum ada pembaruan";
@@ -450,6 +458,10 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
           {mode === "simulation" ? (
             <>
               <p className="admin-muted">Semua langkah di bawah adalah rekaan. Halaman ini tidak menjalankan sumber, model, atau tindakan.</p>
+              <dl className="admin-facts admin-facts--compact">
+                <div><dt>Prioritas pemrosesan contoh</dt><dd>{operationalPriorityLabel(item.operationalPriority)}</dd></div>
+              </dl>
+              <p className="admin-muted">Prioritas ini hanya menunjukkan urutan kerja dalam contoh, bukan tingkat bahaya atau keparahan.</p>
               <h3>Tahap yang tercatat</h3>
               <ol className="admin-timeline">
                 {item.steps.map((step, index) => (

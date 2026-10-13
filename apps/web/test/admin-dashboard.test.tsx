@@ -177,6 +177,7 @@ test("public inspector keeps lifecycle, freshness, date precision, validity, and
   assert.match(html, /Laporan publik lengkap dapat memuat tautan lain/);
   assert.match(html, /href="#detail\/api\/event-101"/);
   assert.match(html, /Data internal yang tidak tersedia/);
+  assert.doesNotMatch(html, /Prioritas pemrosesan contoh|Perlu perhatian dalam contoh|Urutan biasa|Tertahan dalam contoh/);
   assert.doesNotMatch(html, /Kelayakan publikasi: layak/u);
 
   const cappedItem = { ...publicItem, publicSources: Array.from({ length: 21 }, () => publicItem.publicSources?.[0] ?? {
@@ -187,6 +188,15 @@ test("public inspector keeps lifecycle, freshness, date precision, validity, and
   }) };
   const cappedHtml = renderToStaticMarkup(<AdminRecordInspector item={cappedItem} mode="public_api" geometryKnown />);
   assert.equal((cappedHtml.match(/href="https:\/\/www\.bmkg\.go\.id\/"/g) ?? []).length, 20);
+});
+
+test("simulation processing priority appears inside its named disclosure with a clear limit", () => {
+  const html = renderToStaticMarkup(<AdminRecordInspector item={unmapped} mode="simulation" geometryKnown />);
+  const disclosure = html.match(/<details class="admin-disclosure admin-inspector__disclosure"><summary>Urutan contoh dan batasnya<\/summary>([\s\S]*?)<\/details>/);
+
+  assert.ok(disclosure, "priority details remain under the keyboard-accessible native disclosure summary");
+  assert.match(disclosure[1], /<dt>Prioritas pemrosesan contoh<\/dt><dd>Perlu perhatian dalam contoh<\/dd>/);
+  assert.match(disclosure[1], /Prioritas ini hanya menunjukkan urutan kerja dalam contoh, bukan tingkat bahaya atau keparahan\./);
 });
 
 test("API layer cards retain only explicitly observed public summaries", () => {
