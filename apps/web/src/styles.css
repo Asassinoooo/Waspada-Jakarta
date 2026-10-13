@@ -234,7 +234,7 @@ time,
 
 .site-header {
   display: grid;
-  grid-template-columns: minmax(12rem, 1fr) auto auto;
+  grid-template-columns: minmax(15rem, 1fr) minmax(0, auto) auto;
   align-items: center;
   gap: 1.5rem;
   min-height: 5.5rem;
@@ -285,6 +285,8 @@ time,
 
 .primary-nav {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 0.35rem;
 }
@@ -298,11 +300,25 @@ time,
   color: var(--tinta-kota);
   font-weight: 620;
   text-decoration: none;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .primary-nav a[aria-current="page"] {
   border-color: var(--kali-teal);
   color: var(--kali-teal);
+}
+
+.site-footer a {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.demo-banner strong,
+.demo-banner__detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mode-chip,

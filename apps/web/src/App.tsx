@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useReducer, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPublicContext, listEvents, type ApiReadState, type PublicGeoJSONFilters } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
@@ -9,14 +9,23 @@ import { UpdatesCenter } from "./UpdatesCenter.js";
 import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
 import { SourcePointMap } from "./SourcePointMap.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
+import { Landing } from "./Landing.js";
+import { ReadGuide } from "./ReadGuide.js";
+import { PrivacyPage } from "./PrivacyPage.js";
+
+const AdminDashboard = lazy(() => import("./admin-entry.js"));
 
 type Route =
+  | { screen: "landing" }
   | { screen: "discover" }
+  | { screen: "guide" }
+  | { screen: "privacy" }
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "review" }
   | { screen: "source-preview" }
   | { screen: "local-pipeline" }
+  | { screen: "admin" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
 
@@ -120,6 +129,10 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
 }
 
 export function routeFromHash(hash: string): Route {
+  if (hash === "" || hash === "#beranda") return { screen: "landing" };
+  if (hash === "#panduan") return { screen: "guide" };
+  if (hash === "#privasi") return { screen: "privacy" };
+  if (hash === "#admin" || hash === "#admin-workspace") return { screen: "admin" };
   if (hash === "#pipeline-lokal" && import.meta.env?.DEV === true) return { screen: "local-pipeline" };
   if (hash === "#demo-sumber") return { screen: "source-preview" };
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
@@ -166,17 +179,19 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
     <>
       <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
       <header className="site-header">
-        <a className="brand" href="#jelajah" aria-label="Waspada Jakarta, ke jelajah">
+        <a className="brand" href="#beranda" aria-label="Waspada Jakarta, ke beranda">
           <span className="brand-mark" aria-hidden="true">WJ</span>
           <span><strong>Waspada Jakarta</strong><small>Informasi dengan jejak sumber</small></span>
         </a>
         <nav className="primary-nav" aria-label="Navigasi utama">
+          <a href="#beranda" aria-current={route.screen === "landing" ? "page" : undefined}>Beranda</a>
           <a href="#jelajah" aria-current={onDiscover ? "page" : undefined}>Jelajah</a>
           {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Demo sumber</a>}
           {import.meta.env?.DEV === true && datasetMode === "demo" && <a href="#pipeline-lokal" aria-current={localPipeline ? "page" : undefined}>Pipeline lokal</a>}
           <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Ringkasan saya</a>
           <a href="#pembaruan" aria-current={route.screen === "updates" ? "page" : undefined}>Pembaruan</a>
           <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
+          <a href="#admin">Admin demo</a>
         </nav>
         <span className="mode-chip">{modeText}</span>
       </header>
@@ -198,7 +213,7 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
   }
 
   return (
-    <main id="main-content" className="main-shell">
+    <main id="main-content" tabIndex={-1} className="main-shell">
       <section className="state-panel" role="status">
         <strong>{context === null ? "Status dataset tidak tersedia." : "Fixture presentasi hanya tersedia pada dataset demo."}</strong>
         <p>
@@ -214,10 +229,14 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
+  const [localDataRevision, setLocalDataRevision] = useState(0);
   const [retryKey, setRetryKey] = useState(0);
   const contextRequestKey = route.screen + ":" + retryKey;
   const [contextResult, setContextResult] = useState<{ requestKey: string; value: PublicContext | null } | null>(null);
   const context = contextResult?.requestKey === contextRequestKey ? contextResult.value : null;
+  const contextStatus = contextResult?.requestKey !== contextRequestKey
+    ? "loading"
+    : context === null ? "unavailable" : "loaded";
   const [status, setStatus] = useState<FeedStatus>("loading");
   const [events, setEvents] = useState<EventView[]>([]);
   const [geoJSONState, setGeoJSONState] = useState<GeoJSONMapState>({ status: "idle" });
@@ -237,11 +256,24 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const updateRoute = () => setRoute(routeFromHash(window.location.hash));
-    if (!window.location.hash) window.history.replaceState(null, "", "#jelajah");
+    const updateRoute = () => {
+      // In-page focus targets preserve the selected public/admin screen.
+      if (window.location.hash === "#main-content" || window.location.hash === "#admin-workspace") return;
+      setRoute(routeFromHash(window.location.hash));
+    };
+    if (!window.location.hash) window.history.replaceState(null, "", "#beranda");
     window.addEventListener("hashchange", updateRoute);
     return () => window.removeEventListener("hashchange", updateRoute);
   }, []);
+
+  const routeKey = route.screen === "detail-api" ? `${route.screen}:${route.eventId}` : route.screen;
+  const previousRouteKey = useRef(routeKey);
+  useEffect(() => {
+    if (previousRouteKey.current === routeKey) return;
+    previousRouteKey.current = routeKey;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    document.getElementById("main-content")?.focus({ preventScroll: true });
+  }, [routeKey]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -257,7 +289,7 @@ export function App() {
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
   useEffect(() => {
-    if (route.screen === "preferences" || route.screen === "updates" || route.screen === "source-preview" || route.screen === "local-pipeline") return;
+    if (route.screen !== "discover" && route.screen !== "landing") return;
     let cancelled = false;
     setStatus("loading");
 
@@ -277,6 +309,7 @@ export function App() {
   }, [retryKey, route.screen]);
 
   useEffect(() => {
+    if (route.screen === "admin") return;
     let cancelled = false;
 
     getPublicContext()
@@ -365,9 +398,31 @@ export function App() {
       : { eventId: route.eventId, status: "loading" as const }
     : undefined;
 
+  if (route.screen === "admin") {
+    return (
+      <div className="app-shell app-shell--admin">
+        <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
+        <Suspense fallback={
+          <main id="main-content" tabIndex={-1} className="main-shell">
+            <section className="state-panel" role="status">
+              <strong>Memuat ruang operasi web…</strong>
+              <p>Simulasi alur dan pantauan endpoint publik, hanya baca.</p>
+              <a className="text-link" href="#beranda">Kembali ke layanan publik</a>
+            </section>
+          </main>
+        }>
+          <AdminDashboard />
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
     <div className={`app-shell${route.screen === "source-preview" ? " app-shell--source-map" : ""}`}>
       <SiteHeader route={route} context={context} />
+      {route.screen === "landing" && (
+        <Landing context={context} contextStatus={contextStatus} events={events} status={status} onRetry={() => setRetryKey((current) => current + 1)} />
+      )}
       {route.screen === "discover" && (
         <EventFeed
           status={status}
@@ -411,8 +466,10 @@ export function App() {
       {route.screen === "detail-presentation" && (
         <PresentationRoute context={context} />
       )}
-      {route.screen === "preferences" && <Preferences context={context} contextSnapshotId={contextRequestKey} />}
-      {route.screen === "updates" && <UpdatesCenter context={context} refreshCurrentEvents={refreshCurrentEvents} />}
+      {route.screen === "preferences" && <Preferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />}
+      {route.screen === "updates" && <UpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />}
+      {route.screen === "guide" && <ReadGuide />}
+      {route.screen === "privacy" && <PrivacyPage onCleared={() => setLocalDataRevision((revision) => revision + 1)} />}
       {route.screen === "review" && <ModeratorReview />}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
@@ -438,6 +495,8 @@ export function App() {
               : "Status dataset tidak tersedia."}
         </span>
         <a href="#jelajah">Kembali ke jelajah</a>
+        <a href="#panduan">Cara membaca laporan</a>
+        <a href="#privasi">Privasi dan data lokal</a>
       </footer>
     </div>
   );

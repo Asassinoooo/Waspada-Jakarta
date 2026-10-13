@@ -175,6 +175,26 @@ test("update centre has direct hash navigation and an accessible current navigat
   assert.match(header, /href="#ringkasan-saya"[^>]*>Ringkasan saya<\/a>/);
 });
 
+test("integrated UX routes preserve public map and encoded detail targets", () => {
+  assert.deepEqual(routeFromHash(""), { screen: "landing" });
+  assert.deepEqual(routeFromHash("#beranda"), { screen: "landing" });
+  assert.deepEqual(routeFromHash("#jelajah"), { screen: "discover" });
+  assert.deepEqual(routeFromHash("#demo-sumber"), { screen: "source-preview" });
+  assert.deepEqual(routeFromHash("#panduan"), { screen: "guide" });
+  assert.deepEqual(routeFromHash("#privasi"), { screen: "privacy" });
+  assert.deepEqual(routeFromHash("#admin"), { screen: "admin" });
+  assert.deepEqual(routeFromHash("#admin-workspace"), { screen: "admin" });
+  assert.deepEqual(routeFromHash("#detail/api/public%2Fid%3F"), { screen: "detail-api", eventId: "public/id?" });
+  assert.deepEqual(routeFromHash("#detail/api/%ZZ"), { screen: "detail-api", eventId: "" });
+  // A production/SSR import cannot open the development-only private inspector.
+  assert.deepEqual(routeFromHash("#pipeline-lokal"), { screen: "discover" });
+  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "landing" }} context={demoContext} />);
+  assert.match(header, /href="#beranda" aria-current="page">Beranda/);
+  assert.match(header, /href="#demo-sumber"/);
+  assert.match(header, /href="#admin">Admin demo/);
+  assert.doesNotMatch(header, /href="#pipeline-lokal"/);
+});
+
 test("briefing gates unknown, demo, and empty-interest contexts without enabling a request", () => {
   const interests = { ...emptyInterests(), places: ["Pondok Labu"] };
   const unknown = renderToStaticMarkup(

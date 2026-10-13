@@ -1,8 +1,19 @@
 .unified-source-explorer {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.8rem;
   padding-top: 1rem;
   padding-bottom: 2rem;
+}
+
+.unified-source-explorer__intro > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unified-source-explorer__panel-nav button {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .unified-source-explorer__intro,
