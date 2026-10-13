@@ -405,10 +405,10 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
 
   return <section className="admin-map" aria-labelledby={`${id}-heading`}>
     <header className="admin-map__heading">
-      <div><p className="admin-map__eyebrow">Lokasi laporan</p><h2 id={`${id}-heading`}>Peta laporan</h2></div>
+      <div><p className="admin-map__eyebrow">Lokasi laporan</p><h3 id={`${id}-heading`}>Lokasi yang ditampilkan</h3></div>
       <span className={"admin-map__provenance" + (mode === "simulation" ? " admin-map__provenance--simulation" : "")}>{mode === "simulation" ? "Contoh rekaan" : "Dari data publik"}</span>
     </header>
-    <p className="admin-map__intro">{mode === "simulation" ? "Lokasi rekaan ini hanya untuk contoh." : "Peta hanya menampilkan lokasi yang tersedia dari sumber laporan."} Garis dan bidang mengikuti data; bukan batas wilayah.</p>
+    <p className="admin-map__intro">{mode === "simulation" ? "Lokasi rekaan ini hanya untuk contoh." : "Peta hanya menampilkan lokasi yang tersedia dari sumber laporan."} Grid hanya panduan koordinat, bukan batas wilayah.</p>
     {mode === "public_api" && items.some((item) => item.datasetKind === "synthetic") && <p className="admin-map__dataset-note">Sebagian laporan adalah contoh sintetis, bukan peringatan langsung.</p>}
     <div className="admin-map__scope">
       <p><strong>{mapped.length}</strong> laporan punya lokasi <span aria-hidden="true">/</span> <strong>{items.length}</strong> dimuat</p>

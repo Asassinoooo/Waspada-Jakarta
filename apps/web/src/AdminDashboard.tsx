@@ -309,7 +309,7 @@ function QueueCard({ item, mode, geometryKnown, selected, onSelect }: {
         <span className="admin-queue-card__topline">
           <span className="admin-layer-chip">{mode === "simulation" ? LAYER_SHORT_NAMES[item.layer] : "Data"}</span>
           <span className={displayStateBadgeClass(item, mode)}>{itemDisplayStatus(item, mode)}</span>
-          <span className="admin-queue-card__geometry">{mapped ? "Ada geometri" : geometryKnown || mode === "simulation" ? "Tidak dipetakan" : "Geometri belum teramati"}</span>
+          <span className="admin-queue-card__geometry">{mapped ? "Ada lokasi peta" : geometryKnown || mode === "simulation" ? "Tidak ada lokasi peta" : "Lokasi belum diketahui"}</span>
         </span>
         <strong className="admin-queue-card__title">{item.title}</strong>
         <span className="admin-queue-card__category">{categoryLabel(item.category)} · {item.placeLabel}</span>
@@ -358,7 +358,7 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
           <div><dt>Kategori</dt><dd>{categoryLabel(item.category)}</dd></div>
           <div><dt>Lokasi</dt><dd>{item.placeLabel}</dd></div>
           <div><dt>Jenis data</dt><dd>{mode === "simulation" ? "Contoh rekaan" : datasetKindLabel(item.datasetKind)}</dd></div>
-          <div><dt>Lokasi di peta</dt><dd>{mapped ? item.geometryBasis === "synthetic_example" ? "Contoh koordinat" : "Sesuai geometri sumber" : mode === "public_api" && !geometryKnown ? "Belum diketahui" : "Tidak disertakan"}</dd></div>
+          <div><dt>Lokasi di peta</dt><dd>{mapped ? item.geometryBasis === "synthetic_example" ? "Contoh koordinat" : "Sesuai lokasi dari sumber" : mode === "public_api" && !geometryKnown ? "Belum diketahui" : "Tidak disertakan"}</dd></div>
         </dl>
       </section>
 

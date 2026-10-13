@@ -243,9 +243,10 @@ test("selection labels expose report meaning and provenance with accessible cont
   assert.match(markup, /Tahap pada contoh/);
   for (const label of ["Perkecil peta", "Perbesar peta", "Geser ke barat", "Geser ke utara", "Geser ke selatan", "Geser ke timur", "Tampilan peta"]) assert.ok(markup.includes(label));
   assert.match(markup, /Fokus laporan/);
+  assert.match(markup, /<section class="admin-map" aria-labelledby="([^"]+-heading)">[\s\S]*?<h3 id="\1">Lokasi yang ditampilkan<\/h3>/);
   assert.match(markup, /tabindex="0" aria-label="Peta laporan; pilih bentuk untuk membuka detail laporan/);
   assert.match(markup, /Enter atau Spasi memilih bentuk/);
-  assert.match(markup, /bukan batas wilayah/);
+  assert.match(markup, /Grid hanya panduan koordinat, bukan batas wilayah\./);
   assert.match(markup, /tidak menilai bahaya atau membuat radius/);
   assert.doesNotMatch(markup, /<image|https?:|geolocation|heatmap|severity/);
 });

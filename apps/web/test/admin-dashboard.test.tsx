@@ -170,6 +170,7 @@ test("public inspector keeps lifecycle, freshness, date precision, validity, and
   assert.match(html, /Mulai 9 Okt 2026.*; akhir tidak dinyatakan/);
   assert.match(html, /Browser membaca data/);
   assert.match(html, /Terbit pada data publik/);
+  assert.match(html, /Lokasi di peta<\/dt><dd>Sesuai lokasi dari sumber<\/dd>/);
   assert.match(html, /href="https:\/\/www\.bmkg\.go\.id\/" referrerPolicy="no-referrer"/);
   assert.match(html, /Sumber terbit/);
   assert.match(html, /Sumber diamati/);
@@ -229,6 +230,8 @@ test("default render explains the fictional example and keeps details in closed 
   assert.match(html, /Semua laporan dan lokasi di sini adalah rekaan\./);
   assert.match(html, /Contoh tampilan/);
   assert.match(html, /Data aplikasi/);
+  assert.match(html, /Ada lokasi peta/);
+  assert.match(html, /Tidak ada lokasi peta/);
   assert.match(html, /Tinjau bukti publik/);
   assert.match(html, /Rincian proses, sumber, dan pembacaan/);
   assert.doesNotMatch(html, /<details[^>]*\bopen(?:="")?\s*>/);
