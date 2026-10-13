@@ -1,5 +1,7 @@
 .local-pipeline {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
   gap: 1rem;
   max-width: 88rem;
 }

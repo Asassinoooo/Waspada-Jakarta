@@ -16,6 +16,32 @@
   overflow-wrap: anywhere;
 }
 
+.unified-source-explorer__map .source-point-map {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.unified-source-explorer__map .source-point-map__caption {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unified-source-explorer__map .source-point-map__source-key,
+.unified-source-explorer__map .source-point-map__caption > span,
+.unified-source-explorer__actions .button {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unified-source-explorer__filter-disclosure > summary {
+  flex-wrap: wrap;
+}
+
+.unified-source-explorer__filter-disclosure > summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .unified-source-explorer__intro,
 .unified-source-explorer__toolbar,
 .unified-source-explorer__filters,
