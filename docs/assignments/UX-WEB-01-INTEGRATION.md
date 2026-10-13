@@ -1,6 +1,6 @@
 # UX-WEB-01 — landing and admin integration
 
-Date: 13 October 2026 · Team12. Status: assigned. Root baseline `66f93f7`; source `codex/admin-map-dashboard` at `cad1d2e`, from the referenced **Main Development (UX)** task read by root. Parent source IDs UI-LANDING-01, UI-EXPERIENCE-01, UI-HERO-02 and ADMIN-MAP-01 remain unchanged. Public v1, domain2.0 and local-pipeline-preview-v1 contracts remain unchanged.
+Date: 13 October 2026 · Team12. Status: accepted locally after independent Luna/max review and root checks. [Final handoff](UX-WEB-01-INTEGRATION-HANDOFF.md). Root baseline `66f93f7`; source `codex/admin-map-dashboard` at `cad1d2e`, from the referenced **Main Development (UX)** task read by root. Parent source IDs UI-LANDING-01, UI-EXPERIENCE-01, UI-HERO-02 and ADMIN-MAP-01 remain unchanged. Public v1, domain2.0 and local-pipeline-preview-v1 contracts remain unchanged.
 
 ## Scope and design
 
@@ -23,3 +23,5 @@ Empty hash/`#beranda` opens landing, `#jelajah` preserves discovery, `#demo-sumb
 Root registers all new tests while preserving existing test list, app CSS and Vite proxy. Run WSL Ubuntu-26.04 with installed Node24.21.0/npm11.19.0, React19.3/Vite8.3/tsx4.23.15/TypeScript7.0.2/Wrangler4.137.0. No install. Commands: `npm run test --workspace=@waspada/web`, `npm run build`, `npm run smoke`, `git diff --check`. No full DB/model suite required for client-only changes unless a concrete cross-layer change warrants it.
 
 Use existing WSL headless Playwright/browser cache only; no computer control. Inspect desktop1440/mobile390/320px and200% text screenshots for landing/admin/current map/pipeline. Test navigation, loading/empty/error/unknown context, source/demo labels, read-only admin modes/pause/visibility, exact geometry fixture, unavailable geometry, keyboard and reduced motion. Browser external source/tile/model requests must be mocked/blocked; actual local published demo API reads may be used. No model calls needed. Acceptance needs independent review, actual checks, coherent task commits, root integration/handoff and remote checkpoint. Real-source/hosted/auth/telemetry/quality gates remain open.
+
+Root accepted the final ports and corrections: web181/181, build/typecheck/dry-run/smoke,22 headless groups/16 screenshots and production-lazy/private-exclusion checks pass. Agent source/package provenance, exact commits/messages and actual checks are in the handoff. Root's responsive integration paths also include existing `unified-source-explorer.css` and `local-pipeline-preview.css`, limited to observed intrinsic grid/large-text wrapping failures; no geometry, client, source, processor or public contract changed.
