@@ -8,9 +8,9 @@
   overflow: hidden;
 }
 
-.admin-map__heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: .75rem; padding: 1.25rem 1.25rem .75rem; }
+.admin-map__heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: .5rem .75rem; padding: .75rem 1rem .4rem; }
 .admin-map__eyebrow { margin: 0 0 .35rem; color: var(--quiet-ink); font-size: .75rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
-.admin-map :is(h2, h3) { margin: 0; max-width: none; font-size: 1.5rem; line-height: 1.2; letter-spacing: -.025em; }
+.admin-map :is(h2, h3) { margin: 0; max-width: none; font-size: 1.125rem; line-height: 1.3; letter-spacing: -.015em; }
 .admin-map__provenance { max-width: 100%; padding: .35rem .65rem; border: 1px solid var(--beton); border-radius: .25rem; background: var(--hujan-pagi); font-size: .75rem; font-weight: 700; }
 .admin-map__provenance--simulation { border-color: #e7b448; background: #fff6df; }
 .admin-map__intro { margin: 0; padding: 0 1.25rem 1rem; font-size: .875rem; line-height: 1.6; color: var(--quiet-ink); }
