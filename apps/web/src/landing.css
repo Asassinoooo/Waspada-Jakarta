@@ -97,6 +97,12 @@
   font-weight: 560;
 }
 
+.landing-button--secondary {
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
 .landing-hero__access {
   max-width: 35rem;
   margin: 0.9rem 0 0;
@@ -441,7 +447,9 @@
 }
 
 .landing-trust p {
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .landing-footer-links {
@@ -481,7 +489,7 @@
 
   .landing-hero {
     gap: 1.25rem;
-    padding: clamp(1rem, 5vw, 1.35rem);
+    padding: 0;
   }
 
   .landing-hero h1 {
