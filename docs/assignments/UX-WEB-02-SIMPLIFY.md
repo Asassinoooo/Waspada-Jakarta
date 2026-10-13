@@ -1,6 +1,6 @@
 # UX-WEB-02 — grouped navigation and understandable operations
 
-Date: 13 October2026. Status: assigned following the user's usability feedback during UX-WEB-01 integration: too many menus, dashboard difficult to understand, make it complete and universal. Baseline b9f2f61. Dependencies: accepted UX-WEB-01/source integration, current publicv1/domain2.0/local-preview-v1 and ADR058. No public/backend/model/auth/source contract change.
+Date: 13 October 2026. Status: accepted locally after independent Luna/max review and root checks; [handoff](UX-WEB-02-SIMPLIFY-HANDOFF.md). User feedback during UX-WEB-01 integration: too many menus, dashboard difficult to understand, make it complete and universal. Baseline b9f2f61. Dependencies: accepted UX-WEB-01/source integration, current publicv1/domain2.0/local-preview-v1 and ADR058. No public/backend/model/auth/source contract change.
 
 ## Product direction
 
@@ -23,3 +23,7 @@ All implementation agents Luna/max, own branches/worktrees, no root/shared edits
 Primary navigation has at most four labelled choices; old routes remain reachable/bookmark-compatible. For a nontechnical reader, admin explains what information exists, where it is, how current it is, and which details are unavailable; architecture identifiers are optional. Default view is substantially shorter/calmer than the source dashboard while expanded sections retain complete evidence/trace. No public/auth/data/model/source/hosting change.
 
 Root `npm run test --workspace=@waspada/web`, `npm run build`, `npm run smoke`, diff checks; no broader DB/model tests unless a concrete change warrants them. WSL headless QA (existing browser cache only) checks grouped routes/context/aliases, primary menu count, help/confirmed reset, admin main-versus-expanded detail, simulator/public mode/pause/offline/geometry, desktop1440/mobile390/320px with200% text, and source/private-view preservation. No computer control or real model/source acquisition. Inspect screenshots; refine real readability findings before handoff. Update plan/ADR058/UX spec/backlog/handoff/delivery log with actual evidence and remaining gates.
+
+## Accepted review refinements
+
+Root extended NAV allowed test paths only to `apps/web/test/preferences.test.tsx` after the full suite found one stale header-label assertion; it now verifies both active grouped primary and contextual navigation without changing the Preferences screen heading. ADMIN follow-ups restore simulation-only processing priority in optional details, use ordinary location wording, distinguish the coordinate grid from source geometry, and compact desktop controls after screenshot inspection. Source coordinates, fixture values, monitor logic and contracts stay unchanged. Root final web183/183, build/dry-run/smoke,23 headless groups/26 screenshots, lazy-admin/private-exclusion and diff checks pass. Exact branches, commits, commands, initial failure and remaining gates are in the handoff.

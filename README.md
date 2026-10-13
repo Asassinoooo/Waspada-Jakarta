@@ -4,9 +4,11 @@ Start with the **[Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md)** for
 
 This repository contains the engineering plan and partial prototype. The published-incident demo uses synthetic scenarios and read-only moderator review. A separate **Demo sumber** page adds a dated real OpenStreetMap facility snapshot, an interactive OSM basemap and explicit bounded OSM/PetaBencana source requests. Source previews are unreviewed and never enter published incident APIs. The five layers also have locally tested ingestion, grounding, bounded investigation and publication components; production model providers, database connections, authenticated publication and hosted deployment remain inactive. Broader source rights and human-reviewed evaluation remain pending. Local development/testing uses WSL; see the [bootstrap guide](docs/BOOTSTRAP.md) and [delivery log](docs/DELIVERY_LOG.md).
 
-## Landing and admin demo
+## Web navigation and admin demo
 
-Run `npm run dev` from WSL Ubuntu-26.04, then open [Beranda](http://127.0.0.1:5173/#beranda) or [Admin demo](http://127.0.0.1:5173/#admin). The integrated UX uses current main's visual style and preserves the unified source map and private local inspector. Landing includes a reading guide, attributed report preview and confirmed browser-data reset. Admin is web-only/read-only: labelled finite simulation or public endpoint polling while active. Private queues/model metrics, authentication and publication controls remain unavailable. [Integration provenance, actual checks and startup](docs/assignments/UX-WEB-01-INTEGRATION-HANDOFF.md).
+Run `npm run dev` from WSL Ubuntu-26.04, then open [Beranda](http://127.0.0.1:5173/#beranda) or [Admin demo](http://127.0.0.1:5173/#admin). Four primary destinations group existing features: **Beranda**, **Peta & laporan**, **Untuk Anda**, and **Bantuan**. Report/source maps and interests/updates have contextual choices; help combines guide/privacy, preserves old bookmarks, and provides separate operator links. The development/demo private inspector remains gated.
+
+Admin now leads with **Laporan dan peta**: search, report list, map and readable selected details. **Contoh tampilan** uses finite fictional examples; **Data aplikasi** reads existing public endpoints while active. Complete sources/times/process diagnostics can be opened when needed. The unified source map, browser-data controls and current visual style remain. Admin is read-only; private telemetry, authentication and publication controls remain unavailable. [Integration provenance](docs/assignments/UX-WEB-01-INTEGRATION-HANDOFF.md), [current navigation, checks and startup](docs/assignments/UX-WEB-02-SIMPLIFY-HANDOFF.md).
 
 ## Try the source/map demo locally
 
