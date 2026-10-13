@@ -7,6 +7,7 @@ import "./source-point-map.css";
 import "./context-sources.css";
 import "./unified-source-explorer.css";
 import "./experience.css";
+import "./help-page.css";
 import "./landing.css";
 
 const rootElement = document.getElementById("root");

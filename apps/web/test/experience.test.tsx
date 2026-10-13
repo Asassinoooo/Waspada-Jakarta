@@ -3,6 +3,7 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PrivacyPage } from "../src/PrivacyPage.js";
 import { ReadGuide } from "../src/ReadGuide.js";
+import { HelpPage } from "../src/HelpPage.js";
 import {
   clearWaspadaLocalData,
   inspectWaspadaLocalData,
@@ -124,4 +125,28 @@ test("privacy page lists only known local values and waits for a second confirma
   assert.match(html, /Penanda pembaruan membantu melanjutkan pemeriksaan/u);
   assert.doesNotMatch(html, /Cursor|cursor|kursor|polling|Penanda teknis/u);
   assert.equal(storage.values.get("unrelated:site-key"), "keep this value");
+});
+
+test("combined help keeps one main landmark and section-addressable guide and privacy content", () => {
+  const storage = new MemoryStorage();
+  storage.values.set(preferencesItem.key, "private interest value");
+  const html = renderToStaticMarkup(<HelpPage section="privasi" storage={storage} />);
+
+  assert.equal((html.match(/<main\b/gu) ?? []).length, 1);
+  assert.equal((html.match(/id="main-content"/gu) ?? []).length, 1);
+  assert.equal((html.match(/id="panduan"/gu) ?? []).length, 1);
+  assert.equal((html.match(/id="privasi"/gu) ?? []).length, 1);
+  assert.match(html, /href="#privasi" aria-current="location">Data dan privasi/u);
+  assert.match(html, /id="panduan" tabindex="-1"[^>]*aria-labelledby="read-guide-title"/u);
+  assert.match(html, /id="privasi" tabindex="-1"[^>]*aria-labelledby="privacy-title"/u);
+  assert.match(html, /Cara membaca laporan/u);
+  assert.match(html, /Data Waspada di browser ini/u);
+  assert.match(html, /Tinjau penghapusan data/u);
+  assert.doesNotMatch(html, /private interest value/u);
+  assert.doesNotMatch(html, /Inspektor proses lokal/u);
+  assert.match(html, /href="#admin">Pengelola · demo/u);
+  assert.match(html, /href="#tinjau-bukti">Tinjau bukti · demo · baca saja/u);
+
+  const developmentHelp = renderToStaticMarkup(<HelpPage showLocalPipeline />);
+  assert.match(developmentHelp, /href="#pipeline-lokal">Inspektor proses lokal · pengembangan\/demo/u);
 });

@@ -12,6 +12,7 @@ import {
 } from "./privacy-store.js";
 
 export interface PrivacyPageProps {
+  embedded?: boolean;
   storage?: PreferencesStorage | null;
   onCleared?: () => void;
 }
@@ -79,7 +80,10 @@ function StorageItems({
   );
 }
 
-export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
+export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPageProps) {
+  const PageTitle = embedded ? "h2" : "h1";
+  const SectionTitle = embedded ? "h3" : "h2";
+  const ConfirmTitle = embedded ? "h4" : "h3";
   const [activeStorage] = useState<PreferencesStorage | null>(() =>
     storage === undefined ? browserPreferencesStorage() : storage,
   );
@@ -113,11 +117,11 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
     if (nextResult.attempted.length > 0) onCleared?.();
   };
 
-  return (
-    <main id="main-content" tabIndex={-1} className="main-shell experience-page privacy-page">
+  const content = (
+    <>
       <header className="experience-intro" aria-labelledby="privacy-title">
         <p className="experience-kicker">Kontrol privasi · tanpa akun</p>
-        <h1 id="privacy-title">Data Waspada di browser ini</h1>
+        <PageTitle id="privacy-title">Data Waspada di browser ini</PageTitle>
         <p className="experience-lead">
           Anda dapat memeriksa dua jenis data lokal yang dikelola aplikasi dan menghapusnya
           tanpa menghapus data situs lain.
@@ -128,7 +132,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
         <div className="experience-section-heading">
           <div>
             <p className="experience-kicker">Penyimpanan perangkat</p>
-            <h2 id="privacy-local-title">Yang tersimpan di browser</h2>
+            <SectionTitle id="privacy-local-title">Yang tersimpan di browser</SectionTitle>
           </div>
           <button className="experience-action experience-action--quiet" type="button" onClick={refresh}>
             Periksa lagi
@@ -145,7 +149,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
 
       <section className="experience-card experience-card--wide" aria-labelledby="privacy-network-title">
         <p className="experience-kicker">Permintaan jaringan</p>
-        <h2 id="privacy-network-title">Apa yang dikirim dari browser</h2>
+        <SectionTitle id="privacy-network-title">Apa yang dikirim dari browser</SectionTitle>
         <ul className="experience-list">
           <li>
             Saat memuat halaman atau laporan, permintaan web dapat membawa metadata
@@ -186,7 +190,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
 
       <section className="experience-card experience-card--wide experience-reset" aria-labelledby="privacy-reset-title">
         <p className="experience-kicker">Penghapusan lokal</p>
-        <h2 id="privacy-reset-title">Hapus data Waspada di browser ini</h2>
+        <SectionTitle id="privacy-reset-title">Hapus data Waspada di browser ini</SectionTitle>
         <p>
           Tindakan ini hanya menyasar minat dan penanda pembaruan yang tercantum di atas.
           Data browser lain, laporan pada sumber, dan log layanan atau hosting tidak
@@ -220,7 +224,7 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
           </button>
         ) : (
           <section className="experience-reset-confirm" aria-labelledby="privacy-confirm-title">
-            <h3 id="privacy-confirm-title" ref={confirmHeadingRef} tabIndex={-1}>Hapus data lokal Waspada?</h3>
+            <ConfirmTitle id="privacy-confirm-title" ref={confirmHeadingRef} tabIndex={-1}>Hapus data lokal Waspada?</ConfirmTitle>
             <p>
               Minat tersimpan dan penanda pembaruan akan dihapus jika browser mengizinkan.
               Kami akan memeriksa setiap item dan melaporkan jika ada yang masih tersimpan
@@ -253,6 +257,10 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
         <a className="experience-action experience-action--primary" href="#jelajah">Kembali ke laporan</a>
         <a className="experience-action experience-action--quiet" href="#ringkasan-saya">Periksa minat tersimpan</a>
       </nav>
-    </main>
+    </>
   );
+
+  return embedded
+    ? <section id="privasi" tabIndex={-1} className="experience-page experience-page--embedded privacy-page help-page__section" aria-labelledby="privacy-title">{content}</section>
+    : <main id="main-content" tabIndex={-1} className="main-shell experience-page privacy-page">{content}</main>;
 }

@@ -171,8 +171,8 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
 test("update centre has direct hash navigation and an accessible current navigation item", () => {
   assert.deepEqual(routeFromHash("#pembaruan"), { screen: "updates" });
   const header = renderToStaticMarkup(<SiteHeader route={{ screen: "updates" }} context={liveContext} />);
-  assert.match(header, /href="#pembaruan" aria-current="page">Pembaruan<\/a>/);
-  assert.match(header, /href="#ringkasan-saya"[^>]*>Ringkasan saya<\/a>/);
+  assert.match(header, /href="#ringkasan-saya" aria-current="page">Untuk Anda<\/a>/);
+  assert.match(header, /aria-label="Untuk Anda"><a href="#ringkasan-saya">Minat tersimpan<\/a><a href="#pembaruan" aria-current="page">Pembaruan<\/a>/);
 });
 
 test("integrated UX routes preserve public map and encoded detail targets", () => {
@@ -180,8 +180,9 @@ test("integrated UX routes preserve public map and encoded detail targets", () =
   assert.deepEqual(routeFromHash("#beranda"), { screen: "landing" });
   assert.deepEqual(routeFromHash("#jelajah"), { screen: "discover" });
   assert.deepEqual(routeFromHash("#demo-sumber"), { screen: "source-preview" });
-  assert.deepEqual(routeFromHash("#panduan"), { screen: "guide" });
-  assert.deepEqual(routeFromHash("#privasi"), { screen: "privacy" });
+  assert.deepEqual(routeFromHash("#bantuan"), { screen: "help" });
+  assert.deepEqual(routeFromHash("#panduan"), { screen: "help", section: "panduan" });
+  assert.deepEqual(routeFromHash("#privasi"), { screen: "help", section: "privasi" });
   assert.deepEqual(routeFromHash("#admin"), { screen: "admin" });
   assert.deepEqual(routeFromHash("#admin-workspace"), { screen: "admin" });
   assert.deepEqual(routeFromHash("#detail/api/public%2Fid%3F"), { screen: "detail-api", eventId: "public/id?" });
@@ -189,10 +190,16 @@ test("integrated UX routes preserve public map and encoded detail targets", () =
   // A production/SSR import cannot open the development-only private inspector.
   assert.deepEqual(routeFromHash("#pipeline-lokal"), { screen: "discover" });
   const header = renderToStaticMarkup(<SiteHeader route={{ screen: "landing" }} context={demoContext} />);
+  const primaryNav = header.match(/<nav class="primary-nav" aria-label="Navigasi utama">([\s\S]*?)<\/nav>/u)?.[1] ?? "";
+  assert.equal((primaryNav.match(/<a\b/gu) ?? []).length, 4);
   assert.match(header, /href="#beranda" aria-current="page">Beranda/);
-  assert.match(header, /href="#demo-sumber"/);
-  assert.match(header, /href="#admin">Admin demo/);
+  assert.match(header, /href="#jelajah">Peta &amp; laporan/);
+  assert.match(header, /href="#ringkasan-saya">Untuk Anda/);
+  assert.match(header, /href="#bantuan">Bantuan/);
+  assert.doesNotMatch(header, /href="#demo-sumber"|href="#admin"|href="#tinjau-bukti"/);
   assert.doesNotMatch(header, /href="#pipeline-lokal"/);
+  const publicMapHeader = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={demoContext} />);
+  assert.match(publicMapHeader, /aria-label="Peta dan laporan"><a href="#jelajah" aria-current="page">Laporan publik<\/a><a href="#demo-sumber">Peta sumber · demo<\/a>/);
 });
 
 test("briefing gates unknown, demo, and empty-interest contexts without enabling a request", () => {

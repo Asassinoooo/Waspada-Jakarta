@@ -1,0 +1,85 @@
+.help-page {
+  padding-top: 2rem;
+}
+
+.help-page__intro,
+.help-page__navigation,
+.help-page__operator {
+  width: min(100%, 76rem);
+  min-width: 0;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.help-page__intro {
+  margin-bottom: 0.5rem;
+}
+
+.help-page__navigation,
+.help-page__operator nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.help-page__navigation a,
+.help-page__operator nav a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  padding: 0.45rem 0.55rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.help-page__navigation a[aria-current="location"] {
+  border-color: var(--kali-teal);
+  color: var(--kali-teal);
+}
+
+.experience-page--embedded {
+  width: min(100%, 76rem);
+  min-height: 0;
+  margin: 0 auto;
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--beton);
+  scroll-margin-top: 1rem;
+}
+
+.experience-page--embedded .experience-card-grid {
+  margin-bottom: 0.75rem;
+}
+
+.privacy-page h4 {
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.help-page__operator {
+  border-top: 1px solid var(--beton);
+  margin-top: 1rem;
+  padding: 1.5rem 0 0.5rem;
+}
+
+.help-page__operator h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.help-page__operator > p:not(.experience-kicker) {
+  max-width: 68ch;
+  color: var(--quiet-ink);
+}
+
+@media (max-width: 600px) {
+  .help-page {
+    padding-top: 1.35rem;
+  }
+
+  .experience-page--embedded {
+    padding: 1.1rem 0;
+  }
+}

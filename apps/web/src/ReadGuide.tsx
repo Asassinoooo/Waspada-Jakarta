@@ -1,9 +1,11 @@
-export function ReadGuide() {
-  return (
-    <main id="main-content" tabIndex={-1} className="main-shell experience-page read-guide">
+export function ReadGuide({ embedded = false }: { embedded?: boolean }) {
+  const PageTitle = embedded ? "h2" : "h1";
+  const SectionTitle = embedded ? "h3" : "h2";
+  const content = (
+    <>
       <header className="experience-intro" aria-labelledby="read-guide-title">
         <p className="experience-kicker">Panduan opsional · bisa dibuka lagi</p>
-        <h1 id="read-guide-title">Cara membaca laporan</h1>
+        <PageTitle id="read-guide-title">Cara membaca laporan</PageTitle>
         <p className="experience-lead">
           Periksa apa yang dilaporkan, kapan informasi ditinjau, bukti yang mendukungnya,
           dan alasan laporan mungkin berkaitan dengan minat Anda.
@@ -16,7 +18,7 @@ export function ReadGuide() {
       <div className="experience-card-grid" aria-label="Empat hal yang perlu dibedakan">
         <section className="experience-card" aria-labelledby="guide-lifecycle-title">
           <p className="experience-kicker">01 · Kejadian</p>
-          <h2 id="guide-lifecycle-title">Status kejadian atau dampak</h2>
+          <SectionTitle id="guide-lifecycle-title">Status kejadian atau dampak</SectionTitle>
           <p>
             “Direncanakan”, “Berlangsung”, “Selesai”, atau “Dibatalkan” menjelaskan
             keadaan kejadian atau dampak menurut bukti. Status dampak, seperti layanan
@@ -27,7 +29,7 @@ export function ReadGuide() {
 
         <section className="experience-card" aria-labelledby="guide-freshness-title">
           <p className="experience-kicker">02 · Tinjauan</p>
-          <h2 id="guide-freshness-title">Kesegaran informasi</h2>
+          <SectionTitle id="guide-freshness-title">Kesegaran informasi</SectionTitle>
           <p>
             “Dalam batas tinjau saat evaluasi” berarti waktu tinjau yang ditetapkan
             layanan belum lewat saat status dihitung. “Perlu diperbarui” berarti waktu
@@ -42,7 +44,7 @@ export function ReadGuide() {
 
         <section className="experience-card" aria-labelledby="guide-evidence-title">
           <p className="experience-kicker">03 · Bukti</p>
-          <h2 id="guide-evidence-title">Dukungan untuk klaim</h2>
+          <SectionTitle id="guide-evidence-title">Dukungan untuk klaim</SectionTitle>
           <p>
             Label bukti menjelaskan siapa yang menerbitkan atau melaporkan suatu klaim,
             misalnya pemberitahuan resmi dari penerbit yang berwenang, laporan warga,
@@ -55,7 +57,7 @@ export function ReadGuide() {
 
         <section className="experience-card" aria-labelledby="guide-relevance-title">
           <p className="experience-kicker">04 · Keterkaitan</p>
-          <h2 id="guide-relevance-title">Mengapa laporan muncul</h2>
+          <SectionTitle id="guide-relevance-title">Mengapa laporan muncul</SectionTitle>
           <p>
             Keterkaitan menerangkan kecocokan dengan tempat, layanan, institusi,
             kelompok, kategori, atau filter yang dipilih. Ini bukan penilaian kebenaran,
@@ -66,7 +68,7 @@ export function ReadGuide() {
 
       <section className="experience-card experience-card--wide" aria-labelledby="guide-time-title">
         <p className="experience-kicker">Waktu mempunyai arti yang berbeda</p>
-        <h2 id="guide-time-title">Perhatikan label waktunya</h2>
+        <SectionTitle id="guide-time-title">Perhatikan label waktunya</SectionTitle>
         <ul className="experience-list">
           <li><strong>Waktu kejadian:</strong> kapan kejadian berlangsung, jika sumber menyatakannya.</li>
           <li><strong>Waktu pengamatan:</strong> kapan sumber melihat atau mencatat keadaan tersebut.</li>
@@ -79,7 +81,7 @@ export function ReadGuide() {
 
       <section className="experience-card experience-card--wide" aria-labelledby="guide-map-title">
         <p className="experience-kicker">Peta mengikuti bukti</p>
-        <h2 id="guide-map-title">Bentuk peta bukan perkiraan bahaya</h2>
+        <SectionTitle id="guide-map-title">Bentuk peta bukan perkiraan bahaya</SectionTitle>
         <ul className="experience-list">
           <li>Titik menunjukkan lokasi laporan pada ketelitian yang didukung sumber.</li>
           <li>Batas hanya ditampilkan jika penerbit mendefinisikan wilayah itu beserta cakupannya.</li>
@@ -95,6 +97,10 @@ export function ReadGuide() {
         <a className="experience-action experience-action--primary" href="#jelajah">Mulai jelajah</a>
         <a className="experience-action experience-action--quiet" href="#privasi">Lihat penggunaan data</a>
       </nav>
-    </main>
+    </>
   );
+
+  return embedded
+    ? <section id="panduan" tabIndex={-1} className="experience-page experience-page--embedded read-guide help-page__section" aria-labelledby="read-guide-title">{content}</section>
+    : <main id="main-content" tabIndex={-1} className="main-shell experience-page read-guide">{content}</main>;
 }

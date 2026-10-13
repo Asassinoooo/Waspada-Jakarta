@@ -10,16 +10,14 @@ import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
 import { SourcePointMap } from "./SourcePointMap.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
 import { Landing } from "./Landing.js";
-import { ReadGuide } from "./ReadGuide.js";
-import { PrivacyPage } from "./PrivacyPage.js";
+import { HelpPage } from "./HelpPage.js";
 
 const AdminDashboard = lazy(() => import("./admin-entry.js"));
 
 type Route =
   | { screen: "landing" }
   | { screen: "discover" }
-  | { screen: "guide" }
-  | { screen: "privacy" }
+  | { screen: "help"; section?: "panduan" | "privasi" }
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "review" }
@@ -130,8 +128,9 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
 
 export function routeFromHash(hash: string): Route {
   if (hash === "" || hash === "#beranda") return { screen: "landing" };
-  if (hash === "#panduan") return { screen: "guide" };
-  if (hash === "#privasi") return { screen: "privacy" };
+  if (hash === "#bantuan") return { screen: "help" };
+  if (hash === "#panduan") return { screen: "help", section: "panduan" };
+  if (hash === "#privasi") return { screen: "help", section: "privasi" };
   if (hash === "#admin" || hash === "#admin-workspace") return { screen: "admin" };
   if (hash === "#pipeline-lokal" && import.meta.env?.DEV === true) return { screen: "local-pipeline" };
   if (hash === "#demo-sumber") return { screen: "source-preview" };
@@ -150,7 +149,9 @@ export function routeFromHash(hash: string): Route {
 }
 
 export function SiteHeader({ route, context = null }: { route: Route; context?: PublicContext | null }) {
-  const onDiscover = route.screen === "discover" || route.screen.startsWith("detail");
+  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen.startsWith("detail");
+  const onForYou = route.screen === "preferences" || route.screen === "updates";
+  const onHelp = route.screen === "help";
   const datasetMode = context?.dataset_mode;
   const modeText = datasetMode === "demo"
     ? "Mode demo"
@@ -159,7 +160,6 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
       : "Status dataset tidak tersedia";
   const bannerLabel = datasetMode === "demo" ? "DEMO" : datasetMode === "live" ? "LIVE" : "—";
   const sourcePreview = route.screen === "source-preview" && datasetMode === "demo";
-  const localPipeline = route.screen === "local-pipeline";
   const bannerTitle = sourcePreview
     ? "DEMO SUMBER — pratinjau data publik; bukan peringatan Waspada"
     : datasetMode === "demo"
@@ -183,16 +183,26 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
           <span className="brand-mark" aria-hidden="true">WJ</span>
           <span><strong>Waspada Jakarta</strong><small>Informasi dengan jejak sumber</small></span>
         </a>
-        <nav className="primary-nav" aria-label="Navigasi utama">
-          <a href="#beranda" aria-current={route.screen === "landing" ? "page" : undefined}>Beranda</a>
-          <a href="#jelajah" aria-current={onDiscover ? "page" : undefined}>Jelajah</a>
-          {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Demo sumber</a>}
-          {import.meta.env?.DEV === true && datasetMode === "demo" && <a href="#pipeline-lokal" aria-current={localPipeline ? "page" : undefined}>Pipeline lokal</a>}
-          <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Ringkasan saya</a>
-          <a href="#pembaruan" aria-current={route.screen === "updates" ? "page" : undefined}>Pembaruan</a>
-          <a href="#tinjau-bukti" aria-current={route.screen === "review" ? "page" : undefined}>Tinjau bukti</a>
-          <a href="#admin">Admin demo</a>
-        </nav>
+        <div className="site-header__navigation">
+          <nav className="primary-nav" aria-label="Navigasi utama">
+            <a href="#beranda" aria-current={route.screen === "landing" ? "page" : undefined}>Beranda</a>
+            <a href="#jelajah" aria-current={onReportGroup ? "page" : undefined}>Peta &amp; laporan</a>
+            <a href="#ringkasan-saya" aria-current={onForYou ? "page" : undefined}>Untuk Anda</a>
+            <a href="#bantuan" aria-current={onHelp ? "page" : undefined}>Bantuan</a>
+          </nav>
+          {onReportGroup && (
+            <nav className="context-nav" aria-label="Peta dan laporan">
+              <a href="#jelajah" aria-current={route.screen === "discover" || route.screen.startsWith("detail") ? "page" : undefined}>Laporan publik</a>
+              {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Peta sumber · demo</a>}
+            </nav>
+          )}
+          {onForYou && (
+            <nav className="context-nav" aria-label="Untuk Anda">
+              <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Minat tersimpan</a>
+              <a href="#pembaruan" aria-current={route.screen === "updates" ? "page" : undefined}>Pembaruan</a>
+            </nav>
+          )}
+        </div>
         <span className="mode-chip">{modeText}</span>
       </header>
       <section
@@ -266,13 +276,20 @@ export function App() {
     return () => window.removeEventListener("hashchange", updateRoute);
   }, []);
 
-  const routeKey = route.screen === "detail-api" ? `${route.screen}:${route.eventId}` : route.screen;
-  const previousRouteKey = useRef(routeKey);
+  const routeKey = route.screen === "detail-api"
+    ? `${route.screen}:${route.eventId}`
+    : route.screen === "help"
+      ? `${route.screen}:${route.section ?? "all"}`
+      : route.screen;
+  const previousRouteKey = useRef<string | null>(route.screen === "help" && route.section ? null : routeKey);
   useEffect(() => {
     if (previousRouteKey.current === routeKey) return;
     previousRouteKey.current = routeKey;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    document.getElementById("main-content")?.focus({ preventScroll: true });
+    const targetId = route.screen === "help" && route.section ? route.section : "main-content";
+    const target = document.getElementById(targetId);
+    if (route.screen === "help" && route.section) target?.scrollIntoView({ block: "start", behavior: "instant" });
+    target?.focus({ preventScroll: true });
   }, [routeKey]);
 
   useEffect(() => {
@@ -468,8 +485,13 @@ export function App() {
       )}
       {route.screen === "preferences" && <Preferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />}
       {route.screen === "updates" && <UpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />}
-      {route.screen === "guide" && <ReadGuide />}
-      {route.screen === "privacy" && <PrivacyPage onCleared={() => setLocalDataRevision((revision) => revision + 1)} />}
+      {route.screen === "help" && (
+        <HelpPage
+          section={route.section}
+          showLocalPipeline={import.meta.env?.DEV === true && context?.dataset_mode === "demo"}
+          onCleared={() => setLocalDataRevision((revision) => revision + 1)}
+        />
+      )}
       {route.screen === "review" && <ModeratorReview />}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
@@ -495,8 +517,9 @@ export function App() {
               : "Status dataset tidak tersedia."}
         </span>
         <a href="#jelajah">Kembali ke jelajah</a>
-        <a href="#panduan">Cara membaca laporan</a>
-        <a href="#privasi">Privasi dan data lokal</a>
+        <a href="#bantuan">Bantuan</a>
+        <a href="#admin">Pengelola · demo</a>
+        <a href="#tinjau-bukti">Tinjau bukti · demo · baca saja</a>
       </footer>
     </div>
   );
