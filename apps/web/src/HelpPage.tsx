@@ -29,12 +29,14 @@ export function HelpPage({ section, showLocalPipeline = false, storage, onCleare
 
       <section id="pengelola" className="help-page__operator" aria-labelledby="operator-links-title">
         <p className="experience-kicker">Ruang contoh dan pengelola</p>
-        <h2 id="operator-links-title">Tautan operator</h2>
-        <p>Ruang ini menampilkan contoh baca saja; tidak ada antrean atau tindakan moderator.</p>
-        <nav aria-label="Tautan operator">
+        <h2 id="operator-links-title">Untuk pengelola</h2>
+        <p>Tampilan pengelolaan dan tinjau ini bersifat baca saja; tidak ada kontrol untuk menyetujui atau menerbitkan laporan.</p>
+        <nav aria-label="Tautan pengelola">
           <a href="#admin">Pengelola · demo</a>
           <a href="#tinjau-bukti">Tinjau bukti · demo · baca saja</a>
-          {showLocalPipeline && <a href="#pipeline-lokal">Inspektor proses lokal · pengembangan/demo</a>}
+          {import.meta.env?.DEV === true && showLocalPipeline && (
+            <a href="#pipeline-lokal">Inspektor proses lokal · pengembangan/demo</a>
+          )}
         </nav>
       </section>
     </main>

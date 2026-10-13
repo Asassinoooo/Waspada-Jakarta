@@ -146,7 +146,9 @@ test("combined help keeps one main landmark and section-addressable guide and pr
   assert.doesNotMatch(html, /Inspektor proses lokal/u);
   assert.match(html, /href="#admin">Pengelola · demo/u);
   assert.match(html, /href="#tinjau-bukti">Tinjau bukti · demo · baca saja/u);
+  assert.match(html, /<h2 id="operator-links-title">Untuk pengelola<\/h2>/u);
+  assert.match(html, /Tampilan pengelolaan dan tinjau ini bersifat baca saja/u);
 
-  const developmentHelp = renderToStaticMarkup(<HelpPage showLocalPipeline />);
-  assert.match(developmentHelp, /href="#pipeline-lokal">Inspektor proses lokal · pengembangan\/demo/u);
+  const serverHelp = renderToStaticMarkup(<HelpPage showLocalPipeline />);
+  assert.doesNotMatch(serverHelp, /Inspektor proses lokal|pipeline-lokal/u);
 });
