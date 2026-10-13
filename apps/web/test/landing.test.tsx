@@ -69,12 +69,14 @@ function makeEvent(overrides: Partial<EventView> = {}): EventView {
 
 function renderLanding(options: {
   context?: PublicContext | null;
+  contextStatus?: "loading" | "loaded" | "unavailable";
   events?: readonly EventView[];
   status?: "loading" | "loaded" | "unavailable";
   onRetry?: () => void;
 } = {}) {
   return renderToStaticMarkup(createElement(Landing, {
     context: options.context === undefined ? demoContext : options.context,
+    contextStatus: options.contextStatus,
     events: options.events ?? [],
     status: options.status ?? "loaded",
     onRetry: options.onRetry,
@@ -105,6 +107,30 @@ test("unknown dataset context suppresses supplied reports", () => {
   assert.match(markup, /Mode data belum dapat diverifikasi/);
   assert.match(markup, /Laporan disembunyikan sampai status dataset tersedia/);
   assert.doesNotMatch(markup, new RegExp(privateLookingTitle));
+
+  const unavailableMarkup = renderLanding({
+    context: null,
+    contextStatus: "unavailable",
+    events: [makeEvent({ title: privateLookingTitle })],
+  });
+  assert.match(unavailableMarkup, /Mode data belum dapat diverifikasi/);
+  assert.doesNotMatch(unavailableMarkup, new RegExp(privateLookingTitle));
+});
+
+test("pending dataset context shows a loading state without reports or retry", () => {
+  const privateLookingTitle = "Laporan lama selama status dataset dimuat";
+  const markup = renderLanding({
+    context: null,
+    contextStatus: "loading",
+    events: [makeEvent({ title: privateLookingTitle })],
+    status: "unavailable",
+    onRetry: () => {},
+  });
+
+  assert.match(markup, /Memuat status dataset…/u);
+  assert.match(markup, /role="status" aria-busy="true"/u);
+  assert.doesNotMatch(markup, new RegExp(privateLookingTitle));
+  assert.doesNotMatch(markup, /Mode data belum dapat diverifikasi|Laporan belum dapat dimuat|Coba lagi/u);
 });
 
 test("demo reports are labelled from the selected dataset and contain no invented map geometry", () => {

@@ -4,9 +4,11 @@ import { categoryLabel, evidenceLabel, formatDate, formatInstant } from "./displ
 import { HeroIllustration } from "./HeroIllustration.js";
 
 type LandingStatus = "loading" | "loaded" | "unavailable";
+type LandingContextStatus = "loading" | "loaded" | "unavailable";
 
 export interface LandingProps {
   context: PublicContext | null;
+  contextStatus?: LandingContextStatus;
   events: readonly EventView[];
   status: LandingStatus;
   onRetry?: () => void;
@@ -88,13 +90,22 @@ function eventDetailHref(eventId: string) {
 
 function PublicPreview({
   context,
+  contextStatus,
   events,
   status,
   onRetry,
-}: Pick<LandingProps, "context" | "events" | "status" | "onRetry">) {
+}: Pick<LandingProps, "context" | "contextStatus" | "events" | "status" | "onRetry">) {
   let content;
 
-  if (context === null) {
+  if (contextStatus === "loading") {
+    content = (
+      <div className="landing-state" role="status" aria-busy="true">
+        <span className="landing-state__rule" aria-hidden="true" />
+        <strong>Memuat status dataset…</strong>
+        <p>Laporan publik menunggu konfirmasi mode data.</p>
+      </div>
+    );
+  } else if (context === null) {
     content = (
       <div className="landing-state" role="status">
         <strong>Mode data belum dapat diverifikasi.</strong>
@@ -189,7 +200,7 @@ function PublicPreview({
   );
 }
 
-export function Landing({ context, events, status, onRetry }: LandingProps) {
+export function Landing({ context, contextStatus, events, status, onRetry }: LandingProps) {
   const [selectedGuide, setSelectedGuide] = React.useState<GuideId>("laporan");
   const selectedItem = guideItems.find((item) => item.id === selectedGuide) ?? guideItems[0];
 
@@ -247,7 +258,13 @@ export function Landing({ context, events, status, onRetry }: LandingProps) {
         </div>
       </section>
 
-      <PublicPreview context={context} events={events} status={status} onRetry={onRetry} />
+      <PublicPreview
+        context={context}
+        contextStatus={contextStatus}
+        events={events}
+        status={status}
+        onRetry={onRetry}
+      />
 
       <section className="landing-trust" aria-label="Batas informasi">
         <span className="landing-trust__mark" aria-hidden="true">i</span>
