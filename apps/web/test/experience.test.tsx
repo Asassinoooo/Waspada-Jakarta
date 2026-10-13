@@ -109,6 +109,11 @@ test("privacy page lists only known local values and waits for a second confirma
   assert.match(html, /<main id="main-content" tabindex="-1"/u);
   assert.match(html, /Yang tersimpan di browser/u);
   assert.match(html, /Apa yang dikirim dari browser/u);
+  assert.match(html, /tile\.openstreetmap\.org/u);
+  assert.match(html, /alamat ubin[\s\S]*area peta yang sedang dilihat, bukan lokasi presisi perangkat/u);
+  assert.match(html, /Minat tersimpan tidak disertakan dalam permintaan ubin/u);
+  assert.match(html, /href="https:\/\/www\.openstreetmap\.org\/copyright" target="_blank" rel="noreferrer"/u);
+  assert.equal((html.match(/href="https?:\/\//gu) ?? []).length, 1);
   assert.match(html, /Tinjau penghapusan data/u);
   assert.doesNotMatch(html, /Ya, hapus data Waspada/u);
   assert.doesNotMatch(html, /private interest value|opaque cursor secret/u);

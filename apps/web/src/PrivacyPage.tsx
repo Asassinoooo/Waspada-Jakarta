@@ -154,6 +154,20 @@ export function PrivacyPage({ storage, onCleared }: PrivacyPageProps) {
             halaman ini tidak menghapus catatan mereka.
           </li>
           <li>
+            Peta rujukan memuat gambar ubin dari server ubin OpenStreetMap
+            (<code>tile.openstreetmap.org</code>) saat peta ditampilkan, digeser, atau diperbesar.
+            Permintaan ubin membawa alamat ubin dan metadata koneksi biasa; alamat ubin
+            menunjukkan area peta yang sedang dilihat, bukan lokasi presisi perangkat.
+            Minat tersimpan tidak disertakan dalam permintaan ubin. Lihat{" "}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noreferrer"
+            >
+              informasi hak cipta dan atribusi OpenStreetMap
+            </a>.
+          </li>
+          <li>
             Mengubah atau menyimpan minat tidak mengirimkannya. Minat yang dipilih baru
             dikirim saat Anda meminta ringkasan, untuk memenuhi permintaan tersebut.
             Fitur ringkasan tidak menyimpan data minat yang dikirim. Log layanan atau
