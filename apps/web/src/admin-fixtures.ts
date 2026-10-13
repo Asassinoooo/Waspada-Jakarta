@@ -18,15 +18,15 @@ export interface SimulationStep {
 }
 
 const authoredSteps: SimulationStep[] = [
-  { index: 0, label: "Mulai skenario fiktif", description: "Kasus dan waktu bersifat ilustratif; tidak ada sumber yang dihubungi.", durationMs: 3_000 },
-  { index: 1, label: "L1 menerima laporan contoh", description: "Sebuah laporan rekaan masuk ke antrean persiapan lokal.", durationMs: 3_000 },
-  { index: 2, label: "L1 mengarantina bentuk yang gagal", description: "Parser menahan geometri rekaan yang bentuknya tidak sah.", durationMs: 3_000 },
-  { index: 3, label: "L2 menemukan bukti yang berbeda", description: "Dua kutipan fiktif belum mendukung kesimpulan yang sama.", durationMs: 3_000 },
-  { index: 4, label: "L3 menjalankan pemeriksaan terbatas", description: "Pemeriksaan memakai anggaran lokal yang dibatasi.", durationMs: 3_000 },
-  { index: 5, label: "L3 berhenti pada batas anggaran", description: "Tidak ada pemeriksaan lanjutan setelah batas tercapai.", durationMs: 3_000 },
-  { index: 6, label: "L4 menahan usulan untuk moderator", description: "Persetujuan tetap menjadi keputusan manusia.", durationMs: 3_000 },
-  { index: 7, label: "L4 menyelesaikan contoh publikasi", description: "Satu contoh fiktif melewati gerbang lokal dan tetap berlabel sintetis.", durationMs: 3_000 },
-  { index: 8, label: "L5 mencatat sumber contoh tidak tersedia", description: "Sinyal lintas lapisan menunjukkan kegagalan sumber simulasi.", durationMs: 3_000 },
+  { index: 0, label: "Mulai contoh rekaan", description: "Kasus dan waktu hanya ilustrasi; tidak ada sumber yang dihubungi.", durationMs: 3_000 },
+  { index: 1, label: "Laporan rekaan diterima", description: "Laporan contoh masuk ke daftar lokal.", durationMs: 3_000 },
+  { index: 2, label: "Lokasi contoh ditahan", description: "Bentuk lokasi rekaan tidak dapat digunakan.", durationMs: 3_000 },
+  { index: 3, label: "Catatan memberi waktu berbeda", description: "Dua bukti rekaan belum mendukung kesimpulan yang sama.", durationMs: 3_000 },
+  { index: 4, label: "Pemeriksaan contoh dimulai", description: "Contoh memakai batas pemeriksaan rekaan.", durationMs: 3_000 },
+  { index: 5, label: "Pemeriksaan contoh berhenti", description: "Tidak ada langkah lanjutan setelah batas contoh tercapai.", durationMs: 3_000 },
+  { index: 6, label: "Perlu tinjauan manusia", description: "Persetujuan tetap menjadi keputusan manusia.", durationMs: 3_000 },
+  { index: 7, label: "Contoh rekaan selesai", description: "Contoh ini hanya tampilan dan tidak diterbitkan ke layanan publik.", durationMs: 3_000 },
+  { index: 8, label: "Sumber contoh tidak tersedia", description: "Contoh mencatat sumber rekaan yang tidak tersedia.", durationMs: 3_000 },
   { index: 9, label: "Skenario selesai", description: "Urutan berakhir; tidak ada pengulangan otomatis.", durationMs: 3_000 },
 ];
 
@@ -43,10 +43,10 @@ export const SIMULATION_STEPS: readonly SimulationStep[] = deepFreeze(authoredSt
 
 const BASE_AT = Date.UTC(2026, 9, 10, 3, 0, 0);
 const SIMULATION_SOURCE_NAMES = [
-  "Kanal Warga Contoh (fiktif)",
+  "Kanal Warga Contoh (rekaan)",
   "Papan Layanan Imajiner",
   "Catatan Lapangan Rekaan",
-  "Feed Simulasi Jakarta (fiktif)",
+  "Feed Simulasi Jakarta (rekaan)",
 ] as const;
 
 function atMinute(minute: number): string {
@@ -99,7 +99,7 @@ function item(
   return {
     datasetKind: "synthetic",
     geometryNote: input.geometryNote ?? (input.geometry
-      ? "Koordinat ilustratif fiktif; bukan batas resmi atau penilaian bahaya."
+      ? "Lokasi contoh rekaan; bukan batas resmi atau penilaian bahaya."
       : "Tidak dipetakan. Lokasi rekaan belum memiliki koordinat contoh."),
     steps: input.steps ?? [],
     ...input,
@@ -125,7 +125,7 @@ function createItems(step: number): AdminItem[] {
       observedAt: atMinute(1),
       fetchedAt: atMinute(2),
       publishedAt: null,
-      evidenceSummary: "Satu laporan simulasi; dukungan dan cakupan waktu belum lengkap.",
+      evidenceSummary: "Satu laporan rekaan; sumber dan waktunya belum lengkap.",
       stopReason: null,
       nextStep: "Periksa kecocokan waktu dan bukti sebelum menyimpulkan.",
       budget: null,
@@ -136,8 +136,8 @@ function createItems(step: number): AdminItem[] {
     }),
     item({
       id: "sim-parse-quarantine",
-      title: "Geometri contoh dikarantina saat parse",
-      summary: "Bentuk koordinat pada masukan fiktif tidak memenuhi aturan GeoJSON.",
+      title: "Lokasi contoh tidak dapat digunakan",
+      summary: "Bentuk lokasi pada masukan rekaan tidak dapat dikenali.",
       category: "transport_road_incidents",
       layer: "L1",
       state: step >= 2 ? "held" : "queued",
@@ -145,7 +145,7 @@ function createItems(step: number): AdminItem[] {
       placeLabel: "Lokasi tidak dipetakan — pemeriksaan tertahan",
       geometry: null,
       geometryBasis: "none",
-      geometryNote: "Parser simulasi menahan koordinat yang rusak; tidak dibuat titik pengganti.",
+      geometryNote: "Bentuk lokasi rekaan tidak sesuai aturan; tidak dibuat titik pengganti.",
       sourceNames: [SIMULATION_SOURCE_NAMES[2]],
       eventVersion: null,
       publicEventId: null,
@@ -162,7 +162,7 @@ function createItems(step: number): AdminItem[] {
     }),
     item({
       id: "sim-l2-conflict",
-      title: "Dua catatan fiktif berbeda soal waktu",
+      title: "Dua catatan rekaan menyebut waktu berbeda",
       summary: "Catatan rekaan menyebut waktu mulai yang berbeda; sistem tidak memilih salah satunya.",
       category: "demonstrations_public_gatherings",
       layer: "L2",
@@ -177,7 +177,7 @@ function createItems(step: number): AdminItem[] {
       observedAt: atMinute(4),
       fetchedAt: atMinute(4),
       publishedAt: null,
-      evidenceSummary: "Satu catatan menyebut pukul 10.00; satu lagi 10.30 (semua waktu fiktif).",
+      evidenceSummary: "Satu catatan menyebut pukul 10.00; satu lagi 10.30 (semua waktu rekaan).",
       stopReason: step >= 3 ? "Konflik bukti belum terselesaikan; usulan tidak diteruskan ke publikasi." : null,
       nextStep: "Minta peninjauan bukti tambahan yang dapat dipertanggungjawabkan.",
       budget: null,
@@ -220,8 +220,8 @@ function createItems(step: number): AdminItem[] {
     }),
     item({
       id: "sim-moderator-hold",
-      title: "Usulan contoh menunggu moderator",
-      summary: "Pemeriksaan otomatis tidak menerbitkan kandidat; persetujuan manusia masih diperlukan.",
+      title: "Contoh laporan perlu ditinjau manusia",
+      summary: "Contoh ini memperagakan kebutuhan tinjauan; tidak ada laporan yang dikirim atau diterbitkan.",
       category: "utilities_essential_services",
       layer: "L4",
       state: step >= 6 ? "held" : "queued",
@@ -236,19 +236,19 @@ function createItems(step: number): AdminItem[] {
       observedAt: atMinute(9),
       fetchedAt: atMinute(9),
       publishedAt: null,
-      evidenceSummary: "Tidak ada contoh sumber yang memenuhi semua pemeriksaan publikasi.",
-      stopReason: step >= 6 ? "Gerbang publikasi menunggu tinjauan dan keputusan moderator." : null,
-      nextStep: "Moderator menilai bukti dan alasan; tidak ada tindakan tulis dalam demo.",
+      evidenceSummary: "Sumber pada contoh tidak cukup untuk mengambil keputusan; tidak ada data yang diterbitkan.",
+      stopReason: step >= 6 ? "Contoh berhenti pada bagian yang memerlukan tinjauan manusia." : null,
+      nextStep: "Contoh menunjukkan bagian yang perlu ditinjau manusia; tidak ada tindakan tulis.",
       budget: null,
       steps: [
         { layer: "L2", state: "done", label: "Usulan sintetis disusun", detail: "Belum menjadi informasi terbit.", at: atMinute(9) },
-        { layer: "L4", state: step >= 6 ? "held" : "queued", label: "Gerbang manusia", detail: "Persetujuan adalah langkah terpisah.", at: step >= 6 ? atMinute(10) : null },
+        { layer: "L4", state: step >= 6 ? "held" : "queued", label: "Perlu tinjauan manusia", detail: "Contoh menunjukkan titik tinjauan; tidak ada persetujuan nyata.", at: step >= 6 ? atMinute(10) : null },
       ],
     }),
     item({
       id: "sim-published-example",
-      title: "Contoh rute lokal selesai ditinjau",
-      summary: "Pemberitahuan rute rekaan disetujui di dalam skenario lokal ini saja.",
+      title: "Contoh rekaan rute lokal",
+      summary: "Pemberitahuan rute dan statusnya hanya contoh; tidak ditinjau atau diterbitkan sungguhan.",
       category: "transport_road_incidents",
       layer: "L4",
       state: step >= 7 ? "done" : "held",
@@ -263,14 +263,14 @@ function createItems(step: number): AdminItem[] {
       observedAt: atMinute(11),
       fetchedAt: atMinute(11),
       publishedAt: step >= 7 ? atMinute(12) : null,
-      evidenceSummary: "Seluruh teks, sumber, waktu, dan publikasi yang ditampilkan dibuat untuk simulator.",
+      evidenceSummary: "Seluruh teks, sumber, waktu, dan lokasi hanya rekaan; tidak ada publikasi nyata.",
       stopReason: step >= 7 ? null : "Menunggu keputusan moderator pada contoh lokal.",
       nextStep: step >= 7 ? "Contoh selesai; simulator tidak mengirim atau mengubah data publik." : "Selesaikan review manusia pada langkah simulasi berikutnya.",
       budget: null,
       steps: [
         { layer: "L1", state: "done", label: "Fixture rekaan disiapkan", detail: "Tidak ada provider atau jaringan yang dipakai.", at: atMinute(11) },
         { layer: "L2", state: "done", label: "Ringkasan contoh dirapikan", detail: "Konten hanya untuk demonstrasi.", at: atMinute(11) },
-        { layer: "L4", state: step >= 7 ? "done" : "held", label: step >= 7 ? "Review contoh selesai" : "Menunggu moderator", detail: step >= 7 ? "Terbit hanya dalam simulasi lokal." : "Belum terbit; tidak ada kandidat dipresentasikan sebagai data publik.", at: step >= 7 ? atMinute(12) : null },
+        { layer: "L4", state: step >= 7 ? "done" : "held", label: step >= 7 ? "Contoh selesai" : "Menunjukkan kebutuhan tinjauan", detail: step >= 7 ? "Contoh berhenti di halaman ini; tidak ada laporan yang diterbitkan." : "Ini bukan antrean moderator sungguhan.", at: step >= 7 ? atMinute(12) : null },
       ],
     }),
     item({
@@ -284,7 +284,7 @@ function createItems(step: number): AdminItem[] {
       placeLabel: "Tidak berlaku — pemberitahuan tanpa lokasi",
       geometry: null,
       geometryBasis: "none",
-      geometryNote: "Kasus fiktif ini sengaja tidak memiliki lokasi; tetap dapat diperiksa dari daftar.",
+      geometryNote: "Contoh ini memang tidak memiliki lokasi; tetap dapat dibuka dari daftar.",
       sourceNames: [SIMULATION_SOURCE_NAMES[2]],
       eventVersion: null,
       publicEventId: null,
@@ -312,7 +312,7 @@ function createItems(step: number): AdminItem[] {
       geometry: null,
       geometryBasis: "none",
       geometryNote: "Tidak ada geometri karena sumber contoh tidak menjawab.",
-      sourceNames: ["Feed Simulasi Jakarta (fiktif)"],
+      sourceNames: ["Feed Simulasi Jakarta (rekaan)"],
       eventVersion: null,
       publicEventId: null,
       observedAt: null,
@@ -333,11 +333,11 @@ function createItems(step: number): AdminItem[] {
 
 function createLayerSummaries(items: readonly AdminItem[], step: number): AdminLayerSummary[] {
   const definitions: Array<{ layer: AdminLayer; name: string; description: string }> = [
-    { layer: "L1", name: "L1 · Persiapan", description: "Penerimaan dan validasi fixture fiktif." },
-    { layer: "L2", name: "L2 · Pengaitan bukti", description: "Konteks dan konflik dalam skenario lokal." },
-    { layer: "L3", name: "L3 · Pemeriksaan terbatas", description: "Langkah bersyarat dengan batas alat, reasoning, token, dan waktu." },
-    { layer: "L4", name: "L4 · Review dan publikasi", description: "Gerbang deterministik dengan keputusan moderator pada contoh." },
-    { layer: "L5", name: "L5 · Pengamatan lintas lapisan", description: "Peristiwa simulasi untuk kegagalan atau batas yang dicapai." },
+    { layer: "L1", name: "Penerimaan laporan", description: "Laporan dan lokasi rekaan masuk ke contoh." },
+    { layer: "L2", name: "Pencarian bukti", description: "Contoh menunjukkan catatan yang cocok atau berbeda." },
+    { layer: "L3", name: "Pemeriksaan lanjutan", description: "Langkah contoh memiliki batas waktu dan jumlah." },
+    { layer: "L4", name: "Tinjauan manusia", description: "Contoh tidak mengubah atau menerbitkan laporan publik." },
+    { layer: "L5", name: "Pemantauan contoh", description: "Contoh mencatat hasil dan kendala yang disimulasikan." },
   ];
   return definitions.map(({ layer, name, description }) => {
     const relevant = items.filter((entry) => entry.layer === layer);

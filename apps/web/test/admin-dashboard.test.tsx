@@ -164,18 +164,18 @@ test("public inspector keeps lifecycle, freshness, date precision, validity, and
   };
   const html = renderToStaticMarkup(<AdminRecordInspector item={publicItem} mode="public_api" geometryKnown />);
 
-  assert.match(html, /Siklus event<\/dt><dd>Selesai<\/dd>/);
-  assert.match(html, /Kesegaran informasi<\/dt><dd>Perlu diperbarui<\/dd>/);
+  assert.match(html, /Status laporan<\/dt><dd>Selesai<\/dd>/);
+  assert.match(html, /Kondisi informasi<\/dt><dd>Perlu diperbarui<\/dd>/);
   assert.match(html, /tanggal saja/);
   assert.match(html, /Mulai 9 Okt 2026.*; akhir tidak dinyatakan/);
-  assert.match(html, /Waktu browser membaca proyeksi/);
-  assert.match(html, /Waktu publikasi pada record publik/);
+  assert.match(html, /Browser membaca data/);
+  assert.match(html, /Terbit pada data publik/);
   assert.match(html, /href="https:\/\/www\.bmkg\.go\.id\/" referrerPolicy="no-referrer"/);
-  assert.match(html, /Publikasi sumber/);
-  assert.match(html, /Observasi sumber/);
-  assert.match(html, /Gunakan tautan detail event publik di bawah/);
+  assert.match(html, /Sumber terbit/);
+  assert.match(html, /Sumber diamati/);
+  assert.match(html, /Laporan publik lengkap dapat memuat tautan lain/);
   assert.match(html, /href="#detail\/api\/event-101"/);
-  assert.match(html, /Status review privat/);
+  assert.match(html, /Data internal yang tidak tersedia/);
   assert.doesNotMatch(html, /Kelayakan publikasi: layak/u);
 
   const cappedItem = { ...publicItem, publicSources: Array.from({ length: 21 }, () => publicItem.publicSources?.[0] ?? {
@@ -220,13 +220,18 @@ test("additional source geometries count as mapped while unmapped records remain
   assert.deepEqual(countAdminGeometry([unmapped, multiGeometry], false), { mapped: null, unmapped: null, unknown: 2, total: 2 });
 });
 
-test("default render is an explicitly fictional read-only simulator with one main focus target", () => {
+test("default render explains the fictional example and keeps details in closed disclosures", () => {
   const html = renderToStaticMarkup(<AdminDashboard />);
 
   assert.equal((html.match(/<main\b/g) ?? []).length, 1);
   assert.match(html, /<main id="main-content" tabindex="-1"/);
-  assert.match(html, /SIMULASI LOKAL · DEMO TANPA AUTENTIKASI · KASUS DAN GEOGRAFI FIKTIF/);
-  assert.match(html, /Baca saja · tidak ada kontrol tulis/);
+  assert.match(html, /Pilih laporan untuk melihat sumber, waktu, status informasi, dan lokasinya di peta\./);
+  assert.match(html, /Semua laporan dan lokasi di sini adalah rekaan\./);
+  assert.match(html, /Contoh tampilan/);
+  assert.match(html, /Data aplikasi/);
+  assert.match(html, /Tinjau bukti publik/);
+  assert.match(html, /Rincian proses, sumber, dan pembacaan/);
+  assert.doesNotMatch(html, /<details[^>]*\bopen(?:="")?\s*>/);
   assert.doesNotMatch(html, /Terbitkan|Setujui|Mulai akuisisi|Mulai investigasi/u);
-  assert.doesNotMatch(html, /PANTAUAN API · HANYA PEMBACAAN ENDPOINT PUBLIK/u);
+  assert.doesNotMatch(html, /Lima lapisan sistem|CRS84|PANTAUAN API|SIMULASI LOKAL · DEMO/u);
 });

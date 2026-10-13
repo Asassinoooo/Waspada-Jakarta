@@ -77,7 +77,7 @@ test("all six public geometry variants, polygon holes and additional geometries 
   assert.equal((markup.match(/data-admin-map-item=/g) ?? []).length, 1);
   assert.match(markup, /data-admin-map-item="source-map-record" data-geometry-basis="source_supported"/);
   assert.match(markup, /aria-pressed="true"/);
-  assert.match(markup, /6 geometri · Didukung sumber/);
+  assert.match(markup, /6 bentuk · dari sumber/);
   assert.equal((markup.match(/data-geometry="Point"/g) ?? []).length, 3);
   assert.equal((markup.match(/data-geometry="LineString"/g) ?? []).length, 3);
   assert.equal((markup.match(/data-geometry="Polygon"/g) ?? []).length, 3);
@@ -122,13 +122,13 @@ test("API and simulation provenance stay separate and public geometry requires a
   const apiMarkup = render({ mode: "public_api", items: [demo, source] });
   assert.match(apiMarkup, /data-admin-map-item="source-map-record"/);
   assert.doesNotMatch(apiMarkup, /data-admin-map-item="synthetic-map-record"/);
-  assert.match(apiMarkup, /Geometri respons API/);
-  assert.match(apiMarkup, /1 tidak dipetakan · tetap di antrean/);
+  assert.match(apiMarkup, /Dari data publik/);
+  assert.match(apiMarkup, /1 tanpa lokasi peta · tetap di daftar/);
   const simulationMarkup = render({ items: [demo, source] });
   assert.match(simulationMarkup, /data-admin-map-item="synthetic-map-record"/);
   assert.doesNotMatch(simulationMarkup, /data-admin-map-item="source-map-record"/);
-  assert.match(simulationMarkup, /Geometri fiktif/);
-  assert.match(simulationMarkup, /Bidang sintetis/);
+  assert.match(simulationMarkup, /Contoh rekaan/);
+  assert.match(simulationMarkup, /Cara membaca peta/);
 });
 
 test("synthetic API records retain returned geometry, dataset labels and public-projection semantics without simulator overlays", () => {
@@ -137,10 +137,10 @@ test("synthetic API records retain returned geometry, dataset labels and public-
   assert.match(markup, /data-admin-map-item="api-synthetic"/);
   assert.match(markup, /data-source-coordinate="106\.88,-6\.31"/);
   assert.doesNotMatch(markup, /data-source-coordinate="106\.8,-6\.2"/);
-  assert.match(markup, /Proyeksi event publik · Record tersedia/);
-  assert.match(markup, /Dataset record: Sintetis API · bukan peringatan langsung/);
-  assert.match(markup, /geometri didukung sumber; dataset Sintetis API/);
-  assert.match(markup, /Tahap internal dan status pemrosesan tidak tersedia/);
+  assert.match(markup, /Laporan tersedia dari data publik/);
+  assert.match(markup, /Jenis data: Contoh rekaan · bukan peringatan langsung/);
+  assert.match(markup, /laporan dari data publik; lokasi dari sumber; jenis data Contoh rekaan/);
+  assert.match(markup, /Tahap dan status pekerjaan internal tidak tersedia/);
   assert.doesNotMatch(markup, /Tahap operasi|Status pemrosesan|Selesai diproses|Pemrosesan:/);
 });
 
@@ -177,9 +177,9 @@ test("fit includes island positions beyond the mainland default and remains usab
   assert.ok(single.east > single.west && single.north > single.south);
   assert.deepEqual(adminGeometryBounds([]), null);
   const islandMarkup = render({ items: [item({ geometry: island })] });
-  assert.match(islandMarkup, /Geometri di luar tampilan/);
+  assert.match(islandMarkup, /Lokasi di luar tampilan/);
   assert.match(islandMarkup, /0 dalam bingkai · 1 di luar/);
-  assert.match(islandMarkup, /Muat di bingkai/);
+  assert.match(islandMarkup, /Tampilkan semua/);
 });
 
 test("camera pan and bounded zoom preserve geometry-independent center and finite spans", () => {
@@ -232,19 +232,19 @@ test("nearby/coincident annotation cards stay distinct, stable, in frame and tie
   }
 });
 
-test("selection labels expose title, category, processing state, stage and provenance with accessible controls", () => {
+test("selection labels expose report meaning and provenance with accessible controls", () => {
   const chosen = item({ title: "Judul pilihan sangat panjang ".repeat(12) });
   const markup = render({ items: [chosen, item({ id: "other", layer: "L4", state: "done", geometry: { type: "Point", coordinates: [106.9, -6.1] } })], selectedId: chosen.id });
   assert.match(markup, /role="button" tabindex="0" aria-label="Judul pilihan/);
-  assert.match(markup, /kategori Bencana dan cuaca; tahap L3 Investigasi; status pemrosesan Ditahan; geometri contoh sintetis/);
+  assert.match(markup, /kategori Bencana dan cuaca; tahap Periksa; status Ditahan; lokasi contoh rekaan; jenis data Contoh rekaan/);
   assert.match(markup, /aria-pressed="true"/);
   assert.match(markup, /aria-pressed="false"/);
-  assert.match(markup, /Status pemrosesan/);
-  assert.match(markup, /Tahap operasi/);
-  for (const label of ["Perkecil koordinat", "Perbesar koordinat", "Geser ke barat", "Geser ke utara", "Geser ke selatan", "Geser ke timur", "Cakupan tampilan koordinat"]) assert.ok(markup.includes(label));
-  assert.match(markup, /Fokus pilihan/);
-  assert.match(markup, /tabindex="0" aria-label="Kanvas koordinat geografis/);
-  assert.match(markup, /Enter \/ Spasi memilih geometri/);
+  assert.match(markup, /Tahap Periksa · Ditahan/);
+  assert.match(markup, /Tahap pada contoh/);
+  for (const label of ["Perkecil peta", "Perbesar peta", "Geser ke barat", "Geser ke utara", "Geser ke selatan", "Geser ke timur", "Tampilan peta"]) assert.ok(markup.includes(label));
+  assert.match(markup, /Fokus laporan/);
+  assert.match(markup, /tabindex="0" aria-label="Peta laporan; pilih bentuk untuk membuka detail laporan/);
+  assert.match(markup, /Enter atau Spasi memilih bentuk/);
   assert.match(markup, /bukan batas wilayah/);
   assert.match(markup, /tidak menilai bahaya atau membuat radius/);
   assert.doesNotMatch(markup, /<image|https?:|geolocation|heatmap|severity/);
@@ -252,17 +252,17 @@ test("selection labels expose title, category, processing state, stage and prove
 
 test("empty, selected unmapped and stale selection states remain honest and useful", () => {
   const noItems = render({ items: [], selectedId: "no-longer-loaded" });
-  assert.match(noItems, /Belum ada record pada subset ini/);
+  assert.match(noItems, /Belum ada laporan untuk ditampilkan/);
   assert.match(noItems, /Hasil kosong bukan pernyataan bahwa area aman/);
   assert.match(noItems, /Belum ada pilihan/);
   assert.doesNotMatch(noItems, /aria-pressed="true"/);
   const unmapped = item({ id: "non-geographic", geometry: null, geometryBasis: "none", title: "Pemberitahuan kelompok contoh", category: "group_specific_critical_notices" });
   const markup = render({ items: [unmapped], selectedId: unmapped.id });
-  assert.match(markup, /Geometri belum tersedia/);
+  assert.match(markup, /Lokasi belum tersedia/);
   assert.match(markup, /Pemberitahuan kelompok contoh/);
-  assert.match(markup, /Tidak dipetakan — geometri yang sesuai mode belum tersedia/);
-  assert.match(markup, /Koordinat tidak ditebak/);
-  assert.match(markup, /disabled="">Fokus pilihan/);
+  assert.match(markup, /Lokasi belum tersedia pada peta/);
+  assert.match(markup, /Lokasi tidak ditebak/);
+  assert.match(markup, /disabled="">Fokus laporan/);
   assert.doesNotMatch(markup, /data-admin-map-item=/);
   const onlyExtras = item({ geometry: null, additionalGeometries: [geometries[0]!] });
   assert.equal(adminItemGeometries(onlyExtras, "simulation").length, 1);

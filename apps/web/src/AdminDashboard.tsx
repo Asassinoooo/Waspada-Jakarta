@@ -22,11 +22,18 @@ import type {
 
 const LAYERS: readonly AdminLayer[] = ["L1", "L2", "L3", "L4", "L5"];
 const LAYER_NAMES: Record<AdminLayer, string> = {
-  L1: "Penerimaan dan persiapan",
-  L2: "Pencarian dan grounding",
-  L3: "Investigasi terbatas",
-  L4: "Review dan publikasi",
-  L5: "Observabilitas lintas lapisan",
+  L1: "Penerimaan laporan",
+  L2: "Pencarian bukti",
+  L3: "Pemeriksaan lanjutan",
+  L4: "Tinjauan laporan",
+  L5: "Pemantauan sistem",
+};
+const LAYER_SHORT_NAMES: Record<AdminLayer, string> = {
+  L1: "Terima",
+  L2: "Cari bukti",
+  L3: "Periksa",
+  L4: "Tinjau",
+  L5: "Pantau",
 };
 const STATUS_OPTIONS: readonly { value: AdminItemState | "all"; label: string }[] = [
   { value: "all", label: "Semua status" },
@@ -37,8 +44,8 @@ const STATUS_OPTIONS: readonly { value: AdminItemState | "all"; label: string }[
   { value: "done", label: "Selesai" },
 ];
 const LAYER_OPTIONS: readonly { value: AdminLayer | "all"; label: string }[] = [
-  { value: "all", label: "Semua lapisan" },
-  ...LAYERS.map((layer) => ({ value: layer, label: `${layer} · ${LAYER_NAMES[layer]}` })),
+  { value: "all", label: "Semua tahap" },
+  ...LAYERS.map((layer) => ({ value: layer, label: LAYER_NAMES[layer] })),
 ];
 
 export interface AdminItemFilters {
@@ -126,26 +133,26 @@ function itemStateLabel(value: AdminItemState) {
 
 function itemDisplayStatus(item: AdminItem, mode: AdminMode) {
   if (mode === "simulation") return itemStateLabel(item.state);
-  return item.publicEventId !== null ? "Record tersedia dari API publik" : "Status alur internal tidak tersedia";
+  return item.publicEventId !== null ? "Laporan publik tersedia" : "Rincian proses tidak tersedia";
 }
 
 function monitorStateLabel(state: AdminMonitorState["status"]) {
   switch (state) {
-    case "idle": return "Belum ada pemeriksaan";
-    case "loading": return "Memeriksa endpoint";
-    case "connected": return "Permintaan terakhir berhasil";
-    case "partial": return "Sebagian permintaan gagal";
-    case "error": return "Pemeriksaan terakhir gagal";
-    case "paused": return "Pemantauan dijeda";
+    case "idle": return "Belum ada pembaruan";
+    case "loading": return "Membaca data publik";
+    case "connected": return "Data berhasil dibaca";
+    case "partial": return "Sebagian data gagal dimuat";
+    case "error": return "Pembaruan gagal";
+    case "paused": return "Pembaruan dijeda";
     case "offline": return "Perangkat offline";
   }
 }
 
 function probeLabel(value: AdminProbe["endpoint"]) {
   switch (value) {
-    case "context": return "Konteks publik";
-    case "events": return "Halaman event publik";
-    case "geometry": return "GeoJSON publik";
+    case "context": return "Daftar sumber";
+    case "events": return "Daftar laporan";
+    case "geometry": return "Lokasi laporan";
   }
 }
 
@@ -159,10 +166,10 @@ function probeStatusLabel(value: AdminProbe["status"]) {
 
 function sourceHealthLabel(value: AdminSnapshot["sources"][number]["health"]) {
   switch (value) {
-    case "healthy": return "Status sumber: tersedia";
-    case "degraded": return "Status sumber: menurun";
-    case "unavailable": return "Status sumber: tidak tersedia";
-    case "unknown": return "Status sumber: belum diketahui";
+    case "healthy": return "Sumber tersedia";
+    case "degraded": return "Sumber terganggu";
+    case "unavailable": return "Sumber tidak tersedia";
+    case "unknown": return "Status sumber belum diketahui";
   }
 }
 
@@ -173,6 +180,14 @@ function stateBadgeClass(state: AdminItemState) {
 function displayStateBadgeClass(item: AdminItem, mode: AdminMode) {
   // API presence is not a workflow state: don't style a public record as done/held.
   return mode === "simulation" ? stateBadgeClass(item.state) : "admin-state admin-state--public";
+}
+
+function datasetKindLabel(value: AdminItem["datasetKind"]) {
+  switch (value) {
+    case "live": return "Data publik";
+    case "historical": return "Data historis";
+    case "synthetic": return "Contoh rekaan";
+  }
 }
 
 function stepForLayer(item: AdminItem, layer: AdminLayer) {
@@ -224,12 +239,12 @@ export function displayedLayers(snapshot: AdminSnapshot | null, mode: AdminMode)
 function PublicDatasetBadge({ datasetMode }: { datasetMode: "live" | "demo" | null }) {
   const mode = datasetMode;
   if (mode === "demo") {
-    return <span className="admin-dataset admin-dataset--demo">Dataset server DEMO</span>;
+    return <span className="admin-dataset admin-dataset--demo">Server: contoh</span>;
   }
   if (mode === "live") {
-    return <span className="admin-dataset admin-dataset--live">Dataset server LIVE</span>;
+    return <span className="admin-dataset admin-dataset--live">Server: data publik</span>;
   }
-  return <span className="admin-dataset admin-dataset--unknown">Mode dataset tidak diketahui</span>;
+  return <span className="admin-dataset admin-dataset--unknown">Jenis data server belum diketahui</span>;
 }
 
 function SnapshotNotice({ mode, state, snapshot, onRefresh }: {
@@ -243,9 +258,9 @@ function SnapshotNotice({ mode, state, snapshot, onRefresh }: {
     if (state.status === "partial" || state.status === "error" || state.status === "offline") {
       return (
         <div className="admin-inline-notice admin-inline-notice--attention" role="status">
-          <strong>{state.status === "offline" ? "Perangkat offline." : "Permintaan terbaru bermasalah."}</strong>
+          <strong>{state.status === "offline" ? "Tidak ada koneksi." : "Pembaruan terbaru bermasalah."}</strong>
           <span>
-            Status permintaan saat ini dipisahkan dari data yang berhasil dibaca. Keberhasilan terakhir tercatat pada {formatInstant(state.lastSuccessAt)}; hanya respons yang lolos validasi yang ditampilkan.
+            Status permintaan saat ini dipisahkan dari data yang sudah berhasil dibaca. Pembacaan berhasil terakhir tercatat pada {formatInstant(state.lastSuccessAt)}; hanya data yang lolos pemeriksaan yang ditampilkan.
           </span>
         </div>
       );
@@ -255,21 +270,21 @@ function SnapshotNotice({ mode, state, snapshot, onRefresh }: {
   if (state.status === "loading" || state.status === "idle") {
     return (
       <div className="admin-inline-notice" role="status">
-        <strong>{state.status === "loading" ? "Memuat proyeksi publik…" : "Belum ada snapshot endpoint."}</strong>
-        <span>Hanya konteks, satu halaman event publik, dan GeoJSON publik yang dibaca.</span>
+        <strong>{state.status === "loading" ? "Memuat data publik…" : "Belum ada data publik."}</strong>
+        <span>Halaman hanya membaca sumber, satu halaman laporan, dan lokasi laporan yang tersedia.</span>
       </div>
     );
   }
   return (
     <div className="admin-inline-notice admin-inline-notice--attention" role="status">
-      <strong>{state.status === "offline" ? "Tidak ada koneksi jaringan." : "Snapshot belum tersedia."}</strong>
+      <strong>{state.status === "offline" ? "Tidak ada koneksi jaringan." : "Data belum tersedia."}</strong>
       <span>
         {state.status === "paused"
-          ? "Pemantauan dijeda sebelum ada pembacaan yang berhasil."
-          : `Tidak ada data sukses yang dapat ditampilkan. Pemeriksaan endpoint tetap gagal atau belum selesai.${state.lastSuccessAt ? ` Pembacaan berhasil terakhir: ${formatInstant(state.lastSuccessAt)}.` : ""}`}
+          ? "Pembaruan dijeda sebelum ada data yang berhasil dibaca."
+          : `Belum ada data berhasil yang dapat ditampilkan. Pembaruan masih gagal atau belum selesai.${state.lastSuccessAt ? ` Pembacaan berhasil terakhir: ${formatInstant(state.lastSuccessAt)}.` : ""}`}
       </span>
       {state.status !== "offline" && (
-        <button type="button" className="admin-button admin-button--quiet" onClick={onRefresh}>Coba baca endpoint</button>
+        <button type="button" className="admin-button admin-button--quiet" onClick={onRefresh}>Coba lagi</button>
       )}
     </div>
   );
@@ -292,7 +307,7 @@ function QueueCard({ item, mode, geometryKnown, selected, onSelect }: {
         onClick={() => onSelect(item.id)}
       >
         <span className="admin-queue-card__topline">
-          <span className="admin-layer-chip">{mode === "simulation" ? item.layer : "API"}</span>
+          <span className="admin-layer-chip">{mode === "simulation" ? LAYER_SHORT_NAMES[item.layer] : "Data"}</span>
           <span className={displayStateBadgeClass(item, mode)}>{itemDisplayStatus(item, mode)}</span>
           <span className="admin-queue-card__geometry">{mapped ? "Ada geometri" : geometryKnown || mode === "simulation" ? "Tidak dipetakan" : "Geometri belum teramati"}</span>
         </span>
@@ -300,7 +315,7 @@ function QueueCard({ item, mode, geometryKnown, selected, onSelect }: {
         <span className="admin-queue-card__category">{categoryLabel(item.category)} · {item.placeLabel}</span>
         <span className="admin-queue-card__summary">{item.summary}</span>
         <span className="admin-queue-card__meta">
-          <span>{mode === "simulation" ? "FIKTIF · simulasi" : `Dataset item: ${item.datasetKind}`}</span>
+          <span>{mode === "simulation" ? "Contoh rekaan" : `Jenis data: ${datasetKindLabel(item.datasetKind)}`}</span>
           {item.sourceNames.length > 0 && <span>{item.sourceNames.join(" · ")}</span>}
         </span>
       </button>
@@ -313,11 +328,11 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
     return (
       <aside className="admin-inspector" aria-labelledby="admin-inspector-title">
         <div className="admin-panel-heading">
-          <div><p className="admin-kicker">Detail terpilih</p><h2 id="admin-inspector-title">Pemeriksaan record</h2></div>
+          <div><p className="admin-kicker">Laporan terpilih</p><h2 id="admin-inspector-title">Detail laporan</h2></div>
         </div>
         <div className="admin-empty admin-empty--compact">
-          <strong>Pilih satu record dari daftar atau geometri.</strong>
-          <p>Record tanpa geometri tetap dapat dipilih dari daftar.</p>
+          <strong>Pilih laporan dari daftar atau peta.</strong>
+          <p>Laporan tanpa lokasi di peta tetap tersedia di daftar.</p>
         </div>
       </aside>
     );
@@ -332,70 +347,39 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
   return (
     <aside className="admin-inspector" aria-labelledby="admin-inspector-title">
       <div className="admin-panel-heading">
-        <div><p className="admin-kicker">{mode === "simulation" ? "Fixture fiktif" : "Record terpilih dari snapshot"}</p><h2 id="admin-inspector-title">Pemeriksaan record</h2></div>
+        <div><p className="admin-kicker">{mode === "simulation" ? "Contoh rekaan" : "Data aplikasi · baca saja"}</p><h2 id="admin-inspector-title">Detail laporan</h2></div>
         <span className={displayStateBadgeClass(item, mode)}>{itemDisplayStatus(item, mode)}</span>
       </div>
 
-      <section className="admin-inspector__identity" aria-label="Identitas record">
+      <section className="admin-inspector__identity" aria-label="Ringkasan laporan">
         <h3>{item.title}</h3>
         <p>{item.summary}</p>
         <dl className="admin-facts">
-          <div><dt>{mode === "simulation" ? "ID fixture" : "ID event publik"}</dt><dd>{mode === "simulation" ? item.id : item.publicEventId ?? "Tidak tersedia"}</dd></div>
           <div><dt>Kategori</dt><dd>{categoryLabel(item.category)}</dd></div>
-          <div><dt>Lokasi pada record</dt><dd>{item.placeLabel}</dd></div>
-          <div><dt>Prioritas operasional</dt><dd>{mode === "simulation" ? `${item.operationalPriority === "normal" ? "Normal" : item.operationalPriority === "attention" ? "Perlu perhatian" : "Terblokir"} · label alur kerja, bukan tingkat bahaya` : "Tidak disediakan oleh endpoint publik"}</dd></div>
-          <div><dt>Jenis dataset item</dt><dd>{mode === "simulation" ? "Sintetis · simulasi lokal" : item.datasetKind}</dd></div>
-          <div><dt>Lapisan saat ini</dt><dd>{mode === "simulation" ? `${item.layer} · ${LAYER_NAMES[item.layer]}` : "Proyeksi event publik · status proses privat tidak tersedia"}</dd></div>
-          <div><dt>Versi event publik</dt><dd>{item.eventVersion ?? "Tidak tersedia"}</dd></div>
+          <div><dt>Lokasi</dt><dd>{item.placeLabel}</dd></div>
+          <div><dt>Jenis data</dt><dd>{mode === "simulation" ? "Contoh rekaan" : datasetKindLabel(item.datasetKind)}</dd></div>
+          <div><dt>Lokasi di peta</dt><dd>{mapped ? item.geometryBasis === "synthetic_example" ? "Contoh koordinat" : "Sesuai geometri sumber" : mode === "public_api" && !geometryKnown ? "Belum diketahui" : "Tidak disertakan"}</dd></div>
         </dl>
       </section>
 
       <section className="admin-inspector__section" aria-labelledby="admin-evidence-title">
-        <h3 id="admin-evidence-title">Bukti dan asal data</h3>
+        <h3 id="admin-evidence-title">Sumber dan bukti</h3>
         <p className="admin-evidence-copy">{item.evidenceSummary || "Ringkasan bukti tidak tersedia pada record ini."}</p>
         {item.sourceNames.length > 0 ? (
           <ul className="admin-source-tags" aria-label="Nama sumber yang tercantum">
             {item.sourceNames.map((name) => <li key={name}>{name}</li>)}
           </ul>
-        ) : <p className="admin-muted">Tidak ada nama sumber pada snapshot ini.</p>}
-        {mode === "public_api" && (
-          <div className="admin-attributions">
-            <h4>Atribusi sumber publik</h4>
-            {publicSources.length > 0 ? (
-              <>
-                <ul className="admin-attribution-list">
-                  {publicSources.map((source, index) => (
-                    <li key={`${source.url}-${index}`}>
-                      <a href={source.url} referrerPolicy="no-referrer">{source.displayName}</a>
-                      <dl className="admin-facts admin-facts--compact">
-                        <div><dt>Publikasi sumber</dt><dd>{source.publishedAt ? formatInstant(source.publishedAt) : "Tidak dicantumkan sumber"}</dd></div>
-                        <div><dt>Observasi sumber</dt><dd>{source.observedAt ? formatInstant(source.observedAt) : "Tidak dicantumkan sumber"}</dd></div>
-                      </dl>
-                    </li>
-                  ))}
-                </ul>
-                <p className="admin-muted">Maksimum 20 tautan atribusi ditampilkan di sini. Gunakan tautan detail event publik di bawah untuk atribusi lengkap yang tersedia.</p>
-              </>
-            ) : (
-              <p className="admin-muted">Snapshot ini tidak menyediakan tautan atribusi sumber pada halaman event.</p>
-            )}
-          </div>
-        )}
-        <dl className="admin-facts admin-facts--compact">
-          {mode === "simulation" && <div><dt>Waktu fixture dicatat</dt><dd>{formatInstant(item.observedAt)}</dd></div>}
-          <div><dt>{mode === "simulation" ? "Waktu fixture diambil" : "Waktu browser membaca proyeksi"}</dt><dd>{formatInstant(item.fetchedAt)}</dd></div>
-          {publishedPublicRecord && <div><dt>Waktu publikasi pada record publik</dt><dd>{formatInstant(item.publishedAt)}</dd></div>}
-        </dl>
+        ) : <p className="admin-muted">Nama sumber tidak dicantumkan.</p>}
         {mapped ? (
-          <p className="admin-geometry-note"><strong>Dasar geometri:</strong> {item.geometryBasis === "synthetic_example" ? "contoh sintetis" : item.geometryBasis === "source_supported" ? "geometri pada proyeksi sumber publik" : "belum ditentukan"}. {item.geometryNote}</p>
+          <p className="admin-geometry-note"><strong>{item.geometryBasis === "synthetic_example" ? "Lokasi contoh:" : "Lokasi dari sumber:"}</strong> {item.geometryNote}</p>
         ) : mode === "public_api" && !geometryKnown ? (
-          <p className="admin-geometry-note"><strong>Geometri belum teramati.</strong> Endpoint GeoJSON belum memberi respons sukses pada percobaan terbaru.</p>
+          <p className="admin-geometry-note"><strong>Lokasi belum diketahui.</strong> Data lokasi belum berhasil dibaca.</p>
         ) : (
-          <p className="admin-geometry-note"><strong>Tidak dipetakan.</strong> {item.geometryNote || "Record ini tidak memiliki geometri yang didukung sumber."}</p>
+          <p className="admin-geometry-note"><strong>Tidak ada lokasi peta.</strong> {item.geometryNote || "Sumber tidak menyertakan lokasi yang dapat dipetakan."}</p>
         )}
         {publishedPublicRecord && (
           <a className="admin-link" href={`#detail/api/${encodeURIComponent(item.publicEventId ?? "")}`}>
-            Buka detail event publik
+            Buka laporan publik lengkap
           </a>
         )}
       </section>
@@ -403,88 +387,115 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
       {mode === "public_api" && (
         <section className="admin-inspector__section admin-public-status" aria-labelledby="admin-public-status-title">
           <div className="admin-panel-heading admin-panel-heading--tight">
-            <div><p className="admin-kicker">Proyeksi event publik</p><h3 id="admin-public-status-title">Status dan waktu event</h3></div>
+            <div><p className="admin-kicker">Informasi dari sumber</p><h3 id="admin-public-status-title">Status dan waktu</h3></div>
           </div>
           {item.publicStatus ? (
             <dl className="admin-facts">
-              <div><dt>Siklus event</dt><dd>{lifecycleLabel(item.publicStatus.lifecycle)}</dd></div>
-              <div><dt>Kesegaran informasi</dt><dd>{freshnessLabel(item.publicStatus.freshness.status)}</dd></div>
-              <div><dt>Kesegaran dievaluasi</dt><dd>{formatInstant(item.publicStatus.freshness.evaluated_at)}</dd></div>
-              <div><dt>Batas tinjau</dt><dd>{formatInstant(item.publicStatus.freshness.review_due_at)}</dd></div>
-              <div><dt>Waktu kejadian/observasi</dt><dd>{formatEventTime({ event_time: item.publicStatus.eventTime })}</dd></div>
-              <div><dt>Validitas menurut penerbit</dt><dd>{validityLabel(item.publicStatus.validity)}</dd></div>
+              <div><dt>Status laporan</dt><dd>{lifecycleLabel(item.publicStatus.lifecycle)}</dd></div>
+              <div><dt>Kondisi informasi</dt><dd>{freshnessLabel(item.publicStatus.freshness.status)}</dd></div>
+              <div><dt>Diperiksa pada</dt><dd>{formatInstant(item.publicStatus.freshness.evaluated_at)}</dd></div>
+              <div><dt>Perlu ditinjau pada</dt><dd>{formatInstant(item.publicStatus.freshness.review_due_at)}</dd></div>
+              <div><dt>Waktu kejadian atau pengamatan</dt><dd>{formatEventTime({ event_time: item.publicStatus.eventTime })}</dd></div>
+              <div><dt>Masa berlaku menurut sumber</dt><dd>{validityLabel(item.publicStatus.validity)}</dd></div>
             </dl>
           ) : (
-            <p className="admin-muted">Siklus, kesegaran, dan waktu event tidak tersedia pada record publik ini.</p>
+            <p className="admin-muted">Status dan waktu laporan tidak tersedia pada data ini.</p>
           )}
-          <p className="admin-muted">Siklus event, kesegaran, waktu observasi, dan validitas penerbit menjelaskan hal yang berbeda.</p>
+          <p className="admin-muted">Status laporan, kondisi informasi, waktu kejadian, dan masa berlaku memiliki arti berbeda.</p>
         </section>
       )}
 
-      <section className="admin-inspector__section" aria-labelledby="admin-timeline-title">
-        <div className="admin-panel-heading admin-panel-heading--tight">
-          <div><p className="admin-kicker">Riwayat record</p><h3 id="admin-timeline-title">Tahap yang tercatat</h3></div>
-          <span className="admin-read-only-chip">Baca saja</span>
+      <details className="admin-disclosure admin-inspector__disclosure">
+        <summary>Waktu, tautan sumber, dan ID</summary>
+        <div className="admin-disclosure__content">
+          <h3>Waktu pada laporan</h3>
+          <dl className="admin-facts admin-facts--compact">
+            {mode === "simulation" && <div><dt>Contoh dicatat</dt><dd>{formatInstant(item.observedAt)}</dd></div>}
+            <div><dt>{mode === "simulation" ? "Contoh dibaca browser" : "Browser membaca data"}</dt><dd>{formatInstant(item.fetchedAt)}</dd></div>
+            {publishedPublicRecord && <div><dt>Terbit pada data publik</dt><dd>{formatInstant(item.publishedAt)}</dd></div>}
+          </dl>
+          {mode === "public_api" && (
+            <div className="admin-attributions">
+              <h4>Tautan dan waktu sumber</h4>
+              {publicSources.length > 0 ? (
+                <>
+                  <ul className="admin-attribution-list">
+                    {publicSources.map((source, index) => (
+                      <li key={`${source.url}-${index}`}>
+                        <a href={source.url} referrerPolicy="no-referrer">{source.displayName}</a>
+                        <dl className="admin-facts admin-facts--compact">
+                          <div><dt>Sumber terbit</dt><dd>{source.publishedAt ? formatInstant(source.publishedAt) : "Waktu tidak dicantumkan"}</dd></div>
+                          <div><dt>Sumber diamati</dt><dd>{source.observedAt ? formatInstant(source.observedAt) : "Waktu tidak dicantumkan"}</dd></div>
+                        </dl>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="admin-muted">Hingga 20 tautan sumber ditampilkan. Laporan publik lengkap dapat memuat tautan lain.</p>
+                </>
+              ) : <p className="admin-muted">Data ini tidak menyertakan tautan sumber.</p>}
+            </div>
+          )}
+          <h3>ID teknis</h3>
+          <dl className="admin-facts admin-facts--compact">
+            <div><dt>{mode === "simulation" ? "ID contoh" : "ID laporan publik"}</dt><dd>{mode === "simulation" ? item.id : item.publicEventId ?? "Tidak tersedia"}</dd></div>
+            <div><dt>Versi laporan</dt><dd>{item.eventVersion ?? "Tidak tersedia"}</dd></div>
+            <div><dt>Tahap saat ini</dt><dd>{mode === "simulation" ? `${item.layer} · ${LAYER_NAMES[item.layer]}` : "Status proses internal tidak tersedia"}</dd></div>
+          </dl>
         </div>
-        {mode === "simulation" ? (
-          <ol className="admin-timeline">
-            {item.steps.map((step, index) => (
-              <li className="admin-timeline__step" key={`${step.layer}-${step.at ?? "unknown"}-${index}`}>
-                <span className="admin-timeline__layer">{step.layer}</span>
-                <div>
-                  <strong>{step.label}</strong>
-                  <p>{step.detail}</p>
-                  <span>{itemStateLabel(step.state)}{step.at ? ` · ${formatInstant(step.at)}` : " · waktu tidak tercatat"}</span>
-                </div>
-              </li>
-            ))}
-            {item.steps.length === 0 && <li className="admin-timeline__empty">Tidak ada tahap yang tercatat untuk item ini.</li>}
-          </ol>
-        ) : (
-          <p className="admin-muted">Langkah antrean, model, investigasi, dan review internal tidak tersedia di proyeksi API publik.</p>
-        )}
-      </section>
+      </details>
 
-      <section className="admin-inspector__section admin-gate" aria-labelledby="admin-l4-title">
-        <div className="admin-panel-heading admin-panel-heading--tight">
-          <div>
-            <p className="admin-kicker">{mode === "simulation" ? "L4 · pemeriksaan deterministik" : "Batas proyeksi L4"}</p>
-            <h3 id="admin-l4-title">{mode === "simulation" ? "Gate manusia tetap diperlukan" : "Status review privat"}</h3>
-          </div>
+      <details className="admin-disclosure admin-inspector__disclosure">
+        <summary>{mode === "simulation" ? "Urutan contoh dan batasnya" : "Data internal yang tidak tersedia"}</summary>
+        <div className="admin-disclosure__content">
+          {mode === "simulation" ? (
+            <>
+              <p className="admin-muted">Semua langkah di bawah adalah rekaan. Halaman ini tidak menjalankan sumber, model, atau tindakan.</p>
+              <h3>Tahap yang tercatat</h3>
+              <ol className="admin-timeline">
+                {item.steps.map((step, index) => (
+                  <li className="admin-timeline__step" key={`${step.layer}-${step.at ?? "unknown"}-${index}`}>
+                    <span className="admin-timeline__layer">{LAYER_SHORT_NAMES[step.layer]}</span>
+                    <div>
+                      <strong>{step.label}</strong>
+                      <p>{step.detail}</p>
+                      <span>{itemStateLabel(step.state)}{step.at ? ` · ${formatInstant(step.at)}` : " · waktu tidak tercatat"}</span>
+                    </div>
+                  </li>
+                ))}
+                {item.steps.length === 0 && <li className="admin-timeline__empty">Belum ada tahap contoh untuk laporan ini.</li>}
+              </ol>
+              <section className="admin-inspector__section admin-gate" aria-labelledby="admin-l4-title">
+                <h3 id="admin-l4-title">Tinjauan manusia tetap diperlukan</h3>
+                {l4 ? <p><strong>{l4.label}:</strong> {l4.detail}</p> : <p>Contoh ini tidak mencatat keputusan tinjauan. Halaman tidak menentukan kelayakan publikasi.</p>}
+              </section>
+              <section className="admin-inspector__section admin-budget" aria-labelledby="admin-l3-title">
+                <h3 id="admin-l3-title">Batas pemeriksaan</h3>
+                {item.budget ? (
+                  <>
+                    <dl className="admin-budget-grid">
+                      <div><dt>Tool</dt><dd>{item.budget.toolsUsed} / {item.budget.toolsLimit}</dd></div>
+                      <div><dt>Langkah penalaran</dt><dd>{item.budget.reasoningUsed} / {item.budget.reasoningLimit}</dd></div>
+                      <div><dt>Token</dt><dd>{item.budget.tokensUsed} / {item.budget.tokensLimit}</dd></div>
+                      <div><dt>Waktu aktif</dt><dd>{item.budget.activeSecondsUsed} / {item.budget.activeSecondsLimit} dtk</dd></div>
+                    </dl>
+                    <p><strong>Hasil pemeriksaan:</strong> {l3 ? `${itemStateLabel(l3.state)} · ${l3.detail}` : "Tidak ada langkah pemeriksaan pada contoh."}</p>
+                    <p><strong>Alasan berhenti:</strong> {item.stopReason ?? "Belum dicatat pada contoh."}</p>
+                    <p><strong>Langkah berikutnya:</strong> {item.nextStep}</p>
+                  </>
+                ) : <p>Tidak ada batas pemeriksaan pada contoh ini.</p>}
+              </section>
+            </>
+          ) : (
+            <>
+              <p>Data aplikasi hanya membaca informasi yang sudah tersedia melalui layanan publik. Halaman ini tidak melihat antrean, model, catatan moderator, audit, atau pekerjaan internal.</p>
+              <p className="admin-public-record-note">{publishedPublicRecord
+                ? `Laporan publik versi ${item.eventVersion ?? "tidak diketahui"} berasal dari respons layanan. Halaman ini tidak menetapkan atau mengubah status penerbitan.`
+                : "Keputusan moderator dan status peninjauan internal tidak tersedia dari data publik."}</p>
+              <p>Anggaran pemeriksaan, jumlah antrean, hasil model, dan alasan internal tidak disediakan oleh layanan publik.</p>
+            </>
+          )}
         </div>
-        {l4 ? <p><strong>{l4.label}:</strong> {l4.detail}</p> : (
-          <p>{mode === "simulation"
-            ? "Fixture ini tidak mencatat keputusan gate L4. Tampilan tidak menentukan kelayakan publikasi."
-            : publishedPublicRecord
-              ? "Record versi publik dan waktu terbit berasal dari respons API. Keputusan moderator, catatan audit, serta status internal gate tidak ditampilkan."
-              : "Keputusan moderator dan status internal gate tidak tersedia melalui API publik."}</p>
-        )}
-        {publishedPublicRecord && <p className="admin-public-record-note">Snapshot memuat record publik versi {item.eventVersion ?? "tidak diketahui"}; halaman ini tidak menetapkan atau mengubah kelayakan publikasi.</p>}
-      </section>
-
-      <section className="admin-inspector__section admin-budget" aria-labelledby="admin-l3-title">
-        <div className="admin-panel-heading admin-panel-heading--tight">
-          <div><p className="admin-kicker">L3 · tindakan bersyarat</p><h3 id="admin-l3-title">Batas dan penghentian</h3></div>
-        </div>
-        {mode === "public_api" ? (
-          <p>Anggaran model, tool, token, antrean investigasi, dan jejak privat tidak tersedia pada endpoint publik.</p>
-        ) : item.budget ? (
-          <>
-            <dl className="admin-budget-grid">
-              <div><dt>Tool</dt><dd>{item.budget.toolsUsed} / {item.budget.toolsLimit}</dd></div>
-              <div><dt>Langkah penalaran</dt><dd>{item.budget.reasoningUsed} / {item.budget.reasoningLimit}</dd></div>
-              <div><dt>Token</dt><dd>{item.budget.tokensUsed} / {item.budget.tokensLimit}</dd></div>
-              <div><dt>Waktu aktif</dt><dd>{item.budget.activeSecondsUsed} / {item.budget.activeSecondsLimit} dtk</dd></div>
-            </dl>
-            <p><strong>Hasil L3:</strong> {l3 ? `${itemStateLabel(l3.state)} · ${l3.detail}` : "Tidak ada langkah L3 dalam fixture."}</p>
-            <p><strong>Alasan berhenti:</strong> {item.stopReason ?? "Belum dicatat dalam fixture."}</p>
-            <p><strong>Eskalasi berikutnya:</strong> {item.nextStep}</p>
-            <p className="admin-synthetic-note">Angka dan hasil pada bagian ini adalah fixture fiktif; simulator tidak menjalankan tool atau model.</p>
-          </>
-        ) : (
-          <p>Tidak ada anggaran L3 pada fixture item ini. Tidak ada investigasi yang dimulai oleh halaman ini.</p>
-        )}
-      </section>
+      </details>
     </aside>
   );
 }
@@ -501,12 +512,12 @@ function SimulationControls({ step, playing, visible, onStart, onPause, onReplay
   return (
     <div className="admin-transport" aria-label="Kontrol simulasi lokal">
       {playing ? (
-        <button type="button" className="admin-button admin-button--quiet" onClick={onPause}>Jeda simulasi</button>
+        <button type="button" className="admin-button admin-button--quiet" onClick={onPause}>Jeda contoh</button>
       ) : (
-        <button type="button" className="admin-button admin-button--primary" onClick={onStart} disabled={step >= last}>Mulai simulasi</button>
+        <button type="button" className="admin-button admin-button--primary" onClick={onStart} disabled={step >= last}>Jalankan contoh</button>
       )}
-      <button type="button" className="admin-button admin-button--quiet" onClick={onReplay}>Ulangi dari awal</button>
-      <span className="admin-transport__progress">Tahap {step + 1} dari {SIMULATION_STEPS.length}</span>
+      <button type="button" className="admin-button admin-button--quiet" onClick={onReplay}>Ulangi contoh</button>
+      <span className="admin-transport__progress">Langkah {step + 1} dari {SIMULATION_STEPS.length}</span>
       {playing && !visible && <span className="admin-transport__paused">Menunggu tab terlihat untuk melanjutkan.</span>}
     </div>
   );
@@ -521,10 +532,10 @@ function LayerOverview({ snapshot, mode, monitorState }: {
   return (
     <section className="admin-layers" aria-labelledby="admin-layers-title">
       <div className="admin-section-heading">
-        <div><p className="admin-kicker">Cakupan proses</p><h2 id="admin-layers-title">Lima lapisan sistem</h2></div>
+        <div><p className="admin-kicker">Rincian proses</p><h2 id="admin-layers-title">Tahap dalam proses</h2></div>
         <p>{mode === "simulation"
-          ? "Kartu mengikuti fixture lokal; progres hanya bergerak saat simulasi dimulai."
-          : "Endpoint publik tidak memaparkan antrean dan metrik privat; probe browser disajikan terpisah di bawah."}</p>
+          ? "Urutan ini mengikuti contoh rekaan dan bergerak hanya setelah contoh dijalankan."
+          : "Data publik tidak menampilkan pekerjaan internal. Hasil pembacaan browser di bawah hanya mencakup permintaan halaman ini."}</p>
       </div>
       <ol className="admin-layer-grid">
         {layers.map((layer) => {
@@ -536,19 +547,19 @@ function LayerOverview({ snapshot, mode, monitorState }: {
             : layer.availability === "observed");
           const unavailable = !available;
           const countLabel = mode === "simulation"
-            ? "item pada fixture"
+            ? "laporan contoh"
             : layer.layer === "L1"
               ? "sumber dalam konteks"
               : layer.layer === "L4"
-                ? "record publik pada halaman"
+                ? "laporan publik pada halaman"
                 : layer.layer === "L5"
-                  ? "probe browser terukur"
-                  : "jumlah internal tidak tersedia";
+                  ? "permintaan browser"
+                  : "jumlah tidak tersedia";
           return (
             <li className={`admin-layer-card${unavailable ? " admin-layer-card--unavailable" : ""}`} key={layer.layer}>
               <div className="admin-layer-card__heading">
-                <span className="admin-layer-chip">{layer.layer}</span>
-                <span>{unavailable ? "Tidak tersedia" : mode === "simulation" ? "Simulasi" : "Observasi"}</span>
+                <span className="admin-layer-chip">ID {layer.layer}</span>
+                <span>{unavailable ? "Tidak tersedia" : mode === "simulation" ? "Contoh rekaan" : "Terlihat pada data"}</span>
               </div>
               <h3>{layer.name || LAYER_NAMES[layer.layer]}</h3>
               <p>{layer.description}</p>
@@ -559,8 +570,8 @@ function LayerOverview({ snapshot, mode, monitorState }: {
               <p className="admin-layer-card__note">{mode === "public_api" ? layer.availability === "observed" ? layer.note : "Metrik privat tidak tersedia melalui endpoint publik." : step ? `${itemStateLabel(step.state)} · ${step.label}` : layer.note}</p>
               {mode === "public_api" && layer.layer === "L5" && monitorState.currentAttempt && (
                 <p className="admin-layer-card__note">{monitorState.currentAttempt.probes.length > 0
-                  ? `${monitorState.currentAttempt.probes.filter((probe) => probe.status === "succeeded").length} dari ${monitorState.currentAttempt.probes.length} probe browser berhasil pada percobaan terakhir. Ini bukan status keseluruhan sistem.`
-                  : "Percobaan terakhir tidak memiliki hasil probe; kinerja endpoint tidak teramati."}</p>
+                  ? `${monitorState.currentAttempt.probes.filter((probe) => probe.status === "succeeded").length} dari ${monitorState.currentAttempt.probes.length} permintaan browser berhasil pada pembaruan terakhir. Ini bukan status keseluruhan sistem.`
+                  : "Pembaruan terakhir tidak menghasilkan catatan; kinerja layanan belum diketahui."}</p>
               )}
             </li>
           );
@@ -579,10 +590,10 @@ function PublicSources({ snapshot, mode, publicContext }: {
     const sources = snapshot?.sources ?? [];
     return (
       <section className="admin-support-panel" aria-labelledby="admin-sources-title">
-        <div className="admin-panel-heading"><div><p className="admin-kicker">Fixture lokal</p><h2 id="admin-sources-title">Sumber pada skenario</h2></div><span className="admin-read-only-chip">Semua sintetik</span></div>
+        <div className="admin-panel-heading"><div><p className="admin-kicker">Contoh rekaan</p><h2 id="admin-sources-title">Sumber pada contoh</h2></div><span className="admin-read-only-chip">Fiktif</span></div>
         {sources.length === 0 ? <p className="admin-muted">Skenario ini tidak mencantumkan nama sumber.</p> : (
           <ul className="admin-source-list">
-            {sources.map((source) => <li key={source.id}><strong>{source.name}</strong><span>{source.note}</span><small>{sourceHealthLabel(source.health)} · fixture, bukan status konektor nyata</small></li>)}
+          {sources.map((source) => <li key={source.id}><strong>{source.name}</strong><span>{source.note}</span><small>{sourceHealthLabel(source.health)} · hanya keterangan contoh</small></li>)}
           </ul>
         )}
       </section>
@@ -594,23 +605,23 @@ function PublicSources({ snapshot, mode, publicContext }: {
     name: source.display_name,
     health: source.health,
     lastSuccessAt: source.last_success_at,
-    note: "Nilai ini dikembalikan oleh endpoint konteks publik.",
+    note: "Informasi ini berasal dari data publik.",
   })) ?? [];
   const contextAvailable = snapshot?.context !== null && snapshot?.context !== undefined || publicContext !== null;
   return (
     <section className="admin-support-panel" aria-labelledby="admin-sources-title">
-      <div className="admin-panel-heading"><div><p className="admin-kicker">GET /api/v1/context</p><h2 id="admin-sources-title">Status sumber dari konteks publik</h2></div><span className="admin-read-only-chip">Respons API</span></div>
+      <div className="admin-panel-heading"><div><p className="admin-kicker">Daftar sumber</p><h2 id="admin-sources-title">Status sumber pada data publik</h2></div><span className="admin-read-only-chip">Baca saja</span></div>
       {sources.length === 0 ? (
         <div className="admin-empty admin-empty--compact">
           <strong>{contextAvailable ? "Daftar sumber kosong pada konteks publik." : "Konteks sumber publik tidak tersedia."}</strong>
-          <p>{contextAvailable ? "sources: [] bukan bukti bahwa semua sumber sehat." : "Status sumber tidak dapat ditentukan tanpa respons konteks terbaru."}</p>
+          <p>{contextAvailable ? "Daftar kosong tidak berarti semua sumber tersedia." : "Status sumber belum diketahui karena data konteks belum berhasil dibaca."}</p>
         </div>
       ) : (
         <ul className="admin-source-list">
           {sources.map((source) => <li key={source.id}><strong>{source.name}</strong><span>{source.note}</span><small>{sourceHealthLabel(source.health)} · sukses terakhir {formatInstant(source.lastSuccessAt)}</small></li>)}
         </ul>
       )}
-      <p className="admin-muted">Koneksi API browser dipantau terpisah. Status ini hanya nilai sumber yang dikembalikan oleh endpoint konteks.</p>
+      <p className="admin-muted">Status sumber ini berasal dari layanan. Hasil pembacaan halaman dicatat terpisah.</p>
     </section>
   );
 }
@@ -625,15 +636,15 @@ function ProbeObservations({ state, mode, snapshot }: {
     : snapshot?.probes ?? [];
   return (
     <section className="admin-support-panel" aria-labelledby="admin-probes-title">
-      <div className="admin-panel-heading"><div><p className="admin-kicker">Observasi permintaan</p><h2 id="admin-probes-title">Probe endpoint browser</h2></div><span className="admin-read-only-chip">Baca saja</span></div>
-      <p className="admin-muted">Durasi diukur di browser untuk permintaan yang terlihat; bukan latensi server, kinerja model, atau kesehatan seluruh stack.</p>
+      <div className="admin-panel-heading"><div><p className="admin-kicker">Catatan pembacaan halaman</p><h2 id="admin-probes-title">Hasil permintaan browser</h2></div><span className="admin-read-only-chip">Baca saja</span></div>
+      <p className="admin-muted">Waktu diukur pada browser. Ini bukan ukuran kinerja server, model, atau seluruh layanan.</p>
       {probes.length === 0 ? (
-        <div className="admin-empty admin-empty--compact"><strong>{mode === "simulation" ? "Belum ada probe pada skenario." : "Belum ada hasil probe."}</strong><p>Nilai kosong berarti tidak teramati, bukan 0 ms atau berhasil.</p></div>
+        <div className="admin-empty admin-empty--compact"><strong>{mode === "simulation" ? "Belum ada catatan pada contoh." : "Belum ada hasil permintaan."}</strong><p>Data kosong berarti belum teramati, bukan 0 ms atau berhasil.</p></div>
       ) : (
         <div className="admin-probe-table-wrap">
           <table className="admin-probe-table">
-            <caption>{mode === "simulation" ? "Durasi dan status fixture simulasi" : `Percobaan terakhir · ${formatInstant(state.currentAttempt?.at ?? state.attemptedAt)}`}</caption>
-            <thead><tr><th scope="col">Endpoint</th><th scope="col">Hasil</th><th scope="col">Durasi browser</th><th scope="col">HTTP</th><th scope="col">Diamati pada</th></tr></thead>
+            <caption>{mode === "simulation" ? "Waktu dan status pada contoh" : `Pembaruan terakhir · ${formatInstant(state.currentAttempt?.at ?? state.attemptedAt)}`}</caption>
+            <thead><tr><th scope="col">Data yang dibaca</th><th scope="col">Hasil</th><th scope="col">Waktu browser</th><th scope="col">Kode HTTP</th><th scope="col">Dicatat pada</th></tr></thead>
             <tbody>
               {probes.map((probe, index) => (
                 <tr key={`${probe.endpoint}-${probe.observedAt}-${index}`}>
@@ -660,15 +671,15 @@ function RecentActivity({ snapshot, mode, onSelect }: {
   if (mode === "public_api") {
     return (
       <section className="admin-support-panel" aria-labelledby="admin-activity-title">
-        <div className="admin-panel-heading"><div><p className="admin-kicker">Cakupan proyeksi</p><h2 id="admin-activity-title">Aktivitas internal</h2></div><span className="admin-read-only-chip">Tidak tersedia</span></div>
-        <div className="admin-empty admin-empty--compact"><strong>API publik tidak memberikan antrean atau jejak aktivitas operasi.</strong><p>Catatan review privat, kegagalan job, dan audit tidak disimulasikan pada mode ini.</p></div>
+        <div className="admin-panel-heading"><div><p className="admin-kicker">Rincian yang tidak tersedia</p><h2 id="admin-activity-title">Aktivitas internal</h2></div><span className="admin-read-only-chip">Tidak tersedia</span></div>
+        <div className="admin-empty admin-empty--compact"><strong>Data publik tidak memberikan antrean atau riwayat pekerjaan.</strong><p>Catatan moderator, kegagalan proses, dan audit tidak ditampilkan di sini.</p></div>
       </section>
     );
   }
   const activities = snapshot?.activities ?? [];
   return (
     <section className="admin-support-panel" aria-labelledby="admin-activity-title">
-      <div className="admin-panel-heading"><div><p className="admin-kicker">Catatan yang termuat</p><h2 id="admin-activity-title">Aktivitas terbaru</h2></div><span className="admin-read-only-chip">{mode === "simulation" ? "Fiktif" : "Dari proyeksi publik"}</span></div>
+      <div className="admin-panel-heading"><div><p className="admin-kicker">Riwayat contoh</p><h2 id="admin-activity-title">Langkah terbaru</h2></div><span className="admin-read-only-chip">Fiktif</span></div>
       {activities.length === 0 ? (
         <div className="admin-empty admin-empty--compact"><strong>{mode === "simulation" ? "Belum ada catatan pada tahap ini." : "API publik tidak mengembalikan riwayat operasi internal."}</strong><p>{mode === "simulation" ? "Jalankan simulasi lokal untuk melihat urutan fixture." : "Riwayat moderator, antrean privat, dan audit tidak tersedia di sini."}</p></div>
       ) : (
@@ -678,7 +689,7 @@ function RecentActivity({ snapshot, mode, onSelect }: {
               <time dateTime={activity.at}>{formatInstant(activity.at)}</time>
               <div><strong>{activity.layer} · {activity.label}</strong><p>{activity.detail}</p></div>
               {activity.itemId && snapshot?.items.some((item) => item.id === activity.itemId) && (
-                <button type="button" className="admin-text-button" onClick={() => onSelect(activity.itemId ?? "")}>Pilih record</button>
+                <button type="button" className="admin-text-button" onClick={() => onSelect(activity.itemId ?? "")}>Pilih laporan</button>
               )}
             </li>
           ))}
@@ -770,29 +781,29 @@ export function AdminDashboard() {
   const publicGeometryKnown = mode === "simulation" || geometryKnown;
   const apiDatasetReady = apiAttemptIsCurrent && currentApiContext !== null;
   const emptyQueueTitle = sourceItems.length > 0
-    ? "Tidak ada record yang cocok dengan filter."
+    ? "Tidak ada laporan yang cocok dengan filter."
     : mode === "simulation"
-      ? "Fixture tahap ini belum memuat kasus."
+      ? "Belum ada laporan pada contoh ini."
       : !apiDatasetReady
-        ? "Mode dataset belum dikonfirmasi oleh konteks terbaru."
+        ? "Jenis data server belum dikonfirmasi."
       : publicListProbe?.status === "succeeded"
-        ? "Halaman event publik yang dikembalikan kosong."
+        ? "Data publik tidak menyertakan laporan."
         : publicListProbe?.status === "failed"
-          ? "Endpoint halaman event publik gagal dibaca."
-          : "Belum ada record publik yang termuat.";
+          ? "Daftar laporan gagal dibaca."
+          : "Belum ada laporan publik yang dimuat.";
   const emptyQueueDetail = sourceItems.length > 0
-    ? "Ubah atau hapus filter untuk melihat kembali record pada snapshot yang sama."
+    ? "Ubah atau hapus filter untuk melihat kembali laporan yang sudah dimuat."
     : mode === "simulation"
-      ? "Pilih tahap simulasi lain atau mulai simulasi lokal."
+      ? "Pilih tahap contoh lain atau jalankan contoh."
       : !apiDatasetReady
-        ? "Record dan geometri dari pembacaan sebelumnya disembunyikan sampai konteks publik berhasil dibaca."
+        ? "Laporan dan lokasi dari pembacaan sebelumnya tetap tersembunyi sampai jenis data berhasil diketahui."
       : publicListProbe?.status === "succeeded"
-        ? "Halaman ini tidak mengembalikan record; hasil kosong bukan pernyataan bahwa kondisi aman."
+        ? "Hasil kosong bukan pernyataan bahwa kondisi di lapangan aman."
         : publicListProbe?.status === "failed"
-          ? "Daftar tidak tersedia pada percobaan ini. Data yang tidak teramati tidak dihitung sebagai 0."
+          ? "Daftar tidak tersedia saat ini. Data yang tidak diketahui tidak dihitung sebagai nol."
           : viewMonitorState.status === "paused"
-            ? "Pantauan dijeda. Lanjutkan pantauan untuk membaca endpoint."
-            : "Kegagalan atau hasil kosong tidak menunjukkan bahwa kondisi aman; periksa status endpoint di bawah.";
+            ? "Pembaruan dijeda. Lanjutkan pembaruan untuk membaca data publik."
+            : "Kegagalan atau hasil kosong tidak menunjukkan bahwa kondisi aman.";
 
   useEffect(() => {
     const monitor = createAdminMonitor({ onState: setMonitorState });
@@ -875,25 +886,23 @@ export function AdminDashboard() {
       <header className="admin-header">
         <div className="admin-header__identity">
           <a className="admin-back-link" href="#beranda">Kembali ke layanan publik</a>
-          <p className="admin-kicker">Ruang operasi web · baca saja</p>
-          <h1>Alur data dan peta</h1>
-          <p className="admin-header__lede">Pilih record untuk melihat asal data, tahap yang tercatat, waktu, dan keterbatasan yang diketahui.</p>
+          <p className="admin-kicker">Pengelola · baca saja</p>
+          <h1>Laporan dan peta</h1>
+          <p className="admin-header__lede">Pilih laporan untuk melihat sumber, waktu, status informasi, dan lokasinya di peta.</p>
         </div>
         <div className="admin-header__actions">
-          <a className="admin-button admin-button--primary" href="#admin-workspace">Langsung ke peta dan daftar</a>
-          <a className="admin-button admin-button--quiet" href="#jelajah">Buka informasi publik</a>
-          <span className="admin-read-only-chip">Baca saja · tidak ada kontrol tulis</span>
+          <a className="admin-button admin-button--quiet" href="#tinjau-bukti">Tinjau bukti publik</a>
         </div>
       </header>
 
-      <section className="admin-mode-strip" aria-label="Pilih mode ruang operasi">
+      <section className="admin-mode-strip" aria-label="Pilih jenis informasi">
         <div className="admin-mode-switch" role="group" aria-label="Mode data">
-          <button type="button" aria-pressed={mode === "simulation"} onClick={() => changeMode("simulation")}>Simulasi alur</button>
-          <button type="button" aria-pressed={mode === "public_api"} onClick={() => changeMode("public_api")}>Pantauan API</button>
+          <button type="button" aria-pressed={mode === "simulation"} onClick={() => changeMode("simulation")}>Contoh tampilan</button>
+          <button type="button" aria-pressed={mode === "public_api"} onClick={() => changeMode("public_api")}>Data aplikasi</button>
         </div>
         <div className="admin-mode-strip__state">
           {mode === "simulation" ? (
-            <span className="admin-connection admin-connection--simulation"><i aria-hidden="true" />Simulasi lokal · {simulationPlaying ? documentVisible ? "diputar" : "menunggu tab terlihat" : "jeda"}</span>
+            <span className="admin-connection admin-connection--simulation"><i aria-hidden="true" />Contoh · {simulationPlaying ? documentVisible ? "berjalan" : "menunggu halaman terlihat" : "berhenti"}</span>
           ) : (
             <span className={`admin-connection admin-connection--${viewMonitorState.status}`} aria-live="polite"><i aria-hidden="true" />{monitorStateLabel(viewMonitorState.status)}</span>
           )}
@@ -904,20 +913,20 @@ export function AdminDashboard() {
       <section className={`admin-provenance admin-provenance--${mode}`} aria-label="Asal dan batas data">
         {mode === "simulation" ? (
           <>
-            <strong>SIMULASI LOKAL · DEMO TANPA AUTENTIKASI · KASUS DAN GEOGRAFI FIKTIF</strong>
-            <p>Demo ini tidak membuka akses ke operasi privat. Fixture terpisah sepenuhnya dari API. Tidak ada pengambilan sumber, pemanggilan model, publikasi, atau perubahan record. {simulationPlaying ? "Progres terbatas berjalan saat halaman terlihat." : "Simulasi diam sampai Anda memulainya."}</p>
+            <strong>Semua laporan dan lokasi di sini adalah rekaan.</strong>
+            <p>Contoh bergerak hanya saat dijalankan. Halaman ini tidak menghubungi sumber, memakai model, atau mengubah data.</p>
           </>
         ) : (
           <>
-            <strong>PANTAUAN API · HANYA PEMBACAAN ENDPOINT PUBLIK</strong>
+            <strong>Data aplikasi hanya dibaca.</strong>
             <p>
-              Record dan geometri hanya berasal dari snapshot endpoint yang berhasil dimuat. Mode server dan jenis dataset tiap record ditampilkan terpisah. Antrean internal, penggunaan model, hasil gate privat, audit, dan kesehatan seluruh stack tidak tersedia.
+              Halaman membaca laporan dan lokasi yang sudah tersedia untuk umum. Ini bukan pemantauan operasi privat; antrean, model, dan tinjauan internal tidak terlihat. Label server menjelaskan jenis dataset, bukan keadaan seluruh layanan.
             </p>
           </>
         )}
       </section>
 
-      <section className="admin-controls" aria-label="Kontrol dan filter record">
+      <section className="admin-controls" aria-label="Kontrol dan pencarian laporan">
         {mode === "simulation" ? (
           <SimulationControls
             step={simulationStep}
@@ -928,88 +937,91 @@ export function AdminDashboard() {
             onReplay={() => { setSimulationStep(0); setSimulationPlaying(SIMULATION_STEPS.length > 1); }}
           />
         ) : (
-          <div className="admin-transport" aria-label="Kontrol pantauan API">
+          <div className="admin-transport" aria-label="Pembaruan data aplikasi">
             <button type="button" className="admin-button admin-button--primary" onClick={refresh} disabled={!monitoringEnabled || viewMonitorState.status === "loading"}>
-              {viewMonitorState.status === "loading" ? "Memeriksa…" : "Periksa sekarang"}
+              {viewMonitorState.status === "loading" ? "Memuat…" : "Perbarui laporan"}
             </button>
             <button type="button" className="admin-button admin-button--quiet" onClick={toggleMonitoring}>
-              {monitoringEnabled ? "Jeda pantauan" : "Lanjutkan pantauan"}
+              {monitoringEnabled ? "Jeda pembaruan" : "Lanjutkan pembaruan"}
             </button>
-            <span className="admin-transport__progress">Interval 30 detik saat halaman aktif dan terlihat</span>
+            <span className="admin-transport__progress">Pembaruan tiap 30 detik saat halaman terlihat</span>
             {viewMonitorState.status === "offline" && <span className="admin-transport__paused">Permintaan menunggu koneksi jaringan.</span>}
           </div>
         )}
-        <div className="admin-filter-grid">
-          <label className="admin-filter admin-filter--search">
-            <span>Cari record yang termuat</span>
-            <input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Judul, tempat, sumber, ID…" />
-          </label>
-          <label className="admin-filter">
-            <span>Lapisan</span>
-            <select
-              value={mode === "simulation" ? layerFilter : "all"}
-              disabled={mode === "public_api"}
-              onChange={(event) => setLayerFilter(event.currentTarget.value as AdminLayer | "all")}
-            >
-              {mode === "simulation"
-                ? LAYER_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)
-                : <option value="all">Tidak tersedia dari endpoint publik</option>}
-            </select>
-          </label>
-          <label className="admin-filter">
-            <span>{mode === "simulation" ? "Status alur" : "Status pipeline"}</span>
-            <select
-              value={mode === "simulation" ? stateFilter : "all"}
-              disabled={mode === "public_api"}
-              onChange={(event) => setStateFilter(event.currentTarget.value as AdminItemState | "all")}
-            >
-              {mode === "simulation"
-                ? STATUS_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)
-                : <option value="all">Tidak tersedia dari endpoint publik</option>}
-            </select>
-          </label>
-          <label className="admin-filter">
-            <span>Ketersediaan geometri</span>
-            <select
-              value={mode === "public_api" && !geometryKnown ? "all" : geometryFilter}
-              disabled={mode === "public_api" && !geometryKnown}
-              onChange={(event) => setGeometryFilter(event.currentTarget.value as AdminItemFilters["geometry"])}
-            >
-              <option value="all">{mode === "public_api" && !geometryKnown ? "Belum teramati" : "Semua record"}</option>
-              <option value="mapped">Ada geometri</option>
-              <option value="unmapped">Tidak dipetakan</option>
-            </select>
-          </label>
-          <button type="button" className="admin-button admin-button--quiet admin-filter__clear" onClick={() => { setQuery(""); setLayerFilter("all"); setStateFilter("all"); setGeometryFilter("all"); }}>Hapus filter</button>
-        </div>
+        <label className="admin-filter admin-filter--search">
+          <span>Cari laporan</span>
+          <input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Judul, lokasi, sumber…" />
+        </label>
+        <details className="admin-disclosure admin-filter-disclosure">
+          <summary>Filter laporan</summary>
+          <div className="admin-filter-grid">
+            <label className="admin-filter">
+              <span>Tahap contoh</span>
+              <select
+                value={mode === "simulation" ? layerFilter : "all"}
+                disabled={mode === "public_api"}
+                onChange={(event) => setLayerFilter(event.currentTarget.value as AdminLayer | "all")}
+              >
+                {mode === "simulation"
+                  ? LAYER_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)
+                  : <option value="all">Tidak tersedia pada data publik</option>}
+              </select>
+            </label>
+            <label className="admin-filter">
+              <span>Status contoh</span>
+              <select
+                value={mode === "simulation" ? stateFilter : "all"}
+                disabled={mode === "public_api"}
+                onChange={(event) => setStateFilter(event.currentTarget.value as AdminItemState | "all")}
+              >
+                {mode === "simulation"
+                  ? STATUS_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)
+                  : <option value="all">Tidak tersedia pada data publik</option>}
+              </select>
+            </label>
+            <label className="admin-filter">
+              <span>Lokasi di peta</span>
+              <select
+                value={mode === "public_api" && !geometryKnown ? "all" : geometryFilter}
+                disabled={mode === "public_api" && !geometryKnown}
+                onChange={(event) => setGeometryFilter(event.currentTarget.value as AdminItemFilters["geometry"])}
+              >
+                <option value="all">{mode === "public_api" && !geometryKnown ? "Belum diketahui" : "Semua laporan"}</option>
+                <option value="mapped">Ada di peta</option>
+                <option value="unmapped">Tidak ada di peta</option>
+              </select>
+            </label>
+            <button type="button" className="admin-button admin-button--quiet admin-filter__clear" onClick={() => { setQuery(""); setLayerFilter("all"); setStateFilter("all"); setGeometryFilter("all"); }}>Hapus filter</button>
+          </div>
+        </details>
       </section>
 
       <SnapshotNotice mode={mode} state={viewMonitorState} snapshot={snapshot} onRefresh={refresh} />
 
-      <section id="admin-workspace" tabIndex={-1} className={`admin-workspace admin-workspace--mobile-${mobileView}`} aria-label="Peta, daftar, dan detail record">
-        <div className="admin-mobile-switch" role="group" aria-label="Tampilan ruang operasi">
-          <button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}>Daftar record</button>
-          <button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}>Peta geometri</button>
+      <section id="admin-workspace" tabIndex={-1} className={`admin-workspace admin-workspace--mobile-${mobileView}`} aria-label="Daftar laporan, peta, dan detail">
+        <div className="admin-mobile-switch" role="group" aria-label="Tampilan pada layar kecil">
+          <button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}>Daftar</button>
+          <button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}>Peta</button>
         </div>
 
         <section className="admin-queue" aria-labelledby="admin-queue-title">
           <div className="admin-panel-heading">
-            <div><p className="admin-kicker">{mode === "simulation" ? "Kasus lokal fiktif" : "Record event publik termuat"}</p><h2 id="admin-queue-title">{mode === "simulation" ? "Antrean simulasi" : "Daftar API publik"}</h2></div>
+            <div><p className="admin-kicker">{mode === "simulation" ? "Contoh rekaan" : "Data yang tersedia"}</p><h2 id="admin-queue-title">Daftar laporan</h2></div>
             <span className="admin-total-count">{publicListKnown ? `${filteredItems.length} / ${sourceItems.length}` : "—"}</span>
           </div>
           <div className="admin-queue__coverage" aria-live="polite">
-            <span><strong>{publicListKnown && publicGeometryKnown ? geometryCounts.mapped ?? "—" : "—"}</strong> dipetakan</span>
+            <span><strong>{publicListKnown && publicGeometryKnown ? geometryCounts.mapped ?? "—" : "—"}</strong> di peta</span>
             {publicListKnown && publicGeometryKnown
-              ? <span><strong>{geometryCounts.unmapped ?? "—"}</strong> tidak dipetakan</span>
+              ? <span><strong>{geometryCounts.unmapped ?? "—"}</strong> tanpa lokasi peta</span>
               : publicListKnown
-                ? <span><strong>{geometryCounts.unknown}</strong> geometri belum teramati</span>
-                : <span><strong>—</strong> geometri belum teramati</span>}
-            <span>{publicListKnown ? `dari ${geometryCounts.total} record pada hasil filter` : "Cakupan event belum teramati"}</span>
+                ? <span><strong>{geometryCounts.unknown}</strong> lokasi belum diketahui</span>
+                : <span><strong>—</strong> lokasi belum diketahui</span>}
+            <span>{publicListKnown ? `dari ${geometryCounts.total} laporan pada hasil filter` : "Jumlah laporan belum diketahui"}</span>
           </div>
           {mode === "public_api" && viewMonitorState.lastSuccessAt && (
-            <p className="admin-observation-time">Snapshot sukses terakhir: <time dateTime={viewMonitorState.lastSuccessAt}>{formatInstant(viewMonitorState.lastSuccessAt)}</time></p>
+            <p className="admin-observation-time">Data berhasil dibaca pada: <time dateTime={viewMonitorState.lastSuccessAt}>{formatInstant(viewMonitorState.lastSuccessAt)}</time></p>
           )}
-          <p className="admin-coverage-note">Peta dan jumlah hanya mencakup hasil yang sudah termuat serta filter saat ini; cakupan bukan seluruh Jakarta atau seluruh event.</p>
+          <p className="admin-coverage-note">Jumlah hanya mencakup laporan yang sudah dimuat dan cocok dengan filter.</p>
           {filteredItems.length > 0 ? (
             <ul className="admin-queue__list">
               {filteredItems.map((item) => <QueueCard key={item.id} item={item} mode={mode} geometryKnown={geometryKnown} selected={selectedId === item.id} onSelect={selectItem} />)}
@@ -1018,9 +1030,9 @@ export function AdminDashboard() {
             <div className="admin-empty">
               <strong>{emptyQueueTitle}</strong>
               <p>{emptyQueueDetail}</p>
-              {mode === "public_api" && !monitoringEnabled && <button type="button" className="admin-button admin-button--quiet" onClick={toggleMonitoring}>Lanjutkan pantauan</button>}
+              {mode === "public_api" && !monitoringEnabled && <button type="button" className="admin-button admin-button--quiet" onClick={toggleMonitoring}>Lanjutkan pembaruan</button>}
               {mode === "public_api" && monitoringEnabled && viewMonitorState.status !== "loading" && viewMonitorState.status !== "offline" && (
-                <button type="button" className="admin-button admin-button--quiet" onClick={refresh}>Periksa endpoint</button>
+                <button type="button" className="admin-button admin-button--quiet" onClick={refresh}>Perbarui laporan</button>
               )}
             </div>
           )}
@@ -1028,37 +1040,43 @@ export function AdminDashboard() {
 
         <section className="admin-map-panel" aria-labelledby="admin-map-title">
           <div className="admin-panel-heading">
-            <div><p className="admin-kicker">{mode === "simulation" ? "Geografi fiktif" : "Geometri dari GeoJSON publik"}</p><h2 id="admin-map-title">Peta record termuat</h2></div>
-            <span className="admin-read-only-chip">{mode === "simulation" ? "Sintetis" : "Sumber saja"}</span>
+            <div><p className="admin-kicker">{mode === "simulation" ? "Lokasi rekaan" : "Lokasi dari sumber"}</p><h2 id="admin-map-title">Peta laporan</h2></div>
+            <span className="admin-read-only-chip">{mode === "simulation" ? "Contoh" : "Baca saja"}</span>
           </div>
           {mode === "public_api" && !publicListKnown
-            ? <p className="admin-map-empty-note">Daftar event belum berhasil dimuat dari percobaan terbaru; record peta belum tersedia untuk dihitung.</p>
+            ? <p className="admin-map-empty-note">Daftar laporan belum berhasil dimuat. Lokasi laporan belum dapat dihitung.</p>
             : mode === "public_api" && !geometryKnown
-              ? <p className="admin-map-empty-note" role="status">Geometri belum teramati: GeoJSON belum berhasil dibaca pada percobaan terbaru. Record tetap tersedia di daftar; jumlah yang dipetakan belum diketahui.</p>
+              ? <p className="admin-map-empty-note" role="status">Lokasi belum berhasil dibaca. Laporan tetap tersedia di daftar, tetapi jumlah yang memiliki lokasi belum diketahui.</p>
             : <AdminOperationsMap items={filteredItems} selectedId={selectedId} onSelect={selectItem} mode={mode} />}
           <p className="admin-map-footnote">{mode === "simulation"
-            ? "Koordinat hanya menjelaskan fixture fiktif. Tidak merepresentasikan jalan, batas resmi, atau area bahaya."
+            ? "Lokasi pada peta hanya contoh rekaan; bukan jalan, batas resmi, atau area bahaya."
             : !publicListKnown
-              ? "Peta menunggu konteks dan record publik dari percobaan terbaru."
+              ? "Peta menunggu daftar laporan publik yang berhasil dibaca."
             : geometryKnown
-              ? "Hanya geometri sumber yang terhubung ke record publik termuat. Tidak dibuat radius bahaya atau geometri pengganti."
-              : "GeoJSON belum berhasil dibaca; geometri yang tidak tampil belum dapat dinyatakan tidak dipetakan."}</p>
+              ? "Lokasi mengikuti data sumber. Halaman tidak membuat radius bahaya atau lokasi pengganti."
+              : "Data lokasi belum berhasil dibaca. Laporan yang belum tampil belum tentu tidak memiliki lokasi."}</p>
         </section>
 
         <AdminRecordInspector item={selectedItem} mode={mode} geometryKnown={geometryKnown} />
       </section>
 
-      <LayerOverview snapshot={snapshot} mode={mode} monitorState={viewMonitorState} />
-
-      <section className="admin-support-grid" aria-label="Sumber, aktivitas, dan hasil pemantauan">
-        <PublicSources snapshot={snapshot} mode={mode} publicContext={currentApiContext} />
-        <RecentActivity snapshot={snapshot} mode={mode} onSelect={selectItem} />
-        <ProbeObservations state={viewMonitorState} mode={mode} snapshot={snapshot} />
-      </section>
+      <details className="admin-disclosure admin-diagnostics">
+        <summary>Rincian proses, sumber, dan pembacaan</summary>
+        <div className="admin-diagnostics__content">
+          <LayerOverview snapshot={snapshot} mode={mode} monitorState={viewMonitorState} />
+          <section className="admin-support-grid" aria-label="Status sumber, riwayat, dan hasil pembacaan">
+            <PublicSources snapshot={snapshot} mode={mode} publicContext={currentApiContext} />
+            <RecentActivity snapshot={snapshot} mode={mode} onSelect={selectItem} />
+            <ProbeObservations state={viewMonitorState} mode={mode} snapshot={snapshot} />
+          </section>
+        </div>
+      </details>
 
       <footer className="admin-footer">
-        <strong>Ruang operasi ini hanya untuk membaca informasi.</strong>
-        <p>Halaman tidak memulai akuisisi atau investigasi, tidak menyetujui atau mengubah publikasi, dan tidak menampilkan telemetry internal yang tidak disediakan secara publik.</p>
+        <strong>Halaman ini hanya membaca data.</strong>
+        <p>Halaman tidak mengambil laporan dari sumber, menjalankan pemeriksaan, atau mengubah status laporan.</p>
+        <a className="admin-link" href="#tinjau-bukti">Buka tinjau bukti publik</a>
+        <span aria-hidden="true"> · </span>
         <a className="admin-link" href="#beranda">Kembali ke Waspada Jakarta</a>
       </footer>
     </main>

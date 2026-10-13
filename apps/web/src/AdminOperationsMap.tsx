@@ -21,12 +21,19 @@ const MIN_SPAN = 0.008;
 const MAX_SPAN = 2.4;
 const LAYERS: readonly AdminLayer[] = ["L1", "L2", "L3", "L4", "L5"];
 const LAYER_LABELS: Record<AdminLayer, string> = {
-  L1: "Persiapan", L2: "Grounding", L3: "Investigasi", L4: "Tinjau / terbit", L5: "Pemantauan",
+  L1: "Terima laporan", L2: "Cari bukti", L3: "Periksa", L4: "Tinjau", L5: "Pantau",
+};
+const LAYER_SHORT_LABELS: Record<AdminLayer, string> = {
+  L1: "Terima",
+  L2: "Cari bukti",
+  L3: "Periksa",
+  L4: "Tinjau",
+  L5: "Pantau",
 };
 const STATE_LABELS: Record<AdminItemState, string> = {
   queued: "Menunggu", running: "Diproses", held: "Ditahan", failed: "Gagal", done: "Selesai diproses",
 };
-const DATASET_LABELS: Record<AdminItem["datasetKind"], string> = { live: "Live", historical: "Historis", synthetic: "Sintetis" };
+const DATASET_LABELS: Record<AdminItem["datasetKind"], string> = { live: "Data publik", historical: "Data historis", synthetic: "Contoh rekaan" };
 
 function isPosition(value: unknown): value is PublicGeoJSONPosition {
   if (!Array.isArray(value) || value.length !== 2) return false;
@@ -271,9 +278,9 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
   const { x, y, width: cardWidth, left: labelX, top: labelY } = annotation;
   const leaderX = Math.max(labelX, Math.min(labelX + cardWidth, x));
   const leaderY = Math.max(labelY, Math.min(labelY + 44, y));
-  const provenance = item.geometryBasis === "synthetic_example" ? "geometri contoh sintetis" : "geometri didukung sumber";
-  const operation = mode === "simulation" ? `tahap ${item.layer} ${LAYER_LABELS[item.layer]}; status pemrosesan ${STATE_LABELS[item.state]}` : "proyeksi event publik; record tersedia";
-  const label = `${item.title}; kategori ${categoryLabel(item.category)}; ${operation}; ${provenance}; dataset ${DATASET_LABELS[item.datasetKind]}${mode === "public_api" ? " API" : ""}`;
+  const provenance = item.geometryBasis === "synthetic_example" ? "lokasi contoh rekaan" : "lokasi dari sumber";
+  const operation = mode === "simulation" ? `tahap ${LAYER_LABELS[item.layer]}; status ${STATE_LABELS[item.state]}` : "laporan dari data publik";
+  const label = `${item.title}; kategori ${categoryLabel(item.category)}; ${operation}; ${provenance}; jenis data ${DATASET_LABELS[item.datasetKind]}`;
   return <g
     role="button" tabIndex={0} aria-label={label} aria-pressed={selected}
     className={"admin-map__feature" + (selected ? " admin-map__feature--selected" : "")}
@@ -287,7 +294,7 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
     <g className="admin-map__annotation" transform={`translate(${labelX} ${labelY})`}>
       <rect className="admin-map__annotation-card" width={cardWidth} height="44" rx="8" />
       <g className="admin-map__stage-glyph" transform="translate(15 22)"><StageGlyph layer={mode === "simulation" ? item.layer : "L4"} /></g>
-      <text className="admin-map__layer-text" x="32" y="26">{mode === "simulation" ? item.layer : "PUB"}</text>
+      <text className="admin-map__layer-text" x="32" y="26">{mode === "simulation" ? LAYER_SHORT_LABELS[item.layer] : "Data"}</text>
       {mode === "simulation" && <g className="admin-map__state-glyph" transform="translate(62 37)"><circle className="admin-map__state-disc" r="8" /><StateGlyph state={item.state} /></g>}
       <rect className="admin-map__focus-ring" x="-3" y="-3" width={cardWidth + 6} height="50" rx="10" />
     </g>
@@ -323,7 +330,7 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
     };
     const anchor = positions.find(onCanvas) ?? positions[0]!;
     const [x, y] = projection.project(anchor);
-    return { id: item.id, x, y, width: mode === "simulation" ? 70 : 86, visible: onCanvas(anchor) };
+    return { id: item.id, x, y, width: mode === "simulation" ? 112 : 88, visible: onCanvas(anchor) };
   });
   const annotations = new Map(placeAdminMapAnnotations(anchors, projection.plot).map((annotation) => [annotation.id, annotation]));
   const anchorVisibility = new Map(anchors.map((anchor) => [anchor.id, anchor.visible]));
@@ -373,11 +380,11 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
     const width = projection.visibleBounds.east - projection.visibleBounds.west;
     const height = projection.visibleBounds.north - projection.visibleBounds.south;
     setView((current) => panAdminMapView(current, horizontal * width * 0.22, vertical * height * 0.22));
-    setAnnouncement("Tampilan digeser. Koordinat tampilan diperbarui.");
+    setAnnouncement("Tampilan peta digeser.");
   };
   const reset = () => { setView({ ...initialView.current }); setAnnouncement("Tampilan awal dipulihkan."); };
-  const fitAll = () => { if (allBounds) { setView(fitAdminMapBounds(allBounds)); setAnnouncement("Semua geometri pada subset dimuat masuk tampilan, termasuk titik di luar tampilan awal."); } };
-  const fitSelection = () => { if (selectedMapped) { setView(fitAdminMapBounds(selectedMapped.bounds)); setAnnouncement("Geometri record pilihan masuk tampilan."); } };
+  const fitAll = () => { if (allBounds) { setView(fitAdminMapBounds(allBounds)); setAnnouncement("Semua lokasi laporan dimuat ke tampilan."); } };
+  const fitSelection = () => { if (selectedMapped) { setView(fitAdminMapBounds(selectedMapped.bounds)); setAnnouncement("Lokasi laporan pilihan ditampilkan."); } };
   const handleKeys = (event: KeyboardEvent<SVGSVGElement>) => {
     if (event.target !== event.currentTarget || event.ctrlKey || event.metaKey || event.altKey) return;
     const actions: Record<string, () => void> = { ArrowLeft: () => pan(-1, 0), ArrowRight: () => pan(1, 0), ArrowUp: () => pan(0, 1), ArrowDown: () => pan(0, -1), "+": () => changeZoom(1.5), "=": () => changeZoom(1.5), "-": () => changeZoom(1 / 1.5), "0": reset, f: fitAll, F: fitAll };
@@ -398,24 +405,24 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
 
   return <section className="admin-map" aria-labelledby={`${id}-heading`}>
     <header className="admin-map__heading">
-      <div><p className="admin-map__eyebrow">Ruang koordinat · CRS84</p><h2 id={`${id}-heading`}>Jejak geografis</h2></div>
-      <span className={"admin-map__provenance" + (mode === "simulation" ? " admin-map__provenance--simulation" : "")}>{mode === "simulation" ? "Geometri fiktif" : "Geometri respons API"}</span>
+      <div><p className="admin-map__eyebrow">Lokasi laporan</p><h2 id={`${id}-heading`}>Peta laporan</h2></div>
+      <span className={"admin-map__provenance" + (mode === "simulation" ? " admin-map__provenance--simulation" : "")}>{mode === "simulation" ? "Contoh rekaan" : "Dari data publik"}</span>
     </header>
-    <p className="admin-map__intro">{mode === "simulation" ? "Titik, segmen, dan bidang contoh sintetis untuk membaca alur operasi." : "Hanya geometri didukung sumber yang cocok dengan record publik dimuat."} Tanpa peta dasar; grid menunjukkan koordinat, bukan batas wilayah.</p>
-    {mode === "public_api" && items.some((item) => item.datasetKind === "synthetic") && <p className="admin-map__dataset-note">Subset API memuat record sintetis; bukan peringatan langsung. Jenis dataset ditampilkan pada record pilihan.</p>}
+    <p className="admin-map__intro">{mode === "simulation" ? "Lokasi rekaan ini hanya untuk contoh." : "Peta hanya menampilkan lokasi yang tersedia dari sumber laporan."} Garis dan bidang mengikuti data; bukan batas wilayah.</p>
+    {mode === "public_api" && items.some((item) => item.datasetKind === "synthetic") && <p className="admin-map__dataset-note">Sebagian laporan adalah contoh sintetis, bukan peringatan langsung.</p>}
     <div className="admin-map__scope">
-      <p><strong>{mapped.length}</strong> record dipetakan <span aria-hidden="true">/</span> <strong>{items.length}</strong> pada subset ini</p>
-      <span>{unlocated} tidak dipetakan · tetap di antrean</span>
+      <p><strong>{mapped.length}</strong> laporan punya lokasi <span aria-hidden="true">/</span> <strong>{items.length}</strong> dimuat</p>
+      <span>{unlocated} tanpa lokasi peta · tetap di daftar</span>
     </div>
-    <div className="admin-map__view-actions" role="group" aria-label="Cakupan tampilan koordinat">
-      <button type="button" onClick={fitAll} disabled={!allBounds}>Muat di bingkai <span aria-hidden="true">↗</span></button>
-      <button type="button" onClick={fitSelection} disabled={!selectedMapped}>Fokus pilihan <span aria-hidden="true">⊙</span></button>
-      <button type="button" onClick={reset}>Tampilan awal <span aria-hidden="true">↺</span></button>
+    <div className="admin-map__view-actions" role="group" aria-label="Tampilan peta">
+      <button type="button" onClick={fitAll} disabled={!allBounds}>Tampilkan semua <span aria-hidden="true">↗</span></button>
+      <button type="button" onClick={fitSelection} disabled={!selectedMapped}>Fokus laporan <span aria-hidden="true">⊙</span></button>
+      <button type="button" onClick={reset}>Atur ulang peta <span aria-hidden="true">↺</span></button>
     </div>
     <figure className="admin-map__figure">
       <div className="admin-map__canvas-wrap">
         <svg ref={canvasRef} className="admin-map__canvas" viewBox={`0 0 ${size.width} ${size.height}`} role="group" tabIndex={0}
-          aria-label="Kanvas koordinat geografis; pilih geometri untuk membuka record di pemeriksa" aria-describedby={`${id}-keyboard ${id}-limit`}
+          aria-label="Peta laporan; pilih bentuk untuk membuka detail laporan" aria-describedby={`${id}-keyboard ${id}-limit`}
           onKeyDown={handleKeys} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={pointerEnd} onLostPointerCapture={pointerEnd}>
           <defs><clipPath id={`${id}-clip`}><rect x={projection.plot.left} y={projection.plot.top} width={projection.plot.width} height={projection.plot.height} /></clipPath></defs>
           <g aria-hidden="true" className="admin-map__grid">
@@ -434,27 +441,27 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
             {visible.filter(({ item }) => item.id === selectedId).map((mappedItem) => <ItemGeometry key={mappedItem.item.id} mapped={mappedItem} selected mode={mode} project={projection.project} annotation={annotations.get(mappedItem.item.id)!} anchorVisible={anchorVisibility.get(mappedItem.item.id)!} onSelect={onSelect} />)}
           </g>
         </svg>
-        {mapped.length === 0 && <div className="admin-map__empty" role="status"><span className="admin-map__empty-mark" aria-hidden="true">⌖</span><h3>{items.length === 0 ? "Belum ada record pada subset ini" : "Geometri belum tersedia"}</h3><p>{items.length === 0 ? "Hasil mengikuti mode dan filter saat ini." : "Record tetap dapat dipilih dari antrean. Koordinat tidak ditebak."}</p><span>Hasil kosong bukan pernyataan bahwa area aman.</span></div>}
-        {mapped.length > 0 && visible.length === 0 && <div className="admin-map__empty" role="status"><span className="admin-map__empty-mark" aria-hidden="true">↗</span><h3>Geometri di luar tampilan</h3><p>Gunakan “Muat di bingkai” untuk melihat seluruh geometri pada subset ini.</p></div>}
+        {mapped.length === 0 && <div className="admin-map__empty" role="status"><span className="admin-map__empty-mark" aria-hidden="true">⌖</span><h3>{items.length === 0 ? "Belum ada laporan untuk ditampilkan" : "Lokasi belum tersedia"}</h3><p>{items.length === 0 ? "Hasil mengikuti jenis data dan filter saat ini." : "Laporan tetap tersedia di daftar. Lokasi tidak ditebak."}</p><span>Hasil kosong bukan pernyataan bahwa area aman.</span></div>}
+        {mapped.length > 0 && visible.length === 0 && <div className="admin-map__empty" role="status"><span className="admin-map__empty-mark" aria-hidden="true">↗</span><h3>Lokasi di luar tampilan</h3><p>Gunakan “Tampilkan semua” untuk melihat seluruh lokasi yang dimuat.</p></div>}
       </div>
       <figcaption className="admin-map__extent"><span><strong>Bujur</strong> {coordinate(projection.visibleBounds.west, "longitude")} – {coordinate(projection.visibleBounds.east, "longitude")}</span><span><strong>Lintang</strong> {coordinate(projection.visibleBounds.south, "latitude")} – {coordinate(projection.visibleBounds.north, "latitude")}</span></figcaption>
     </figure>
     <div className="admin-map__navigation">
-      <div className="admin-map__zoom" role="group" aria-label="Perbesaran koordinat"><button type="button" aria-label="Perkecil koordinat" onClick={() => changeZoom(1 / 1.5)} disabled={view.north - view.south >= MAX_SPAN - 0.00001}>−</button><output aria-label="Perbesaran tampilan">{zoom.toFixed(1)}×</output><button type="button" aria-label="Perbesar koordinat" onClick={() => changeZoom(1.5)} disabled={view.north - view.south <= MIN_SPAN + 0.00001}>+</button></div>
-      <div className="admin-map__pan" role="group" aria-label="Geser tampilan"><button type="button" aria-label="Geser ke barat" onClick={() => pan(-1, 0)}>←</button><button type="button" aria-label="Geser ke utara" onClick={() => pan(0, 1)}>↑</button><button type="button" aria-label="Geser ke selatan" onClick={() => pan(0, -1)}>↓</button><button type="button" aria-label="Geser ke timur" onClick={() => pan(1, 0)}>→</button></div>
+      <div className="admin-map__zoom" role="group" aria-label="Perbesar atau perkecil peta"><button type="button" aria-label="Perkecil peta" onClick={() => changeZoom(1 / 1.5)} disabled={view.north - view.south >= MAX_SPAN - 0.00001}>−</button><output aria-label="Ukuran tampilan">{zoom.toFixed(1)}×</output><button type="button" aria-label="Perbesar peta" onClick={() => changeZoom(1.5)} disabled={view.north - view.south <= MIN_SPAN + 0.00001}>+</button></div>
+      <div className="admin-map__pan" role="group" aria-label="Geser peta"><button type="button" aria-label="Geser ke barat" onClick={() => pan(-1, 0)}>←</button><button type="button" aria-label="Geser ke utara" onClick={() => pan(0, 1)}>↑</button><button type="button" aria-label="Geser ke selatan" onClick={() => pan(0, -1)}>↓</button><button type="button" aria-label="Geser ke timur" onClick={() => pan(1, 0)}>→</button></div>
       <span className="admin-map__in-frame">{visible.length} dalam bingkai · {mapped.length - visible.length} di luar</span>
     </div>
-    <p id={`${id}-keyboard`} className="admin-map__keyboard">Fokus kanvas: panah untuk geser, + / − untuk zoom, 0 untuk awal, F untuk muat semua. Enter / Spasi memilih geometri. Kanvas dapat diseret.</p>
+    <p id={`${id}-keyboard`} className="admin-map__keyboard">Pilih peta dengan Tab. Gunakan panah, + / −, 0 untuk mengatur ulang, atau F untuk menampilkan semua. Enter atau Spasi memilih bentuk. Peta juga dapat diseret.</p>
     <div className="admin-map__selection" role="status" aria-live="polite">
-      <span className="admin-map__selection-kicker">{selected ? "Record pilihan" : "Belum ada pilihan"}</span>
-      {selected ? <><strong>{selected.title}</strong><span>{categoryLabel(selected.category)} · {mode === "simulation" ? `Tahap ${selected.layer} · Pemrosesan: ${STATE_LABELS[selected.state]}` : "Proyeksi event publik · Record tersedia"}</span><span>{selectedMapped ? `${selectedMapped.geometries.length} geometri · ${selected.geometryBasis === "synthetic_example" ? "Contoh sintetis" : "Didukung sumber"}` : "Tidak dipetakan — geometri yang sesuai mode belum tersedia."}</span><span>Dataset record: {DATASET_LABELS[selected.datasetKind]}{mode === "public_api" ? " API" : ""}{selected.datasetKind === "synthetic" ? " · bukan peringatan langsung" : ""}</span>{selected.geometryNote && <span>{selected.geometryNote}</span>}</> : <p>Pilih geometri atau record di antrean untuk membaca bukti dan alurnya.</p>}
+      <span className="admin-map__selection-kicker">{selected ? "Laporan terpilih" : "Belum ada pilihan"}</span>
+      {selected ? <><strong>{selected.title}</strong><span>{categoryLabel(selected.category)} · {mode === "simulation" ? `Tahap ${LAYER_LABELS[selected.layer]} · ${STATE_LABELS[selected.state]}` : "Laporan tersedia dari data publik"}</span><span>{selectedMapped ? `${selectedMapped.geometries.length} bentuk · ${selected.geometryBasis === "synthetic_example" ? "contoh rekaan" : "dari sumber"}` : "Lokasi belum tersedia pada peta."}</span><span>Jenis data: {DATASET_LABELS[selected.datasetKind]}{selected.datasetKind === "synthetic" ? " · bukan peringatan langsung" : ""}</span>{selected.geometryNote && <span>{selected.geometryNote}</span>}</> : <p>Pilih bentuk pada peta atau laporan pada daftar untuk melihat detail.</p>}
     </div>
-    <details className="admin-map__legend" open>
-      <summary>Petunjuk simbol <span aria-hidden="true">＋</span></summary>
+    <details className="admin-map__legend">
+      <summary>Cara membaca peta</summary>
       <div className="admin-map__legend-content">
-        {mode === "simulation" ? <><p className="admin-map__legend-label">Tahap operasi</p><ul className="admin-map__layer-legend">{LAYERS.map((layer) => <li key={layer}><GlyphIcon layer={layer} /><span><strong>{layer}</strong> {LAYER_LABELS[layer]}</span></li>)}</ul><p className="admin-map__legend-label">Status pemrosesan</p><ul className="admin-map__state-legend">{(Object.keys(STATE_LABELS) as AdminItemState[]).map((state) => <li key={state}><GlyphIcon state={state} /><span>{STATE_LABELS[state]}</span></li>)}</ul></> : <><ul className="admin-map__layer-legend"><li><GlyphIcon layer="L4" /><span><strong>PUB</strong> Proyeksi event publik</span></li></ul><p className="admin-map__public-limit">“Record tersedia” berarti record dikembalikan API. Tahap internal dan status pemrosesan tidak tersedia dari endpoint publik.</p></>}
-        <div className="admin-map__geometry-legend"><span><i className="admin-map__key-point" aria-hidden="true" />Titik</span><span><i className="admin-map__key-line" aria-hidden="true" />Segmen</span><span><i className="admin-map__key-polygon" aria-hidden="true" />{mode === "simulation" ? "Bidang sintetis" : "Bidang respons"}</span></div>
-        <p id={`${id}-limit`}>{mode === "simulation" ? "Simbol menunjukkan tahap dan status pemrosesan contoh. " : "Simbol PUB menunjukkan proyeksi event publik. "}Kartu dapat bergeser di layar; garis tipis menghubungkannya ke koordinat data. Warna dan ukuran penanda tidak menilai bahaya atau membuat radius. Bentuk mengikuti koordinat data. Cakupan mengikuti subset dimuat, bukan seluruh Jakarta.</p>
+        {mode === "simulation" ? <><p className="admin-map__legend-label">Tahap pada contoh</p><ul className="admin-map__layer-legend">{LAYERS.map((layer) => <li key={layer}><GlyphIcon layer={layer} /><span>{LAYER_LABELS[layer]}</span></li>)}</ul><p className="admin-map__legend-label">Status contoh</p><ul className="admin-map__state-legend">{(Object.keys(STATE_LABELS) as AdminItemState[]).map((state) => <li key={state}><GlyphIcon state={state} /><span>{STATE_LABELS[state]}</span></li>)}</ul></> : <><ul className="admin-map__layer-legend"><li><GlyphIcon layer="L4" /><span>Laporan publik</span></li></ul><p className="admin-map__public-limit">Peta menampilkan laporan yang tersedia dari layanan publik. Tahap dan status pekerjaan internal tidak tersedia.</p></>}
+        <div className="admin-map__geometry-legend"><span><i className="admin-map__key-point" aria-hidden="true" />Titik</span><span><i className="admin-map__key-line" aria-hidden="true" />Ruas</span><span><i className="admin-map__key-polygon" aria-hidden="true" />Bidang</span></div>
+        <p id={`${id}-limit`}>{mode === "simulation" ? "Simbol menunjukkan tahap dan status contoh. " : "Simbol menunjukkan laporan yang tersedia. "}Kartu dapat bergeser; garis tipis menghubungkannya ke lokasi data. Warna dan ukuran tidak menilai bahaya atau membuat radius. Bentuk mengikuti data yang diberikan. Cakupan mengikuti laporan yang dimuat, bukan seluruh Jakarta.</p>
       </div>
     </details>
     <span className="admin-map__sr-only" role="status" aria-live="polite">{announcement}</span>
