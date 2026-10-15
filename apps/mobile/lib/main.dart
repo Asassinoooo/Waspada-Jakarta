@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'src/account_platform.dart';
 import 'src/app.dart';
 import 'src/preferences.dart';
 import 'src/public_api.dart';
@@ -10,6 +11,7 @@ void main() {
     WaspadaApp(
       api: HttpPublicApi.fromEnvironment(),
       preferences: PreferencesRepository(SharedPreferencesStorage()),
+      auth: createPlatformAccountAuthController(),
     ),
   );
 }

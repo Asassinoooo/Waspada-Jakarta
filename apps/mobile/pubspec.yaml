@@ -1,15 +1,18 @@
 name: waspada_jakarta_mobile
-description: Account-free public information reader for Waspada Jakarta.
+description: Public information reader and optional account client for Waspada Jakarta.
 publish_to: none
 version: 0.1.0+1
 
 environment:
-  sdk: '>=3.4.0 <4.0.0'
+  sdk: '>=3.8.0 <4.0.0'
+  flutter: '>=3.19.0'
 
 dependencies:
   flutter:
     sdk: flutter
   http: ^1.5.0
+  google_sign_in: 7.2.0
+  flutter_secure_storage: 11.2.0
   shared_preferences: ^2.5.3
   unorm_dart: 0.3.2
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:waspada_jakarta_mobile/src/account_auth.dart';
 import 'package:waspada_jakarta_mobile/src/app.dart';
 import 'package:waspada_jakarta_mobile/src/event_detail_screen.dart';
 import 'package:waspada_jakarta_mobile/src/event_list_screen.dart';
@@ -23,7 +24,10 @@ Future<void> showApp(
     tester.view.resetDevicePixelRatio();
   });
   await tester.pumpWidget(
-      WaspadaApp(api: api, preferences: PreferencesRepository(storage)));
+      WaspadaApp(
+          api: api,
+          preferences: PreferencesRepository(storage),
+          auth: AccountAuthController.guestOnly()));
   await tester.pumpAndSettle();
 }
 
@@ -191,7 +195,9 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     await tester.pumpWidget(WaspadaApp(
-        api: api, preferences: PreferencesRepository(MemoryStorage())));
+        api: api,
+        preferences: PreferencesRepository(MemoryStorage()),
+        auth: AccountAuthController.guestOnly()));
     await tester.pump();
 
     await tester.tap(find.byTooltip('Muat ulang konteks dan ringkasan'));
@@ -329,8 +335,10 @@ void main() {
     final api = SyntheticPublicApi();
     final storage = MemoryStorage();
     final preferences = PreferencesRepository(storage);
+    final auth = AccountAuthController.guestOnly();
+    addTearDown(auth.dispose);
     final screens = <Widget>[
-      LandingScreen(api: api, preferences: preferences),
+      LandingScreen(api: api, preferences: preferences, auth: auth),
       EventListScreen(api: api, preferences: preferences),
       EventDetailScreen(
         api: api,
