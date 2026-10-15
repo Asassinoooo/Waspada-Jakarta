@@ -7,6 +7,12 @@ export default defineConfig({
     // Edits from Windows on /mnt/d do not reliably emit WSL file events.
     watch: { usePolling: Boolean(process.env.WSL_DISTRO_NAME), interval: 300 },
     proxy: {
+      ...(process.env.WASPADA_LOCAL_ACCOUNTS === 'true' ? {
+        '^/api/v1/(?:auth|account)(?:/|$)': {
+          target: 'http://127.0.0.1:8789',
+          changeOrigin: true,
+        },
+      } : {}),
       "^/__local/pipeline$": {
         target: "http://127.0.0.1:8788",
         changeOrigin: true,

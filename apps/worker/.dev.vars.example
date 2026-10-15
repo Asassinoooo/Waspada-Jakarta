@@ -6,5 +6,7 @@ AUTH_GOOGLE_CLIENT_ID=REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com
 AUTH_GOOGLE_CLIENT_SECRET=REPLACE_LOCALLY
 # SDK serverClientId audience; this is a web-type server OAuth client, not Android ID.
 AUTH_GOOGLE_NATIVE_CLIENT_ID=REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com
+# Optional pinned Android authorized presenter (azp), distinct from server audience.
+AUTH_GOOGLE_ANDROID_CLIENT_ID=REPLACE_WITH_ANDROID_CLIENT_ID.apps.googleusercontent.com
 # AUTH_HYPERDRIVE is a Worker binding for the dedicated auth DB connection.
 # Do not place a production DB password or provider token in this template.

@@ -38,6 +38,13 @@ import {
 } from "../../runtime/public-event-updates-runtime.js";
 
 export interface WorkerEnvironment {
+  AUTH_ENABLED?: string;
+  AUTH_APP_ORIGIN?: string;
+  AUTH_GOOGLE_CLIENT_ID?: string;
+  AUTH_GOOGLE_CLIENT_SECRET?: string;
+  AUTH_GOOGLE_NATIVE_CLIENT_ID?: string;
+  AUTH_GOOGLE_ANDROID_CLIENT_ID?: string;
+  AUTH_HYPERDRIVE?: { readonly connectionString?: string };
   DATASET_MODE?: string;
   SOURCE_PREVIEW_ENABLED?: string;
   HYPERDRIVE?: { readonly connectionString?: string };
