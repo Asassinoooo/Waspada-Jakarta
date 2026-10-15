@@ -1,6 +1,6 @@
 # ADR-059 — optional Google accounts and cross-platform onboarding
 
-15 October 2026. Decision accepted; implementation and verification in progress under [AUTH-01](../assignments/AUTH-01-ACCOUNTS-ONBOARDING.md). User explicitly chose Google login, retained account-free public browsing, and requested Android Flutter plus responsive web parity without a mobile admin dashboard.
+15 October 2026. Decision accepted; local implementation integrated under [AUTH-01](../assignments/AUTH-01-ACCOUNTS-ONBOARDING.md). User explicitly chose Google login, retained account-free public browsing, and requested Android Flutter plus responsive web parity without a mobile admin dashboard. Google clients are not prepared; user chose the synthetic local demo and configuration guide first. [Handoff](../assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md) separates verified local behavior from external gates.
 
 ## Decision
 
@@ -25,4 +25,6 @@ Google login avoids password storage/reset/email infrastructure, but requires co
 - [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage): native secure storage; implementation must record its compatible pinned version.
 - [Cloudflare Worker limits](https://developers.cloudflare.com/workers/platform/limits/): free-tier CPU/request limits require hosted checks before deployment claims.
 
-Exact API contracts, assignments, test evidence and remaining gates live in the AUTH-01 assignment/handoff. No actual Google success, deployed session service, native device sign-in or full MOD-01 completion is claimed while implementation is in progress.
+The browser-write header is `X-CSRF-Token`; production authorization URLs are pinned to Google's exact OIDC path. Web proof validation explicitly enables signed-ID-token checks. Native audience is the SDK's web/server client ID, with an optional configured Android authorized party; arbitrary parties fail closed. Prior sessions are captured at login start for rotation even when Strict cookies are absent from the cross-site callback. Provider discovery failure is retryable rather than permanently poisoning the warm runtime. Private roles are scoped to the server-selected dataset at repository creation. Package versions are pinned: openid-client6.8.8, jose6.2.12, google_sign_in7.2.0 and flutter_secure_storage11.2.0.
+
+Exact API contracts, assignments, test evidence and remaining gates live in the AUTH-01 assignment/handoff. No actual Google success, deployed session service, native device sign-in or full MOD-01 completion is claimed.

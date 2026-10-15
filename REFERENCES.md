@@ -191,3 +191,15 @@ The user selected Google AI Studio Free `gemini-embedding-2` and a Chinese previ
 - [Tailscale IP addresses](https://tailscale.com/docs/concepts/tailscale-ip-addresses), [reserved addresses](https://tailscale.com/docs/reference/reserved-ip-addresses), and [CGNAT conflicts](https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts), checked 12 October 2026: the IPv4 device range is `100.64.0.0/10`, also shared with CGNAT uses. The local user-authorized HTTP test requires explicit opt-in and a literal address in that range; the range is not proof of owned tailnet membership. No Tailscale configuration was changed.
 
 The80% proposed application allocation and500-token throughput example are planning arithmetic, not provider measurements. See [ADR-054](docs/decisions/ADR-054-private-model-gateway-testing.md) and [model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md). No private endpoint, inference, source payload, credential or cloud setting was accessed.
+
+## Optional Google accounts and onboarding — 15 October 2026
+
+Primary documentation used by AUTH-01, retained locally for the final report bibliography. Provider setup and live sign-in were not performed. Exact package versions and local evidence are recorded in [ADR-059](docs/decisions/ADR-059-google-accounts-and-onboarding.md) and the [handoff](docs/assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md).
+
+- [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect): issuer/subject identity, authorization-code flow, setup and token validation.
+- [Google Android backend authentication](https://developers.google.com/identity/sign-in/android/backend-auth): SDK ID-token transfer and server-side identity verification; a client user ID alone is insufficient.
+- [openid-client](https://github.com/panva/openid-client): standards-based OIDC library, version6.8.8 pinned; this implementation explicitly enables signed-ID-token checks.
+- [JOSE](https://github.com/panva/jose): maintained JWT/JWKS verification, version6.2.12 pinned for native Google proof checks.
+- [google_sign_in](https://pub.dev/packages/google_sign_in): official Flutter integration, version7.2.0 pinned; SDK server client ID is the web/server audience, distinct from Android package/certificate registration.
+- [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage): protected native session-token storage, version11.2.0 pinned; local analyze/test/debug build do not establish actual device storage or sign-in behavior.
+- [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/): hosted free-tier CPU/request fit remains a deployment verification gate. Local bundle size/build is not hosted performance proof.

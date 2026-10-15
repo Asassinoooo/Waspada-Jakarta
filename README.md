@@ -6,9 +6,15 @@ This repository contains the engineering plan and partial prototype. The publish
 
 ## Web navigation and admin demo
 
-Run `npm run dev` from WSL Ubuntu-26.04, then open [Beranda](http://127.0.0.1:5173/#beranda) or [Admin demo](http://127.0.0.1:5173/#admin). Four primary destinations group existing features: **Beranda**, **Peta & laporan**, **Untuk Anda**, and **Bantuan**. Report/source maps and interests/updates have contextual choices; help combines guide/privacy, preserves old bookmarks, and provides separate operator links. The development/demo private inspector remains gated.
+Run `npm run dev` from WSL Ubuntu-26.04, then open [Beranda](http://127.0.0.1:5173/#beranda). Four primary destinations group existing features: **Beranda**, **Peta & laporan**, **Untuk Anda**, and **Bantuan**, with an **Akun** utility. Report/source maps and interests/updates have contextual choices; help combines guide/privacy and preserves old bookmarks. Public browsing remains account-free; admin/review shells now require the appropriate account role. The development/demo private inspector remains gated.
 
-Admin now leads with **Laporan dan peta**: search, report list, map and readable selected details. **Contoh tampilan** uses finite fictional examples; **Data aplikasi** reads existing public endpoints while active. Complete sources/times/process diagnostics can be opened when needed. The unified source map, browser-data controls and current visual style remain. Admin is read-only; private telemetry, authentication and publication controls remain unavailable. [Integration provenance](docs/assignments/UX-WEB-01-INTEGRATION-HANDOFF.md), [current navigation, checks and startup](docs/assignments/UX-WEB-02-SIMPLIFY-HANDOFF.md).
+Admin leads with **Laporan dan peta**: search, report list, map and readable selected details. **Contoh tampilan** uses finite fictional examples; **Data aplikasi** reads existing public endpoints while active. Complete sources/times/process diagnostics can be opened when needed. The unified source map, browser-data controls and current visual style remain. Incident operations remain read-only; private telemetry and publication controls remain unavailable. [Integration provenance](docs/assignments/UX-WEB-01-INTEGRATION-HANDOFF.md), [navigation design](docs/assignments/UX-WEB-02-SIMPLIFY-HANDOFF.md).
+
+## Accounts, onboarding and Android
+
+Optional Google accounts have server-assigned user, moderator and admin roles. Web and Android provide guest introduction, own profile, onboarding and logout; interests stay on the device. Desktop web adds role-gated read-only review/dashboard and bounded account administration. Android and narrow mobile web have no admin dashboard or user-management controls. The imported Flutter public reader retains its existing scope; a native map remains deferred.
+
+Google OAuth clients are not configured. To try the **synthetic local account demo**, use two WSL terminals: `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. Open [Akun](http://127.0.0.1:5173/#akun); login shows an explicit fictional-account selector and never contacts Google. Account-only PGlite state is separate from incidents/private AI and persists across restart. Without this opt-in, login explains its unavailable configuration and public browsing works. [Startup, role rules, Android build and Google setup](docs/ACCOUNTS_AND_ONBOARDING.md).
 
 ## Try the source/map demo locally
 

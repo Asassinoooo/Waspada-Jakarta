@@ -1,6 +1,6 @@
 # ADR-006 — Moderator authentication and authorization
 
-- **Status:** Identity scope revised on15October2026 by [ADR-059](ADR-059-google-accounts-and-onboarding.md): optional Google accounts and role-scoped sessions are assigned under AUTH-01. Publication/review/source mutations remain deferred; historical password/no-signup details below are superseded for this Google-only slice.
+- **Status:** Identity scope revised on15October2026 by [ADR-059](ADR-059-google-accounts-and-onboarding.md): optional Google accounts and role-scoped sessions are implemented locally under AUTH-01; real Google configuration remains pending. Publication/review/source mutations remain deferred; historical password/no-signup details below are superseded for this Google-only slice.
 - **Date:** 24 September 2026
 - **Owners:** Backend/API and moderator UX
 
