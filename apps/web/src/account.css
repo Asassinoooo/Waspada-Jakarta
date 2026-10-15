@@ -365,9 +365,20 @@
   }
 
   .site-header__tools {
-    width: 6.5rem;
+    width: auto;
     min-width: 0;
-    gap: 0.25rem;
+    max-width: 100%;
+    align-items: flex-start;
+    justify-content: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .site-header__tools > * {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .brand {
