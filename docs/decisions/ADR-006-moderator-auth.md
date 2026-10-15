@@ -1,6 +1,6 @@
 # ADR-006 — Moderator authentication and authorization
 
-- **Status:** Retained as a future authenticated-release design; runtime authentication is unimplemented and out of course-demo scope under [ADR-028](ADR-028-read-only-moderator-demo.md).
+- **Status:** Identity scope revised on15October2026 by [ADR-059](ADR-059-google-accounts-and-onboarding.md): optional Google accounts and role-scoped sessions are assigned under AUTH-01. Publication/review/source mutations remain deferred; historical password/no-signup details below are superseded for this Google-only slice.
 - **Date:** 24 September 2026
 - **Owners:** Backend/API and moderator UX
 

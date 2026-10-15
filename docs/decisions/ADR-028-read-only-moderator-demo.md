@@ -1,6 +1,6 @@
 # ADR-028 — Read-only moderator experience in the course demo
 
-- **Status:** Accepted
+- **Status:** Read-only moderation remains accepted. The no-login scope is superseded on15October2026 by [ADR-059](ADR-059-google-accounts-and-onboarding.md) and explicit user request for optional Google accounts/onboarding. AUTH-01 does not enable the writes deferred here.
 - **Date:** 28 September 2026
 - **Owner:** Root planner; confirmed by Team 12
 - **Affected scope:** MOD-01, UI-00, UI-03, US-03
