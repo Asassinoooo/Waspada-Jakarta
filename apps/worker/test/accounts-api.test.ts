@@ -228,7 +228,7 @@ test('browser mutations require exact Origin and session CSRF; unknown account r
   });
 
   const wrongOrigin = await api(jsonRequest('/api/v1/account/onboarding', {
-    headers: { cookie: `__Host-waspada_session=${token}`, origin: 'https://evil.example', 'x-waspada-csrf': csrf },
+    headers: { cookie: `__Host-waspada_session=${token}`, origin: 'https://evil.example', 'x-csrf-token': csrf },
     body: { version: 1 },
   }));
   assert.equal(wrongOrigin?.status, 403);
@@ -237,8 +237,18 @@ test('browser mutations require exact Origin and session CSRF; unknown account r
     body: { version: 1 },
   }));
   assert.equal(missingCsrf?.status, 403);
-  const completed = await api(jsonRequest('/api/v1/account/onboarding', {
+  const legacyCsrf = await api(jsonRequest('/api/v1/account/onboarding', {
     headers: { cookie: `__Host-waspada_session=${token}`, origin: appOrigin, 'x-waspada-csrf': csrf },
+    body: { version: 1 },
+  }));
+  assert.equal(legacyCsrf?.status, 403, 'the previous private header is not an accepted alias');
+  const wrongCsrf = await api(jsonRequest('/api/v1/account/onboarding', {
+    headers: { cookie: `__Host-waspada_session=${token}`, origin: appOrigin, 'x-csrf-token': `${csrf}x` },
+    body: { version: 1 },
+  }));
+  assert.equal(wrongCsrf?.status, 403);
+  const completed = await api(jsonRequest('/api/v1/account/onboarding', {
+    headers: { cookie: `__Host-waspada_session=${token}`, origin: appOrigin, 'x-csrf-token': csrf },
     body: { version: 1 },
   }));
   assert.equal(completed?.status, 200);
@@ -356,23 +366,23 @@ test('admin updates require a completed web admin, CSRF, version, reason, and st
   assert.ok(userPage.data.some((item) => item.id === target.id));
   assert.ok(userPage.data.every((item) => !('identity_subject' in item)));
   assert.equal((await update(baseHeaders))?.status, 403, 'missing CSRF must block privilege changes');
-  const invalidReason = await update({ ...baseHeaders, 'x-waspada-csrf': csrf }, {
+  const invalidReason = await update({ ...baseHeaders, 'x-csrf-token': csrf }, {
     role: 'admin', active: true, expected_version: target.version, reason: ' ' as unknown as string,
   });
   assert.equal(invalidReason?.status, 400);
 
-  const changed = await update({ ...baseHeaders, 'x-waspada-csrf': csrf });
+  const changed = await update({ ...baseHeaders, 'x-csrf-token': csrf });
   assert.equal(changed?.status, 200);
   assert.equal((await changed?.json() as StoredAccount).role, 'moderator');
   const self = await api(jsonRequest(`/api/v1/account/users/${admin.id}`, {
     method: 'PATCH',
-    headers: { ...baseHeaders, 'x-waspada-csrf': csrf },
+    headers: { ...baseHeaders, 'x-csrf-token': csrf },
     body: { role: 'user', active: false, expected_version: admin.version + 1, reason: 'self demotion denied' },
   }));
   assert.equal(self?.status, 409);
 
   store.revalidateAsNonAdminOnNextUpdate = true;
-  const concurrentlyDemoted = await update({ ...baseHeaders, 'x-waspada-csrf': csrf }, {
+  const concurrentlyDemoted = await update({ ...baseHeaders, 'x-csrf-token': csrf }, {
     role: 'user', active: true, expected_version: target.version + 1, reason: 'race check',
   });
   assert.equal(concurrentlyDemoted?.status, 403, 'the durable store rechecks the actor in the update transaction');

@@ -592,8 +592,8 @@ function checkBrowserWrite(request: Request, csrfToken: string | null, appOrigin
   return csrfToken !== null
     && appOrigin !== undefined
     && isExactOrigin(request, appOrigin)
-    && request.headers.get('x-waspada-csrf') !== null
-    && constantTimeTextEqual(request.headers.get('x-waspada-csrf') ?? '', csrfToken);
+    && request.headers.get('x-csrf-token') !== null
+    && constantTimeTextEqual(request.headers.get('x-csrf-token') ?? '', csrfToken);
 }
 
 function isExactOrigin(request: Request, appOrigin: string): boolean {
