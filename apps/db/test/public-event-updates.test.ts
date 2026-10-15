@@ -6,7 +6,7 @@ import {
   PUBLIC_EVENT_UPDATES_LIMITS,
 } from '../src/public-event-updates.js';
 import type { SqlExecutor } from '../src/sql.js';
-import { applyMigrations, readMigrations } from '../src/migrations.js';
+import { applyMigrations, readMigrations, type SqlMigration } from '../src/migrations.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 const TEST_TIME = '2026-09-26T10:00:00Z';
@@ -54,27 +54,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     const updateMigration = migrations.find(({ version }) => version === '016_public_update_feed_order');
     assert.ok(updateMigration, 'migration 016 is loaded');
-    await applyMigrations(database.executor, migrations.filter(({ version }) =>
-      version !== '016_public_update_feed_order'
-      && version !== '017_moderator_publication_writer_role'
-      && version !== '018_l1_extraction_result_verification'
-      && version !== '019_l3_progress_fingerprints'
-      && version !== '020_public_event_freshness_aggregate'
-      && version !== '021_l1_scheduler_namespace_read'
-      && version !== '022_l1_embedding_verification_reads'
-      && version !== '023_l2_event_proposal_writer'
-      && version !== '024_freshness_transition_ledger'
-      && version !== '025_freshness_current_public_overlay'
-      && version !== '026_freshness_due_run_traces'
-      && version !== '027_publication_outbox_delivery'
-      && version !== '028_report_revision_impact_reader'
-      && version !== '029_source_revision_observations'
-      && version !== '030_l2_source_revision_grounding_gate'
-      && version !== '031_source_revision_review_candidate_reader'
-      && version !== '032_source_revision_freshness_transitions'
-      && version !== '033_source_revision_freshness_run_state'
-      && version !== '034_source_revision_withdrawn_freshness'
-      && version !== '035_l3_advance_review_pending'));
+    await applyMigrations(database.executor, migrationsBefore(migrations, updateMigration.version));
     await database.executor.query(
       "INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')",
     );
@@ -115,6 +95,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
       '035_l3_advance_review_pending',
+      '036_accounts',
     ]);
   });
 
@@ -513,4 +494,11 @@ function fixedRowsExecutor(rows: readonly unknown[]): SqlExecutor {
 
 function isUpdatesError(error: unknown, code: string): error is PublicEventUpdatesError {
   return error instanceof PublicEventUpdatesError && error.code === code;
+}
+
+function migrationsBefore(migrations: readonly SqlMigration[], version: string): SqlMigration[] {
+  const prefix = version.slice(0, 3);
+  if (!/^\d{3}$/u.test(prefix)) throw new Error(`Invalid migration version: ${version}`);
+  const boundary = Number(prefix);
+  return migrations.filter(({ version: candidate }) => Number(candidate.slice(0, 3)) < boundary);
 }

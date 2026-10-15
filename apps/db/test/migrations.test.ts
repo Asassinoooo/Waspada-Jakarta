@@ -11,36 +11,7 @@ describe('DATA-01 migrations', () => {
   before(async () => {
     testDatabase = await createTestDatabase();
     migrations = await readMigrations(new URL('../migrations/', import.meta.url));
-    const through006 = migrations.filter(({ version }) =>
-      version !== '007_l1_write_idempotency'
-      && version !== '008_l3_investigation_ledger'
-      && version !== '009_evidence_reference_updates_relation'
-      && version !== '010_l2_grounding_context_writer'
-      && version !== '011_public_projection_lookups'
-      && version !== '012_public_geometry_reader'
-      && version !== '013_public_event_history_reader'
-      && version !== '014_public_event_history_review_metadata'
-      && version !== '015_public_geojson_candidates'
-      && version !== '016_public_update_feed_order'
-      && version !== '017_moderator_publication_writer_role'
-      && version !== '018_l1_extraction_result_verification'
-      && version !== '019_l3_progress_fingerprints'
-      && version !== '020_public_event_freshness_aggregate'
-      && version !== '021_l1_scheduler_namespace_read'
-      && version !== '022_l1_embedding_verification_reads'
-      && version !== '023_l2_event_proposal_writer'
-      && version !== '024_freshness_transition_ledger'
-      && version !== '025_freshness_current_public_overlay'
-      && version !== '026_freshness_due_run_traces'
-      && version !== '027_publication_outbox_delivery'
-      && version !== '028_report_revision_impact_reader'
-      && version !== '029_source_revision_observations'
-      && version !== '030_l2_source_revision_grounding_gate'
-      && version !== '031_source_revision_review_candidate_reader'
-      && version !== '032_source_revision_freshness_transitions'
-      && version !== '033_source_revision_freshness_run_state'
-      && version !== '034_source_revision_withdrawn_freshness'
-      && version !== '035_l3_advance_review_pending');
+    const through006 = migrationsThrough(migrations, '006_l1_geometry_evidence_reads');
     const result = await applyMigrations(testDatabase.executor, through006);
     assert.deepEqual(result.applied, [
       '001_foundation', '002_acquisition_jobs', '003_evidence_chunk_pipeline_reads',
@@ -59,34 +30,7 @@ describe('DATA-01 migrations', () => {
       const relationMigration = migrations.find(({ version }) =>
         version === '009_evidence_reference_updates_relation');
       assert.ok(relationMigration, 'the additive evidence relation migration is loaded');
-      const beforeRelationMigration = migrations.filter(({ version }) =>
-        version !== '009_evidence_reference_updates_relation'
-        && version !== '010_l2_grounding_context_writer'
-        && version !== '011_public_projection_lookups'
-        && version !== '012_public_geometry_reader'
-        && version !== '013_public_event_history_reader'
-        && version !== '014_public_event_history_review_metadata'
-        && version !== '015_public_geojson_candidates'
-        && version !== '016_public_update_feed_order'
-        && version !== '017_moderator_publication_writer_role'
-        && version !== '018_l1_extraction_result_verification'
-        && version !== '019_l3_progress_fingerprints'
-        && version !== '020_public_event_freshness_aggregate'
-        && version !== '021_l1_scheduler_namespace_read'
-        && version !== '022_l1_embedding_verification_reads'
-        && version !== '023_l2_event_proposal_writer'
-        && version !== '024_freshness_transition_ledger'
-        && version !== '025_freshness_current_public_overlay'
-        && version !== '026_freshness_due_run_traces'
-        && version !== '027_publication_outbox_delivery'
-        && version !== '028_report_revision_impact_reader'
-        && version !== '029_source_revision_observations'
-        && version !== '030_l2_source_revision_grounding_gate'
-        && version !== '031_source_revision_review_candidate_reader'
-        && version !== '032_source_revision_freshness_transitions'
-        && version !== '033_source_revision_freshness_run_state'
-        && version !== '034_source_revision_withdrawn_freshness'
-        && version !== '035_l3_advance_review_pending');
+      const beforeRelationMigration = migrationsBefore(migrations, '009_evidence_reference_updates_relation');
       await applyMigrations(migrationDatabase.executor, beforeRelationMigration);
 
       await migrationDatabase.executor.query(
@@ -215,10 +159,11 @@ describe('DATA-01 migrations', () => {
         '029_source_revision_observations',
         '030_l2_source_revision_grounding_gate',
         '031_source_revision_review_candidate_reader',
-      '032_source_revision_freshness_transitions',
-      '033_source_revision_freshness_run_state',
-      '034_source_revision_withdrawn_freshness',
-      '035_l3_advance_review_pending',
+        '032_source_revision_freshness_transitions',
+        '033_source_revision_freshness_run_state',
+        '034_source_revision_withdrawn_freshness',
+        '035_l3_advance_review_pending',
+        '036_accounts',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -368,6 +313,7 @@ describe('DATA-01 migrations', () => {
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
       '035_l3_advance_review_pending',
+      '036_accounts',
     ]);
   });
 
@@ -401,12 +347,13 @@ describe('DATA-01 migrations', () => {
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
       '035_l3_advance_review_pending',
+      '036_accounts',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '35');
+    assert.equal(count.rows[0]?.count, '36');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -425,7 +372,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 035_l3_advance_review_pending/,
+      /Cannot apply migration 000_late_backfill before already applied migration 036_accounts/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -467,6 +414,7 @@ describe('DATA-01 migrations', () => {
       { version: '033_source_revision_freshness_run_state' },
       { version: '034_source_revision_withdrawn_freshness' },
       { version: '035_l3_advance_review_pending' },
+      { version: '036_accounts' },
     ]);
   });
 
@@ -497,6 +445,7 @@ describe('DATA-01 migrations', () => {
       '033_source_revision_freshness_run_state',
       '034_source_revision_withdrawn_freshness',
       '035_l3_advance_review_pending',
+      '036_accounts',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -511,14 +460,7 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== readerMigration.version
-          && version !== '029_source_revision_observations'
-          && version !== '030_l2_source_revision_grounding_gate'
-          && version !== '031_source_revision_review_candidate_reader'
-          && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsBefore(migrations, readerMigration.version));
       const snapshotExistingRoles = async () => {
         const roleState = await migrationDatabase.executor.query<{ state: string }>(
           `SELECT rolname || ':' || rolinherit || ':' || rolcanlogin || ':' || rolsuper
@@ -582,13 +524,7 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotExistingRoles();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '029_source_revision_observations'
-          && version !== '030_l2_source_revision_grounding_gate'
-          && version !== '031_source_revision_review_candidate_reader'
-          && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsThrough(migrations, readerMigration.version));
       assert.deepEqual(applied.applied, ['028_report_revision_impact_reader']);
       assert.deepEqual(await snapshotExistingRoles(), before,
         'migration 028 does not broaden or alter an existing role');
@@ -623,13 +559,7 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== observationMigration.version
-          && version !== '030_l2_source_revision_grounding_gate'
-          && version !== '031_source_revision_review_candidate_reader'
-          && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsBefore(migrations, observationMigration.version));
       const snapshotExistingSecurity = async () => {
         const roles = await migrationDatabase.executor.query<{ state: string }>(
           `SELECT rolname || ':' || rolinherit || ':' || rolcanlogin || ':' || rolsuper
@@ -684,12 +614,7 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotExistingSecurity();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '030_l2_source_revision_grounding_gate'
-          && version !== '031_source_revision_review_candidate_reader'
-          && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsThrough(migrations, observationMigration.version));
       assert.deepEqual(applied.applied, ['029_source_revision_observations']);
       assert.deepEqual(await snapshotExistingSecurity(), before,
         'migration 029 does not change existing role attributes, memberships, schema grants, or object grants');
@@ -814,12 +739,7 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== gateMigration.version
-          && version !== '031_source_revision_review_candidate_reader'
-          && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsBefore(migrations, gateMigration.version));
 
       const snapshotUnchangedAccess = async () => {
         const [roles, schemas, memberships, otherObjects, otherObservationGrants] = await Promise.all([
@@ -890,11 +810,7 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotUnchangedAccess();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '031_source_revision_review_candidate_reader'
-          && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsThrough(migrations, gateMigration.version));
       assert.deepEqual(applied.applied, ['030_l2_source_revision_grounding_gate']);
       assert.deepEqual(await snapshotUnchangedAccess(), before,
         'migration 030 changes no existing role, membership, schema, or non-L2 table grants');
@@ -959,11 +875,7 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== candidateMigration.version
-          && version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsBefore(migrations, candidateMigration.version));
 
       const snapshotExistingSecurity = async () => {
         const [roles, schemas, memberships, otherObjects, otherObservationGrants] = await Promise.all([
@@ -1038,10 +950,7 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotExistingSecurity();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '032_source_revision_freshness_transitions'
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsThrough(migrations, candidateMigration.version));
       assert.deepEqual(applied.applied, ['031_source_revision_review_candidate_reader']);
       assert.deepEqual(await snapshotExistingSecurity(), before,
         'migration 031 changes no role, membership, schema, unrelated object, or other-role grant');
@@ -1133,10 +1042,7 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== transitionMigration.version
-          && version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsBefore(migrations, transitionMigration.version));
 
       const snapshotPriorAccess = async () => {
         const [roles, memberships, transitionGrants, observationGrants] = await Promise.all([
@@ -1203,9 +1109,7 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotPriorAccess();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '033_source_revision_freshness_run_state'
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsThrough(migrations, transitionMigration.version));
       assert.deepEqual(applied.applied, ['032_source_revision_freshness_transitions']);
       assert.deepEqual(await snapshotPriorAccess(), before,
         'migration 032 creates no role or membership and preserves every pre-existing grant');
@@ -1259,8 +1163,7 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== withdrawnMigration.version
-          && version !== '035_l3_advance_review_pending'));
+        migrationsBefore(migrations, withdrawnMigration.version));
 
       const accessSnapshot = async () => {
         const [roles, memberships, grants] = await Promise.all([
@@ -1308,7 +1211,7 @@ describe('DATA-01 migrations', () => {
 
       const before = await accessSnapshot();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '035_l3_advance_review_pending'));
+        migrationsThrough(migrations, withdrawnMigration.version));
       assert.deepEqual(applied.applied, ['034_source_revision_withdrawn_freshness']);
       assert.deepEqual(await accessSnapshot(), before,
         'migration 034 adds no role, membership, or new grant');
@@ -2165,9 +2068,7 @@ describe('DATA-01 migrations', () => {
     const migrationDatabase = await createTestDatabase();
     try {
       await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== runStateMigration.version
-          && version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsBefore(migrations, runStateMigration.version));
 
       const snapshotPriorAccess = async () => {
         const [roles, memberships, observationGrants] = await Promise.all([
@@ -2214,8 +2115,7 @@ describe('DATA-01 migrations', () => {
 
       const before = await snapshotPriorAccess();
       const applied = await applyMigrations(migrationDatabase.executor,
-        migrations.filter(({ version }) => version !== '034_source_revision_withdrawn_freshness'
-          && version !== '035_l3_advance_review_pending'));
+        migrationsThrough(migrations, runStateMigration.version));
       assert.deepEqual(applied.applied, ['033_source_revision_freshness_run_state']);
       assert.deepEqual(await snapshotPriorAccess(), before,
         'migration 033 creates no role or membership and preserves every observation grant');
@@ -2314,6 +2214,22 @@ async function readEvidenceRelationRoleSnapshot(testDatabase: TestDatabase) {
      ORDER BY role_name`,
   );
   return { roleAttributes: roleAttributes.rows, relationPrivileges: relationPrivileges.rows };
+}
+
+function migrationsThrough(migrations: readonly SqlMigration[], version: string): SqlMigration[] {
+  const maximum = migrationOrdinal(version);
+  return migrations.filter((migration) => migrationOrdinal(migration.version) <= maximum);
+}
+
+function migrationsBefore(migrations: readonly SqlMigration[], version: string): SqlMigration[] {
+  const boundary = migrationOrdinal(version);
+  return migrations.filter((migration) => migrationOrdinal(migration.version) < boundary);
+}
+
+function migrationOrdinal(version: string): number {
+  const prefix = version.slice(0, 3);
+  if (!/^\d{3}$/u.test(prefix)) throw new Error(`Invalid migration version: ${version}`);
+  return Number(prefix);
 }
 
 function sha256(value: string): string {
