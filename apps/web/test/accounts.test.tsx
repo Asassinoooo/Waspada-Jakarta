@@ -71,6 +71,8 @@ test("session parser rejects extra fields, malformed users, and authenticated se
   assert.throws(() => parseSessionEnvelope({ ...anonymousSession, access_token: "should never be returned" }), AccountPayloadError);
   assert.throws(() => parseSessionEnvelope({ ...userSession, csrf_token: null }), AccountPayloadError);
   assert.throws(() => parseSessionEnvelope({ ...userSession, user: { ...user, email: "bad" } }), AccountPayloadError);
+  assert.equal(parseSessionEnvelope({ ...userSession, user: { ...user, email: "a".repeat(307) + "@example.test" } }).user?.email.length, 320);
+  assert.throws(() => parseSessionEnvelope({ ...userSession, user: { ...user, email: "a".repeat(308) + "@example.test" } }), AccountPayloadError);
   assert.throws(() => parseSessionEnvelope({ ...anonymousSession, csrf_token: "not-anonymous" }), AccountPayloadError);
 });
 
@@ -108,6 +110,17 @@ test("Google start is a same-origin POST with its required request marker and a 
   const untrustedClient = createAccountClient(async () => jsonResponse({ authorization_url: "https://attacker.example/collect" }));
   await assert.rejects(untrustedClient.startGoogleLogin("#admin"), AccountPayloadError);
   await assert.rejects(client.startGoogleLogin("#external" as "#akun"), AccountPayloadError);
+
+  for (const authorizationUrl of [
+    "https://accounts.google.com/",
+    "https://accounts.google.com/o/oauth2/v2/auth/extra?state=opaque",
+    "https://user@accounts.google.com/o/oauth2/v2/auth?state=opaque",
+    "https://accounts.google.com:8443/o/oauth2/v2/auth?state=opaque",
+    "https://accounts.google.com/o/oauth2/v2/auth?state=opaque#external",
+  ]) {
+    const invalidGoogleTarget = createAccountClient(async () => jsonResponse({ authorization_url: authorizationUrl }));
+    await assert.rejects(invalidGoogleTarget.startGoogleLogin("#akun"), AccountPayloadError, authorizationUrl);
+  }
 });
 
 test("synthetic consent URLs are accepted only for the exact development loopback target", () => {
@@ -253,8 +266,16 @@ test("account loading and failure are non-blocking, and anonymous onboarding has
   assert.match(guest, /Status laporan punya arti berbeda/u);
   assert.equal(ACCOUNT_ONBOARDING_STEPS.length, 3);
   assert.match(ACCOUNT_ONBOARDING_STEPS[1]?.body ?? "", /menyimpan kategori minat di perangkat ini/u);
-  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /Peran akun ditetapkan oleh server/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.title ?? "", /tanpa mengirim minat/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /issuer dan subject/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /Persetujuan pada demo lokal bersifat sintetis/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /peran yang ditetapkan server/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /versi dan waktu penyelesaian/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /Minat tetap di browser/u);
   assert.doesNotMatch(guest, /<select|Pilih peran/u);
+
+  const anonymousAccount = renderToStaticMarkup(<AccountPage screen="account" sessionState={sessionState(anonymousSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
+  assert.match(anonymousAccount, /href="#masuk\?return_to=%23akun"/u);
 });
 
 test("profile shows the server role as read-only and keeps the local-interest destination", () => {

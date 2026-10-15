@@ -82,7 +82,7 @@ function parseAccountUser(value: unknown): AccountUser {
   if (
     typeof value.id !== "string" || value.id.length < 1 || value.id.length > MAX_ID_LENGTH ||
     typeof value.display_name !== "string" || value.display_name.length < 1 || value.display_name.length > 200 ||
-    typeof value.email !== "string" || value.email.length < 3 || value.email.length > 254 || !value.email.includes("@") ||
+    typeof value.email !== "string" || value.email.length < 3 || value.email.length > 320 || !value.email.includes("@") ||
     !isRole(value.role) ||
     typeof value.active !== "boolean" ||
     (value.onboarding_version !== 0 && value.onboarding_version !== 1) ||
@@ -237,9 +237,11 @@ function isAllowedAuthorizationUrl(value: string): boolean {
   if (
     target.protocol === "https:" &&
     target.hostname === "accounts.google.com" &&
+    target.pathname === "/o/oauth2/v2/auth" &&
     target.username === "" &&
     target.password === "" &&
-    target.port === ""
+    target.port === "" &&
+    target.hash === ""
   ) {
     return true;
   }

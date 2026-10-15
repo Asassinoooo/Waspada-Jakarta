@@ -16,7 +16,7 @@ export function HelpPage({ section, showLocalPipeline = false, storage, onCleare
         <p className="experience-kicker">Bantuan · informasi dan kontrol</p>
         <h1 id="help-page-title">Panduan dan privasi</h1>
         <p className="experience-lead">
-          Pelajari cara membaca laporan dan periksa data Waspada yang tersimpan di browser ini.
+          Pelajari cara membaca laporan, data lokal browser, serta data akun yang disimpan layanan jika Anda masuk.
         </p>
         <nav className="help-page__navigation" aria-label="Bagian bantuan">
           <a href="#panduan" aria-current={section === "panduan" ? "location" : undefined}>Cara membaca laporan</a>

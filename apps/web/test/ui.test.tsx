@@ -185,7 +185,7 @@ test("account hashes retain four primary groups and add one utility entry", () =
   const header = renderToStaticMarkup(<SiteHeader route={{ screen: "account" }} context={liveContext} />);
   const primaryNav = header.match(/<nav class="primary-nav" aria-label="Navigasi utama">([\s\S]*?)<\/nav>/u)?.[1] ?? "";
   assert.equal((primaryNav.match(/<a\b/gu) ?? []).length, 4);
-  assert.match(header, /href="#masuk" aria-current="page">Masuk \/ Akun<\/a>/u);
+  assert.match(header, /href="#akun" aria-current="page">Akun<\/a>/u);
 });
 
 test("integrated UX routes preserve public map and encoded detail targets", () => {

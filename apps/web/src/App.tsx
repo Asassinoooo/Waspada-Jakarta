@@ -222,7 +222,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
         </div>
         <div className="site-header__tools">
           <span className="mode-chip">{modeText}</span>
-          <a className="account-nav-link" href="#masuk" aria-current={onAccount ? "page" : undefined}>Masuk / Akun</a>
+          <a className="account-nav-link" href="#akun" aria-current={onAccount ? "page" : undefined}>Akun</a>
         </div>
       </header>
       <section

@@ -120,7 +120,7 @@ export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPag
   const content = (
     <>
       <header className="experience-intro" aria-labelledby="privacy-title">
-        <p className="experience-kicker">Kontrol privasi · tanpa akun</p>
+        <p className="experience-kicker">Kontrol privasi · akun opsional</p>
         <PageTitle id="privacy-title">Data Waspada di browser ini</PageTitle>
         <p className="experience-lead">
           Anda dapat memeriksa dua jenis data lokal yang dikelola aplikasi dan menghapusnya
@@ -145,6 +145,26 @@ export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPag
         </p>
         <p>Ringkasan pembaruan disimpan sementara selama halaman digunakan. Nilai penanda tidak ditampilkan.</p>
         <StorageItems items={items} result={false} />
+      </section>
+
+      <section className="experience-card experience-card--wide" aria-labelledby="privacy-account-title">
+        <p className="experience-kicker">Identitas dan sesi akun</p>
+        <SectionTitle id="privacy-account-title">Jika Anda masuk dengan Google</SectionTitle>
+        <p>
+          SDK Google tidak dimuat otomatis. Jika layanan Google resmi telah disiapkan, Google hanya
+          dihubungi setelah Anda memilih masuk dengan Google. Persetujuan pada demo lokal bersifat
+          sintetis dan tidak menghubungi Google. Setelah berhasil masuk lewat Google resmi, layanan
+          menyimpan issuer dan subject Google sebagai identitas akun, nama dan email, peran yang
+          ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Minat Anda
+          tetap di browser dan tidak dikirim saat masuk.
+        </p>
+        <p>
+          Browser menerima cookie sesi HttpOnly; token sesi tidak disimpan di localStorage atau
+          sessionStorage. Tautan Keluar di halaman Akun mencabut sesi web yang sedang digunakan dan
+          menghapus cookie sesi, tetapi tidak menghapus akun, profil, atau pengenalan yang tersimpan
+          di server.
+        </p>
+        <a className="text-link" href="#akun">Periksa halaman akun</a>
       </section>
 
       <section className="experience-card experience-card--wide" aria-labelledby="privacy-network-title">
@@ -196,6 +216,7 @@ export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPag
           Data browser lain, laporan pada sumber, dan log layanan atau hosting tidak
           dihapus. Tidak ada penghapusan akun atau langganan notifikasi di sini.
         </p>
+        <p>Reset lokal ini tidak mengeluarkan akun atau mencabut sesi server. Untuk keluar, gunakan tombol Keluar di halaman Akun.</p>
 
         {result && (
           <div

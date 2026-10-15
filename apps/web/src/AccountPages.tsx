@@ -149,8 +149,8 @@ export const ACCOUNT_ONBOARDING_STEPS = [
     body: "Anda dapat menyimpan kategori minat di perangkat ini untuk membuat ringkasan. Waspada tidak meminta lokasi perangkat dan tidak mengirim minat secara otomatis.",
   },
   {
-    title: "Akun hanya menyimpan penyelesaian pengenalan",
-    body: "Akun menambahkan profil dan sesi. Penyelesaian pengenalan menyimpan versi serta waktunya; pilihan minat tetap lokal. Peran akun ditetapkan oleh server dan tidak dapat dipilih saat mendaftar.",
+    title: "Selesaikan pengenalan tanpa mengirim minat",
+    body: "Untuk akun yang dibuat melalui Google resmi, layanan menyimpan issuer dan subject sebagai identitas akun, nama dan email, peran yang ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Persetujuan pada demo lokal bersifat sintetis dan tidak menghubungi Google. Minat tetap di browser dan tidak dikirim saat masuk.",
   },
 ] as const;
 

@@ -33,17 +33,34 @@
 }
 
 .account-page__intro {
+  min-width: 0;
+  max-width: 100%;
   margin: 0 0 1rem;
 }
 
 .account-page__intro h1 {
+  min-width: 0;
   max-width: 24ch;
+  overflow-wrap: anywhere;
+}
+
+.account-page > .state-panel,
+.account-page > .state-panel > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .account-flow {
   display: grid;
   min-width: 0;
   gap: 1rem;
+}
+
+.account-flow > *,
+.account-card > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .account-card,
@@ -82,8 +99,22 @@
 }
 
 .account-actions > * {
+  min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.account-card h2,
+.account-card p,
+.account-card a,
+.account-card button,
+.account-card span,
+.account-card strong,
+.account-card dt,
+.account-card dd {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .account-privacy-link {
