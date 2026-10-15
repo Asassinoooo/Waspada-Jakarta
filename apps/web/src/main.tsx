@@ -8,6 +8,7 @@ import "./context-sources.css";
 import "./unified-source-explorer.css";
 import "./experience.css";
 import "./help-page.css";
+import "./account.css";
 import "./landing.css";
 
 const rootElement = document.getElementById("root");

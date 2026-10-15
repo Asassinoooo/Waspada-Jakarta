@@ -11,6 +11,8 @@ import { SourcePointMap } from "./SourcePointMap.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
 import { Landing } from "./Landing.js";
 import { HelpPage } from "./HelpPage.js";
+import { AccountAccessGate, AccountPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
+import { accountClient, type AccountReturnTarget } from "./account-client.js";
 
 const AdminDashboard = lazy(() => import("./admin-entry.js"));
 
@@ -20,6 +22,9 @@ type Route =
   | { screen: "help"; section?: "panduan" | "privasi" }
   | { screen: "preferences" }
   | { screen: "updates" }
+  | { screen: "login"; returnTo?: AccountReturnTarget }
+  | { screen: "onboarding" }
+  | { screen: "account" }
   | { screen: "review" }
   | { screen: "source-preview" }
   | { screen: "local-pipeline" }
@@ -128,6 +133,17 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
 
 export function routeFromHash(hash: string): Route {
   if (hash === "" || hash === "#beranda") return { screen: "landing" };
+  if (hash === "#masuk") return { screen: "login" };
+  if (hash.startsWith("#masuk?")) {
+    const params = new URLSearchParams(hash.slice("#masuk?".length));
+    const returnTo = params.get("return_to");
+    return {
+      screen: "login",
+      ...(returnTo === "#akun" || returnTo === "#mulai" || returnTo === "#admin" || returnTo === "#tinjau-bukti" ? { returnTo } : {}),
+    };
+  }
+  if (hash === "#mulai") return { screen: "onboarding" };
+  if (hash === "#akun") return { screen: "account" };
   if (hash === "#bantuan") return { screen: "help" };
   if (hash === "#panduan") return { screen: "help", section: "panduan" };
   if (hash === "#privasi") return { screen: "help", section: "privasi" };
@@ -150,8 +166,9 @@ export function routeFromHash(hash: string): Route {
 
 export function SiteHeader({ route, context = null }: { route: Route; context?: PublicContext | null }) {
   const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen.startsWith("detail");
-  const onForYou = route.screen === "preferences" || route.screen === "updates";
+  const onForYou = route.screen === "preferences" || route.screen === "updates" || route.screen === "onboarding" || route.screen === "account";
   const onHelp = route.screen === "help";
+  const onAccount = route.screen === "login" || route.screen === "onboarding" || route.screen === "account";
   const datasetMode = context?.dataset_mode;
   const modeText = datasetMode === "demo"
     ? "Mode demo"
@@ -203,7 +220,10 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
             </nav>
           )}
         </div>
-        <span className="mode-chip">{modeText}</span>
+        <div className="site-header__tools">
+          <span className="mode-chip">{modeText}</span>
+          <a className="account-nav-link" href="#masuk" aria-current={onAccount ? "page" : undefined}>Masuk / Akun</a>
+        </div>
       </header>
       <section
         className={"demo-banner" + (datasetMode === "live" ? " demo-banner--live" : datasetMode === undefined ? " demo-banner--unknown" : "")}
@@ -239,6 +259,15 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
+  const [routeActivation, setRouteActivation] = useState(0);
+  const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  const [sessionRevision, setSessionRevision] = useState(0);
+  const [sessionResult, setSessionResult] = useState<{
+    scope: "login" | "onboarding" | "account" | "admin" | "review";
+    activation: number;
+    revision: number;
+    state: AccountSessionState;
+  } | null>(null);
   const [localDataRevision, setLocalDataRevision] = useState(0);
   const [retryKey, setRetryKey] = useState(0);
   const contextRequestKey = route.screen + ":" + retryKey;
@@ -259,6 +288,61 @@ export function App() {
   const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>(() =>
     new URLSearchParams(window.location.search).get("panel") === "map" ? "map" : "list",
   );
+  const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review"
+    ? route.screen
+    : null;
+  const sessionState: AccountSessionState = sessionScope === null || sessionResult?.scope !== sessionScope || sessionResult.activation !== routeActivation || sessionResult.revision !== sessionRevision
+    ? { status: "loading", session: null }
+    : sessionResult.state;
+  const refreshAccountSession = useCallback(() => setSessionRevision((current) => current + 1), []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const updateNarrowScreen = () => setNarrowScreen(media.matches);
+    updateNarrowScreen();
+    media.addEventListener("change", updateNarrowScreen);
+    return () => media.removeEventListener("change", updateNarrowScreen);
+  }, []);
+
+  useEffect(() => {
+    if (sessionScope === null) return;
+    const controller = new AbortController();
+    let cancelled = false;
+    accountClient.getSession(controller.signal)
+      .then((session) => {
+        if (cancelled) return;
+        setSessionResult({
+          scope: sessionScope,
+          activation: routeActivation,
+          revision: sessionRevision,
+          state: session.status === "anonymous"
+            ? { status: "anonymous", session }
+            : { status: "authenticated", session },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSessionResult({ scope: sessionScope, activation: routeActivation, revision: sessionRevision, state: { status: "error", session: null } });
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [routeActivation, sessionScope, sessionRevision]);
+
+  useEffect(() => {
+    if (sessionScope !== "admin" && sessionScope !== "review") return;
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") refreshAccountSession();
+    };
+    const interval = window.setInterval(refreshAccountSession, 60_000);
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, [refreshAccountSession, sessionScope]);
   const refreshCurrentEvents = useCallback(async () => {
     const page = await listEvents();
     setEvents(page.data);
@@ -269,6 +353,7 @@ export function App() {
     const updateRoute = () => {
       // In-page focus targets preserve the selected public/admin screen.
       if (window.location.hash === "#main-content" || window.location.hash === "#admin-workspace") return;
+      setRouteActivation((current) => current + 1);
       setRoute(routeFromHash(window.location.hash));
     };
     if (!window.location.hash) window.history.replaceState(null, "", "#beranda");
@@ -416,9 +501,14 @@ export function App() {
     : undefined;
 
   if (route.screen === "admin") {
+    const gate = <AccountAccessGate shell="admin" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />;
+    if (narrowScreen || sessionState.status !== "authenticated" || !hasProtectedShellAccess("admin", sessionState.session)) {
+      return <div className="app-shell app-shell--admin">{gate}</div>;
+    }
     return (
       <div className="app-shell app-shell--admin">
         <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
+        <nav className="admin-shell-tools" aria-label="Akun dan layanan publik"><a href="#akun">Akun administrator</a><a href="#beranda">Kembali ke layanan publik</a></nav>
         <Suspense fallback={
           <main id="main-content" tabIndex={-1} className="main-shell">
             <section className="state-panel" role="status">
@@ -485,6 +575,9 @@ export function App() {
       )}
       {route.screen === "preferences" && <Preferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />}
       {route.screen === "updates" && <UpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />}
+      {route.screen === "login" && <AccountPage screen="login" sessionState={sessionState} returnTo={route.returnTo} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
+      {route.screen === "onboarding" && <AccountPage screen="onboarding" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
+      {route.screen === "account" && <AccountPage screen="account" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
       {route.screen === "help" && (
         <HelpPage
           section={route.section}
@@ -492,7 +585,9 @@ export function App() {
           onCleared={() => setLocalDataRevision((revision) => revision + 1)}
         />
       )}
-      {route.screen === "review" && <ModeratorReview />}
+      {route.screen === "review" && (sessionState.status === "authenticated" && hasProtectedShellAccess("review", sessionState.session)
+        ? <ModeratorReview />
+        : <AccountAccessGate shell="review" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
           <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />
@@ -518,8 +613,8 @@ export function App() {
         </span>
         <a href="#jelajah">Kembali ke jelajah</a>
         <a href="#bantuan">Bantuan</a>
-        <a href="#admin">Pengelola · demo</a>
-        <a href="#tinjau-bukti">Tinjau bukti · demo · baca saja</a>
+        <a href="#admin">Ruang administrator</a>
+        <a href="#tinjau-bukti">Tinjau bukti · baca saja</a>
       </footer>
     </div>
   );

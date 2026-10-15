@@ -144,10 +144,10 @@ test("combined help keeps one main landmark and section-addressable guide and pr
   assert.match(html, /Tinjau penghapusan data/u);
   assert.doesNotMatch(html, /private interest value/u);
   assert.doesNotMatch(html, /Inspektor proses lokal/u);
-  assert.match(html, /href="#admin">Pengelola · demo/u);
-  assert.match(html, /href="#tinjau-bukti">Tinjau bukti · demo · baca saja/u);
+  assert.match(html, /href="#admin">Ruang administrator/u);
+  assert.match(html, /href="#tinjau-bukti">Tinjau bukti · baca saja/u);
   assert.match(html, /<h2 id="operator-links-title">Untuk pengelola<\/h2>/u);
-  assert.match(html, /Tampilan pengelolaan dan tinjau ini bersifat baca saja/u);
+  assert.match(html, /memerlukan akun administrator/u);
 
   const serverHelp = renderToStaticMarkup(<HelpPage showLocalPipeline />);
   assert.doesNotMatch(serverHelp, /Inspektor proses lokal|pipeline-lokal/u);

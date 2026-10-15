@@ -175,6 +175,19 @@ test("update centre has direct hash navigation and an accessible current navigat
   assert.match(header, /aria-label="Untuk Anda"><a href="#ringkasan-saya">Minat tersimpan<\/a><a href="#pembaruan" aria-current="page">Pembaruan<\/a>/);
 });
 
+test("account hashes retain four primary groups and add one utility entry", () => {
+  assert.deepEqual(routeFromHash("#masuk"), { screen: "login" });
+  assert.deepEqual(routeFromHash("#masuk?return_to=%23admin"), { screen: "login", returnTo: "#admin" });
+  assert.deepEqual(routeFromHash("#masuk?return_to=https%3A%2F%2Fexample.test"), { screen: "login" });
+  assert.deepEqual(routeFromHash("#mulai"), { screen: "onboarding" });
+  assert.deepEqual(routeFromHash("#akun"), { screen: "account" });
+
+  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "account" }} context={liveContext} />);
+  const primaryNav = header.match(/<nav class="primary-nav" aria-label="Navigasi utama">([\s\S]*?)<\/nav>/u)?.[1] ?? "";
+  assert.equal((primaryNav.match(/<a\b/gu) ?? []).length, 4);
+  assert.match(header, /href="#masuk" aria-current="page">Masuk \/ Akun<\/a>/u);
+});
+
 test("integrated UX routes preserve public map and encoded detail targets", () => {
   assert.deepEqual(routeFromHash(""), { screen: "landing" });
   assert.deepEqual(routeFromHash("#beranda"), { screen: "landing" });
