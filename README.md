@@ -2,6 +2,8 @@
 
 Start with the **[Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md)** for the complete project scope, requirements, milestones and acceptance gates. The [implementation backlog](docs/IMPLEMENTATION_BACKLOG.md) defines the work packages. Local agent instructions are retained in the Git-ignored `AGENTS.md` file.
 
+For a new coding agent or developer continuing the project, use **[HANDOFF.md](HANDOFF.md)**: a tool-independent guide to the current baseline, implemented boundaries, startup, historical test evidence, outstanding gates and next local work. It does not depend on access to earlier chats.
+
 This repository contains the engineering plan and partial prototype. The published-incident demo uses synthetic scenarios and read-only moderator review. A separate **Demo sumber** page adds a dated real OpenStreetMap facility snapshot, an interactive OSM basemap and explicit bounded OSM/PetaBencana source requests. Source previews are unreviewed and never enter published incident APIs. The five layers also have locally tested ingestion, grounding, bounded investigation and publication components; production model providers, database connections, authenticated publication and hosted deployment remain inactive. Broader source rights and human-reviewed evaluation remain pending. Local development/testing uses WSL; see the [bootstrap guide](docs/BOOTSTRAP.md) and [delivery log](docs/DELIVERY_LOG.md).
 
 ## Web navigation and admin demo

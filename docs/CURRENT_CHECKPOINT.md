@@ -1,5 +1,11 @@
 # Waspada Jakarta — Current Checkpoint
 
+**Current continuation guide — 18 October 2026:** read [the software plan](../SOFTWARE_DEVELOPMENT_PLAN.md) first, then [HANDOFF.md](../HANDOFF.md). The universal handoff supersedes the stale continuation summary below while preserving its historical evidence. Latest accepted implementation is AUTH-01 at `d007d02f8f277e64ec7ea10f15b82a80c414b860` (15 October): web/Android accounts and onboarding, role-gated web shells, durable synthetic account demo, with real Google/hosted/device gates still open. The repository and remote were checked on18October; application tests/services were not rerun for this documentation task. [Latest implementation evidence](assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md).
+
+## Historical checkpoint entries
+
+The dated text below records prior stages. Statements about missing authentication, shorter model timeouts, unmerged Flutter or older test totals may be superseded by the later software plan, ADR-057/059 and handoff. Do not interpret old assigned tasks as currently running work.
+
 **Checkpoint date:** 12 October 2026
 
 **Source-map clustering accepted:** [UI-04](assignments/UI-04-SOURCE-MAP-CLUSTERS.md) is integrated at `3c80de9e89a6e63a12e85b63fc6f7f085282f1d9`, preserving four Luna/max task commits. Unified-mode groups remain separated by provider, stable during pan, and lossless; zoom 16+ shows individual records. Selected records stay individual, keyboard activation returns map focus, and display-only symbol spacing resolves collisions without moving source coordinates or zoom anchors. Root web126/126, workspace/evaluation typecheck, Vite build, local smoke and twelve mocked browser groups passed. A separate Luna/max code/visual reviewer passed map21/21 and found no remaining blockers after overlap and source-label fixes. Viewport-edge symbols can be clipped; panning and the linked list remain available. Source caps stay100 per OSM/PetaBencana plus30 USGS; no API/dependency/backend/provider/hosting change occurred.
