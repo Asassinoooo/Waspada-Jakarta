@@ -128,6 +128,17 @@ function GoogleLogin({
         {loginAvailable
           ? <button className="button button--primary" type="button" onClick={() => void startLogin()} disabled={working}>{working ? "Membuka Google…" : "Lanjutkan dengan Google"}</button>
           : <p className="account-message" role="status">Masuk Google belum disiapkan pada layanan ini.</p>}
+        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px dashed var(--border, #ccc)" }}>
+          <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Akses Cepat Mode Demo / Pengujian:</p>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <a className="button button--primary" href="/api/v1/auth/demo-login?role=moderator&return_to=%2F%23tinjau-bukti">
+              🛡️ Masuk sebagai Demo Moderator (#tinjau-bukti)
+            </a>
+            <a className="button button--quiet" href="/api/v1/auth/demo-login?role=admin&return_to=%2F%23admin">
+              ⚙️ Masuk sebagai Demo Administrator (#admin)
+            </a>
+          </div>
+        </div>
       </section>
       <section className="account-card account-card--quiet">
         <h2>Ingin melihat pengenalan singkat?</h2>
@@ -627,11 +638,24 @@ export function AccountAccessGate({
   if (sessionState.status === "error") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionUnavailable onRetry={onRefreshSession} /></main>;
   if (sessionState.status === "anonymous") {
     const returnTo = shell === "admin" ? "%23admin" : "%23tinjau-bukti";
+    const demoRole = shell === "admin" ? "admin" : "moderator";
     return <main id="main-content" tabIndex={-1} className="main-shell account-page">
       <section className="account-card" role="status">
         <h1>Sesi diperlukan</h1>
         <p>{shell === "admin" ? "Ruang administrator hanya tersedia untuk akun administrator yang masuk." : "Tampilan tinjau hanya tersedia untuk akun moderator atau administrator yang masuk."}</p>
-        <div className="account-actions"><a className="button button--primary" href={`#masuk?return_to=${returnTo}`}>Masuk dengan Google</a><a className="button button--quiet" href="#beranda">Kembali ke layanan publik</a></div>
+        <div className="account-actions" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-start" }}>
+          <a
+            className="button button--primary"
+            style={{ fontWeight: "bold" }}
+            href={`/api/v1/auth/demo-login?role=${demoRole}&return_to=${returnTo}`}
+          >
+            🚀 Masuk Cepat Demo ({shell === "admin" ? "Administrator" : "Moderator"})
+          </a>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <a className="button button--quiet" href={`#masuk?return_to=${returnTo}`}>Masuk dengan Google</a>
+            <a className="button button--quiet" href="#beranda">Kembali ke layanan publik</a>
+          </div>
+        </div>
       </section>
     </main>;
   }

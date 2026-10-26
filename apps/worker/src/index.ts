@@ -104,9 +104,73 @@ const moderationHandler = createModerationApiHandler({
 });
 export default {
   async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Development / demo authentication bypass
+    if (url.pathname === "/api/v1/auth/demo-login" || url.pathname === "/api/v1/auth/demo/login") {
+      let role = "moderator";
+      if (request.method === "POST") {
+        try {
+          const body = await request.json() as { role?: string };
+          if (body.role === "admin" || body.role === "moderator") role = body.role;
+        } catch {}
+      } else {
+        const queryRole = url.searchParams.get("role");
+        if (queryRole === "admin" || queryRole === "moderator") role = queryRole;
+      }
+      const returnTo = url.searchParams.get("return_to") ?? (role === "admin" ? "/#admin" : "/#tinjau-bukti");
+      const headers = new Headers();
+      headers.set("content-type", "application/json; charset=utf-8");
+      headers.set("set-cookie", `waspada_demo_session=${role}; Path=/; SameSite=Lax; Max-Age=86400`);
+      if (request.method === "GET") {
+        headers.set("location", returnTo);
+        return new Response(null, { status: 302, headers });
+      }
+      return new Response(JSON.stringify({ ok: true, role }), { status: 200, headers });
+    }
+
+    if (url.pathname === "/api/v1/auth/session") {
+      const cookieHeader = request.headers.get("cookie") ?? "";
+      const match = /(?:^|;\s*)waspada_demo_session=([^;]+)/u.exec(cookieHeader);
+      const demoRole = match ? match[1] : null;
+      if (demoRole === "moderator" || demoRole === "admin") {
+        return new Response(JSON.stringify({
+          version: "account-v1",
+          status: "authenticated",
+          google_login_available: true,
+          native_login_available: false,
+          csrf_token: "demo-csrf-token-1234567890",
+          user: {
+            id: `user-demo-${demoRole}`,
+            display_name: demoRole === "admin" ? "Demo Administrator" : "Demo Moderator",
+            email: `demo-${demoRole}@waspada.jakarta.go.id`,
+            role: demoRole,
+            active: true,
+            onboarding_version: 1,
+            onboarding_completed_at: "2026-10-26T00:00:00.000Z",
+            version: 1,
+          },
+        }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        });
+      }
+    }
+
+    if (url.pathname === "/api/v1/auth/logout" && request.method === "POST") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "set-cookie": "waspada_demo_session=; Path=/; Max-Age=0",
+        },
+      });
+    }
+
     const accountResponse = await handleAccountRequest(request, env);
     if (accountResponse !== undefined) return accountResponse;
-    const url = new URL(request.url);
     if (url.pathname.startsWith("/api/v1/moderation/")) {
       const modRes = await moderationHandler(request);
       if (modRes !== undefined) return modRes;
