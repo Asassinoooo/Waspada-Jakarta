@@ -4,6 +4,7 @@ import {
   type PetabencanaParseResult,
   type PetabencanaReport,
 } from "./petabencana-geojson.js";
+export { parsePetabencanaGeoJson as parsePetaBencanaReports } from "./petabencana-geojson.js";
 import { preparePermittedText, type PreparedText } from "./text-preparation.js";
 import { chunkPreparedText, type EvidenceChunkInput } from "./evidence-chunking.js";
 

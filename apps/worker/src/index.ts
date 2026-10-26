@@ -17,15 +17,100 @@ import { handleFreshnessDueScheduleTrigger } from "./runtime/freshness-due-sched
 import { createSourcePreviewHandler } from "./layers/l4-application-integration/source-preview-api.js";
 import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
 import { handleAccountRequest } from "./runtime/account-runtime.js";
+import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
+import { generateProposalFromReport, type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
+import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
+import { createNewsPollRuntime } from "./runtime/news-poll-runtime.js";
 
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
+// In-memory proposal and chunk store for development and live demonstration
+const activeProposals = new Map<string, EventProposalDto>();
+const activeChunks = new Map<string, readonly StoredEvidenceChunk[]>();
+
+// Seed initial demo proposals generated from verified report chunks
+const sampleReports: StoredReportRevision[] = [
+  {
+    report_revision_id: "report-demo-flood-kemang",
+    source_id: "petabencana",
+    canonical_url: "https://petabencana.id/report/flood-kemang-01",
+    permitted_text: "Banjir genangan setinggi 50 cm di Jalan Kemang Raya, Mampang Prapatan Jakarta Selatan.",
+    permitted_text_hash: "3b08b5f3d79f048d0cf489e248b64e03d40bf5e2c77ef155f9a6565e2363b924",
+    published_at: "2026-10-26T03:30:00Z",
+    retrieved_at: "2026-10-26T04:00:00Z",
+    revision_status: "unreviewed",
+    chunks: [
+      {
+        chunk_index: 0,
+        text: "Banjir genangan setinggi 50 cm di Jalan Kemang Raya, Mampang Prapatan Jakarta Selatan.",
+        span_start: 0,
+        span_end: 87,
+      },
+    ],
+  },
+  {
+    report_revision_id: "report-demo-fire-senen",
+    source_id: "source-antara-metro",
+    canonical_url: "https://www.antaranews.com/berita/kebakaran-senen-jakpus",
+    permitted_text: "Kebakaran hebat hanguskan ruko di Pasar Senen Jakarta Pusat pada pukul 02.15 WIB, 15 unit damkar dikerahkan.",
+    permitted_text_hash: "7f4c51489e2c66d214a1c586b627889ef512c14041a546271c0800b411d9541a",
+    published_at: "2026-10-26T02:30:00Z",
+    retrieved_at: "2026-10-26T03:00:00Z",
+    revision_status: "unreviewed",
+    chunks: [
+      {
+        chunk_index: 0,
+        text: "Kebakaran hebat hanguskan ruko di Pasar Senen Jakarta Pusat pada pukul 02.15 WIB, 15 unit damkar dikerahkan.",
+        span_start: 0,
+        span_end: 109,
+      },
+    ],
+  },
+];
+
+for (const rep of sampleReports) {
+  const prop = generateProposalFromReport(rep);
+  if (prop) {
+    activeProposals.set(prop.proposal_id, prop);
+    activeChunks.set(prop.proposal_id, rep.chunks);
+  }
+}
+
+const moderationHandler = createModerationApiHandler({
+  listPendingProposals: async () => Array.from(activeProposals.values()),
+  getProposalDetail: async (id: string) => {
+    const prop = activeProposals.get(id);
+    if (!prop) return null;
+    return { proposal: prop, chunks: activeChunks.get(id) ?? [] };
+  },
+  authenticate: async (request: Request) => {
+    return {
+      actorId: "mod-demo-01",
+      role: "moderator",
+      active: true,
+      csrfToken: request.headers.get("x-csrf-token") ?? "demo-csrf-token",
+    };
+  },
+  csrfProtection: false,
+  publisher: {
+    publish: async (input: unknown) => {
+      const cmd = input as { proposal_id?: string; decision?: { proposal_id?: string } };
+      const id = cmd.proposal_id ?? cmd.decision?.proposal_id;
+      if (id) activeProposals.delete(id);
+      return { status: "written", receipt: { decision_id: `dec-${Date.now()}` } };
+    },
+  },
+});
 export default {
   async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
     const accountResponse = await handleAccountRequest(request, env);
     if (accountResponse !== undefined) return accountResponse;
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/v1/moderation/")) {
+      const modRes = await moderationHandler(request);
+      if (modRes !== undefined) return modRes;
+    }
     if (url.pathname === "/api/v1/demo/context-sources") {
       return contextSourcesHandler(request, env);
     }
@@ -116,5 +201,28 @@ export default {
       { telemetry: consoleTelemetry },
     );
     await handleFreshnessDueScheduleTrigger(controller.scheduledTime, env, undefined, consoleTelemetry);
+    // Scheduled live ingestion pollers
+    try {
+      const pbRunner = createPetaBencanaPollRuntime();
+      const pbResult = await pbRunner.poll(controller.scheduledTime);
+      for (const rev of pbResult.revisions) {
+        const proposal = generateProposalFromReport(rev);
+        if (proposal) {
+          activeProposals.set(proposal.proposal_id, proposal);
+          activeChunks.set(proposal.proposal_id, rev.chunks);
+        }
+      }
+    } catch {}
+    try {
+      const newsRunner = createNewsPollRuntime();
+      const newsResult = await newsRunner.poll();
+      for (const rev of newsResult.revisions) {
+        const proposal = generateProposalFromReport(rev);
+        if (proposal) {
+          activeProposals.set(proposal.proposal_id, proposal);
+          activeChunks.set(proposal.proposal_id, rev.chunks);
+        }
+      }
+    } catch {}
   },
 };

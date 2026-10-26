@@ -3,6 +3,7 @@ import type {
   PreviewSource,
   PreviewSourceId,
 } from "../../contracts/source-preview.js";
+export type { PreviewRecord, PreviewSource, PreviewSourceId };
 
 // The Worker bundler includes this committed, ODbL-attributed JSON snapshot.
 import osmSnapshot from "../../demo/osm-reference-snapshot.json" with { type: "json" };
@@ -44,7 +45,6 @@ export function buildOsmOverpassQuery(lastUpdated?: string | null): string {
     "out center 250;",
   ].join("");
 }
-const osmQuery = buildOsmOverpassQuery();
 
 /** Application coverage envelope for the PetaBencana report preview (CRS84). */
 const petabencanaEnvelope = {

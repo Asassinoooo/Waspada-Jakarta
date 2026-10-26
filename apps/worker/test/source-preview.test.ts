@@ -3,7 +3,6 @@ import test from "node:test";
 import { createSourcePreviewHandler } from "../src/layers/l4-application-integration/source-preview-api.js";
 import {
   SOURCE_PREVIEW_LIMITS,
-  buildOsmOverpassQuery,
   mergeOsmDelta,
   type PreviewRecord,
   type SourcePreviewClock,
