@@ -152,7 +152,7 @@ test("fails closed on unsafe IDs, source links, and license links", () => {
 
 test("rejects malformed coordinates, timestamps, and source-status combinations", () => {
   const outsideEnvelope = clone(payload());
-  (outsideEnvelope.sources[0]?.records[0] as PreviewRecord).coordinates = [106.9, -6.2];
+  (outsideEnvelope.sources[0]?.records[0] as PreviewRecord).coordinates = [107.5, -6.2];
   assert.throws(() => validateSourcePreviewPayload(outsideEnvelope), SourcePreviewPayloadError);
 
   const invalidTime = clone(payload());
@@ -184,7 +184,7 @@ test("matches Worker source-mode outcomes, fetched timestamps, and cache rules",
     ]),
     payload([
       source("osm"),
-      source("petabencana", { status: "empty", data_mode: "fetched", fetched_at: instant, rejected_count: 501 }),
+      source("petabencana", { status: "empty", data_mode: "fetched", fetched_at: instant, rejected_count: 5001 }),
     ]),
     payload([
       source("osm"),
@@ -296,13 +296,13 @@ test("passes AbortController signals and rejects oversized or non-JSON responses
   await started;
   assert.equal(receivedSignal?.aborted, false);
   assert.notEqual(receivedSignal, controller.signal);
-  assert.equal(deadline.delayMs, 35_000);
+  assert.equal(deadline.delayMs, 25_000);
   controller.abort();
   await assert.rejects(pending, (error: unknown) => error instanceof Error && error.name === "AbortError");
   assert.equal(receivedSignal?.aborted, true);
 
   const oversizedBody = new ReadableStream<Uint8Array>({
-    start(stream) { stream.enqueue(new Uint8Array(512 * 1024 + 1)); },
+    start(stream) { stream.enqueue(new Uint8Array(2 * 1024 * 1024 + 1)); },
     cancel() { return new Promise<void>(() => {}); },
   });
   const oversizedFetcher: typeof fetch = async () => new Response(oversizedBody, {

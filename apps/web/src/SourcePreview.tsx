@@ -114,7 +114,16 @@ export function SourcePreviewStatusCard({
       </div>
       <p className="source-preview__source-mode">{dataModeLabel(source, cached)}</p>
       {source.status === "empty" && <p className="source-preview__source-note">{sourceEmptyCopy}</p>}
-      {source.status === "unavailable" && <p className="source-preview__source-note">{errorLabel(source) ?? "Data sumber tidak dapat ditampilkan."}</p>}
+      {source.status === "unavailable" && (
+        <>
+          <p className="source-preview__source-note">{errorLabel(source) ?? "Data sumber tidak dapat ditampilkan."}</p>
+          {isOsm && (
+            <p className="source-preview__source-note" style={{ color: "var(--kali-teal)", fontWeight: 600 }}>
+              Mode cadangan aktif: Fasilitas rujukan tetap ditampilkan dari registri lokal (server eksternal sedang gangguan).
+            </p>
+          )}
+        </>
+      )}
       {source.status === "not_requested" && (
         <p className="source-preview__source-note">
           {isOsm ? "Data fasilitas belum diminta dari sumber." : "PetaBencana hanya dihubungi setelah tombol Ambil data sumber dipilih."}

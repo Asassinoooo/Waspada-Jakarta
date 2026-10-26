@@ -16,7 +16,7 @@ test("source preview is gated separately from published events", async () => {
   assert.equal(preview.mode, "source_preview");
   assert.equal(preview.sources[0]?.id, "osm");
   assert.equal(preview.sources[0]?.data_mode, "snapshot");
-  assert.equal(preview.sources[0]?.records.length, 100);
+  assert.equal(preview.sources[0]?.records.length, 200);
   assert.equal(preview.sources[1]?.status, "not_requested");
 
   const context = await (await worker.fetch(new Request(origin + "/api/v1/context"), env)).json() as { dataset_label: string };

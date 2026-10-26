@@ -18,7 +18,7 @@ import { createSourcePreviewHandler } from "./layers/l4-application-integration/
 import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
 import { handleAccountRequest } from "./runtime/account-runtime.js";
 
-const sourcePreviewHandler = createSourcePreviewHandler();
+const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
 export default {

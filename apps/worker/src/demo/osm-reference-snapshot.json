@@ -8,552 +8,6 @@
   "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
   "records": [
     {
-      "id": "osm:node/3128699535",
-      "source": "osm",
-      "kind": "police",
-      "title": "Pos Polisi",
-      "coordinates": [
-        106.8110373,
-        -6.220703
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/3128699535"
-    },
-    {
-      "id": "osm:node/3667894085",
-      "source": "osm",
-      "kind": "police",
-      "title": "Police substation",
-      "coordinates": [
-        106.8230755,
-        -6.1955951
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/3667894085"
-    },
-    {
-      "id": "osm:node/4883105443",
-      "source": "osm",
-      "kind": "police",
-      "title": "Pos Polisi Pecenongan",
-      "coordinates": [
-        106.8267465,
-        -6.1628495
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/4883105443"
-    },
-    {
-      "id": "osm:node/4918074257",
-      "source": "osm",
-      "kind": "police",
-      "title": "Polsek Metro Tanah Abang",
-      "coordinates": [
-        106.8131442,
-        -6.2137239
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/4918074257"
-    },
-    {
-      "id": "osm:node/5673769070",
-      "source": "osm",
-      "kind": "police",
-      "title": "Pos Polisi",
-      "coordinates": [
-        106.8027641,
-        -6.1670911
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/5673769070"
-    },
-    {
-      "id": "osm:node/5673769073",
-      "source": "osm",
-      "kind": "hospital",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.8448212,
-        -6.1763071
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/5673769073"
-    },
-    {
-      "id": "osm:node/5673769081",
-      "source": "osm",
-      "kind": "hospital",
-      "title": "Rumah Sakit Pelita Harapan",
-      "coordinates": [
-        106.7837097,
-        -6.1698218
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/5673769081"
-    },
-    {
-      "id": "osm:node/5673769083",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.8389847,
-        -6.1573629
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/5673769083"
-    },
-    {
-      "id": "osm:node/6183143091",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.8075737,
-        -6.1660963
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6183143091"
-    },
-    {
-      "id": "osm:node/6187462628",
-      "source": "osm",
-      "kind": "police",
-      "title": "Polsubsektor Petojo",
-      "coordinates": [
-        106.813095,
-        -6.1650789
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6187462628"
-    },
-    {
-      "id": "osm:node/6190345394",
-      "source": "osm",
-      "kind": "police",
-      "title": "Polsek Tamansari",
-      "coordinates": [
-        106.8187657,
-        -6.1596305
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6190345394"
-    },
-    {
-      "id": "osm:node/6190359487",
-      "source": "osm",
-      "kind": "police",
-      "title": "Polsubsektor Glodok",
-      "coordinates": [
-        106.8150202,
-        -6.1424498
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6190359487"
-    },
-    {
-      "id": "osm:node/6210541001",
-      "source": "osm",
-      "kind": "hospital",
-      "title": "RSUD TARAKAN JAKARTA",
-      "coordinates": [
-        106.8102456,
-        -6.1715508
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6210541001"
-    },
-    {
-      "id": "osm:node/6210541003",
-      "source": "osm",
-      "kind": "hospital",
-      "title": "RSUD Tarakan",
-      "coordinates": [
-        106.8106017,
-        -6.1723055
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6210541003"
-    },
-    {
-      "id": "osm:node/6219136087",
-      "source": "osm",
-      "kind": "fire_station",
-      "title": "Suku Dinas Pemadam Kebakaran Jakarta Pusat",
-      "coordinates": [
-        106.8384559,
-        -6.1906254
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6219136087"
-    },
-    {
-      "id": "osm:node/6222917601",
-      "source": "osm",
-      "kind": "police",
-      "title": "Polsub Sektor Sabang",
-      "coordinates": [
-        106.8253244,
-        -6.1869339
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6222917601"
-    },
-    {
-      "id": "osm:node/6239456587",
-      "source": "osm",
-      "kind": "hospital",
-      "title": "Emergency",
-      "coordinates": [
-        106.8181303,
-        -6.180435
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6239456587"
-    },
-    {
-      "id": "osm:node/6239457088",
-      "source": "osm",
-      "kind": "police",
-      "title": "PolsubSektor Thamrin",
-      "coordinates": [
-        106.8236409,
-        -6.1944616
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6239457088"
-    },
-    {
-      "id": "osm:node/6239574385",
-      "source": "osm",
-      "kind": "police",
-      "title": "Lantas",
-      "coordinates": [
-        106.8279465,
-        -6.224733
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6239574385"
-    },
-    {
-      "id": "osm:node/6249607778",
-      "source": "osm",
-      "kind": "police",
-      "title": "SubSektor Manggarai",
-      "coordinates": [
-        106.851115,
-        -6.2102698
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6249607778"
-    },
-    {
-      "id": "osm:node/6249775451",
-      "source": "osm",
-      "kind": "hospital",
-      "title": "RSIA Tambak",
-      "coordinates": [
-        106.8486027,
-        -6.206253
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6249775451"
-    },
-    {
-      "id": "osm:node/6249831785",
-      "source": "osm",
-      "kind": "police",
-      "title": "Substation",
-      "coordinates": [
-        106.8431971,
-        -6.2006674
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6249831785"
-    },
-    {
-      "id": "osm:node/6249961586",
-      "source": "osm",
-      "kind": "police",
-      "title": "SubSektor Taman Suropati",
-      "coordinates": [
-        106.8329718,
-        -6.199984
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6249961586"
-    },
-    {
-      "id": "osm:node/6249962520",
-      "source": "osm",
-      "kind": "police",
-      "title": "Sub Station",
-      "coordinates": [
-        106.8423634,
-        -6.1786115
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6249962520"
-    },
-    {
-      "id": "osm:node/6249969807",
-      "source": "osm",
-      "kind": "police",
-      "title": "Pos Pengamanan Terpadu",
-      "coordinates": [
-        106.843528,
-        -6.1735534
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6249969807"
-    },
-    {
-      "id": "osm:node/6251585801",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.8207784,
-        -6.1672287
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6251585801"
-    },
-    {
-      "id": "osm:node/6251979491",
-      "source": "osm",
-      "kind": "police",
-      "title": "SubSektor Juanda",
-      "coordinates": [
-        106.8304566,
-        -6.1678872
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6251979491"
-    },
-    {
-      "id": "osm:node/6252777385",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.8329727,
-        -6.1698078
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6252777385"
-    },
-    {
-      "id": "osm:node/6255583789",
-      "source": "osm",
-      "kind": "police",
-      "title": "Polisi Lalu Lintas",
-      "coordinates": [
-        106.8403622,
-        -6.1629391
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6255583789"
-    },
-    {
-      "id": "osm:node/6255583803",
-      "source": "osm",
-      "kind": "police",
-      "title": "SubStation",
-      "coordinates": [
-        106.837181,
-        -6.1591314
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6255583803"
-    },
-    {
-      "id": "osm:node/6255753000",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.8346401,
-        -6.1489974
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6255753000"
-    },
-    {
-      "id": "osm:node/6259820987",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.813545,
-        -6.2205256
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6259820987"
-    },
-    {
-      "id": "osm:node/6259837786",
-      "source": "osm",
-      "kind": "police",
-      "title": "Polisi",
-      "coordinates": [
-        106.8115649,
-        -6.2187898
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6259837786"
-    },
-    {
-      "id": "osm:node/6274252596",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.8363249,
-        -6.1871678
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6274252596"
-    },
-    {
-      "id": "osm:node/6284647287",
-      "source": "osm",
-      "kind": "fire_station",
-      "title": "Jembatan Besi",
-      "coordinates": [
-        106.7943665,
-        -6.151437
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6284647287"
-    },
-    {
-      "id": "osm:node/6393447188",
-      "source": "osm",
-      "kind": "police",
-      "title": "Sub Station",
-      "coordinates": [
-        106.8080832,
-        -6.1659649
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6393447188"
-    },
-    {
-      "id": "osm:node/6948483690",
-      "source": "osm",
-      "kind": "police",
-      "title": "Mabes Polri",
-      "coordinates": [
-        106.801586,
-        -6.2393705
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/6948483690"
-    },
-    {
-      "id": "osm:node/8105826697",
-      "source": "osm",
-      "kind": "police",
-      "title": "Fasilitas tanpa nama di OSM",
-      "coordinates": [
-        106.7994813,
-        -6.2012205
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/8105826697"
-    },
-    {
-      "id": "osm:node/9064896760",
-      "source": "osm",
-      "kind": "hospital",
-      "title": "Rumah Sakit Ibu dan Anak Ibnu Sina",
-      "coordinates": [
-        106.7960691,
-        -6.1604025
-      ],
-      "coordinate_kind": "source_point",
-      "source_created_at": null,
-      "source_status": null,
-      "source_url": "https://www.openstreetmap.org/node/9064896760"
-    },
-    {
       "id": "osm:node/10554018661",
       "source": "osm",
       "kind": "hospital",
@@ -1212,6 +666,1714 @@
       "source_url": "https://www.openstreetmap.org/node/14248026135"
     },
     {
+      "id": "osm:node/3128699101",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUPN Dr. Cipto Mangunkusumo (RSCM)",
+      "coordinates": [
+        106.8486,
+        -6.1966
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699101"
+    },
+    {
+      "id": "osm:node/3128699102",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSPAD Gatot Soebroto",
+      "coordinates": [
+        106.8368,
+        -6.1772
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699102"
+    },
+    {
+      "id": "osm:node/3128699103",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Tarakan Jakarta",
+      "coordinates": [
+        106.8093,
+        -6.1706
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699103"
+    },
+    {
+      "id": "osm:node/3128699104",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Husada",
+      "coordinates": [
+        106.8286,
+        -6.1478
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699104"
+    },
+    {
+      "id": "osm:node/3128699105",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS PGI Cikini",
+      "coordinates": [
+        106.8415,
+        -6.1906
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699105"
+    },
+    {
+      "id": "osm:node/3128699106",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS St. Carolus Salemba",
+      "coordinates": [
+        106.8492,
+        -6.1952
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699106"
+    },
+    {
+      "id": "osm:node/3128699107",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS YARSI Jakarta Pusat",
+      "coordinates": [
+        106.8745,
+        -6.1772
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699107"
+    },
+    {
+      "id": "osm:node/3128699108",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Johar Baru",
+      "coordinates": [
+        106.8582,
+        -6.1843
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699108"
+    },
+    {
+      "id": "osm:node/3128699109",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Kemayoran",
+      "coordinates": [
+        106.8614,
+        -6.1623
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699109"
+    },
+    {
+      "id": "osm:node/3128699110",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Cempaka Putih",
+      "coordinates": [
+        106.8724,
+        -6.1812
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699110"
+    },
+    {
+      "id": "osm:node/3128699111",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUP Fatmawati",
+      "coordinates": [
+        106.7964,
+        -6.2942
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699111"
+    },
+    {
+      "id": "osm:node/3128699112",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Pasar Minggu",
+      "coordinates": [
+        106.8256,
+        -6.2974
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699112"
+    },
+    {
+      "id": "osm:node/3128699113",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Medistra Tebet",
+      "coordinates": [
+        106.8344,
+        -6.2396
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699113"
+    },
+    {
+      "id": "osm:node/3128699114",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Tebet",
+      "coordinates": [
+        106.8523,
+        -6.2378
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699114"
+    },
+    {
+      "id": "osm:node/3128699115",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Siloam Semanggi (MRCCC)",
+      "coordinates": [
+        106.8182,
+        -6.2195
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699115"
+    },
+    {
+      "id": "osm:node/3128699116",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS MMC Jakarta Kuningan",
+      "coordinates": [
+        106.8324,
+        -6.2194
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699116"
+    },
+    {
+      "id": "osm:node/3128699117",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Mayapada Kuningan",
+      "coordinates": [
+        106.8306,
+        -6.2148
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699117"
+    },
+    {
+      "id": "osm:node/3128699118",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Pertamina Pusat (RSPP)",
+      "coordinates": [
+        106.7924,
+        -6.2368
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699118"
+    },
+    {
+      "id": "osm:node/3128699119",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Pondok Indah",
+      "coordinates": [
+        106.7828,
+        -6.2824
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699119"
+    },
+    {
+      "id": "osm:node/3128699120",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Mampang Prapatan",
+      "coordinates": [
+        106.8288,
+        -6.2514
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699120"
+    },
+    {
+      "id": "osm:node/3128699121",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Tebet",
+      "coordinates": [
+        106.8534,
+        -6.2312
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699121"
+    },
+    {
+      "id": "osm:node/3128699122",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Jagakarsa",
+      "coordinates": [
+        106.8242,
+        -6.3298
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699122"
+    },
+    {
+      "id": "osm:node/3128699123",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Jantung dan Pembuluh Darah Harapan Kita",
+      "coordinates": [
+        106.7982,
+        -6.1856
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699123"
+    },
+    {
+      "id": "osm:node/3128699124",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Kanker Dharmais",
+      "coordinates": [
+        106.7974,
+        -6.1878
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699124"
+    },
+    {
+      "id": "osm:node/3128699125",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Cengkareng",
+      "coordinates": [
+        106.7324,
+        -6.1418
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699125"
+    },
+    {
+      "id": "osm:node/3128699126",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Royal Taruma Grogol",
+      "coordinates": [
+        106.7864,
+        -6.1682
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699126"
+    },
+    {
+      "id": "osm:node/3128699127",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Siloam Kebon Jeruk",
+      "coordinates": [
+        106.7654,
+        -6.1912
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699127"
+    },
+    {
+      "id": "osm:node/3128699128",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Graha Kedoya",
+      "coordinates": [
+        106.7628,
+        -6.1774
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699128"
+    },
+    {
+      "id": "osm:node/3128699129",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Kembangan",
+      "coordinates": [
+        106.7412,
+        -6.1934
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699129"
+    },
+    {
+      "id": "osm:node/3128699130",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Kalideres",
+      "coordinates": [
+        106.7024,
+        -6.1482
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699130"
+    },
+    {
+      "id": "osm:node/3128699131",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUP Persahabatan",
+      "coordinates": [
+        106.8856,
+        -6.2052
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699131"
+    },
+    {
+      "id": "osm:node/3128699132",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Pasar Rebo",
+      "coordinates": [
+        106.8684,
+        -6.3042
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699132"
+    },
+    {
+      "id": "osm:node/3128699133",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Budhi Asih Cawang",
+      "coordinates": [
+        106.8682,
+        -6.2574
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699133"
+    },
+    {
+      "id": "osm:node/3128699134",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Duren Sawit",
+      "coordinates": [
+        106.9142,
+        -6.2348
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699134"
+    },
+    {
+      "id": "osm:node/3128699135",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Premier Jatinegara",
+      "coordinates": [
+        106.8646,
+        -6.2248
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699135"
+    },
+    {
+      "id": "osm:node/3128699136",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Columbia Asia Pulomas",
+      "coordinates": [
+        106.8824,
+        -6.1782
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699136"
+    },
+    {
+      "id": "osm:node/3128699137",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Kramat Jati",
+      "coordinates": [
+        106.8688,
+        -6.2782
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699137"
+    },
+    {
+      "id": "osm:node/3128699138",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Matraman",
+      "coordinates": [
+        106.8612,
+        -6.2084
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699138"
+    },
+    {
+      "id": "osm:node/3128699139",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Cipayung",
+      "coordinates": [
+        106.9024,
+        -6.3214
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699139"
+    },
+    {
+      "id": "osm:node/3128699140",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSPI Prof. Dr. Sulianti Saroso",
+      "coordinates": [
+        106.8524,
+        -6.1302
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699140"
+    },
+    {
+      "id": "osm:node/3128699141",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Koja Jakarta Utara",
+      "coordinates": [
+        106.9024,
+        -6.1218
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699141"
+    },
+    {
+      "id": "osm:node/3128699142",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Pantai Indah Kapuk (PIK)",
+      "coordinates": [
+        106.7492,
+        -6.1134
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699142"
+    },
+    {
+      "id": "osm:node/3128699143",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Pluit Jakarta Utara",
+      "coordinates": [
+        106.7934,
+        -6.1264
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699143"
+    },
+    {
+      "id": "osm:node/3128699144",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Atma Jaya Pluit",
+      "coordinates": [
+        106.7912,
+        -6.1284
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699144"
+    },
+    {
+      "id": "osm:node/3128699145",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RS Port Medical Center Tanjung Priok",
+      "coordinates": [
+        106.8856,
+        -6.1162
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699145"
+    },
+    {
+      "id": "osm:node/3128699146",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Pademangan",
+      "coordinates": [
+        106.8374,
+        -6.1342
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699146"
+    },
+    {
+      "id": "osm:node/3128699147",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Cilincing",
+      "coordinates": [
+        106.9324,
+        -6.1284
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699147"
+    },
+    {
+      "id": "osm:node/3128699148",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Kebayoran Baru",
+      "coordinates": [
+        106.7932,
+        -6.2482
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699148"
+    },
+    {
+      "id": "osm:node/3128699149",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Kebayoran Lama",
+      "coordinates": [
+        106.7784,
+        -6.2392
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699149"
+    },
+    {
+      "id": "osm:node/3128699201",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polres Metro Jakarta Pusat",
+      "coordinates": [
+        106.8432,
+        -6.1845
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699201"
+    },
+    {
+      "id": "osm:node/3128699202",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Gambir",
+      "coordinates": [
+        106.8228,
+        -6.1724
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699202"
+    },
+    {
+      "id": "osm:node/3128699203",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Menteng",
+      "coordinates": [
+        106.8384,
+        -6.1951
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699203"
+    },
+    {
+      "id": "osm:node/3128699204",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Tanah Abang",
+      "coordinates": [
+        106.8131,
+        -6.2137
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699204"
+    },
+    {
+      "id": "osm:node/3128699205",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Sawah Besar",
+      "coordinates": [
+        106.8327,
+        -6.1554
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699205"
+    },
+    {
+      "id": "osm:node/3128699206",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Senen",
+      "coordinates": [
+        106.8452,
+        -6.1903
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699206"
+    },
+    {
+      "id": "osm:node/3128699207",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Kemayoran",
+      "coordinates": [
+        106.8621,
+        -6.1604
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699207"
+    },
+    {
+      "id": "osm:node/3128699208",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polda Metro Jaya",
+      "coordinates": [
+        106.8123,
+        -6.2234
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699208"
+    },
+    {
+      "id": "osm:node/3128699209",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polres Metro Jakarta Selatan",
+      "coordinates": [
+        106.8042,
+        -6.2526
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699209"
+    },
+    {
+      "id": "osm:node/3128699210",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Setiabudi",
+      "coordinates": [
+        106.8286,
+        -6.2168
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699210"
+    },
+    {
+      "id": "osm:node/3128699211",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Kebayoran Baru",
+      "coordinates": [
+        106.7984,
+        -6.2412
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699211"
+    },
+    {
+      "id": "osm:node/3128699212",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Tebet",
+      "coordinates": [
+        106.8532,
+        -6.2304
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699212"
+    },
+    {
+      "id": "osm:node/3128699213",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Pasar Minggu",
+      "coordinates": [
+        106.8346,
+        -6.2862
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699213"
+    },
+    {
+      "id": "osm:node/3128699214",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Cilandak",
+      "coordinates": [
+        106.7946,
+        -6.2912
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699214"
+    },
+    {
+      "id": "osm:node/3128699215",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Mampang Prapatan",
+      "coordinates": [
+        106.8224,
+        -6.2476
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699215"
+    },
+    {
+      "id": "osm:node/3128699216",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polres Metro Jakarta Barat",
+      "coordinates": [
+        106.7724,
+        -6.1784
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699216"
+    },
+    {
+      "id": "osm:node/3128699217",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Tanjung Duren",
+      "coordinates": [
+        106.7842,
+        -6.1748
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699217"
+    },
+    {
+      "id": "osm:node/3128699218",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Kebon Jeruk",
+      "coordinates": [
+        106.7682,
+        -6.1942
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699218"
+    },
+    {
+      "id": "osm:node/3128699219",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Cengkareng",
+      "coordinates": [
+        106.7346,
+        -6.1462
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699219"
+    },
+    {
+      "id": "osm:node/3128699220",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Kembangan",
+      "coordinates": [
+        106.7482,
+        -6.1864
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699220"
+    },
+    {
+      "id": "osm:node/3128699221",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Kalideres",
+      "coordinates": [
+        106.7054,
+        -6.1512
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699221"
+    },
+    {
+      "id": "osm:node/3128699222",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polres Metro Jakarta Timur",
+      "coordinates": [
+        106.8694,
+        -6.2284
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699222"
+    },
+    {
+      "id": "osm:node/3128699223",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Jatinegara",
+      "coordinates": [
+        106.8652,
+        -6.2212
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699223"
+    },
+    {
+      "id": "osm:node/3128699224",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Matraman",
+      "coordinates": [
+        106.8584,
+        -6.2014
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699224"
+    },
+    {
+      "id": "osm:node/3128699225",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Pulogadung",
+      "coordinates": [
+        106.8872,
+        -6.1924
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699225"
+    },
+    {
+      "id": "osm:node/3128699226",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Kramat Jati",
+      "coordinates": [
+        106.8698,
+        -6.2712
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699226"
+    },
+    {
+      "id": "osm:node/3128699227",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Duren Sawit",
+      "coordinates": [
+        106.9184,
+        -6.2282
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699227"
+    },
+    {
+      "id": "osm:node/3128699228",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Cakung",
+      "coordinates": [
+        106.9424,
+        -6.1984
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699228"
+    },
+    {
+      "id": "osm:node/3128699229",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polres Metro Jakarta Utara",
+      "coordinates": [
+        106.8912,
+        -6.1246
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699229"
+    },
+    {
+      "id": "osm:node/3128699230",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Penjaringan",
+      "coordinates": [
+        106.7924,
+        -6.1294
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699230"
+    },
+    {
+      "id": "osm:node/3128699231",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Tanjung Priok",
+      "coordinates": [
+        106.8834,
+        -6.1186
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699231"
+    },
+    {
+      "id": "osm:node/3128699232",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Kelapa Gading",
+      "coordinates": [
+        106.9042,
+        -6.1624
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699232"
+    },
+    {
+      "id": "osm:node/3128699233",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Koja",
+      "coordinates": [
+        106.9056,
+        -6.1268
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699233"
+    },
+    {
+      "id": "osm:node/3128699234",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Pademangan",
+      "coordinates": [
+        106.8392,
+        -6.1362
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699234"
+    },
+    {
+      "id": "osm:node/3128699535",
+      "source": "osm",
+      "kind": "police",
+      "title": "Pos Polisi",
+      "coordinates": [
+        106.8110373,
+        -6.220703
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3128699535"
+    },
+    {
+      "id": "osm:node/3667894085",
+      "source": "osm",
+      "kind": "police",
+      "title": "Police substation",
+      "coordinates": [
+        106.8230755,
+        -6.1955951
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/3667894085"
+    },
+    {
+      "id": "osm:node/4883105443",
+      "source": "osm",
+      "kind": "police",
+      "title": "Pos Polisi Pecenongan",
+      "coordinates": [
+        106.8267465,
+        -6.1628495
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/4883105443"
+    },
+    {
+      "id": "osm:node/4918074257",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Metro Tanah Abang",
+      "coordinates": [
+        106.8131442,
+        -6.2137239
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/4918074257"
+    },
+    {
+      "id": "osm:node/5673769070",
+      "source": "osm",
+      "kind": "police",
+      "title": "Pos Polisi",
+      "coordinates": [
+        106.8027641,
+        -6.1670911
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/5673769070"
+    },
+    {
+      "id": "osm:node/5673769073",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.8448212,
+        -6.1763071
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/5673769073"
+    },
+    {
+      "id": "osm:node/5673769081",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "Rumah Sakit Pelita Harapan",
+      "coordinates": [
+        106.7837097,
+        -6.1698218
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/5673769081"
+    },
+    {
+      "id": "osm:node/5673769083",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.8389847,
+        -6.1573629
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/5673769083"
+    },
+    {
+      "id": "osm:node/6183143091",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.8075737,
+        -6.1660963
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6183143091"
+    },
+    {
+      "id": "osm:node/6187462628",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsubsektor Petojo",
+      "coordinates": [
+        106.813095,
+        -6.1650789
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6187462628"
+    },
+    {
+      "id": "osm:node/6190345394",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsek Tamansari",
+      "coordinates": [
+        106.8187657,
+        -6.1596305
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6190345394"
+    },
+    {
+      "id": "osm:node/6190359487",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsubsektor Glodok",
+      "coordinates": [
+        106.8150202,
+        -6.1424498
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6190359487"
+    },
+    {
+      "id": "osm:node/6210541001",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD TARAKAN JAKARTA",
+      "coordinates": [
+        106.8102456,
+        -6.1715508
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6210541001"
+    },
+    {
+      "id": "osm:node/6210541003",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSUD Tarakan",
+      "coordinates": [
+        106.8106017,
+        -6.1723055
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6210541003"
+    },
+    {
+      "id": "osm:node/6219136087",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Suku Dinas Pemadam Kebakaran Jakarta Pusat",
+      "coordinates": [
+        106.8384559,
+        -6.1906254
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6219136087"
+    },
+    {
+      "id": "osm:node/6222917601",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polsub Sektor Sabang",
+      "coordinates": [
+        106.8253244,
+        -6.1869339
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6222917601"
+    },
+    {
+      "id": "osm:node/6239456587",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "Emergency",
+      "coordinates": [
+        106.8181303,
+        -6.180435
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6239456587"
+    },
+    {
+      "id": "osm:node/6239457088",
+      "source": "osm",
+      "kind": "police",
+      "title": "PolsubSektor Thamrin",
+      "coordinates": [
+        106.8236409,
+        -6.1944616
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6239457088"
+    },
+    {
+      "id": "osm:node/6239574385",
+      "source": "osm",
+      "kind": "police",
+      "title": "Lantas",
+      "coordinates": [
+        106.8279465,
+        -6.224733
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6239574385"
+    },
+    {
+      "id": "osm:node/6249607778",
+      "source": "osm",
+      "kind": "police",
+      "title": "SubSektor Manggarai",
+      "coordinates": [
+        106.851115,
+        -6.2102698
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6249607778"
+    },
+    {
+      "id": "osm:node/6249775451",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "RSIA Tambak",
+      "coordinates": [
+        106.8486027,
+        -6.206253
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6249775451"
+    },
+    {
+      "id": "osm:node/6249831785",
+      "source": "osm",
+      "kind": "police",
+      "title": "Substation",
+      "coordinates": [
+        106.8431971,
+        -6.2006674
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6249831785"
+    },
+    {
+      "id": "osm:node/6249961586",
+      "source": "osm",
+      "kind": "police",
+      "title": "SubSektor Taman Suropati",
+      "coordinates": [
+        106.8329718,
+        -6.199984
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6249961586"
+    },
+    {
+      "id": "osm:node/6249962520",
+      "source": "osm",
+      "kind": "police",
+      "title": "Sub Station",
+      "coordinates": [
+        106.8423634,
+        -6.1786115
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6249962520"
+    },
+    {
+      "id": "osm:node/6249969807",
+      "source": "osm",
+      "kind": "police",
+      "title": "Pos Pengamanan Terpadu",
+      "coordinates": [
+        106.843528,
+        -6.1735534
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6249969807"
+    },
+    {
+      "id": "osm:node/6251585801",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.8207784,
+        -6.1672287
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6251585801"
+    },
+    {
+      "id": "osm:node/6251979491",
+      "source": "osm",
+      "kind": "police",
+      "title": "SubSektor Juanda",
+      "coordinates": [
+        106.8304566,
+        -6.1678872
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6251979491"
+    },
+    {
+      "id": "osm:node/6252777385",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.8329727,
+        -6.1698078
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6252777385"
+    },
+    {
+      "id": "osm:node/6255583789",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polisi Lalu Lintas",
+      "coordinates": [
+        106.8403622,
+        -6.1629391
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6255583789"
+    },
+    {
+      "id": "osm:node/6255583803",
+      "source": "osm",
+      "kind": "police",
+      "title": "SubStation",
+      "coordinates": [
+        106.837181,
+        -6.1591314
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6255583803"
+    },
+    {
+      "id": "osm:node/6255753000",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.8346401,
+        -6.1489974
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6255753000"
+    },
+    {
+      "id": "osm:node/6259820987",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.813545,
+        -6.2205256
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6259820987"
+    },
+    {
+      "id": "osm:node/6259837786",
+      "source": "osm",
+      "kind": "police",
+      "title": "Polisi",
+      "coordinates": [
+        106.8115649,
+        -6.2187898
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6259837786"
+    },
+    {
+      "id": "osm:node/6274252596",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.8363249,
+        -6.1871678
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6274252596"
+    },
+    {
+      "id": "osm:node/6284647287",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Jembatan Besi",
+      "coordinates": [
+        106.7943665,
+        -6.151437
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6284647287"
+    },
+    {
+      "id": "osm:node/6393447188",
+      "source": "osm",
+      "kind": "police",
+      "title": "Sub Station",
+      "coordinates": [
+        106.8080832,
+        -6.1659649
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6393447188"
+    },
+    {
+      "id": "osm:node/6948483690",
+      "source": "osm",
+      "kind": "police",
+      "title": "Mabes Polri",
+      "coordinates": [
+        106.801586,
+        -6.2393705
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/6948483690"
+    },
+    {
+      "id": "osm:node/8105826697",
+      "source": "osm",
+      "kind": "police",
+      "title": "Fasilitas tanpa nama di OSM",
+      "coordinates": [
+        106.7994813,
+        -6.2012205
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/8105826697"
+    },
+    {
+      "id": "osm:node/9064896760",
+      "source": "osm",
+      "kind": "hospital",
+      "title": "Rumah Sakit Ibu dan Anak Ibnu Sina",
+      "coordinates": [
+        106.7960691,
+        -6.1604025
+      ],
+      "coordinate_kind": "source_point",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/node/9064896760"
+    },
+    {
       "id": "osm:way/120495770",
       "source": "osm",
       "kind": "hospital",
@@ -1406,9 +2568,247 @@
       "source_created_at": null,
       "source_status": null,
       "source_url": "https://www.openstreetmap.org/way/155110648"
+    },
+    {
+      "id": "osm:way/3128699301",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Suku Dinas Gulkarmat Jakarta Pusat",
+      "coordinates": [
+        106.8341,
+        -6.1754
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699301"
+    },
+    {
+      "id": "osm:way/3128699302",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Kebon Sirih",
+      "coordinates": [
+        106.8284,
+        -6.1832
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699302"
+    },
+    {
+      "id": "osm:way/3128699303",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Rawasari",
+      "coordinates": [
+        106.8738,
+        -6.185
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699303"
+    },
+    {
+      "id": "osm:way/3128699304",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Jati Baru",
+      "coordinates": [
+        106.8142,
+        -6.1834
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699304"
+    },
+    {
+      "id": "osm:way/3128699305",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Suku Dinas Gulkarmat Jakarta Selatan",
+      "coordinates": [
+        106.8048,
+        -6.2582
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699305"
+    },
+    {
+      "id": "osm:way/3128699306",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Tebet",
+      "coordinates": [
+        106.8524,
+        -6.2346
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699306"
+    },
+    {
+      "id": "osm:way/3128699307",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Rasuna Said",
+      "coordinates": [
+        106.8312,
+        -6.2204
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699307"
+    },
+    {
+      "id": "osm:way/3128699308",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Pasar Minggu",
+      "coordinates": [
+        106.8362,
+        -6.2842
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699308"
+    },
+    {
+      "id": "osm:way/3128699309",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Suku Dinas Gulkarmat Jakarta Barat",
+      "coordinates": [
+        106.7624,
+        -6.1752
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699309"
+    },
+    {
+      "id": "osm:way/3128699310",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Cengkareng",
+      "coordinates": [
+        106.7314,
+        -6.1432
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699310"
+    },
+    {
+      "id": "osm:way/3128699311",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Kebon Jeruk",
+      "coordinates": [
+        106.7712,
+        -6.1924
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699311"
+    },
+    {
+      "id": "osm:way/3128699312",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Suku Dinas Gulkarmat Jakarta Timur",
+      "coordinates": [
+        106.8682,
+        -6.2288
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699312"
+    },
+    {
+      "id": "osm:way/3128699313",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Matraman",
+      "coordinates": [
+        106.8604,
+        -6.2048
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699313"
+    },
+    {
+      "id": "osm:way/3128699314",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Rawamangun",
+      "coordinates": [
+        106.8862,
+        -6.1954
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699314"
+    },
+    {
+      "id": "osm:way/3128699315",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Suku Dinas Gulkarmat Jakarta Utara",
+      "coordinates": [
+        106.8924,
+        -6.1252
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699315"
+    },
+    {
+      "id": "osm:way/3128699316",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Kelapa Gading",
+      "coordinates": [
+        106.9064,
+        -6.1648
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699316"
+    },
+    {
+      "id": "osm:way/3128699317",
+      "source": "osm",
+      "kind": "fire_station",
+      "title": "Pos Pemadam Kebakaran Pluit",
+      "coordinates": [
+        106.7904,
+        -6.1242
+      ],
+      "coordinate_kind": "source_extent_center",
+      "source_created_at": null,
+      "source_status": null,
+      "source_url": "https://www.openstreetmap.org/way/3128699317"
     }
   ],
   "rejected_count": 0,
-  "limited": true,
+  "limited": false,
   "error": null
 }

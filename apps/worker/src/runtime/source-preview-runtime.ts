@@ -59,9 +59,11 @@ export function createSourcePreviewRuntime(
         const sources = await pending;
         const completedAt = clock.now();
         if (Number.isFinite(completedAt)) {
+          const hasFailure = sources.some((s) => s.status === "unavailable" || s.error !== null);
+          const ttl = hasFailure ? 30_000 : SOURCE_PREVIEW_LIMITS.cacheTtlMs;
           cached = {
             storedAt: completedAt,
-            expiresAt: completedAt + SOURCE_PREVIEW_LIMITS.cacheTtlMs,
+            expiresAt: completedAt + ttl,
             sources,
           };
         } else {

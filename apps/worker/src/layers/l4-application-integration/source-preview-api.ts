@@ -115,9 +115,9 @@ function isValidSource(value: unknown, id: "osm" | "petabencana", generatedAt: s
   ]) || value.id !== id || !["available", "empty", "unavailable", "not_requested"].includes(String(value.status))
     || !["snapshot", "fetched", "none"].includes(String(value.data_mode))
     || !isNullableInstant(value.fetched_at) || !isNullableInstant(value.source_updated_at)
-    || !Array.isArray(value.records) || value.records.length > 100
+    || !Array.isArray(value.records) || value.records.length > 5000
     || !Number.isSafeInteger(value.rejected_count) || (value.rejected_count as number) < 0
-    || (value.rejected_count as number) > 500 || typeof value.limited !== "boolean"
+    || (value.rejected_count as number) > 5000 || typeof value.limited !== "boolean"
     || ![null, "timeout", "http_error", "invalid_payload"].includes(value.error as string | null)) {
     return false;
   }
@@ -141,7 +141,8 @@ function isValidSource(value: unknown, id: "osm" | "petabencana", generatedAt: s
     if (value.fetched_at === null || value.status === "not_requested") return false;
     if (value.status === "unavailable" && value.error === null) return false;
     if (value.status !== "unavailable" && value.error !== null) return false;
-    if ((value.status === "available") !== (value.records.length > 0)) return false;
+    if (value.status === "available" && value.records.length === 0) return false;
+    if (value.status === "empty" && value.records.length !== 0) return false;
     if (id === "petabencana" && value.source_updated_at !== null) return false;
     if (value.source_updated_at !== null && Date.parse(value.source_updated_at) > Date.parse(value.fetched_at)) {
       return false;
@@ -182,7 +183,7 @@ function isValidRecord(value: unknown, source: "osm" | "petabencana", sourceFetc
       || (value.kind !== "hospital" && value.kind !== "police" && value.kind !== "fire_station")
       || value.source_created_at !== null || value.source_status !== null
       || value.coordinate_kind !== (match[1] === "node" ? "source_point" : "source_extent_center")
-      || !isWithinEnvelope(longitude, latitude, { west: 106.78, south: -6.24, east: 106.88, north: -6.14 })) {
+      || !isWithinEnvelope(longitude, latitude, { west: 106.68, south: -6.38, east: 106.98, north: -6.08 })) {
       return false;
     }
     return true;

@@ -38,6 +38,8 @@ data/runtime/
 backups/
 volumes/
 
+.pglite-data/
+apps/db/.pglite-data/
 # Retired report sources and original reference deliverables
 deliverables/chapter1-latex/
 deliverables/*LaTeX*.zip

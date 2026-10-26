@@ -8,11 +8,11 @@ import type {
 import osmSnapshot from "../../demo/osm-reference-snapshot.json" with { type: "json" };
 
 export const SOURCE_PREVIEW_LIMITS = {
-  requestDeadlineMs: 25_000,
+  requestDeadlineMs: 20_000,
   maxBodyBytes: 1_048_576,
   maxNestingDepth: 32,
-  maxProviderRecords: 500,
-  maxRecordsPerSource: 100,
+  maxProviderRecords: 5000,
+  maxRecordsPerSource: 5000,
   cacheTtlMs: 5 * 60_000,
   recentReportWindowMs: 24 * 60 * 60_000,
   maxProviderTextLength: 128,
@@ -32,15 +32,19 @@ const osmLicenseUrl = SOURCE_PREVIEW_ATTRIBUTION.osmLicenseUrl;
 const petabencanaAttribution = SOURCE_PREVIEW_ATTRIBUTION.petabencana;
 const petabencanaLicenseUrl = SOURCE_PREVIEW_ATTRIBUTION.petabencanaLicenseUrl;
 const identifyingUserAgent = "WaspadaJakarta-Team12-Demo/0.1 (+https://github.com/Asassinoooo/Waspada-Jakarta)";
-const osmQuery = [
-  "[out:json][timeout:20][maxsize:67108864];",
-  "(",
-  'nwr["amenity"="hospital"](-6.24,106.78,-6.14,106.88);',
-  'nwr["amenity"="police"](-6.24,106.78,-6.14,106.88);',
-  'nwr["amenity"="fire_station"](-6.24,106.78,-6.14,106.88);',
-  ");",
-  "out center 100;",
-].join("");
+export function buildOsmOverpassQuery(lastUpdated?: string | null): string {
+  const filter = lastUpdated ? `(newer:"${lastUpdated}")` : "";
+  return [
+    "[out:json][timeout:15][maxsize:67108864];",
+    "(",
+    `nwr["amenity"="hospital"]${filter}(-6.38,106.68,-6.08,106.98);`,
+    `nwr["amenity"="police"]${filter}(-6.38,106.68,-6.08,106.98);`,
+    `nwr["amenity"="fire_station"]${filter}(-6.38,106.68,-6.08,106.98);`,
+    ");",
+    "out center 250;",
+  ].join("");
+}
+const osmQuery = buildOsmOverpassQuery();
 
 /** Application coverage envelope for the PetaBencana report preview (CRS84). */
 const petabencanaEnvelope = {
@@ -52,10 +56,10 @@ const petabencanaEnvelope = {
 
 /** Narrow Overpass query window for OSM reference facilities (CRS84). */
 const osmEnvelope = {
-  west: 106.78,
-  south: -6.24,
-  east: 106.88,
-  north: -6.14,
+  west: 106.68,
+  south: -6.38,
+  east: 106.98,
+  north: -6.08,
 } as const;
 
 export interface SourcePreviewClock {
@@ -67,6 +71,8 @@ export interface SourcePreviewClock {
 export interface SourcePreviewAdapterOptions {
   readonly fetch?: typeof fetch;
   readonly clock?: SourcePreviewClock;
+  readonly baseSource?: PreviewSource;
+  readonly incremental?: boolean;
 }
 
 export interface SourcePreviewSourceRead {
@@ -84,13 +90,21 @@ export function createSourcePreviewAdapters(
 ): SourcePreviewAdapters {
   const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
   const clock = options.clock ?? systemClock;
+  let baseSource = options.baseSource;
+  if (baseSource === undefined && options.incremental) {
+    try {
+      baseSource = readValidatedOsmSnapshot();
+    } catch {
+      baseSource = undefined;
+    }
+  }
 
   return {
     readSnapshot() {
       return [readValidatedOsmSnapshot(), notRequestedPetabencanaSource()];
     },
     fetchSources() {
-      return acquireSources(fetcher, clock);
+      return acquireSources(fetcher, clock, baseSource);
     },
   };
 }
@@ -154,15 +168,30 @@ export function notRequestedPetabencanaSource(): PreviewSource {
 async function acquireSources(
   fetcher: typeof fetch,
   clock: SourcePreviewClock,
+  baseSource?: PreviewSource,
 ): Promise<readonly [PreviewSource, PreviewSource]> {
   if (toIsoInstant(clock.now()) === null) {
     return [sourceFailure("osm", "invalid_payload", null), sourceFailure("petabencana", "invalid_payload", null)];
   }
 
   return Promise.all([
-    requestOsm(fetcher, clock),
+    requestOsm(fetcher, clock, baseSource),
     requestPetabencana(fetcher, clock),
   ]);
+}
+
+export function mergeOsmDelta(
+  base: readonly PreviewRecord[],
+  delta: readonly PreviewRecord[],
+): PreviewRecord[] {
+  const map = new Map<string, PreviewRecord>();
+  for (const record of base) {
+    map.set(record.id, record);
+  }
+  for (const record of delta) {
+    map.set(record.id, record);
+  }
+  return [...map.values()].sort((a, b) => compareText(a.id, b.id));
 }
 
 interface RequestDeadline {
@@ -204,9 +233,11 @@ class PreviewDeadlineError extends Error {
 async function requestOsm(
   fetcher: typeof fetch,
   clock: SourcePreviewClock,
+  baseSource?: PreviewSource,
 ): Promise<PreviewSource> {
   const attemptedAt = toIsoInstant(clock.now());
   const deadline = createRequestDeadline(clock);
+  const query = buildOsmOverpassQuery(baseSource?.source_updated_at);
   try {
     const response = await withinDeadline(
       fetcher(osmEndpoint, {
@@ -216,7 +247,7 @@ async function requestOsm(
           "user-agent": identifyingUserAgent,
           accept: "application/json",
         },
-        body: `data=${encodeURIComponent(osmQuery)}`,
+        body: `data=${encodeURIComponent(query)}`,
         // workerd supports follow/manual, not the browser-style "error" mode.
         // Manual mode prevents following; the non-2xx check below rejects 3xx.
         redirect: "manual",
@@ -224,13 +255,36 @@ async function requestOsm(
       }),
       deadline,
     );
-    if (!response.ok || response.redirected) return sourceFailure("osm", "http_error", attemptedAt);
+    if (!response.ok || response.redirected) {
+      const fail = sourceFailure("osm", "http_error", attemptedAt);
+      return baseSource && baseSource.records.length > 0
+        ? { ...fail, records: baseSource.records }
+        : fail;
+    }
     const json = await readJsonResponse(response, deadline);
     const fetchedAt = toIsoInstant(clock.now());
-    if (fetchedAt === null) return sourceFailure("osm", "invalid_payload", attemptedAt);
-    return normalizeOsmPayload(json, fetchedAt);
+    if (fetchedAt === null) {
+      const fail = sourceFailure("osm", "invalid_payload", attemptedAt);
+      return baseSource && baseSource.records.length > 0
+        ? { ...fail, records: baseSource.records }
+        : fail;
+    }
+    const parsed = normalizeOsmPayload(json, fetchedAt);
+    if (baseSource && baseSource.records.length > 0) {
+      const merged = mergeOsmDelta(baseSource.records, parsed.records);
+      return {
+        ...parsed,
+        records: merged,
+        source_updated_at: parsed.source_updated_at ?? baseSource.source_updated_at,
+        status: merged.length > 0 ? "available" : parsed.status,
+      };
+    }
+    return parsed;
   } catch (error) {
-    return sourceFailure("osm", failureCode(error, deadline), attemptedAt);
+    const fail = sourceFailure("osm", failureCode(error, deadline), attemptedAt);
+    return baseSource && baseSource.records.length > 0
+      ? { ...fail, records: baseSource.records }
+      : fail;
   } finally {
     deadline.dispose();
   }

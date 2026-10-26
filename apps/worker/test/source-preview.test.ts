@@ -3,6 +3,9 @@ import test from "node:test";
 import { createSourcePreviewHandler } from "../src/layers/l4-application-integration/source-preview-api.js";
 import {
   SOURCE_PREVIEW_LIMITS,
+  buildOsmOverpassQuery,
+  mergeOsmDelta,
+  type PreviewRecord,
   type SourcePreviewClock,
 } from "../src/layers/l1-data-knowledge/source-preview-adapters.js";
 
@@ -136,7 +139,7 @@ test("snapshot is the default, includes only the validated dated OSM snapshot, a
   assert.equal(osm.status, "available");
   assert.equal(osm.fetched_at, "2026-10-10T04:08:05Z");
   assert.equal(osm.source_updated_at, "2026-10-10T04:06:43Z");
-  assert.equal((osm.records as unknown[]).length, 100);
+  assert.equal((osm.records as unknown[]).length, 200);
   assert.equal(petabencana.status, "not_requested");
   assert.equal(petabencana.data_mode, "none");
 });
@@ -202,7 +205,7 @@ test("fetch uses the fixed endpoints, bounded query, identifying user agent, and
   assert.equal(new Headers(petabencanaCall.init?.headers).get("user-agent"), userAgent);
   const query = decodeURIComponent(String(osmCall.init?.body).slice("data=".length));
   assert.equal(query,
-    '[out:json][timeout:20][maxsize:67108864];(nwr["amenity"="hospital"](-6.24,106.78,-6.14,106.88);nwr["amenity"="police"](-6.24,106.78,-6.14,106.88);nwr["amenity"="fire_station"](-6.24,106.78,-6.14,106.88););out center 100;');
+    '[out:json][timeout:15][maxsize:67108864];(nwr["amenity"="hospital"](-6.38,106.68,-6.08,106.98);nwr["amenity"="police"](-6.38,106.68,-6.08,106.98);nwr["amenity"="fire_station"](-6.38,106.68,-6.08,106.98););out center 250;');
 
   const payload = await response.json() as {
     generated_at: string;
@@ -502,4 +505,87 @@ test("an expired normalized cache refreshes without falling back to stale succes
   assert.equal(secondPayload.cached, false);
   assert.equal(source(secondPayload, "osm").status, "unavailable");
   assert.equal(source(secondPayload, "osm").error, "http_error");
+});
+
+test("mergeOsmDelta updates existing records and inserts new ones while preserving unchanged records", () => {
+  const base: PreviewRecord[] = [
+    {
+      id: "osm:node/1",
+      source: "osm",
+      kind: "hospital",
+      title: "RS Lama",
+      coordinates: [106.8, -6.2],
+      coordinate_kind: "source_point",
+      source_created_at: null,
+      source_status: null,
+      source_url: "https://www.openstreetmap.org/node/1",
+    },
+    {
+      id: "osm:node/2",
+      source: "osm",
+      kind: "police",
+      title: "Polsek Tetap",
+      coordinates: [106.81, -6.21],
+      coordinate_kind: "source_point",
+      source_created_at: null,
+      source_status: null,
+      source_url: "https://www.openstreetmap.org/node/2",
+    },
+  ];
+
+  const delta: PreviewRecord[] = [
+    {
+      id: "osm:node/1",
+      source: "osm",
+      kind: "hospital",
+      title: "RS Diperbarui",
+      coordinates: [106.801, -6.201],
+      coordinate_kind: "source_point",
+      source_created_at: null,
+      source_status: null,
+      source_url: "https://www.openstreetmap.org/node/1",
+    },
+    {
+      id: "osm:node/3",
+      source: "osm",
+      kind: "fire_station",
+      title: "Damkar Baru",
+      coordinates: [106.82, -6.22],
+      coordinate_kind: "source_point",
+      source_created_at: null,
+      source_status: null,
+      source_url: "https://www.openstreetmap.org/node/3",
+    },
+  ];
+
+  const merged = mergeOsmDelta(base, delta);
+  assert.equal(merged.length, 3);
+  assert.equal(merged[0]?.title, "RS Diperbarui");
+  assert.equal(merged[1]?.title, "Polsek Tetap");
+  assert.equal(merged[2]?.title, "Damkar Baru");
+});
+
+test("incremental mode queries newer filter and falls back to base facilities on upstream failure", async () => {
+  const harness = fakeClock();
+  let calledQuery = "";
+  const handler = createSourcePreviewHandler({
+    fetch: async (input, init) => {
+      if (String(input).includes("overpass-api")) {
+        calledQuery = decodeURIComponent(String(init?.body).slice("data=".length));
+        throw new Error("Overpass 502 Bad Gateway");
+      }
+      return jsonResponse(petabencanaCollection([]));
+    },
+    clock: harness.clock,
+    incremental: true,
+  });
+
+  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  assert.equal(response.status, 200);
+  assert.ok(calledQuery.includes('newer:"2026-10-10T04:06:43Z"'));
+  const payload = await response.json() as { sources: Array<Record<string, unknown>> };
+  const osm = source(payload, "osm");
+  assert.equal(osm.status, "unavailable");
+  assert.equal(osm.error, "http_error");
+  assert.equal((osm.records as unknown[]).length, 200);
 });

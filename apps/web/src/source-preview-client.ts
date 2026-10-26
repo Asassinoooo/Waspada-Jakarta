@@ -40,16 +40,16 @@ function createAbortError(): Error {
 }
 
 const ENDPOINT = "/api/v1/demo/source-preview";
-const REQUEST_DEADLINE_MS = 35_000;
-const MAX_RESPONSE_BYTES = 512 * 1024;
-const MAX_RECORDS_PER_SOURCE = 100;
-const MAX_REJECTED_COUNT = 500;
+const REQUEST_DEADLINE_MS = 25_000;
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_RECORDS_PER_SOURCE = 5000;
+const MAX_REJECTED_COUNT = 5000;
 const MAX_ID_LENGTH = 96;
 const MAX_TITLE_LENGTH = 128;
 const MAX_SOURCE_STATUS_LENGTH = 64;
 const MAX_ATTRIBUTION_LENGTH = 200;
 const CRS84_ENVELOPES = {
-  osm: { west: 106.78, south: -6.24, east: 106.88, north: -6.14 },
+  osm: { west: 106.68, south: -6.38, east: 106.98, north: -6.08 },
   petabencana: { west: 106.32, south: -6.4, east: 106.98, north: -5.16 },
 } as const;
 const MAX_PETABENCANA_REPORT_AGE_MS = 24 * 60 * 60 * 1000;
@@ -239,7 +239,7 @@ function parseSource(value: unknown, expectedId: PreviewSourceId, generatedAt: s
           && records.length === 0 && value.error === null;
       case "unavailable":
         return value.data_mode === "fetched" && value.fetched_at !== null
-          && records.length === 0 && value.error !== null;
+          && value.error !== null;
       case "not_requested":
         return expectedId === "petabencana" && records.length === 0 && value.data_mode === "none"
           && value.fetched_at === null && value.source_updated_at === null && value.error === null

@@ -68,6 +68,7 @@ export interface UnifiedSourceExplorerViewProps {
   onSourceRequest: (mode: SourcePreviewRequestMode) => void;
   onContextRequest: (mode: ContextSourcesRequestMode) => void;
   defaultPanel?: UnifiedExplorerPanel;
+  fallbackOsmRecords?: readonly SourceMapPoint[];
 }
 const kindLabels: Readonly<Record<PreviewKind | "earthquake", string>> = {
   hospital: "Rumah sakit", police: "Kepolisian", fire_station: "Pemadam kebakaran", flood_report: "Laporan banjir warga", earthquake: "Gempa bumi regional",
@@ -126,8 +127,22 @@ function contextSourceStatus(payload: ContextSourcesPayload | null, id: "openmet
   return payload?.sources.find((source) => source.id === id)?.status;
 }
 /** Combine only validated point records; model-grid coordinates are not incident markers. */
-export function collectUnifiedSourcePoints( sourcePayload: SourcePreviewPayload | null, contextPayload: ContextSourcesPayload | null,): SourceMapPoint[] {
-  return [ ...(sourcePayload?.sources.flatMap((source) => source.records) ?? []), ...(contextPayload?.sources.find((source) => source.id === "usgs")?.records ?? []), ];
+export function collectUnifiedSourcePoints(
+  sourcePayload: SourcePreviewPayload | null,
+  contextPayload: ContextSourcesPayload | null,
+  fallbackOsmRecords?: readonly SourceMapPoint[],
+): SourceMapPoint[] {
+  const osmSource = sourcePayload?.sources.find((source) => source.id === "osm");
+  const petabencanaSource = sourcePayload?.sources.find((source) => source.id === "petabencana");
+  const usgsRecords = contextPayload?.sources.find((source) => source.id === "usgs")?.records ?? [];
+  const osmRecords =
+    osmSource && osmSource.status === "available" && osmSource.records.length > 0
+      ? osmSource.records
+      : osmSource && osmSource.status === "unavailable" && fallbackOsmRecords && fallbackOsmRecords.length > 0
+        ? fallbackOsmRecords
+        : (osmSource?.records ?? []);
+  const pbRecords = petabencanaSource?.records ?? [];
+  return [...osmRecords, ...pbRecords, ...usgsRecords];
 }
 /** One selector drives the combined list and map. */
 export function filterUnifiedSourcePoints( points: readonly SourceMapPoint[], filters: {
@@ -448,7 +463,7 @@ function WeatherPanel({
   </p> <p className="unified-source-explorer__note">Koordinat grid model dijelaskan di tabel sebagai konteks sampel. Tidak dibuat titik insiden cuaca pada peta.</p> </section> );
 }
 export function UnifiedSourceExplorerView({
-  datasetMode, sourcePayload, sourceRequest, contextPayload, contextRequest, renderMap, onSourceRequest, onContextRequest, defaultPanel = "daftar",
+  datasetMode, sourcePayload, sourceRequest, contextPayload, contextRequest, renderMap, onSourceRequest, onContextRequest, defaultPanel = "daftar", fallbackOsmRecords,
 }
 : UnifiedSourceExplorerViewProps) {
   void React;
@@ -461,7 +476,7 @@ export function UnifiedSourceExplorerView({
   const mapContainerRef = useRef<HTMLElement>(null);
   const usableSourcePayload = datasetMode === "demo" && sourceRequest.status === "loaded" ? sourcePayload : null;
   const usableContextPayload = datasetMode === "demo" && contextRequest.status === "loaded" ? contextPayload : null;
-  const allPoints = useMemo(() => collectUnifiedSourcePoints(usableSourcePayload, usableContextPayload), [usableSourcePayload, usableContextPayload]);
+  const allPoints = useMemo(() => collectUnifiedSourcePoints(usableSourcePayload, usableContextPayload, fallbackOsmRecords), [usableSourcePayload, usableContextPayload, fallbackOsmRecords]);
   const visiblePoints = useMemo(() => filterUnifiedSourcePoints(allPoints, {
     query, source: sourceFilter, kind: kindFilter
 }
@@ -789,6 +804,7 @@ export function UnifiedSourceExplorer({
 }
   , );
   const [contextPayload, setContextPayload] = useState<ContextSourcesPayload | null>(null);
+  const [snapshotOsmRecords, setSnapshotOsmRecords] = useState<readonly SourceMapPoint[]>([]);
   const sourceController = useRef<AbortController | null>(null);
   const sourceSequence = useRef(0);
   const contextController = useRef<AbortController | null>(null);
@@ -809,6 +825,12 @@ export function UnifiedSourceExplorer({
 }
     ).then((nextPayload) => {
       if (controller.signal.aborted || sequence !== sourceSequence.current) return;
+      if (mode === "snapshot") {
+        const osm = nextPayload.sources.find((s) => s.id === "osm");
+        if (osm && osm.status === "available" && osm.records.length > 0) {
+          setSnapshotOsmRecords(osm.records);
+        }
+      }
       setSourcePayload(nextPayload);
       setSourceRequest({
         status: "loaded", mode
@@ -923,5 +945,6 @@ export function UnifiedSourceExplorer({
   onContextRequest={
     startContextRequest
 }
+  fallbackOsmRecords={snapshotOsmRecords}
   />;
 }
