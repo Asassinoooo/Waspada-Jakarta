@@ -2,12 +2,18 @@
 
 **Current continuation guide — 18 October 2026:** read [the software plan](../SOFTWARE_DEVELOPMENT_PLAN.md) first, then [HANDOFF.md](../HANDOFF.md). The universal handoff supersedes the stale continuation summary below while preserving its historical evidence. Latest accepted implementation is AUTH-01 at `d007d02f8f277e64ec7ea10f15b82a80c414b860` (15 October): web/Android accounts and onboarding, role-gated web shells, durable synthetic account demo, with real Google/hosted/device gates still open. The repository and remote were checked on18October; application tests/services were not rerun for this documentation task. [Latest implementation evidence](assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md).
 
-**Current continuation guide — 26 October 2026:**
-Comprehensive Jakarta emergency facility registry (200 facilities across 5 administrative cities), graceful fallback, incremental Overpass fetch with `(newer:"<timestamp>")`, and L1 verified news ingestion pipeline (`rss-news-ingest.ts`) are implemented and verified.
-- **Database Facility Registry (`apps/db`)**: Created `FacilityRepository` in `apps/db/src/facility-repository.ts` storing facilities in PostGIS `waspada.geometries` (`role = 'facility'`). Seeded 200 real emergency facilities (107 hospitals, 68 police stations, 25 fire stations) across Jakarta Pusat, Selatan, Barat, Timur, and Utara via `apps/db/scripts/seed-facilities.ts`. Tested via PGlite in `apps/db/test/facility-repository.test.ts` (2/2 pass).
-- **Worker Incremental Fetch & Graceful Fallback (`apps/worker`)**: Implemented `buildOsmOverpassQuery` with `(newer:"<timestamp>")` clause and `mergeOsmDelta` in `source-preview-adapters.ts`. Expanded coordinate envelope to daratan DKI Jakarta (`106.68`–`106.98` E, `-6.38`–`-6.08` N). On Overpass timeout or 502, Worker degrades gracefully by returning HTTP 200 with `status: "unavailable"` while retaining all 200 base facilities so map markers are never dropped. Shortened failure cache TTL to 30s. Tests pass cleanly (15/15 in `source-preview.test.ts`, 3/3 in `source-preview-route.test.ts`).
-- **Web Client & UI Graceful Degradation (`apps/web`)**: Aligned client deadline to 25s (allowing worker to return degraded JSON before client aborts), expanded envelope and response budget (up to 5,000 records). In `SourcePreview.tsx` and `UnifiedSourceExplorer.tsx`, fallback banner and local markers are retained during provider downtime. Web test suite passes 196/196.
-- **News & Incident Source Pipeline (`apps/worker`)**: Implemented `rss-news-ingest.ts` with strict filters for 44 DKI Jakarta subdistricts/corridors and 21 incident keywords (`banjir`, `kebakaran`, `pohon tumbang`, `kecelakaan`, etc.), mapping verified articles into L1 `report_revisions` and Unicode code-point `evidence_chunks` with `revision_status: "unreviewed"`. Unit test suite passes 4/4 in `apps/worker/test/rss-news-ingest.test.ts`.
+**Current continuation guide — 26 October 2026 (Parallel Orchestration Wave):**
+End-to-end Waspada Jakarta pipeline (L1 Ingestion $\rightarrow$ L2 Fact Extraction & Event Proposals $\rightarrow$ L4 Moderator Review UI & Publication Gate) implemented and verified via 6 concurrent parallel subagents:
+- **L1 Scheduled Ingestion Runtimes (Tracks A1 & A2)**:
+  - `petabencana-poll-runtime.ts` polls PetaBencana GeoJSON, filters Jakarta envelope, maps to `StoredReportRevision` with code-point chunks (11/11 tests pass).
+  - `news-poll-runtime.ts` polls ANTARA Metro & Kriminalitas RSS feeds, filters via 44 Jakarta toponyms and 21 incident keywords (11/11 tests pass).
+- **L2 Proposal Engine & DB Writer (Tracks B1 & B2)**:
+  - `proposal-engine.ts` extracts structured incident categories, coordinates, physical event time, and grounded claims citing exact code-point spans (`ref-${revId}-${chunkIdx}`) matching Schema 2.0 contract (10/10 tests pass).
+  - `event-proposal-writer.ts` atomically persists `EventProposalDto` into `waspada.event_proposals` and `waspada.proposal_claims` using advisory locks and append-only trigger compliance (9/9 PGlite tests pass).
+- **L4 Moderation API & Interactive Review UI (Tracks C1 & C2)**:
+  - `moderation-api.ts` exposes `/api/v1/moderation/proposals` (list queue), `/api/v1/moderation/proposals/:id` (detail & chunks), and `/api/v1/moderation/proposals/:id/publish` enforcing `moderator`/`admin` role and CSRF validation (18/18 tests pass).
+  - `ModeratorReview.tsx` provides an interactive 2-column review queue in `#tinjau-bukti` with quote highlighting, severity badges, and approval modal (17/17 tests pass; 196/196 web suite pass).
+- **Full Integration Proof**: Worker router wires moderation endpoints and scheduled live ingestion in `apps/worker/src/index.ts`. Live smoke test confirmed queue listing, evidence quote matching, approval execution (`{ ok: true, status: 'written' }`), and queue advancement.
 
 ## Historical checkpoint entries
 
