@@ -18,68 +18,54 @@ import { createSourcePreviewHandler } from "./layers/l4-application-integration/
 import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
 import { handleAccountRequest } from "./runtime/account-runtime.js";
 import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
-import { generateProposalFromReport, type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
+import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
+import { correlateSourceReports } from "./layers/l1-data-knowledge/multisource-correlator.js";
+import { generateCorrelatedProposal } from "./layers/l2-model-grounding/correlated-proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
 import { createNewsPollRuntime } from "./runtime/news-poll-runtime.js";
 
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
-// In-memory proposal and chunk store for development and live demonstration
 const activeProposals = new Map<string, EventProposalDto>();
 const activeChunks = new Map<string, readonly StoredEvidenceChunk[]>();
 
-// Seed initial demo proposals generated from verified report chunks
-const sampleReports: StoredReportRevision[] = [
-  {
-    report_revision_id: "report-demo-flood-kemang",
-    source_id: "petabencana",
-    canonical_url: "https://petabencana.id/report/flood-kemang-01",
-    permitted_text: "Banjir genangan setinggi 50 cm di Jalan Kemang Raya, Mampang Prapatan Jakarta Selatan.",
-    permitted_text_hash: "3b08b5f3d79f048d0cf489e248b64e03d40bf5e2c77ef155f9a6565e2363b924",
-    published_at: "2026-10-26T03:30:00Z",
-    retrieved_at: "2026-10-26T04:00:00Z",
-    revision_status: "unreviewed",
-    chunks: [
-      {
-        chunk_index: 0,
-        text: "Banjir genangan setinggi 50 cm di Jalan Kemang Raya, Mampang Prapatan Jakarta Selatan.",
-        span_start: 0,
-        span_end: 87,
-      },
-    ],
-  },
-  {
-    report_revision_id: "report-demo-fire-senen",
-    source_id: "source-antara-metro",
-    canonical_url: "https://www.antaranews.com/berita/kebakaran-senen-jakpus",
-    permitted_text: "Kebakaran hebat hanguskan ruko di Pasar Senen Jakarta Pusat pada pukul 02.15 WIB, 15 unit damkar dikerahkan.",
-    permitted_text_hash: "7f4c51489e2c66d214a1c586b627889ef512c14041a546271c0800b411d9541a",
-    published_at: "2026-10-26T02:30:00Z",
-    retrieved_at: "2026-10-26T03:00:00Z",
-    revision_status: "unreviewed",
-    chunks: [
-      {
-        chunk_index: 0,
-        text: "Kebakaran hebat hanguskan ruko di Pasar Senen Jakarta Pusat pada pukul 02.15 WIB, 15 unit damkar dikerahkan.",
-        span_start: 0,
-        span_end: 109,
-      },
-    ],
-  },
-];
+async function syncLivePipelineProposals(): Promise<void> {
+  const allRevisions: StoredReportRevision[] = [];
+  try {
+    const pbResult = await createPetaBencanaPollRuntime().poll();
+    allRevisions.push(...pbResult.revisions);
+  } catch {}
+  try {
+    const newsResult = await createNewsPollRuntime().poll();
+    allRevisions.push(...newsResult.revisions);
+  } catch {}
 
-for (const rep of sampleReports) {
-  const prop = generateProposalFromReport(rep);
-  if (prop) {
-    activeProposals.set(prop.proposal_id, prop);
-    activeChunks.set(prop.proposal_id, rep.chunks);
+  if (allRevisions.length > 0) {
+    const clusters = correlateSourceReports(allRevisions);
+    for (const cluster of clusters) {
+      const prop = generateCorrelatedProposal(cluster);
+      if (prop) {
+        activeProposals.set(prop.proposal_id, prop);
+        activeChunks.set(prop.proposal_id, cluster.reports.flatMap((r) => r.chunks));
+      }
+    }
   }
 }
 
+// Initial live background sync
+void syncLivePipelineProposals();
 const moderationHandler = createModerationApiHandler({
-  listPendingProposals: async () => Array.from(activeProposals.values()),
+  listPendingProposals: async () => {
+    if (activeProposals.size === 0) {
+      await syncLivePipelineProposals();
+    }
+    return Array.from(activeProposals.values());
+  },
   getProposalDetail: async (id: string) => {
+    if (activeProposals.size === 0) {
+      await syncLivePipelineProposals();
+    }
     const prop = activeProposals.get(id);
     if (!prop) return null;
     return { proposal: prop, chunks: activeChunks.get(id) ?? [] };
@@ -265,26 +251,21 @@ export default {
       { telemetry: consoleTelemetry },
     );
     await handleFreshnessDueScheduleTrigger(controller.scheduledTime, env, undefined, consoleTelemetry);
-    // Scheduled live ingestion pollers
+    // Scheduled live ingestion pollers with spatio-temporal correlation
     try {
       const pbRunner = createPetaBencanaPollRuntime();
       const pbResult = await pbRunner.poll(controller.scheduledTime);
-      for (const rev of pbResult.revisions) {
-        const proposal = generateProposalFromReport(rev);
-        if (proposal) {
-          activeProposals.set(proposal.proposal_id, proposal);
-          activeChunks.set(proposal.proposal_id, rev.chunks);
-        }
-      }
-    } catch {}
-    try {
       const newsRunner = createNewsPollRuntime();
       const newsResult = await newsRunner.poll();
-      for (const rev of newsResult.revisions) {
-        const proposal = generateProposalFromReport(rev);
-        if (proposal) {
-          activeProposals.set(proposal.proposal_id, proposal);
-          activeChunks.set(proposal.proposal_id, rev.chunks);
+      const allRevisions = [...pbResult.revisions, ...newsResult.revisions];
+      if (allRevisions.length > 0) {
+        const clusters = correlateSourceReports(allRevisions);
+        for (const cluster of clusters) {
+          const proposal = generateCorrelatedProposal(cluster);
+          if (proposal) {
+            activeProposals.set(proposal.proposal_id, proposal);
+            activeChunks.set(proposal.proposal_id, cluster.reports.flatMap((r) => r.chunks));
+          }
         }
       }
     } catch {}
