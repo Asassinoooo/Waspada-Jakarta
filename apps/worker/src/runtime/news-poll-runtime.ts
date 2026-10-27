@@ -30,6 +30,7 @@ export interface StoredReportRevision {
 export interface NewsFeedConfig {
   readonly url: string;
   readonly sourceId: string;
+  readonly maxAgeHours?: number;
 }
 
 export const DEFAULT_ANTARA_FEEDS: readonly NewsFeedConfig[] = [
@@ -80,6 +81,8 @@ export interface NewsPollRuntimeOptions {
   readonly fetchFn?: typeof fetch;
   /** Request timeout in ms; defaults to 20_000 (20s) */
   readonly timeoutMs?: number;
+  /** Maximum article age in hours from retrievedAt to accept; defaults to NEWS_MAX_AGE_HOURS env (48h dev, 6h prod) */
+  readonly maxAgeHours?: number;
   /** Timestamp generator; defaults to () => new Date().toISOString() */
   readonly now?: () => string;
   /** Optional callback invoked with filtered revisions */
@@ -139,6 +142,7 @@ async function pollSingleFeed(
   retrievedAt: string,
   fetchFn: typeof fetch,
   timeoutMs: number,
+  maxAgeHours?: number,
 ): Promise<NewsFeedPollResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -193,7 +197,8 @@ async function pollSingleFeed(
   }
 
   try {
-    const parseResult = parseAndFilterNewsRss(xmlText, retrievedAt, feed.sourceId);
+    const effectiveMaxAge = feed.maxAgeHours ?? maxAgeHours;
+    const parseResult = parseAndFilterNewsRss(xmlText, retrievedAt, feed.sourceId, effectiveMaxAge);
     if ("error" in parseResult) {
       return {
         url: feed.url,
@@ -237,18 +242,19 @@ export function createNewsPollRuntime(
   const feeds = options.feeds ?? DEFAULT_ANTARA_FEEDS;
   const fetchFn = options.fetchFn ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
+  const maxAgeHours = options.maxAgeHours;
   const now = options.now ?? (() => new Date().toISOString());
 
   return {
     async pollFeed(feed: NewsFeedConfig, retrievedAt?: string): Promise<NewsFeedPollResult> {
       const timestamp = retrievedAt ?? now();
-      return pollSingleFeed(feed, timestamp, fetchFn, timeoutMs);
+      return pollSingleFeed(feed, timestamp, fetchFn, timeoutMs, maxAgeHours);
     },
 
     async poll(): Promise<NewsPollResult> {
       const retrievedAt = now();
       const feedResults = await Promise.all(
-        feeds.map((feed) => pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs)),
+        feeds.map((feed) => pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs, maxAgeHours)),
       );
 
       const seenKeys = new Set<string>();

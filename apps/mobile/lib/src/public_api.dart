@@ -38,11 +38,13 @@ abstract interface class PublicApi {
 class EventQuery {
   const EventQuery(
       {this.category,
+      this.incidentCategory,
       this.lifecycle,
       this.freshness,
       this.search,
       this.cursor});
   final EventCategory? category;
+  final IncidentCategory? incidentCategory;
   final EventLifecycle? lifecycle;
   final FreshnessStatus? freshness;
   final String? search;
@@ -50,7 +52,11 @@ class EventQuery {
 
   Map<String, String> toQueryParameters() {
     final result = <String, String>{'limit': '20'};
-    if (category != null) result['category'] = category!.wireValue;
+    if (category != null) {
+      result['category'] = category!.wireValue;
+    } else if (incidentCategory != null) {
+      result['category'] = incidentCategory!.wireValue;
+    }
     if (lifecycle != null) result['lifecycle'] = lifecycle!.wireValue;
     if (freshness != null) result['freshness'] = freshness!.wireValue;
     final q = search?.trim();

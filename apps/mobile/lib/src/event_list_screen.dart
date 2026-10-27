@@ -450,8 +450,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                 onPressed: () => Navigator.pop(
                     context,
                     _AppliedFilters(
-                      category: _findByWire(EventCategory.values, _category,
-                          (item) => item.wireValue),
+                      category: _resolveCategory(_category),
                       lifecycle: _findByWire(EventLifecycle.values, _lifecycle,
                           (item) => item.wireValue),
                       freshness: _findByWire(FreshnessStatus.values, _freshness,
@@ -498,11 +497,33 @@ class _EventCard extends StatelessWidget {
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(event.title, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              Text(event.category.label,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, color: WaspadaColors.teal)),
+              Row(children: [
+                if (event.incidentCategory != null) ...[
+                  Text(event.icon, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: Text(
+                    event.category.label,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: WaspadaColors.teal),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ]),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 7, children: [
+                if (event.severity != null)
+                  StatusPill(
+                    icon: Icons.warning_amber_rounded,
+                    label: 'Keparahan: ${event.severity!.label}',
+                    color: event.severity == IncidentSeverity.critical
+                        ? WaspadaColors.marker
+                        : event.severity == IncidentSeverity.high
+                            ? WaspadaColors.caution
+                            : WaspadaColors.softPanel,
+                  ),
                 StatusPill(icon: Icons.timeline, label: event.lifecycle.label),
                 StatusPill(
                     icon: Icons.update,
@@ -517,6 +538,12 @@ class _EventCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.bodyMedium,
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis),
+              ],
+              if (event.locationLabel != null &&
+                  event.locationLabel!.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text('Lokasi: ${event.locationLabel!}',
+                    style: Theme.of(context).textTheme.bodyMedium),
               ],
               const SizedBox(height: 10),
               Text(
@@ -551,6 +578,14 @@ class _EventCard extends StatelessWidget {
       ),
     );
   }
+}
+
+EventCategory? _resolveCategory(String wire) {
+  if (wire.isEmpty) return null;
+  for (final item in EventCategory.values) {
+    if (item.wireValue == wire) return item;
+  }
+  return IncidentCategory.tryParse(wire)?.toEventCategory();
 }
 
 class _EmptyResults extends StatelessWidget {

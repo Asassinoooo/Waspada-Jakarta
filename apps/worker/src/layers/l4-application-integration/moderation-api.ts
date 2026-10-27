@@ -10,7 +10,6 @@
 
 import type { AccountRole, AccountStore } from "../../../../db/src/accounts.js";
 import type { AccountCookieMode } from "../../accounts/types.js";
-import type { ManualPublicationService } from "./manual-publication-service.js";
 
 // ============================================================================
 // Frozen Contract Types
@@ -99,7 +98,7 @@ export interface ModerationPublisher {
 
 export interface ModerationApiDependencies {
   readonly proposalReader?: ModerationProposalReader;
-  readonly publicationService?: ManualPublicationService | ModerationPublisher;
+  readonly publicationService?: ModerationPublisher;
   readonly publisher?: ModerationPublisher;
   readonly accountStore?: AccountStore;
   readonly authenticate?: (request: Request) => Promise<ModerationPrincipal | null>;
@@ -551,7 +550,7 @@ export function createModerationApiHandler(
       }
 
       try {
-        // Publication accepts either ManualPublicationServiceInput or arbitrary publisher input
+        // Publication accepts either publication service or arbitrary publisher input
         const result: unknown = await publisher.publish(
           publishInput as Parameters<typeof publisher.publish>[0],
         );

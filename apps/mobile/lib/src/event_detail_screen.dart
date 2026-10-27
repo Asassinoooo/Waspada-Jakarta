@@ -209,6 +209,19 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       ],
       const SizedBox(height: 14),
       Wrap(spacing: 8, runSpacing: 8, children: [
+        if (event.incidentCategory != null)
+          StatusPill(
+              icon: Icons.category_outlined,
+              label: '${event.icon} ${event.incidentCategory!.label}'),
+        if (event.severity != null)
+          StatusPill(
+              icon: Icons.warning_amber_rounded,
+              label: 'Keparahan: ${event.severity!.label}',
+              color: event.severity == IncidentSeverity.critical
+                  ? WaspadaColors.marker
+                  : event.severity == IncidentSeverity.high
+                      ? WaspadaColors.caution
+                      : WaspadaColors.softPanel),
         StatusPill(
             icon: Icons.timeline, label: 'Siklus: ${event.lifecycle.label}'),
         StatusPill(
@@ -258,6 +271,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         scope.isEmpty
                             ? 'Tidak tersedia pada respons ini.'
                             : scope.join(', ')),
+                    if (event.locationLabel != null &&
+                        event.locationLabel!.isNotEmpty)
+                      labelledFact(
+                          context, 'Label lokasi', event.locationLabel!),
+                    if (event.coordinates != null)
+                      labelledFact(
+                          context,
+                          'Koordinat',
+                          '${event.coordinates![0].toStringAsFixed(4)}, ${event.coordinates![1].toStringAsFixed(4)}'),
+                    if (event.supersedesVersion != null)
+                      labelledFact(context, 'Menggantikan versi',
+                          'v${event.supersedesVersion}'),
+                    if (event.publicationStatus != 'published')
+                      labelledFact(
+                          context,
+                          'Status publikasi',
+                          event.publicationStatus == 'withdrawn'
+                              ? 'Ditarik'
+                              : event.publicationStatus),
                     if (event.geometries.isEmpty)
                       const Padding(
                           padding: EdgeInsets.only(top: 8),

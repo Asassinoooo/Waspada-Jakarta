@@ -168,6 +168,28 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
   assert.match(selectedPresentation, /106\.8, -6\.2 → 106\.81, -6\.21/);
 });
 
+test("EventFeed flows incident records naturally below map without floating popup drawer", () => {
+  const page = renderFeed();
+
+  // Floating popup drawer and "Ciutkan ke peta" are removed
+  assert.doesNotMatch(page, /Ciutkan ke peta/);
+  assert.doesNotMatch(page, /feed-panel--floating-sheet/);
+  assert.doesNotMatch(page, /feed-drawer__floating-trigger/);
+  assert.doesNotMatch(page, /feed-drawer__toggle-btn/);
+
+  // Map column precedes feed panel so incident records flow below the map on desktop
+  const mapIdx = page.indexOf('class="map-column"');
+  const feedIdx = page.indexOf('class="feed-panel"');
+  assert.ok(mapIdx !== -1, "map-column should exist");
+  assert.ok(feedIdx !== -1, "feed-panel should exist");
+  assert.ok(mapIdx < feedIdx, "map-column must precede feed-panel for natural below-map flow");
+
+  // Mobile view switch between Daftar and Peta is present
+  assert.match(page, /class="mobile-view-switch" role="group" aria-label="Tampilan jelajah"/);
+  assert.match(page, />Daftar<\/button>/);
+  assert.match(page, />Peta<\/button>/);
+});
+
 test("update centre has direct hash navigation and an accessible current navigation item", () => {
   assert.deepEqual(routeFromHash("#pembaruan"), { screen: "updates" });
   const header = renderToStaticMarkup(<SiteHeader route={{ screen: "updates" }} context={liveContext} />);

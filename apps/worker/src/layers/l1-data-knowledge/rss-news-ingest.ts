@@ -33,6 +33,28 @@ export const INCIDENT_KEYWORDS: readonly string[] = [
   "tewas", "meninggal", "korban", "jenazah", "luka", "kritis", "pembunuhan", "penusukan", "penembakan", "begal", "pencurian", "rampok",
 ];
 
+export const DEFAULT_LOCAL_NEWS_MAX_AGE_HOURS = 48;
+export const DEFAULT_PROD_NEWS_MAX_AGE_HOURS = 6;
+
+export function resolveNewsMaxAgeHours(maxAgeHours?: number): number {
+  if (typeof maxAgeHours === "number" && Number.isFinite(maxAgeHours) && maxAgeHours > 0) {
+    return maxAgeHours;
+  }
+  const envVal = typeof process !== "undefined" ? process.env?.NEWS_MAX_AGE_HOURS : undefined;
+  if (envVal) {
+    const parsed = Number(envVal);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  const isProd = typeof process !== "undefined" && process.env?.NODE_ENV === "production";
+  return isProd ? DEFAULT_PROD_NEWS_MAX_AGE_HOURS : DEFAULT_LOCAL_NEWS_MAX_AGE_HOURS;
+}
+
+export interface ParseAndFilterNewsRssOptions {
+  readonly maxAgeHours?: number;
+}
+
 export interface ClassifiedNewsItem {
   readonly guid: string;
   readonly title: string;
@@ -98,7 +120,12 @@ export function parseAndFilterNewsRss(
   xmlText: string,
   retrievedAt: string,
   sourceId: string = "source-antara-metro",
+  optionsOrMaxAgeHours?: number | ParseAndFilterNewsRssOptions,
 ): FilteredNewsResult | { readonly error: string } {
+  const maxAgeHours = typeof optionsOrMaxAgeHours === "number"
+    ? optionsOrMaxAgeHours
+    : optionsOrMaxAgeHours?.maxAgeHours;
+  const effectiveMaxAgeHours = resolveNewsMaxAgeHours(maxAgeHours);
   const parseResult: RssDiscoveryParseResult = parseRssDiscoveryXml(xmlText, retrievedAt);
   if (parseResult.kind === "error") {
     return { error: parseResult.error.code };
@@ -112,6 +139,19 @@ export function parseAndFilterNewsRss(
     if (!rawItem.title || !rawItem.link) {
       rejectedCount += 1;
       continue;
+    }
+
+    // Freshness check: discard items older than maxAgeHours from retrievedAt
+    if (rawItem.pubDate) {
+      const pubDateMs = Date.parse(rawItem.pubDate);
+      const retrievedAtMs = Date.parse(retrievedAt);
+      if (Number.isFinite(pubDateMs) && Number.isFinite(retrievedAtMs)) {
+        const ageHours = (retrievedAtMs - pubDateMs) / (1000 * 60 * 60);
+        if (ageHours > effectiveMaxAgeHours) {
+          rejectedCount += 1;
+          continue;
+        }
+      }
     }
 
     const { isRelevant, matchedToponyms, matchedKeywords } = classifyNewsItem(rawItem);

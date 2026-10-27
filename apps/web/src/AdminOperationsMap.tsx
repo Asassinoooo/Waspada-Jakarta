@@ -23,13 +23,6 @@ const LAYERS: readonly AdminLayer[] = ["L1", "L2", "L3", "L4", "L5"];
 const LAYER_LABELS: Record<AdminLayer, string> = {
   L1: "Terima laporan", L2: "Cari bukti", L3: "Periksa", L4: "Tinjau", L5: "Pantau",
 };
-const LAYER_SHORT_LABELS: Record<AdminLayer, string> = {
-  L1: "Terima",
-  L2: "Cari bukti",
-  L3: "Periksa",
-  L4: "Tinjau",
-  L5: "Pantau",
-};
 const STATE_LABELS: Record<AdminItemState, string> = {
   queued: "Menunggu", running: "Diproses", held: "Ditahan", failed: "Gagal", done: "Selesai diproses",
 };
@@ -163,7 +156,15 @@ export function placeAdminMapAnnotations(anchors: readonly AdminMapAnchor[], plo
   return placed;
 }
 
-export function createAdminMapProjection(view: Readonly<AdminMapBounds>, size: AdminMapSize) {
+export interface AdminMapProjection {
+  project: (position: PublicGeoJSONPosition) => [number, number];
+  unproject: (x: number, y: number) => PublicGeoJSONPosition;
+  scale: number;
+  plot: AdminMapPlot;
+  visibleBounds: AdminMapBounds;
+}
+
+export function createAdminMapProjection(view: Readonly<AdminMapBounds>, size: AdminMapSize): AdminMapProjection {
   const textScale = size.textScale ?? 1;
   const left = Math.min(64 * textScale, size.width - 56);
   const right = Math.min(24 * textScale, size.width - left - 32);
@@ -199,10 +200,6 @@ function overlaps(a: AdminMapBounds, b: AdminMapBounds): boolean {
   return a.west <= b.east + epsilon && a.east >= b.west - epsilon && a.south <= b.north + epsilon && a.north >= b.south - epsilon;
 }
 
-function contains(a: AdminMapBounds, b: AdminMapBounds): boolean {
-  const epsilon = 1e-10;
-  return a.west <= b.west + epsilon && a.east >= b.east - epsilon && a.south <= b.south + epsilon && a.north >= b.north - epsilon;
-}
 
 function gridTicks(minimum: number, maximum: number, target: number): number[] {
   const rough = (maximum - minimum) / target;
@@ -270,6 +267,251 @@ function Geometry({ geometry, project }: { geometry: PublicGeoJSONGeometry; proj
 
 interface MappedItem { item: AdminItem; geometries: PublicGeoJSONGeometry[]; bounds: AdminMapBounds }
 
+export function categoryBadgeConfig(category: string): { icon: string; short: string; bg: string; color: string } {
+  switch (category) {
+    case "disasters_weather":
+      return { icon: "🌊", short: "Bencana & Cuaca", bg: "var(--kali-teal, #087B75)", color: "#FFFFFF" };
+    case "fires_infrastructure_hazards":
+      return { icon: "🔥", short: "Kebakaran", bg: "var(--merah-tanda, #A7433B)", color: "#FFFFFF" };
+    case "transport_road_incidents":
+      return { icon: "🚗", short: "Transportasi", bg: "#2563EB", color: "#FFFFFF" };
+    case "crime_personal_security":
+    case "violence_immediate_threats":
+      return { icon: "🚨", short: "Keamanan", bg: "#DC2626", color: "#FFFFFF" };
+    case "health_environmental_advisories":
+      return { icon: "🏥", short: "Kesehatan", bg: "#16A34A", color: "#FFFFFF" };
+    case "utilities_essential_services":
+      return { icon: "⚡", short: "Utilitas", bg: "var(--kuning-perhatian, #D97706)", color: "#FFFFFF" };
+    case "demonstrations_public_gatherings":
+    case "crowds_major_events":
+      return { icon: "👥", short: "Keramaian", bg: "#7C3AED", color: "#FFFFFF" };
+    case "group_specific_critical_notices":
+      return { icon: "📢", short: "Pemberitahuan", bg: "#4B5563", color: "#FFFFFF" };
+    default:
+      return { icon: "📍", short: "Laporan", bg: "var(--kali-teal, #087B75)", color: "#FFFFFF" };
+  }
+}
+
+const JAKARTA_MAINLAND: PublicGeoJSONPosition[] = [
+  [106.600, -6.085],
+  [106.670, -6.095],
+  [106.710, -6.105],
+  [106.735, -6.102],
+  [106.755, -6.108],
+  [106.785, -6.115],
+  [106.812, -6.122],
+  [106.835, -6.118],
+  [106.865, -6.116],
+  [106.885, -6.100],
+  [106.915, -6.108],
+  [106.955, -6.095],
+  [107.030, -6.085],
+  [107.030, -6.450],
+  [106.600, -6.450],
+];
+
+const JAKARTA_RIVERS: { id: string; name: string; positions: PublicGeoJSONPosition[] }[] = [
+  {
+    id: "ciliwung",
+    name: "S. Ciliwung",
+    positions: [
+      [106.845, -6.370], [106.852, -6.320], [106.860, -6.270],
+      [106.858, -6.230], [106.848, -6.208], [106.835, -6.185],
+      [106.828, -6.155], [106.815, -6.122],
+    ],
+  },
+  {
+    id: "bkb",
+    name: "BKB",
+    positions: [
+      [106.848, -6.208], [106.832, -6.200], [106.815, -6.190],
+      [106.795, -6.172], [106.782, -6.145], [106.772, -6.115],
+    ],
+  },
+  {
+    id: "bkt",
+    name: "BKT",
+    positions: [
+      [106.878, -6.235], [106.905, -6.225], [106.932, -6.205],
+      [106.950, -6.160], [106.960, -6.100],
+    ],
+  },
+  {
+    id: "angke",
+    name: "Kali Angke",
+    positions: [
+      [106.735, -6.330], [106.745, -6.270], [106.755, -6.200],
+      [106.745, -6.150], [106.735, -6.105],
+    ],
+  },
+  {
+    id: "sunter",
+    name: "Kali Sunter",
+    positions: [
+      [106.890, -6.300], [106.895, -6.235], [106.885, -6.175],
+      [106.875, -6.130], [106.865, -6.116],
+    ],
+  },
+];
+
+const JAKARTA_DISTRICT_BOUNDARIES: PublicGeoJSONPosition[][] = [
+  [[106.795, -6.145], [106.805, -6.175], [106.810, -6.200]],
+  [[106.810, -6.200], [106.835, -6.210], [106.860, -6.215]],
+  [[106.805, -6.150], [106.835, -6.155], [106.870, -6.155]],
+  [[106.860, -6.180], [106.865, -6.215]],
+  [[106.860, -6.215], [106.865, -6.270], [106.870, -6.350]],
+];
+
+const JAKARTA_ISLANDS: { name: string; position: PublicGeoJSONPosition; rx: number; ry: number }[] = [
+  { name: "P. Untung Jawa", position: [106.705, -5.975], rx: 5, ry: 3 },
+  { name: "P. Damar", position: [106.840, -5.960], rx: 4, ry: 3 },
+  { name: "P. Ayer", position: [106.780, -5.990], rx: 3.5, ry: 2.5 },
+  { name: "P. Pari", position: [106.615, -5.860], rx: 5.5, ry: 3 },
+  { name: "P. Tidung", position: [106.515, -5.800], rx: 7, ry: 2.5 },
+  { name: "P. Pramuka", position: [106.615, -5.745], rx: 4.5, ry: 3 },
+  { name: "P. Sebira", position: [106.460, -5.205], rx: 5, ry: 3.5 },
+];
+
+const JAKARTA_DISTRICT_LABELS: { label: string; position: PublicGeoJSONPosition }[] = [
+  { label: "JAKARTA PUSAT", position: [106.835, -6.182] },
+  { label: "JAKARTA UTARA", position: [106.880, -6.135] },
+  { label: "JAKARTA BARAT", position: [106.745, -6.165] },
+  { label: "JAKARTA SELATAN", position: [106.810, -6.265] },
+  { label: "JAKARTA TIMUR", position: [106.910, -6.230] },
+];
+
+const JAKARTA_LANDMARKS: { name: string; icon: string; position: PublicGeoJSONPosition }[] = [
+  { name: "Monas", icon: "★", position: [106.827, -6.175] },
+  { name: "Tj. Priok", icon: "⚓", position: [106.885, -6.105] },
+  { name: "Bandara Soetta", icon: "✈", position: [106.655, -6.125] },
+  { name: "Halim", icon: "✈", position: [106.892, -6.265] },
+];
+
+function JakartaBasemap({ projection }: { projection: AdminMapProjection }) {
+  const { project, plot } = projection;
+  const seaLabel = project([106.820, -6.040]);
+  const islandsHeading = project([106.720, -5.945]);
+
+  return (
+    <g className="admin-map__basemap" aria-hidden="true">
+      <rect
+        className="admin-map__sea"
+        x={plot.left}
+        y={plot.top}
+        width={plot.width}
+        height={plot.height}
+      />
+      <text
+        className="admin-map__sea-label"
+        x={seaLabel[0]}
+        y={seaLabel[1]}
+        textAnchor="middle"
+      >
+        TELUK JAKARTA (LAUT JAWA)
+      </text>
+
+      {/* 2. Mainland Jakarta & surrounding landmass */}
+      <path
+        className="admin-map__land"
+        d={pathFor(JAKARTA_MAINLAND, project, true)}
+      />
+      <path
+        className="admin-map__coastline"
+        d={pathFor(JAKARTA_MAINLAND.slice(0, 13), project)}
+      />
+
+      {/* 3. Kepulauan Seribu Islands */}
+      <g className="admin-map__islands-group">
+        {JAKARTA_ISLANDS.map((island) => {
+          const [ix, iy] = project(island.position);
+          return (
+            <g key={island.name} className="admin-map__island-item">
+              <ellipse
+                className="admin-map__island"
+                cx={ix}
+                cy={iy}
+                rx={island.rx}
+                ry={island.ry}
+              />
+              <text
+                className="admin-map__island-label"
+                x={ix}
+                y={iy - island.ry - 2}
+                textAnchor="middle"
+              >
+                {island.name}
+              </text>
+            </g>
+          );
+        })}
+        <text
+          className="admin-map__islands-heading"
+          x={islandsHeading[0]}
+          y={islandsHeading[1]}
+          textAnchor="middle"
+        >
+          KEP. SERIBU
+        </text>
+      </g>
+
+      {/* 4. Rivers & Waterways */}
+      <g className="admin-map__rivers-group">
+        {JAKARTA_RIVERS.map((river) => (
+          <path
+            key={river.id}
+            className="admin-map__river"
+            d={pathFor(river.positions, project)}
+          />
+        ))}
+      </g>
+
+      {/* 5. District Boundaries */}
+      <g className="admin-map__district-boundaries-group">
+        {JAKARTA_DISTRICT_BOUNDARIES.map((line, idx) => (
+          <path
+            key={idx}
+            className="admin-map__district-boundary"
+            d={pathFor(line, project)}
+          />
+        ))}
+      </g>
+
+      {/* 6. District Labels */}
+      <g className="admin-map__area-labels-group">
+        {JAKARTA_DISTRICT_LABELS.map((d) => {
+          const [dx, dy] = project(d.position);
+          return (
+            <text
+              key={d.label}
+              className="admin-map__area-label"
+              x={dx}
+              y={dy}
+              textAnchor="middle"
+            >
+              {d.label}
+            </text>
+          );
+        })}
+      </g>
+
+      {/* 7. Key Landmarks */}
+      <g className="admin-map__landmarks-group">
+        {JAKARTA_LANDMARKS.map((lm) => {
+          const [lx, ly] = project(lm.position);
+          return (
+            <g key={lm.name} className="admin-map__landmark" transform={`translate(${lx}, ${ly})`}>
+              <circle cx="0" cy="0" r="2.5" className="admin-map__landmark-dot" />
+              <text x="5" y="3" className="admin-map__landmark-text">
+                {lm.icon} {lm.name}
+              </text>
+            </g>
+          );
+        })}
+      </g>
+    </g>
+  );
+}
+
 function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisible, onSelect }: {
   mapped: MappedItem; selected: boolean; project: (position: PublicGeoJSONPosition) => [number, number];
   mode: AdminMode; annotation: AdminMapAnnotation; anchorVisible: boolean; onSelect: (id: string) => void;
@@ -281,6 +523,10 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
   const provenance = item.geometryBasis === "synthetic_example" ? "lokasi contoh rekaan" : "lokasi dari sumber";
   const operation = mode === "simulation" ? `tahap ${LAYER_LABELS[item.layer]}; status ${STATE_LABELS[item.state]}` : "laporan dari data publik";
   const label = `${item.title}; kategori ${categoryLabel(item.category)}; ${operation}; ${provenance}; jenis data ${DATASET_LABELS[item.datasetKind]}`;
+  const badge = categoryBadgeConfig(item.category);
+  const placeText = item.placeLabel || item.title;
+  const truncatedPlace = placeText.length > 17 ? placeText.slice(0, 16) + "…" : placeText;
+
   return <g
     role="button" tabIndex={0} aria-label={label} aria-pressed={selected}
     className={"admin-map__feature" + (selected ? " admin-map__feature--selected" : "")}
@@ -290,12 +536,73 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
   >
     <title>{label}</title>
     {geometries.map((geometry, index) => <Geometry key={index} geometry={geometry} project={project} />)}
+
+    {/* Incident pin marker at exact coordinates */}
+    {anchorVisible && (
+      <g className="admin-map__pin-group">
+        {selected && (
+          <circle
+            className="admin-map__pin-pulse"
+            cx={x} cy={y}
+            r="22"
+            fill="rgba(8, 123, 117, 0.18)"
+            stroke="var(--kali-teal, #087B75)"
+            strokeWidth="2.5"
+            strokeDasharray="4 2"
+          />
+        )}
+        <circle
+          className="admin-map__pin-head"
+          cx={x} cy={y}
+          r={selected ? 13 : 10.5}
+          fill={badge.bg}
+          stroke="#FFFFFF"
+          strokeWidth={selected ? 2.5 : 2}
+        />
+        <text
+          className="admin-map__pin-icon"
+          x={x} y={y + (selected ? 4 : 3.5)}
+          textAnchor="middle"
+          fill="#FFFFFF"
+          fontSize={selected ? 10.5 : 9}
+          fontWeight="bold"
+          pointerEvents="none"
+        >
+          {badge.icon}
+        </text>
+      </g>
+    )}
+
     {anchorVisible && <path className="admin-map__annotation-stem" d={`M${x} ${y}L${leaderX} ${leaderY}`} />}
+
+    {/* Legible incident annotation card */}
     <g className="admin-map__annotation" transform={`translate(${labelX} ${labelY})`}>
       <rect className="admin-map__annotation-card" width={cardWidth} height="44" rx="8" />
-      <g className="admin-map__stage-glyph" transform="translate(15 22)"><StageGlyph layer={mode === "simulation" ? item.layer : "L4"} /></g>
-      <text className="admin-map__layer-text" x="32" y="26">{mode === "simulation" ? LAYER_SHORT_LABELS[item.layer] : "Data"}</text>
-      {mode === "simulation" && <g className="admin-map__state-glyph" transform="translate(62 37)"><circle className="admin-map__state-disc" r="8" /><StateGlyph state={item.state} /></g>}
+      <rect
+        className="admin-map__card-badge-bg"
+        x="6" y="8"
+        width="28" height="28"
+        rx="6"
+        fill={badge.bg}
+      />
+      <text
+        className="admin-map__card-badge-icon"
+        x="20" y="27"
+        textAnchor="middle"
+        fill="#FFFFFF"
+        fontSize="14"
+        pointerEvents="none"
+      >
+        {badge.icon}
+      </text>
+      <text className="admin-map__layer-text" x="40" y="20">{badge.short}</text>
+      <text className="admin-map__card-subtitle" x="40" y="33">{truncatedPlace}</text>
+      {mode === "simulation" && (
+        <g className="admin-map__state-glyph" transform={`translate(${cardWidth - 14} 22)`}>
+          <circle className="admin-map__state-disc" r="7" />
+          <StateGlyph state={item.state} />
+        </g>
+      )}
       <rect className="admin-map__focus-ring" x="-3" y="-3" width={cardWidth + 6} height="50" rx="10" />
     </g>
   </g>;
@@ -317,7 +624,6 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
   }), [items, mode]);
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const selectedMapped = mapped.find(({ item }) => item.id === selectedId) ?? null;
-  const selectedBoundsKey = selectedMapped ? JSON.stringify(selectedMapped.bounds) : null;
   const allBounds = useMemo(() => adminGeometryBounds(mapped.flatMap(({ geometries }) => geometries)), [mapped]);
   const projection = useMemo(() => createAdminMapProjection(view, size), [view, size]);
   const textScale = size.textScale ?? 1;
@@ -330,7 +636,7 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
     };
     const anchor = positions.find(onCanvas) ?? positions[0]!;
     const [x, y] = projection.project(anchor);
-    return { id: item.id, x, y, width: mode === "simulation" ? 112 : 88, visible: onCanvas(anchor) };
+    return { id: item.id, x, y, width: 140, visible: onCanvas(anchor) };
   });
   const annotations = new Map(placeAdminMapAnnotations(anchors, projection.plot).map((annotation) => [annotation.id, annotation]));
   const anchorVisibility = new Map(anchors.map((anchor) => [anchor.id, anchor.visible]));
@@ -364,13 +670,18 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
     const initial = initialAdminMapFit(fittedMode.current, mode, allBounds);
     if (initial) { fittedMode.current = mode; initialView.current = initial; setView(initial); }
   }, [allBounds, mode]);
+  const prevFocusedId = useRef<string | null>(null);
   useEffect(() => {
-    if (!selectedBoundsKey) return;
-    const bounds = JSON.parse(selectedBoundsKey) as AdminMapBounds;
-    setView((current) => contains(createAdminMapProjection(current, size).visibleBounds, bounds)
-      ? current : fitAdminMapBounds(bounds));
-    // Equivalent snapshot refreshes and resize must preserve manual camera movement.
-  }, [selectedBoundsKey, selectedId, mode]);
+    if (!selectedId) {
+      prevFocusedId.current = null;
+      return;
+    }
+    if (selectedId !== prevFocusedId.current && selectedMapped) {
+      prevFocusedId.current = selectedId;
+      setView(fitAdminMapBounds(selectedMapped.bounds));
+      setAnnouncement(`Lokasi laporan terpilih ditampilkan: ${selectedMapped.item.title}`);
+    }
+  }, [selectedId, selectedMapped]);
 
   const changeZoom = (factor: number) => {
     setView((current) => zoomAdminMapView(current, factor));
@@ -437,6 +748,7 @@ export function AdminOperationsMap({ items, selectedId, onSelect, mode }: AdminM
             <g className="admin-map__north" transform={`translate(${size.width - 16 * textScale} ${18 * textScale})`}><path d="M0 10V-4m-4 5 4-5 4 5" /><text x="0" y="-8" textAnchor="middle">U</text></g>
           </g>
           <g clipPath={`url(#${id}-clip)`}>
+            <JakartaBasemap projection={projection} />
             {visible.filter(({ item }) => item.id !== selectedId).map((mappedItem) => <ItemGeometry key={mappedItem.item.id} mapped={mappedItem} selected={false} mode={mode} project={projection.project} annotation={annotations.get(mappedItem.item.id)!} anchorVisible={anchorVisibility.get(mappedItem.item.id)!} onSelect={onSelect} />)}
             {visible.filter(({ item }) => item.id === selectedId).map((mappedItem) => <ItemGeometry key={mappedItem.item.id} mapped={mappedItem} selected mode={mode} project={projection.project} annotation={annotations.get(mappedItem.item.id)!} anchorVisible={anchorVisibility.get(mappedItem.item.id)!} onSelect={onSelect} />)}
           </g>

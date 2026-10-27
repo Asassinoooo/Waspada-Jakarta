@@ -434,9 +434,9 @@
 
 .admin-workspace {
   display: grid;
-  grid-template-columns: minmax(16rem, 0.85fr) minmax(22rem, 1.45fr) minmax(18rem, 1fr);
+  grid-template-columns: minmax(18rem, 1fr) minmax(26rem, 1.6fr) minmax(20rem, 1.15fr);
   align-items: start;
-  gap: 0.8rem;
+  gap: 1rem;
 }
 
 .admin-mobile-switch {
@@ -543,6 +543,9 @@
   margin: 0.75rem 0 0;
   padding: 0;
   list-style: none;
+  max-height: 52rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }
 
 .admin-queue__entry {
@@ -724,6 +727,10 @@
 .admin-inspector {
   display: grid;
   gap: 0.1rem;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
 }
 
 .admin-inspector__identity h3 {
@@ -1218,6 +1225,9 @@
   }
 
   .admin-inspector {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;

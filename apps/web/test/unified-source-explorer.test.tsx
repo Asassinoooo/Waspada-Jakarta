@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
@@ -330,4 +331,15 @@ test("marker selection opens the floating sheet to calm readable status cards", 
   const detailMarkup = renderView({ defaultPanel: "detail" });
   assert.match(detailMarkup, /Detail pilihan/);
   assert.match(detailMarkup, /Pilih satu fasilitas, laporan, atau episentrum/);
+});
+
+test("desktop styles ensure companion panel is clean, non-glassmorphic and does not obscure map", () => {
+  const css = readFileSync(new URL("../src/unified-source-explorer.css", import.meta.url), "utf-8");
+  // No glassmorphic blur filters
+  assert.doesNotMatch(css, /backdrop-filter:\s*blur/);
+  // On desktop min-width: 761px, companion panel is static in a side-by-side grid, not absolute over map
+  assert.match(css, /@media\s*\(min-width:\s*761px\)/);
+  assert.match(css, /grid-template-columns:\s*minmax\(0,\s*1\.65fr\)\s*minmax\(21rem,\s*0\.95fr\)/);
+  assert.match(css, /position:\s*static/);
+  assert.match(css, /background:\s*var\(--surface\)/);
 });

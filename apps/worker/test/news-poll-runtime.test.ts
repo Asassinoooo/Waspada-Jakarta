@@ -70,8 +70,8 @@ test("default configuration contains two ANTARA feeds and 20s timeout", () => {
   assert.equal(DEFAULT_ANTARA_FEEDS.length, 2);
   assert.equal(DEFAULT_ANTARA_FEEDS[0]!.url, "https://www.antaranews.com/rss/metro.xml");
   assert.equal(DEFAULT_ANTARA_FEEDS[0]!.sourceId, "source-antara-metro");
-  assert.equal(DEFAULT_ANTARA_FEEDS[1]!.url, "https://www.antaranews.com/rss/hukum-kriminalitas.xml");
-  assert.equal(DEFAULT_ANTARA_FEEDS[1]!.sourceId, "source-antara-hukum-kriminalitas");
+  assert.equal(DEFAULT_ANTARA_FEEDS[1]!.url, "https://www.antaranews.com/rss/hukum.xml");
+  assert.equal(DEFAULT_ANTARA_FEEDS[1]!.sourceId, "source-antara-hukum");
   assert.equal(DEFAULT_POLL_TIMEOUT_MS, 20_000);
 });
 
@@ -84,7 +84,7 @@ test("createNewsPollRuntime polls feeds, filters Jakarta incident news, and retu
         headers: { "Content-Type": "application/xml" },
       });
     }
-    if (url.includes("hukum-kriminalitas.xml")) {
+    if (url.includes("hukum.xml") || url.includes("hukum-kriminalitas.xml")) {
       return new Response(SAMPLE_CRIME_XML, {
         status: 200,
         headers: { "Content-Type": "application/xml" },
@@ -144,8 +144,8 @@ test("createNewsPollRuntime polls feeds, filters Jakarta incident news, and retu
 
   // Check second revision
   const rev2 = result.revisions[1]!;
-  assert.ok(rev2.report_revision_id.startsWith("rep-source-antara-hukum-kriminalitas-"));
-  assert.equal(rev2.source_id, "source-antara-hukum-kriminalitas");
+  assert.ok(rev2.report_revision_id.startsWith("rep-source-antara-hukum-"));
+  assert.equal(rev2.source_id, "source-antara-hukum");
   assert.equal(rev2.canonical_url, "https://www.antaranews.com/berita/8001/tawuran-matraman");
   assert.equal(rev2.permitted_text, "Polisi amankan pelaku tawuran di kawasan Matraman Jakarta Timur");
   assert.equal(rev2.revision_status, "unreviewed");
@@ -398,4 +398,114 @@ test("NewsPollResult supports iterable for..of loop and array index access", asy
     iteratedCount += 1;
   }
   assert.equal(iteratedCount, 1);
+});
+
+test("filters out stale articles older than maxAgeHours (50h, 2 months) and accepts fresh articles (2h)", async () => {
+  const fixedNow = "2026-10-27T10:00:00.000Z";
+  const xmlWithMixedAges = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ANTARA News Metro</title>
+    <link>https://www.antaranews.com/metro</link>
+    <description>Berita seputar Jakarta</description>
+    <!-- Item 1: 2 hours old (fresh, accepted) -->
+    <item>
+      <title>Petugas damkar padamkan kebakaran ruko di Tebet Jakarta Selatan</title>
+      <link>https://www.antaranews.com/berita/9101/kebakaran-tebet-fresh</link>
+      <guid>https://www.antaranews.com/berita/9101/kebakaran-tebet-fresh</guid>
+      <pubDate>Tue, 27 Oct 2026 08:00:00 +0000</pubDate>
+    </item>
+    <!-- Item 2: 50 hours old (stale, rejected) -->
+    <item>
+      <title>Pohon tumbang timpa tiang listrik di Senen Jakarta Pusat</title>
+      <link>https://www.antaranews.com/berita/9102/pohon-senen-50h</link>
+      <guid>https://www.antaranews.com/berita/9102/pohon-senen-50h</guid>
+      <pubDate>Sun, 25 Oct 2026 08:00:00 +0000</pubDate>
+    </item>
+    <!-- Item 3: 2 months old from August 2026 (stale, rejected) -->
+    <item>
+      <title>Banjir rendam perumahan warga di Cilandak Jakarta Selatan</title>
+      <link>https://www.antaranews.com/berita/9103/banjir-cilandak-august</link>
+      <guid>https://www.antaranews.com/berita/9103/banjir-cilandak-august</guid>
+      <pubDate>Tue, 25 Aug 2026 10:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+  const mockFetch: typeof fetch = async () => {
+    return new Response(xmlWithMixedAges, {
+      status: 200,
+      headers: { "Content-Type": "application/xml" },
+    });
+  };
+
+  const runtime = createNewsPollRuntime({
+    feeds: [{ url: "https://example.com/mixed.xml", sourceId: "source-mixed" }],
+    fetchFn: mockFetch,
+    now: () => fixedNow,
+    maxAgeHours: 48,
+  });
+
+  const result = await runtime.poll();
+  assert.equal(result.totalItemsParsed, 3);
+  assert.equal(result.totalMatched, 1);
+  assert.equal(result.totalRejected, 2);
+  assert.equal(result.revisions.length, 1);
+  assert.equal(result.revisions[0]!.canonical_url, "https://www.antaranews.com/berita/9101/kebakaran-tebet-fresh");
+});
+
+test("runtime respects NEWS_MAX_AGE_HOURS env variable for filtering stale news", async () => {
+  const origEnv = process.env.NEWS_MAX_AGE_HOURS;
+  try {
+    process.env.NEWS_MAX_AGE_HOURS = "6";
+    const fixedNow = "2026-10-27T12:00:00.000Z";
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ANTARA News Metro</title>
+    <link>https://www.antaranews.com/metro</link>
+    <description>Berita seputar Jakarta</description>
+    <!-- Item 1: 2 hours old (fresh, accepted with 6h threshold) -->
+    <item>
+      <title>Kebakaran di Menteng Jakarta Pusat dini hari tadi</title>
+      <link>https://www.antaranews.com/berita/9201/kebakaran-menteng</link>
+      <guid>https://www.antaranews.com/berita/9201/kebakaran-menteng</guid>
+      <pubDate>Tue, 27 Oct 2026 10:00:00 +0000</pubDate>
+    </item>
+    <!-- Item 2: 10 hours old (stale with 6h threshold, rejected) -->
+    <item>
+      <title>Tawuran di Matraman Jakarta Timur berhasil dibubarkan polisi</title>
+      <link>https://www.antaranews.com/berita/9202/tawuran-matraman-10h</link>
+      <guid>https://www.antaranews.com/berita/9202/tawuran-matraman-10h</guid>
+      <pubDate>Tue, 27 Oct 2026 02:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+    const mockFetch: typeof fetch = async () => {
+      return new Response(xml, {
+        status: 200,
+        headers: { "Content-Type": "application/xml" },
+      });
+    };
+
+    const runtime = createNewsPollRuntime({
+      feeds: [{ url: "https://example.com/env-test.xml", sourceId: "source-env" }],
+      fetchFn: mockFetch,
+      now: () => fixedNow,
+    });
+
+    const result = await runtime.poll();
+    assert.equal(result.totalItemsParsed, 2);
+    assert.equal(result.totalMatched, 1);
+    assert.equal(result.totalRejected, 1);
+    assert.equal(result.revisions.length, 1);
+    assert.equal(result.revisions[0]!.canonical_url, "https://www.antaranews.com/berita/9201/kebakaran-menteng");
+  } finally {
+    if (origEnv === undefined) {
+      delete process.env.NEWS_MAX_AGE_HOURS;
+    } else {
+      process.env.NEWS_MAX_AGE_HOURS = origEnv;
+    }
+  }
 });

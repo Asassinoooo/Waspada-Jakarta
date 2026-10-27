@@ -268,3 +268,19 @@ test("empty, selected unmapped and stale selection states remain honest and usef
   const onlyExtras = item({ geometry: null, additionalGeometries: [geometries[0]!] });
   assert.equal(adminItemGeometries(onlyExtras, "simulation").length, 1);
 });
+
+test("Jakarta geographic basemap and incident pin markers render with clear category badges and spatial landmarks", () => {
+  const floodReport = item({ id: "flood-tebet", category: "disasters_weather", title: "Genangan di Tebet" });
+  const markup = render({ items: [floodReport], selectedId: floodReport.id });
+  assert.match(markup, /class="admin-map__sea"/);
+  assert.match(markup, /class="admin-map__land"/);
+  assert.match(markup, /class="admin-map__coastline"/);
+  assert.match(markup, /class="admin-map__river"/);
+  assert.match(markup, /TELUK JAKARTA/);
+  assert.match(markup, /JAKARTA PUSAT/);
+  assert.match(markup, /Monas/);
+  assert.match(markup, /class="admin-map__pin-head"/);
+  assert.match(markup, /class="admin-map__pin-pulse"/);
+  assert.match(markup, /class="admin-map__card-badge-bg"/);
+  assert.match(markup, /Bencana &amp; Cuaca|Bencana & Cuaca/);
+});

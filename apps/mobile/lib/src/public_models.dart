@@ -1,5 +1,76 @@
 import 'dart:convert';
 
+enum IncidentCategory {
+  flood('flood', 'Banjir', '🌊'),
+  fire('fire', 'Kebakaran', '🔥'),
+  accident('accident', 'Kecelakaan', '🚗'),
+  treeFall('tree_fall', 'Pohon Tumbang', '🌳'),
+  crime('crime', 'Kriminalitas', '🚨'),
+  weather('weather', 'Cuaca Ekstrem', '⛈️');
+
+  const IncidentCategory(this.wireValue, this.label, this.icon);
+  final String wireValue;
+  final String label;
+  final String icon;
+
+  static IncidentCategory? tryParse(Object? value) {
+    if (value is! String) return null;
+    final normalized = value.trim().toLowerCase();
+    for (final item in IncidentCategory.values) {
+      if (item.wireValue == normalized) return item;
+    }
+    return switch (normalized) {
+      'disasters_weather' => IncidentCategory.flood,
+      'fires_infrastructure_hazards' => IncidentCategory.fire,
+      'transport_road_incidents' => IncidentCategory.accident,
+      'health_environmental_advisories' => IncidentCategory.treeFall,
+      'crime_personal_security' || 'violence_immediate_threats' => IncidentCategory.crime,
+      _ => null,
+    };
+  }
+
+  static IncidentCategory parse(Object? value) =>
+      tryParse(value) ?? (throw const ContractViolation());
+
+  EventCategory toEventCategory() => switch (this) {
+        IncidentCategory.flood || IncidentCategory.weather => EventCategory.disastersWeather,
+        IncidentCategory.fire => EventCategory.firesInfrastructureHazards,
+        IncidentCategory.accident => EventCategory.transportRoadIncidents,
+        IncidentCategory.treeFall => EventCategory.healthEnvironmentalAdvisories,
+        IncidentCategory.crime => EventCategory.crimePersonalSecurity,
+      };
+}
+
+enum IncidentSeverity {
+  low('low', 'Rendah'),
+  medium('medium', 'Sedang'),
+  high('high', 'Tinggi'),
+  critical('critical', 'Kritis');
+
+  const IncidentSeverity(this.wireValue, this.label);
+  final String wireValue;
+  final String label;
+
+  static IncidentSeverity? tryParse(Object? value) {
+    if (value is! String) return null;
+    final normalized = value.trim().toLowerCase();
+    for (final item in IncidentSeverity.values) {
+      if (item.wireValue == normalized) return item;
+    }
+    return null;
+  }
+
+  static IncidentSeverity parse(Object? value) =>
+      tryParse(value) ?? (throw const ContractViolation());
+
+  int affectedRadiusMeters([IncidentCategory? category]) => switch (this) {
+        IncidentSeverity.critical => category == IncidentCategory.flood ? 1500 : 1200,
+        IncidentSeverity.high => category == IncidentCategory.flood ? 1000 : 800,
+        IncidentSeverity.medium => category == IncidentCategory.flood ? 600 : 500,
+        IncidentSeverity.low => category == IncidentCategory.flood ? 300 : 250,
+      };
+}
+
 enum EventCategory {
   crimePersonalSecurity(
       'crime_personal_security', 'Kejahatan dan keamanan pribadi'),
@@ -24,10 +95,29 @@ enum EventCategory {
   final String wireValue;
   final String label;
 
-  static EventCategory parse(Object? value) => EventCategory.values.firstWhere(
-        (item) => item.wireValue == value,
-        orElse: () => throw const ContractViolation(),
-      );
+  IncidentCategory? get incidentCategory => switch (this) {
+        EventCategory.disastersWeather => IncidentCategory.flood,
+        EventCategory.firesInfrastructureHazards => IncidentCategory.fire,
+        EventCategory.transportRoadIncidents => IncidentCategory.accident,
+        EventCategory.healthEnvironmentalAdvisories => IncidentCategory.treeFall,
+        EventCategory.crimePersonalSecurity || EventCategory.violenceImmediateThreats => IncidentCategory.crime,
+        _ => null,
+      };
+
+  String get categoryAccent => incidentCategory?.wireValue ?? 'general';
+  String get icon => incidentCategory?.icon ?? '⚠️';
+
+  static EventCategory parse(Object? value) {
+    if (value is! String) throw const ContractViolation();
+    for (final item in EventCategory.values) {
+      if (item.wireValue == value) return item;
+    }
+    final incident = IncidentCategory.tryParse(value);
+    if (incident != null) {
+      return incident.toEventCategory();
+    }
+    throw const ContractViolation();
+  }
 }
 
 enum EventLifecycle {
@@ -94,17 +184,30 @@ class ContractViolation implements Exception {
 
 typedef JsonMap = Map<String, Object?>;
 
-JsonMap _object(Object? value, Set<String> keys) {
+JsonMap _object(Object? value, Set<String> keys, [Set<String>? optionalKeys]) {
   if (value is! Map) throw const ContractViolation();
   final map = <String, Object?>{};
   for (final entry in value.entries) {
     if (entry.key is! String) throw const ContractViolation();
     map[entry.key as String] = entry.value;
   }
-  if (map.keys.length != keys.length || !keys.every(map.containsKey)) {
+  if (!keys.every(map.containsKey)) {
+    throw const ContractViolation();
+  }
+  final allowedKeys = optionalKeys == null ? keys : {...keys, ...optionalKeys};
+  if (!map.keys.every(allowedKeys.contains)) {
     throw const ContractViolation();
   }
   return map;
+}
+
+List<double>? _parseCoordinates(Object? value) {
+  if (value == null) return null;
+  if (value is! List || value.length != 2) throw const ContractViolation();
+  final lng = value[0];
+  final lat = value[1];
+  if (lng is! num || lat is! num) throw const ContractViolation();
+  return [lng.toDouble(), lat.toDouble()];
 }
 
 String _string(Object? value, {int maxLength = 10000, bool allowEmpty = true}) {
@@ -349,6 +452,9 @@ class PublicClaim {
     required this.qualifiers,
     required this.evidenceLabel,
     required this.sources,
+    this.quoteText,
+    this.supportAssessment,
+    this.evidenceRefId,
   });
   final String id;
   final String text;
@@ -358,18 +464,33 @@ class PublicClaim {
   final List<String> qualifiers;
   final EvidenceLabel evidenceLabel;
   final List<PublicSource> sources;
+  final String? quoteText;
+  final String? supportAssessment;
+  final String? evidenceRefId;
 
   factory PublicClaim.fromJson(Object? json) {
-    final map = _object(json, {
-      'claim_id',
-      'text',
-      'event_time',
-      'validity',
-      'scope',
-      'qualifiers',
-      'evidence_label',
-      'sources'
-    });
+    final map = _object(
+      json,
+      {
+        'claim_id',
+        'text',
+        'event_time',
+        'validity',
+        'scope',
+        'qualifiers',
+        'evidence_label',
+        'sources'
+      },
+      {
+        'quote_text',
+        'support_assessment',
+        'evidence_ref_id',
+        'support',
+        'contradictions',
+        'context_evidence',
+        'origin_ids',
+      },
+    );
     final sources = _list(map['sources'], PublicSource.fromJson);
     if (sources.isEmpty) throw const ContractViolation();
     return PublicClaim(
@@ -381,6 +502,10 @@ class PublicClaim {
       qualifiers: _stringList(map['qualifiers']),
       evidenceLabel: EvidenceLabel.parse(map['evidence_label']),
       sources: sources,
+      quoteText: _nullableString(map['quote_text'], maxLength: 10000),
+      supportAssessment:
+          _nullableString(map['support_assessment'], maxLength: 64),
+      evidenceRefId: _nullableString(map['evidence_ref_id'], maxLength: 256),
     );
   }
 }
@@ -397,6 +522,10 @@ class PublicImpact {
     required this.eventTime,
     required this.validity,
     required this.scope,
+    this.eventId,
+    this.eventVersion,
+    this.supportingClaimIds = const [],
+    this.publishedAt,
   });
   final String id;
   final int version;
@@ -408,20 +537,37 @@ class PublicImpact {
   final TimeScope eventTime;
   final Validity validity;
   final PublicScope scope;
+  final String? eventId;
+  final int? eventVersion;
+  final List<String> supportingClaimIds;
+  final String? publishedAt;
 
   factory PublicImpact.fromJson(Object? json) {
-    final map = _object(json, {
-      'impact_id',
-      'version',
-      'impact_type',
-      'title',
-      'description',
-      'lifecycle',
-      'freshness',
-      'event_time',
-      'validity',
-      'scope'
-    });
+    final map = _object(
+      json,
+      {
+        'impact_id',
+        'version',
+        'impact_type',
+        'title',
+        'description',
+        'lifecycle',
+        'freshness',
+        'event_time',
+        'validity',
+        'scope'
+      },
+      {
+        'schema_version',
+        'trace_id',
+        'record_type',
+        'dataset_kind',
+        'event_id',
+        'event_version',
+        'supporting_claim_ids',
+        'published_at',
+      },
+    );
     const types = {
       'road_closure',
       'traffic_diversion',
@@ -447,6 +593,17 @@ class PublicImpact {
       eventTime: TimeScope.fromJson(map['event_time']),
       validity: Validity.fromJson(map['validity']),
       scope: PublicScope.fromJson(map['scope']),
+      eventId: _nullableString(map['event_id'], maxLength: 128),
+      eventVersion: map['event_version'] == null
+          ? null
+          : _positiveInt(map['event_version']),
+      supportingClaimIds: map.containsKey('supporting_claim_ids') &&
+              map['supporting_claim_ids'] != null
+          ? _stringList(map['supporting_claim_ids'])
+          : const [],
+      publishedAt: map['published_at'] == null
+          ? null
+          : _requiredInstant(map['published_at']),
     );
   }
 }
@@ -467,6 +624,19 @@ class EventRecord {
     required this.claims,
     required this.impacts,
     required this.publishedAt,
+    this.schemaVersion = '2.0',
+    this.traceId,
+    this.recordType = 'Event',
+    this.datasetKind,
+    this.supersedesVersion,
+    this.publicationStatus = 'published',
+    this.withdrawalReason,
+    this.publicationDecisionId,
+    this.withdrawnAt,
+    this.incidentType,
+    this.severity,
+    this.locationLabel,
+    this.coordinates,
   });
 
   final String id;
@@ -484,7 +654,33 @@ class EventRecord {
   final List<PublicImpact> impacts;
   final String publishedAt;
 
-  static const keys = {
+  // Schema 2.0 & Incident metadata fields
+  final String schemaVersion;
+  final String? traceId;
+  final String recordType;
+  final String? datasetKind;
+  final int? supersedesVersion;
+  final String publicationStatus;
+  final String? withdrawalReason;
+  final String? publicationDecisionId;
+  final String? withdrawnAt;
+  final IncidentCategory? incidentType;
+  final IncidentSeverity? severity;
+  final String? locationLabel;
+  final List<double>? coordinates;
+
+  /// Effective incident category: explicit incidentType, or derived from EventCategory.
+  IncidentCategory? get incidentCategory =>
+      incidentType ?? category.incidentCategory;
+
+  /// Accent indicator for cards/chips, matching desktop EventFeed.
+  String get categoryAccent =>
+      incidentCategory?.wireValue ?? category.categoryAccent;
+
+  /// Icon emoji for the event type, matching desktop.
+  String get icon => incidentCategory?.icon ?? category.icon;
+
+  static const requiredKeys = {
     'event_id',
     'version',
     'title',
@@ -501,8 +697,56 @@ class EventRecord {
     'published_at',
   };
 
+  static const schema2OptionalKeys = {
+    'schema_version',
+    'trace_id',
+    'record_type',
+    'dataset_kind',
+    'supersedes_version',
+    'publication_status',
+    'withdrawal_reason',
+    'publication_decision_id',
+    'withdrawn_at',
+    'impact_refs',
+    'incident_type',
+    'severity',
+    'location_label',
+    'coordinates',
+  };
+
+  static const keys = requiredKeys;
+
   factory EventRecord.fromJson(Object? json) {
-    final map = _object(json, keys);
+    final map = _object(json, requiredKeys, schema2OptionalKeys);
+    final schemaVersion =
+        map.containsKey('schema_version') && map['schema_version'] != null
+            ? _string(map['schema_version'], maxLength: 10, allowEmpty: false)
+            : '2.0';
+    if (schemaVersion != '2.0') throw const ContractViolation();
+
+    final supersedesVersion = map['supersedes_version'] == null
+        ? null
+        : _positiveInt(map['supersedes_version']);
+
+    final incidentType = map['incident_type'] == null
+        ? null
+        : IncidentCategory.tryParse(map['incident_type']);
+
+    final severity = map['severity'] == null
+        ? null
+        : IncidentSeverity.tryParse(map['severity']);
+
+    final pubStatus = map['publication_status'] == null
+        ? 'published'
+        : _string(map['publication_status'], maxLength: 32, allowEmpty: false);
+    if (pubStatus != 'published' && pubStatus != 'withdrawn') {
+      throw const ContractViolation();
+    }
+
+    final withdrawnAt = map['withdrawn_at'] == null
+        ? null
+        : _requiredInstant(map['withdrawn_at']);
+
     return EventRecord(
       id: _string(map['event_id'], maxLength: 128, allowEmpty: false),
       version: _positiveInt(map['version']),
@@ -518,6 +762,24 @@ class EventRecord {
       claims: _list(map['claims'], PublicClaim.fromJson),
       impacts: _list(map['impacts'], PublicImpact.fromJson),
       publishedAt: _requiredInstant(map['published_at']),
+      schemaVersion: schemaVersion,
+      traceId: _nullableString(map['trace_id'], maxLength: 128),
+      recordType:
+          map.containsKey('record_type') && map['record_type'] != null
+              ? _string(map['record_type'], maxLength: 32, allowEmpty: false)
+              : 'Event',
+      datasetKind: _nullableString(map['dataset_kind'], maxLength: 32),
+      supersedesVersion: supersedesVersion,
+      publicationStatus: pubStatus,
+      withdrawalReason:
+          _nullableString(map['withdrawal_reason'], maxLength: 64),
+      publicationDecisionId:
+          _nullableString(map['publication_decision_id'], maxLength: 128),
+      withdrawnAt: withdrawnAt,
+      incidentType: incidentType,
+      severity: severity,
+      locationLabel: _nullableString(map['location_label'], maxLength: 500),
+      coordinates: _parseCoordinates(map['coordinates']),
     );
   }
 }
@@ -549,26 +811,45 @@ class EventTag {
 }
 
 class EventDetail extends EventRecord {
-  const EventDetail(
-      {required super.id,
-      required super.version,
-      required super.title,
-      required super.summary,
-      required super.category,
-      required super.tags,
-      required super.lifecycle,
-      required super.freshness,
-      required super.eventTime,
-      required super.validity,
-      required super.scope,
-      required super.claims,
-      required super.impacts,
-      required super.publishedAt,
-      required this.geometries});
+  const EventDetail({
+    required super.id,
+    required super.version,
+    required super.title,
+    required super.summary,
+    required super.category,
+    required super.tags,
+    required super.lifecycle,
+    required super.freshness,
+    required super.eventTime,
+    required super.validity,
+    required super.scope,
+    required super.claims,
+    required super.impacts,
+    required super.publishedAt,
+    required this.geometries,
+    super.schemaVersion,
+    super.traceId,
+    super.recordType,
+    super.datasetKind,
+    super.supersedesVersion,
+    super.publicationStatus,
+    super.withdrawalReason,
+    super.publicationDecisionId,
+    super.withdrawnAt,
+    super.incidentType,
+    super.severity,
+    super.locationLabel,
+    super.coordinates,
+  });
+
   final List<PublicGeometry> geometries;
 
   factory EventDetail.fromJson(Object? json) {
-    final map = _object(json, {...EventRecord.keys, 'geometries'});
+    final map = _object(
+      json,
+      {...EventRecord.requiredKeys, 'geometries'},
+      EventRecord.schema2OptionalKeys,
+    );
     final event = EventRecord.fromJson(
         Map<String, Object?>.from(map)..remove('geometries'));
     return EventDetail(
@@ -587,18 +868,169 @@ class EventDetail extends EventRecord {
       impacts: event.impacts,
       publishedAt: event.publishedAt,
       geometries: _list(map['geometries'], PublicGeometry.fromJson),
+      schemaVersion: event.schemaVersion,
+      traceId: event.traceId,
+      recordType: event.recordType,
+      datasetKind: event.datasetKind,
+      supersedesVersion: event.supersedesVersion,
+      publicationStatus: event.publicationStatus,
+      withdrawalReason: event.withdrawalReason,
+      publicationDecisionId: event.publicationDecisionId,
+      withdrawnAt: event.withdrawnAt,
+      incidentType: event.incidentType,
+      severity: event.severity,
+      locationLabel: event.locationLabel,
+      coordinates: event.coordinates,
+    );
+  }
+}
+
+class EventProposalClaim {
+  const EventProposalClaim({
+    required this.claimId,
+    required this.claimText,
+    required this.evidenceLabel,
+    required this.supportAssessment,
+    required this.quoteText,
+    required this.evidenceRefId,
+  });
+
+  final String claimId;
+  final String claimText;
+  final String evidenceLabel;
+  final String supportAssessment;
+  final String quoteText;
+  final String evidenceRefId;
+
+  factory EventProposalClaim.fromJson(Object? json) {
+    final map = _object(
+      json,
+      {
+        'claim_id',
+        'claim_text',
+        'evidence_label',
+        'support_assessment',
+        'quote_text',
+        'evidence_ref_id',
+      },
+    );
+    return EventProposalClaim(
+      claimId: _string(map['claim_id'], maxLength: 256, allowEmpty: false),
+      claimText: _string(map['claim_text'], maxLength: 10000),
+      evidenceLabel:
+          _string(map['evidence_label'], maxLength: 64, allowEmpty: false),
+      supportAssessment:
+          _string(map['support_assessment'], maxLength: 64, allowEmpty: false),
+      quoteText: _string(map['quote_text'], maxLength: 10000),
+      evidenceRefId:
+          _string(map['evidence_ref_id'], maxLength: 256, allowEmpty: false),
+    );
+  }
+}
+
+class EventProposal {
+  const EventProposal({
+    this.schemaVersion = '2.0',
+    required this.proposalId,
+    required this.title,
+    required this.incidentType,
+    required this.severity,
+    required this.eventTimePrecision,
+    required this.eventTimeValue,
+    required this.locationLabel,
+    this.coordinates,
+    required this.claims,
+    this.unresolvedFields = const [],
+    required this.proposedAt,
+  });
+
+  final String schemaVersion;
+  final String proposalId;
+  final String title;
+  final IncidentCategory incidentType;
+  final IncidentSeverity severity;
+  final String eventTimePrecision;
+  final String eventTimeValue;
+  final String locationLabel;
+  final List<double>? coordinates;
+  final List<EventProposalClaim> claims;
+  final List<String> unresolvedFields;
+  final String proposedAt;
+
+  factory EventProposal.fromJson(Object? json) {
+    final map = _object(
+      json,
+      {
+        'schema_version',
+        'proposal_id',
+        'title',
+        'incident_type',
+        'severity',
+        'event_time',
+        'location_label',
+        'claims',
+        'proposed_at',
+      },
+      {'coordinates', 'unresolved_fields'},
+    );
+    final version =
+        _string(map['schema_version'], maxLength: 10, allowEmpty: false);
+    if (version != '2.0') throw const ContractViolation();
+
+    final timeMap = _object(map['event_time'], {'precision', 'value'});
+    final claimsList = _list(map['claims'], EventProposalClaim.fromJson);
+
+    return EventProposal(
+      schemaVersion: version,
+      proposalId:
+          _string(map['proposal_id'], maxLength: 256, allowEmpty: false),
+      title: _string(map['title'], maxLength: 500, allowEmpty: false),
+      incidentType: IncidentCategory.parse(map['incident_type']),
+      severity: IncidentSeverity.parse(map['severity']),
+      eventTimePrecision:
+          _string(timeMap['precision'], maxLength: 32, allowEmpty: false),
+      eventTimeValue:
+          _string(timeMap['value'], maxLength: 100, allowEmpty: false),
+      locationLabel: _string(map['location_label'], maxLength: 500),
+      coordinates: _parseCoordinates(map['coordinates']),
+      claims: claimsList,
+      unresolvedFields:
+          map.containsKey('unresolved_fields') && map['unresolved_fields'] != null
+              ? _stringList(map['unresolved_fields'])
+              : const [],
+      proposedAt: _requiredInstant(map['proposed_at']),
     );
   }
 }
 
 class PublicGeometry {
-  const PublicGeometry({required this.role, required this.label});
+  const PublicGeometry({
+    required this.role,
+    required this.label,
+    this.id,
+    this.precisionM,
+  });
   final String role;
   final String? label;
+  final String? id;
+  final double? precisionM;
 
   factory PublicGeometry.fromJson(Object? json) {
     final map = _object(
-        json, {'geometry_id', 'role', 'geometry', 'precision_m', 'label'});
+      json,
+      {'geometry_id', 'role', 'geometry', 'precision_m', 'label'},
+      {
+        'schema_version',
+        'trace_id',
+        'record_type',
+        'dataset_kind',
+        'coordinate_reference_system',
+        'precision_basis',
+        'display_label',
+        'source_evidence',
+        'geojson',
+      },
+    );
     const roles = {
       'incident_scene',
       'affected_area',
@@ -618,7 +1050,11 @@ class PublicGeometry {
     }
     _validateGeometry(map['geometry']);
     return PublicGeometry(
-        role: role, label: _nullableString(map['label'], maxLength: 500));
+      role: role,
+      label: _nullableString(map['label'], maxLength: 500),
+      id: _nullableString(map['geometry_id'], maxLength: 256),
+      precisionM: precision is num ? precision.toDouble() : null,
+    );
   }
 }
 
@@ -685,7 +1121,11 @@ class EventPage {
   final String? cursorExpiresAt;
 
   factory EventPage.fromJson(Object? json) {
-    final map = _object(json, {'data', 'page'});
+    final map = _object(
+      json,
+      {'data', 'page'},
+      {'schema_version', 'total_count', 'limit', 'offset'},
+    );
     final page = _object(map['page'], {'next_cursor', 'cursor_expires_at'});
     final cursor = _nullableString(page['next_cursor'], maxLength: 2048);
     final expiry = _nullableString(page['cursor_expires_at'], maxLength: 100);
@@ -715,7 +1155,17 @@ class HistoryEntry {
 
   factory HistoryEntry.fromJson(Object? json) {
     final map = _object(
-        json, {'event_id', 'version', 'change_type', 'changed_at', 'summary'});
+      json,
+      {'event_id', 'version', 'change_type', 'changed_at', 'summary'},
+      {
+        'schema_version',
+        'trace_id',
+        'record_type',
+        'dataset_kind',
+        'supersedes_version',
+        'published_at',
+      },
+    );
     const changes = {'published', 'corrected', 'impact_changed', 'retracted'};
     final type = _string(map['change_type'], maxLength: 40, allowEmpty: false);
     if (!changes.contains(type)) throw const ContractViolation();
@@ -739,7 +1189,11 @@ class HistoryPage {
   final String? cursorExpiresAt;
 
   factory HistoryPage.fromJson(Object? json) {
-    final map = _object(json, {'data', 'page'});
+    final map = _object(
+      json,
+      {'data', 'page'},
+      {'schema_version', 'total_count', 'limit', 'offset'},
+    );
     final page = _object(map['page'], {'next_cursor', 'cursor_expires_at'});
     final cursor = _nullableString(page['next_cursor'], maxLength: 2048);
     final expiry = _nullableString(page['cursor_expires_at'], maxLength: 100);
@@ -789,7 +1243,10 @@ class PublicContext {
 
   factory PublicContext.fromJson(Object? json) {
     final map = _object(
-        json, {'dataset_mode', 'dataset_label', 'generated_at', 'sources'});
+      json,
+      {'dataset_mode', 'dataset_label', 'generated_at', 'sources'},
+      {'schema_version', 'mode', 'cached'},
+    );
     final modeText =
         _string(map['dataset_mode'], maxLength: 10, allowEmpty: false);
     final labelText =

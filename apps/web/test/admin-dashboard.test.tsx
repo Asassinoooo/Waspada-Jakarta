@@ -248,3 +248,14 @@ test("default render explains the fictional example and keeps details in closed 
   assert.doesNotMatch(html, /Terbitkan|Setujui|Mulai akuisisi|Mulai investigasi/u);
   assert.doesNotMatch(html, /Lima lapisan sistem|CRS84|PANTAUAN API|SIMULASI LOKAL · DEMO/u);
 });
+
+test("admin workspace renders the 3-column layout with queue, operations map, and record inspector", () => {
+  const html = renderToStaticMarkup(<AdminDashboard />);
+  assert.match(html, /class="[^"]*\badmin-workspace\b[^"]*"/);
+  assert.match(html, /class="admin-queue"/);
+  assert.match(html, /class="admin-map-panel"/);
+  assert.match(html, /class="admin-inspector"/);
+  assert.match(html, /Daftar laporan/);
+  assert.match(html, /Peta laporan/);
+  assert.match(html, /Detail laporan/);
+});

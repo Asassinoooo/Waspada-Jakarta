@@ -499,6 +499,16 @@ class _PreviewTile extends StatelessWidget {
               Text(event.title, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 6),
               Wrap(spacing: 8, runSpacing: 6, children: [
+                if (event.severity != null)
+                  StatusPill(
+                    icon: Icons.warning_amber_rounded,
+                    label: event.severity!.label,
+                    color: event.severity == IncidentSeverity.critical
+                        ? WaspadaColors.marker
+                        : event.severity == IncidentSeverity.high
+                            ? WaspadaColors.caution
+                            : WaspadaColors.softPanel,
+                  ),
                 StatusPill(
                     icon: Icons.category_outlined, label: event.category.label),
                 StatusPill(icon: Icons.schedule, label: event.lifecycle.label),

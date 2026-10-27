@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import worker from "../src/index.js";
+import worker, { activeProposals } from "../src/index.js";
 import type {
   EventDetail,
   EventPage,
@@ -1423,4 +1423,200 @@ test("console telemetry writes only the stable allowlisted structured fields", (
     duration_ms: 12,
   });
   assert.ok(!JSON.stringify(writes[0]).includes("private"));
+});
+
+test("dynamically published moderation proposal is included in public events and replaces forced mock fixtures", async () => {
+  PublicReadModel.clearPublishedEvents();
+  try {
+    const initialResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events"),
+      demoEnvironment,
+    );
+    assert.equal(initialResponse.status, 200);
+    const initialPage = await readJson<EventPage>(initialResponse);
+    assert.equal(initialPage.data.length, 4);
+    assert.equal(initialPage.data[0]?.event_id, "synthetic-demo-01");
+
+    activeProposals.set("prop-tebet-banjir-01", {
+      schema_version: "2.0",
+      proposal_id: "prop-tebet-banjir-01",
+      title: "Banjir 60cm di Tebet Barat",
+      incident_type: "flood",
+      severity: "high",
+      event_time: { precision: "exact", value: "2026-10-27T10:00:00.000Z" },
+      location_label: "Tebet Barat, Jakarta Selatan",
+      coordinates: [106.852, -6.234],
+      claims: [
+        {
+          claim_id: "claim-tb-01",
+          claim_text: "Genangan air setinggi 60cm merendam jalan Tebet Barat.",
+          evidence_label: "under_review",
+          support_assessment: "supported",
+          quote_text: "Genangan 60cm di Tebet Barat",
+          evidence_ref_id: "ref-pb-01",
+        },
+      ],
+      proposed_at: "2026-10-27T10:00:00.000Z",
+    });
+
+    const publishResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/moderation/proposals/prop-tebet-banjir-01/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "publish" }),
+      }),
+      demoEnvironment,
+    );
+    assert.equal(publishResponse.status, 200);
+    const publishReceipt = await readJson<{ ok: boolean; status: string }>(publishResponse);
+    assert.equal(publishReceipt.ok, true);
+    assert.equal(publishReceipt.status, "written");
+
+    const eventsResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events"),
+      demoEnvironment,
+    );
+    assert.equal(eventsResponse.status, 200);
+    const eventsPage = await readJson<EventPage>(eventsResponse);
+    assert.equal(eventsPage.data.length, 1);
+    assert.equal(eventsPage.data[0]?.event_id, "prop-tebet-banjir-01");
+    assert.equal(eventsPage.data[0]?.title, "Banjir 60cm di Tebet Barat");
+    assert.equal(eventsPage.data[0]?.category, "disasters_weather");
+    assert.ok(eventsPage.data[0]?.summary.includes("Tebet Barat"));
+    for (const event of eventsPage.data) {
+      assert.ok(!event.title.includes("SIMULASI FIKTIF"));
+      assert.ok(!event.summary.includes("SIMULASI FIKTIF"));
+    }
+
+    const geoJSONResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events.geojson"),
+      demoEnvironment,
+    );
+    assert.equal(geoJSONResponse.status, 200);
+    const geoJSONBody = await readJson<{ type: string; features: Array<{ id: string; geometry: { type: string; coordinates: [number, number] }; properties: { event_id: string; category: string } }> }>(geoJSONResponse);
+    assert.equal(geoJSONBody.type, "FeatureCollection");
+    assert.equal(geoJSONBody.features.length, 1);
+    assert.equal(geoJSONBody.features[0]?.geometry.type, "Point");
+    assert.deepEqual(geoJSONBody.features[0]?.geometry.coordinates, [106.852, -6.234]);
+    assert.equal(geoJSONBody.features[0]?.properties.event_id, "prop-tebet-banjir-01");
+    assert.equal(geoJSONBody.features[0]?.properties.category, "disasters_weather");
+
+    const detailResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events/prop-tebet-banjir-01"),
+      demoEnvironment,
+    );
+    assert.equal(detailResponse.status, 200);
+    const detailBody = await readJson<EventDetail>(detailResponse);
+    assert.equal(detailBody.event_id, "prop-tebet-banjir-01");
+    assert.equal(detailBody.title, "Banjir 60cm di Tebet Barat");
+    assert.equal(detailBody.category, "disasters_weather");
+    assert.equal(detailBody.geometries.length, 1);
+    assert.deepEqual(detailBody.geometries[0]?.geometry.coordinates, [106.852, -6.234]);
+
+    const historyResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events/prop-tebet-banjir-01/history"),
+      demoEnvironment,
+    );
+    assert.equal(historyResponse.status, 200);
+    const historyBody = await readJson<HistoryPage>(historyResponse);
+    assert.equal(historyBody.data.length, 1);
+    assert.equal(historyBody.data[0]?.event_id, "prop-tebet-banjir-01");
+    assert.equal(historyBody.data[0]?.change_type, "published");
+  } finally {
+    PublicReadModel.clearPublishedEvents();
+  }
+
+  const revertedResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/events"),
+    demoEnvironment,
+  );
+  const revertedPage = await readJson<EventPage>(revertedResponse);
+  assert.equal(revertedPage.data.length, 4);
+  assert.equal(revertedPage.data[0]?.event_id, "synthetic-demo-01");
+});
+
+test("PublicReadModel direct publishing supports multiple real Jakarta incidents, GeoJSON projection, and search filtering", async () => {
+  PublicReadModel.clearPublishedEvents();
+  try {
+    PublicReadModel.publish({
+      schema_version: "2.0",
+      proposal_id: "prop-tree-rasuna-01",
+      title: "Pohon Tumbang di Rasuna Said",
+      incident_type: "tree_fall",
+      severity: "medium",
+      event_time: { precision: "exact", value: "2026-10-27T08:30:00.000Z" },
+      location_label: "Rasuna Said, Jakarta Selatan",
+      coordinates: [106.832, -6.218],
+      claims: [
+        {
+          claim_id: "claim-tr-01",
+          claim_text: "Pohon tumbang menghalangi jalur lambat HR Rasuna Said.",
+          evidence_label: "under_review",
+          support_assessment: "supported",
+          quote_text: "Pohon tumbang di jalur lambat Rasuna Said",
+          evidence_ref_id: "ref-tree-01",
+        },
+      ],
+      proposed_at: "2026-10-27T08:30:00.000Z",
+    });
+
+    PublicReadModel.publish({
+      schema_version: "2.0",
+      proposal_id: "prop-crash-tol-01",
+      title: "Kecelakaan Truk di Tol Dalam Kota",
+      incident_type: "accident",
+      severity: "critical",
+      event_time: { precision: "exact", value: "2026-10-27T09:15:00.000Z" },
+      location_label: "Tol Dalam Kota KM 12",
+      coordinates: [106.815, -6.241],
+      claims: [
+        {
+          claim_id: "claim-cr-01",
+          claim_text: "Kecelakaan melibatkan truk pengangkut pasir di KM 12.",
+          evidence_label: "under_review",
+          support_assessment: "supported",
+          quote_text: "Truk terguling di KM 12",
+          evidence_ref_id: "ref-crash-01",
+        },
+      ],
+      proposed_at: "2026-10-27T09:15:00.000Z",
+    });
+
+    const allEventsResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events"),
+      demoEnvironment,
+    );
+    const allEventsPage = await readJson<EventPage>(allEventsResponse);
+    assert.equal(allEventsPage.data.length, 2);
+    for (const item of allEventsPage.data) {
+      assert.ok(!item.title.includes("SIMULASI FIKTIF"));
+    }
+
+    const transportResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events?category=transport_road_incidents"),
+      demoEnvironment,
+    );
+    const transportPage = await readJson<EventPage>(transportResponse);
+    assert.equal(transportPage.data.length, 1);
+    assert.equal(transportPage.data[0]?.event_id, "prop-crash-tol-01");
+
+    const searchResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events?q=Rasuna"),
+      demoEnvironment,
+    );
+    const searchPage = await readJson<EventPage>(searchResponse);
+    assert.equal(searchPage.data.length, 1);
+    assert.equal(searchPage.data[0]?.event_id, "prop-tree-rasuna-01");
+
+    const geoJSONResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/events.geojson"),
+      demoEnvironment,
+    );
+    const geoJSONBody = await readJson<{ type: string; features: Array<{ id: string; properties: { event_id: string } }> }>(geoJSONResponse);
+    assert.equal(geoJSONBody.features.length, 2);
+    const eventIds = geoJSONBody.features.map((f) => f.properties.event_id).sort();
+    assert.deepEqual(eventIds, ["prop-crash-tol-01", "prop-tree-rasuna-01"]);
+  } finally {
+    PublicReadModel.clearPublishedEvents();
+  }
 });

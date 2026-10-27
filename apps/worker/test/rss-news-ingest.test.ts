@@ -121,3 +121,105 @@ test("parseAndFilterNewsRss returns error on malformed XML", () => {
   assert.ok("error" in result);
   assert.equal(result.error, "invalid_root");
 });
+
+test("parseAndFilterNewsRss accepts articles within max age (2h) and rejects stale articles (50h, 2 months)", () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ANTARA News Metro</title>
+    <link>https://www.antaranews.com/metro</link>
+    <description>Berita seputar Jakarta dan sekitarnya</description>
+    <!-- Item 1: 2 hours old (fresh, accepted) -->
+    <item>
+      <title>Petugas damkar padamkan kebakaran rumah di Tebet Jakarta Selatan</title>
+      <link>https://www.antaranews.com/berita/6001/kebakaran-tebet-2h</link>
+      <guid>https://www.antaranews.com/berita/6001/kebakaran-tebet-2h</guid>
+      <pubDate>Tue, 27 Oct 2026 08:00:00 +0000</pubDate>
+    </item>
+    <!-- Item 2: 50 hours old (stale, rejected) -->
+    <item>
+      <title>Pohon tumbang timpa minibus di Jalan Gatot Subroto Jakarta</title>
+      <link>https://www.antaranews.com/berita/6002/pohon-gatot-subroto-50h</link>
+      <guid>https://www.antaranews.com/berita/6002/pohon-gatot-subroto-50h</guid>
+      <pubDate>Sun, 25 Oct 2026 08:00:00 +0000</pubDate>
+    </item>
+    <!-- Item 3: 2 months old from August 2026 (stale, rejected) -->
+    <item>
+      <title>Banjir setinggi 50 cm genangi kawasan Senen Jakarta Pusat</title>
+      <link>https://www.antaranews.com/berita/6003/banjir-senen-august</link>
+      <guid>https://www.antaranews.com/berita/6003/banjir-senen-august</guid>
+      <pubDate>Tue, 25 Aug 2026 10:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+  const retrievedAt = "2026-10-27T10:00:00Z";
+  const result = parseAndFilterNewsRss(xml, retrievedAt, "source-antara-metro", { maxAgeHours: 48 });
+
+  assert.ok("totalParsed" in result);
+  assert.equal(result.totalParsed, 3);
+  assert.equal(result.matchedCount, 1);
+  assert.equal(result.rejectedCount, 2);
+  assert.equal(result.revisions.length, 1);
+  assert.equal(result.revisions[0]!.canonical_url, "https://www.antaranews.com/berita/6001/kebakaran-tebet-2h");
+  assert.equal(result.revisions[0]!.source_revision_key, "https://www.antaranews.com/berita/6001/kebakaran-tebet-2h");
+});
+
+test("parseAndFilterNewsRss respects NEWS_MAX_AGE_HOURS env variable and NODE_ENV production default", () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ANTARA News Metro</title>
+    <link>https://www.antaranews.com/metro</link>
+    <description>Berita seputar Jakarta dan sekitarnya</description>
+    <!-- 8 hours old -->
+    <item>
+      <title>Petugas damkar padamkan kebakaran rumah di Tebet Jakarta Selatan</title>
+      <link>https://www.antaranews.com/berita/6010/kebakaran-tebet-8h</link>
+      <guid>https://www.antaranews.com/berita/6010/kebakaran-tebet-8h</guid>
+      <pubDate>Tue, 27 Oct 2026 02:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+  const retrievedAt = "2026-10-27T10:00:00Z";
+
+  // Default in test/dev is 48 hours -> 8 hours old is accepted
+  const defaultResult = parseAndFilterNewsRss(xml, retrievedAt, "source-antara-metro");
+  assert.ok("totalParsed" in defaultResult);
+  assert.equal(defaultResult.matchedCount, 1);
+  assert.equal(defaultResult.rejectedCount, 0);
+
+  // NEWS_MAX_AGE_HOURS=6 -> 8 hours old is rejected
+  const origEnv = process.env.NEWS_MAX_AGE_HOURS;
+  try {
+    process.env.NEWS_MAX_AGE_HOURS = "6";
+    const envResult = parseAndFilterNewsRss(xml, retrievedAt, "source-antara-metro");
+    assert.ok("totalParsed" in envResult);
+    assert.equal(envResult.matchedCount, 0);
+    assert.equal(envResult.rejectedCount, 1);
+  } finally {
+    if (origEnv === undefined) {
+      delete process.env.NEWS_MAX_AGE_HOURS;
+    } else {
+      process.env.NEWS_MAX_AGE_HOURS = origEnv;
+    }
+  }
+
+  // NODE_ENV=production -> default is 6 hours -> 8 hours old is rejected
+  const origNodeEnv = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.NEWS_MAX_AGE_HOURS;
+    const prodResult = parseAndFilterNewsRss(xml, retrievedAt, "source-antara-metro");
+    assert.ok("totalParsed" in prodResult);
+    assert.equal(prodResult.matchedCount, 0);
+    assert.equal(prodResult.rejectedCount, 1);
+  } finally {
+    if (origNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = origNodeEnv;
+    }
+  }
+});
