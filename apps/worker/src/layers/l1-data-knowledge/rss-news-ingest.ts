@@ -21,6 +21,7 @@ export const JAKARTA_TOPONYMS: readonly string[] = [
   "koja", "kelapa gading", "tanjung priok", "pademangan", "penjaringan", "cilincing",
   // Koridor & Tempat Penting
   "sudirman", "thamrin", "gatot subroto", "rasuna said", "kuningan", "monas", "harmoni", "cawang", "rawamangun", "pluit", "ancol", "grogol",
+  "pejompongan", "benhil", "kemang", "blok m", "petojo", "cideng", "glodok", "roxy", "manggarai", "slipi", "tomang", "kalibata",
 ];
 
 /** Kata kunci kejadian darurat, gangguan keselamatan, dan bencana perkotaan */
@@ -29,6 +30,7 @@ export const INCIDENT_KEYWORDS: readonly string[] = [
   "pohon tumbang", "kecelakaan", "tabrakan", "terguling", "tawuran", "bentrokan",
   "cuaca ekstrem", "hujan lebat", "angin kencang", "angin puting beliung", "amblas", "longsor",
   "rob", "tanggul", "pintu air", "siaga", "gempa",
+  "tewas", "meninggal", "korban", "jenazah", "luka", "kritis", "pembunuhan", "penusukan", "penembakan", "begal", "pencurian", "rampok",
 ];
 
 export interface ClassifiedNewsItem {
@@ -85,8 +87,7 @@ export function classifyNewsItem(item: RssDiscoveryItem): {
   });
 
   const matchedKeywords = INCIDENT_KEYWORDS.filter((keyword) => {
-    const regex = new RegExp(`\\b${escapeRegex(keyword)}\\b`, "iu");
-    return regex.test(title);
+    return title.includes(keyword.toLowerCase());
   });
 
   const isRelevant = matchedToponyms.length > 0 && matchedKeywords.length > 0;

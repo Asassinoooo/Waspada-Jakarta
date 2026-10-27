@@ -38,8 +38,8 @@ export const DEFAULT_ANTARA_FEEDS: readonly NewsFeedConfig[] = [
     sourceId: "source-antara-metro",
   },
   {
-    url: "https://www.antaranews.com/rss/hukum-kriminalitas.xml",
-    sourceId: "source-antara-hukum-kriminalitas",
+    url: "https://www.antaranews.com/rss/hukum.xml",
+    sourceId: "source-antara-hukum",
   },
 ];
 
