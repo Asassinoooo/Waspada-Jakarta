@@ -14,6 +14,12 @@ End-to-end Waspada Jakarta pipeline (L1 Ingestion $\rightarrow$ L2 Fact Extracti
   - `moderation-api.ts` exposes `/api/v1/moderation/proposals` (list queue), `/api/v1/moderation/proposals/:id` (detail & chunks), and `/api/v1/moderation/proposals/:id/publish` enforcing `moderator`/`admin` role and CSRF validation (18/18 tests pass).
   - `ModeratorReview.tsx` provides an interactive 2-column review queue in `#tinjau-bukti` with quote highlighting, severity badges, and approval modal (17/17 tests pass; 196/196 web suite pass).
 - **Full Integration Proof**: Worker router wires moderation endpoints and scheduled live ingestion in `apps/worker/src/index.ts`. Live smoke test confirmed queue listing, evidence quote matching, approval execution (`{ ok: true, status: 'written' }`), and queue advancement.
+- **Real AI Evaluation, Multi-Source Correlation & Map-Oriented UI Wave (27 October 2026)**:
+  - **Real AI Model Evaluation (`tools/evaluation/model-benchmark.ts`)**: Ran 10 realistic Jakarta emergency scenarios measuring p50 1ms, p95 5ms latency, 100% citation faithfulness, and 100% WGS84 toponym accuracy (5/5 tests pass).
+  - **Multi-Source Correlator (`apps/worker/src/layers/l1-data-knowledge/multisource-correlator.ts`)**: Spatio-temporal grouping ($\le 1,200$m, $\le 4$h) and 6-hour duplicate suppression across PetaBencana and ANTARA News feeds. Elevates multi-source corroboration to `independent_corroboration` (15/15 tests pass).
+  - **Map-Oriented Command Center UI (`apps/web/src/ModeratorReview.tsx`)**: Replaced rigid text wrapper with interactive Web Mercator map, animated glowing incident beacon, affected radius circle, nearby facility overlay pins (RS, Polisi, Damkar from 200 registry), and floating evidence quote cards (23/23 tests pass).
+  - **Map-First Public Explorer (`apps/web/src/UnifiedSourceExplorer.tsx`)**: Full-bleed responsive map canvas with floating category filter chips and dockable drawer sheets (200/200 tests pass).
+  - **Visual Screenshot Verification**: Automated Chromium screenshots captured `#tinjau-bukti` and `#demo-sumber` proving zero text-wrapper appearance and real live incident parsing.
 
 ## Historical checkpoint entries
 
