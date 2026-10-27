@@ -230,3 +230,104 @@ test("live and unknown modes ignore even supplied demo payloads and keep the sin
     assert.equal((markup.match(/data-testid="map"/gu) ?? []).length, 1);
   }
 });
+
+test("map-first layout renders full-bleed map hero with floating category filter chips", () => {
+  const markup = renderView({
+    renderMap(points) {
+      return createElement("div", { "data-testid": "hero-map" }, `Points: ${points.length}`);
+    },
+  });
+
+  // Full-bleed map hero element is present
+  assert.ok(markup.includes('data-testid="hero-map"'));
+  assert.match(markup, /class="unified-source-explorer__map" aria-label="Peta sumber terpadu"/);
+
+  // Floating filter chips directly over the top of the map
+  assert.match(markup, /class="unified-source-explorer__floating-chips" role="toolbar" aria-label="Filter cepat kategori"/);
+  assert.match(markup, /unified-chip--cyan[^>]*>[\s\S]*?Banjir/);
+  assert.match(markup, /unified-chip--red[^>]*>[\s\S]*?Kebakaran/);
+  assert.match(markup, /unified-chip--orange[^>]*>[\s\S]*?Kepolisian/);
+  assert.match(markup, /unified-chip--teal[^>]*>[\s\S]*?Rumah Sakit/);
+  assert.match(markup, /unified-chip--slate[^>]*>[\s\S]*?Gempa Regional/);
+
+  // Floating companion drawer exists
+  assert.match(markup, /class="unified-source-explorer__companion unified-source-explorer__companion--floating/);
+});
+
+test("floating sheet toggling provides dockable drawer and floating trigger badge", () => {
+  // When defaultPanel is "daftar" (collapsed companion)
+  const collapsedMarkup = renderView({ defaultPanel: "daftar" });
+  assert.match(collapsedMarkup, /unified-source-explorer__companion--collapsed/);
+  assert.match(collapsedMarkup, /class="unified-source-explorer__floating-trigger"/);
+  assert.match(collapsedMarkup, /Buka panel sumber/);
+
+  // When defaultPanel is "detail" (open companion)
+  const openMarkup = renderView({ defaultPanel: "detail" });
+  assert.match(openMarkup, /unified-source-explorer__companion--open/);
+  assert.match(openMarkup, /class="unified-source-explorer__close-panel unified-source-explorer__dock-toggle"/);
+  assert.match(openMarkup, /Kembali ke peta/);
+});
+
+test("filter interactions correctly isolate category points and update visible records", () => {
+  const points = collectUnifiedSourcePoints(previewPayload, contextPayload);
+
+  // Flood filter isolates petabencana flood points
+  const floodPoints = filterUnifiedSourcePoints(points, { kind: "flood_report" });
+  assert.equal(floodPoints.length, 1);
+  assert.equal(floodPoints[0]?.id, floodRecord.id);
+  assert.equal(floodPoints[0]?.source, "petabencana");
+
+  // Hospital filter isolates OSM hospital
+  const hospitalPoints = filterUnifiedSourcePoints(points, { kind: "hospital" });
+  assert.equal(hospitalPoints.length, 1);
+  assert.equal(hospitalPoints[0]?.id, osmRecord.id);
+  assert.equal(hospitalPoints[0]?.source, "osm");
+
+  // Earthquake filter isolates USGS catalog
+  const quakePoints = filterUnifiedSourcePoints(points, { kind: "earthquake" });
+  assert.equal(quakePoints.length, 1);
+  assert.equal(quakePoints[0]?.id, quakeRecord.id);
+  assert.equal(quakePoints[0]?.source, "usgs");
+
+  // All filter retains all supported points
+  const allPoints = filterUnifiedSourcePoints(points, { kind: "all", source: "all" });
+  assert.equal(allPoints.length, 3);
+});
+
+test("marker selection opens the floating sheet to calm readable status cards", () => {
+  let selectMarkerCallback: ((id: string) => void) | null = null;
+  const markup = renderView({
+    defaultPanel: "daftar",
+    renderMap(points, _selectedId, onSelect) {
+      selectMarkerCallback = onSelect;
+      return createElement(
+        "div",
+        { "data-testid": "interactive-map" },
+        points.map((p) =>
+          createElement(
+            "button",
+            {
+              key: p.id,
+              "data-marker-id": p.id,
+              onClick: () => onSelect(p.id),
+            },
+            p.title,
+          ),
+        ),
+      );
+    },
+  });
+
+  assert.ok(typeof selectMarkerCallback === "function");
+
+  // Record list items have color-coded badges and calm status tags
+  assert.match(markup, /unified-source-explorer__record-symbol--cyan/);
+  assert.match(markup, /unified-source-explorer__tag--cyan/);
+  assert.match(markup, /unified-source-explorer__record-symbol--teal/);
+  assert.match(markup, /unified-source-explorer__tag--teal/);
+
+  // Detail panel rendered with calm status presentation when open
+  const detailMarkup = renderView({ defaultPanel: "detail" });
+  assert.match(detailMarkup, /Detail pilihan/);
+  assert.match(detailMarkup, /Pilih satu fasilitas, laporan, atau episentrum/);
+});

@@ -148,11 +148,10 @@
   background: var(--kali-teal);
   color: var(--ink-on-teal);
 }
-
 .source-point-map__cluster--petabencana {
-  background: var(--merah-tanda);
+  background: #0891b2; /* Cyan for Banjir / PetaBencana */
+  color: #fff;
 }
-
 .source-point-map__cluster--usgs {
   border-color: var(--tinta-kota);
   background: var(--surface);
@@ -261,17 +260,34 @@
 }
 
 .source-point-map__marker[data-kind="flood_report"] .source-point-map__marker-code,
-.source-point-map__legend-code[data-kind="flood_report"] {
-  border-radius: 0;
-  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
-}
-
+.source-point-map__legend-code[data-kind="flood_report"],
 .source-point-map__marker--petabencana .source-point-map__marker-code,
 .source-point-map__legend-code--report {
-  background: var(--merah-tanda);
+  border-radius: 0;
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+  background: #0891b2; /* Cyan for Banjir */
   color: #fff;
 }
 
+.source-point-map__marker[data-kind="fire_station"] .source-point-map__marker-code,
+.source-point-map__marker[data-kind="fire"] .source-point-map__marker-code,
+.source-point-map__legend-code[data-kind="fire_station"] {
+  background: #dc2626; /* Red for Kebakaran */
+  color: #fff;
+}
+
+.source-point-map__marker[data-kind="police"] .source-point-map__marker-code,
+.source-point-map__marker[data-kind="accident"] .source-point-map__marker-code,
+.source-point-map__legend-code[data-kind="police"] {
+  background: #ea580c; /* Orange for Kecelakaan */
+  color: #fff;
+}
+
+.source-point-map__marker[data-kind="tree_fall"] .source-point-map__marker-code,
+.source-point-map__legend-code[data-kind="tree_fall"] {
+  background: #16a34a; /* Green for Pohon Tumbang */
+  color: #fff;
+}
 .source-point-map__marker[data-kind="earthquake"] .source-point-map__marker-code,
 .source-point-map__legend-code[data-kind="earthquake"] {
   border: 2px solid var(--tinta-kota);

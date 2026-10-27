@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { evidenceLabel, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
 import { MapPanel } from "./MapPanel.js";
+import { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
+export { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
 
 export interface StoredEvidenceChunk {
   readonly chunk_index: number;
@@ -18,6 +20,7 @@ export interface ProposalClaim {
   readonly support_assessment: "supported";
   readonly quote_text: string;
   readonly evidence_ref_id: string;
+  readonly is_corroborated?: boolean;
 }
 
 export interface EventProposalDto {
@@ -31,12 +34,14 @@ export interface EventProposalDto {
   readonly coordinates: readonly [longitude: number, latitude: number] | null;
   readonly claims: readonly ProposalClaim[];
   readonly proposed_at: string;
+  readonly is_multi_source?: boolean;
+  readonly source_count?: number;
 }
 
 export interface ModeratorDecisionCommand {
   readonly proposal_id: string;
   readonly action: "publish" | "reject" | "investigate";
-  readonly evidence_label: "attributed_report" | "crowdsourced_observation";
+  readonly evidence_label: "attributed_report" | "crowdsourced_observation" | "independent_corroboration";
   readonly reason?: string;
 }
 
@@ -88,6 +93,35 @@ export function severityLabel(sev: string): string {
     case "low": return "Rendah";
     default: return sev;
   }
+}
+
+export function isProposalMultiSource(proposal: EventProposalDto): boolean {
+  if (proposal.is_multi_source === true) return true;
+  if (typeof proposal.source_count === "number" && proposal.source_count > 1) return true;
+  return false;
+}
+
+export function isProposalCrowdsourced(proposal: EventProposalDto): boolean {
+  const text = [
+    proposal.title,
+    proposal.location_label,
+    ...proposal.claims.map((c) => `${c.claim_text} ${c.quote_text} ${c.evidence_ref_id}`),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return text.includes("petabencana") || text.includes("warga") || text.includes("laporan publik");
+}
+
+export function autoDetectEvidenceLabel(
+  proposal: EventProposalDto
+): "independent_corroboration" | "attributed_report" | "crowdsourced_observation" {
+  if (isProposalMultiSource(proposal)) {
+    return "independent_corroboration";
+  }
+  if (isProposalCrowdsourced(proposal)) {
+    return "crowdsourced_observation";
+  }
+  return "attributed_report";
 }
 
 export function renderHighlightedText(text: string, quotes: readonly string[]): React.ReactNode[] {
@@ -285,11 +319,18 @@ export function ModeratorReviewQueue({
   const [chunksMap, setChunksMap] = useState<Record<string, readonly StoredEvidenceChunk[]>>(initialChunks);
   const [loading, setLoading] = useState<boolean>(!controlledProposals);
   const [modalOpen, setModalOpen] = useState<boolean>(initialModalOpen);
-  const [evidenceLabelChoice, setEvidenceLabelChoice] = useState<"attributed_report" | "crowdsourced_observation">("attributed_report");
+  const [evidenceLabelChoice, setEvidenceLabelChoice] = useState<
+    "attributed_report" | "crowdsourced_observation" | "independent_corroboration"
+  >(() => {
+    const first = controlledProposals?.[0];
+    return first ? autoDetectEvidenceLabel(first) : "attributed_report";
+  });
   const [decisionReason, setDecisionReason] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<ModerationFeedback | null>(initialFeedback);
   const [sessionCsrf, setSessionCsrf] = useState<string>("");
+  const [queueCategoryFilter, setQueueCategoryFilter] = useState<string>("all");
+  const [activeClaimId, setActiveClaimId] = useState<string | null>(null);
 
   const effectiveCsrfToken = propCsrfToken || sessionCsrf;
 
@@ -367,6 +408,19 @@ export function ModeratorReviewQueue({
     return queue.find((p) => p.proposal_id === selectedId) ?? null;
   }, [queue, selectedId]);
 
+  // Sync auto-detected evidence label when selected proposal changes
+  useEffect(() => {
+    if (selectedProposal) {
+      setEvidenceLabelChoice(autoDetectEvidenceLabel(selectedProposal));
+      setActiveClaimId(null);
+    }
+  }, [selectedProposal?.proposal_id]);
+
+  const activeClaim = useMemo(() => {
+    if (!selectedProposal || !activeClaimId) return null;
+    return selectedProposal.claims.find((c) => c.claim_id === activeClaimId) ?? null;
+  }, [selectedProposal, activeClaimId]);
+
   const currentQuotes = useMemo(() => {
     if (!selectedProposal) return [];
     return selectedProposal.claims.map((c) => c.quote_text).filter(Boolean);
@@ -374,10 +428,23 @@ export function ModeratorReviewQueue({
 
   const currentChunks = selectedProposal ? chunksMap[selectedProposal.proposal_id] : undefined;
 
+  // Filter queue by category / multi-source
+  const filteredQueue = useMemo(() => {
+    if (queueCategoryFilter === "all") return queue;
+    if (queueCategoryFilter === "multi_source") {
+      return queue.filter((p) => isProposalMultiSource(p));
+    }
+    return queue.filter((p) => p.incident_type === queueCategoryFilter);
+  }, [queue, queueCategoryFilter]);
+
+  const multiSourceQueueCount = useMemo(() => {
+    return queue.filter((p) => isProposalMultiSource(p)).length;
+  }, [queue]);
+
   const handleAction = useCallback(
     async (
       action: "publish" | "reject" | "investigate",
-      evidence_label: "attributed_report" | "crowdsourced_observation" = "attributed_report",
+      evidence_label: "attributed_report" | "crowdsourced_observation" | "independent_corroboration" = "attributed_report",
       reason?: string
     ) => {
       if (!selectedProposal || submitting) return;
@@ -440,17 +507,17 @@ export function ModeratorReviewQueue({
     <main id="main-content" className="main-shell moderator-page moderator-page--queue">
       <style>{`
         .moderator-page--queue {
-          max-width: 82rem;
+          max-width: 86rem;
           margin: 0 auto;
         }
         .moderator-queue-grid {
           display: grid;
-          grid-template-columns: 340px minmax(0, 1fr);
+          grid-template-columns: 360px minmax(0, 1fr);
           gap: 1.5rem;
           align-items: start;
           margin-top: 1rem;
         }
-        @media (max-width: 900px) {
+        @media (max-width: 1024px) {
           .moderator-queue-grid {
             grid-template-columns: minmax(0, 1fr);
           }
@@ -458,8 +525,9 @@ export function ModeratorReviewQueue({
         .queue-column {
           border: 1px solid var(--beton);
           background: var(--surface);
-          border-radius: 6px;
+          border-radius: 8px;
           overflow: hidden;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
         .queue-column-header {
           padding: 1rem;
@@ -477,11 +545,39 @@ export function ModeratorReviewQueue({
           color: white;
           font-weight: 600;
         }
+        .queue-filter-bar {
+          display: flex;
+          gap: 0.35rem;
+          padding: 0.65rem 0.85rem;
+          background: #f8fafc;
+          border-bottom: 1px solid var(--beton);
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+        .queue-filter-btn {
+          font-size: 0.75rem;
+          font-weight: 600;
+          padding: 0.25rem 0.65rem;
+          border-radius: 14px;
+          border: 1px solid #cbd5e1;
+          background: #ffffff;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .queue-filter-btn:hover {
+          background: #f1f5f9;
+        }
+        .queue-filter-btn--active {
+          background: var(--kali-teal);
+          color: #ffffff;
+          border-color: var(--kali-teal);
+        }
         .proposal-queue-list {
           list-style: none;
           margin: 0;
           padding: 0;
-          max-height: 72vh;
+          max-height: 75vh;
           overflow-y: auto;
         }
         .proposal-card-btn {
@@ -504,7 +600,7 @@ export function ModeratorReviewQueue({
         }
         .proposal-card-top {
           display: flex;
-          gap: 0.5rem;
+          gap: 0.4rem;
           margin-bottom: 0.4rem;
           align-items: center;
           flex-wrap: wrap;
@@ -533,6 +629,18 @@ export function ModeratorReviewQueue({
         .severity-chip--high { background: #FA8C16; color: white; }
         .severity-chip--medium { background: var(--kuning-perhatian); color: #18323A; }
         .severity-chip--low { background: #D9D9D9; color: #434343; }
+        .multi-source-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          font-size: 0.7rem;
+          font-weight: 700;
+          padding: 0.15rem 0.5rem;
+          border-radius: 9999px;
+          background: linear-gradient(135deg, #0d9488 0%, #0284c7 100%);
+          color: #ffffff;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+        }
         .proposal-card-title {
           display: block;
           font-size: 0.95rem;
@@ -556,12 +664,22 @@ export function ModeratorReviewQueue({
           border-radius: 2px;
           box-shadow: 0 0 0 1px #FFD666;
         }
+        .evidence-quote-highlight--active {
+          background: #5eead4;
+          color: #042f2e;
+          box-shadow: 0 0 0 2px #0d9488;
+        }
         .review-action-bar {
           display: flex;
           gap: 0.75rem;
           margin-top: 1.5rem;
-          padding-top: 1.25rem;
-          border-top: 1px solid var(--beton);
+          padding: 1.15rem 1.25rem;
+          background: #ffffff;
+          border: 1px solid var(--beton);
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+          align-items: center;
+          justify-content: flex-start;
           flex-wrap: wrap;
         }
         .action-button {
@@ -647,7 +765,7 @@ export function ModeratorReviewQueue({
           border-radius: 8px;
           box-shadow: 0 10px 25px rgba(0,0,0,0.2);
           width: 100%;
-          max-width: 540px;
+          max-width: 580px;
           max-height: 90vh;
           overflow-y: auto;
           border: 1px solid var(--beton);
@@ -783,7 +901,6 @@ export function ModeratorReviewQueue({
         .moderator-empty-queue h3 {
           margin: 0 0 0.5rem 0;
           color: var(--tinta-kota);
-        }
         .moderator-empty-queue p {
           margin: 0 0 1.25rem 0;
           color: var(--quiet-ink);
@@ -832,12 +949,23 @@ export function ModeratorReviewQueue({
           border-radius: 6px;
           padding: 0.85rem;
           margin-bottom: 0.75rem;
+          cursor: pointer;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .claim-card-row:hover {
+          border-color: var(--kali-teal);
+        }
+        .claim-card-row--active {
+          border-color: var(--kali-teal);
+          box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.25);
+          background: #f0fdfa;
         }
         .claim-card-top {
           display: flex;
           justify-content: space-between;
           font-size: 0.8rem;
           margin-bottom: 0.4rem;
+          align-items: center;
         }
         .claim-status-badge {
           padding: 0.15rem 0.45rem;
@@ -847,12 +975,69 @@ export function ModeratorReviewQueue({
           font-weight: 600;
           font-size: 0.75rem;
         }
+        .corroborated-badge {
+          border-radius: 4px;
+          background: #ecfdf5;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+          font-weight: 700;
+          font-size: 0.75rem;
+        }
         .claim-quote-box {
           background: var(--hujan-pagi);
           border-left: 3px solid var(--kali-teal);
           padding: 0.5rem 0.75rem;
           margin-top: 0.5rem;
           font-size: 0.875rem;
+        }
+        .evidence-floating-sheet {
+          margin-top: 1.25rem;
+          background: #ffffff;
+          border: 1px solid var(--beton);
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        .evidence-floating-sheet-header {
+          padding: 0.85rem 1.25rem;
+          background: #f8fafc;
+          border-bottom: 1px solid var(--beton);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .evidence-floating-sheet-body {
+          padding: 1.25rem;
+        }
+        .facility-filter-pill {
+          background: transparent;
+          border: 1px solid transparent;
+          color: #94a3b8;
+          font-size: 0.75rem;
+          padding: 2px 8px;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .facility-filter-pill:hover {
+          color: #ffffff;
+        }
+        .facility-filter-pill--active {
+          background: rgba(255, 255, 255, 0.2);
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.3);
+        }
+        .map-tool-btn {
+          background: rgba(255, 255, 255, 0.15);
+          color: #ffffff;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          padding: 2px 8px;
+          font-size: 0.85rem;
+          cursor: pointer;
+        }
+        .map-tool-btn:hover {
+          background: rgba(255, 255, 255, 0.25);
         }
       `}</style>
 
@@ -897,15 +1082,57 @@ export function ModeratorReviewQueue({
         </div>
       ) : (
         <div className="moderator-queue-grid">
-          {/* Kolom Kiri: Antrean Proposal */}
+          {/* Kolom Kiri: Antrean Proposal (360px) */}
           <aside className="queue-column" aria-label="Antrean proposal insiden">
             <header className="queue-column-header">
               <strong>Antrean Proposal</strong>
               <span className="queue-badge-count">{queue.length} menunggu</span>
             </header>
+
+            {/* Quick Filter Bar */}
+            <div className="queue-filter-bar" role="toolbar" aria-label="Filter kategori proposal">
+              <button
+                type="button"
+                className={`queue-filter-btn ${queueCategoryFilter === "all" ? "queue-filter-btn--active" : ""}`}
+                onClick={() => setQueueCategoryFilter("all")}
+              >
+                Semua ({queue.length})
+              </button>
+              {multiSourceQueueCount > 0 && (
+                <button
+                  type="button"
+                  className={`queue-filter-btn ${
+                    queueCategoryFilter === "multi_source" ? "queue-filter-btn--active" : ""
+                  }`}
+                  onClick={() => setQueueCategoryFilter("multi_source")}
+                >
+                  ⚡ Multi-Sumber ({multiSourceQueueCount})
+                </button>
+              )}
+              <button
+                type="button"
+                className={`queue-filter-btn ${
+                  queueCategoryFilter === "flood" ? "queue-filter-btn--active" : ""
+                }`}
+                onClick={() => setQueueCategoryFilter("flood")}
+              >
+                Banjir
+              </button>
+              <button
+                type="button"
+                className={`queue-filter-btn ${
+                  queueCategoryFilter === "fire" ? "queue-filter-btn--active" : ""
+                }`}
+                onClick={() => setQueueCategoryFilter("fire")}
+              >
+                Kebakaran
+              </button>
+            </div>
+
             <ul className="proposal-queue-list">
-              {queue.map((item) => {
+              {filteredQueue.map((item) => {
                 const isSelected = item.proposal_id === selectedId;
+                const isMultiSource = isProposalMultiSource(item);
                 return (
                   <li key={item.proposal_id}>
                     <button
@@ -926,6 +1153,11 @@ export function ModeratorReviewQueue({
                         <span className={`severity-chip severity-chip--${item.severity}`}>
                           {severityLabel(item.severity)}
                         </span>
+                        {isMultiSource && (
+                          <span className="multi-source-badge">
+                            ⚡ {item.source_count ?? 2} Sumber Terkorelasi
+                          </span>
+                        )}
                       </div>
                       <strong className="proposal-card-title">{item.title}</strong>
                       <div className="proposal-card-meta">
@@ -940,13 +1172,21 @@ export function ModeratorReviewQueue({
             </ul>
           </aside>
 
-          {/* Kolom Kanan: Detail Proposal, Klaim, & Pembaca Bukti */}
+          {/* Kolom Kanan: Command Center Peta, Detail Proposal, & Floating Evidence Sheet */}
           <div className="details-column">
             {selectedProposal ? (
               <>
+                {/* Header Identitas Proposal */}
                 <section className="review-case-heading" aria-label="Identitas proposal insiden">
                   <div>
-                    <p className="section-kicker">Kandidat Terpilih</p>
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.25rem" }}>
+                      <p className="section-kicker" style={{ margin: 0 }}>Kandidat Terpilih</p>
+                      {isProposalMultiSource(selectedProposal) && (
+                        <span className="multi-source-badge">
+                          ⚡ {selectedProposal.source_count ?? 2} Sumber Terkorelasi
+                        </span>
+                      )}
+                    </div>
                     <h2>{selectedProposal.title}</h2>
                     <p>
                       Diajukan pada {formatInstant(selectedProposal.proposed_at)} · Schema{" "}
@@ -987,83 +1227,144 @@ export function ModeratorReviewQueue({
                   </dl>
                 </section>
 
-                <div className="review-columns">
-                  {/* Bukti Sumber & Pembaca Highlight */}
-                  <section className="review-evidence" aria-labelledby="evidence-reader-title">
-                    <header className="review-column-heading">
-                      <p className="section-kicker">Verifikasi Grounding L2</p>
-                      <h2 id="evidence-reader-title">Pembaca Bukti Sumber</h2>
-                    </header>
+                {/* Interactive Incident Map */}
+                <InteractiveIncidentMap
+                  coordinates={selectedProposal.coordinates}
+                  incidentType={selectedProposal.incident_type}
+                  severity={selectedProposal.severity}
+                  locationLabel={selectedProposal.location_label}
+                  title={selectedProposal.title}
+                  activeQuote={activeClaim?.quote_text}
+                  height={480}
+                />
 
-                    {currentChunks && currentChunks.length > 0 ? (
-                      <div className="chunks-list">
-                        {currentChunks.map((chunk) => (
-                          <article key={chunk.chunk_index} className="chunk-article">
-                            <header className="chunk-header">
-                              <strong>Chunk #{chunk.chunk_index + 1}</strong>
-                              <span className="chunk-span">
-                                Span kode poin {chunk.span_start}–{chunk.span_end}
-                              </span>
-                            </header>
-                            <blockquote className="review-quote">
-                              {renderHighlightedText(chunk.text, currentQuotes)}
-                            </blockquote>
-                          </article>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="quotes-fallback-list">
-                        <p className="evidence-reader-note">
-                          Kutipan bukti langsung yang diekstraksi dari dokumen sumber:
-                        </p>
-                        {selectedProposal.claims.map((claim) => (
-                          <article key={claim.claim_id} className="quote-card">
-                            <header className="quote-card-header">
-                              <span className="quote-ref-badge">Ref: {claim.evidence_ref_id}</span>
-                              <span className="quote-status-badge">Didukung</span>
-                            </header>
-                            <blockquote className="review-quote">
-                              <mark className="evidence-quote-highlight">
-                                {claim.quote_text}
-                              </mark>
-                            </blockquote>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Klaim dan Grounding */}
-                  <section className="review-proposal" aria-labelledby="claims-breakdown-title">
-                    <header className="review-column-heading">
-                      <p className="section-kicker">Struktur Klaim Insiden</p>
-                      <h2 id="claims-breakdown-title">
-                        Daftar Klaim ({selectedProposal.claims.length})
-                      </h2>
-                    </header>
-
-                    <div className="claims-list">
-                      {selectedProposal.claims.map((claim) => (
-                        <article key={claim.claim_id} className="claim-card-row">
-                          <header className="claim-card-top">
-                            <span className="claim-ref-badge">ID: {claim.claim_id}</span>
-                            <span className="claim-status-badge">under_review</span>
-                          </header>
-                          <blockquote className="review-claim">
-                            {claim.claim_text}
-                          </blockquote>
-                          <div className="claim-quote-box">
-                            <strong>Kutipan: </strong>
-                            <em>"{claim.quote_text}"</em>
-                            <div style={{ marginTop: "0.25rem", color: "var(--quiet-ink)", fontSize: "0.78rem" }}>
-                              Ref Bukti: {claim.evidence_ref_id} · {claim.support_assessment}
-                            </div>
-                          </div>
-                        </article>
-                      ))}
+                {/* Floating Evidence Sheet */}
+                <section
+                  className="evidence-floating-sheet"
+                  aria-labelledby="evidence-reader-title"
+                >
+                  <header className="evidence-floating-sheet-header">
+                    <div>
+                      <h3 id="evidence-reader-title" style={{ margin: 0, fontSize: "1.05rem" }}>
+                        Pembaca Bukti Sumber
+                      </h3>
+                      <p style={{ margin: "0.15rem 0 0 0", fontSize: "0.8rem", color: "var(--quiet-ink)" }}>
+                        Verifikasi Grounding L2 · Klaim &amp; Dokumen Sumber Asli
+                      </p>
                     </div>
-                  </section>
-                </div>
+                    {isProposalMultiSource(selectedProposal) && (
+                      <span className="corroborated-badge">
+                        ⚡ Fusi Multi-Sumber Aktif
+                      </span>
+                    )}
+                  </header>
+
+                  <div className="evidence-floating-sheet-body">
+                    <div className="review-columns">
+                      {/* Bukti Sumber & Pembaca Highlight */}
+                      <section className="review-evidence" aria-label="Teks dokumen sumber">
+                        <header className="review-column-heading">
+                          <p className="section-kicker">Kutipan Dokumen Asli</p>
+                          <h4 style={{ margin: "0.2rem 0 0.75rem 0", fontSize: "0.95rem" }}>
+                            Potongan Teks Dokumen
+                          </h4>
+                        </header>
+
+                        {currentChunks && currentChunks.length > 0 ? (
+                          <div className="chunks-list">
+                            {currentChunks.map((chunk) => (
+                              <article key={chunk.chunk_index} className="chunk-article">
+                                <header className="chunk-header">
+                                  <strong>Chunk #{chunk.chunk_index + 1}</strong>
+                                  <span className="chunk-span">
+                                    Span kode poin {chunk.span_start}–{chunk.span_end}
+                                  </span>
+                                </header>
+                                <blockquote className="review-quote">
+                                  {renderHighlightedText(chunk.text, currentQuotes)}
+                                </blockquote>
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="quotes-fallback-list">
+                            <p className="evidence-reader-note">
+                              Kutipan bukti langsung yang diekstraksi dari dokumen sumber:
+                            </p>
+                            {selectedProposal.claims.map((claim) => (
+                              <article key={claim.claim_id} className="quote-card">
+                                <header className="quote-card-header">
+                                  <span className="quote-ref-badge">Ref: {claim.evidence_ref_id}</span>
+                                  <span className="quote-status-badge">Didukung</span>
+                                </header>
+                                <blockquote className="review-quote">
+                                  <mark className="evidence-quote-highlight">
+                                    {claim.quote_text}
+                                  </mark>
+                                </blockquote>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+
+                      {/* Klaim dan Grounding */}
+                      <section className="review-proposal" aria-labelledby="claims-breakdown-title">
+                        <header className="review-column-heading">
+                          <p className="section-kicker">Struktur Klaim Insiden</p>
+                          <h2 id="claims-breakdown-title">
+                            Daftar Klaim ({selectedProposal.claims.length})
+                          </h2>
+                        </header>
+
+                        <div className="claims-list">
+                          {selectedProposal.claims.map((claim) => {
+                            const isClaimActive = activeClaimId === claim.claim_id;
+                            return (
+                              <article
+                                key={claim.claim_id}
+                                className={`claim-card-row ${
+                                  isClaimActive ? "claim-card-row--active" : ""
+                                }`}
+                                onClick={() =>
+                                  setActiveClaimId(isClaimActive ? null : claim.claim_id)
+                                }
+                              >
+                                <header className="claim-card-top">
+                                  <span className="claim-ref-badge">ID: {claim.claim_id}</span>
+                                  <div style={{ display: "flex", gap: "0.3rem" }}>
+                                    {claim.is_corroborated && (
+                                      <span className="corroborated-badge">
+                                        ✓ Terkonfirmasi Independen
+                                      </span>
+                                    )}
+                                    <span className="claim-status-badge">under_review</span>
+                                  </div>
+                                </header>
+                                <blockquote className="review-claim">
+                                  {claim.claim_text}
+                                </blockquote>
+                                <div className="claim-quote-box">
+                                  <strong>Kutipan: </strong>
+                                  <em>"{claim.quote_text}"</em>
+                                  <div
+                                    style={{
+                                      marginTop: "0.25rem",
+                                      color: "var(--quiet-ink)",
+                                      fontSize: "0.78rem",
+                                    }}
+                                  >
+                                    Ref Bukti: {claim.evidence_ref_id} · {claim.support_assessment}
+                                  </div>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+                </section>
 
                 {/* Kontrol Aksi Keputusan Moderator */}
                 <div className="review-action-bar">
@@ -1072,7 +1373,10 @@ export function ModeratorReviewQueue({
                     className="action-button action-button--approve"
                     data-action="approve"
                     disabled={submitting}
-                    onClick={() => setModalOpen(true)}
+                    onClick={() => {
+                      setEvidenceLabelChoice(autoDetectEvidenceLabel(selectedProposal));
+                      setModalOpen(true);
+                    }}
                   >
                     Setujui & Terbitkan
                   </button>
@@ -1131,6 +1435,30 @@ export function ModeratorReviewQueue({
                   Pilih label bukti yang tepat sebelum diterbitkan ke feed publik Waspada Jakarta:
                 </p>
 
+                {/* Option 1: Independent Corroboration */}
+                <label
+                  className={`label-choice-card ${
+                    evidenceLabelChoice === "independent_corroboration"
+                      ? "label-choice-card--selected"
+                      : ""
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="evidence_label"
+                    value="independent_corroboration"
+                    checked={evidenceLabelChoice === "independent_corroboration"}
+                    onChange={() => setEvidenceLabelChoice("independent_corroboration")}
+                  />
+                  <div className="label-choice-text">
+                    <strong>Konfirmasi Multi-Sumber (independent_corroboration)</strong>
+                    <span>
+                      Diverifikasi silang dari minimal dua sumber independen (mis. PetaBencana + ANTARA News).
+                    </span>
+                  </div>
+                </label>
+
+                {/* Option 2: Attributed Report */}
                 <label
                   className={`label-choice-card ${
                     evidenceLabelChoice === "attributed_report"
@@ -1153,6 +1481,7 @@ export function ModeratorReviewQueue({
                   </div>
                 </label>
 
+                {/* Option 3: Crowdsourced Observation */}
                 <label
                   className={`label-choice-card ${
                     evidenceLabelChoice === "crowdsourced_observation"
@@ -1184,7 +1513,7 @@ export function ModeratorReviewQueue({
                   className="modal-text-input"
                   value={decisionReason}
                   onChange={(e) => setDecisionReason(e.target.value)}
-                  placeholder="Contoh: Terverifikasi dari liputan ANTARA News Metro"
+                  placeholder="Contoh: Terverifikasi dari liputan ANTARA News Metro & laporan PetaBencana"
                   disabled={submitting}
                 />
               </div>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Category, EventView, FreshnessStatus, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
@@ -104,12 +105,12 @@ export function EventFeed({
   mobilePanel,
   onMobilePanelChange,
 }: EventFeedProps) {
+  const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const matchingEvents = filterEvents(events, query, filters);
   const visibleEvents = status === "loaded" ? matchingEvents : [];
   const hasActiveFilters = query.length > 0 || filters.category !== "all" || filters.lifecycle !== "all" || filters.freshness !== "all";
   const presentationSelected = mapSelection.kind === "presentation";
   const isDemo = context?.dataset_mode === "demo";
-
   return (
     <main id="main-content" className="main-shell">
       <section className="page-intro" aria-labelledby="discover-title">
@@ -230,19 +231,74 @@ export function EventFeed({
       </div>
 
       <div className="discovery-grid" data-mobile-panel={mobilePanel}>
-        <section className="feed-panel" aria-labelledby="feed-title">
+        <div className="event-feed__floating-chips" role="toolbar" aria-label="Filter cepat kategori insiden">
+          <button
+            type="button"
+            className={`feed-chip${filters.category === "all" ? " feed-chip--active" : ""}`}
+            aria-pressed={filters.category === "all"}
+            onClick={() => onCategoryChange("all")}
+          >
+            Semua ({events.length})
+          </button>
+          <button
+            type="button"
+            className={`feed-chip feed-chip--cyan${filters.category === "disasters_weather" ? " feed-chip--active" : ""}`}
+            aria-pressed={filters.category === "disasters_weather"}
+            onClick={() => onCategoryChange("disasters_weather")}
+          >
+            <span className="feed-chip__dot feed-chip__dot--cyan" aria-hidden="true" />
+            Banjir & Cuaca
+          </button>
+          <button
+            type="button"
+            className={`feed-chip feed-chip--red${filters.category === "fires_infrastructure_hazards" ? " feed-chip--active" : ""}`}
+            aria-pressed={filters.category === "fires_infrastructure_hazards"}
+            onClick={() => onCategoryChange("fires_infrastructure_hazards")}
+          >
+            <span className="feed-chip__dot feed-chip__dot--red" aria-hidden="true" />
+            Kebakaran
+          </button>
+          <button
+            type="button"
+            className={`feed-chip feed-chip--orange${filters.category === "transport_road_incidents" ? " feed-chip--active" : ""}`}
+            aria-pressed={filters.category === "transport_road_incidents"}
+            onClick={() => onCategoryChange("transport_road_incidents")}
+          >
+            <span className="feed-chip__dot feed-chip__dot--orange" aria-hidden="true" />
+            Kecelakaan
+          </button>
+          <button
+            type="button"
+            className={`feed-chip feed-chip--green${filters.category === "health_environmental_advisories" ? " feed-chip--active" : ""}`}
+            aria-pressed={filters.category === "health_environmental_advisories"}
+            onClick={() => onCategoryChange("health_environmental_advisories")}
+          >
+            <span className="feed-chip__dot feed-chip__dot--green" aria-hidden="true" />
+            Pohon Tumbang & Lingkungan
+          </button>
+        </div>
+        <section className={`feed-panel feed-panel--floating-sheet${drawerCollapsed ? " feed-panel--collapsed" : ""}`} aria-labelledby="feed-title">
           <header className="panel-heading">
             <div>
               <p className="section-kicker">Halaman data dari API</p>
               <h2 id="feed-title">Daftar record</h2>
             </div>
-            {status === "loaded" && (
-              <span className="count-chip" aria-live="polite">
-                {matchingEvents.length} cocok dari {events.length} record dimuat
-              </span>
-            )}
+            <div className="feed-panel__heading-right">
+              {status === "loaded" && (
+                <span className="count-chip" aria-live="polite">
+                  {matchingEvents.length} cocok dari {events.length} record dimuat
+                </span>
+              )}
+              <button
+                className="button button--quiet feed-drawer__toggle-btn"
+                type="button"
+                aria-label={drawerCollapsed ? "Buka panel daftar" : "Ciutkan panel ke peta"}
+                onClick={() => setDrawerCollapsed(!drawerCollapsed)}
+              >
+                {drawerCollapsed ? "Buka panel" : "Ciutkan ke peta"}
+              </button>
+            </div>
           </header>
-
           {status === "loading" && (
             <div className="state-panel state-panel--loading" role="status">
               <span className="loading-rule" aria-hidden="true" />
@@ -280,9 +336,23 @@ export function EventFeed({
                 const selected = mapSelection.kind === "api-event" &&
                   mapSelection.event.event_id === event.event_id &&
                   mapSelection.event.version === event.version;
+                const categoryAccent =
+                  event.category === "disasters_weather"
+                    ? "flood"
+                    : event.category === "fires_infrastructure_hazards"
+                      ? "fire"
+                      : event.category === "transport_road_incidents"
+                        ? "accident"
+                        : event.category === "health_environmental_advisories"
+                          ? "tree_fall"
+                          : "general";
                 return (
                   <li key={event.event_id + ":" + event.version}>
-                    <article className={"event-card" + (selected ? " event-card--selected" : "")}>
+                    <article className={"event-card" + (selected ? " event-card--selected" : "") + " event-card--" + categoryAccent} data-category-accent={categoryAccent}>
+                      <div className={"event-card__category-badge event-card__category-badge--" + categoryAccent}>
+                        <span className={"event-card__category-dot event-card__category-dot--" + categoryAccent} aria-hidden="true" />
+                        <span>{categoryLabel(event.category)}</span>
+                      </div>
                       <div className="event-card__topline">
                         <span className="event-card__dataset-label">{datasetLabel(context)}</span>
                         <span className="event-card__version">v{event.version}</span>
@@ -344,6 +414,16 @@ export function EventFeed({
             onRetryMap={onRetryMap}
             onReturnToList={() => onMobilePanelChange("list")}
           />
+          <button
+            type="button"
+            className="feed-drawer__floating-trigger"
+            aria-label={`Buka panel insiden (${matchingEvents.length} record)`}
+            aria-expanded={!drawerCollapsed}
+            onClick={() => setDrawerCollapsed(false)}
+          >
+            <span className="feed-drawer__floating-badge">{matchingEvents.length}</span>
+            <span>Lihat {matchingEvents.length} laporan insiden</span>
+          </button>
         </div>
       </div>
 

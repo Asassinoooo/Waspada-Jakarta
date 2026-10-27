@@ -9,9 +9,12 @@ if (!("React" in globalThis)) {
 }
 import {
   advanceProposalQueue,
+  autoDetectEvidenceLabel,
   fetchModerationProposals,
   fetchProposalDetail,
   incidentTypeLabel,
+  InteractiveIncidentMap,
+  isProposalMultiSource,
   ModeratorReview,
   ModeratorReviewQueue,
   publishModerationDecision,
@@ -21,7 +24,6 @@ import {
   type ModeratorDecisionCommand,
   type StoredEvidenceChunk,
 } from "../src/ModeratorReview.js";
-
 const sampleChunk1: StoredEvidenceChunk = {
   chunk_index: 0,
   text: "BPBD DKI Jakarta melaporkan banjir setinggi 50 cm merendam kawasan Kampung Melayu Jakarta Timur akibat luapan Kali Ciliwung pada Senin pagi.",
@@ -399,4 +401,179 @@ test("ModeratorReview retains backward compatibility for fixture presentation in
   const defaultMarkup = renderToStaticMarkup(<ModeratorReview />);
   assert.match(defaultMarkup, /Bukan antrean moderator/);
   assert.match(defaultMarkup, /Pratinjau baca saja/);
+});
+
+const sampleMultiSourceProposal: EventProposalDto = {
+  schema_version: "2.0",
+  proposal_id: "proposal-correlated-001",
+  title: "Banjir 70 cm di Mampang Prapatan Jakarta Selatan",
+  incident_type: "flood",
+  severity: "high",
+  event_time: { precision: "exact", value: "2026-10-26T09:00:00.000Z" },
+  location_label: "Mampang Prapatan, Jakarta Selatan",
+  coordinates: [106.825, -6.248],
+  is_multi_source: true,
+  source_count: 2,
+  claims: [
+    {
+      claim_id: "claim-corr-001",
+      claim_text: "Genangan air setinggi 70 cm di Jalan Kemang Raya.",
+      evidence_label: "under_review",
+      support_assessment: "supported",
+      quote_text: "genangan air setinggi 70 cm di Jalan Kemang Raya",
+      evidence_ref_id: "pb-report-01",
+      is_corroborated: true,
+    },
+    {
+      claim_id: "claim-corr-002",
+      claim_text: "Petugas SDA dikerahkan untuk penyedotan air dan rekayasa lalu lintas.",
+      evidence_label: "under_review",
+      support_assessment: "supported",
+      quote_text: "petugas SDA dikerahkan untuk penyedotan air",
+      evidence_ref_id: "antara-metro-01",
+      is_corroborated: true,
+    },
+  ],
+  proposed_at: "2026-10-26T09:15:00.000Z",
+};
+
+test("multi-source correlated proposal renders multi-source badge and corroboration chips", () => {
+  const html = renderToStaticMarkup(
+    createElement(ModeratorReviewQueue, {
+      proposals: [sampleMultiSourceProposal],
+      initialChunks: {
+        "proposal-correlated-001": [
+          {
+            chunk_index: 0,
+            text: "Laporan gabungan: genangan air setinggi 70 cm di Jalan Kemang Raya dan petugas SDA dikerahkan untuk penyedotan air.",
+            span_start: 0,
+            span_end: 116,
+          },
+        ],
+      },
+    })
+  );
+
+  // Multi-source indicators
+  assert.match(html, /multi-source-badge/);
+  assert.match(html, /2 Sumber Terkorelasi/);
+  assert.match(html, /Fusi Multi-Sumber Aktif/);
+
+  // Corroborated claim badges
+  assert.match(html, /corroborated-badge/);
+  assert.match(html, /Terkonfirmasi Independen/);
+});
+
+test("interactive map renders Web Mercator canvas, animated beacon pin, affected radius, and nearby facilities", () => {
+  const html = renderToStaticMarkup(
+    createElement(ModeratorReviewQueue, {
+      proposals: [sampleProposal1],
+      initialChunks: { "proposal-flood-001": [sampleChunk1] },
+    })
+  );
+
+  // Map container
+  assert.match(html, /interactive-incident-map/);
+  assert.match(html, /data-testid="interactive-incident-map"/);
+
+  // Incident beacon pin and icon
+  assert.match(html, /incident-pin-marker/);
+  assert.match(html, /incident-beacon-pulse/);
+  assert.match(html, /incident-beacon-inner/);
+  assert.match(html, /incident-beacon-core/);
+
+  // Affected area radius circle and badge
+  assert.match(html, /map-affected-radius/);
+  assert.match(html, /Radius: 1000 m/);
+
+  // Nearby emergency facilities from the 200 registry (Kampung Melayu vicinity)
+  assert.match(html, /facility-pin--hospital/);
+  assert.match(html, /RS Premier Jatinegara/);
+  assert.match(html, /facility-pin--police/);
+  assert.match(html, /Polres Metro Jakarta Timur/);
+  assert.match(html, /facility-pin--fire/);
+
+  // Facility filter pills
+  assert.match(html, /Semua Fasilitas/);
+  assert.match(html, /🏥 RS/);
+  assert.match(html, /👮 Polisi/);
+  assert.match(html, /🚒 Damkar/);
+
+  // Navigation tools
+  assert.match(html, /Perbesar/);
+  assert.match(html, /Perkecil/);
+  assert.match(html, /Pusatkan/);
+});
+
+test("approval modal auto-selects independent_corroboration for multi-source proposal", () => {
+  const html = renderToStaticMarkup(
+    createElement(ModeratorReviewQueue, {
+      proposals: [sampleMultiSourceProposal],
+      initialModalOpen: true,
+    })
+  );
+
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /value="independent_corroboration"/);
+  assert.match(html, /Konfirmasi Multi-Sumber \(independent_corroboration\)/);
+  assert.match(html, /checked=""\s+value="independent_corroboration"|value="independent_corroboration"[^>]*checked/);
+  assert.match(html, /label-choice-card--selected/);
+});
+
+test("autoDetectEvidenceLabel detects independent_corroboration, crowdsourced_observation, and attributed_report", () => {
+  assert.equal(autoDetectEvidenceLabel(sampleMultiSourceProposal), "independent_corroboration");
+  assert.equal(autoDetectEvidenceLabel(sampleProposal1), "attributed_report");
+  assert.equal(isProposalMultiSource(sampleMultiSourceProposal), true);
+  assert.equal(isProposalMultiSource(sampleProposal1), false);
+
+  const crowdProposal: EventProposalDto = {
+    ...sampleProposal1,
+    title: "Laporan Banjir Warga di PetaBencana",
+    is_multi_source: false,
+  };
+  assert.equal(autoDetectEvidenceLabel(crowdProposal), "crowdsourced_observation");
+});
+
+test("publishModerationDecision supports independent_corroboration evidence label", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const mockFetcher: typeof fetch = async (input, init) => {
+    calls.push({ url: String(input), init });
+    return new Response(JSON.stringify({ ok: true, status: "written" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const command: ModeratorDecisionCommand = {
+    proposal_id: "proposal-correlated-001",
+    action: "publish",
+    evidence_label: "independent_corroboration",
+    reason: "Dikonfirmasi silang antara PetaBencana dan liputan ANTARA",
+  };
+
+  const result = await publishModerationDecision("proposal-correlated-001", command, {
+    fetcher: mockFetcher,
+    csrfToken: "mock-token-xyz",
+  });
+
+  assert.equal(result.ok, true);
+  const body = JSON.parse(String(calls[0]?.init?.body)) as ModeratorDecisionCommand;
+  assert.equal(body.evidence_label, "independent_corroboration");
+});
+
+test("InteractiveIncidentMap renders coordinates, affected radius, and nearby facilities correctly", () => {
+  const html = renderToStaticMarkup(
+    createElement(InteractiveIncidentMap, {
+      coordinates: [106.822, -6.136], // Pasar Pagi Mangga Dua
+      incidentType: "fire",
+      severity: "critical",
+      locationLabel: "Pasar Pagi Mangga Dua, Jakarta Utara",
+      title: "Kebakaran Ruko di Pasar Pagi",
+    })
+  );
+
+  assert.match(html, /interactive-incident-map/);
+  assert.match(html, /incident-beacon-pulse/);
+  assert.match(html, /Radius: 1200 m/);
+  assert.match(html, /facility-pin--fire/);
 });

@@ -222,37 +222,54 @@ function RecordList({
   if (points.length === 0) {
     return <p className="unified-source-explorer__empty-list" role="status">Tidak ada record yang cocok dengan filter. Hasil kosong bukan pernyataan bahwa Jakarta aman.</p>;
   }
-  return ( <ul className="unified-source-explorer__record-list" aria-label="Record dari seluruh sumber"> {
-    points.map((point) => ( <li key={
-      `${point.source}:${point.id}`
-}
-    > <button className="unified-source-explorer__record" type="button" aria-pressed={
-      selectedId === point.id
-}
-    onClick={
-      () => onSelect(point)
-}
-    > <span className={
-      `unified-source-explorer__record-symbol unified-source-explorer__record-symbol--${point.source}`
-}
-    aria-hidden="true"> {
-      point.kind === "hospital" ? "H" : point.kind === "police" ? "P" : point.kind === "fire_station" ? "D" : point.kind === "flood_report" ? "B" : "G"
-}
-    </span> <span className="unified-source-explorer__record-copy">
-    <strong>{
-      point.title
-}
-    </strong>
-    <span>{
-      kindLabels[point.kind]
-}
-    · {
-      sourceLabels[point.source]
-}
-    </span>
-    </span> <span className="unified-source-explorer__record-chevron" aria-hidden="true">›</span> </button> </li> ))
-}
-  </ul> );
+  return (
+    <ul className="unified-source-explorer__record-list" aria-label="Record dari seluruh sumber">
+      {points.map((point) => {
+        const selected = selectedId === point.id;
+        const colorKind =
+          point.kind === "flood_report"
+            ? "cyan"
+            : point.kind === "fire_station"
+              ? "red"
+              : point.kind === "police"
+                ? "orange"
+                : point.kind === "hospital"
+                  ? "teal"
+                  : "slate";
+        return (
+          <li key={`${point.source}:${point.id}`}>
+            <button
+              className={`unified-source-explorer__record${selected ? " unified-source-explorer__record--selected" : ""}`}
+              type="button"
+              aria-pressed={selected}
+              data-kind={point.kind}
+              data-source={point.source}
+              data-color-accent={colorKind}
+              onClick={() => onSelect(point)}
+            >
+              <span
+                className={`unified-source-explorer__record-symbol unified-source-explorer__record-symbol--${point.source} unified-source-explorer__record-symbol--${colorKind}`}
+                aria-hidden="true"
+              >
+                {point.kind === "hospital" ? "H" : point.kind === "police" ? "P" : point.kind === "fire_station" ? "D" : point.kind === "flood_report" ? "B" : "G"}
+              </span>
+              <span className="unified-source-explorer__record-copy">
+                <strong>{point.title}</strong>
+                <span>
+                  <span className={`unified-source-explorer__tag unified-source-explorer__tag--${colorKind}`}>
+                    {kindLabels[point.kind]}
+                  </span>
+                  {" · "}
+                  {sourceLabels[point.source]}
+                </span>
+              </span>
+              <span className="unified-source-explorer__record-chevron" aria-hidden="true">›</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 function SourceMetadataCard({
   title, source, generatedAt, cached
@@ -640,6 +657,61 @@ export function UnifiedSourceExplorerView({
   }
   >Hapus filter</button> </div> </details> </section> <div className="unified-source-explorer__layout">
   <section ref={mapContainerRef} className="unified-source-explorer__map" aria-label="Peta sumber terpadu">
+    <div className="unified-source-explorer__floating-chips" role="toolbar" aria-label="Filter cepat kategori">
+      <button
+        type="button"
+        className={`unified-chip${kindFilter === "all" && sourceFilter === "all" ? " unified-chip--active" : ""}`}
+        aria-pressed={kindFilter === "all" && sourceFilter === "all"}
+        onClick={() => { setKindFilter("all"); setSourceFilter("all"); }}
+      >
+        Semua ({allPoints.length})
+      </button>
+      <button
+        type="button"
+        className={`unified-chip unified-chip--cyan${kindFilter === "flood_report" ? " unified-chip--active" : ""}`}
+        aria-pressed={kindFilter === "flood_report"}
+        onClick={() => { setKindFilter("flood_report"); setSourceFilter("petabencana"); }}
+      >
+        <span className="unified-chip__dot unified-chip__dot--cyan" aria-hidden="true" />
+        Banjir
+      </button>
+      <button
+        type="button"
+        className={`unified-chip unified-chip--red${kindFilter === "fire_station" ? " unified-chip--active" : ""}`}
+        aria-pressed={kindFilter === "fire_station"}
+        onClick={() => { setKindFilter("fire_station"); setSourceFilter("osm"); }}
+      >
+        <span className="unified-chip__dot unified-chip__dot--red" aria-hidden="true" />
+        Kebakaran
+      </button>
+      <button
+        type="button"
+        className={`unified-chip unified-chip--orange${kindFilter === "police" ? " unified-chip--active" : ""}`}
+        aria-pressed={kindFilter === "police"}
+        onClick={() => { setKindFilter("police"); setSourceFilter("osm"); }}
+      >
+        <span className="unified-chip__dot unified-chip__dot--orange" aria-hidden="true" />
+        Kepolisian
+      </button>
+      <button
+        type="button"
+        className={`unified-chip unified-chip--teal${kindFilter === "hospital" ? " unified-chip--active" : ""}`}
+        aria-pressed={kindFilter === "hospital"}
+        onClick={() => { setKindFilter("hospital"); setSourceFilter("osm"); }}
+      >
+        <span className="unified-chip__dot unified-chip__dot--teal" aria-hidden="true" />
+        Rumah Sakit
+      </button>
+      <button
+        type="button"
+        className={`unified-chip unified-chip--slate${kindFilter === "earthquake" ? " unified-chip--active" : ""}`}
+        aria-pressed={kindFilter === "earthquake"}
+        onClick={() => { setKindFilter("earthquake"); setSourceFilter("usgs"); }}
+      >
+        <span className="unified-chip__dot unified-chip__dot--slate" aria-hidden="true" />
+        Gempa Regional
+      </button>
+    </div>
     {renderMap ? (
       renderMap(visiblePoints, selectedPoint?.id ?? null, selectMapPoint, returnToList)
     ) : (
@@ -651,8 +723,20 @@ export function UnifiedSourceExplorerView({
         </div>
       </div>
     )}
+    <button
+      className="unified-source-explorer__floating-trigger"
+      type="button"
+      aria-expanded={companionOpen}
+      aria-controls="unified-source-panel-content"
+      onClick={() => setCompanionOpen((prev) => !prev)}
+    >
+      <span className="unified-source-explorer__floating-trigger-badge" aria-hidden="true">
+        {visiblePoints.length}
+      </span>
+      <span>{companionOpen ? "Ciutkan panel" : selectedPoint ? `Detail: ${selectedPoint.title}` : `Buka panel sumber (${visiblePoints.length} titik)`}</span>
+    </button>
   </section>
-  <section className="unified-source-explorer__companion" aria-label="Panel sumber"> <nav className="unified-source-explorer__panel-nav" aria-label="Tampilan panel sumber"> {
+  <section className={`unified-source-explorer__companion unified-source-explorer__companion--floating${companionOpen ? " unified-source-explorer__companion--open" : " unified-source-explorer__companion--collapsed"}`} aria-label="Panel sumber"> <nav className="unified-source-explorer__panel-nav" aria-label="Tampilan panel sumber"> {
     (Object.keys(panelLabels) as UnifiedExplorerPanel[]).map((value) => ( <button key={
       value
 }
@@ -667,7 +751,7 @@ export function UnifiedSourceExplorerView({
     </button> ))
 }
   </nav>
-  <button className="unified-source-explorer__close-panel" type="button" onClick={() => {
+  <button className="unified-source-explorer__close-panel unified-source-explorer__dock-toggle" type="button" onClick={() => {
     setCompanionOpen(false);
     mapContainerRef.current?.querySelector<HTMLElement>('[role="region"][tabindex="0"]')?.focus({ preventScroll: true });
   }}>Kembali ke peta</button>
