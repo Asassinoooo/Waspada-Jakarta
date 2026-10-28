@@ -41,55 +41,17 @@ async function syncLivePipelineProposals(): Promise<void> {
     const newsResult = await createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS }).poll();
     allRevisions.push(...newsResult.revisions);
   } catch {}
-  if (allRevisions.length === 0) {
-    const nowIso = new Date().toISOString();
-    allRevisions.push(
-      {
-        report_revision_id: "rep-local-pb-manggarai",
-        source_id: "source-petabencana",
-        canonical_url: "https://petabencana.id/reports/jakarta-manggarai-live",
-        permitted_text: "Laporan banjir dan genangan air setinggi 30 cm di kawasan Manggarai, Jakarta Selatan.",
-        permitted_text_hash: "hash-pb-manggarai",
-        published_at: nowIso,
-        retrieved_at: nowIso,
-        revision_status: "unreviewed" as const,
-        chunks: [
-          {
-            chunk_index: 0,
-            text: "Laporan banjir dan genangan air setinggi 30 cm di kawasan Manggarai, Jakarta Selatan.",
-            span_start: 0,
-            span_end: 86,
-          },
-        ],
-      },
-      {
-        report_revision_id: "rep-local-antara-manggarai",
-        source_id: "source-antara-metro",
-        canonical_url: "https://www.antaranews.com/berita/metro/genangan-manggarai-hari-ini",
-        permitted_text: "Petugas SDA DKI bersihkan genangan air di kawasan Manggarai Jakarta Selatan setelah hujan deras.",
-        permitted_text_hash: "hash-antara-manggarai",
-        published_at: nowIso,
-        retrieved_at: nowIso,
-        revision_status: "unreviewed" as const,
-        chunks: [
-          {
-            chunk_index: 0,
-            text: "Petugas SDA DKI bersihkan genangan air di kawasan Manggarai Jakarta Selatan setelah hujan deras.",
-            span_start: 0,
-            span_end: 97,
-          },
-        ],
-      },
-    );
-  }
-
   if (allRevisions.length > 0) {
+    activeProposals.clear();
+    activeChunks.clear();
     const clusters = correlateSourceReports(allRevisions);
     for (const cluster of clusters) {
       const prop = generateCorrelatedProposal(cluster);
       if (prop) {
         activeProposals.set(prop.proposal_id, prop);
-        activeChunks.set(prop.proposal_id, cluster.reports.flatMap((r) => r.chunks));
+        // Chunks matching the claims in this proposal
+        const proposalChunks = cluster.reports.flatMap((r) => r.chunks);
+        activeChunks.set(prop.proposal_id, proposalChunks);
       }
     }
   }

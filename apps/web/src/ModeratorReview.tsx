@@ -428,6 +428,22 @@ export function ModeratorReviewQueue({
 
   const currentChunks = selectedProposal ? chunksMap[selectedProposal.proposal_id] : undefined;
 
+  // Filter chunks to only those that are grounded in and relevant to the proposal's claims
+  const relevantChunks = useMemo(() => {
+    if (!currentChunks || currentChunks.length === 0) return [];
+    if (!currentQuotes || currentQuotes.length === 0) return currentChunks;
+    return currentChunks.filter((chunk) => {
+      const chunkLower = chunk.text.toLowerCase();
+      return currentQuotes.some((q) => {
+        const qLower = q.toLowerCase();
+        return (
+          chunkLower.includes(qLower) ||
+          qLower.includes(chunkLower) ||
+          qLower.split(/\s+/).filter((w) => w.length >= 4).some((w) => chunkLower.includes(w))
+        );
+      });
+    });
+  }, [currentChunks, currentQuotes]);
   // Filter queue by category / multi-source
   const filteredQueue = useMemo(() => {
     if (queueCategoryFilter === "all") return queue;
@@ -1270,10 +1286,10 @@ export function ModeratorReviewQueue({
                           </h4>
                         </header>
 
-                        {currentChunks && currentChunks.length > 0 ? (
+                        {relevantChunks && relevantChunks.length > 0 ? (
                           <div className="chunks-list">
-                            {currentChunks.map((chunk) => (
-                              <article key={chunk.chunk_index} className="chunk-article">
+                            {relevantChunks.map((chunk, idx) => (
+                              <article key={`chunk-${chunk.chunk_index}-${idx}`} className="chunk-article">
                                 <header className="chunk-header">
                                   <strong>Chunk #{chunk.chunk_index + 1}</strong>
                                   <span className="chunk-span">
