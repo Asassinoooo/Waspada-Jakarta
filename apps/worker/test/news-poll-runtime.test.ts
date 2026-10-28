@@ -76,15 +76,28 @@ test("default configuration contains two ANTARA feeds and 20s timeout", () => {
   assert.equal(DEFAULT_POLL_TIMEOUT_MS, 20_000);
 });
 
-test("DEFAULT_NEWS_FEEDS includes 7 verified multi-network Indonesian news feeds", () => {
-  assert.ok(DEFAULT_NEWS_FEEDS.length >= 7);
+test("DEFAULT_NEWS_FEEDS includes 14 verified multi-network Indonesian news feeds across 6 media networks", () => {
+  assert.ok(DEFAULT_NEWS_FEEDS.length >= 14);
   const sourceIds = DEFAULT_NEWS_FEEDS.map((f) => f.sourceId);
+  // ANTARA news wire (6 feeds)
   assert.ok(sourceIds.includes("source-antara-metro"));
   assert.ok(sourceIds.includes("source-antara-hukum"));
   assert.ok(sourceIds.includes("source-antara-terkini"));
+  assert.ok(sourceIds.includes("source-antara-topnews"));
+  assert.ok(sourceIds.includes("source-antara-humaniora"));
+  assert.ok(sourceIds.includes("source-antara-wartabumi"));
+  // Detikcom (2 feeds)
   assert.ok(sourceIds.includes("source-detik-news"));
+  assert.ok(sourceIds.includes("source-detik-utama"));
+  // CNN Indonesia (2 feeds)
   assert.ok(sourceIds.includes("source-cnn-nasional"));
+  assert.ok(sourceIds.includes("source-cnn-utama"));
+  // CNBC Indonesia (1 feed)
+  assert.ok(sourceIds.includes("source-cnbc-news"));
+  // SINDOnews (2 feeds)
   assert.ok(sourceIds.includes("source-sindonews-nasional"));
+  assert.ok(sourceIds.includes("source-sindonews-daerah"));
+  // Tempo.co (1 feed)
   assert.ok(sourceIds.includes("source-tempo-nasional"));
 });
 

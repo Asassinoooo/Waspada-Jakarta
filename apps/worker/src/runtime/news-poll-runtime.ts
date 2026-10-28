@@ -49,7 +49,7 @@ export const DEFAULT_ANTARA_FEEDS: readonly NewsFeedConfig[] = [
  * and safety incidents in Jakarta.
  */
 export const DEFAULT_NEWS_FEEDS: readonly NewsFeedConfig[] = [
-  // Antara News Agency (National News Wire)
+  // Antara News Agency (National News Wire & Specialized Incident Desks)
   {
     url: "https://www.antaranews.com/rss/metro.xml",
     sourceId: "source-antara-metro",
@@ -62,20 +62,49 @@ export const DEFAULT_NEWS_FEEDS: readonly NewsFeedConfig[] = [
     url: "https://www.antaranews.com/rss/terkini.xml",
     sourceId: "source-antara-terkini",
   },
+  {
+    url: "https://www.antaranews.com/rss/top-news.xml",
+    sourceId: "source-antara-topnews",
+  },
+  {
+    url: "https://www.antaranews.com/rss/humaniora.xml",
+    sourceId: "source-antara-humaniora",
+  },
+  {
+    url: "https://www.antaranews.com/rss/warta-bumi.xml",
+    sourceId: "source-antara-wartabumi",
+  },
   // Detikcom News (Realtime Incident & Emergency Reports)
   {
     url: "https://news.detik.com/berita/rss",
     sourceId: "source-detik-news",
+  },
+  {
+    url: "https://news.detik.com/rss",
+    sourceId: "source-detik-utama",
   },
   // CNN Indonesia (Verified National & Regional Incidents)
   {
     url: "https://www.cnnindonesia.com/nasional/rss",
     sourceId: "source-cnn-nasional",
   },
-  // SINDOnews (Metropolitan & National Incident Coverage)
+  {
+    url: "https://www.cnnindonesia.com/rss",
+    sourceId: "source-cnn-utama",
+  },
+  // CNBC Indonesia (City Infrastructure, Transport Disruption & Public Utilities)
+  {
+    url: "https://www.cnbcindonesia.com/news/rss",
+    sourceId: "source-cnbc-news",
+  },
+  // SINDOnews (Metropolitan & Regional Incident Coverage)
   {
     url: "https://nasional.sindonews.com/rss",
     sourceId: "source-sindonews-nasional",
+  },
+  {
+    url: "https://daerah.sindonews.com/rss",
+    sourceId: "source-sindonews-daerah",
   },
   // Tempo.co (Investigative & National News Wire)
   {

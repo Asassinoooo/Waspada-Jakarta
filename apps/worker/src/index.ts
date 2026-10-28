@@ -22,6 +22,7 @@ import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-
 import { correlateSourceReports } from "./layers/l1-data-knowledge/multisource-correlator.js";
 import { generateCorrelatedProposal } from "./layers/l2-model-grounding/correlated-proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
+import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
 import { createNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
 
 import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
@@ -36,6 +37,10 @@ async function syncLivePipelineProposals(): Promise<void> {
   try {
     const pbResult = await createPetaBencanaPollRuntime().poll();
     allRevisions.push(...pbResult.revisions);
+  } catch {}
+  try {
+    const bmkgResult = await createBmkgPollRuntime().poll();
+    allRevisions.push(...bmkgResult.revisions);
   } catch {}
   try {
     const newsResult = await createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS }).poll();
@@ -294,10 +299,14 @@ export default {
     try {
       const pbRunner = createPetaBencanaPollRuntime();
       const pbResult = await pbRunner.poll(controller.scheduledTime);
+      const bmkgRunner = createBmkgPollRuntime();
+      const bmkgResult = await bmkgRunner.poll();
       const newsRunner = createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS });
       const newsResult = await newsRunner.poll();
-      const allRevisions = [...pbResult.revisions, ...newsResult.revisions];
+      const allRevisions = [...pbResult.revisions, ...bmkgResult.revisions, ...newsResult.revisions];
       if (allRevisions.length > 0) {
+        activeProposals.clear();
+        activeChunks.clear();
         const clusters = correlateSourceReports(allRevisions);
         for (const cluster of clusters) {
           const proposal = generateCorrelatedProposal(cluster);

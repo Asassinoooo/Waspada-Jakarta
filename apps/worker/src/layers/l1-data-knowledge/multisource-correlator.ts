@@ -484,6 +484,99 @@ export const JAKARTA_TOPONYMS: readonly JakartaToponym[] = [
 ];
 
 /**
+ * Administrative parent region mapping connecting Jakarta kecamatans/districts
+ * to their respective administrative city (Kota Administrasi).
+ */
+export const DISTRICT_PARENT_MAP: Readonly<Record<string, string>> = Object.freeze({
+  // Jakarta Selatan
+  mampang: "jakarta_selatan",
+  kemang: "jakarta_selatan",
+  kebayoran_baru: "jakarta_selatan",
+  kebayoran_lama: "jakarta_selatan",
+  pesanggrahan: "jakarta_selatan",
+  cilandak: "jakarta_selatan",
+  pasar_minggu: "jakarta_selatan",
+  jagakarsa: "jakarta_selatan",
+  pancoran: "jakarta_selatan",
+  tebet: "jakarta_selatan",
+  setiabudi: "jakarta_selatan",
+  rasuna_said: "jakarta_selatan",
+  kalibata: "jakarta_selatan",
+  blok_m: "jakarta_selatan",
+  senayan: "jakarta_selatan",
+  fatmawati: "jakarta_selatan",
+  lebak_bulus: "jakarta_selatan",
+  pondok_indah: "jakarta_selatan",
+
+  // Jakarta Timur
+  rawamangun: "jakarta_timur",
+  pulo_gadung: "jakarta_timur",
+  matraman: "jakarta_timur",
+  jatinegara: "jakarta_timur",
+  duren_sawit: "jakarta_timur",
+  kramat_jati: "jakarta_timur",
+  makasar: "jakarta_timur",
+  pasar_rebo: "jakarta_timur",
+  ciracas: "jakarta_timur",
+  cipayung: "jakarta_timur",
+  cakung: "jakarta_timur",
+  mt_haryono: "jakarta_timur",
+  cawang: "jakarta_timur",
+  cibubur: "jakarta_timur",
+
+  // Jakarta Barat
+  cengkareng: "jakarta_barat",
+  grogol: "jakarta_barat",
+  grogol_petamburan: "jakarta_barat",
+  taman_sari: "jakarta_barat",
+  tambora: "jakarta_barat",
+  kebon_jeruk: "jakarta_barat",
+  kalideres: "jakarta_barat",
+  palmerah: "jakarta_barat",
+  kembangan: "jakarta_barat",
+  slipi: "jakarta_barat",
+  tomang: "jakarta_barat",
+  daan_mogot: "jakarta_barat",
+
+  // Jakarta Pusat
+  gambir: "jakarta_pusat",
+  sawah_besar: "jakarta_pusat",
+  kemayoran: "jakarta_pusat",
+  senen: "jakarta_pusat",
+  cempaka_putih: "jakarta_pusat",
+  menteng: "jakarta_pusat",
+  tanah_abang: "jakarta_pusat",
+  johar_baru: "jakarta_pusat",
+  monas: "jakarta_pusat",
+  thamrin: "jakarta_pusat",
+  sudirman: "jakarta_pusat",
+  harmoni: "jakarta_pusat",
+  pejompongan: "jakarta_pusat",
+  benhil: "jakarta_pusat",
+  glodok: "jakarta_pusat",
+
+  // Jakarta Utara
+  tanjung_priok: "jakarta_utara",
+  kelapa_gading: "jakarta_utara",
+  koja: "jakarta_utara",
+  cilincing: "jakarta_utara",
+  pademangan: "jakarta_utara",
+  penjaringan: "jakarta_utara",
+  pluit: "jakarta_utara",
+  ancol: "jakarta_utara",
+
+  // Kepulauan Seribu
+  pulau_tidung: "kepulauan_seribu",
+  pulau_pramuka: "kepulauan_seribu",
+  pulau_pari: "kepulauan_seribu",
+  pulau_harapan: "kepulauan_seribu",
+  pulau_untung_jawa: "kepulauan_seribu",
+});
+
+export function getToponymParentRegion(toponymKey: string): string | null {
+  return DISTRICT_PARENT_MAP[toponymKey] ?? null;
+}
+/**
  * Non-Jakarta location patterns for rejecting off-topic reports.
  */
 export const NON_JAKARTA_CITIES: readonly RegExp[] = [
@@ -651,7 +744,7 @@ export function detectReportCategory(report: StoredReportRevision): IncidentCate
     { category: "accident", weight: 20, regex: /\b(kecelakaan|laka\s+lantas|tabrakan\s+beruntun|terguling|adu\s+banteng)\b/i },
     { category: "flood", weight: 20, regex: /\b(banjir|genangan(?:\s+air)?|tergenang|tanggul\s+jebol|rob|luapan\s+kali)\b/i },
     { category: "crime", weight: 20, regex: /\b(tawuran|bentrokan|begal|penusukan|perampokan|curanmor|tewas|meninggal|pembunuhan|jenazah|korban|terbunuh)/i },
-    { category: "weather", weight: 20, regex: /\b(cuaca\s+ekstrem|puting\s+beliung|angin\s+kencang|hujan\s+lebat|hujan\s+deras|badai|longsor)\b/i },
+    { category: "weather", weight: 20, regex: /\b(cuaca\s+ekstrem|puting\s+beliung|angin\s+kencang|hujan\s+lebat|hujan\s+deras|badai|longsor|gempa(?:\s+bumi)?|getaran\s+gempa)\b/i },
   ];
 
   let bestCat: IncidentCategory | null = null;
@@ -713,9 +806,23 @@ export function areLocationsProximate(
 ): boolean {
   if (!locA || !locB) return false;
 
-  // 1. Shared toponym match (e.g. both 'mampang' or both 'kemang')
-  if (locA.toponymKey && locB.toponymKey && locA.toponymKey === locB.toponymKey) {
-    return true;
+  // 1. Shared toponym match (exact match or parent administrative region match)
+  if (locA.toponymKey && locB.toponymKey) {
+    if (locA.toponymKey === locB.toponymKey) {
+      return true;
+    }
+    const parentA = getToponymParentRegion(locA.toponymKey);
+    const parentB = getToponymParentRegion(locB.toponymKey);
+    if (parentA === locB.toponymKey || parentB === locA.toponymKey) {
+      return true;
+    }
+    // Sibling kecamatans within the same administrative region if spatial distance <= 2,500m
+    if (parentA && parentA === parentB && locA.coordinates && locB.coordinates) {
+      const dist = haversineDistanceMeters(locA.coordinates, locB.coordinates);
+      if (dist <= 2500) {
+        return true;
+      }
+    }
   }
 
   // 2. Haversine distance match (<= 1,200m)
@@ -873,15 +980,21 @@ export function correlateSourceReports(
         matchedCluster.hasExactCoordinates = true;
       }
 
-      // If cluster label was generic and this report has specific toponym, upgrade label
+      // If cluster label was generic (DKI Jakarta or parent administrative city) and this report has a more specific child district, upgrade label and coordinates
+      const currentParent = matchedCluster.toponymKey ? getToponymParentRegion(matchedCluster.toponymKey) : null;
+      const isCurrentParent = !currentParent;
+      const newParent = location.toponymKey ? getToponymParentRegion(location.toponymKey) : null;
+
       if (
-        matchedCluster.location_label === "DKI Jakarta" &&
-        location.locationLabel !== "DKI Jakarta"
+        matchedCluster.location_label === "DKI Jakarta" ||
+        (isCurrentParent && newParent === matchedCluster.toponymKey)
       ) {
         matchedCluster.location_label = location.locationLabel;
         matchedCluster.toponymKey = location.toponymKey;
+        if (location.coordinates && !matchedCluster.hasExactCoordinates) {
+          matchedCluster.coordinates = [location.coordinates[0], location.coordinates[1]];
+        }
       }
-
       if (timestamp < matchedCluster.earliestTimestamp) {
         matchedCluster.earliestTimestamp = timestamp;
       }

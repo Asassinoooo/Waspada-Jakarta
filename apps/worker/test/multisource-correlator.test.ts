@@ -393,3 +393,52 @@ test("verifies all proposal coordinates fall strictly inside Jakarta bounding en
   assert.ok(lng >= JAKARTA_ENVELOPE.west && lng <= JAKARTA_ENVELOPE.east);
   assert.ok(lat >= JAKARTA_ENVELOPE.south && lat <= JAKARTA_ENVELOPE.north);
 });
+
+test("correlates distinct news sources reporting via specific district and parent administrative region (e.g. Menteng & Jakpus)", () => {
+  const detikReport = makeReport({
+    report_revision_id: "rep-detik-menteng",
+    source_id: "source-detik-news",
+    canonical_url: "https://news.detik.com/berita/d-12345/kebakaran-menteng",
+    permitted_text: "Kebakaran Rumah di Menteng Jaya Jakpus, 20 Unit Damkar Dikerahkan",
+    published_at: "2026-10-28T02:00:00.000Z",
+    chunks: [
+      {
+        chunk_index: 0,
+        text: "Kebakaran Rumah di Menteng Jaya Jakpus, 20 Unit Damkar Dikerahkan",
+        span_start: 0,
+        span_end: 65,
+      },
+    ],
+  });
+
+  const cnnReport = makeReport({
+    report_revision_id: "rep-cnn-jakpus",
+    source_id: "source-cnn-nasional",
+    canonical_url: "https://www.cnnindonesia.com/nasional/20261028-kebakaran-jakpus",
+    permitted_text: "Kebakaran Permukiman Padat di Jakpus, 31 Mobil Damkar Dikerahkan",
+    published_at: "2026-10-28T02:30:00.000Z",
+    chunks: [
+      {
+        chunk_index: 0,
+        text: "Kebakaran Permukiman Padat di Jakpus, 31 Mobil Damkar Dikerahkan",
+        span_start: 0,
+        span_end: 64,
+      },
+    ],
+  });
+
+  const clusters = correlateSourceReports([detikReport, cnnReport]);
+  assert.equal(clusters.length, 1, "Must correlate into 1 cluster via administrative hierarchy");
+  const cluster = clusters[0]!;
+  assert.equal(cluster.is_multi_source, true);
+  assert.equal(cluster.sources.length, 2);
+  assert.equal(cluster.location_label, "Menteng, Jakarta Pusat");
+
+  const proposal = generateCorrelatedProposal(cluster);
+  assert.equal(proposal.is_multi_source, true);
+  assert.equal(proposal.source_count, 2);
+  assert.equal(proposal.claims.length, 2);
+  for (const claim of proposal.claims) {
+    assert.equal(claim.is_corroborated, true);
+  }
+});
