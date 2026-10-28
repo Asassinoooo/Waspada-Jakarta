@@ -59,6 +59,31 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
   assert.equal(politicalNews.isRelevant, false);
   assert.ok(politicalNews.matchedToponyms.includes("dki jakarta"));
   assert.equal(politicalNews.matchedKeywords.length, 0);
+
+  // Case 5: Detik News emergency with Menteng and Jakpus abbreviation
+  const detikItem = classifyNewsItem({
+    title: "Kebakaran Rumah di Menteng Jaya Jakpus, 20 Unit Damkar Dikerahkan",
+    link: "https://news.detik.com/berita/d-12345/kebakaran-menteng",
+    guid: "detik-12345",
+    pubDate: "Wed, 28 Oct 2026 08:30:00 +0700",
+  });
+  assert.equal(detikItem.isRelevant, true);
+  assert.ok(detikItem.matchedToponyms.includes("menteng"));
+  assert.ok(detikItem.matchedToponyms.includes("jakpus"));
+  assert.ok(detikItem.matchedKeywords.includes("kebakaran"));
+  assert.ok(detikItem.matchedKeywords.includes("damkar"));
+
+  // Case 6: CNN Indonesia emergency in Pulau Tidung Kepulauan Seribu
+  const cnnItem = classifyNewsItem({
+    title: "Puntung Rokok Picu Kebakaran Lahan di Pulau Tidung Kepulauan Seribu",
+    link: "https://www.cnnindonesia.com/nasional/20261028-kebakaran-pulau-tidung",
+    guid: "cnn-67890",
+    pubDate: "Wed, 28 Oct 2026 08:42:31 +0700",
+  });
+  assert.equal(cnnItem.isRelevant, true);
+  assert.ok(cnnItem.matchedToponyms.includes("pulau tidung"));
+  assert.ok(cnnItem.matchedToponyms.includes("kepulauan seribu"));
+  assert.ok(cnnItem.matchedKeywords.includes("kebakaran"));
 });
 
 test("parseAndFilterNewsRss extracts valid report_revisions and evidence_chunks for L1 persistence", () => {

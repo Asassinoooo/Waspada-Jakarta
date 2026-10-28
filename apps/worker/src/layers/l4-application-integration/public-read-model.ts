@@ -56,6 +56,25 @@ export class QueryValidationError extends Error {
   }
 }
 
+function toEventView(event: EventDetail | EventView): EventView {
+  return {
+    event_id: event.event_id,
+    version: event.version,
+    title: event.title,
+    summary: event.summary,
+    category: event.category,
+    tags: event.tags,
+    lifecycle: event.lifecycle,
+    freshness: event.freshness,
+    event_time: event.event_time,
+    validity: event.validity,
+    scope: event.scope,
+    claims: event.claims,
+    impacts: event.impacts,
+    published_at: event.published_at,
+  };
+}
+
 const sharedPublishedEvents: EventDetail[] = [];
 
 export class PublicReadModel {
@@ -141,7 +160,6 @@ export class PublicReadModel {
       sources: this.sourceStatus.listPublicSourceStatus(),
     };
   }
-
   events(search: URLSearchParams): EventPage {
     const limit = this.readInteger(search.get("limit"), 20, 1, maximumPageSize, "limit");
     const offset = this.readCursor(search.get("cursor"));
@@ -164,7 +182,7 @@ export class PublicReadModel {
       return true;
     });
 
-    const data = matches.slice(offset, offset + limit);
+    const data = matches.slice(offset, offset + limit).map(toEventView);
     const nextOffset = offset + data.length;
     const hasMore = nextOffset < matches.length;
     const cursorExpiry = hasMore ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null;

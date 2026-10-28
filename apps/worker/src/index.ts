@@ -22,7 +22,7 @@ import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-
 import { correlateSourceReports } from "./layers/l1-data-knowledge/multisource-correlator.js";
 import { generateCorrelatedProposal } from "./layers/l2-model-grounding/correlated-proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
-import { createNewsPollRuntime } from "./runtime/news-poll-runtime.js";
+import { createNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
 
 import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
@@ -38,7 +38,7 @@ async function syncLivePipelineProposals(): Promise<void> {
     allRevisions.push(...pbResult.revisions);
   } catch {}
   try {
-    const newsResult = await createNewsPollRuntime().poll();
+    const newsResult = await createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS }).poll();
     allRevisions.push(...newsResult.revisions);
   } catch {}
   if (allRevisions.length === 0) {
@@ -99,7 +99,7 @@ async function syncLivePipelineProposals(): Promise<void> {
 void syncLivePipelineProposals();
 const moderationHandler = createModerationApiHandler({
   listPendingProposals: async () => {
-    if (activeProposals.size === 0) {
+    if (activeProposals.size <= 1) {
       await syncLivePipelineProposals();
     }
     return Array.from(activeProposals.values());
@@ -332,7 +332,7 @@ export default {
     try {
       const pbRunner = createPetaBencanaPollRuntime();
       const pbResult = await pbRunner.poll(controller.scheduledTime);
-      const newsRunner = createNewsPollRuntime();
+      const newsRunner = createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS });
       const newsResult = await newsRunner.poll();
       const allRevisions = [...pbResult.revisions, ...newsResult.revisions];
       if (allRevisions.length > 0) {

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createNewsPollRuntime,
   DEFAULT_ANTARA_FEEDS,
+  DEFAULT_NEWS_FEEDS,
   DEFAULT_POLL_TIMEOUT_MS,
   toStoredReportRevision,
   type StoredReportRevision,
@@ -73,6 +74,18 @@ test("default configuration contains two ANTARA feeds and 20s timeout", () => {
   assert.equal(DEFAULT_ANTARA_FEEDS[1]!.url, "https://www.antaranews.com/rss/hukum.xml");
   assert.equal(DEFAULT_ANTARA_FEEDS[1]!.sourceId, "source-antara-hukum");
   assert.equal(DEFAULT_POLL_TIMEOUT_MS, 20_000);
+});
+
+test("DEFAULT_NEWS_FEEDS includes 7 verified multi-network Indonesian news feeds", () => {
+  assert.ok(DEFAULT_NEWS_FEEDS.length >= 7);
+  const sourceIds = DEFAULT_NEWS_FEEDS.map((f) => f.sourceId);
+  assert.ok(sourceIds.includes("source-antara-metro"));
+  assert.ok(sourceIds.includes("source-antara-hukum"));
+  assert.ok(sourceIds.includes("source-antara-terkini"));
+  assert.ok(sourceIds.includes("source-detik-news"));
+  assert.ok(sourceIds.includes("source-cnn-nasional"));
+  assert.ok(sourceIds.includes("source-sindonews-nasional"));
+  assert.ok(sourceIds.includes("source-tempo-nasional"));
 });
 
 test("createNewsPollRuntime polls feeds, filters Jakarta incident news, and returns StoredReportRevision items", async () => {
@@ -274,7 +287,7 @@ test("handles partial feed failures: collects revisions from succeeding feed", a
     return new Response("Service Unavailable", { status: 503, statusText: "Service Unavailable" });
   };
 
-  const runtime = createNewsPollRuntime({ fetchFn: mockFetch });
+  const runtime = createNewsPollRuntime({ fetchFn: mockFetch, now: () => "2026-10-26T10:00:00Z" });
   const result = await runtime.poll();
 
   // One succeeded, one failed
@@ -381,6 +394,7 @@ test("NewsPollResult supports iterable for..of loop and array index access", asy
   const runtime = createNewsPollRuntime({
     feeds: [{ url: "https://example.com/single.xml", sourceId: "source-single" }],
     fetchFn: mockFetch,
+    now: () => "2026-10-26T10:00:00Z",
   });
   const result = await runtime.poll();
 

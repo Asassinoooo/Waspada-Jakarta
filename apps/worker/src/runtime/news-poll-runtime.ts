@@ -44,6 +44,45 @@ export const DEFAULT_ANTARA_FEEDS: readonly NewsFeedConfig[] = [
   },
 ];
 
+/**
+ * Verified high-reliability Indonesian news feeds covering emergency, disaster,
+ * and safety incidents in Jakarta.
+ */
+export const DEFAULT_NEWS_FEEDS: readonly NewsFeedConfig[] = [
+  // Antara News Agency (National News Wire)
+  {
+    url: "https://www.antaranews.com/rss/metro.xml",
+    sourceId: "source-antara-metro",
+  },
+  {
+    url: "https://www.antaranews.com/rss/hukum.xml",
+    sourceId: "source-antara-hukum",
+  },
+  {
+    url: "https://www.antaranews.com/rss/terkini.xml",
+    sourceId: "source-antara-terkini",
+  },
+  // Detikcom News (Realtime Incident & Emergency Reports)
+  {
+    url: "https://news.detik.com/berita/rss",
+    sourceId: "source-detik-news",
+  },
+  // CNN Indonesia (Verified National & Regional Incidents)
+  {
+    url: "https://www.cnnindonesia.com/nasional/rss",
+    sourceId: "source-cnn-nasional",
+  },
+  // SINDOnews (Metropolitan & National Incident Coverage)
+  {
+    url: "https://nasional.sindonews.com/rss",
+    sourceId: "source-sindonews-nasional",
+  },
+  // Tempo.co (Investigative & National News Wire)
+  {
+    url: "https://rss.tempo.co/nasional",
+    sourceId: "source-tempo-nasional",
+  },
+];
 export const DEFAULT_POLL_TIMEOUT_MS = 20_000;
 
 export type NewsFeedPollStatus = "success" | "fetch_error" | "timeout" | "parse_error";
@@ -155,7 +194,7 @@ async function pollSingleFeed(
     const response = await fetchFn(feed.url, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "WaspadaJakarta-NewsPoller/1.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 WaspadaJakarta-NewsPoller/1.0",
         "Accept": "application/rss+xml, application/xml, text/xml, */*",
       },
     });

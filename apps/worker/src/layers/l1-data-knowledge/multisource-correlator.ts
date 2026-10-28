@@ -437,6 +437,50 @@ export const JAKARTA_TOPONYMS: readonly JakartaToponym[] = [
     coordinates: [106.7500, -6.1550],
     patterns: [/\b(?:jl\.?|jalan\s+)?daan\s+mogot\b/i],
   },
+  // Kepulauan Seribu
+  {
+    key: "kepulauan_seribu",
+    name: "Kepulauan Seribu",
+    label: "Kepulauan Seribu, DKI Jakarta",
+    coordinates: [106.5200, -5.7800],
+    patterns: [/\bkepulauan\s+seribu\b/i, /\bpulau\s+tidung\b/i, /\bpulau\s+pramuka\b/i, /\bpulau\s+pari\b/i, /\bpulau\s+harapan\b/i, /\bpulau\s+untung\s+jawa\b/i],
+  },
+  // Wilayah Administrasi Umum & Singkatan
+  {
+    key: "jakarta_pusat",
+    name: "Jakarta Pusat",
+    label: "Jakarta Pusat, DKI Jakarta",
+    coordinates: [106.8340, -6.1800],
+    patterns: [/\bjakarta\s+pusat\b/i, /\bjakpus\b/i],
+  },
+  {
+    key: "jakarta_selatan",
+    name: "Jakarta Selatan",
+    label: "Jakarta Selatan, DKI Jakarta",
+    coordinates: [106.8100, -6.2600],
+    patterns: [/\bjakarta\s+selatan\b/i, /\bjaksel\b/i],
+  },
+  {
+    key: "jakarta_barat",
+    name: "Jakarta Barat",
+    label: "Jakarta Barat, DKI Jakarta",
+    coordinates: [106.7500, -6.1600],
+    patterns: [/\bjakarta\s+barat\b/i, /\bjakbar\b/i],
+  },
+  {
+    key: "jakarta_timur",
+    name: "Jakarta Timur",
+    label: "Jakarta Timur, DKI Jakarta",
+    coordinates: [106.8800, -6.2300],
+    patterns: [/\bjakarta\s+timur\b/i, /\bjaktim\b/i],
+  },
+  {
+    key: "jakarta_utara",
+    name: "Jakarta Utara",
+    label: "Jakarta Utara, DKI Jakarta",
+    coordinates: [106.8900, -6.1300],
+    patterns: [/\bjakarta\s+utara\b/i, /\bjakut\b/i],
+  },
 ];
 
 /**

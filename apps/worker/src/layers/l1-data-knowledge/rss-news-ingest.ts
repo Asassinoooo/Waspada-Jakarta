@@ -7,8 +7,9 @@ import {
 
 /** Daftar toponimi kecamatan, wilayah administrasi, dan koridor utama DKI Jakarta */
 export const JAKARTA_TOPONYMS: readonly string[] = [
-  // 5 Wilayah Administrasi
+  // 5 Wilayah Administrasi & Singkatan Populer
   "jakarta", "dki jakarta", "jakarta pusat", "jakarta selatan", "jakarta barat", "jakarta timur", "jakarta utara", "kepulauan seribu",
+  "jakpus", "jaksel", "jakbar", "jaktim", "jakut", "pulau tidung", "pulau pramuka", "pulau pari",
   // Jakarta Pusat (8 Kecamatan)
   "gambir", "sawah besar", "kemayoran", "senen", "cempaka putih", "menteng", "tanah abang", "johar baru",
   // Jakarta Selatan (10 Kecamatan)
@@ -22,17 +23,17 @@ export const JAKARTA_TOPONYMS: readonly string[] = [
   // Koridor & Tempat Penting
   "sudirman", "thamrin", "gatot subroto", "rasuna said", "kuningan", "monas", "harmoni", "cawang", "rawamangun", "pluit", "ancol", "grogol",
   "pejompongan", "benhil", "kemang", "blok m", "petojo", "cideng", "glodok", "roxy", "manggarai", "slipi", "tomang", "kalibata",
+  "gandaria", "senayan", "pondok indah", "fatmawati", "lebak bulus", "ragunan", "cipete", "bintaro", "pulomas", "klender", "cibubur", "salemba", "kramat",
 ];
 
 /** Kata kunci kejadian darurat, gangguan keselamatan, dan bencana perkotaan */
 export const INCIDENT_KEYWORDS: readonly string[] = [
-  "banjir", "genangan", "tergenang", "kebakaran", "api melahap", "damkar", "gulkarmat",
-  "pohon tumbang", "kecelakaan", "tabrakan", "terguling", "tawuran", "bentrokan",
-  "cuaca ekstrem", "hujan lebat", "angin kencang", "angin puting beliung", "amblas", "longsor",
-  "rob", "tanggul", "pintu air", "siaga", "gempa",
+  "banjir", "genangan", "tergenang", "tenggelam", "kebakaran", "api melahap", "damkar", "gulkarmat", "terbakar", "hangus",
+  "pohon tumbang", "kecelakaan", "tabrakan", "terguling", "tabrak", "laka lantas", "tawuran", "bentrokan",
+  "cuaca ekstrem", "hujan lebat", "angin kencang", "angin puting beliung", "amblas", "longsor", "ambruk", "runtuh",
+  "rob", "tanggul", "pintu air", "siaga", "gempa", "evakuasi", "macet total", "ledakan",
   "tewas", "meninggal", "korban", "jenazah", "luka", "kritis", "pembunuhan", "penusukan", "penembakan", "begal", "pencurian", "rampok",
 ];
-
 export const DEFAULT_LOCAL_NEWS_MAX_AGE_HOURS = 48;
 export const DEFAULT_PROD_NEWS_MAX_AGE_HOURS = 6;
 
