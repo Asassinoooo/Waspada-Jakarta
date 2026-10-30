@@ -265,19 +265,223 @@ export function InteractiveIncidentMap({
 
   return (
     <div className="incident-map-wrapper">
+      <style>{`
+        .interactive-incident-map {
+          position: relative;
+          width: 100%;
+          border-radius: 8px;
+          overflow: hidden;
+          background-color: var(--surface);
+          border: 1px solid var(--beton);
+          user-select: none;
+        }
+        .map-tile-layer {
+          position: absolute;
+          pointer-events: none;
+        }
+        .map-tile-img {
+          position: absolute;
+          width: 256px;
+          height: 256px;
+          display: block;
+        }
+        .map-svg-layer {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+        }
+        .map-facilities-group {
+          pointer-events: auto;
+        }
+        .facility-pin {
+          cursor: pointer;
+        }
+        .incident-pin-marker {
+          pointer-events: auto;
+          cursor: pointer;
+        }
+        .incident-beacon-pulse {
+          animation: incident-beacon-pulse-anim 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+          stroke: var(--merah-tanda);
+        }
+        @keyframes incident-beacon-pulse-anim {
+          0% {
+            r: 14px;
+            opacity: 0.8;
+          }
+          70% {
+            r: 22px;
+            opacity: 0;
+          }
+          100% {
+            r: 22px;
+            opacity: 0;
+          }
+        }
+        .incident-beacon-inner {
+          stroke: var(--merah-tanda);
+          opacity: 0.8;
+        }
+        .incident-beacon-core {
+          fill: var(--merah-tanda);
+          opacity: 1;
+        }
+        .map-facility-filters {
+          position: absolute;
+          top: 0.5rem;
+          left: 0.5rem;
+          z-index: 5;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.25rem;
+          background: var(--surface);
+          border: 1px solid var(--beton);
+          border-radius: 6px;
+          padding: 0.25rem 0.4rem;
+          box-shadow: 0 1px 3px rgba(24, 50, 58, 0.08);
+          max-width: calc(100% - 1rem);
+          pointer-events: auto;
+        }
+        .facility-filter-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          font-size: 0.78rem;
+          padding: 0.2rem 0.5rem;
+          border-radius: 4px;
+          border: 1px solid var(--beton);
+          background: var(--hujan-pagi);
+          color: var(--tinta-kota);
+          font-weight: 600;
+          cursor: pointer;
+          line-height: 1.3;
+          touch-action: manipulation;
+          transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+        .facility-filter-pill:hover {
+          background: var(--beton);
+          border-color: var(--quiet-ink);
+        }
+        .facility-filter-pill--active {
+          background: var(--kali-teal);
+          border-color: var(--kali-teal);
+          color: #FFFFFF;
+        }
+        .facility-filter-pill--active:hover {
+          background: var(--kali-teal);
+          border-color: var(--kali-teal);
+        }
+        .facility-filter-pill:focus-visible,
+        .map-tool-btn:focus-visible {
+          outline: 2px solid var(--kali-teal);
+          outline-offset: 1px;
+        }
+        .map-zoom-controls {
+          position: absolute;
+          bottom: 0.5rem;
+          right: 0.5rem;
+          z-index: 5;
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          background: var(--surface);
+          border: 1px solid var(--beton);
+          border-radius: 6px;
+          padding: 2px;
+          box-shadow: 0 1px 3px rgba(24, 50, 58, 0.08);
+          pointer-events: auto;
+        }
+        .map-tool-btn {
+          width: 28px;
+          height: 28px;
+          border: 0;
+          border-radius: 4px;
+          background: transparent;
+          color: var(--tinta-kota);
+          font-size: 0.95rem;
+          font-weight: bold;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          touch-action: manipulation;
+          transition: background-color 0.15s ease;
+        }
+        .map-tool-btn:hover {
+          background: var(--hujan-pagi);
+        }
+        .map-tool-btn--recenter {
+          width: auto;
+          height: 28px;
+          padding: 0 0.5rem;
+          border-left: 1px solid var(--beton);
+          border-radius: 0 4px 4px 0;
+          color: var(--kali-teal);
+          font-size: 0.78rem;
+          font-weight: 600;
+        }
+        .map-tool-btn--recenter:hover {
+          background: var(--hujan-pagi);
+        }
+        .nearby-facilities-details {
+          margin-top: 0.5rem;
+          padding: 0.5rem 0.75rem;
+          background: var(--soft-panel);
+          border: 1px solid var(--beton);
+          border-radius: 6px;
+          font-size: 0.85rem;
+        }
+        .nearby-facilities-summary {
+          cursor: pointer;
+          font-weight: 600;
+          color: var(--tinta-kota);
+        }
+        .nearby-facilities-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          gap: 0.4rem;
+          margin-top: 0.5rem;
+        }
+        .nearby-facility-card {
+          padding: 0.35rem 0.5rem;
+          background: var(--surface);
+          border: 1px solid var(--beton);
+          border-radius: 4px;
+          cursor: pointer;
+          transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .nearby-facility-card:hover {
+          background: var(--hujan-pagi);
+          border-color: var(--kali-teal);
+        }
+        .nearby-facility-title {
+          font-weight: 600;
+          color: var(--tinta-kota);
+        }
+        .nearby-facility-meta {
+          color: var(--quiet-ink);
+          font-size: 0.78rem;
+        }
+        @media (max-width: 480px) {
+          .map-facility-filters {
+            gap: 0.2rem;
+            padding: 0.2rem 0.3rem;
+          }
+          .facility-filter-pill {
+            font-size: 0.72rem;
+            padding: 0.18rem 0.4rem;
+          }
+        }
+      `}</style>
       <div
         className="interactive-incident-map"
         data-testid="interactive-incident-map"
         ref={containerRef}
         style={{
-          position: "relative",
-          width: "100%",
           height: `${mapHeight}px`,
-          borderRadius: "8px",
-          overflow: "hidden",
-          backgroundColor: "var(--surface, #FFFFFF)",
-          border: "1px solid var(--beton, #D5DEDB)",
-          userSelect: "none",
           cursor: isDragging ? "grabbing" : "grab",
         }}
         onPointerDown={handlePointerDown}
@@ -291,12 +495,10 @@ export function InteractiveIncidentMap({
         <div
           className="map-tile-layer"
           style={{
-            position: "absolute",
             left: `-${SAFE_BUFFER_X / 2}px`,
             top: `-${SAFE_BUFFER_Y / 2}px`,
             width: `${bufferWidth}px`,
             height: `${bufferHeight}px`,
-            pointerEvents: "none",
           }}
         >
           {tiles.map((tile) => {
@@ -312,12 +514,8 @@ export function InteractiveIncidentMap({
                 loading="lazy"
                 className="map-tile-img"
                 style={{
-                  position: "absolute",
                   left: `${tile.left}px`,
                   top: `${tile.top}px`,
-                  width: "256px",
-                  height: "256px",
-                  display: "block",
                 }}
               />
             );
@@ -328,14 +526,6 @@ export function InteractiveIncidentMap({
         <svg
           className="map-svg-layer"
           viewBox={`0 0 ${width} ${mapHeight}`}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-          }}
         >
           {/* Affected Area Circle */}
           {incidentCanvasPx && (
@@ -344,9 +534,10 @@ export function InteractiveIncidentMap({
                 cx={incidentCanvasPx.x}
                 cy={incidentCanvasPx.y}
                 r={radiusPixels}
-                fill="rgba(8, 123, 117, 0.08)"
-                stroke="var(--kali-teal, #087B75)"
-                strokeWidth="2"
+                fill="var(--kali-teal)"
+                fillOpacity={0.08}
+                stroke="var(--kali-teal)"
+                strokeWidth={2}
                 strokeDasharray="4 3"
                 className="map-affected-radius"
               />
@@ -360,9 +551,9 @@ export function InteractiveIncidentMap({
                   width="104"
                   height="18"
                   rx="9"
-                  fill="var(--tinta-kota, #18323A)"
-                  stroke="var(--beton, #D5DEDB)"
-                  strokeWidth="1"
+                  fill="var(--tinta-kota)"
+                  stroke="var(--beton)"
+                  strokeWidth={1}
                 />
                 <text
                   x="0"
@@ -379,7 +570,7 @@ export function InteractiveIncidentMap({
           )}
 
           {/* Clean Facility Pins (Icons without overlapping text clutter) */}
-          <g className="map-facilities-group" style={{ pointerEvents: "auto" }}>
+          <g className="map-facilities-group">
             {filteredFacilities.map((facility) => {
               const pos = projectPoint(facility.coordinates);
               if (pos.x < -30 || pos.x > width + 30 || pos.y < -30 || pos.y > mapHeight + 30) {
@@ -388,10 +579,10 @@ export function InteractiveIncidentMap({
               const isSelected = activeSelectedId === facility.id;
               const badgeBg =
                 facility.kind === "hospital"
-                  ? "var(--merah-tanda, #A7433B)"
+                  ? "var(--merah-tanda)"
                   : facility.kind === "police"
-                  ? "var(--kali-teal, #087B75)"
-                  : "var(--kuning-perhatian, #E7B448)";
+                  ? "var(--kali-teal)"
+                  : "var(--kuning-perhatian)";
 
               return (
                 <g
@@ -404,7 +595,6 @@ export function InteractiveIncidentMap({
                     e.stopPropagation();
                     handleFacilityClick(facility);
                   }}
-                  style={{ cursor: "pointer" }}
                 >
                   <circle
                     cx="0"
@@ -435,7 +625,6 @@ export function InteractiveIncidentMap({
             <g
               className="incident-pin-marker"
               transform={`translate(${incidentCanvasPx.x}, ${incidentCanvasPx.y})`}
-              style={{ pointerEvents: "auto", cursor: "pointer" }}
               onClick={(e) => {
                 e.stopPropagation();
                 handleRecenter();
@@ -447,7 +636,7 @@ export function InteractiveIncidentMap({
                 r="18"
                 className="incident-beacon-pulse"
                 fill="none"
-                stroke="var(--merah-tanda, #A7433B)"
+                stroke="var(--merah-tanda)"
                 strokeWidth="2"
                 opacity="0.6"
               />
@@ -457,7 +646,7 @@ export function InteractiveIncidentMap({
                 r="14"
                 className="incident-beacon-inner"
                 fill="none"
-                stroke="var(--merah-tanda, #A7433B)"
+                stroke="var(--merah-tanda)"
                 strokeWidth="1.5"
                 opacity="0.8"
               />
@@ -466,7 +655,7 @@ export function InteractiveIncidentMap({
                 cy="0"
                 r="11"
                 className="incident-beacon-core"
-                fill="var(--merah-tanda, #A7433B)"
+                fill="var(--merah-tanda)"
                 stroke="#FFFFFF"
                 strokeWidth="2"
               />
@@ -486,8 +675,8 @@ export function InteractiveIncidentMap({
                   width="130"
                   height="20"
                   rx="4"
-                  fill="var(--tinta-kota, #18323A)"
-                  stroke="var(--beton, #D5DEDB)"
+                  fill="var(--tinta-kota)"
+                  stroke="var(--beton)"
                   strokeWidth="1"
                 />
                 <text
@@ -505,37 +694,20 @@ export function InteractiveIncidentMap({
           )}
         </svg>
 
-        {/* Floating Controls (Top-Left Filters, Top-Right Zoom) */}
+        {/* Floating Facility Filter Controls (Top-Left) */}
         <div
-          style={{
-            position: "absolute",
-            top: "8px",
-            left: "8px",
-            zIndex: 5,
-            display: "flex",
-            gap: "4px",
-            background: "var(--surface, #FFFFFF)",
-            border: "1px solid var(--beton, #D5DEDB)",
-            borderRadius: "6px",
-            padding: "3px 6px",
-            boxShadow: "0 1px 3px rgba(24, 50, 58, 0.08)",
-          }}
+          className="map-facility-filters"
+          role="toolbar"
+          aria-label="Filter fasilitas darurat"
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <button
             type="button"
             className={`facility-filter-pill ${activeFacilityFilter === "all" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("all")}
             aria-pressed={activeFacilityFilter === "all"}
-            style={{
-              fontSize: "0.78rem",
-              padding: "0.2rem 0.5rem",
-              borderRadius: "4px",
-              border: "1px solid var(--beton, #D5DEDB)",
-              background: activeFacilityFilter === "all" ? "var(--kali-teal, #087B75)" : "var(--hujan-pagi, #F4F7F5)",
-              color: activeFacilityFilter === "all" ? "#FFFFFF" : "var(--tinta-kota, #18323A)",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            title="Semua Fasilitas"
+            aria-label="Filter semua fasilitas"
           >
             Semua Fasilitas ({nearbyFacilities.length})
           </button>
@@ -544,16 +716,8 @@ export function InteractiveIncidentMap({
             className={`facility-filter-pill ${activeFacilityFilter === "hospital" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("hospital")}
             aria-pressed={activeFacilityFilter === "hospital"}
-            style={{
-              fontSize: "0.78rem",
-              padding: "0.2rem 0.5rem",
-              borderRadius: "4px",
-              border: "1px solid var(--beton, #D5DEDB)",
-              background: activeFacilityFilter === "hospital" ? "var(--kali-teal, #087B75)" : "var(--hujan-pagi, #F4F7F5)",
-              color: activeFacilityFilter === "hospital" ? "#FFFFFF" : "var(--tinta-kota, #18323A)",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            title="Rumah Sakit"
+            aria-label="Filter rumah sakit"
           >
             🏥 RS ({facilityCounts.hospital})
           </button>
@@ -562,16 +726,8 @@ export function InteractiveIncidentMap({
             className={`facility-filter-pill ${activeFacilityFilter === "police" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("police")}
             aria-pressed={activeFacilityFilter === "police"}
-            style={{
-              fontSize: "0.78rem",
-              padding: "0.2rem 0.5rem",
-              borderRadius: "4px",
-              border: "1px solid var(--beton, #D5DEDB)",
-              background: activeFacilityFilter === "police" ? "var(--kali-teal, #087B75)" : "var(--hujan-pagi, #F4F7F5)",
-              color: activeFacilityFilter === "police" ? "#FFFFFF" : "var(--tinta-kota, #18323A)",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            title="Kepolisian"
+            aria-label="Filter kepolisian"
           >
             👮 Polisi ({facilityCounts.police})
           </button>
@@ -580,36 +736,19 @@ export function InteractiveIncidentMap({
             className={`facility-filter-pill ${activeFacilityFilter === "fire_station" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("fire_station")}
             aria-pressed={activeFacilityFilter === "fire_station"}
-            style={{
-              fontSize: "0.78rem",
-              padding: "0.2rem 0.5rem",
-              borderRadius: "4px",
-              border: "1px solid var(--beton, #D5DEDB)",
-              background: activeFacilityFilter === "fire_station" ? "var(--kali-teal, #087B75)" : "var(--hujan-pagi, #F4F7F5)",
-              color: activeFacilityFilter === "fire_station" ? "#FFFFFF" : "var(--tinta-kota, #18323A)",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            title="Pemadam Kebakaran"
+            aria-label="Filter pemadam kebakaran"
           >
             🚒 Damkar ({facilityCounts.fire_station})
           </button>
         </div>
 
-        {/* Zoom & Recenter Controls (Top-Right) */}
+        {/* Zoom & Recenter Controls (Bottom-Right) */}
         <div
-          style={{
-            position: "absolute",
-            top: "8px",
-            right: "8px",
-            zIndex: 5,
-            display: "flex",
-            gap: "4px",
-            background: "var(--surface, #FFFFFF)",
-            border: "1px solid var(--beton, #D5DEDB)",
-            borderRadius: "6px",
-            padding: "2px",
-            boxShadow: "0 1px 3px rgba(24, 50, 58, 0.08)",
-          }}
+          className="map-zoom-controls"
+          role="group"
+          aria-label="Kontrol navigasi peta"
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <button
             type="button"
@@ -617,15 +756,6 @@ export function InteractiveIncidentMap({
             onClick={handleZoomIn}
             title="Perbesar"
             aria-label="Perbesar peta"
-            style={{
-              width: "28px",
-              height: "28px",
-              border: "0",
-              background: "transparent",
-              color: "var(--tinta-kota, #18323A)",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
           >
             +
           </button>
@@ -635,15 +765,6 @@ export function InteractiveIncidentMap({
             onClick={handleZoomOut}
             title="Perkecil"
             aria-label="Perkecil peta"
-            style={{
-              width: "28px",
-              height: "28px",
-              border: "0",
-              background: "transparent",
-              color: "var(--tinta-kota, #18323A)",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
           >
             −
           </button>
@@ -653,17 +774,6 @@ export function InteractiveIncidentMap({
             onClick={handleRecenter}
             title="Pusatkan kembali ke titik insiden"
             aria-label="Pusatkan kembali ke titik insiden"
-            style={{
-              padding: "0 6px",
-              height: "28px",
-              border: "0",
-              borderLeft: "1px solid var(--beton, #D5DEDB)",
-              background: "transparent",
-              color: "var(--kali-teal, #087B75)",
-              fontSize: "0.78rem",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
           >
             Pusatkan
           </button>
@@ -671,44 +781,21 @@ export function InteractiveIncidentMap({
       </div>
 
       {/* Clean Collapsible Nearby Facilities Details List (Underneath the map) */}
-      <details
-        className="nearby-facilities-details"
-        style={{
-          marginTop: "0.5rem",
-          padding: "0.5rem 0.75rem",
-          background: "var(--soft-panel, #EAF0ED)",
-          border: "1px solid var(--beton, #D5DEDB)",
-          borderRadius: "6px",
-          fontSize: "0.85rem",
-        }}
-      >
-        <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--tinta-kota, #18323A)" }}>
+      <details className="nearby-facilities-details">
+        <summary className="nearby-facilities-summary">
           Fasilitas Darurat Terdekat ({filteredFacilities.length} lokasi terdata)
         </summary>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-            gap: "0.4rem",
-            marginTop: "0.5rem",
-          }}
-        >
+        <div className="nearby-facilities-grid">
           {filteredFacilities.slice(0, 8).map((f) => (
             <div
               key={f.id}
               onClick={() => handleFacilityClick(f)}
-              style={{
-                padding: "0.35rem 0.5rem",
-                background: "var(--surface, #FFFFFF)",
-                border: "1px solid var(--beton, #D5DEDB)",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
+              className="nearby-facility-card"
             >
-              <div style={{ fontWeight: 600, color: "var(--tinta-kota, #18323A)" }}>
+              <div className="nearby-facility-title">
                 {facilityKindIcon(f.kind)} {f.title}
               </div>
-              <div style={{ color: "var(--quiet-ink, #52676B)", fontSize: "0.78rem" }}>
+              <div className="nearby-facility-meta">
                 {facilityKindLabel(f.kind)} · {f.distanceMeters} m
               </div>
             </div>
