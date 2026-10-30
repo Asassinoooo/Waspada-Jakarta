@@ -24,6 +24,7 @@ export const JAKARTA_TOPONYMS: readonly string[] = [
   "sudirman", "thamrin", "gatot subroto", "rasuna said", "kuningan", "monas", "harmoni", "cawang", "rawamangun", "pluit", "ancol", "grogol",
   "pejompongan", "benhil", "kemang", "blok m", "petojo", "cideng", "glodok", "roxy", "manggarai", "slipi", "tomang", "kalibata",
   "gandaria", "senayan", "pondok indah", "fatmawati", "lebak bulus", "ragunan", "cipete", "bintaro", "pulomas", "klender", "cibubur", "salemba", "kramat",
+  "semanggi", "dukuh atas", "casablanca", "antasari", "kampung rambutan", "pulo gebang", "csw",
 ];
 
 /** Kata kunci kejadian darurat, gangguan keselamatan, dan bencana perkotaan */
@@ -33,6 +34,10 @@ export const INCIDENT_KEYWORDS: readonly string[] = [
   "cuaca ekstrem", "hujan lebat", "angin kencang", "angin puting beliung", "amblas", "longsor", "ambruk", "runtuh",
   "rob", "tanggul", "pintu air", "siaga", "gempa", "evakuasi", "macet total", "ledakan",
   "tewas", "meninggal", "korban", "jenazah", "luka", "kritis", "pembunuhan", "penusukan", "penembakan", "begal", "pencurian", "rampok",
+  // Disrupsi lalu lintas dan koridor transportasi
+  "rekayasa lalu lintas", "rekayasa lalin", "penutupan jalan", "pengalihan arus", "contraflow", "macet parah",
+  "antrean kendaraan", "tabrakan beruntun", "truk terguling", "transjakarta dialihkan", "rute distop",
+  "krl anjlok", "gangguan persinyalan", "krl tertahan", "underpass tergenang", "jalan amblas", "catenary putus",
 ];
 export const DEFAULT_LOCAL_NEWS_MAX_AGE_HOURS = 48;
 export const DEFAULT_PROD_NEWS_MAX_AGE_HOURS = 6;

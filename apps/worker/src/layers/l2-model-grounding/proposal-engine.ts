@@ -43,6 +43,7 @@ export interface EventProposalDto {
   readonly proposal_id: string;
   readonly title: string;
   readonly incident_type: IncidentCategory;
+  readonly public_category?: string;
   readonly severity: IncidentSeverity;
   readonly event_time: {
     readonly precision: "exact" | "date" | "range" | "unknown";
@@ -69,7 +70,7 @@ export const JAKARTA_ENVELOPE = {
   north: -5.16,
 } as const;
 
-interface GazetteerPlace {
+export interface GazetteerPlace {
   readonly name: string;
   readonly label: string;
   readonly coordinates: readonly [longitude: number, latitude: number];
@@ -79,8 +80,237 @@ interface GazetteerPlace {
 /**
  * Gazetteer mapping Jakarta regions, kecamatans, and prominent corridors
  * to representative WGS84 [longitude, latitude] coordinates.
+ *
+ * Precision micro-landmarks are placed at the beginning of the array so
+ * exact corridors/interchanges take precedence over broad subdistricts.
  */
-const JAKARTA_GAZETTEER: readonly GazetteerPlace[] = [
+export const JAKARTA_GAZETTEER: readonly GazetteerPlace[] = [
+  // ==========================================
+  // High-Precision Corridors & Micro-Landmarks (Priority Matches)
+  // ==========================================
+  // Tollways & Interchanges
+  {
+    name: "Simpang Susun Semanggi",
+    label: "Simpang Susun Semanggi, Jakarta Selatan",
+    coordinates: [106.8156, -6.2201],
+    patterns: [/\bsimpang\s+susun\s+semanggi\b/i, /\bsemanggi\b/i],
+  },
+  {
+    name: "Tol Cawang Interchange",
+    label: "Tol Cawang Interchange, Jakarta Timur",
+    coordinates: [106.8710, -6.2420],
+    patterns: [/\btol\s+cawang\s+interchange\b/i, /\bsimpang\s+susun\s+cawang\b/i, /\binterchange\s+cawang\b/i],
+  },
+  {
+    name: "Tomang Interchange / Slipi",
+    label: "Tomang Interchange, Jakarta Barat",
+    coordinates: [106.7940, -6.1770],
+    patterns: [/\btomang\s+interchange\b/i, /\bsimpang\s+susun\s+tomang\b/i, /\binterchange\s+tomang\b/i],
+  },
+  {
+    name: "Tol JORR TB Simatupang",
+    label: "Tol JORR TB Simatupang, Jakarta Selatan",
+    coordinates: [106.8350, -6.2950],
+    patterns: [/\b(?:tol\s+)?jorr\s+tb\s+simatupang\b/i, /\btol\s+tb\s+simatupang\b/i, /\bjorr\s+simatupang\b/i],
+  },
+  {
+    name: "Tol Jagorawi Cawang-Cibubur",
+    label: "Tol Jagorawi Cawang-Cibubur, Jakarta Timur",
+    coordinates: [106.8850, -6.3100],
+    patterns: [/\btol\s+jagorawi(?:\s+cawang[- ]cibubur)?\b/i, /\bjagorawi\b/i],
+  },
+  {
+    name: "Tol Pelabuhan / Pluit Interchange",
+    label: "Tol Pelabuhan Pluit Interchange, Jakarta Utara",
+    coordinates: [106.7860, -6.1240],
+    patterns: [/\btol\s+pelabuhan\b/i, /\bpluit\s+interchange\b/i, /\bsimpang\s+susun\s+pluit\b/i],
+  },
+  {
+    name: "Tol Wiyoto Wiyono Cempaka Putih",
+    label: "Tol Wiyoto Wiyono Cempaka Putih, Jakarta Pusat",
+    coordinates: [106.8780, -6.1730],
+    patterns: [/\btol\s+wiyoto\s+wiyono\b/i, /\binterchange\s+cempaka\s+putih\b/i],
+  },
+  {
+    name: "Tol Kembangan Interchange",
+    label: "Tol Kembangan Interchange, Jakarta Barat",
+    coordinates: [106.7380, -6.1870],
+    patterns: [/\b(?:tol\s+)?kembangan\s+interchange\b/i, /\bsimpang\s+susun\s+kembangan\b/i],
+  },
+  {
+    name: "Tol TB Simatupang Cilandak",
+    label: "Tol TB Simatupang Cilandak, Jakarta Selatan",
+    coordinates: [106.8020, -6.2940],
+    patterns: [/\btol\s+cilandak\b/i, /\btol\s+simatupang\b/i],
+  },
+
+  // Underpasses & Flyovers
+  {
+    name: "Underpass Dukuh Atas",
+    label: "Underpass Dukuh Atas, Jakarta Pusat",
+    coordinates: [106.8210, -6.2010],
+    patterns: [/\bunderpass\s+dukuh\s+atas\b/i, /\bterowongan\s+dukuh\s+atas\b/i],
+  },
+  {
+    name: "Underpass Casablanca",
+    label: "Underpass Casablanca, Jakarta Selatan",
+    coordinates: [106.8380, -6.2230],
+    patterns: [/\bunderpass\s+casablanca\b/i, /\bterowongan\s+casablanca\b/i, /\bcasablanca\b/i],
+  },
+  {
+    name: "Underpass Senen",
+    label: "Underpass Senen, Jakarta Pusat",
+    coordinates: [106.8430, -6.1780],
+    patterns: [/\bunderpass\s+senen\b/i, /\bterowongan\s+senen\b/i],
+  },
+  {
+    name: "Underpass Mampang-Kuningan",
+    label: "Underpass Mampang-Kuningan, Jakarta Selatan",
+    coordinates: [106.8280, -6.2420],
+    patterns: [/\bunderpass\s+mampang(?:-kuningan)?\b/i, /\bterowongan\s+mampang\b/i],
+  },
+  {
+    name: "Underpass Matraman",
+    label: "Underpass Matraman, Jakarta Timur",
+    coordinates: [106.8610, -6.2020],
+    patterns: [/\bunderpass\s+matraman\b/i, /\bterowongan\s+matraman\b/i],
+  },
+  {
+    name: "Underpass Kebayoran Lama",
+    label: "Underpass Kebayoran Lama, Jakarta Selatan",
+    coordinates: [106.7770, -6.2370],
+    patterns: [/\bunderpass\s+kebayoran\s+lama\b/i, /\bterowongan\s+kebayoran\s+lama\b/i],
+  },
+  {
+    name: "Underpass Pramuka",
+    label: "Underpass Pramuka, Jakarta Timur",
+    coordinates: [106.8650, -6.1950],
+    patterns: [/\bunderpass\s+pramuka\b/i, /\bterowongan\s+pramuka\b/i],
+  },
+  {
+    name: "Underpass Kuningan",
+    label: "Underpass Kuningan, Jakarta Selatan",
+    coordinates: [106.8270, -6.2350],
+    patterns: [/\bunderpass\s+kuningan\b/i, /\bterowongan\s+kuningan\b/i],
+  },
+  {
+    name: "Flyover Roxy / Cideng",
+    label: "Flyover Roxy, Jakarta Barat",
+    coordinates: [106.8080, -6.1660],
+    patterns: [/\bflyover\s+roxy\b/i, /\bflyover\s+cideng\b/i, /\bjembatan\s+layang\s+roxy\b/i],
+  },
+  {
+    name: "Flyover Pancoran",
+    label: "Flyover Pancoran, Jakarta Selatan",
+    coordinates: [106.8430, -6.2430],
+    patterns: [/\bflyover\s+pancoran\b/i, /\bjembatan\s+layang\s+pancoran\b/i],
+  },
+  {
+    name: "Flyover Antasari",
+    label: "Flyover Antasari, Jakarta Selatan",
+    coordinates: [106.8050, -6.2620],
+    patterns: [/\bflyover\s+antasari\b/i, /\bjlnt\s+antasari\b/i, /\bjembatan\s+layang\s+antasari\b/i, /\bantasari\b/i],
+  },
+  {
+    name: "Flyover Klender",
+    label: "Flyover Klender, Jakarta Timur",
+    coordinates: [106.8990, -6.2140],
+    patterns: [/\bflyover\s+klender\b/i, /\bjembatan\s+layang\s+klender\b/i],
+  },
+  {
+    name: "Flyover Saharjo Tebet",
+    label: "Flyover Saharjo, Jakarta Selatan",
+    coordinates: [106.8510, -6.2190],
+    patterns: [/\bflyover\s+saharjo\b/i, /\bjembatan\s+layang\s+saharjo\b/i],
+  },
+  {
+    name: "Flyover Rawamangun",
+    label: "Flyover Rawamangun, Jakarta Timur",
+    coordinates: [106.8840, -6.1930],
+    patterns: [/\bflyover\s+rawamangun\b/i, /\bjembatan\s+layang\s+rawamangun\b/i],
+  },
+
+  // Transit Hubs & Rail Crossings
+  {
+    name: "Stasiun Manggarai Transit",
+    label: "Stasiun Manggarai Transit, Jakarta Selatan",
+    coordinates: [106.8500, -6.2098],
+    patterns: [/\b(?:stasiun|st\.)\s+manggarai\b/i, /\bmanggarai\s+(?:transit|hub)\b/i, /\bmanggarai\b/i],
+  },
+  {
+    name: "Stasiun Tanah Abang Transit",
+    label: "Stasiun Tanah Abang Transit, Jakarta Pusat",
+    coordinates: [106.8110, -6.1856],
+    patterns: [/\b(?:stasiun|st\.)\s+tanah\s+abang\b/i],
+  },
+  {
+    name: "Stasiun Jatinegara",
+    label: "Stasiun Jatinegara, Jakarta Timur",
+    coordinates: [106.8670, -6.2150],
+    patterns: [/\b(?:stasiun|st\.)\s+jatinegara\b/i],
+  },
+  {
+    name: "Halte CSW / ASEAN MRT Interchange",
+    label: "Halte CSW ASEAN MRT, Jakarta Selatan",
+    coordinates: [106.7985, -6.2395],
+    patterns: [/\bhalte\s+csw\b/i, /\bcsw\s+asean\b/i, /\bmrt\s+asean\b/i, /\binterchange\s+csw\b/i, /\bsimpang\s+csw\b/i, /\bcsw\b/i],
+  },
+  {
+    name: "Halte Bundaran HI Astra",
+    label: "Halte Bundaran HI Astra, Jakarta Pusat",
+    coordinates: [106.8230, -6.1930],
+    patterns: [/\bhalte\s+bundaran\s+hi\b/i, /\bmrt\s+bundaran\s+hi\b/i, /\bbundaran\s+hi\s+astra\b/i],
+  },
+  {
+    name: "Halte Harmoni Central",
+    label: "Halte Harmoni Central, Jakarta Pusat",
+    coordinates: [106.8190, -6.1640],
+    patterns: [/\bhalte\s+harmoni\b/i, /\bharmoni\s+central\b/i, /\bcentral\s+harmoni\b/i],
+  },
+  {
+    name: "Terminal Bus Kampung Rambutan",
+    label: "Terminal Kampung Rambutan, Jakarta Timur",
+    coordinates: [106.8760, -6.3090],
+    patterns: [/\bterminal\s+(?:bus\s+)?kampung\s+rambutan\b/i, /\bkampung\s+rambutan\b/i],
+  },
+  {
+    name: "Terminal Bus Pulo Gebang",
+    label: "Terminal Pulo Gebang, Jakarta Timur",
+    coordinates: [106.9530, -6.2120],
+    patterns: [/\bterminal\s+(?:bus\s+)?pulo\s*gebang\b/i, /\bpulo\s*gebang\b/i],
+  },
+  {
+    name: "Terminal Bus Kalideres",
+    label: "Terminal Kalideres, Jakarta Barat",
+    coordinates: [106.7020, -6.1550],
+    patterns: [/\bterminal\s+(?:bus\s+)?kalideres\b/i],
+  },
+  {
+    name: "Stasiun Pasar Senen",
+    label: "Stasiun Pasar Senen, Jakarta Pusat",
+    coordinates: [106.8440, -6.1740],
+    patterns: [/\b(?:stasiun|st\.)\s+(?:pasar\s+)?senen\b/i],
+  },
+  {
+    name: "Stasiun Sudirman Transit",
+    label: "Stasiun Sudirman Transit, Jakarta Pusat",
+    coordinates: [106.8220, -6.2020],
+    patterns: [/\b(?:stasiun|st\.)\s+sudirman\b/i, /\bmrt\s+dukuh\s+atas\b/i],
+  },
+  {
+    name: "Halte Tosari",
+    label: "Halte Tosari, Jakarta Pusat",
+    coordinates: [106.8225, -6.1980],
+    patterns: [/\bhalte\s+tosari\b/i],
+  },
+  {
+    name: "Halte Monas MRT",
+    label: "Halte Monas MRT, Jakarta Pusat",
+    coordinates: [106.8240, -6.1780],
+    patterns: [/\bhalte\s+monas\b/i, /\bmrt\s+monas\b/i],
+  },
+
+  // Regional & District Fallbacks
   // Jakarta Pusat
   { name: "Senen", label: "Senen, Jakarta Pusat", coordinates: [106.8442, -6.1823], patterns: [/\b(?:pasar\s+)?senen\b/i] },
   { name: "Gambir", label: "Gambir, Jakarta Pusat", coordinates: [106.8302, -6.1754], patterns: [/\bgambir\b/i] },
@@ -236,6 +466,24 @@ const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
       { regex: /\bmenabrak\b/i, weight: 10 },
       { regex: /\btertabrak\b/i, weight: 10 },
       { regex: /\bterperosok\b/i, weight: 10 },
+      // Traffic disruptions and road incidents (maps to transport_road_incidents)
+      { regex: /\btruk\s+terguling\b/i, weight: 22 },
+      { regex: /\bkrl\s+anjlok\b/i, weight: 22 },
+      { regex: /\bjalan\s+amblas\b/i, weight: 22 },
+      { regex: /\bunderpass\s+tergenang\b/i, weight: 22 },
+      { regex: /\brekayasa\s+(?:lalu\s+lintas|lalin)\b/i, weight: 18 },
+      { regex: /\bpenutupan\s+jalan\b/i, weight: 18 },
+      { regex: /\bpengalihan\s+arus\b/i, weight: 18 },
+      { regex: /\bcontraflow\b/i, weight: 18 },
+      { regex: /\bmacet\s+(?:total|parah)\b/i, weight: 18 },
+      { regex: /\bantrean\s+kendaraan\b/i, weight: 14 },
+      { regex: /\btransjakarta\s+dialihkan\b/i, weight: 18 },
+      { regex: /\brute\s+distop\b/i, weight: 18 },
+      { regex: /\bgangguan\s+persinyalan\b/i, weight: 18 },
+      { regex: /\bkrl\s+tertahan\b/i, weight: 18 },
+      { regex: /\bcatenary\s+putus\b/i, weight: 18 },
+      { regex: /\blalin\s+lumpuh\b/i, weight: 18 },
+      { regex: /\btol\s+ditutup\b/i, weight: 18 },
     ],
   },
   {
@@ -289,7 +537,7 @@ const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
 /**
  * Extracts category and scores for a given text.
  */
-function detectIncidentCategory(text: string): { readonly category: IncidentCategory; readonly score: number } | null {
+export function detectIncidentCategory(text: string): { readonly category: IncidentCategory; readonly score: number } | null {
   let bestCategory: IncidentCategory | null = null;
   let bestScore = 0;
 
@@ -316,10 +564,10 @@ function detectIncidentCategory(text: string): { readonly category: IncidentCate
 /**
  * Evaluates incident severity based on text markers.
  */
-function detectSeverity(text: string): IncidentSeverity {
+export function detectSeverity(text: string): IncidentSeverity {
   const lower = text.toLowerCase();
 
-  // 1. Critical markers
+  // 1. Critical markers (includes critical traffic disruptions)
   const criticalPatterns = [
     /\b(tewas|meninggal|korban\s+jiwa|jiwa\s+melayang|merenggut\s+nyawa)\b/,
     /\b(siaga\s+1|siaga\s+satu)\b/,
@@ -327,12 +575,13 @@ function detectSeverity(text: string): IncidentSeverity {
     /\b(ratusan\s+rumah\s+(?:terendam|tenggelam|hangus))\b/,
     /\b(puluhan\s+rumah\s+(?:hangus|ludes|terbakar))\b/,
     /\b([2-9]\s*meter|200\s*cm|[2-9][0-9]{2}\s*cm)\b/,
+    /\b(macet\s+total|krl\s+anjlok|jalan\s+amblas|lalin\s+lumpuh|tol\s+ditutup)\b/,
   ];
   for (const p of criticalPatterns) {
     if (p.test(lower)) return "critical";
   }
 
-  // 2. High markers
+  // 2. High markers (includes high severity traffic disruptions)
   const highPatterns = [
     /\b(luka\s+berat|luka\s+parah|kritis|dilarikan\s+ke\s+rumah\s+sakit|dilarikan\s+ke\s+rs)\b/,
     /\b(siaga\s+2|siaga\s+dua)\b/,
@@ -340,6 +589,7 @@ function detectSeverity(text: string): IncidentSeverity {
     /\b(lumpuh\s+total|terputus\s+total|evakuasi\s+warga|ratusan\s+warga\s+mengungsi)\b/,
     /\b(belasan\s+rumah\s+terbakar|puluhan\s+kios\s+terbakar)\b/,
     /\b(tabrakan\s+beruntun|ringsek\s+berat)\b/,
+    /\b(contraflow|truk\s+terguling)\b/,
   ];
   for (const p of highPatterns) {
     if (p.test(lower)) return "high";
@@ -357,8 +607,26 @@ function detectSeverity(text: string): IncidentSeverity {
     if (p.test(lower)) return "low";
   }
 
-  // 4. Default moderate severity
+  // 4. Default moderate severity (medium for "rekayasa lalin", "pengalihan arus", "macet parah", "antrean kendaraan")
   return "medium";
+}
+
+/**
+ * Maps internal IncidentCategory to Schema 2.0 / Database public contract category.
+ */
+export function mapIncidentTypeToPublicCategory(type: IncidentCategory): string {
+  switch (type) {
+    case "accident":
+      return "transport_road_incidents";
+    case "flood":
+    case "weather":
+      return "disasters_weather";
+    case "fire":
+    case "tree_fall":
+      return "fires_infrastructure_hazards";
+    case "crime":
+      return "crime_personal_security";
+  }
 }
 
 /**
@@ -429,7 +697,7 @@ function extractEventTime(
 /**
  * Extracts Jakarta location label and coordinates, or null if outside Jakarta.
  */
-function extractLocation(
+export function extractLocation(
   text: string,
   sourceId: string,
 ): { readonly locationLabel: string; readonly coordinates: readonly [longitude: number, latitude: number] | null } | null {
@@ -759,6 +1027,7 @@ export function generateProposalFromReport(
     proposal_id,
     title,
     incident_type,
+    public_category: mapIncidentTypeToPublicCategory(incident_type),
     severity,
     event_time,
     location_label: locationLabel,
