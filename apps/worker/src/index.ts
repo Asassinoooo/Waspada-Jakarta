@@ -26,11 +26,20 @@ import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
 import { createNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
 
 import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
+import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-integration/event-broadcaster.js";
+import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-data-knowledge/webhook-ingest.js";
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
 const activeProposals = new Map<string, EventProposalDto>();
 const activeChunks = new Map<string, readonly StoredEvidenceChunk[]>();
+const webhookIngest = createWebhookIngestHandler({
+  broadcaster: eventBroadcaster,
+  onProposalCreated: (proposal, chunks) => {
+    activeProposals.set(proposal.proposal_id, proposal);
+    activeChunks.set(proposal.proposal_id, chunks);
+  },
+});
 
 async function syncLivePipelineProposals(): Promise<void> {
   const allRevisions: StoredReportRevision[] = [];
@@ -109,13 +118,13 @@ const moderationHandler = createModerationApiHandler({
       const id = cmd.proposal_id ?? cmd.proposalId ?? cmd.decision?.proposal_id;
       const proposal = (id ? activeProposals.get(id) : undefined) ?? cmd.proposal;
       const chunks = id ? activeChunks.get(id) : undefined;
-      if (id) activeProposals.delete(id);
+      let publishedDetail: unknown;
       if (proposal) {
-        PublicReadModel.publish(proposal, chunks);
+        publishedDetail = PublicReadModel.publish(proposal, chunks);
       } else if (cmd.eventDraft || cmd.event) {
-        PublicReadModel.publish((cmd.eventDraft ?? cmd.event) as Record<string, unknown>);
+        publishedDetail = PublicReadModel.publish((cmd.eventDraft ?? cmd.event) as Record<string, unknown>);
       } else if (id) {
-        PublicReadModel.publish({
+        publishedDetail = PublicReadModel.publish({
           schema_version: "2.0",
           proposal_id: id,
           title: cmd.title ?? `Laporan Kejadian ${id}`,
@@ -127,6 +136,12 @@ const moderationHandler = createModerationApiHandler({
           claims: cmd.claims ?? [],
           proposed_at: new Date().toISOString(),
         });
+      }
+      if (publishedDetail) {
+        eventBroadcaster.broadcastPublic("event_published", publishedDetail);
+      }
+      if (id) {
+        eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
       }
       return { status: "written", receipt: { decision_id: `dec-${Date.now()}` } };
     },
@@ -200,6 +215,20 @@ export default {
           "set-cookie": "waspada_demo_session=; Path=/; Max-Age=0",
         },
       });
+    }
+    // Inbound incident webhook push
+    if (isWebhookIngestPath(url.pathname)) {
+      return webhookIngest(request);
+    }
+
+    // Realtime SSE streaming for moderation queue
+    if (url.pathname === "/api/v1/moderation/stream" || url.pathname === "/api/v1/moderation/stream/") {
+      return createSSEResponse(eventBroadcaster.subscribeModeration(request.signal));
+    }
+
+    // Realtime SSE streaming for public events
+    if (url.pathname === "/api/v1/events/stream" || url.pathname === "/api/v1/events/stream/") {
+      return createSSEResponse(eventBroadcaster.subscribePublicEvents(request.signal));
     }
 
     const accountResponse = await handleAccountRequest(request, env);

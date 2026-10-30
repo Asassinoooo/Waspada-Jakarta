@@ -223,6 +223,78 @@
   color: var(--surface);
   box-shadow: 0 1px 3px rgba(24, 50, 58, 0.12);
 }
+.discrepancy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  background: var(--kuning-perhatian);
+  color: var(--tinta-kota);
+  border: 1px solid var(--tinta-kota);
+}
+
+.discrepancy-callout {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  background: #fffbeb;
+  border: 1px solid var(--kuning-perhatian);
+  border-left: 4px solid var(--kuning-perhatian);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--tinta-kota);
+}
+
+.discrepancy-callout strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+}
+
+.discrepancy-callout ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.discrepancy-callout li {
+  margin-bottom: 0.25rem;
+}
+
+.discrepancy-kind-pill {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--beton);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.realtime-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--kali-teal);
+}
+
+.realtime-indicator__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--kali-teal);
+  animation: pulse-dot 2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.6; }
+}
 
 /* Proposal Header & Key-Value Metadata Grid */
 .moderator-page--queue .review-case-heading {

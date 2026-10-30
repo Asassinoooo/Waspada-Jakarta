@@ -14,7 +14,6 @@ import {
   findJakartaToponym,
   correlateSourceReports,
   haversineDistanceMeters,
-  JAKARTA_TOPONYMS,
 } from "../src/layers/l1-data-knowledge/multisource-correlator.js";
 import {
   classifyNewsItem,
@@ -41,7 +40,7 @@ function makeReport(overrides: Partial<StoredReportRevision> = {}): StoredReport
     canonical_url: "https://tmcpoldametro.id/lapor/101",
     permitted_text,
     permitted_text_hash: "b".repeat(64),
-    chunk_count: chunks.length,
+    revision_status: "unreviewed",
     chunks,
     retrieved_at: "2026-10-26T08:00:00.000Z",
     published_at: overrides.published_at ?? "2026-10-26T07:55:00.000Z",

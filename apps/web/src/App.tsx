@@ -409,6 +409,36 @@ export function App() {
       cancelled = true;
     };
   }, [retryKey, route.screen]);
+  // Real-time Public Events SSE Stream (Zero-polling live updates)
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof EventSource === "undefined") return;
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource("/api/v1/events/stream");
+      eventSource.addEventListener("event_published", (e: MessageEvent) => {
+        try {
+          const published = JSON.parse(e.data) as EventView;
+          if (published && published.event_id) {
+            setEvents((prev) => {
+              const exists = prev.some((ev) => ev.event_id === published.event_id);
+              if (exists) {
+                return prev.map((ev) => (ev.event_id === published.event_id ? published : ev));
+              }
+              return [published, ...prev];
+            });
+            setStatus("loaded");
+            setMapRetryKey((k) => k + 1);
+          }
+        } catch {}
+      });
+    } catch {}
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (route.screen === "admin") return;

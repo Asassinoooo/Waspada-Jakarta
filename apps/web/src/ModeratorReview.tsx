@@ -26,6 +26,13 @@ export interface ProposalClaim {
   readonly is_corroborated?: boolean;
 }
 
+export interface ProposalDiscrepancy {
+  readonly kind: "water_depth" | "severity_assessment" | "casualty_count" | "operational_status" | string;
+  readonly description: string;
+  readonly source_a?: { readonly source_id: string; readonly claim_text: string };
+  readonly source_b?: { readonly source_id: string; readonly claim_text: string };
+}
+
 export interface EventProposalDto {
   readonly schema_version: "2.0";
   readonly proposal_id: string;
@@ -39,8 +46,10 @@ export interface EventProposalDto {
   readonly proposed_at: string;
   readonly is_multi_source?: boolean;
   readonly source_count?: number;
+  readonly has_discrepancy?: boolean;
+  readonly discrepancies?: readonly ProposalDiscrepancy[];
+  readonly caveats?: readonly string[];
 }
-
 export interface ModeratorDecisionCommand {
   readonly proposal_id: string;
   readonly action: "publish" | "reject" | "investigate";
@@ -334,6 +343,7 @@ export function ModeratorReviewQueue({
   const [sessionCsrf, setSessionCsrf] = useState<string>("");
   const [queueCategoryFilter, setQueueCategoryFilter] = useState<string>("all");
   const [activeClaimId, setActiveClaimId] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
 
   const effectiveCsrfToken = propCsrfToken || sessionCsrf;
 
@@ -369,6 +379,54 @@ export function ModeratorReviewQueue({
       cancelled = true;
     };
   }, [controlledProposals, apiBaseUrl, fetcher]);
+  // Real-time EventSource listener for streaming ingestion & auto-updates
+  useEffect(() => {
+    if (controlledProposals || typeof window === "undefined" || typeof EventSource === "undefined") {
+      return;
+    }
+    const sseUrl = `${apiBaseUrl.replace(/\/+$/, "")}/stream`;
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource(sseUrl, { withCredentials: true });
+      eventSource.onopen = () => setRealtimeConnected(true);
+      eventSource.onerror = () => setRealtimeConnected(false);
+
+      eventSource.addEventListener("proposal_created", (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const newProp: EventProposalDto = payload.proposal ?? payload;
+          if (newProp && newProp.proposal_id) {
+            setQueue((prev) => {
+              if (prev.some((p) => p.proposal_id === newProp.proposal_id)) return prev;
+              return [newProp, ...prev];
+            });
+            if (payload.chunks && Array.isArray(payload.chunks)) {
+              setChunksMap((prev) => ({ ...prev, [newProp.proposal_id]: payload.chunks }));
+            }
+            setSelectedId((prev) => prev ?? newProp.proposal_id);
+          }
+        } catch {}
+      });
+
+      eventSource.addEventListener("proposal_published", (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const id = payload.proposal_id ?? payload.proposalId;
+          if (id) {
+            setQueue((prev) => prev.filter((p) => p.proposal_id !== id));
+            setSelectedId((prev) => (prev === id ? null : prev));
+          }
+        } catch {}
+      });
+    } catch {}
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+        setRealtimeConnected(false);
+      }
+    };
+  }, [controlledProposals, apiBaseUrl]);
 
   useEffect(() => {
     if (!propCsrfToken && typeof window !== "undefined") {
@@ -531,7 +589,15 @@ export function ModeratorReviewQueue({
           <h1 id="review-title">Tinjau Bukti & Moderasi Insiden</h1>
           <p>Verifikasi grounding bukti sumber terhadap klaim sebelum penerbitan ke publik.</p>
         </div>
-        <span className="fixture-chip">Live Moderation</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          {realtimeConnected && (
+            <span className="realtime-indicator" title="Terhubung langsung ke stream pembaruan server">
+              <span className="realtime-indicator__dot" aria-hidden="true" />
+              <span>Live Stream Aktif</span>
+            </span>
+          )}
+          <span className="fixture-chip">Live Moderation</span>
+        </div>
       </section>
 
       {feedback && (
@@ -670,6 +736,11 @@ export function ModeratorReviewQueue({
                           ⚡ {selectedProposal.source_count ?? 2} Sumber Terkorelasi
                         </span>
                       )}
+                      {selectedProposal.has_discrepancy && (
+                        <span className="discrepancy-badge" title="Terdapat perbedaan data kuantitatif atau status antar sumber">
+                          ⚠️ Perbedaan Keterangan Sumber
+                        </span>
+                      )}
                     </div>
                     <h2>{selectedProposal.title}</h2>
                     <p>
@@ -710,6 +781,18 @@ export function ModeratorReviewQueue({
                     </div>
                   </dl>
                 </section>
+                {selectedProposal.has_discrepancy && selectedProposal.discrepancies && selectedProposal.discrepancies.length > 0 && (
+                  <aside className="discrepancy-callout" role="alert" aria-label="Peringatan inkonsistensi data antar sumber">
+                    <strong>⚠️ Catatan Inkonsistensi Antar Sumber:</strong>
+                    <ul>
+                      {selectedProposal.discrepancies.map((disc, dIdx) => (
+                        <li key={`disc-${dIdx}`}>
+                          <span className="discrepancy-kind-pill">{disc.kind.replaceAll("_", " ")}</span>: {disc.description}
+                        </li>
+                      ))}
+                    </ul>
+                  </aside>
+                )}
 
                 {/* Interactive Incident Map */}
                 <InteractiveIncidentMap
