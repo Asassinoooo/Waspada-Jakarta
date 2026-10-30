@@ -965,7 +965,7 @@
 /* Map-First Floating UI Styles */
 .unified-source-explorer__floating-chips {
   position: absolute;
-  top: 0.75rem;
+  top: 3.75rem;
   right: 0.75rem;
   left: auto;
   z-index: 8;
@@ -976,6 +976,12 @@
   gap: 0.4rem;
   max-width: calc(100% - 12rem);
   pointer-events: auto;
+}
+
+@media (max-width: 760px) {
+  .unified-source-explorer__floating-chips {
+    max-width: calc(100% - 1.5rem);
+  }
 }
 
 .unified-chip {
