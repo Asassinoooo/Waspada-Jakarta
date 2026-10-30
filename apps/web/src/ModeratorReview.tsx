@@ -5,6 +5,9 @@ import { documentedPresentationFixture as fixture } from "./presentation-fixture
 import { MapPanel } from "./MapPanel.js";
 import { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
 export { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
+if (typeof document !== "undefined") {
+  void import("./moderator-review.css");
+}
 
 export interface StoredEvidenceChunk {
   readonly chunk_index: number;
@@ -521,541 +524,6 @@ export function ModeratorReviewQueue({
 
   return (
     <main id="main-content" className="main-shell moderator-page moderator-page--queue">
-      <style>{`
-        .moderator-page--queue {
-          max-width: 86rem;
-          margin: 0 auto;
-        }
-        .moderator-queue-grid {
-          display: grid;
-          grid-template-columns: 360px minmax(0, 1fr);
-          gap: 1.5rem;
-          align-items: start;
-          margin-top: 1rem;
-        }
-        @media (max-width: 1024px) {
-          .moderator-queue-grid {
-            grid-template-columns: minmax(0, 1fr);
-          }
-        }
-        .queue-column {
-          border: 1px solid var(--beton);
-          background: var(--surface);
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-        }
-        .queue-column-header {
-          padding: 1rem;
-          border-bottom: 1px solid var(--beton);
-          background: var(--soft-panel);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .queue-badge-count {
-          font-size: 0.8rem;
-          padding: 0.2rem 0.55rem;
-          border-radius: 999px;
-          background: var(--kali-teal);
-          color: white;
-          font-weight: 600;
-        }
-        .queue-filter-bar {
-          display: flex;
-          gap: 0.35rem;
-          padding: 0.65rem 0.85rem;
-          background: #f8fafc;
-          border-bottom: 1px solid var(--beton);
-          overflow-x: auto;
-          white-space: nowrap;
-        }
-        .queue-filter-btn {
-          font-size: 0.75rem;
-          font-weight: 600;
-          padding: 0.25rem 0.65rem;
-          border-radius: 14px;
-          border: 1px solid #cbd5e1;
-          background: #ffffff;
-          color: #475569;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-        .queue-filter-btn:hover {
-          background: #f1f5f9;
-        }
-        .queue-filter-btn--active {
-          background: var(--kali-teal);
-          color: #ffffff;
-          border-color: var(--kali-teal);
-        }
-        .proposal-queue-list {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-          max-height: 75vh;
-          overflow-y: auto;
-        }
-        .proposal-card-btn {
-          width: 100%;
-          text-align: left;
-          padding: 1rem;
-          border: none;
-          border-bottom: 1px solid var(--beton);
-          background: var(--surface);
-          cursor: pointer;
-          transition: background 0.15s ease;
-          display: block;
-        }
-        .proposal-card-btn:hover {
-          background: var(--hujan-pagi);
-        }
-        .proposal-card-btn--selected {
-          background: var(--hujan-pagi);
-          border-left: 4px solid var(--kali-teal);
-        }
-        .proposal-card-top {
-          display: flex;
-          gap: 0.4rem;
-          margin-bottom: 0.4rem;
-          align-items: center;
-          flex-wrap: wrap;
-        }
-        .incident-badge {
-          font-size: 0.72rem;
-          font-weight: 700;
-          padding: 0.15rem 0.45rem;
-          border-radius: 4px;
-          text-transform: uppercase;
-          letter-spacing: 0.03em;
-        }
-        .incident-badge--flood { background: #E6F7FF; color: #0050B3; border: 1px solid #91CAFF; }
-        .incident-badge--fire { background: #FFF1F0; color: #CF1322; border: 1px solid #FFA39E; }
-        .incident-badge--accident { background: #FFF7E6; color: #D46B08; border: 1px solid #FFD591; }
-        .incident-badge--tree_fall { background: #F6FFED; color: #389E0D; border: 1px solid #B7EB8F; }
-        .incident-badge--crime { background: #F9F0FF; color: #531DAB; border: 1px solid #D3ADF7; }
-        .incident-badge--weather { background: #E6FFFB; color: #08979C; border: 1px solid #87E8DE; }
-        .severity-chip {
-          font-size: 0.72rem;
-          font-weight: 600;
-          padding: 0.1rem 0.4rem;
-          border-radius: 4px;
-        }
-        .severity-chip--critical { background: var(--merah-tanda); color: white; }
-        .severity-chip--high { background: #FA8C16; color: white; }
-        .severity-chip--medium { background: var(--kuning-perhatian); color: #18323A; }
-        .severity-chip--low { background: #D9D9D9; color: #434343; }
-        .multi-source-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-          font-size: 0.7rem;
-          font-weight: 700;
-          padding: 0.15rem 0.5rem;
-          border-radius: 9999px;
-          background: linear-gradient(135deg, #0d9488 0%, #0284c7 100%);
-          color: #ffffff;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-        }
-        .proposal-card-title {
-          display: block;
-          font-size: 0.95rem;
-          font-weight: 600;
-          color: var(--tinta-kota);
-          margin-bottom: 0.35rem;
-          line-height: 1.35;
-        }
-        .proposal-card-meta {
-          display: flex;
-          flex-direction: column;
-          gap: 0.15rem;
-          font-size: 0.8rem;
-          color: var(--quiet-ink);
-        }
-        .evidence-quote-highlight {
-          background: #FFE58F;
-          color: #18323A;
-          font-weight: 600;
-          padding: 0.1rem 0.25rem;
-          border-radius: 2px;
-          box-shadow: 0 0 0 1px #FFD666;
-        }
-        .evidence-quote-highlight--active {
-          background: #5eead4;
-          color: #042f2e;
-          box-shadow: 0 0 0 2px #0d9488;
-        }
-        .review-action-bar {
-          display: flex;
-          gap: 0.75rem;
-          margin-top: 1.5rem;
-          padding: 1.15rem 1.25rem;
-          background: #ffffff;
-          border: 1px solid var(--beton);
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-          align-items: center;
-          justify-content: flex-start;
-          flex-wrap: wrap;
-        }
-        .action-button {
-          padding: 0.65rem 1.25rem;
-          font-size: 0.925rem;
-          font-weight: 600;
-          border-radius: 6px;
-          cursor: pointer;
-          border: 1px solid transparent;
-          transition: all 0.15s ease;
-        }
-        .action-button--approve {
-          background: var(--kali-teal);
-          color: white;
-        }
-        .action-button--approve:hover:not(:disabled) {
-          background: #06635E;
-        }
-        .action-button--reject {
-          background: white;
-          border-color: var(--merah-tanda);
-          color: var(--merah-tanda);
-        }
-        .action-button--reject:hover:not(:disabled) {
-          background: #FFF1F0;
-        }
-        .action-button--investigate {
-          background: white;
-          border-color: var(--quiet-ink);
-          color: var(--tinta-kota);
-        }
-        .action-button--investigate:hover:not(:disabled) {
-          background: var(--soft-panel);
-        }
-        .action-button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        .feedback-banner {
-          padding: 0.75rem 1.25rem;
-          border-radius: 6px;
-          margin-bottom: 1rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-weight: 500;
-        }
-        .feedback-banner--success {
-          background: #F6FFED;
-          border: 1px solid #B7EB8F;
-          color: #237804;
-        }
-        .feedback-banner--error {
-          background: #FFF1F0;
-          border: 1px solid #FFA39E;
-          color: #CF1322;
-        }
-        .feedback-banner--info {
-          background: #E6F7FF;
-          border: 1px solid #91CAFF;
-          color: #096DD9;
-        }
-        .feedback-dismiss {
-          background: none;
-          border: none;
-          font-size: 1.25rem;
-          cursor: pointer;
-          color: inherit;
-          padding: 0 0.25rem;
-        }
-        .modal-backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(10, 25, 30, 0.55);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 9999;
-          padding: 1rem;
-        }
-        .modal-dialog {
-          background: var(--surface);
-          border-radius: 8px;
-          box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-          width: 100%;
-          max-width: 580px;
-          max-height: 90vh;
-          overflow-y: auto;
-          border: 1px solid var(--beton);
-        }
-        .modal-header {
-          padding: 1.25rem 1.5rem;
-          border-bottom: 1px solid var(--beton);
-        }
-        .modal-header h3 {
-          margin: 0 0 0.25rem 0;
-          font-size: 1.25rem;
-        }
-        .modal-subtitle {
-          margin: 0;
-          color: var(--quiet-ink);
-          font-size: 0.875rem;
-        }
-        .modal-body {
-          padding: 1.25rem 1.5rem;
-        }
-        .modal-footer {
-          padding: 1rem 1.5rem;
-          border-top: 1px solid var(--beton);
-          background: var(--hujan-pagi);
-          display: flex;
-          justify-content: flex-end;
-          gap: 0.75rem;
-        }
-        .modal-fieldset {
-          border: none;
-          padding: 0;
-          margin: 0 0 1.25rem 0;
-        }
-        .modal-legend {
-          font-weight: 700;
-          font-size: 0.95rem;
-          margin-bottom: 0.4rem;
-          color: var(--tinta-kota);
-        }
-        .modal-help-text {
-          font-size: 0.85rem;
-          color: var(--quiet-ink);
-          margin: 0 0 0.8rem 0;
-        }
-        .label-choice-card {
-          display: flex;
-          gap: 0.75rem;
-          padding: 0.75rem 1rem;
-          border: 1px solid var(--beton);
-          border-radius: 6px;
-          margin-bottom: 0.6rem;
-          cursor: pointer;
-          align-items: flex-start;
-          transition: all 0.15s ease;
-        }
-        .label-choice-card input[type="radio"] {
-          margin-top: 0.2rem;
-        }
-        .label-choice-card--selected {
-          border-color: var(--kali-teal);
-          background: #E6FFFB;
-        }
-        .label-choice-text strong {
-          display: block;
-          font-size: 0.9rem;
-          color: var(--tinta-kota);
-          margin-bottom: 0.15rem;
-        }
-        .label-choice-text span {
-          display: block;
-          font-size: 0.8rem;
-          color: var(--quiet-ink);
-          line-height: 1.35;
-        }
-        .modal-input-group label {
-          display: block;
-          font-size: 0.875rem;
-          font-weight: 600;
-          margin-bottom: 0.35rem;
-          color: var(--tinta-kota);
-        }
-        .modal-text-input {
-          width: 100%;
-          box-sizing: border-box;
-          padding: 0.6rem 0.75rem;
-          border: 1px solid var(--beton);
-          border-radius: 4px;
-          font-size: 0.9rem;
-          font-family: inherit;
-        }
-        .modal-btn {
-          padding: 0.6rem 1.15rem;
-          font-size: 0.9rem;
-          font-weight: 600;
-          border-radius: 6px;
-          cursor: pointer;
-          border: 1px solid transparent;
-        }
-        .modal-btn--cancel {
-          background: white;
-          border-color: var(--beton);
-          color: var(--tinta-kota);
-        }
-        .modal-btn--confirm {
-          background: var(--kali-teal);
-          color: white;
-        }
-        .modal-btn--confirm:hover:not(:disabled) {
-          background: #06635E;
-        }
-        .moderator-empty-queue {
-          padding: 3rem 1.5rem;
-          text-align: center;
-          border: 1px dashed var(--beton);
-          background: var(--surface);
-          border-radius: 8px;
-          margin-top: 1rem;
-        }
-        .empty-queue-icon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 3.5rem;
-          height: 3.5rem;
-          border-radius: 50%;
-          background: #F6FFED;
-          color: #389E0D;
-          font-size: 1.75rem;
-          font-weight: bold;
-          margin-bottom: 1rem;
-          border: 2px solid #B7EB8F;
-        }
-        .moderator-empty-queue h3 {
-          margin: 0 0 0.5rem 0;
-          color: var(--tinta-kota);
-        .moderator-empty-queue p {
-          margin: 0 0 1.25rem 0;
-          color: var(--quiet-ink);
-        }
-        .chunk-article {
-          border: 1px solid var(--beton);
-          background: var(--surface);
-          border-radius: 6px;
-          padding: 0.85rem;
-          margin-bottom: 0.75rem;
-        }
-        .chunk-header {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.825rem;
-          color: var(--quiet-ink);
-          margin-bottom: 0.5rem;
-        }
-        .quote-card {
-          border: 1px solid var(--beton);
-          background: var(--surface);
-          border-radius: 6px;
-          padding: 0.85rem;
-          margin-bottom: 0.75rem;
-        }
-        .quote-card-header {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.825rem;
-          margin-bottom: 0.4rem;
-        }
-        .quote-ref-badge {
-          background: var(--soft-panel);
-          padding: 0.15rem 0.4rem;
-          border-radius: 4px;
-          font-family: monospace;
-          font-size: 0.75rem;
-        }
-        .quote-status-badge {
-          color: #389E0D;
-          font-weight: 600;
-        }
-        .claim-card-row {
-          border: 1px solid var(--beton);
-          background: var(--surface);
-          border-radius: 6px;
-          padding: 0.85rem;
-          margin-bottom: 0.75rem;
-          cursor: pointer;
-          transition: border-color 0.15s ease, box-shadow 0.15s ease;
-        }
-        .claim-card-row:hover {
-          border-color: var(--kali-teal);
-        }
-        .claim-card-row--active {
-          border-color: var(--kali-teal);
-          box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.25);
-          background: #f0fdfa;
-        }
-        .claim-card-top {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.8rem;
-          margin-bottom: 0.4rem;
-          align-items: center;
-        }
-        .claim-status-badge {
-          padding: 0.15rem 0.45rem;
-          border-radius: 4px;
-          background: #FFF7E6;
-          color: #D46B08;
-          font-weight: 600;
-          font-size: 0.75rem;
-        }
-        .corroborated-badge {
-          border-radius: 4px;
-          background: #ecfdf5;
-          color: #047857;
-          border: 1px solid #a7f3d0;
-          font-weight: 700;
-          font-size: 0.75rem;
-        }
-        .claim-quote-box {
-          background: var(--hujan-pagi);
-          border-left: 3px solid var(--kali-teal);
-          padding: 0.5rem 0.75rem;
-          margin-top: 0.5rem;
-          font-size: 0.875rem;
-        }
-        .evidence-floating-sheet {
-          margin-top: 1.25rem;
-          background: #ffffff;
-          border: 1px solid var(--beton);
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        }
-        .evidence-floating-sheet-header {
-          padding: 0.85rem 1.25rem;
-          background: #f8fafc;
-          border-bottom: 1px solid var(--beton);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .evidence-floating-sheet-body {
-          padding: 1.25rem;
-        }
-        .facility-filter-pill {
-          background: transparent;
-          border: 1px solid transparent;
-          color: #94a3b8;
-          font-size: 0.75rem;
-          padding: 2px 8px;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-        .facility-filter-pill:hover {
-          color: #ffffff;
-        }
-        .facility-filter-pill--active {
-          background: rgba(255, 255, 255, 0.2);
-          color: #ffffff;
-          border-color: rgba(255, 255, 255, 0.3);
-        }
-        .map-tool-btn {
-          background: rgba(255, 255, 255, 0.15);
-          color: #ffffff;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 4px;
-          padding: 2px 8px;
-          font-size: 0.85rem;
-          cursor: pointer;
-        }
-        .map-tool-btn:hover {
-          background: rgba(255, 255, 255, 0.25);
-        }
-      `}</style>
 
       <section className="review-heading" aria-labelledby="review-title">
         <div>
@@ -1195,8 +663,8 @@ export function ModeratorReviewQueue({
                 {/* Header Identitas Proposal */}
                 <section className="review-case-heading" aria-label="Identitas proposal insiden">
                   <div>
-                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.25rem" }}>
-                      <p className="section-kicker" style={{ margin: 0 }}>Kandidat Terpilih</p>
+                    <div className="review-case-kicker-row">
+                      <p className="section-kicker">Kandidat Terpilih</p>
                       {isProposalMultiSource(selectedProposal) && (
                         <span className="multi-source-badge">
                           ⚡ {selectedProposal.source_count ?? 2} Sumber Terkorelasi
@@ -1261,10 +729,10 @@ export function ModeratorReviewQueue({
                 >
                   <header className="evidence-floating-sheet-header">
                     <div>
-                      <h3 id="evidence-reader-title" style={{ margin: 0, fontSize: "1.05rem" }}>
+                      <h3 id="evidence-reader-title" className="evidence-reader-heading">
                         Pembaca Bukti Sumber
                       </h3>
-                      <p style={{ margin: "0.15rem 0 0 0", fontSize: "0.8rem", color: "var(--quiet-ink)" }}>
+                      <p className="evidence-reader-subheading">
                         Verifikasi Grounding L2 · Klaim &amp; Dokumen Sumber Asli
                       </p>
                     </div>
@@ -1281,7 +749,7 @@ export function ModeratorReviewQueue({
                       <section className="review-evidence" aria-label="Teks dokumen sumber">
                         <header className="review-column-heading">
                           <p className="section-kicker">Kutipan Dokumen Asli</p>
-                          <h4 style={{ margin: "0.2rem 0 0.75rem 0", fontSize: "0.95rem" }}>
+                          <h4 className="review-column-subheading">
                             Potongan Teks Dokumen
                           </h4>
                         </header>
@@ -1348,7 +816,7 @@ export function ModeratorReviewQueue({
                               >
                                 <header className="claim-card-top">
                                   <span className="claim-ref-badge">ID: {claim.claim_id}</span>
-                                  <div style={{ display: "flex", gap: "0.3rem" }}>
+                                  <div className="claim-badges-group">
                                     {claim.is_corroborated && (
                                       <span className="corroborated-badge">
                                         ✓ Terkonfirmasi Independen
@@ -1363,13 +831,7 @@ export function ModeratorReviewQueue({
                                 <div className="claim-quote-box">
                                   <strong>Kutipan: </strong>
                                   <em>"{claim.quote_text}"</em>
-                                  <div
-                                    style={{
-                                      marginTop: "0.25rem",
-                                      color: "var(--quiet-ink)",
-                                      fontSize: "0.78rem",
-                                    }}
-                                  >
+                                  <div className="claim-quote-meta">
                                     Ref Bukti: {claim.evidence_ref_id} · {claim.support_assessment}
                                   </div>
                                 </div>
@@ -1561,7 +1023,7 @@ export function ModeratorReviewQueue({
         </div>
       )}
 
-      <div className="review-footer" style={{ marginTop: "2rem" }}>
+      <div className="review-footer">
         <a className="text-link" href="#jelajah">
           Kembali ke jelajah
         </a>
