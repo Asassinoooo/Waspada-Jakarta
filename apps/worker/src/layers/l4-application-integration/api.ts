@@ -55,7 +55,6 @@ export interface WorkerEnvironment {
   FRESHNESS_DUE_SCHEDULER_ENABLED?: string;
   PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
 }
-
 const readModel = new PublicReadModel(noConfiguredSources);
 const maxBriefingRequestBytes = 256 * 1024;
 

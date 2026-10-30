@@ -283,6 +283,34 @@
   border-color: #879692;
   background: #FFFFFF;
 }
+.admin-source-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.admin-source-status-badge--online {
+  background: var(--soft-panel, #EAF0ED);
+  color: var(--kali-teal, #087B75);
+  border: 1px solid var(--kali-teal, #087B75);
+}
+
+.admin-source-status-badge--offline {
+  background: #fee2e2;
+  color: var(--merah-tanda, #A7433B);
+  border: 1px solid var(--merah-tanda, #A7433B);
+}
+
+.admin-source-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+}
 
 .admin-provenance {
   display: grid;

@@ -41,7 +41,7 @@ export interface EventProposalDto {
   readonly schema_version: "2.0";
   readonly proposal_id: string;
   readonly title: string;
-  readonly incident_type: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather";
+  readonly incident_type: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | (string & {});
   readonly severity: "low" | "medium" | "high" | "critical";
   readonly event_time: {
     readonly precision: "exact" | "date" | "range" | "unknown";
@@ -56,8 +56,14 @@ export interface EventProposalDto {
     readonly support_assessment: "supported";
     readonly quote_text: string;
     readonly evidence_ref_id: string;
+    readonly is_corroborated?: boolean;
   }[];
   readonly proposed_at: string;
+  readonly is_multi_source?: boolean;
+  readonly source_count?: number;
+  readonly has_discrepancy?: boolean;
+  readonly discrepancies?: readonly unknown[];
+  readonly caveats?: readonly string[];
 }
 
 /** L4 Moderation Frozen Contract: ModeratorDecisionCommand */

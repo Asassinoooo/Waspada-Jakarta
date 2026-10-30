@@ -31,43 +31,61 @@ import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-dat
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
+const activeRevisions = new Map<string, StoredReportRevision>();
 const activeProposals = new Map<string, EventProposalDto>();
 const activeChunks = new Map<string, readonly StoredEvidenceChunk[]>();
+
+function recomputeCorrelatedProposals(): void {
+  const allRevisions = Array.from(activeRevisions.values());
+  if (allRevisions.length === 0) return;
+  const clusters = correlateSourceReports(allRevisions);
+  activeProposals.clear();
+  activeChunks.clear();
+  for (const cluster of clusters) {
+    const prop = generateCorrelatedProposal(cluster);
+    if (prop) {
+      activeProposals.set(prop.proposal_id, prop);
+      const proposalChunks = cluster.reports.flatMap((r) => r.chunks);
+      activeChunks.set(prop.proposal_id, proposalChunks);
+    }
+  }
+}
+
 const webhookIngest = createWebhookIngestHandler({
   broadcaster: eventBroadcaster,
+  activeReports: () => Array.from(activeRevisions.values()),
+  onRevisionCreated: (revision) => {
+    activeRevisions.set(revision.report_revision_id, revision);
+    recomputeCorrelatedProposals();
+  },
   onProposalCreated: (proposal, chunks) => {
-    activeProposals.set(proposal.proposal_id, proposal);
-    activeChunks.set(proposal.proposal_id, chunks);
+    recomputeCorrelatedProposals();
+    if (!activeProposals.has(proposal.proposal_id)) {
+      activeProposals.set(proposal.proposal_id, proposal);
+      activeChunks.set(proposal.proposal_id, chunks);
+    }
   },
 });
 
 async function syncLivePipelineProposals(): Promise<void> {
-  const allRevisions: StoredReportRevision[] = [];
+  const newRevisions: StoredReportRevision[] = [];
   try {
     const pbResult = await createPetaBencanaPollRuntime().poll();
-    allRevisions.push(...pbResult.revisions);
+    newRevisions.push(...pbResult.revisions);
   } catch {}
   try {
     const bmkgResult = await createBmkgPollRuntime().poll();
-    allRevisions.push(...bmkgResult.revisions);
+    newRevisions.push(...bmkgResult.revisions);
   } catch {}
   try {
     const newsResult = await createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS }).poll();
-    allRevisions.push(...newsResult.revisions);
+    newRevisions.push(...newsResult.revisions);
   } catch {}
-  if (allRevisions.length > 0) {
-    activeProposals.clear();
-    activeChunks.clear();
-    const clusters = correlateSourceReports(allRevisions);
-    for (const cluster of clusters) {
-      const prop = generateCorrelatedProposal(cluster);
-      if (prop) {
-        activeProposals.set(prop.proposal_id, prop);
-        // Chunks matching the claims in this proposal
-        const proposalChunks = cluster.reports.flatMap((r) => r.chunks);
-        activeChunks.set(prop.proposal_id, proposalChunks);
-      }
+  if (newRevisions.length > 0) {
+    for (const rev of newRevisions) {
+      activeRevisions.set(rev.report_revision_id, rev);
     }
+    recomputeCorrelatedProposals();
   }
 }
 

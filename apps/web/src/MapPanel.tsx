@@ -88,7 +88,12 @@ function renderGeometry(geometry: PublicGeoJSONGeometry): ReactNode {
   switch (geometry.type) {
     case "Point": {
       const [cx, cy] = projectCRS84Position(geometry.coordinates);
-      return <circle className="geo-feature__point" cx={cx} cy={cy} r="7" />;
+      return (
+        <g className="geo-feature__pin-group">
+          <circle className="geo-feature__pulse" cx={cx} cy={cy} r="16" fill="none" stroke="var(--kali-teal)" strokeWidth="2" opacity="0.6" />
+          <circle className="geo-feature__point" cx={cx} cy={cy} r="8" />
+        </g>
+      );
     }
     case "MultiPoint":
       return geometry.coordinates.map((position, index) => {
@@ -289,7 +294,15 @@ export function MapPanel(props: MapPanelProps) {
           </div>
         ) : (
           <>
-            <div className="map-canvas">
+            <div className="map-canvas map-canvas--osm">
+              <div className="map-canvas__tiles" aria-hidden="true">
+                <img src="https://tile.openstreetmap.org/11/1631/1058.png" alt="" />
+                <img src="https://tile.openstreetmap.org/11/1632/1058.png" alt="" />
+                <img src="https://tile.openstreetmap.org/11/1633/1058.png" alt="" />
+                <img src="https://tile.openstreetmap.org/11/1631/1059.png" alt="" />
+                <img src="https://tile.openstreetmap.org/11/1632/1059.png" alt="" />
+                <img src="https://tile.openstreetmap.org/11/1633/1059.png" alt="" />
+              </div>
               <svg
                 className="geojson-map"
                 viewBox="0 0 500 500"

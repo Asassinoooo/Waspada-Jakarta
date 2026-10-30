@@ -80,13 +80,13 @@ test("validateInboundIncidentEvent checks required fields and formats", () => {
     false,
   );
 
-  // Invalid category
+  // Empty category
   assert.equal(
     validateInboundIncidentEvent({
       source_id: "tmc-metro",
       title: "Banjir",
       text: "Banjir setinggi 50cm merendam jalan",
-      category: "invalid_category",
+      category: "",
     }).valid,
     false,
   );
@@ -113,6 +113,16 @@ test("validateInboundIncidentEvent checks required fields and formats", () => {
   });
   assert.equal(valid.valid, true);
   assert.equal(valid.event?.title, "Pohon Tumbang di Semanggi");
+  // Flexible descriptive category
+  const flexibleEvent = validateInboundIncidentEvent({
+    source_id: "source-dishub",
+    title: "Gangguan Persinyalan KRL",
+    text: "Gangguan persinyalan di Stasiun Manggarai menyebabkan antrean KRL.",
+    category: "transport_road_incidents",
+    severity: "high",
+  });
+  assert.equal(flexibleEvent.valid, true);
+  assert.equal(flexibleEvent.event?.category, "transport_road_incidents");
 });
 
 test("webhookIngestHandler rejects non-POST requests with 405 Method Not Allowed", async () => {
@@ -357,6 +367,7 @@ test("inbound event correlates with active reports when spatial and temporal ove
       severity: "medium",
       coordinates: [106.815, -6.265],
       location_hint: "Kemang Raya",
+      timestamp: "2026-10-30T09:40:00Z",
     }),
   });
 

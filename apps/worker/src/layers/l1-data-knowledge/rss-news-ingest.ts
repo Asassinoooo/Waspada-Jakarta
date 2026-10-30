@@ -68,6 +68,7 @@ export interface ClassifiedNewsItem {
   readonly pubDate: string | null;
   readonly matchedToponyms: readonly string[];
   readonly matchedKeywords: readonly string[];
+  readonly isLikelyRelevant: boolean;
 }
 
 export interface PreparedNewsReportRevision {
@@ -161,10 +162,6 @@ export function parseAndFilterNewsRss(
     }
 
     const { isRelevant, matchedToponyms, matchedKeywords } = classifyNewsItem(rawItem);
-    if (!isRelevant) {
-      rejectedCount += 1;
-      continue;
-    }
 
     const guid = rawItem.guid ?? rawItem.link;
     const classified: ClassifiedNewsItem = {
@@ -174,6 +171,7 @@ export function parseAndFilterNewsRss(
       pubDate: rawItem.pubDate,
       matchedToponyms,
       matchedKeywords,
+      isLikelyRelevant: isRelevant,
     };
     items.push(classified);
 

@@ -119,11 +119,12 @@ test("parseAndFilterNewsRss extracts valid report_revisions and evidence_chunks 
 
   assert.ok("totalParsed" in result);
   assert.equal(result.totalParsed, 3);
-  assert.equal(result.matchedCount, 2);
-  assert.equal(result.rejectedCount, 1);
+  // All 3 technically valid items are preserved for downstream interpretation
+  assert.equal(result.matchedCount, 3);
+  assert.equal(result.rejectedCount, 0);
 
   // Inspect generated L1 report revisions
-  assert.equal(result.revisions.length, 2);
+  assert.equal(result.revisions.length, 3);
   const rev1 = result.revisions[0]!;
   assert.equal(rev1.source_id, "source-antara-metro");
   assert.equal(rev1.canonical_url, "https://www.antaranews.com/berita/5001/kebakaran-tebet");
@@ -247,4 +248,51 @@ test("parseAndFilterNewsRss respects NEWS_MAX_AGE_HOURS env variable and NODE_EN
       process.env.NODE_ENV = origNodeEnv;
     }
   }
+});
+test("parseAndFilterNewsRss does not reject reports lacking explicit Jakarta toponym or incident keyword in title", () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Metropolitan Feed</title>
+    <link>https://example.com/feed</link>
+    <item>
+      <!-- Title has no Jakarta toponym (e.g. mentions local street or generic term) -->
+      <title>Penanganan genangan air di Jalan Melati dipercepat petugas</title>
+      <link>https://example.com/berita/7001</link>
+      <guid>feed-7001</guid>
+      <pubDate>Mon, 26 Oct 2026 07:00:00 +0700</pubDate>
+    </item>
+    <item>
+      <!-- Title has no predefined incident keyword (descriptive phrasing) -->
+      <title>Kondisi jalur utama simpang lima terpantau padat merayap dan terhambat</title>
+      <link>https://example.com/berita/7002</link>
+      <guid>feed-7002</guid>
+      <pubDate>Mon, 26 Oct 2026 07:15:00 +0700</pubDate>
+    </item>
+    <item>
+      <!-- Title with uncertain relevance reaches downstream interpretation -->
+      <title>Warga evakuasi barang berharga saat air mulai memasuki pekarangan</title>
+      <link>https://example.com/berita/7003</link>
+      <guid>feed-7003</guid>
+      <pubDate>Mon, 26 Oct 2026 07:30:00 +0700</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+  const retrievedAt = "2026-10-26T08:00:00Z";
+  const result = parseAndFilterNewsRss(xml, retrievedAt, "source-metro-test");
+
+  assert.ok("totalParsed" in result);
+  assert.equal(result.totalParsed, 3);
+  assert.equal(result.matchedCount, 3, "All 3 reports must be preserved for AI downstream interpretation");
+  assert.equal(result.rejectedCount, 0);
+
+  // Verify provenance and source metadata
+  assert.equal(result.revisions.length, 3);
+  const rev = result.revisions[0]!;
+  assert.equal(rev.source_id, "source-metro-test");
+  assert.equal(rev.canonical_url, "https://example.com/berita/7001");
+  assert.equal(rev.source_revision_key, "feed-7001");
+  assert.ok(rev.permitted_text.includes("Penanganan genangan air di Jalan Melati"));
+  assert.ok(rev.content_hash.length === 64);
 });

@@ -220,6 +220,9 @@ function generateIndonesianTitle(
     case "weather":
       categoryName = "Cuaca Ekstrem";
       break;
+    default:
+      categoryName = String(category).replace(/_/g, " ");
+      break;
   }
   return `${categoryName} di ${locationLabel}`;
 }
@@ -843,9 +846,12 @@ export function generateCorrelatedProposal(
     });
   }
 
-  const caveats = hasDiscrepancy
-    ? discrepancies.map((d) => `Perbedaan keterangan sumber (${d.kind}): ${d.description}`)
-    : [];
+  const caveats = [
+    ...(hasDiscrepancy
+      ? discrepancies.map((d) => `Perbedaan keterangan sumber (${d.kind}): ${d.description}`)
+      : []),
+    ...(cluster.uncertainty_notes ?? []),
+  ];
 
   const proposed_at =
     options?.proposedAt ?? cluster.reports[0]?.retrieved_at ?? new Date().toISOString();

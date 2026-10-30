@@ -26,7 +26,7 @@ export interface StoredReportRevision {
   readonly chunks: readonly StoredEvidenceChunk[];
 }
 
-export type IncidentCategory = "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather";
+export type IncidentCategory = "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | (string & {});
 export type IncidentSeverity = "low" | "medium" | "high" | "critical";
 
 export interface EventProposalClaimDto {
@@ -59,332 +59,25 @@ export interface ProposalEngineOptions {
   readonly proposedAt?: string;
 }
 
-/**
- * Bounding box envelope for DKI Jakarta and surrounding urban area.
- * [minLng, minLat, maxLng, maxLat]
- */
-export const JAKARTA_ENVELOPE = {
-  west: 106.32,
-  south: -6.40,
-  east: 106.98,
-  north: -5.16,
-} as const;
+import {
+  JAKARTA_ENVELOPE,
+  JAKARTA_GAZETTEER,
+  type GazetteerPlace,
+  haversineDistanceMeters,
+  isCoordinateInJakarta,
+  findGazetteerPlace,
+  extractCoordinatesHint,
+} from "../l1-data-knowledge/geographic-gazetteer.js";
 
-export interface GazetteerPlace {
-  readonly name: string;
-  readonly label: string;
-  readonly coordinates: readonly [longitude: number, latitude: number];
-  readonly patterns: readonly RegExp[];
-}
-
-/**
- * Gazetteer mapping Jakarta regions, kecamatans, and prominent corridors
- * to representative WGS84 [longitude, latitude] coordinates.
- *
- * Precision micro-landmarks are placed at the beginning of the array so
- * exact corridors/interchanges take precedence over broad subdistricts.
- */
-export const JAKARTA_GAZETTEER: readonly GazetteerPlace[] = [
-  // ==========================================
-  // High-Precision Corridors & Micro-Landmarks (Priority Matches)
-  // ==========================================
-  // Tollways & Interchanges
-  {
-    name: "Simpang Susun Semanggi",
-    label: "Simpang Susun Semanggi, Jakarta Selatan",
-    coordinates: [106.8156, -6.2201],
-    patterns: [/\bsimpang\s+susun\s+semanggi\b/i, /\bsemanggi\b/i],
-  },
-  {
-    name: "Tol Cawang Interchange",
-    label: "Tol Cawang Interchange, Jakarta Timur",
-    coordinates: [106.8710, -6.2420],
-    patterns: [/\btol\s+cawang\s+interchange\b/i, /\bsimpang\s+susun\s+cawang\b/i, /\binterchange\s+cawang\b/i],
-  },
-  {
-    name: "Tomang Interchange / Slipi",
-    label: "Tomang Interchange, Jakarta Barat",
-    coordinates: [106.7940, -6.1770],
-    patterns: [/\btomang\s+interchange\b/i, /\bsimpang\s+susun\s+tomang\b/i, /\binterchange\s+tomang\b/i],
-  },
-  {
-    name: "Tol JORR TB Simatupang",
-    label: "Tol JORR TB Simatupang, Jakarta Selatan",
-    coordinates: [106.8350, -6.2950],
-    patterns: [/\b(?:tol\s+)?jorr\s+tb\s+simatupang\b/i, /\btol\s+tb\s+simatupang\b/i, /\bjorr\s+simatupang\b/i],
-  },
-  {
-    name: "Tol Jagorawi Cawang-Cibubur",
-    label: "Tol Jagorawi Cawang-Cibubur, Jakarta Timur",
-    coordinates: [106.8850, -6.3100],
-    patterns: [/\btol\s+jagorawi(?:\s+cawang[- ]cibubur)?\b/i, /\bjagorawi\b/i],
-  },
-  {
-    name: "Tol Pelabuhan / Pluit Interchange",
-    label: "Tol Pelabuhan Pluit Interchange, Jakarta Utara",
-    coordinates: [106.7860, -6.1240],
-    patterns: [/\btol\s+pelabuhan\b/i, /\bpluit\s+interchange\b/i, /\bsimpang\s+susun\s+pluit\b/i],
-  },
-  {
-    name: "Tol Wiyoto Wiyono Cempaka Putih",
-    label: "Tol Wiyoto Wiyono Cempaka Putih, Jakarta Pusat",
-    coordinates: [106.8780, -6.1730],
-    patterns: [/\btol\s+wiyoto\s+wiyono\b/i, /\binterchange\s+cempaka\s+putih\b/i],
-  },
-  {
-    name: "Tol Kembangan Interchange",
-    label: "Tol Kembangan Interchange, Jakarta Barat",
-    coordinates: [106.7380, -6.1870],
-    patterns: [/\b(?:tol\s+)?kembangan\s+interchange\b/i, /\bsimpang\s+susun\s+kembangan\b/i],
-  },
-  {
-    name: "Tol TB Simatupang Cilandak",
-    label: "Tol TB Simatupang Cilandak, Jakarta Selatan",
-    coordinates: [106.8020, -6.2940],
-    patterns: [/\btol\s+cilandak\b/i, /\btol\s+simatupang\b/i],
-  },
-
-  // Underpasses & Flyovers
-  {
-    name: "Underpass Dukuh Atas",
-    label: "Underpass Dukuh Atas, Jakarta Pusat",
-    coordinates: [106.8210, -6.2010],
-    patterns: [/\bunderpass\s+dukuh\s+atas\b/i, /\bterowongan\s+dukuh\s+atas\b/i],
-  },
-  {
-    name: "Underpass Casablanca",
-    label: "Underpass Casablanca, Jakarta Selatan",
-    coordinates: [106.8380, -6.2230],
-    patterns: [/\bunderpass\s+casablanca\b/i, /\bterowongan\s+casablanca\b/i, /\bcasablanca\b/i],
-  },
-  {
-    name: "Underpass Senen",
-    label: "Underpass Senen, Jakarta Pusat",
-    coordinates: [106.8430, -6.1780],
-    patterns: [/\bunderpass\s+senen\b/i, /\bterowongan\s+senen\b/i],
-  },
-  {
-    name: "Underpass Mampang-Kuningan",
-    label: "Underpass Mampang-Kuningan, Jakarta Selatan",
-    coordinates: [106.8280, -6.2420],
-    patterns: [/\bunderpass\s+mampang(?:-kuningan)?\b/i, /\bterowongan\s+mampang\b/i],
-  },
-  {
-    name: "Underpass Matraman",
-    label: "Underpass Matraman, Jakarta Timur",
-    coordinates: [106.8610, -6.2020],
-    patterns: [/\bunderpass\s+matraman\b/i, /\bterowongan\s+matraman\b/i],
-  },
-  {
-    name: "Underpass Kebayoran Lama",
-    label: "Underpass Kebayoran Lama, Jakarta Selatan",
-    coordinates: [106.7770, -6.2370],
-    patterns: [/\bunderpass\s+kebayoran\s+lama\b/i, /\bterowongan\s+kebayoran\s+lama\b/i],
-  },
-  {
-    name: "Underpass Pramuka",
-    label: "Underpass Pramuka, Jakarta Timur",
-    coordinates: [106.8650, -6.1950],
-    patterns: [/\bunderpass\s+pramuka\b/i, /\bterowongan\s+pramuka\b/i],
-  },
-  {
-    name: "Underpass Kuningan",
-    label: "Underpass Kuningan, Jakarta Selatan",
-    coordinates: [106.8270, -6.2350],
-    patterns: [/\bunderpass\s+kuningan\b/i, /\bterowongan\s+kuningan\b/i],
-  },
-  {
-    name: "Flyover Roxy / Cideng",
-    label: "Flyover Roxy, Jakarta Barat",
-    coordinates: [106.8080, -6.1660],
-    patterns: [/\bflyover\s+roxy\b/i, /\bflyover\s+cideng\b/i, /\bjembatan\s+layang\s+roxy\b/i],
-  },
-  {
-    name: "Flyover Pancoran",
-    label: "Flyover Pancoran, Jakarta Selatan",
-    coordinates: [106.8430, -6.2430],
-    patterns: [/\bflyover\s+pancoran\b/i, /\bjembatan\s+layang\s+pancoran\b/i],
-  },
-  {
-    name: "Flyover Antasari",
-    label: "Flyover Antasari, Jakarta Selatan",
-    coordinates: [106.8050, -6.2620],
-    patterns: [/\bflyover\s+antasari\b/i, /\bjlnt\s+antasari\b/i, /\bjembatan\s+layang\s+antasari\b/i, /\bantasari\b/i],
-  },
-  {
-    name: "Flyover Klender",
-    label: "Flyover Klender, Jakarta Timur",
-    coordinates: [106.8990, -6.2140],
-    patterns: [/\bflyover\s+klender\b/i, /\bjembatan\s+layang\s+klender\b/i],
-  },
-  {
-    name: "Flyover Saharjo Tebet",
-    label: "Flyover Saharjo, Jakarta Selatan",
-    coordinates: [106.8510, -6.2190],
-    patterns: [/\bflyover\s+saharjo\b/i, /\bjembatan\s+layang\s+saharjo\b/i],
-  },
-  {
-    name: "Flyover Rawamangun",
-    label: "Flyover Rawamangun, Jakarta Timur",
-    coordinates: [106.8840, -6.1930],
-    patterns: [/\bflyover\s+rawamangun\b/i, /\bjembatan\s+layang\s+rawamangun\b/i],
-  },
-
-  // Transit Hubs & Rail Crossings
-  {
-    name: "Stasiun Manggarai Transit",
-    label: "Stasiun Manggarai Transit, Jakarta Selatan",
-    coordinates: [106.8500, -6.2098],
-    patterns: [/\b(?:stasiun|st\.)\s+manggarai\b/i, /\bmanggarai\s+(?:transit|hub)\b/i, /\bmanggarai\b/i],
-  },
-  {
-    name: "Stasiun Tanah Abang Transit",
-    label: "Stasiun Tanah Abang Transit, Jakarta Pusat",
-    coordinates: [106.8110, -6.1856],
-    patterns: [/\b(?:stasiun|st\.)\s+tanah\s+abang\b/i],
-  },
-  {
-    name: "Stasiun Jatinegara",
-    label: "Stasiun Jatinegara, Jakarta Timur",
-    coordinates: [106.8670, -6.2150],
-    patterns: [/\b(?:stasiun|st\.)\s+jatinegara\b/i],
-  },
-  {
-    name: "Halte CSW / ASEAN MRT Interchange",
-    label: "Halte CSW ASEAN MRT, Jakarta Selatan",
-    coordinates: [106.7985, -6.2395],
-    patterns: [/\bhalte\s+csw\b/i, /\bcsw\s+asean\b/i, /\bmrt\s+asean\b/i, /\binterchange\s+csw\b/i, /\bsimpang\s+csw\b/i, /\bcsw\b/i],
-  },
-  {
-    name: "Halte Bundaran HI Astra",
-    label: "Halte Bundaran HI Astra, Jakarta Pusat",
-    coordinates: [106.8230, -6.1930],
-    patterns: [/\bhalte\s+bundaran\s+hi\b/i, /\bmrt\s+bundaran\s+hi\b/i, /\bbundaran\s+hi\s+astra\b/i],
-  },
-  {
-    name: "Halte Harmoni Central",
-    label: "Halte Harmoni Central, Jakarta Pusat",
-    coordinates: [106.8190, -6.1640],
-    patterns: [/\bhalte\s+harmoni\b/i, /\bharmoni\s+central\b/i, /\bcentral\s+harmoni\b/i],
-  },
-  {
-    name: "Terminal Bus Kampung Rambutan",
-    label: "Terminal Kampung Rambutan, Jakarta Timur",
-    coordinates: [106.8760, -6.3090],
-    patterns: [/\bterminal\s+(?:bus\s+)?kampung\s+rambutan\b/i, /\bkampung\s+rambutan\b/i],
-  },
-  {
-    name: "Terminal Bus Pulo Gebang",
-    label: "Terminal Pulo Gebang, Jakarta Timur",
-    coordinates: [106.9530, -6.2120],
-    patterns: [/\bterminal\s+(?:bus\s+)?pulo\s*gebang\b/i, /\bpulo\s*gebang\b/i],
-  },
-  {
-    name: "Terminal Bus Kalideres",
-    label: "Terminal Kalideres, Jakarta Barat",
-    coordinates: [106.7020, -6.1550],
-    patterns: [/\bterminal\s+(?:bus\s+)?kalideres\b/i],
-  },
-  {
-    name: "Stasiun Pasar Senen",
-    label: "Stasiun Pasar Senen, Jakarta Pusat",
-    coordinates: [106.8440, -6.1740],
-    patterns: [/\b(?:stasiun|st\.)\s+(?:pasar\s+)?senen\b/i],
-  },
-  {
-    name: "Stasiun Sudirman Transit",
-    label: "Stasiun Sudirman Transit, Jakarta Pusat",
-    coordinates: [106.8220, -6.2020],
-    patterns: [/\b(?:stasiun|st\.)\s+sudirman\b/i, /\bmrt\s+dukuh\s+atas\b/i],
-  },
-  {
-    name: "Halte Tosari",
-    label: "Halte Tosari, Jakarta Pusat",
-    coordinates: [106.8225, -6.1980],
-    patterns: [/\bhalte\s+tosari\b/i],
-  },
-  {
-    name: "Halte Monas MRT",
-    label: "Halte Monas MRT, Jakarta Pusat",
-    coordinates: [106.8240, -6.1780],
-    patterns: [/\bhalte\s+monas\b/i, /\bmrt\s+monas\b/i],
-  },
-
-  // Regional & District Fallbacks
-  // Jakarta Pusat
-  { name: "Senen", label: "Senen, Jakarta Pusat", coordinates: [106.8442, -6.1823], patterns: [/\b(?:pasar\s+)?senen\b/i] },
-  { name: "Gambir", label: "Gambir, Jakarta Pusat", coordinates: [106.8302, -6.1754], patterns: [/\bgambir\b/i] },
-  { name: "Sawah Besar", label: "Sawah Besar, Jakarta Pusat", coordinates: [106.8322, -6.1550], patterns: [/\bsawah\s+besar\b/i] },
-  { name: "Kemayoran", label: "Kemayoran, Jakarta Pusat", coordinates: [106.8550, -6.1600], patterns: [/\bkemayoran\b/i] },
-  { name: "Cempaka Putih", label: "Cempaka Putih, Jakarta Pusat", coordinates: [106.8680, -6.1830], patterns: [/\bcempaka\s+putih\b/i] },
-  { name: "Menteng", label: "Menteng, Jakarta Pusat", coordinates: [106.8320, -6.1960], patterns: [/\bmenteng\b/i] },
-  { name: "Tanah Abang", label: "Tanah Abang, Jakarta Pusat", coordinates: [106.8150, -6.1900], patterns: [/\btanah\s+abang\b/i] },
-  { name: "Johar Baru", label: "Johar Baru, Jakarta Pusat", coordinates: [106.8580, -6.1850], patterns: [/\bjohar\s+baru\b/i] },
-  { name: "Harmoni", label: "Harmoni, Jakarta Pusat", coordinates: [106.8190, -6.1630], patterns: [/\bharmoni\b/i] },
-  { name: "Monas", label: "Monas, Jakarta Pusat", coordinates: [106.8272, -6.1754], patterns: [/\bmonas\b/i] },
-
-  // Jakarta Selatan
-  { name: "Kebayoran Baru", label: "Kebayoran Baru, Jakarta Selatan", coordinates: [106.7990, -6.2440], patterns: [/\bkebayoran\s+baru\b/i, /\bblok\s+m\b/i] },
-  { name: "Kebayoran Lama", label: "Kebayoran Lama, Jakarta Selatan", coordinates: [106.7770, -6.2420], patterns: [/\bkebayoran\s+lama\b/i] },
-  { name: "Pesanggrahan", label: "Pesanggrahan, Jakarta Selatan", coordinates: [106.7620, -6.2570], patterns: [/\bpesanggrahan\b/i] },
-  { name: "Cilandak", label: "Cilandak, Jakarta Selatan", coordinates: [106.7970, -6.2930], patterns: [/\bcilandak\b/i, /\bfatmawati\b/i] },
-  { name: "Pasar Minggu", label: "Pasar Minggu, Jakarta Selatan", coordinates: [106.8330, -6.2840], patterns: [/\bpasar\s+minggu\b/i] },
-  { name: "Jagakarsa", label: "Jagakarsa, Jakarta Selatan", coordinates: [106.8250, -6.3330], patterns: [/\bjagakarsa\b/i] },
-  { name: "Mampang Prapatan", label: "Mampang Prapatan, Jakarta Selatan", coordinates: [106.8250, -6.2500], patterns: [/\bmampang(?:\s+prapatan)?\b/i] },
-  { name: "Pancoran", label: "Pancoran, Jakarta Selatan", coordinates: [106.8450, -6.2500], patterns: [/\bpancoran\b/i, /\bkalibata\b/i] },
-  { name: "Tebet", label: "Tebet, Jakarta Selatan", coordinates: [106.8570, -6.2290], patterns: [/\btebet\b/i] },
-  { name: "Setiabudi", label: "Setiabudi, Jakarta Selatan", coordinates: [106.8290, -6.2150], patterns: [/\bsetiabudi\b/i, /\bkuningan\b/i] },
-
-  // Jakarta Barat
-  { name: "Cengkareng", label: "Cengkareng, Jakarta Barat", coordinates: [106.7320, -6.1520], patterns: [/\bcengkareng\b/i] },
-  { name: "Grogol Petamburan", label: "Grogol Petamburan, Jakarta Barat", coordinates: [106.7870, -6.1650], patterns: [/\bgrogol(?:\s+petamburan)?\b/i, /\btomang\b/i] },
-  { name: "Taman Sari", label: "Taman Sari, Jakarta Barat", coordinates: [106.8170, -6.1450], patterns: [/\btaman\s+sari\b/i] },
-  { name: "Tambora", label: "Tambora, Jakarta Barat", coordinates: [106.8040, -6.1480], patterns: [/\btambora\b/i] },
-  { name: "Kebon Jeruk", label: "Kebon Jeruk, Jakarta Barat", coordinates: [106.7720, -6.1940], patterns: [/\bkebon\s+jeruk\b/i] },
-  { name: "Kalideres", label: "Kalideres, Jakarta Barat", coordinates: [106.7020, -6.1500], patterns: [/\bkalideres\b/i] },
-  { name: "Palmerah", label: "Palmerah, Jakarta Barat", coordinates: [106.7950, -6.1980], patterns: [/\bpalmerah\b/i, /\bslipi\b/i] },
-  { name: "Kembangan", label: "Kembangan, Jakarta Barat", coordinates: [106.7450, -6.1880], patterns: [/\bkembangan\b/i, /\bpuri\s+indah\b/i] },
-
-  // Jakarta Timur
-  { name: "Rawamangun", label: "Rawamangun, Jakarta Timur", coordinates: [106.8870, -6.1950], patterns: [/\brawamangun\b/i] },
-  { name: "Pulo Gadung", label: "Pulo Gadung, Jakarta Timur", coordinates: [106.8920, -6.1920], patterns: [/\bpulo\s*gadung\b/i] },
-  { name: "Matraman", label: "Matraman, Jakarta Timur", coordinates: [106.8620, -6.2050], patterns: [/\bmatraman\b/i] },
-  { name: "Jatinegara", label: "Jatinegara, Jakarta Timur", coordinates: [106.8710, -6.2280], patterns: [/\bjatinegara\b/i, /\bkampung\s+melayu\b/i, /\bbidara\s+cina\b/i] },
-  { name: "Duren Sawit", label: "Duren Sawit, Jakarta Timur", coordinates: [106.9150, -6.2340], patterns: [/\bduren\s+sawit\b/i] },
-  { name: "Kramat Jati", label: "Kramat Jati, Jakarta Timur", coordinates: [106.8680, -6.2750], patterns: [/\bkramat\s+jati\b/i] },
-  { name: "Makasar", label: "Makasar, Jakarta Timur", coordinates: [106.8830, -6.2750], patterns: [/\bmakasar\b/i, /\bhalim(?:\s+perdanakusuma)?\b/i] },
-  { name: "Pasar Rebo", label: "Pasar Rebo, Jakarta Timur", coordinates: [106.8600, -6.3150], patterns: [/\bpasar\s+rebo\b/i] },
-  { name: "Ciracas", label: "Ciracas, Jakarta Timur", coordinates: [106.8780, -6.3300], patterns: [/\bciracas\b/i] },
-  { name: "Cipayung", label: "Cipayung, Jakarta Timur", coordinates: [106.8950, -6.3150], patterns: [/\bcipayung\b/i] },
-  { name: "Cakung", label: "Cakung, Jakarta Timur", coordinates: [106.9480, -6.1920], patterns: [/\bcakung\b/i] },
-  { name: "Cawang", label: "Cawang, Jakarta Timur", coordinates: [106.8670, -6.2480], patterns: [/\bcawang\b/i, /\btol\s+cawang\b/i] },
-
-  // Jakarta Utara
-  { name: "Kelapa Gading", label: "Kelapa Gading, Jakarta Utara", coordinates: [106.9080, -6.1580], patterns: [/\bkelapa\s+gading\b/i] },
-  { name: "Tanjung Priok", label: "Tanjung Priok, Jakarta Utara", coordinates: [106.8820, -6.1180], patterns: [/\btanjung\s+priok\b/i] },
-  { name: "Koja", label: "Koja, Jakarta Utara", coordinates: [106.9050, -6.1250], patterns: [/\bkoja\b/i] },
-  { name: "Pademangan", label: "Pademangan, Jakarta Utara", coordinates: [106.8400, -6.1330], patterns: [/\bpademangan\b/i, /\bancol\b/i] },
-  { name: "Penjaringan", label: "Penjaringan, Jakarta Utara", coordinates: [106.7900, -6.1280], patterns: [/\bpenjaringan\b/i, /\bpluit\b/i, /\bmuara\s+(?:baru|angke)\b/i] },
-  { name: "Cilincing", label: "Cilincing, Jakarta Utara", coordinates: [106.9380, -6.1250], patterns: [/\bcilincing\b/i, /\bmarunda\b/i] },
-  { name: "Sunter", label: "Sunter, Jakarta Utara", coordinates: [106.8750, -6.1400], patterns: [/\bsunter\b/i] },
-
-  // Prominent Corridors & Highways
-  { name: "Sudirman", label: "Sudirman, Jakarta Pusat", coordinates: [106.8230, -6.2080], patterns: [/\b(?:jl\.?|jalan\s+)?sudirman\b/i] },
-  { name: "Thamrin", label: "Thamrin, Jakarta Pusat", coordinates: [106.8240, -6.1920], patterns: [/\b(?:jl\.?|jalan\s+)?thamrin\b/i] },
-  { name: "Gatot Subroto", label: "Gatot Subroto, Jakarta Selatan", coordinates: [106.8250, -6.2350], patterns: [/\b(?:jl\.?|jalan\s+)?gatot\s+subroto\b/i] },
-  { name: "Rasuna Said", label: "Rasuna Said, Jakarta Selatan", coordinates: [106.8310, -6.2190], patterns: [/\b(?:jl\.?|jalan\s+)?rasuna\s+said\b/i] },
-  { name: "MT Haryono", label: "MT Haryono, Jakarta Timur", coordinates: [106.8650, -6.2430], patterns: [/\b(?:jl\.?|jalan\s+)?mt\s+haryono\b/i] },
-  { name: "Daan Mogot", label: "Daan Mogot, Jakarta Barat", coordinates: [106.7500, -6.1550], patterns: [/\b(?:jl\.?|jalan\s+)?daan\s+mogot\b/i] },
-
-  // Administrative City Names (broad fallbacks)
-  { name: "Jakarta Pusat", label: "Jakarta Pusat", coordinates: [106.8456, -6.1823], patterns: [/\bjakarta\s+pusat\b/i, /\bjakpus\b/i] },
-  { name: "Jakarta Selatan", label: "Jakarta Selatan", coordinates: [106.8000, -6.2600], patterns: [/\bjakarta\s+selatan\b/i, /\bjaksel\b/i] },
-  { name: "Jakarta Barat", label: "Jakarta Barat", coordinates: [106.7550, -6.1680], patterns: [/\bjakarta\s+barat\b/i, /\bjakbar\b/i] },
-  { name: "Jakarta Timur", label: "Jakarta Timur", coordinates: [106.8850, -6.2250], patterns: [/\bjakarta\s+timur\b/i, /\bjaktim\b/i] },
-  { name: "Jakarta Utara", label: "Jakarta Utara", coordinates: [106.8850, -6.1250], patterns: [/\bjakarta\s+utara\b/i, /\bjakut\b/i] },
-  { name: "Kepulauan Seribu", label: "Kepulauan Seribu", coordinates: [106.5600, -5.6000], patterns: [/\bkepulauan\s+seribu\b/i] },
-  { name: "DKI Jakarta", label: "DKI Jakarta", coordinates: [106.8272, -6.1754], patterns: [/\bdki\s+jakarta\b/i, /\bjakarta\b/i] },
-];
+export {
+  JAKARTA_ENVELOPE,
+  JAKARTA_GAZETTEER,
+  type GazetteerPlace,
+  haversineDistanceMeters,
+  isCoordinateInJakarta,
+  findGazetteerPlace,
+  extractCoordinatesHint,
+};
 
 /**
  * Non-Jakarta location patterns for rejecting off-topic news/reports
@@ -626,6 +319,8 @@ export function mapIncidentTypeToPublicCategory(type: IncidentCategory): string 
       return "fires_infrastructure_hazards";
     case "crime":
       return "crime_personal_security";
+    default:
+      return String(type);
   }
 }
 
@@ -831,6 +526,9 @@ function generateTitle(category: IncidentCategory, locationLabel: string, severi
       break;
     case "weather":
       categoryName = "Cuaca Ekstrem";
+      break;
+    default:
+      categoryName = String(category).replace(/_/g, " ");
       break;
   }
   return `${categoryName} di ${locationLabel}`;

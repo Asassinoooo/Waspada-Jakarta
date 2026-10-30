@@ -442,3 +442,38 @@ test("correlates distinct news sources reporting via specific district and paren
     assert.equal(claim.is_corroborated, true);
   }
 });
+test("correlates reports using different wording when evidence supports the same event", () => {
+  const citizenReport = makeReport({
+    report_revision_id: "rep-diff-wording-citizen",
+    source_id: "petabencana",
+    permitted_text: "Air meluap masuk ke dalam rumah warga setinggi paha di Kemang Raya.",
+    published_at: "2026-10-30T09:00:00.000Z",
+  });
+
+  const newsReport = makeReport({
+    report_revision_id: "rep-diff-wording-news",
+    source_id: "source-antara-metro",
+    permitted_text: "Genangan 70 cm rendam pemukiman Kemang Raya Jakarta Selatan akibat hujan deras.",
+    published_at: "2026-10-30T09:20:00.000Z",
+  });
+
+  const clusters = correlateSourceReports([citizenReport, newsReport]);
+  assert.equal(clusters.length, 1, "Must correlate despite different vocabulary");
+  assert.equal(clusters[0]?.is_multi_source, true);
+  assert.ok(clusters[0]?.location_label.includes("Kemang"));
+});
+
+test("reports with ambiguous location are preserved with uncertainty notes rather than rejected", () => {
+  const ambiguousReport = makeReport({
+    report_revision_id: "rep-ambiguous-loc",
+    source_id: "source-antara-metro",
+    permitted_text: "Pohon tumbang menutup akses jalan utama setelah diterpa angin kencang.",
+    published_at: "2026-10-30T10:00:00.000Z",
+  });
+
+  const clusters = correlateSourceReports([ambiguousReport]);
+  assert.equal(clusters.length, 1, "Report with uncertain location must not be discarded");
+  assert.equal(clusters[0]?.coordinates, null);
+  assert.ok(clusters[0]?.uncertainty_notes && clusters[0].uncertainty_notes.length > 0);
+  assert.ok(clusters[0]?.uncertainty_notes[0]?.includes("Koordinat geografis belum terverifikasi"));
+});

@@ -573,11 +573,14 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
       </g>
     )}
 
-    {anchorVisible && <path className="admin-map__annotation-stem" d={`M${x} ${y}L${leaderX} ${leaderY}`} />}
+    {anchorVisible && (selected || mode === "simulation") && (
+      <path className="admin-map__annotation-stem" d={`M${x} ${y}L${leaderX} ${leaderY}`} />
+    )}
 
     {/* Legible incident annotation card */}
-    <g className="admin-map__annotation" transform={`translate(${labelX} ${labelY})`}>
-      <rect className="admin-map__annotation-card" width={cardWidth} height="44" rx="8" />
+    {(selected || mode === "simulation") && (
+      <g className="admin-map__annotation" transform={`translate(${labelX} ${labelY})`}>
+        <rect className="admin-map__annotation-card" width={cardWidth} height="44" rx="8" />
       <rect
         className="admin-map__card-badge-bg"
         x="6" y="8"
@@ -604,7 +607,8 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
         </g>
       )}
       <rect className="admin-map__focus-ring" x="-3" y="-3" width={cardWidth + 6} height="50" rx="10" />
-    </g>
+      </g>
+    )}
   </g>;
 }
 

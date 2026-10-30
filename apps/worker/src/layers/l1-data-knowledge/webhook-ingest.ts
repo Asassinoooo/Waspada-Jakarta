@@ -30,7 +30,7 @@ export interface InboundIncidentEvent {
   readonly location_hint?: string;
   readonly coordinates?: readonly [number, number];
   readonly timestamp?: string;
-  readonly category?: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather";
+  readonly category?: string;
   readonly severity?: "low" | "medium" | "high" | "critical";
   readonly confidence?: number;
 }
@@ -40,6 +40,9 @@ export interface WebhookIngestOptions {
   readonly activeReports?:
     | readonly StoredReportRevision[]
     | (() => readonly StoredReportRevision[] | Promise<readonly StoredReportRevision[]>);
+  readonly onRevisionCreated?: (
+    revision: StoredReportRevision,
+  ) => void | Promise<void>;
   readonly onProposalCreated?: (
     proposal: EventProposalDto,
     chunks: readonly StoredEvidenceChunk[],
@@ -65,14 +68,6 @@ export interface EventValidationResult {
   readonly error?: string;
 }
 
-const VALID_CATEGORIES: Record<string, true> = {
-  flood: true,
-  fire: true,
-  accident: true,
-  tree_fall: true,
-  crime: true,
-  weather: true,
-};
 
 const VALID_SEVERITIES: Record<string, true> = {
   low: true,
@@ -193,10 +188,10 @@ export function validateInboundIncidentEvent(input: unknown): EventValidationRes
 
   // 5. category validation
   if (obj.category !== undefined && obj.category !== null) {
-    if (typeof obj.category !== "string" || !VALID_CATEGORIES[obj.category]) {
+    if (typeof obj.category !== "string" || obj.category.trim().length === 0) {
       return {
         valid: false,
-        error: `Invalid category '${String(obj.category)}'. Allowed categories: flood, fire, accident, tree_fall, crime, weather`,
+        error: "Field 'category' when provided must be a non-empty string",
       };
     }
   }
@@ -354,6 +349,9 @@ export async function processInboundEvent(
   const revision = await convertInboundEventToRevision(event, options?.now?.());
   const coordResult = validateEnvelopeCoordinates(event.coordinates);
   const normalizedCoords = coordResult.normalized;
+  if (options?.onRevisionCreated) {
+    await options.onRevisionCreated(revision);
+  }
 
   // 1. Resolve active reports if provided
   let activeReportsList: readonly StoredReportRevision[] = [];
@@ -393,7 +391,7 @@ export async function processInboundEvent(
     if (rawProposal) {
       proposal = {
         ...rawProposal,
-        ...(event.category ? { incident_type: event.category } : {}),
+        ...(event.category ? { incident_type: event.category as IncidentCategory } : {}),
         ...(event.severity ? { severity: event.severity } : {}),
         ...(event.location_hint ? { location_label: event.location_hint } : {}),
         ...(normalizedCoords ? { coordinates: normalizedCoords } : {}),
@@ -439,14 +437,14 @@ export async function processInboundEvent(
 
   // 4. Notify broadcaster and callbacks
   const broadcaster = options?.broadcaster ?? eventBroadcaster;
-  broadcaster.broadcastModeration("proposal_created", proposal);
+  broadcaster.broadcastModeration("proposal_created", proposal!);
 
   if (options?.onProposalCreated) {
-    await options.onProposalCreated(proposal, revision.chunks);
+    await options.onProposalCreated(proposal!, revision.chunks);
   }
 
   return {
-    proposal,
+    proposal: proposal!,
     revision,
     isCorrelated,
   };

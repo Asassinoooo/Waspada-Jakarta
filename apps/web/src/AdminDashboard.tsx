@@ -630,7 +630,22 @@ function PublicSources({ snapshot, mode, publicContext }: {
         </div>
       ) : (
         <ul className="admin-source-list">
-          {sources.map((source) => <li key={source.id}><strong>{source.name}</strong><span>{source.note}</span><small>{sourceHealthLabel(source.health)} · sukses terakhir {formatInstant(source.lastSuccessAt)}</small></li>)}
+          {sources.map((source) => {
+            const isOnline = source.health === "healthy";
+            return (
+              <li key={source.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.2rem" }}>
+                  <strong>{source.name}</strong>
+                  <span className={`admin-source-status-badge ${isOnline ? "admin-source-status-badge--online" : "admin-source-status-badge--offline"}`}>
+                    <span className="admin-source-dot" aria-hidden="true" />
+                    {isOnline ? "Terhubung (Connected)" : "Terputus (Not Connected)"}
+                  </span>
+                </div>
+                <span>{source.note}</span>
+                <small>{sourceHealthLabel(source.health)} · sukses terakhir {formatInstant(source.lastSuccessAt)}</small>
+              </li>
+            );
+          })}
         </ul>
       )}
       <p className="admin-muted">Status sumber ini berasal dari layanan. Hasil pembacaan halaman dicatat terpisah.</p>
@@ -711,8 +726,14 @@ function RecentActivity({ snapshot, mode, onSelect }: {
   );
 }
 
-export function AdminDashboard() {
-  const [mode, setMode] = useState<AdminMode>("simulation");
+export interface AdminDashboardProps {
+  initialMode?: AdminMode;
+}
+
+export function AdminDashboard({
+  initialMode = typeof window !== "undefined" ? "public_api" : "simulation",
+}: AdminDashboardProps = {}) {
+  const [mode, setMode] = useState<AdminMode>(initialMode);
   const [simulationStep, setSimulationStep] = useState(0);
   const [simulationPlaying, setSimulationPlaying] = useState(false);
   const [monitorState, setMonitorState] = useState<AdminMonitorState>({
