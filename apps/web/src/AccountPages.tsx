@@ -637,7 +637,8 @@ export function AccountAccessGate({
   if (sessionState.status === "loading") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionLoading label="Memeriksa izin sesi…" /></main>;
   if (sessionState.status === "error") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionUnavailable onRetry={onRefreshSession} /></main>;
   if (sessionState.status === "anonymous") {
-    const returnTo = shell === "admin" ? "%23admin" : "%23tinjau-bukti";
+    const demoReturnTo = shell === "admin" ? "%2F%23admin" : "%2F%23tinjau-bukti";
+    const googleReturnTo = shell === "admin" ? "%23admin" : "%23tinjau-bukti";
     const demoRole = shell === "admin" ? "admin" : "moderator";
     return <main id="main-content" tabIndex={-1} className="main-shell account-page">
       <section className="account-card" role="status">
@@ -647,12 +648,12 @@ export function AccountAccessGate({
           <a
             className="button button--primary"
             style={{ fontWeight: "bold" }}
-            href={`/api/v1/auth/demo-login?role=${demoRole}&return_to=${returnTo}`}
+            href={`/api/v1/auth/demo-login?role=${demoRole}&return_to=${demoReturnTo}`}
           >
             🚀 Masuk Cepat Demo ({shell === "admin" ? "Administrator" : "Moderator"})
           </a>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <a className="button button--quiet" href={`#masuk?return_to=${returnTo}`}>Masuk dengan Google</a>
+            <a className="button button--quiet" href={`#masuk?return_to=${googleReturnTo}`}>Masuk dengan Google</a>
             <a className="button button--quiet" href="#beranda">Kembali ke layanan publik</a>
           </div>
         </div>

@@ -148,7 +148,10 @@ export default {
         const queryRole = url.searchParams.get("role");
         if (queryRole === "admin" || queryRole === "moderator") role = queryRole;
       }
-      const returnTo = url.searchParams.get("return_to") ?? (role === "admin" ? "/#admin" : "/#tinjau-bukti");
+      let returnTo = url.searchParams.get("return_to") ?? (role === "admin" ? "/#admin" : "/#tinjau-bukti");
+      if (!returnTo.startsWith("/")) {
+        returnTo = "/" + returnTo;
+      }
       const headers = new Headers();
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("set-cookie", `waspada_demo_session=${role}; Path=/; SameSite=Lax; Max-Age=86400`);
