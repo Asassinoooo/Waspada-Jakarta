@@ -454,6 +454,16 @@ export function InteractiveIncidentMap({
               <circle
                 cx="0"
                 cy="0"
+                r="14"
+                className="incident-beacon-inner"
+                fill="none"
+                stroke="var(--merah-tanda, #A7433B)"
+                strokeWidth="1.5"
+                opacity="0.8"
+              />
+              <circle
+                cx="0"
+                cy="0"
                 r="11"
                 className="incident-beacon-core"
                 fill="var(--merah-tanda, #A7433B)"
@@ -527,7 +537,7 @@ export function InteractiveIncidentMap({
               cursor: "pointer",
             }}
           >
-            Semua ({nearbyFacilities.length})
+            Semua Fasilitas ({nearbyFacilities.length})
           </button>
           <button
             type="button"
