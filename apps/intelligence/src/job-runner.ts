@@ -1,0 +1,201 @@
+import { setTimeout as sleep } from "node:timers/promises";
+import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js";
+import type { DatasetKind } from "../../db/src/ports.js";
+import {
+  createSqlIncidentRepository,
+  type IncidentRepository,
+} from "../../db/src/incident-repository.js";
+import {
+  createIncidentIntelligenceWorkflow,
+  type IncidentWorkflowInput,
+} from "./workflows/incident-intelligence-workflow.js";
+import type { NineRouterConfig } from "./providers/ninerouter-adapter.js";
+import { Agent } from "@mastra/core/agent";
+
+export interface JobRunnerOptions {
+  readonly executor: SqlExecutor;
+  readonly transactionalExecutor?: TransactionalSqlExecutor;
+  readonly config?: NineRouterConfig;
+  readonly leaseDurationMs?: number;
+  readonly pollIntervalMs?: number;
+  readonly agentOverrides?: {
+    readonly interpreter?: Agent;
+    readonly correlator?: Agent;
+  };
+  readonly fallbackMock?: boolean;
+}
+
+export function classifyJobError(err: unknown): string {
+  if (!err) return "unknown_error";
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+
+  if (message.includes("timeout") || message.includes("aborted")) {
+    return "model_timeout";
+  }
+  if (message.includes("ninerouter") || message.includes("500") || message.includes("502") || message.includes("503") || message.includes("econnrefused")) {
+    return "model_failed";
+  }
+  if (message.includes("zod") || message.includes("parse") || message.includes("schema") || message.includes("json")) {
+    return "invalid_output";
+  }
+  if (message.includes("syntax") || message.includes("constraint") || message.includes("violates") || message.includes("relation")) {
+    return "db_error";
+  }
+  return "workflow_execution_failed";
+}
+
+export function calculateBackoffMs(attemptCount: number): number {
+  return Math.min(1000 * Math.pow(2, attemptCount), 60_000);
+}
+
+export interface JobRunner {
+  processNextJob(datasetKind?: DatasetKind): Promise<boolean>;
+  runLoop(signal?: AbortSignal, datasetKind?: DatasetKind): Promise<void>;
+}
+
+export function createJobRunner(options: JobRunnerOptions): JobRunner {
+  const incidentRepo: IncidentRepository = createSqlIncidentRepository(options.executor);
+  const leaseDurationMs = options.leaseDurationMs ?? 300_000;
+  const pollIntervalMs = options.pollIntervalMs ?? 2_000;
+
+  const workflow = createIncidentIntelligenceWorkflow({
+    executor: options.executor,
+    transactionalExecutor: options.transactionalExecutor,
+    config: options.config,
+    agentOverrides: options.agentOverrides,
+    fallbackMock: options.fallbackMock,
+  });
+
+  return {
+    async processNextJob(datasetKind?: DatasetKind): Promise<boolean> {
+      const claim = await incidentRepo.claimAiJob({
+        leaseDurationMs,
+        datasetKind,
+      });
+
+      if (!claim) return false;
+      const { job, leaseToken } = claim;
+
+      // Start lease renewal heartbeat
+      const heartbeatIntervalMs = Math.max(Math.floor(leaseDurationMs / 3), 10_000);
+      let heartbeatActive = true;
+      const heartbeatTimer = setInterval(async () => {
+        if (!heartbeatActive) return;
+        try {
+          await incidentRepo.renewAiJob(job.jobId, leaseToken, leaseDurationMs);
+        } catch {
+          // Heartbeat failure ignored; will fail or complete eventually
+        }
+      }, heartbeatIntervalMs);
+
+      try {
+        // Load report revision from database
+        interface RevisionDbRow {
+          readonly report_revision_id: string;
+          readonly dataset_kind: DatasetKind;
+          readonly trace_id: string;
+          readonly source_id: string;
+          readonly permitted_text: string;
+          readonly retrieved_at: string | Date;
+          readonly display_name: string | null;
+          readonly source_kind: string | null;
+        }
+
+        const revResult = await options.executor.query<RevisionDbRow>(
+          `SELECT
+             r.report_revision_id, r.dataset_kind, r.trace_id, r.source_id,
+             r.permitted_text, r.retrieved_at,
+             s.display_name, s.source_kind
+           FROM waspada.report_revisions r
+           LEFT JOIN waspada.source_registry s ON s.source_id = r.source_id
+           WHERE r.dataset_kind = $1 AND r.report_revision_id = $2
+           LIMIT 1`,
+          [job.datasetKind, job.reportRevisionId],
+        );
+
+        if (revResult.rows.length === 0) {
+          throw new Error(`Report revision ${job.reportRevisionId} not found`);
+        }
+
+        const rev = revResult.rows[0];
+
+        // Load evidence chunks
+        interface ChunkDbRow {
+          readonly chunk_id: string;
+          readonly span_start: number;
+          readonly span_end: number;
+        }
+
+        const chunksResult = await options.executor.query<ChunkDbRow>(
+          `SELECT chunk_id, span_start, span_end
+           FROM waspada.evidence_chunks
+           WHERE dataset_kind = $1 AND report_revision_id = $2 AND status = 'active'
+           ORDER BY span_start ASC`,
+          [job.datasetKind, job.reportRevisionId],
+        );
+
+        const permittedTextChars = Array.from(rev.permitted_text);
+        const evidenceChunks = chunksResult.rows.map((chk) => ({
+          chunkId: chk.chunk_id,
+          spanStart: chk.span_start,
+          spanEnd: chk.span_end,
+          text: permittedTextChars.slice(chk.span_start, chk.span_end).join(""),
+        }));
+
+        // If no pre-existing chunks in DB, use full text as single chunk
+        if (evidenceChunks.length === 0) {
+          evidenceChunks.push({
+            chunkId: `chk-${job.reportRevisionId}-0`,
+            spanStart: 0,
+            spanEnd: permittedTextChars.length,
+            text: rev.permitted_text,
+          });
+        }
+
+        const workflowInput: IncidentWorkflowInput = {
+          reportRevisionId: rev.report_revision_id,
+          reportText: rev.permitted_text,
+          sourceKind: rev.source_kind || "webhook",
+          sourceDisplayName: rev.display_name || "Laporan Lapangan",
+          publishedAt: new Date(rev.retrieved_at).toISOString(),
+          datasetKind: rev.dataset_kind,
+          traceId: job.traceId || rev.trace_id || `trace-${job.jobId}`,
+          evidenceChunks,
+        };
+
+        // Execute Mastra Workflow
+        const run = await workflow.createRun();
+        const execution = await run.start({ inputData: workflowInput });
+
+        if (execution.status !== "success") {
+          throw new Error(`Mastra workflow execution failed with status: ${execution.status}`);
+        }
+
+        // Complete job
+        await incidentRepo.completeAiJob(job.jobId, leaseToken);
+        return true;
+      } catch (err) {
+        const failureCode = classifyJobError(err);
+        const backoffMs = calculateBackoffMs(job.attemptCount);
+        await incidentRepo.failAiJob(job.jobId, leaseToken, failureCode, backoffMs);
+        return false;
+      } finally {
+        heartbeatActive = false;
+        clearInterval(heartbeatTimer);
+      }
+    },
+
+    async runLoop(signal?: AbortSignal, datasetKind?: DatasetKind): Promise<void> {
+      while (!signal?.aborted) {
+        try {
+          const hadWork = await this.processNextJob(datasetKind);
+          if (!hadWork) {
+            await sleep(pollIntervalMs, undefined, { signal });
+          }
+        } catch {
+          await sleep(pollIntervalMs, undefined, { signal });
+        }
+      }
+    },
+  };
+}

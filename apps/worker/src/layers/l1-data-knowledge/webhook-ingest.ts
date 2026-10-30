@@ -80,7 +80,8 @@ const VALID_SEVERITIES: Record<string, true> = {
  * Checks whether the request path matches the ingestion webhook route.
  */
 export function isWebhookIngestPath(pathname: string): boolean {
-  return pathname === "/api/v1/ingestion/events" || pathname === "/api/v1/ingestion/events/";
+  return pathname === "/api/v1/ingestion/events" || pathname === "/api/v1/ingestion/events/" ||
+         pathname === "/api/v1/ingest/incident" || pathname === "/api/v1/ingest/incident/";
 }
 
 /**

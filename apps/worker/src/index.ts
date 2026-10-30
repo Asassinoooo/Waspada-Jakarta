@@ -28,6 +28,8 @@ import { createNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-r
 import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
 import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-integration/event-broadcaster.js";
 import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-data-knowledge/webhook-ingest.js";
+import { withPostgresSqlExecutor } from "../../db/src/postgres-sql-executor.js";
+import { createSqlIncidentRepository } from "../../db/src/incident-repository.js";
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
@@ -166,7 +168,7 @@ const moderationHandler = createModerationApiHandler({
   },
 });
 export default {
-  async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnvironment, ctx?: { waitUntil?: (promise: Promise<unknown>) => void }): Promise<Response> {
     const url = new URL(request.url);
 
     // Development / demo authentication bypass
@@ -236,9 +238,48 @@ export default {
     }
     // Inbound incident webhook push
     if (isWebhookIngestPath(url.pathname)) {
-      return webhookIngest(request);
+      const response = await webhookIngest(request);
+      if (env.HYPERDRIVE?.connectionString) {
+        const latestRevision = Array.from(activeRevisions.values()).at(-1);
+        if (latestRevision) {
+          const enqueuePromise = withPostgresSqlExecutor(env.HYPERDRIVE.connectionString, async (executor) => {
+            const repo = createSqlIncidentRepository(executor);
+            await repo.enqueueAiJob({
+              jobId: `job-${crypto.randomUUID()}`,
+              datasetKind: (env.DATASET_MODE as any) || "live",
+              reportRevisionId: latestRevision.report_revision_id,
+            });
+          }).catch(() => {});
+          ctx?.waitUntil?.(enqueuePromise);
+        }
+      }
+      return response;
     }
 
+    // Internal endpoint for Node.js intelligence worker to register completed proposals
+    if (url.pathname === "/api/v1/internal/proposals" && request.method === "POST") {
+      try {
+        const body = (await request.json()) as {
+          proposal?: EventProposalDto;
+          chunks?: StoredEvidenceChunk[];
+        };
+        if (body?.proposal?.proposal_id) {
+          activeProposals.set(body.proposal.proposal_id, body.proposal);
+          if (body.chunks) {
+            activeChunks.set(body.proposal.proposal_id, body.chunks);
+          }
+          eventBroadcaster.broadcastModeration("proposal_created", body.proposal);
+          return new Response(JSON.stringify({ status: "ok", proposal_id: body.proposal.proposal_id }), {
+            status: 201,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        }
+      } catch {}
+      return new Response(JSON.stringify({ error: "invalid_proposal_payload" }), {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
     // Realtime SSE streaming for moderation queue
     if (url.pathname === "/api/v1/moderation/stream" || url.pathname === "/api/v1/moderation/stream/") {
       return createSSEResponse(eventBroadcaster.subscribeModeration(request.signal));
