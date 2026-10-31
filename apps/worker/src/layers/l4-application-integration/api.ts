@@ -203,11 +203,11 @@ export async function handlePublicApiRequest(
         "This runtime only contains the synthetic demo dataset.",
         503,
       );
-    } else if (exactLiveListRoute && !eventListPageService) {
+    } else if (exactLiveListRoute && !eventListPageService && !env.SQL_EXECUTOR) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
-    } else if (exactLiveDetailRoute && !eventDetailProjectionService) {
+    } else if (exactLiveDetailRoute && !eventDetailProjectionService && !env.SQL_EXECUTOR) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
-    } else if (exactLiveHistoryRoute && !eventHistoryProjectionService) {
+    } else if (exactLiveHistoryRoute && !eventHistoryProjectionService && !env.SQL_EXECUTOR) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
     } else if (exactLiveBriefingRoute && !publicBriefingRuntime) {
       response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
@@ -252,7 +252,11 @@ export async function handlePublicApiRequest(
         readPublicGeoJSONQuery(url.searchParams);
         if (env.DATASET_MODE === "live") {
           if (!eventGeoJSONRuntime) {
-            response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
+            if (env.SQL_EXECUTOR) {
+              response = geoJSONResponse(readModel.geoJSON());
+            } else {
+              response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
+            }
           } else {
             response = geoJSONResponse(await eventGeoJSONRuntime.read(url.searchParams));
           }
@@ -268,11 +272,11 @@ export async function handlePublicApiRequest(
       } else if (selectedEventRoute) {
         const eventId = decodeEventId(selectedEventRoute.encodedId);
         if (selectedEventRoute.kind === "detail") {
-          if (env.DATASET_MODE === "live") {
+          if (env.DATASET_MODE === "live" && eventDetailProjectionService) {
             if (!isValidLiveDetailEventId(eventId)) {
               throw new QueryValidationError("event_id is invalid");
             }
-            const result = await eventDetailProjectionService!.read(eventId);
+            const result = await eventDetailProjectionService.read(eventId);
             response = result.kind === "found"
               ? jsonResponse(result.detail)
               : apiError("NOT_FOUND", "The requested public route was not found.", 404);
@@ -282,8 +286,8 @@ export async function handlePublicApiRequest(
               ? jsonResponse(detail)
               : apiError("NOT_FOUND", "The requested public route was not found.", 404);
           }
-        } else if (env.DATASET_MODE === "live") {
-          const result = await eventHistoryProjectionService!.read(eventId, url.searchParams);
+        } else if (env.DATASET_MODE === "live" && eventHistoryProjectionService) {
+          const result = await eventHistoryProjectionService.read(eventId, url.searchParams);
           response = result.kind === "found"
             ? jsonResponse(result.page)
             : apiError("NOT_FOUND", "The requested public route was not found.", 404);
