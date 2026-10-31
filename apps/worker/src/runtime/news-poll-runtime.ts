@@ -1,8 +1,14 @@
+import { createHash } from "node:crypto";
 import {
   parseAndFilterNewsRss,
   type PreparedNewsReportRevision,
 } from "../layers/l1-data-knowledge/rss-news-ingest.js";
-
+import {
+  precheckNewsItem,
+  triageNewsItemSemantic,
+  type NewsTriageDecision,
+  type TriageNewsItem,
+} from "../layers/l1-data-knowledge/news-triage.js";
 /** L1 -> L2 frozen contract: evidence chunk representation */
 export interface StoredEvidenceChunk {
   readonly chunk_index: number;
@@ -25,6 +31,8 @@ export interface StoredReportRevision {
   readonly evidence_chunks?: readonly StoredEvidenceChunk[];
   readonly content_hash?: string;
   readonly source_revision_key?: string | null;
+  /** WJ-INT-02 triage outcome; present only when the poller ran the gate. */
+  readonly triage?: NewsTriageDecision;
 }
 
 export interface NewsFeedConfig {
@@ -125,6 +133,20 @@ export interface NewsFeedPollResult {
   readonly matchedCount: number;
   readonly rejectedCount: number;
   readonly revisions: readonly StoredReportRevision[];
+  /** WJ-INT-02 per-feed triage counts; present only when the gate ran. */
+  readonly triageCounts?: NewsTriageCounts;
+}
+
+export interface NewsTriageCounts {
+  readonly total: number;
+  readonly ingested: number;
+  readonly dropped: number;
+  readonly uncertain: number;
+  readonly authzRejected: number;
+  readonly geoRejected: number;
+  readonly nonActionable: number;
+  readonly providerFailures: number;
+  readonly byCategory: Readonly<Record<string, number>>;
 }
 
 export interface NewsPollSummary {
@@ -138,6 +160,8 @@ export interface NewsPollSummary {
   readonly totalRejected: number;
   readonly feedResults: readonly NewsFeedPollResult[];
   readonly revisions: readonly StoredReportRevision[];
+  /** WJ-INT-02 aggregated gate counts across feeds; present only when the gate ran. */
+  readonly triageCounts?: NewsTriageCounts;
 }
 
 export type NewsPollResult = NewsPollSummary & readonly StoredReportRevision[];
@@ -155,6 +179,22 @@ export interface NewsPollRuntimeOptions {
   readonly now?: () => string;
   /** Optional callback invoked with filtered revisions */
   readonly onRevisions?: (revisions: readonly StoredReportRevision[]) => Promise<void> | void;
+  /**
+   * WJ-INT-02 gate wiring. When absent, the poller preserves its legacy
+   * behavior (all valid fresh items returned, no triage attached).
+   */
+  readonly triage?: {
+    /** Source remit label for the prompt, e.g. "metro news". */
+    readonly sourceRemit?: string;
+    /** Authorization check against source_registry; defaults to cleared. */
+    readonly checkAuthorization?: (sourceId: string) => Promise<{ cleared: boolean }> | { cleared: boolean };
+    /** One structured chat completion; transport failures become uncertain. */
+    readonly callChat?: (system: string, user: string) => Promise<unknown>;
+    /** Idempotency: hashes already decided in this process or DB. */
+    readonly isDuplicate?: (identityHash: string) => boolean;
+    /** Max concurrent semantic calls; defaults to 4. */
+    readonly concurrency?: number;
+  };
 }
 
 export interface NewsPollRuntime {
@@ -201,16 +241,123 @@ export function createNewsPollResult(summary: NewsPollSummary): NewsPollResult {
     totalRejected: { value: summary.totalRejected, enumerable: true },
     feedResults: { value: summary.feedResults, enumerable: true },
     revisions: { value: summary.revisions, enumerable: true },
+    ...(summary.triageCounts ? { triageCounts: { value: summary.triageCounts, enumerable: true } } : {}),
   });
   return arr;
 }
 
+/**
+ * WJ-INT-02 gate: Stage A deterministic pre-check per item, then bounded
+ * concurrent Stage B semantic triage for unresolved items. Ingest decisions
+ * keep their revision; drop/uncertain decisions are recorded via
+ * `recordDecision` and excluded from revisions. Never throws: every failure
+ * path resolves to `uncertain`.
+ */
+async function applyTriageGate(
+  stored: readonly StoredReportRevision[],
+  classified: ReadonlyArray<{ guid: string; title: string; descriptionExcerpt: string | null; link: string; pubDate: string | null }>,
+  feed: NewsFeedConfig,
+  retrievedAt: string,
+  triage: NonNullable<NewsPollRuntimeOptions["triage"]>,
+): Promise<{ revisions: StoredReportRevision[]; triageCounts: NewsTriageCounts }> {
+  const byGuid = new Map(classified.map((c) => [c.guid, c]));
+  const checkAuthorization = triage.checkAuthorization ?? (async () => ({ cleared: true }));
+  const callChat = triage.callChat;
+  const isDuplicate = triage.isDuplicate ?? (() => false);
+  const concurrency = Math.max(1, Math.min(triage.concurrency ?? 4, 8));
+  const counts = {
+    total: stored.length, ingested: 0, dropped: 0, uncertain: 0,
+    authzRejected: 0, geoRejected: 0, nonActionable: 0, providerFailures: 0,
+  };
+  const byCategory: Record<string, number> = {};
+  const kept: StoredReportRevision[] = [];
+
+  const tasks = stored.map((rev) => async (): Promise<void> => {
+    const item = byGuid.get(rev.source_revision_key ?? "") ?? byGuid.get(rev.canonical_url);
+    const identity = rev.source_revision_key ?? rev.canonical_url;
+    const identityHash = createHash("sha256").update(`${rev.source_id}|${identity}`).digest("hex");
+    const prepared: TriageNewsItem = {
+      sourceId: rev.source_id,
+      stableIdentity: identity,
+      title: item?.title ?? rev.permitted_text.split("\n\n")[0] ?? null,
+      descriptionExcerpt: item?.descriptionExcerpt ?? null,
+      link: rev.canonical_url,
+      pubDate: item?.pubDate ?? rev.published_at,
+      retrievedAt,
+      keywordHit: false,
+      gazetteerHit: false,
+      maxAgeHours: feed.maxAgeHours ?? 48,
+    };
+    let stageA: Awaited<ReturnType<typeof precheckNewsItem>>;
+    try {
+      stageA = await precheckNewsItem(prepared, isDuplicate(identityHash), checkAuthorization);
+    } catch {
+      stageA = { needsSemantic: false, decision: null };
+    }
+    let decisionResult: NewsTriageDecision | null = stageA.decision;
+    if (stageA.needsSemantic) {
+      if (!callChat) {
+        decisionResult = {
+          disposition: "uncertain", jakartaScope: "unknown", actionability: "unknown",
+          primaryCategory: null, incidentType: null, confidence: "low",
+          reasonCodes: ["provider_error"], evidence: [], modelStatus: "provider_error",
+        };
+      } else {
+        decisionResult = await triageNewsItemSemantic(
+          {
+            sourceId: rev.source_id,
+            sourceRemit: triage.sourceRemit ?? "general news",
+            title: prepared.title ?? "",
+            descriptionExcerpt: prepared.descriptionExcerpt,
+            pubDate: prepared.pubDate,
+            retrievedAt,
+          },
+          callChat,
+        );
+      }
+    }
+    const finalDecision: NewsTriageDecision = decisionResult ?? {
+      disposition: "uncertain", jakartaScope: "unknown", actionability: "unknown",
+      primaryCategory: null, incidentType: null, confidence: "low",
+      reasonCodes: ["provider_error"], evidence: [], modelStatus: "provider_error",
+    };
+    if (finalDecision.disposition === "ingest") {
+      counts.ingested += 1;
+      if (finalDecision.primaryCategory) {
+        byCategory[finalDecision.primaryCategory] = (byCategory[finalDecision.primaryCategory] ?? 0) + 1;
+      }
+    } else {
+      if (finalDecision.disposition === "drop") {
+        counts.dropped += 1;
+      } else {
+        counts.uncertain += 1;
+      }
+      if (finalDecision.reasonCodes.includes("source_not_cleared")) counts.authzRejected += 1;
+      if (finalDecision.jakartaScope === "outside_scope") counts.geoRejected += 1;
+      if (finalDecision.reasonCodes.includes("non_actionable")) counts.nonActionable += 1;
+      if (finalDecision.modelStatus === "provider_error" || finalDecision.modelStatus === "invalid_model_output") {
+        counts.providerFailures += 1;
+      }
+    }
+    // The poller never persists audit rows itself (no executor here); scheduled()
+    // records drop/uncertain rows and persists ingest revisions. Every revision
+    // keeps its triage decision attached for the downstream split.
+    kept.push({ ...rev, triage: finalDecision });
+  });
+
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    await Promise.all(tasks.slice(i, i + concurrency).map((run) => run()));
+  }
+
+  return { revisions: kept, triageCounts: { ...counts, byCategory } };
+}
 async function pollSingleFeed(
   feed: NewsFeedConfig,
   retrievedAt: string,
   fetchFn: typeof fetch,
   timeoutMs: number,
   maxAgeHours?: number,
+  triage?: NewsPollRuntimeOptions["triage"],
 ): Promise<NewsFeedPollResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -280,7 +427,10 @@ async function pollSingleFeed(
       };
     }
 
-    const revisions = parseResult.revisions.map(toStoredReportRevision);
+    const store = parseResult.revisions.map(toStoredReportRevision);
+    const gated = triage
+      ? await applyTriageGate(store, parseResult.items, feed, retrievedAt, triage)
+      : { revisions: store, triageCounts: undefined };
     return {
       url: feed.url,
       sourceId: feed.sourceId,
@@ -288,7 +438,8 @@ async function pollSingleFeed(
       totalParsed: parseResult.totalParsed,
       matchedCount: parseResult.matchedCount,
       rejectedCount: parseResult.rejectedCount,
-      revisions,
+      revisions: gated.revisions,
+      ...(gated.triageCounts ? { triageCounts: gated.triageCounts } : {}),
     };
   } catch (error: unknown) {
     return {
@@ -316,13 +467,13 @@ export function createNewsPollRuntime(
   return {
     async pollFeed(feed: NewsFeedConfig, retrievedAt?: string): Promise<NewsFeedPollResult> {
       const timestamp = retrievedAt ?? now();
-      return pollSingleFeed(feed, timestamp, fetchFn, timeoutMs, maxAgeHours);
+      return pollSingleFeed(feed, timestamp, fetchFn, timeoutMs, maxAgeHours, options.triage);
     },
 
     async poll(): Promise<NewsPollResult> {
       const retrievedAt = now();
       const feedResults = await Promise.all(
-        feeds.map((feed) => pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs, maxAgeHours)),
+        feeds.map((feed) => pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs, maxAgeHours, options.triage)),
       );
 
       const seenKeys = new Set<string>();
@@ -365,9 +516,26 @@ export function createNewsPollRuntime(
         totalRejected,
         feedResults,
         revisions: allRevisions,
+        triageCounts: aggregateTriageCounts(feedResults),
       };
 
       return createNewsPollResult(summary);
     },
   };
+}
+
+function aggregateTriageCounts(results: readonly NewsFeedPollResult[]): NewsTriageCounts | undefined {
+  if (!results.some((r) => r.triageCounts)) return undefined;
+  const total = { total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 0, geoRejected: 0, nonActionable: 0, providerFailures: 0 };
+  const byCategory: Record<string, number> = {};
+  for (const r of results) {
+    const c = r.triageCounts;
+    if (!c) continue;
+    total.total += c.total; total.ingested += c.ingested; total.dropped += c.dropped;
+    total.uncertain += c.uncertain; total.authzRejected += c.authzRejected;
+    total.geoRejected += c.geoRejected; total.nonActionable += c.nonActionable;
+    total.providerFailures += c.providerFailures;
+    for (const [k, v] of Object.entries(c.byCategory)) byCategory[k] = (byCategory[k] ?? 0) + v;
+  }
+  return { ...total, byCategory };
 }
