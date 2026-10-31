@@ -96,6 +96,10 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       '034_source_revision_withdrawn_freshness',
       '035_l3_advance_review_pending',
       '036_accounts',
+      '037_ai_incident_intelligence_pipeline',
+      '038_ai_incident_classification_and_fallback',
+      '039_pipeline_unification_and_idempotency',
+      '040_news_triage_and_primary_category',
     ]);
   });
 

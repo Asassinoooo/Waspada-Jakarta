@@ -20,6 +20,7 @@ export interface IncidentRecord {
   readonly title: string;
   readonly description: string;
   readonly incidentType: string;
+  readonly primaryCategory: string | null;
   readonly status: IncidentStatus;
   readonly severity: IncidentSeverity;
   readonly locationLabel: string | null;
@@ -80,6 +81,7 @@ export interface CreateIncidentInput {
   readonly title: string;
   readonly description: string;
   readonly incidentType: string;
+  readonly primaryCategory?: string;
   readonly status?: IncidentStatus;
   readonly severity?: IncidentSeverity;
   readonly locationLabel?: string | null;
@@ -99,6 +101,7 @@ export interface UpdateIncidentInput {
   readonly title?: string;
   readonly description?: string;
   readonly incidentType?: string;
+  readonly primaryCategory?: string | null;
   readonly status?: IncidentStatus;
   readonly severity?: IncidentSeverity;
   readonly locationLabel?: string | null;
@@ -227,6 +230,7 @@ interface IncidentDbRow {
   readonly title: string;
   readonly description: string;
   readonly incident_type: string;
+  readonly primary_category: string | null;
   readonly status: IncidentStatus;
   readonly severity: IncidentSeverity;
   readonly location_label: string | null;
@@ -265,6 +269,7 @@ function formatRowToIncident(row: IncidentDbRow): IncidentRecord {
     title: row.title,
     description: row.description,
     incidentType: row.incident_type,
+    primaryCategory: row.primary_category ?? null,
     status: row.status,
     severity: row.severity,
     locationLabel: row.location_label,
@@ -341,6 +346,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
         input.title,
         input.description,
         input.incidentType,
+        input.primaryCategory ?? null,
         status,
         severity,
         input.locationLabel ?? null,
@@ -354,22 +360,22 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
       ];
 
       if (input.coordinates) {
-        shapeSql = `ST_SetSRID(ST_MakePoint($16, $17), 4326)`;
+        shapeSql = `ST_SetSRID(ST_MakePoint($17, $18), 4326)`;
         params.push(input.coordinates[0], input.coordinates[1]);
       }
 
       const query = `
         INSERT INTO waspada.incidents (
-          incident_id, dataset_kind, title, description, incident_type,
+          incident_id, dataset_kind, title, description, incident_type, primary_category,
           status, severity, location_label, shape, event_time,
           first_observed_at, last_updated_at, discrepancies, uncertainty_notes,
           record_json, created_at
         )
         VALUES (
-          $1, $2, $3, $4, $5,
-          $6, $7, $8, ${shapeSql}, $9,
-          $10, $11, $12::jsonb, $13::jsonb,
-          $14::jsonb, $15
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, ${shapeSql}, $10,
+          $11, $12, $13::jsonb, $14::jsonb,
+          $15::jsonb, $16
         )
         RETURNING
           incident_id, dataset_kind, title, description, incident_type,
@@ -398,6 +404,10 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
       if (input.incidentType !== undefined) {
         updates.push(`incident_type = $${paramIndex++}`);
         params.push(input.incidentType);
+      }
+      if (input.primaryCategory !== undefined) {
+        updates.push(`primary_category = $${paramIndex++}`);
+        params.push(input.primaryCategory);
       }
       if (input.status !== undefined) {
         updates.push(`status = $${paramIndex++}`);
@@ -573,7 +583,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
     } | null> {
       const incidentResult = await executor.query<IncidentDbRow>(
         `SELECT
-           incident_id, dataset_kind, title, description, incident_type,
+           incident_id, dataset_kind, title, description, incident_type, primary_category,
            status, severity, location_label, ST_AsGeoJSON(shape) AS shape_geojson,
            event_time, first_observed_at, last_updated_at, discrepancies,
            uncertainty_notes, record_json, created_at
@@ -669,7 +679,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
 
       const result = await executor.query<IncidentDbRow>(
         `SELECT
-           incident_id, dataset_kind, title, description, incident_type,
+           incident_id, dataset_kind, title, description, incident_type, primary_category,
            status, severity, location_label, ST_AsGeoJSON(shape) AS shape_geojson,
            event_time, first_observed_at, last_updated_at, discrepancies,
            uncertainty_notes, record_json, created_at
@@ -686,7 +696,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
     async getIncidentForReport(datasetKind: DatasetKind, reportRevisionId: string): Promise<IncidentRecord | null> {
       const result = await executor.query<IncidentDbRow>(
         `SELECT
-           i.incident_id, i.dataset_kind, i.title, i.description, i.incident_type,
+           i.incident_id, i.dataset_kind, i.title, i.description, i.incident_type, i.primary_category,
            i.status, i.severity, i.location_label, ST_AsGeoJSON(i.shape) AS shape_geojson,
            i.event_time, i.first_observed_at, i.last_updated_at, i.discrepancies,
            i.uncertainty_notes, i.record_json, i.created_at
@@ -1064,6 +1074,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
             inc.title,
             inc.description,
             inc.incidentType,
+            inc.primaryCategory ?? null,
             status,
             severity,
             inc.locationLabel ?? null,
@@ -1076,22 +1087,22 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
             incCreated,
           ];
           if (inc.coordinates) {
-            shapeSql = `ST_SetSRID(ST_MakePoint($16, $17), 4326)`;
+            shapeSql = `ST_SetSRID(ST_MakePoint($17, $18), 4326)`;
             params.push(inc.coordinates[0], inc.coordinates[1]);
           }
 
           await tx.query(
             `INSERT INTO waspada.incidents (
-              incident_id, dataset_kind, title, description, incident_type,
+              incident_id, dataset_kind, title, description, incident_type, primary_category,
               status, severity, location_label, shape, event_time,
               first_observed_at, last_updated_at, discrepancies, uncertainty_notes,
               record_json, created_at
             )
             VALUES (
-              $1, $2, $3, $4, $5,
-              $6, $7, $8, ${shapeSql}, $9,
-              $10, $11, $12::jsonb, $13::jsonb,
-              $14::jsonb, $15
+              $1, $2, $3, $4, $5, $6,
+              $7, $8, $9, ${shapeSql}, $10,
+              $11, $12, $13::jsonb, $14::jsonb,
+              $15::jsonb, $16
             )
             ON CONFLICT (dataset_kind, incident_id) DO NOTHING`,
             params,
@@ -1113,6 +1124,10 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
           if (upd.incidentType !== undefined) {
             updates.push(`incident_type = $${pIdx++}`);
             params.push(upd.incidentType);
+          }
+          if (upd.primaryCategory !== undefined) {
+            updates.push(`primary_category = $${pIdx++}`);
+            params.push(upd.primaryCategory);
           }
           if (upd.status !== undefined) {
             updates.push(`status = $${pIdx++}`);

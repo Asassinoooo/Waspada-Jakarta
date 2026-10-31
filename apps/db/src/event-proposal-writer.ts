@@ -1,11 +1,16 @@
 import { createHash } from 'node:crypto';
 import type { SqlExecutor, SqlTransactionRunner } from './sql.js';
 
+import type { OfficialIncidentCategory } from './incident-categories.js';
+import { assertOfficialIncidentCategory } from './incident-categories.js';
+
 export interface EventProposalDto {
   readonly schema_version: '2.0';
   readonly proposal_id: string;
   readonly title: string;
   readonly incident_type: string;
+  /** Canonical WJ-INT-02 primary category; exactly one of the ten official slugs. */
+  readonly primary_category: OfficialIncidentCategory;
   readonly compatibility_category?: 'flood' | 'fire' | 'accident' | 'tree_fall' | 'crime' | 'weather' | 'other' | 'unclassified' | (string & {});
   readonly severity: 'low' | 'medium' | 'high' | 'critical' | 'unknown';
   readonly event_time: { readonly precision: 'exact' | 'date' | 'range' | 'unknown'; readonly value: string | null };
@@ -151,6 +156,12 @@ export async function persistProposalWithTx(
   if (!Array.isArray(proposal.claims)) {
     throw new TypeError('Proposal claims must be an array');
   }
+  if (Array.isArray((proposal as unknown as Record<string, unknown>).primary_category)) {
+    throw new TypeError('Proposal primary_category must be exactly one category, not an array');
+  }
+  assertOfficialIncidentCategory(
+    (proposal as unknown as Record<string, unknown>).primary_category,
+  );
 
   // Advisory transaction lock on (dataset_kind, proposal_id)
   const hash = createHash('sha256')

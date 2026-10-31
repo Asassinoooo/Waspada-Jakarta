@@ -1,18 +1,10 @@
 import type { DatasetKind, EvidenceRelation } from './ports.js';
 import type { SqlExecutor, TransactionalSqlExecutor } from './sql.js';
 
-export const EXTRACTION_CATEGORIES = [
-  'crime_personal_security',
-  'demonstrations_public_gatherings',
-  'crowds_major_events',
-  'violence_immediate_threats',
-  'disasters_weather',
-  'fires_infrastructure_hazards',
-  'transport_road_incidents',
-  'utilities_essential_services',
-  'health_environmental_advisories',
-  'group_specific_critical_notices',
-] as const;
+export { OFFICIAL_INCIDENT_CATEGORIES, isOfficialIncidentCategory, assertOfficialIncidentCategory } from './incident-categories.js';
+export type { OfficialIncidentCategory } from './incident-categories.js';
+import { OFFICIAL_INCIDENT_CATEGORIES } from './incident-categories.js';
+export const EXTRACTION_CATEGORIES = OFFICIAL_INCIDENT_CATEGORIES;
 
 export type ExtractionCategory = (typeof EXTRACTION_CATEGORIES)[number];
 export type ExtractionTagNamespace = 'topic' | 'service' | 'audience' | 'hazard' | 'transport_mode' | 'place_type';

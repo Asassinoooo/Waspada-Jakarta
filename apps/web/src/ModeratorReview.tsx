@@ -38,6 +38,7 @@ export interface EventProposalDto {
   readonly proposal_id: string;
   readonly title: string;
   readonly incident_type: string;
+  readonly primary_category?: string;
   readonly compatibility_category?: string;
   readonly severity: "low" | "medium" | "high" | "critical" | "unknown";
   readonly event_time: { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string | null };
@@ -100,6 +101,26 @@ export function incidentTypeLabel(type: string): string {
       return formatted.charAt(0).toUpperCase() + formatted.slice(1);
     }
   }
+}
+
+const CANONICAL_CATEGORY_LABELS: Record<string, string> = {
+  crime_personal_security: "Keamanan",
+  demonstrations_public_gatherings: "Demonstrasi",
+  crowds_major_events: "Keramaian",
+  violence_immediate_threats: "Kekerasan",
+  disasters_weather: "Bencana",
+  fires_infrastructure_hazards: "Kebakaran",
+  transport_road_incidents: "Transportasi",
+  utilities_essential_services: "Utilitas",
+  health_environmental_advisories: "Kesehatan",
+  group_specific_critical_notices: "Notices",
+};
+
+export function proposalCategoryLabel(proposal: { primary_category?: string; incident_type: string }): string {
+  if (proposal.primary_category && CANONICAL_CATEGORY_LABELS[proposal.primary_category]) {
+    return CANONICAL_CATEGORY_LABELS[proposal.primary_category]!;
+  }
+  return incidentTypeLabel(proposal.incident_type);
 }
 
 export function severityLabel(sev: string): string {
@@ -511,11 +532,15 @@ export function ModeratorReviewQueue({
       });
     });
   }, [currentChunks, currentQuotes]);
-  // Filter queue by category / multi-source
+  // Filter queue by category / multi-source. Canonical primary_category wins;
+  // legacy incident_type/compatibility_category values act as compatibility aliases.
+  const categoryOf = (p: EventProposalDto): string =>
+    p.primary_category ?? p.compatibility_category ?? p.incident_type;
   const otherQueueCount = useMemo(() => {
-    return queue.filter(
-      (p) => p.incident_type !== "flood" && p.incident_type !== "fire" && p.compatibility_category !== "flood" && p.compatibility_category !== "fire",
-    ).length;
+    return queue.filter((p) => {
+      const c = categoryOf(p);
+      return c !== "flood" && c !== "fire" && c !== "disasters_weather" && c !== "fires_infrastructure_hazards";
+    }).length;
   }, [queue]);
 
   const filteredQueue = useMemo(() => {
@@ -524,11 +549,21 @@ export function ModeratorReviewQueue({
       return queue.filter((p) => isProposalMultiSource(p));
     }
     if (queueCategoryFilter === "other") {
-      return queue.filter(
-        (p) => p.incident_type !== "flood" && p.incident_type !== "fire" && p.compatibility_category !== "flood" && p.compatibility_category !== "fire",
-      );
+      return queue.filter((p) => {
+        const c = categoryOf(p);
+        return c !== "flood" && c !== "fire" && c !== "disasters_weather" && c !== "fires_infrastructure_hazards";
+      });
     }
-    return queue.filter((p) => p.incident_type === queueCategoryFilter || p.compatibility_category === queueCategoryFilter);
+    return queue.filter((p) => {
+      const c = categoryOf(p);
+      if (c === queueCategoryFilter) return true;
+      // Legacy aliases: flood/fire tabs also match canonical equivalents.
+      if (queueCategoryFilter === "flood" && c === "disasters_weather") return true;
+      if (queueCategoryFilter === "fire" && c === "fires_infrastructure_hazards") return true;
+      if (queueCategoryFilter === "disasters_weather" && (c === "flood" || c === "weather")) return true;
+      if (queueCategoryFilter === "fires_infrastructure_hazards" && (c === "fire" || c === "tree_fall")) return true;
+      return false;
+    });
   }, [queue, queueCategoryFilter]);
 
   const multiSourceQueueCount = useMemo(() => {
@@ -724,9 +759,9 @@ export function ModeratorReviewQueue({
                     >
                       <div className="proposal-card-top">
                         <span
-                          className={`incident-badge incident-badge--${item.incident_type}`}
+                          className={`incident-badge incident-badge--${item.primary_category ?? item.incident_type}`}
                         >
-                          {incidentTypeLabel(item.incident_type)}
+                          {proposalCategoryLabel(item)}
                         </span>
                         <span className={`severity-chip severity-chip--${item.severity}`}>
                           {severityLabel(item.severity)}

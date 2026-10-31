@@ -1,19 +1,11 @@
+import { OFFICIAL_INCIDENT_CATEGORIES } from './incident-categories.js';
+export type { OfficialIncidentCategory } from './incident-categories.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { SqlExecutor, SqlTransactionRunner } from './sql.js';
 
 export type PublicationDisposition = 'publish' | 'review' | 'reject' | 'retract';
 export type PublicationLifecycle = 'planned' | 'ongoing' | 'resolved' | 'cancelled' | 'unknown';
-export type PublicationCategory =
-  | 'crime_personal_security'
-  | 'demonstrations_public_gatherings'
-  | 'crowds_major_events'
-  | 'violence_immediate_threats'
-  | 'disasters_weather'
-  | 'fires_infrastructure_hazards'
-  | 'transport_road_incidents'
-  | 'utilities_essential_services'
-  | 'health_environmental_advisories'
-  | 'group_specific_critical_notices';
+export type PublicationCategory = (typeof OFFICIAL_INCIDENT_CATEGORIES)[number];
 
 export interface PublicationEvidenceReference {
   readonly report_revision_id: string;
@@ -263,12 +255,7 @@ interface ResolvedClaim {
   }>;
 }
 
-const categories = new Set<PublicationCategory>([
-  'crime_personal_security', 'demonstrations_public_gatherings', 'crowds_major_events',
-  'violence_immediate_threats', 'disasters_weather', 'fires_infrastructure_hazards',
-  'transport_road_incidents', 'utilities_essential_services', 'health_environmental_advisories',
-  'group_specific_critical_notices',
-]);
+const categories = new Set<PublicationCategory>(OFFICIAL_INCIDENT_CATEGORIES);
 const lifecycles = new Set<PublicationLifecycle>(['planned', 'ongoing', 'resolved', 'cancelled', 'unknown']);
 const dispositions = new Set<PublicationDisposition>(['publish', 'review', 'reject', 'retract']);
 const impactTypes = new Set<PublicationImpactVersionDraft['impact_type']>([

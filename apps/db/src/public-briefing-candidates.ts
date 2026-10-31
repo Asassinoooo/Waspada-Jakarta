@@ -7,17 +7,9 @@ export const PUBLIC_BRIEFING_CANDIDATE_LIMITS = Object.freeze({
   results: 100,
 });
 
-export type PublicBriefingCandidateCategory =
-  | 'crime_personal_security'
-  | 'demonstrations_public_gatherings'
-  | 'crowds_major_events'
-  | 'violence_immediate_threats'
-  | 'disasters_weather'
-  | 'fires_infrastructure_hazards'
-  | 'transport_road_incidents'
-  | 'utilities_essential_services'
-  | 'health_environmental_advisories'
-  | 'group_specific_critical_notices';
+export type { OfficialIncidentCategory } from './incident-categories.js';
+import { OFFICIAL_INCIDENT_CATEGORIES } from './incident-categories.js';
+export type PublicBriefingCandidateCategory = (typeof OFFICIAL_INCIDENT_CATEGORIES)[number];
 
 export interface PublicBriefingCandidate {
   readonly eventId: string;
@@ -70,18 +62,7 @@ interface ValidatedRequest {
 type ScopeField = 'places' | 'services' | 'institutions' | 'audiences';
 
 const scopeFields: readonly ScopeField[] = ['places', 'services', 'institutions', 'audiences'];
-const categories = new Set<PublicBriefingCandidateCategory>([
-  'crime_personal_security',
-  'demonstrations_public_gatherings',
-  'crowds_major_events',
-  'violence_immediate_threats',
-  'disasters_weather',
-  'fires_infrastructure_hazards',
-  'transport_road_incidents',
-  'utilities_essential_services',
-  'health_environmental_advisories',
-  'group_specific_critical_notices',
-]);
+const categories = new Set<PublicBriefingCandidateCategory>(OFFICIAL_INCIDENT_CATEGORIES);
 const eventIdentifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const maxDatabaseInteger = 2_147_483_647;
 const overflowProbe = PUBLIC_BRIEFING_CANDIDATE_LIMITS.results + 1;

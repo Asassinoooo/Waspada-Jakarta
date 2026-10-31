@@ -9,6 +9,18 @@ export const ReportInterpretationSchema = z.object({
   summary: z.string().min(1),
   incidentType: z.string().min(1),
   severity: z.enum(["low", "medium", "high", "critical", "unknown"]).default("unknown"),
+  primaryCategory: z.enum([
+    "crime_personal_security",
+    "demonstrations_public_gatherings",
+    "crowds_major_events",
+    "violence_immediate_threats",
+    "disasters_weather",
+    "fires_infrastructure_hazards",
+    "transport_road_incidents",
+    "utilities_essential_services",
+    "health_environmental_advisories",
+    "group_specific_critical_notices",
+  ]),
   location: z.object({
     label: z.string().nullable(),
     approximateCoordinates: z.tuple([z.number(), z.number()]).nullable(),
@@ -60,14 +72,24 @@ export const REPORT_INTERPRETER_INSTRUCTIONS = `
 You are the Waspada Jakarta Report Interpretation Specialist. Your mission is to extract objective, factual incident intelligence from Indonesian civil reports, sensor bulletins, citizen alerts, and news articles.
 
 Core Principles:
-1. Let AI understand the data — do not force facts into rigid keyword taxonomies or narrow 6-category enums. Use open, descriptive, natural Indonesian incident types (e.g. "genangan air akibat luapan saluran", "kecelakaan lalu lintas melibatkan truk", "pohon tumbang menghalangi jalan", "tiang listrik roboh", "pipa air pdam bocor").
-2. Assess Severity Factual Grounding: Evaluate severity ('low', 'medium', 'high', 'critical', 'unknown') directly from reported threat to human life, severe injury, or critical infrastructure disruption. If severity is not discernible from the text, use 'unknown'. NEVER calculate severity from count of impacts.
-3. Zero Hallucination: Every entry in the 'evidence' array MUST contain an exact verbatim quote from the text and cite the relevant chunkId. Do not paraphrase in quotes. If no clear factual quote exists, do not invent one.
-4. Spatial Grounding: If coordinates are mentioned or can be reliably identified from known Jakarta corridors (e.g. "Jl. DI Panjaitan Cawang" approx [106.871, -6.244]), provide approximateCoordinates [longitude, latitude]. If ambiguous or unknown, set 'label: null', 'approximateCoordinates: null', and 'precision: "unknown"'. NEVER default unlocated reports to "DKI Jakarta" or default coordinates.
-5. Temporal Grounding: Parse timestamps into ISO-8601 when possible. If only date or time of day is stated, note precision ('date', 'range', 'unknown'). If unstated, set 'value: null' and 'precision: "unknown"'.
-6. Uncertainty & Contradictions: If the report contains conflicting statements, list them in 'conflictingInfo'. If details like exact depth, casualty count, or clearing time are unstated, list them in 'uncertaintyNotes'.
-
-Return ONLY valid JSON matching the requested schema. No markdown wrapping or conversational commentary.
+1. Let AI understand the data — keep 'incidentType' as an open, descriptive, natural Indonesian phrase (e.g. "genangan air akibat luapan saluran", "kecelakaan lalu lintas melibatkan truk", "pohon tumbang menghalangi jalan", "tiang listrik roboh", "pipa air pdam bocor"). Never force incidentType into a rigid enum.
+2. Primary Category (exactly one): set 'primaryCategory' to EXACTLY ONE of the ten official slugs below. Never invent a new category, never emit an array, never leave it null. If no category is reliably supported by the evidence, the correct behavior is to fail validation (throw) so the job routes to review — never silently fall back to "disasters_weather" or another default.
+   - crime_personal_security: reported robbery, theft, assault, harassment, actionable personal-security incidents. Exclude unrelated court reporting, historical investigations, routine announcements without safety implications.
+   - demonstrations_public_gatherings: protests, marches, rallies, strikes, public gatherings. Traffic restrictions caused by a demo stay impacts, not a second incident.
+   - crowds_major_events: concerts, sporting events, festivals, overcrowding with documented crowd/access/transport effects. Do not ingest every ordinary entertainment announcement.
+   - violence_immediate_threats: violent clashes, tawuran, immediate threats, acute public violence. Distinct from peaceful demos and ordinary crime.
+   - disasters_weather: flooding, severe weather, earthquakes, fallen trees, natural/weather incidents.
+   - fires_infrastructure_hazards: building fires, gas leaks, structural collapses, damaged infrastructure creating public hazards.
+   - transport_road_incidents: road accidents, closures, diversions, public-transport interruptions.
+   - utilities_essential_services: significant water, electricity, communications outages affecting public services.
+   - health_environmental_advisories: official outbreak notices, significant pollution alerts, contamination warnings.
+   - group_specific_critical_notices: critical notices for an identified institution, school, occupation, or community (closures, evacuations).
+3. Event vs impacts: 'primaryCategory' names what happened; 'impacts' names what it affects (e.g. a demonstration causing road_closure/traffic_diversion stays demonstrations_public_gatherings with those impacts — never reclassify as transport merely because it affects traffic). Never create a second incident for one event's effects.
+4. Assess Severity Factual Grounding: Evaluate severity ('low', 'medium', 'high', 'critical', 'unknown') directly from reported threat to human life, severe injury, or critical infrastructure disruption. If severity is not discernible from the text, use 'unknown'. NEVER calculate severity from count of impacts.
+5. Zero Hallucination: Every entry in the 'evidence' array MUST contain an exact verbatim quote from the text and cite the relevant chunkId. Do not paraphrase in quotes. If no clear factual quote exists, do not invent one.
+6. Spatial Grounding: If coordinates are mentioned or can be reliably identified from known Jakarta corridors (e.g. "Jl. DI Panjaitan Cawang" approx [106.871, -6.244]), provide approximateCoordinates [longitude, latitude]. If ambiguous or unknown, set 'label: null', 'approximateCoordinates: null', and 'precision: "unknown"'. NEVER default unlocated reports to "DKI Jakarta" or default coordinates.
+7. Temporal Grounding: Parse timestamps into ISO-8601 when possible. If only date or time of day is stated, note precision ('date', 'range', 'unknown'). If unstated, set 'value: null' and 'precision: "unknown"'.
+8. Uncertainty & Contradictions: If the report contains conflicting statements, list them in 'conflictingInfo'. If details like exact depth, casualty count, or clearing time are unstated, list them in 'uncertaintyNotes'.
 `.trim();
 export function createReportInterpretationAgent(agentOverride?: Agent): Agent {
   if (agentOverride) return agentOverride;
@@ -103,7 +125,7 @@ Format your output as a single JSON object with these keys:
 {
   "summary": string,
   "incidentType": string,
-  "severity": "low"|"medium"|"high"|"critical"|"unknown",
+  "primaryCategory": "crime_personal_security"|"demonstrations_public_gatherings"|"crowds_major_events"|"violence_immediate_threats"|"disasters_weather"|"fires_infrastructure_hazards"|"transport_road_incidents"|"utilities_essential_services"|"health_environmental_advisories"|"group_specific_critical_notices",
   "location": { "label": string | null, "approximateCoordinates": [number, number] | null, "precision": "exact"|"approximate"|"corridor"|"district"|"unknown" },
   "eventTime": { "value": string | null, "precision": "exact"|"date"|"range"|"unknown" },
   "entities": [{ "name": string, "kind": "person"|"organization"|"vehicle"|"infrastructure"|"other" }],

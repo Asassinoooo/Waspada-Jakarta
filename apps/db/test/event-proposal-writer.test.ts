@@ -17,6 +17,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
     proposal_id: 'proposal-flood-kemang-001',
     title: 'Banjir 50cm di Jalan Kemang Raya',
     incident_type: 'flood',
+    primary_category: 'disasters_weather',
     severity: 'medium',
     event_time: {
       precision: 'exact',
@@ -50,6 +51,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
     proposal_id: 'proposal-fire-tambora-002',
     title: 'Kebakaran Rumah Tinggal di Tambora',
     incident_type: 'fire',
+    primary_category: 'fires_infrastructure_hazards',
     severity: 'high',
     event_time: {
       precision: 'exact',
@@ -266,6 +268,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
       proposal_id: 'proposal-with-linked-evidence',
       title: 'Uji Penautan Bukti',
       incident_type: 'flood',
+      primary_category: 'disasters_weather',
       severity: 'low',
       event_time: { precision: 'date', value: '2026-10-26' },
       location_label: 'Jakarta Pusat',

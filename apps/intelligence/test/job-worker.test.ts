@@ -87,6 +87,7 @@ describe("Durable AI Job Worker", () => {
             summary: "Pohon tumbang menutup Jalan Sudirman dekat Halte Tosari",
             incidentType: "pohon_tumbang",
             severity: "medium",
+      primaryCategory: "disasters_weather",
           }),
           correlator: createMockCorrelatorAgent(),
         },

@@ -4,12 +4,13 @@ import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js"
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import {
   createIncidentIntelligenceWorkflow,
-  type IncidentWorkflowInput,
+  IncidentWorkflowInputSchema,
 } from "../src/workflows/incident-intelligence-workflow.js";
 import { createEventProposalWriter } from "../../db/src/event-proposal-writer.js";
 import { createSqlIncidentRepository } from "../../db/src/incident-repository.js";
 import { createMockInterpreterAgent, createMockCorrelatorAgent } from "./mock-agents.js";
-
+import type { z } from "zod";
+type IncidentWorkflowInput = z.infer<typeof IncidentWorkflowInputSchema>;
 describe("Mastra Incident Intelligence Workflow", () => {
   let db: TestDatabase;
 
@@ -28,6 +29,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
       summary: "Banjir setinggi 50 cm merendam Jalan DI Panjaitan, Cawang",
       incidentType: "genangan_air_luapan_saluran",
       severity: "medium",
+      primaryCategory: "disasters_weather",
       location: {
         label: "Jl. DI Panjaitan, Cawang, Jakarta Timur",
         approximateCoordinates: [106.871, -6.244],

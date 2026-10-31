@@ -141,6 +141,7 @@ export function createSemanticRetrievalService(dependencies: {
         title: string;
         description: string;
         incident_type: string;
+        primary_category: string | null;
         status: string;
         severity: string;
         location_label: string | null;
@@ -156,7 +157,7 @@ export function createSemanticRetrievalService(dependencies: {
         relationship: string;
       }>(
         `SELECT
-           i.incident_id, i.dataset_kind, i.title, i.description, i.incident_type,
+           i.incident_id, i.dataset_kind, i.title, i.description, i.incident_type, i.primary_category,
            i.status, i.severity, i.location_label, ST_AsGeoJSON(i.shape) AS shape_geojson,
            i.event_time, i.first_observed_at, i.last_updated_at, i.discrepancies,
            i.uncertainty_notes, i.record_json, i.created_at,
@@ -193,6 +194,7 @@ export function createSemanticRetrievalService(dependencies: {
             title: row.title,
             description: row.description,
             incidentType: row.incident_type,
+            primaryCategory: row.primary_category ?? null,
             status: row.status as any,
             severity: row.severity as any,
             locationLabel: row.location_label,

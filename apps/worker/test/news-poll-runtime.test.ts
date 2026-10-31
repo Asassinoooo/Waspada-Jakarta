@@ -101,7 +101,7 @@ test("DEFAULT_NEWS_FEEDS includes 14 verified multi-network Indonesian news feed
   assert.ok(sourceIds.includes("source-tempo-nasional"));
 });
 
-test("createNewsPollRuntime polls feeds, filters Jakarta incident news, and returns StoredReportRevision items", async () => {
+test("createNewsPollRuntime polls feeds, preserves all valid fresh items pre-gate, and returns StoredReportRevision items", async () => {
   const mockFetch: typeof fetch = async (input) => {
     const url = String(input);
     if (url.includes("metro.xml")) {
@@ -140,15 +140,17 @@ test("createNewsPollRuntime polls feeds, filters Jakarta incident news, and retu
   assert.equal(result.failedFeeds, 0);
   assert.equal(result.totalItemsParsed, 5); // 3 from metro + 2 from crime
 
-  // Revisions should be filtered and deduplicated:
-  // Item 1 (kebakaran Pasar Baru Jakarta Pusat) -> matched
-  // Item 2 (taman Tebet Jakarta - non incident) -> filtered out
-  // Item 3 (banjir Aceh - non Jakarta) -> filtered out
-  // Item 4 (tawuran Matraman Jakarta Timur) -> matched
-  // Item 5 (duplicate kebakaran Pasar Baru) -> matched by feed, but deduplicated in aggregate revisions
-  assert.equal(result.revisions.length, 2);
-  assert.equal(result.length, 2); // Array-like access
-  assert.equal(callbackRevisions.length, 2);
+  // Pre-gate contract (WJ-INT-02): all valid fresh items are preserved with
+  // revisions; relevance filtering happens in the triage gate (see news-triage.test.ts),
+  // not in the poller. Aggregate deduplicates the kebakaran item shared by both feeds.
+  // Item 1 (kebakaran Pasar Baru Jakarta Pusat) -> preserved
+  // Item 2 (taman Tebet Jakarta - non incident) -> preserved pre-gate
+  // Item 3 (banjir Aceh - non Jakarta) -> preserved pre-gate
+  // Item 4 (tawuran Matraman Jakarta Timur) -> preserved
+  // Item 5 (duplicate kebakaran Pasar Baru) -> deduplicated in aggregate revisions
+  assert.equal(result.revisions.length, 4);
+  assert.equal(result.length, 4); // Array-like access
+  assert.equal(callbackRevisions.length, 4);
 
   // Check first revision adherence to Frozen Contract (StoredReportRevision)
   const rev1 = result.revisions[0]!;
@@ -168,13 +170,13 @@ test("createNewsPollRuntime polls feeds, filters Jakarta incident news, and retu
   assert.equal(chunk1.span_start, 0);
   assert.equal(chunk1.span_end, Array.from(rev1.permitted_text).length);
 
-  // Check second revision
+  // Check second revision (metro feed order: kebakaran, taman, banjir; then crime feed tawuran)
   const rev2 = result.revisions[1]!;
-  assert.ok(rev2.report_revision_id.startsWith("rep-source-antara-hukum-"));
-  assert.equal(rev2.source_id, "source-antara-hukum");
-  assert.equal(rev2.canonical_url, "https://www.antaranews.com/berita/8001/tawuran-matraman");
-  assert.equal(rev2.permitted_text, "Polisi amankan pelaku tawuran di kawasan Matraman Jakarta Timur");
+  assert.equal(rev2.source_id, "source-antara-metro");
+  assert.equal(rev2.canonical_url, "https://www.antaranews.com/berita/7002/taman-tebet");
+  assert.equal(rev2.permitted_text, "Gubernur DKI Jakarta resmikan taman kota terpadu di Tebet");
   assert.equal(rev2.revision_status, "unreviewed");
+  assert.equal(rev2.triage, undefined);
 });
 
 test("pollFeed executes polling on an individual feed config", async () => {
@@ -194,10 +196,11 @@ test("pollFeed executes polling on an individual feed config", async () => {
   assert.equal(feedResult.status, "success");
   assert.equal(feedResult.sourceId, "custom-metro");
   assert.equal(feedResult.totalParsed, 3);
-  assert.equal(feedResult.matchedCount, 1);
-  assert.equal(feedResult.rejectedCount, 2);
-  assert.equal(feedResult.revisions.length, 1);
+  assert.equal(feedResult.matchedCount, 3);
+  assert.equal(feedResult.rejectedCount, 0);
+  assert.equal(feedResult.revisions.length, 3);
   assert.equal(feedResult.revisions[0]!.source_id, "custom-metro");
+  assert.equal(feedResult.triageCounts, undefined);
 });
 
 test("handles network timeout gracefully without throwing", async () => {
@@ -308,8 +311,8 @@ test("handles partial feed failures: collects revisions from succeeding feed", a
   assert.equal(result.successfulFeeds, 1);
   assert.equal(result.failedFeeds, 1);
 
-  // Successfully collected revisions from metro feed
-  assert.equal(result.revisions.length, 1);
+  // Successfully collected all 3 valid fresh metro revisions pre-gate
+  assert.equal(result.revisions.length, 3);
   assert.equal(result.revisions[0]!.source_id, "source-antara-metro");
   assert.equal(result.revisions[0]!.permitted_text, "Kebakaran hebat di ruko Pasar Baru Jakarta Pusat berhasil dipadamkan");
 });
@@ -412,7 +415,7 @@ test("NewsPollResult supports iterable for..of loop and array index access", asy
   const result = await runtime.poll();
 
   assert.equal(Array.isArray(result), true);
-  assert.equal(result.length, 1);
+  assert.equal(result.length, 3);
 
   // Array indexing
   const firstRev = result[0]!;
@@ -424,7 +427,7 @@ test("NewsPollResult supports iterable for..of loop and array index access", asy
     assert.equal(rev.revision_status, "unreviewed");
     iteratedCount += 1;
   }
-  assert.equal(iteratedCount, 1);
+  assert.equal(iteratedCount, 3);
 });
 
 test("filters out stale articles older than maxAgeHours (50h, 2 months) and accepts fresh articles (2h)", async () => {

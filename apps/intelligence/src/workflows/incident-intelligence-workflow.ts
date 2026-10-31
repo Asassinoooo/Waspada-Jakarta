@@ -45,9 +45,12 @@ export const IncidentWorkflowInputSchema = z.object({
   datasetKind: z.enum(["live", "historical", "synthetic"]),
   traceId: z.string(),
   evidenceChunks: z.array(WorkflowChunkSchema),
+  triage: z.object({
+    primaryCategory: z.string().nullable(),
+    incidentType: z.string().nullable(),
+    jakartaScope: z.string(),
+  }).optional(),
 });
-
-export type IncidentWorkflowInput = z.infer<typeof IncidentWorkflowInputSchema>;
 
 export interface IncidentWorkflowOutput {
   readonly reportRevisionId: string;
@@ -253,6 +256,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             incidentId: targetIncidentId,
             datasetKind,
             lastUpdatedAt: now,
+            primaryCategory: interpretation.primaryCategory,
             discrepancies: mergedDiscrepancies,
             uncertaintyNotes: mergedUncertainties,
             severity: resolvedSeverity,
@@ -267,6 +271,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             incidentId: targetIncidentId,
             datasetKind,
             lastUpdatedAt: now,
+            primaryCategory: interpretation.primaryCategory,
           },
         };
       } else {
@@ -284,6 +289,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             title: interpretation.summary.slice(0, 150),
             description: interpretation.summary,
             incidentType: interpretation.incidentType,
+            primaryCategory: interpretation.primaryCategory,
             status: initialStatus,
             severity: interpretation.severity ?? "unknown",
             locationLabel: interpretation.location.label,
@@ -325,11 +331,14 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         });
       }
 
+      const triageCategory = input.triage?.primaryCategory ?? null;
+      const triageMismatch = triageCategory !== null && triageCategory !== interpretation.primaryCategory;
       const proposalDto: EventProposalDto = {
         schema_version: "2.0",
         proposal_id: proposalId,
         title: interpretation.summary.slice(0, 120),
         incident_type: interpretation.incidentType,
+        primary_category: interpretation.primaryCategory,
         compatibility_category: compatibilityCat,
         severity: interpretation.severity ?? "unknown",
         event_time: {
@@ -340,7 +349,9 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         coordinates: interpretation.location.approximateCoordinates,
         claims,
         impacts: interpretation.impacts,
-        caveats: interpretation.uncertaintyNotes,
+        caveats: triageMismatch
+          ? [...interpretation.uncertaintyNotes, "category_mismatch_review"]
+          : interpretation.uncertaintyNotes,
         proposed_at: now,
       };
 

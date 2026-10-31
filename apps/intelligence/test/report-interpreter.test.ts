@@ -35,6 +35,7 @@ describe("Mastra Report Interpretation Agent", () => {
       summary: "Banjir 60 cm di Jalan Kemang Raya akibat hujan deras",
       incidentType: "genangan air luapan drainase",
       severity: "medium",
+      primaryCategory: "disasters_weather",
       location: {
         label: "Jl. Kemang Raya, Mampang Prapatan, Jakarta Selatan",
         approximateCoordinates: [106.815, -6.273],
@@ -74,6 +75,7 @@ describe("Mastra Report Interpretation Agent", () => {
       summary: "Pipa air PDAM pecah menyebabkan semburan air dan aspal terangkat",
       incidentType: "pipa_air_pdam_bocor",
       severity: "high",
+      primaryCategory: "disasters_weather",
       location: {
         label: "Jl. Rasuna Said Kav. 5",
         approximateCoordinates: null,
@@ -103,6 +105,7 @@ describe("Mastra Report Interpretation Agent", () => {
     const mockAgent = createMockInterpreterAgent({
       incidentType: "fallen_electrical_pole",
       severity: "high",
+      primaryCategory: "disasters_weather",
     });
 
     const result = await interpretReport(sampleInput, { agent: mockAgent });
