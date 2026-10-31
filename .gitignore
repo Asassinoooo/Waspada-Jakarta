@@ -23,7 +23,7 @@ playwright-report/
 
 # Credentials and local runtime state
 .env
-.env.*
+.data/
 !.env.example
 .dev.vars
 .dev.vars.*
