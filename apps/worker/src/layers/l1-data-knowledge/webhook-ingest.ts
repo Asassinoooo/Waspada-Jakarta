@@ -540,7 +540,9 @@ export async function webhookIngestHandler(
     return new Response(
       JSON.stringify({
         ok: true,
-        proposal_id: firstResult.proposal.proposal_id,
+        report_revision_id: firstResult.revision.report_revision_id,
+        report_revisions: results.map((r) => r.revision.report_revision_id),
+        proposal_id: firstResult.proposal?.proposal_id ?? `prop-${firstResult.revision.report_revision_id}`,
         proposal: firstResult.proposal,
         proposals: results.map((r) => r.proposal),
         count: results.length,
@@ -556,7 +558,8 @@ export async function webhookIngestHandler(
   return new Response(
     JSON.stringify({
       ok: true,
-      proposal_id: firstResult.proposal.proposal_id,
+      report_revision_id: firstResult.revision.report_revision_id,
+      proposal_id: firstResult.proposal?.proposal_id ?? `prop-${firstResult.revision.report_revision_id}`,
       proposal: firstResult.proposal,
       is_correlated: firstResult.isCorrelated,
     }),

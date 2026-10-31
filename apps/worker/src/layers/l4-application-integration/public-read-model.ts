@@ -63,6 +63,7 @@ function toEventView(event: EventDetail | EventView): EventView {
     title: event.title,
     summary: event.summary,
     category: event.category,
+    ...(event.incident_type ? { incident_type: event.incident_type } : {}),
     tags: event.tags,
     lifecycle: event.lifecycle,
     freshness: event.freshness,

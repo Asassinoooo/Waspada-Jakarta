@@ -5,6 +5,7 @@ import {
   createSqlIncidentRepository,
   type IncidentRepository,
   type AiJobRecord,
+  StaleLeaseError,
 } from "../../db/src/incident-repository.js";
 import {
   createIncidentIntelligenceWorkflow,
@@ -37,6 +38,9 @@ export function classifyJobError(err: unknown): string {
   }
   if (message.includes("zod") || message.includes("parse") || message.includes("schema") || message.includes("json")) {
     return "invalid_output";
+  }
+  if (message.includes("stale") || message.includes("lease")) {
+    return "stale_lease";
   }
   if (message.includes("syntax") || message.includes("constraint") || message.includes("violates") || message.includes("relation")) {
     return "db_error";
@@ -154,6 +158,8 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         }
 
         const workflowInput: IncidentWorkflowInput = {
+          jobId: job.jobId,
+          leaseToken,
           reportRevisionId: rev.report_revision_id,
           reportText: rev.permitted_text,
           sourceKind: rev.source_kind || "webhook",
@@ -185,8 +191,31 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
 
         // Complete job
         await incidentRepo.completeAiJob(job.jobId, leaseToken);
+
+        // Notify moderation Worker if internal URL is configured
+        const workerUrl = process.env.WORKER_INTERNAL_URL || "http://127.0.0.1:8787";
+        const internalServiceKey = process.env.INTERNAL_SERVICE_KEY || "dev-internal-key";
+        const proposalId = `prop-${rev.report_revision_id}`;
+        try {
+          await fetch(`${workerUrl}/api/v1/internal/proposals`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-service-key": internalServiceKey,
+            },
+            body: JSON.stringify({ proposal_id: proposalId }),
+            signal: AbortSignal.timeout(3000),
+          });
+        } catch {
+          // Notification failure is non-fatal: PostgreSQL transaction is already committed
+        }
+
         return true;
       } catch (err) {
+        if (err instanceof StaleLeaseError) {
+          // Worker was preempted or lost lease; another worker has ownership, do not mutate job status
+          return false;
+        }
         const failureCode = classifyJobError(err);
         const backoffMs = calculateBackoffMs(job.attemptCount);
         await incidentRepo.failAiJob(job.jobId, leaseToken, failureCode, backoffMs);

@@ -9,7 +9,7 @@ import {
   createSqlEvidenceRetrievalRepository,
   type EvidenceRetrievalCandidate,
 } from "../../../db/src/evidence-retrieval.js";
-import { createSqlIncidentRepository, type IncidentRecord } from "../../../db/src/incident-repository.js";
+import type { IncidentRecord } from "../../../db/src/incident-repository.js";
 import {
   generateNineRouterEmbedding,
   getNineRouterConfig,
@@ -29,6 +29,7 @@ export interface CandidateIncidentMatch {
   readonly similarityScore: number;
   readonly matchedChunkId?: string;
   readonly matchedText?: string;
+  readonly matchedReportRevisionId?: string;
 }
 
 export interface CandidateEvidenceResult {
@@ -60,7 +61,6 @@ export function createSemanticRetrievalService(dependencies: {
 }): SemanticRetrievalService {
   const config = dependencies.config ?? getNineRouterConfig();
   const retrievalRepo = createSqlEvidenceRetrievalRepository(dependencies.executor);
-  const incidentRepo = createSqlIncidentRepository(dependencies.executor);
 
   return {
     async generateAndPersistEmbedding(input: {
@@ -112,52 +112,140 @@ export function createSemanticRetrievalService(dependencies: {
       const queryVector = await generateNineRouterEmbedding(input.queryText, { config });
       const maxResults = input.maxResults ?? 10;
 
-      let candidates: readonly EvidenceRetrievalCandidate[] = [];
-      try {
-        const result = await retrievalRepo.search({
-          datasetKind: input.datasetKind,
-          semantic: {
-            identity: NINEROUTER_EMBEDDING_IDENTITY,
-            queryVector,
-          },
-          maxResults,
-        });
-        candidates = result.candidates;
-      } catch {
-        candidates = [];
+      // 1. Search candidate evidence chunks via pgvector cosine distance (propagate errors)
+      const result = await retrievalRepo.search({
+        datasetKind: input.datasetKind,
+        semantic: {
+          identity: NINEROUTER_EMBEDDING_IDENTITY,
+          queryVector,
+        },
+        maxResults,
+      });
+      const candidates = result.candidates;
+
+      if (candidates.length === 0) {
+        return {
+          queryVector,
+          candidates: [],
+          candidateIncidents: [],
+        };
       }
 
-      // Fetch active incidents to compare against
-      const candidateIncidents: CandidateIncidentMatch[] = [];
-      const activeIncidents = await incidentRepo.listActiveIncidents(input.datasetKind, { limit: maxResults });
+      // 2. Extract unique report revision IDs from retrieved candidates
+      const reportRevisionIds = Array.from(new Set(candidates.map((c) => c.reportRevisionId)));
 
-      for (const incident of activeIncidents) {
-        // Compute rough semantic similarity using text vector or check if chunk matches
-        let score = 0.5;
-        let matchedChunkId: string | undefined;
-        let matchedText: string | undefined;
+      // 3. Single bulk query linking retrieved reports to their persistent incidents
+      const incidentRows = await dependencies.executor.query<{
+        incident_id: string;
+        dataset_kind: DatasetKind;
+        title: string;
+        description: string;
+        incident_type: string;
+        status: string;
+        severity: string;
+        location_label: string | null;
+        shape_geojson: string | null;
+        event_time: unknown;
+        first_observed_at: string | Date;
+        last_updated_at: string | Date;
+        discrepancies: unknown;
+        uncertainty_notes: unknown;
+        record_json: unknown;
+        created_at: string | Date;
+        report_revision_id: string;
+        relationship: string;
+      }>(
+        `SELECT
+           i.incident_id, i.dataset_kind, i.title, i.description, i.incident_type,
+           i.status, i.severity, i.location_label, ST_AsGeoJSON(i.shape) AS shape_geojson,
+           i.event_time, i.first_observed_at, i.last_updated_at, i.discrepancies,
+           i.uncertainty_notes, i.record_json, i.created_at,
+           r.report_revision_id, r.relationship
+         FROM waspada.incidents i
+         JOIN waspada.incident_reports r
+           ON r.dataset_kind = i.dataset_kind AND r.incident_id = i.incident_id
+         WHERE r.dataset_kind = $1 AND r.report_revision_id = ANY($2::text[])`,
+        [input.datasetKind, reportRevisionIds],
+      );
 
-        // Check if any candidate chunk belongs to this incident
-        for (const candidate of candidates) {
-          const reportIncident = await incidentRepo.getIncidentForReport(input.datasetKind, candidate.reportRevisionId);
-          if (reportIncident && reportIncident.incidentId === incident.incidentId) {
-            const dist = candidate.chunk?.semanticDistance ?? 0.2;
-            score = Math.max(score, 1 - dist);
-            matchedChunkId = candidate.chunk?.chunkId;
-            matchedText = candidate.spanText;
-            break;
+      // Build map from reportRevisionId -> incident and map from incidentId -> IncidentRecord
+      const reportToIncidentId = new Map<string, string>();
+      const incidentMap = new Map<string, IncidentRecord>();
+
+      for (const row of incidentRows.rows) {
+        reportToIncidentId.set(row.report_revision_id, row.incident_id);
+        if (!incidentMap.has(row.incident_id)) {
+          let coordinates: [number, number] | null = null;
+          if (row.shape_geojson) {
+            try {
+              const parsed = typeof row.shape_geojson === "string" ? JSON.parse(row.shape_geojson) : row.shape_geojson;
+              if (parsed && parsed.type === "Point" && Array.isArray(parsed.coordinates)) {
+                coordinates = [Number(parsed.coordinates[0]), Number(parsed.coordinates[1])];
+              }
+            } catch {
+              // ignore malformed geometry
+            }
           }
-        }
 
-        candidateIncidents.push({
-          incident,
-          similarityScore: score,
-          matchedChunkId,
-          matchedText,
-        });
+          incidentMap.set(row.incident_id, {
+            incidentId: row.incident_id,
+            datasetKind: row.dataset_kind,
+            title: row.title,
+            description: row.description,
+            incidentType: row.incident_type,
+            status: row.status as any,
+            severity: row.severity as any,
+            locationLabel: row.location_label,
+            coordinates,
+            eventTime: (typeof row.event_time === "object" && row.event_time !== null ? row.event_time : {}) as Record<string, unknown>,
+            firstObservedAt: new Date(row.first_observed_at).toISOString(),
+            lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
+            discrepancies: Array.isArray(row.discrepancies) ? row.discrepancies : [],
+            uncertaintyNotes: Array.isArray(row.uncertainty_notes) ? row.uncertainty_notes : [],
+            recordJson: (typeof row.record_json === "object" && row.record_json !== null ? row.record_json : {}) as Record<string, unknown>,
+            createdAt: new Date(row.created_at).toISOString(),
+          });
+        }
       }
 
-      // Sort candidate incidents by similarity score descending
+      // Group candidate chunks by incident and find best matching chunk per incident
+      const incidentMatches = new Map<string, {
+        incident: IncidentRecord;
+        bestDistance: number;
+        matchedChunkId?: string;
+        matchedText?: string;
+        matchedReportRevisionId?: string;
+      }>();
+
+      for (const candidate of candidates) {
+        const incidentId = reportToIncidentId.get(candidate.reportRevisionId);
+        if (!incidentId) continue;
+        const incident = incidentMap.get(incidentId);
+        if (!incident) continue;
+
+        const distance = candidate.chunk?.semanticDistance ?? 1.0;
+        const existing = incidentMatches.get(incidentId);
+        if (!existing || distance < existing.bestDistance) {
+          incidentMatches.set(incidentId, {
+            incident,
+            bestDistance: distance,
+            matchedChunkId: candidate.chunk?.chunkId,
+            matchedText: candidate.spanText,
+            matchedReportRevisionId: candidate.reportRevisionId,
+          });
+        }
+      }
+
+      // Transform into CandidateIncidentMatch[] with genuine similarity score
+      const candidateIncidents: CandidateIncidentMatch[] = Array.from(incidentMatches.values()).map((match: any) => ({
+        incident: match.incident,
+        similarityScore: Math.max(0, Math.min(1, 1 - match.bestDistance)),
+        matchedChunkId: match.matchedChunkId,
+        matchedText: match.matchedText,
+        matchedReportRevisionId: match.matchedReportRevisionId,
+      }));
+
+      // Sort by similarity score descending
       candidateIncidents.sort((a, b) => b.similarityScore - a.similarityScore);
 
       return {

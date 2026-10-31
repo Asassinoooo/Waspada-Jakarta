@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createPublicEventListRuntime } from "./runtime/public-event-list-runtime.js";
 import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-runtime.js";
 import { createPublicEventHistoryRuntime } from "./runtime/public-event-history-runtime.js";
@@ -19,8 +20,6 @@ import { createContextSourcesHandler } from "./layers/l4-application-integration
 import { handleAccountRequest } from "./runtime/account-runtime.js";
 import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
 import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
-import { correlateSourceReports } from "./layers/l1-data-knowledge/multisource-correlator.js";
-import { generateCorrelatedProposal } from "./layers/l2-model-grounding/correlated-proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
 import { createNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
@@ -30,6 +29,9 @@ import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-int
 import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-data-knowledge/webhook-ingest.js";
 import { withPostgresSqlExecutor } from "../../db/src/postgres-sql-executor.js";
 import { createSqlIncidentRepository } from "../../db/src/incident-repository.js";
+import { createEventProposalWriter } from "../../db/src/event-proposal-writer.js";
+import type { DatasetKind } from "../../db/src/ports.js";
+import type { SqlExecutor } from "../../db/src/sql.js";
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
@@ -37,35 +39,10 @@ const activeRevisions = new Map<string, StoredReportRevision>();
 const activeProposals = new Map<string, EventProposalDto>();
 const activeChunks = new Map<string, readonly StoredEvidenceChunk[]>();
 
-function recomputeCorrelatedProposals(): void {
-  const allRevisions = Array.from(activeRevisions.values());
-  if (allRevisions.length === 0) return;
-  const clusters = correlateSourceReports(allRevisions);
-  activeProposals.clear();
-  activeChunks.clear();
-  for (const cluster of clusters) {
-    const prop = generateCorrelatedProposal(cluster);
-    if (prop) {
-      activeProposals.set(prop.proposal_id, prop);
-      const proposalChunks = cluster.reports.flatMap((r) => r.chunks);
-      activeChunks.set(prop.proposal_id, proposalChunks);
-    }
-  }
-}
-
 const webhookIngest = createWebhookIngestHandler({
   broadcaster: eventBroadcaster,
-  activeReports: () => Array.from(activeRevisions.values()),
   onRevisionCreated: (revision) => {
     activeRevisions.set(revision.report_revision_id, revision);
-    recomputeCorrelatedProposals();
-  },
-  onProposalCreated: (proposal, chunks) => {
-    recomputeCorrelatedProposals();
-    if (!activeProposals.has(proposal.proposal_id)) {
-      activeProposals.set(proposal.proposal_id, proposal);
-      activeChunks.set(proposal.proposal_id, chunks);
-    }
   },
 });
 
@@ -87,86 +64,172 @@ async function syncLivePipelineProposals(): Promise<void> {
     for (const rev of newRevisions) {
       activeRevisions.set(rev.report_revision_id, rev);
     }
-    recomputeCorrelatedProposals();
   }
 }
 
 // Initial live background sync
 void syncLivePipelineProposals();
-const moderationHandler = createModerationApiHandler({
-  listPendingProposals: async () => {
-    if (activeProposals.size <= 1) {
-      await syncLivePipelineProposals();
-    }
-    return Array.from(activeProposals.values());
-  },
-  getProposalDetail: async (id: string) => {
-    if (activeProposals.size === 0) {
-      await syncLivePipelineProposals();
-    }
-    const prop = activeProposals.get(id);
-    if (!prop) return null;
-    return { proposal: prop, chunks: activeChunks.get(id) ?? [] };
-  },
-  authenticate: async (request: Request) => {
-    return {
-      actorId: "mod-demo-01",
-      role: "moderator",
-      active: true,
-      csrfToken: request.headers.get("x-csrf-token") ?? "demo-csrf-token",
-    };
-  },
-  csrfProtection: false,
-  publisher: {
-    publish: async (input: unknown) => {
-      const cmd = typeof input === "object" && input !== null
-        ? (input as {
-            proposal_id?: string;
-            proposalId?: string;
-            decision?: { proposal_id?: string };
-            eventDraft?: unknown;
-            event?: unknown;
-            proposal?: EventProposalDto;
-            title?: string;
-            incident_type?: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather";
-            severity?: "low" | "medium" | "high" | "critical";
-            location_label?: string;
-            coordinates?: readonly [number, number];
-            claims?: EventProposalDto["claims"];
-          })
-        : {};
-      const id = cmd.proposal_id ?? cmd.proposalId ?? cmd.decision?.proposal_id;
-      const proposal = (id ? activeProposals.get(id) : undefined) ?? cmd.proposal;
-      const chunks = id ? activeChunks.get(id) : undefined;
-      let publishedDetail: unknown;
-      if (proposal) {
-        publishedDetail = PublicReadModel.publish(proposal, chunks);
-      } else if (cmd.eventDraft || cmd.event) {
-        publishedDetail = PublicReadModel.publish((cmd.eventDraft ?? cmd.event) as Record<string, unknown>);
-      } else if (id) {
-        publishedDetail = PublicReadModel.publish({
-          schema_version: "2.0",
-          proposal_id: id,
-          title: cmd.title ?? `Laporan Kejadian ${id}`,
-          incident_type: cmd.incident_type ?? "unclassified",
-          severity: cmd.severity ?? "unknown",
-          event_time: { precision: "exact", value: new Date().toISOString() },
-          location_label: cmd.location_label ?? null,
-          coordinates: cmd.coordinates ?? null,
-          claims: cmd.claims ?? [],
-          proposed_at: new Date().toISOString(),
+async function withSqlExecutor<Result>(
+  env: WorkerEnvironment,
+  operation: (executor: SqlExecutor) => Promise<Result>,
+): Promise<Result> {
+  if (env.SQL_EXECUTOR) {
+    return operation(env.SQL_EXECUTOR);
+  }
+  if (env.HYPERDRIVE?.connectionString) {
+    return withPostgresSqlExecutor(env.HYPERDRIVE.connectionString, operation);
+  }
+  throw new Error("No database executor or connection string configured in environment");
+}
+
+function getModerationHandler(env: WorkerEnvironment) {
+  const datasetKind = ((env.DATASET_MODE as string) || "live") as DatasetKind;
+  return createModerationApiHandler({
+    listPendingProposals: async () => {
+      if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
+        return withSqlExecutor(env, async (executor) => {
+          const writer = createEventProposalWriter(executor);
+          return writer.readPendingProposals(datasetKind);
         });
       }
-      if (publishedDetail) {
-        eventBroadcaster.broadcastPublic("event_published", publishedDetail);
-      }
-      if (id) {
-        eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
-      }
-      return { status: "written", receipt: { decision_id: `dec-${Date.now()}` } };
+      return Array.from(activeProposals.values());
     },
-  },
-});
+    getProposalDetail: async (id: string) => {
+      if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
+        return withSqlExecutor(env, async (executor) => {
+          const writer = createEventProposalWriter(executor);
+          const proposal = await writer.readProposalById(id, datasetKind);
+          if (!proposal) return null;
+          const chunkRes = await executor.query<{
+            chunk_id: string;
+            span_start: number;
+            span_end: number;
+            text: string;
+          }>(
+            `SELECT ec.chunk_id, ec.span_start, ec.span_end,
+                    substr(r.permitted_text, ec.span_start + 1, ec.span_end - ec.span_start) AS text
+             FROM waspada.evidence_chunks ec
+             JOIN waspada.report_revisions r
+               ON r.dataset_kind = ec.dataset_kind AND r.report_revision_id = ec.report_revision_id
+             WHERE ec.dataset_kind = $1
+               AND ec.chunk_id = ANY(
+                 SELECT claim_json->>'evidence_ref_id'
+                 FROM waspada.event_proposals ep,
+                      jsonb_array_elements(ep.record_json->'claims') AS claim_json
+                 WHERE ep.dataset_kind = $1 AND ep.proposal_id = $2
+               )`,
+            [datasetKind, id],
+          );
+          return {
+            proposal,
+            chunks: chunkRes.rows.map((r, idx) => ({
+              chunk_index: idx,
+              span_start: r.span_start,
+              span_end: r.span_end,
+              text: r.text || "",
+            })),
+          };
+        });
+      }
+      const prop = activeProposals.get(id);
+      if (!prop) return null;
+      return { proposal: prop, chunks: activeChunks.get(id) ?? [] };
+    },
+    authenticate: async (request: Request) => {
+      return {
+        actorId: "mod-demo-01",
+        role: "moderator",
+        active: true,
+        csrfToken: request.headers.get("x-csrf-token") ?? "demo-csrf-token",
+      };
+    },
+    csrfProtection: false,
+    publisher: {
+      publish: async (input: unknown) => {
+        const cmd = typeof input === "object" && input !== null
+          ? (input as {
+              proposal_id?: string;
+              proposalId?: string;
+              decision?: { proposal_id?: string };
+              eventDraft?: unknown;
+              event?: unknown;
+              proposal?: EventProposalDto;
+              title?: string;
+              incident_type?: string;
+              severity?: "low" | "medium" | "high" | "critical" | "unknown";
+              location_label?: string;
+              coordinates?: readonly [number, number];
+              claims?: EventProposalDto["claims"];
+            })
+          : {};
+        const id = cmd.proposal_id ?? cmd.proposalId ?? cmd.decision?.proposal_id;
+        let proposal: EventProposalDto | undefined = cmd.proposal;
+        let chunks: readonly StoredEvidenceChunk[] | undefined;
+
+        if (id && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+          await withSqlExecutor(env, async (executor) => {
+            const writer = createEventProposalWriter(executor);
+            const found = await writer.readProposalById(id, datasetKind);
+            if (found) proposal = found;
+          });
+        }
+        if (!proposal && id) {
+          proposal = activeProposals.get(id);
+          chunks = activeChunks.get(id);
+        }
+
+        let publishedDetail: unknown;
+        if (proposal) {
+          publishedDetail = PublicReadModel.publish(proposal, chunks);
+        } else if (cmd.eventDraft || cmd.event) {
+          publishedDetail = PublicReadModel.publish((cmd.eventDraft ?? cmd.event) as Record<string, unknown>);
+        } else if (id) {
+          publishedDetail = PublicReadModel.publish({
+            schema_version: "2.0",
+            proposal_id: id,
+            title: cmd.title ?? `Laporan Kejadian ${id}`,
+            incident_type: cmd.incident_type ?? "unclassified",
+            severity: cmd.severity ?? "unknown",
+            event_time: { precision: "exact", value: new Date().toISOString() },
+            location_label: cmd.location_label ?? null,
+            coordinates: cmd.coordinates ?? null,
+            claims: cmd.claims ?? [],
+            proposed_at: new Date().toISOString(),
+          });
+        }
+        if (publishedDetail) {
+          eventBroadcaster.broadcastPublic("event_published", publishedDetail);
+        }
+        if (id) {
+          eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
+        }
+        const decisionId = `dec-${Date.now()}`;
+        if (id && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+          await withSqlExecutor(env, async (executor) => {
+            const pubTrace = `trace-pub-${id}`;
+            await executor.query(
+              `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+               VALUES ($1, $2, now(), 'succeeded', '{}'::jsonb)
+               ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
+              [pubTrace, datasetKind],
+            );
+            const eventId = (publishedDetail as any)?.event_id || `evt-${id}`;
+            await executor.query(
+              `INSERT INTO waspada.publication_decisions (
+                 dataset_kind, decision_id, trace_id, proposal_id, policy_version,
+                 event_id, event_version, reviewer_id, decided_at, record_json
+               )
+               VALUES ($1, $2, $3, $4, 'v1', $5, 1, 'mod-demo-01', now(), '{}'::jsonb)
+               ON CONFLICT (dataset_kind, decision_id) DO NOTHING`,
+              [datasetKind, decisionId, pubTrace, id, eventId],
+            );
+          }).catch(() => {});
+        }
+        return { status: "written", receipt: { decision_id: decisionId } };
+      },
+    },
+  });
+}
 export default {
   async fetch(request: Request, env: WorkerEnvironment, ctx?: { waitUntil?: (promise: Promise<unknown>) => void }): Promise<Response> {
     const url = new URL(request.url);
@@ -239,45 +302,130 @@ export default {
     // Inbound incident webhook push
     if (isWebhookIngestPath(url.pathname)) {
       const response = await webhookIngest(request);
-      if (env.HYPERDRIVE?.connectionString) {
-        const latestRevision = Array.from(activeRevisions.values()).at(-1);
-        if (latestRevision) {
-          const enqueuePromise = withPostgresSqlExecutor(env.HYPERDRIVE.connectionString, async (executor) => {
-            const repo = createSqlIncidentRepository(executor);
-            await repo.enqueueAiJob({
-              jobId: `job-${crypto.randomUUID()}`,
-              datasetKind: (env.DATASET_MODE as any) || "live",
-              reportRevisionId: latestRevision.report_revision_id,
+      if (response.ok && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+        try {
+          const resBody = (await response.clone().json().catch(() => null)) as {
+            report_revision_id?: string;
+            report_revisions?: string[];
+          } | null;
+          const revIds: string[] = resBody?.report_revisions ?? (resBody?.report_revision_id ? [resBody.report_revision_id] : []);
+          if (revIds.length > 0) {
+            const enqueuePromise = withSqlExecutor(env, async (executor) => {
+              const datasetKind = ((env.DATASET_MODE as string) || "live") as DatasetKind;
+              const repo = createSqlIncidentRepository(executor);
+              for (const revId of revIds) {
+                const rev = activeRevisions.get(revId);
+                if (rev) {
+                  const traceId = (rev as any).trace_id || `trace-${rev.report_revision_id}`;
+                  const contentHash = (rev as any).content_hash || rev.permitted_text_hash;
+
+                  // Ensure trace and source exist for foreign keys
+                  await executor.query(
+                    `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+                     VALUES ($1, $2, now(), 'succeeded', '{}'::jsonb)
+                     ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
+                    [traceId, datasetKind],
+                  );
+                  await executor.query(
+                    `INSERT INTO waspada.source_registry (
+                       source_id, trace_id, registry_version, display_name, source_kind, remit,
+                       access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+                       approval_status, health_status, auto_acquisition_enabled, auto_publication_policy
+                     )
+                     VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
+                             ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
+                     ON CONFLICT (source_id) DO NOTHING`,
+                    [rev.source_id, traceId, rev.source_id],
+                  );
+
+                  // Persist revision
+                  await executor.query(
+                    `INSERT INTO waspada.report_revisions (
+                       dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+                       content_hash, permitted_text, permitted_text_hash, normalization_version,
+                       retrieved_at, revision_status, record_json
+                     )
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb)
+                     ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
+                    [
+                      datasetKind,
+                      rev.report_revision_id,
+                      traceId,
+                      rev.source_id,
+                      rev.canonical_url,
+                      contentHash,
+                      rev.permitted_text,
+                      rev.permitted_text_hash,
+                      rev.retrieved_at,
+                    ],
+                  );
+                  // Persist chunks
+                  for (const chk of rev.chunks) {
+                    const chunkTextHash = createHash("sha256").update(chk.text).digest("hex");
+                    await executor.query(
+                      `INSERT INTO waspada.evidence_chunks (
+                         dataset_kind, chunk_id, trace_id, report_revision_id, permitted_text_hash,
+                         span_start, span_end, offset_unit, chunker_version, chunk_text_hash, status
+                       )
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, 'unicode_code_points', 'v1', $8, 'active')
+                       ON CONFLICT (dataset_kind, chunk_id) DO NOTHING`,
+                      [
+                        datasetKind,
+                        `chk-${rev.report_revision_id}-${chk.chunk_index}`,
+                        traceId,
+                        rev.report_revision_id,
+                        rev.permitted_text_hash,
+                        chk.span_start,
+                        chk.span_end,
+                        chunkTextHash,
+                      ],
+                    );
+                  }
+                }
+                await repo.enqueueAiJob({
+                  jobId: `job-${crypto.randomUUID()}`,
+                  datasetKind,
+                  reportRevisionId: revId,
+                  traceId: (rev as any)?.trace_id,
+                }).catch(() => {});
+              }
             });
-          }).catch(() => {});
-          ctx?.waitUntil?.(enqueuePromise);
+            if (ctx?.waitUntil) {
+              ctx.waitUntil(enqueuePromise);
+            } else {
+              await enqueuePromise;
+            }
+          }
+        } catch (err) {
+          console.error("Error enqueuing AI jobs for webhook:", err);
         }
       }
       return response;
     }
 
-    // Internal endpoint for Node.js intelligence worker to register completed proposals
+    // Internal endpoint for Node.js intelligence worker to notify moderation of completed proposals
     if (url.pathname === "/api/v1/internal/proposals" && request.method === "POST") {
+      const serviceKey = request.headers.get("x-service-key");
+      const expectedKey = env.INTERNAL_SERVICE_KEY || "dev-internal-key";
+      if (serviceKey !== expectedKey) {
+        return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+        });
+      }
       try {
-        const body = (await request.json()) as {
-          proposal?: EventProposalDto;
-          chunks?: StoredEvidenceChunk[];
-        };
-        if (body?.proposal?.proposal_id) {
-          activeProposals.set(body.proposal.proposal_id, body.proposal);
-          if (body.chunks) {
-            activeChunks.set(body.proposal.proposal_id, body.chunks);
-          }
-          eventBroadcaster.broadcastModeration("proposal_created", body.proposal);
-          return new Response(JSON.stringify({ status: "ok", proposal_id: body.proposal.proposal_id }), {
-            status: 201,
-            headers: { "content-type": "application/json; charset=utf-8" },
+        const body = (await request.json()) as { proposal_id?: string };
+        if (body?.proposal_id) {
+          eventBroadcaster.broadcastModeration("proposal_created", { proposal_id: body.proposal_id });
+          return new Response(JSON.stringify({ ok: true, proposal_id: body.proposal_id }), {
+            status: 200,
+            headers: { "Content-Type": "application/json; charset=utf-8" },
           });
         }
       } catch {}
-      return new Response(JSON.stringify({ error: "invalid_proposal_payload" }), {
+      return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), {
         status: 400,
-        headers: { "content-type": "application/json; charset=utf-8" },
+        headers: { "Content-Type": "application/json; charset=utf-8" },
       });
     }
     // Realtime SSE streaming for moderation queue
@@ -293,7 +441,7 @@ export default {
     const accountResponse = await handleAccountRequest(request, env);
     if (accountResponse !== undefined) return accountResponse;
     if (url.pathname.startsWith("/api/v1/moderation/")) {
-      const modRes = await moderationHandler(request);
+      const modRes = await getModerationHandler(env)(request);
       if (modRes !== undefined) return modRes;
     }
     if (url.pathname === "/api/v1/demo/context-sources") {
@@ -386,7 +534,7 @@ export default {
       { telemetry: consoleTelemetry },
     );
     await handleFreshnessDueScheduleTrigger(controller.scheduledTime, env, undefined, consoleTelemetry);
-    // Scheduled live ingestion pollers with spatio-temporal correlation
+    // Scheduled live ingestion pollers
     try {
       const pbRunner = createPetaBencanaPollRuntime();
       const pbResult = await pbRunner.poll(controller.scheduledTime);
@@ -395,17 +543,58 @@ export default {
       const newsRunner = createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS });
       const newsResult = await newsRunner.poll();
       const allRevisions = [...pbResult.revisions, ...bmkgResult.revisions, ...newsResult.revisions];
-      if (allRevisions.length > 0) {
-        activeProposals.clear();
-        activeChunks.clear();
-        const clusters = correlateSourceReports(allRevisions);
-        for (const cluster of clusters) {
-          const proposal = generateCorrelatedProposal(cluster);
-          if (proposal) {
-            activeProposals.set(proposal.proposal_id, proposal);
-            activeChunks.set(proposal.proposal_id, cluster.reports.flatMap((r) => r.chunks));
+      if (allRevisions.length > 0 && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+        await withSqlExecutor(env, async (executor) => {
+          const datasetKind = ((env.DATASET_MODE as string) || "live") as DatasetKind;
+          const repo = createSqlIncidentRepository(executor);
+          for (const rev of allRevisions) {
+            const traceId = (rev as any).trace_id || `trace-${rev.report_revision_id}`;
+            const contentHash = (rev as any).content_hash || rev.permitted_text_hash;
+            await executor.query(
+              `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+               VALUES ($1, $2, now(), 'succeeded', '{}'::jsonb)
+               ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
+              [traceId, datasetKind],
+            );
+            await executor.query(
+              `INSERT INTO waspada.source_registry (
+                 source_id, trace_id, registry_version, display_name, source_kind, remit,
+                 access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+                 approval_status, health_status, auto_acquisition_enabled, auto_publication_policy
+               )
+               VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
+                       ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
+               ON CONFLICT (source_id) DO NOTHING`,
+              [rev.source_id, traceId, rev.source_id],
+            );
+            await executor.query(
+              `INSERT INTO waspada.report_revisions (
+                 dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+                 content_hash, permitted_text, permitted_text_hash, normalization_version,
+                 retrieved_at, revision_status, record_json
+               )
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb)
+               ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
+              [
+                datasetKind,
+                rev.report_revision_id,
+                traceId,
+                rev.source_id,
+                rev.canonical_url,
+                contentHash,
+                rev.permitted_text,
+                rev.permitted_text_hash,
+                rev.retrieved_at,
+              ],
+            );
+            await repo.enqueueAiJob({
+              jobId: `job-${crypto.randomUUID()}`,
+              datasetKind,
+              reportRevisionId: rev.report_revision_id,
+              traceId,
+            }).catch(() => {});
           }
-        }
+        });
       }
     } catch {}
   },

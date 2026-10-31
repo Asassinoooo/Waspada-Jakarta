@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createTestDatabase } from "../../db/test/harness.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createJobRunner } from "../src/job-runner.js";
@@ -48,8 +49,8 @@ async function runPipelineSmoke() {
   const traceId1 = "trace-smoke-report-01";
   const sourceId1 = "source-polda-metro";
   const revId1 = "rev-flood-cawang-001";
-  const dummyHash1 = "1111111111111111111111111111111111111111111111111111111111111111";
   const text1 = "Hujan deras sejak siang menyebabkan luapan air setinggi 50 cm di Jalan DI Panjaitan Cawang arah Rawamangun, lalu lintas macet 2 km.";
+  const realHash1 = createHash("sha256").update(text1).digest("hex");
 
   await db.executor.execute(`
     INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
@@ -63,15 +64,14 @@ async function runPipelineSmoke() {
     VALUES ('${sourceId1}', '${traceId1}', 1, 'TMC Polda Metro', 'authority', ARRAY['traffic'], 'manual_fixture',
             ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
     ON CONFLICT (source_id) DO NOTHING;
-
     INSERT INTO waspada.report_revisions
       (dataset_kind, report_revision_id, trace_id, source_id, canonical_url, content_hash, permitted_text, permitted_text_hash, normalization_version, retrieved_at, revision_status, record_json)
-    VALUES ('live', '${revId1}', '${traceId1}', '${sourceId1}', 'https://waspada.jakarta.go.id/report/1', '${dummyHash1}', '${text1}', '${dummyHash1}', 'v1', now(), 'unreviewed', '{}'::jsonb)
+    VALUES ('live', '${revId1}', '${traceId1}', '${sourceId1}', 'https://waspada.jakarta.go.id/report/1', '${realHash1}', '${text1}', '${realHash1}', 'v1', now(), 'unreviewed', '{}'::jsonb)
     ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING;
 
     INSERT INTO waspada.evidence_chunks
       (dataset_kind, chunk_id, trace_id, report_revision_id, permitted_text_hash, span_start, span_end, offset_unit, chunker_version, chunk_text_hash, status)
-    VALUES ('live', 'chk-smoke-01', '${traceId1}', '${revId1}', '${dummyHash1}', 0, ${text1.length}, 'unicode_code_points', 'v1', '${dummyHash1}', 'active')
+    VALUES ('live', 'chk-smoke-01', '${traceId1}', '${revId1}', '${realHash1}', 0, ${text1.length}, 'unicode_code_points', 'v1', '${realHash1}', 'active')
     ON CONFLICT (dataset_kind, chunk_id) DO NOTHING;
   `);
 
@@ -85,6 +85,7 @@ async function runPipelineSmoke() {
 
   const runner = createJobRunner({
     executor: db.executor,
+    transactionalExecutor: db.executor,
     config,
   });
 
@@ -98,6 +99,15 @@ async function runPipelineSmoke() {
   assert.ok(incident1, "Incident should be created for report 1");
   console.log(`  Created Incident: ID=${incident1.incidentId}, Title="${incident1.title}", Type="${incident1.incidentType}", Status=${incident1.status}`);
 
+  // Verify persisted embedding in waspada.embedding_runs
+  const embCheck = await db.executor.query<{ embedding_run_id: string; dimensions: number; provider: string }>(
+    `SELECT embedding_run_id, dimensions, provider FROM waspada.embedding_runs WHERE dataset_kind = 'live' AND chunk_id = 'chk-smoke-01'`,
+  );
+  assert.ok(embCheck.rows.length > 0, "Embedding run should be persisted in waspada.embedding_runs");
+  assert.equal(embCheck.rows[0].dimensions, 768);
+  assert.equal(embCheck.rows[0].provider, "9router");
+  console.log(`  Verified persisted embedding row: ID=${embCheck.rows[0].embedding_run_id}, Dims=${embCheck.rows[0].dimensions}`);
+
   const proposals1 = await proposalWriter.readPendingProposals("live");
   console.log(`  Pending Proposals in Moderation Queue: ${proposals1.length}`);
   assert.ok(proposals1.length >= 1, "Proposal should be in moderation queue");
@@ -109,8 +119,8 @@ async function runPipelineSmoke() {
   const traceId2 = "trace-smoke-report-02";
   const sourceId2 = "source-warga-cawang";
   const revId2 = "rev-flood-cawang-002";
-  const dummyHash2 = "2222222222222222222222222222222222222222222222222222222222222222";
   const text2 = "Kondisi terkini simpang Cawang: air masih menggenang setinggi lutut orang dewasa (sekitar 40cm), motor dan mobil kecil dihimbau putar balik.";
+  const realHash2 = createHash("sha256").update(text2).digest("hex");
 
   await db.executor.execute(`
     INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
@@ -127,12 +137,12 @@ async function runPipelineSmoke() {
 
     INSERT INTO waspada.report_revisions
       (dataset_kind, report_revision_id, trace_id, source_id, canonical_url, content_hash, permitted_text, permitted_text_hash, normalization_version, retrieved_at, revision_status, record_json)
-    VALUES ('live', '${revId2}', '${traceId2}', '${sourceId2}', 'https://waspada.jakarta.go.id/report/2', '${dummyHash2}', '${text2}', '${dummyHash2}', 'v1', now(), 'unreviewed', '{}'::jsonb)
+    VALUES ('live', '${revId2}', '${traceId2}', '${sourceId2}', 'https://waspada.jakarta.go.id/report/2', '${realHash2}', '${text2}', '${realHash2}', 'v1', now(), 'unreviewed', '{}'::jsonb)
     ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING;
 
     INSERT INTO waspada.evidence_chunks
       (dataset_kind, chunk_id, trace_id, report_revision_id, permitted_text_hash, span_start, span_end, offset_unit, chunker_version, chunk_text_hash, status)
-    VALUES ('live', 'chk-smoke-02', '${traceId2}', '${revId2}', '${dummyHash2}', 0, ${text2.length}, 'unicode_code_points', 'v1', '${dummyHash2}', 'active')
+    VALUES ('live', 'chk-smoke-02', '${traceId2}', '${revId2}', '${realHash2}', 0, ${text2.length}, 'unicode_code_points', 'v1', '${realHash2}', 'active')
     ON CONFLICT (dataset_kind, chunk_id) DO NOTHING;
   `);
 

@@ -1,19 +1,31 @@
 import { Agent } from "@mastra/core/agent";
 
+export type NineRouterExecutionMode = "live" | "mock";
+
+export class NineRouterConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NineRouterConfigError";
+  }
+}
+
 export interface NineRouterConfig {
   readonly baseUrl: string;
   readonly apiKey: string;
   readonly chatModel: string;
   readonly embeddingModel: string;
   readonly embeddingDimensions: number;
+  readonly executionMode: NineRouterExecutionMode;
 }
-
 export function getNineRouterConfig(): NineRouterConfig {
   const rawUrl = process.env.NINEROUTER_URL?.trim() || "http://127.0.0.1:9090";
   const baseUrl = rawUrl.replace(/\/+$/, "");
   const apiKey = process.env.NINEROUTER_KEY?.trim() || "";
   const chatModel = process.env.NINEROUTER_CHAT_MODEL?.trim() || "ag/gemini-3.8-flash";
   const embeddingModel = process.env.NINEROUTER_EMBEDDING_MODEL?.trim() || "gemini/gemini-embedding-2-preview";
+  const rawMode = process.env.NINEROUTER_MODE?.trim().toLowerCase();
+  const executionMode: NineRouterExecutionMode =
+    rawMode === "mock" ? "mock" : rawMode === "live" ? "live" : (apiKey ? "live" : "mock");
 
   return {
     baseUrl,
@@ -21,6 +33,7 @@ export function getNineRouterConfig(): NineRouterConfig {
     chatModel,
     embeddingModel,
     embeddingDimensions: 768,
+    executionMode,
   };
 }
 
@@ -62,12 +75,15 @@ export async function generateNineRouterEmbedding(
 ): Promise<readonly number[]> {
   const config = options?.config ?? getNineRouterConfig();
   const dimensions = options?.dimensions ?? config.embeddingDimensions;
-
-  // Offline / deterministic fallback for test suites without NineRouter credentials
-  if (!config.baseUrl || !config.apiKey || config.baseUrl.includes("127.0.0.1:9090")) {
+  if (config.executionMode === "mock") {
     return generateMockVector(text, dimensions);
   }
 
+  if (!config.baseUrl || !config.apiKey || config.baseUrl.includes("127.0.0.1:9090")) {
+    throw new NineRouterConfigError(
+      "Live NineRouter provider credentials required: valid NINEROUTER_URL and NINEROUTER_KEY must be configured in live mode",
+    );
+  }
   const endpoint = `${config.baseUrl}/v1/embeddings`;
   const response = await fetch(endpoint, {
     method: "POST",
@@ -92,11 +108,20 @@ export async function generateNineRouterEmbedding(
     data: Array<{ embedding: number[] }>;
   };
 
-  if (!data?.data?.[0]?.embedding) {
-    throw new Error("Invalid embedding response structure from NineRouter");
+  const embedding = data?.data?.[0]?.embedding;
+  if (!Array.isArray(embedding) || embedding.length !== dimensions) {
+    throw new Error(
+      `Invalid embedding response structure from NineRouter: expected ${dimensions} dimensions, got ${embedding?.length ?? 0}`,
+    );
   }
 
-  return data.data[0].embedding;
+  for (let i = 0; i < embedding.length; i++) {
+    if (!Number.isFinite(embedding[i])) {
+      throw new Error(`Invalid non-finite float at index ${i} in NineRouter embedding`);
+    }
+  }
+
+  return embedding;
 }
 
 export function generateMockVector(text: string, dimensions: number = 768): readonly number[] {

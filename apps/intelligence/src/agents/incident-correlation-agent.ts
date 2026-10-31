@@ -31,6 +31,88 @@ export const IncidentCorrelationSchema = z.object({
 });
 
 export type IncidentCorrelation = z.infer<typeof IncidentCorrelationSchema>;
+export class CorrelationValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CorrelationValidationError";
+  }
+}
+
+export class EvidenceProvenanceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EvidenceProvenanceError";
+  }
+}
+
+export function validateCorrelationDecision(
+  correlation: IncidentCorrelation,
+  input: CorrelateIncidentInput,
+): void {
+  // 1. Validate Decision Contract
+  if (correlation.decision === "same_incident") {
+    if (!correlation.candidateIncidentId) {
+      throw new CorrelationValidationError(
+        "Decision 'same_incident' requires a non-null candidateIncidentId",
+      );
+    }
+    const candidate = input.candidateIncidents.find(
+      (c) => c.incident.incidentId === correlation.candidateIncidentId,
+    );
+    if (!candidate) {
+      throw new CorrelationValidationError(
+        `Candidate incident '${correlation.candidateIncidentId}' does not exist in the retrieved candidate set`,
+      );
+    }
+  } else if (correlation.decision === "new_incident") {
+    if (correlation.candidateIncidentId !== null) {
+      throw new CorrelationValidationError(
+        `Decision 'new_incident' must not reference candidate incident '${correlation.candidateIncidentId}'; candidateIncidentId must be null`,
+      );
+    }
+  } else if (correlation.decision === "unresolved") {
+    if (correlation.candidateIncidentId !== null) {
+      const candidate = input.candidateIncidents.find(
+        (c) => c.incident.incidentId === correlation.candidateIncidentId,
+      );
+      if (!candidate) {
+        throw new CorrelationValidationError(
+          `Unresolved candidate incident '${correlation.candidateIncidentId}' does not exist in the retrieved candidate set`,
+        );
+      }
+    }
+  }
+
+  // 2. Validate Evidence Provenance
+  for (const ev of correlation.supportingEvidence) {
+    const quote = ev.quote.trim();
+    if (!quote) continue;
+
+    if (ev.reportRevisionId === input.incomingReportRevisionId) {
+      if (!input.incomingReportText.includes(quote)) {
+        throw new EvidenceProvenanceError(
+          `Supporting quote "${quote}" does not exist verbatim in incoming report revision '${input.incomingReportRevisionId}'`,
+        );
+      }
+    } else {
+      const candidate = input.candidateIncidents.find(
+        (c) => c.matchedReportRevisionId === ev.reportRevisionId,
+      );
+      if (!candidate) {
+        throw new EvidenceProvenanceError(
+          `Supporting evidence references unknown report revision '${ev.reportRevisionId}' not in retrieved candidate evidence`,
+        );
+      }
+      const matchedText = candidate.matchedText ?? "";
+      const incDesc = candidate.incident.description ?? "";
+      if (!matchedText.includes(quote) && !incDesc.includes(quote)) {
+        throw new EvidenceProvenanceError(
+          `Supporting quote "${quote}" does not exist verbatim in candidate evidence for revision '${ev.reportRevisionId}'`,
+        );
+      }
+    }
+  }
+}
 
 export interface CorrelateIncidentInput {
   readonly incomingReportRevisionId: string;
@@ -87,6 +169,7 @@ Status: ${inc.status} | Severity: ${inc.severity}
 Location: ${inc.locationLabel ?? "Unknown"} (${inc.coordinates ? inc.coordinates.join(", ") : "no coordinates"})
 First Observed: ${inc.firstObservedAt} | Last Updated: ${inc.lastUpdatedAt}
 Description: ${inc.description}
+${match.matchedReportRevisionId ? `Evidence Report Revision ID: ${match.matchedReportRevisionId}` : ""}
 ${match.matchedText ? `Matched Historical Evidence: "${match.matchedText}"` : ""}
 `.trim();
         })
@@ -122,5 +205,7 @@ Format your output as a single JSON object with these keys:
 
   const response = await agent.generate(prompt);
   const parsedJson = extractJsonFromText(response.text);
-  return IncidentCorrelationSchema.parse(parsedJson);
+  const correlation = IncidentCorrelationSchema.parse(parsedJson);
+  validateCorrelationDecision(correlation, input);
+  return correlation;
 }

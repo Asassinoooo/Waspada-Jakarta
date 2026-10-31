@@ -7,6 +7,7 @@ import {
   type IncidentRecord,
   type IncidentRelationship,
   type CorrelationDecision,
+  type PersistIncidentProcessingInput,
 } from "../../../db/src/incident-repository.js";
 import {
   createEventProposalWriter,
@@ -34,6 +35,8 @@ export const WorkflowChunkSchema = z.object({
 });
 
 export const IncidentWorkflowInputSchema = z.object({
+  jobId: z.string().optional(),
+  leaseToken: z.string().optional(),
   reportRevisionId: z.string(),
   reportText: z.string(),
   sourceKind: z.string(),
@@ -221,110 +224,85 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       const now = new Date().toISOString();
       const datasetKind = input.datasetKind as DatasetKind;
 
-      let incident: IncidentRecord;
-      let relationship: IncidentRelationship = "primary_initial";
+      const decisionId = `dec-${input.reportRevisionId}`;
+      const proposalId = `prop-${input.reportRevisionId}`;
 
-      // 1. Create or update persistent incident
-      const decisionId = `dec-${crypto.randomUUID()}`;
+      let incidentAction: PersistIncidentProcessingInput["incidentAction"];
+      let targetIncidentId: string;
+      let relationship: IncidentRelationship;
 
       if (correlation.decision === "same_incident" && correlation.candidateIncidentId) {
         relationship = "corroborating";
+        targetIncidentId = correlation.candidateIncidentId;
         const existing = await incidentRepo.getIncidentById(datasetKind, correlation.candidateIncidentId);
-        if (existing) {
-          const mergedDiscrepancies = [
-            ...existing.incident.discrepancies,
-            ...correlation.contradictoryEvidence,
-          ];
-          const mergedUncertainties = Array.from(
-            new Set([...existing.incident.uncertaintyNotes, ...interpretation.uncertaintyNotes]),
-          );
+        const resolvedSeverity = interpretation.severity !== "unknown"
+          ? interpretation.severity
+          : (existing?.incident.severity ?? "unknown");
 
-          const resolvedSeverity = interpretation.severity !== "unknown"
-            ? interpretation.severity
-            : existing.incident.severity;
+        const mergedDiscrepancies = [
+          ...(existing?.incident.discrepancies ?? []),
+          ...correlation.contradictoryEvidence,
+        ];
+        const mergedUncertainties = Array.from(
+          new Set([...(existing?.incident.uncertaintyNotes ?? []), ...interpretation.uncertaintyNotes]),
+        );
 
-          incident = await incidentRepo.updateIncident({
-            incidentId: correlation.candidateIncidentId,
+        incidentAction = {
+          type: "update",
+          incident: {
+            incidentId: targetIncidentId,
             datasetKind,
             lastUpdatedAt: now,
             discrepancies: mergedDiscrepancies,
             uncertaintyNotes: mergedUncertainties,
             severity: resolvedSeverity,
-          });
-        } else {
-          incident = await incidentRepo.createIncident({
-            incidentId: `inc-${crypto.randomUUID()}`,
+          },
+        };
+      } else if (correlation.decision === "unresolved" && correlation.candidateIncidentId) {
+        relationship = "unresolved";
+        targetIncidentId = correlation.candidateIncidentId;
+        incidentAction = {
+          type: "update",
+          incident: {
+            incidentId: targetIncidentId,
+            datasetKind,
+            lastUpdatedAt: now,
+          },
+        };
+      } else {
+        relationship = correlation.decision === "unresolved" ? "unresolved" : "primary_initial";
+        targetIncidentId = `inc-${input.reportRevisionId}`;
+        const initialStatus = (correlation.decision === "unresolved" || interpretation.confidence === "low")
+          ? "investigating"
+          : "active";
+
+        incidentAction = {
+          type: "create",
+          incident: {
+            incidentId: targetIncidentId,
             datasetKind,
             title: interpretation.summary.slice(0, 150),
             description: interpretation.summary,
             incidentType: interpretation.incidentType,
-            status: interpretation.confidence === "low" ? "investigating" : "active",
+            status: initialStatus,
             severity: interpretation.severity ?? "unknown",
             locationLabel: interpretation.location.label,
             coordinates: interpretation.location.approximateCoordinates,
             firstObservedAt: interpretation.eventTime.value ?? input.publishedAt ?? now,
-            uncertaintyNotes: interpretation.uncertaintyNotes,
+            uncertaintyNotes: [
+              ...interpretation.uncertaintyNotes,
+              ...(correlation.decision === "unresolved" ? correlation.unresolvedQuestions : []),
+            ],
             recordJson: {
               impacts: interpretation.impacts,
               confidence: interpretation.confidence,
             },
             createdAt: now,
-          });
-        }
-      } else {
-        relationship = correlation.decision === "unresolved" ? "unresolved" : "primary_initial";
-        const initialStatus = (correlation.decision === "unresolved" || interpretation.confidence === "low")
-          ? "investigating"
-          : "active";
-
-        incident = await incidentRepo.createIncident({
-          incidentId: `inc-${crypto.randomUUID()}`,
-          datasetKind,
-          title: interpretation.summary.slice(0, 150),
-          description: interpretation.summary,
-          incidentType: interpretation.incidentType,
-          status: initialStatus,
-          severity: interpretation.severity ?? "unknown",
-          locationLabel: interpretation.location.label,
-          coordinates: interpretation.location.approximateCoordinates,
-          firstObservedAt: interpretation.eventTime.value ?? input.publishedAt ?? now,
-          uncertaintyNotes: [
-            ...interpretation.uncertaintyNotes,
-            ...(correlation.decision === "unresolved" ? correlation.unresolvedQuestions : []),
-          ],
-          recordJson: {
-            impacts: interpretation.impacts,
-            confidence: interpretation.confidence,
           },
-          createdAt: now,
-        });
+        };
       }
 
-      // 2. Record correlation decision audit trail with resolved target incident ID
-      await incidentRepo.recordCorrelationDecision({
-        decisionId,
-        datasetKind,
-        reportRevisionId: input.reportRevisionId,
-        decision: correlation.decision as CorrelationDecision,
-        targetIncidentId: correlation.candidateIncidentId ?? incident.incidentId,
-        reasoning: correlation.reasoning,
-        evidenceQuotes: correlation.supportingEvidence,
-        conflicts: correlation.contradictoryEvidence,
-        uncertainty: correlation.uncertainty,
-        createdAt: now,
-      });
-      // 3. Link report revision to incident
-      await incidentRepo.linkReport({
-        datasetKind,
-        incidentId: incident.incidentId,
-        reportRevisionId: input.reportRevisionId,
-        relationship,
-        correlationDecisionId: decisionId,
-        linkedAt: now,
-      });
-
-      // 4. Generate grounded proposal for moderation queue
-      const proposalId = `prop-${crypto.randomUUID()}`;
+      // Generate grounded proposal for moderation queue
       const compatibilityCat = deriveCompatibilityCategory(interpretation.incidentType);
 
       const claims: Array<EventProposalDto["claims"][number]> = interpretation.evidence.map((ev, idx) => ({
@@ -336,7 +314,6 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         evidence_ref_id: ev.chunkId,
       }));
 
-      // If AI identified no verified evidence quotes from chunks, do not fabricate quote slices
       if (claims.length === 0) {
         claims.push({
           claim_id: "claim-1",
@@ -366,17 +343,70 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         caveats: interpretation.uncertaintyNotes,
         proposed_at: now,
       };
-      try {
+
+      let resolvedIncident: IncidentRecord | Record<string, unknown>;
+      if (input.jobId && input.leaseToken) {
+        await incidentRepo.persistIncidentProcessingTransaction({
+          jobId: input.jobId,
+          leaseToken: input.leaseToken,
+          datasetKind,
+          reportRevisionId: input.reportRevisionId,
+          pipelineVersion: "v1",
+          incidentAction,
+          correlationDecision: {
+            decisionId,
+            datasetKind,
+            reportRevisionId: input.reportRevisionId,
+            decision: correlation.decision as CorrelationDecision,
+            targetIncidentId,
+            reasoning: correlation.reasoning,
+            evidenceQuotes: correlation.supportingEvidence,
+            conflicts: correlation.contradictoryEvidence,
+            uncertainty: correlation.uncertainty,
+            createdAt: now,
+          },
+          reportLink: {
+            relationship,
+          },
+          proposal: proposalDto,
+          now,
+        });
+        const loaded = await incidentRepo.getIncidentById(datasetKind, targetIncidentId);
+        resolvedIncident = (loaded?.incident ?? incidentAction.incident) as unknown as Record<string, unknown>;
+      } else {
+        if (incidentAction.type === "create") {
+          resolvedIncident = await incidentRepo.createIncident(incidentAction.incident);
+        } else {
+          resolvedIncident = await incidentRepo.updateIncident(incidentAction.incident);
+        }
+        await incidentRepo.recordCorrelationDecision({
+          decisionId,
+          datasetKind,
+          reportRevisionId: input.reportRevisionId,
+          decision: correlation.decision as CorrelationDecision,
+          targetIncidentId,
+          reasoning: correlation.reasoning,
+          evidenceQuotes: correlation.supportingEvidence,
+          conflicts: correlation.contradictoryEvidence,
+          uncertainty: correlation.uncertainty,
+          createdAt: now,
+        });
+        await incidentRepo.linkReport({
+          datasetKind,
+          incidentId: targetIncidentId,
+          reportRevisionId: input.reportRevisionId,
+          relationship,
+          correlationDecisionId: decisionId,
+          linkedAt: now,
+        });
         await proposalWriter.persistProposal(proposalDto, datasetKind);
-      } catch (err) {
-        console.error("persistProposal error in workflow:", err);
       }
 
       return {
         reportRevisionId: input.reportRevisionId,
         interpretation,
         correlation,
-        incident: incident as unknown as Record<string, unknown>,
+        incident: resolvedIncident as Record<string, unknown>,
         proposal: proposalDto as unknown as Record<string, unknown>,
       };
     },

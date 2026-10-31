@@ -1,6 +1,13 @@
-import type { SqlExecutor } from "./sql.js";
+import type { SqlExecutor, SqlTransactionRunner } from "./sql.js";
 import type { DatasetKind } from "./ports.js";
+import { persistProposalWithTx, type EventProposalDto } from "./event-proposal-writer.js";
 
+export class StaleLeaseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StaleLeaseError";
+  }
+}
 export type IncidentStatus = "investigating" | "active" | "monitoring" | "resolved" | "closed";
 export type IncidentSeverity = "low" | "medium" | "high" | "critical" | "unknown";
 export type IncidentRelationship = "primary_initial" | "corroborating" | "updating" | "contradicting" | "unresolved";
@@ -141,6 +148,36 @@ export interface ClaimAiJobInput {
   readonly datasetKind?: DatasetKind;
 }
 
+export interface PersistIncidentProcessingInput {
+  readonly jobId: string;
+  readonly leaseToken: string;
+  readonly datasetKind: DatasetKind;
+  readonly reportRevisionId: string;
+  readonly pipelineVersion?: string;
+  readonly incidentAction:
+    | {
+        readonly type: "create";
+        readonly incident: CreateIncidentInput;
+      }
+    | {
+        readonly type: "update";
+        readonly incident: UpdateIncidentInput;
+      };
+  readonly correlationDecision: RecordCorrelationDecisionInput;
+  readonly reportLink: {
+    readonly relationship: IncidentRelationship;
+  };
+  readonly proposal: EventProposalDto;
+  readonly now?: string;
+}
+
+export interface PersistIncidentProcessingResult {
+  readonly outcome: "committed" | "already_processed";
+  readonly incidentId: string;
+  readonly decisionId: string;
+  readonly proposalId: string;
+}
+
 export interface IncidentRepository {
   createIncident(input: CreateIncidentInput): Promise<IncidentRecord>;
   updateIncident(input: UpdateIncidentInput): Promise<IncidentRecord>;
@@ -162,6 +199,9 @@ export interface IncidentRepository {
   retryAiJob(jobId: string, now?: string): Promise<boolean>;
   getAiJob(jobId: string): Promise<AiJobRecord | null>;
   listAiJobs(options?: { status?: AiJobStatus; datasetKind?: DatasetKind; limit?: number }): Promise<readonly AiJobRecord[]>;
+  persistIncidentProcessingTransaction(
+    input: PersistIncidentProcessingInput,
+  ): Promise<PersistIncidentProcessingResult>;
 }
 
 function parseGeoJsonPoint(geoJsonText: string | null): [number, number] | null {
@@ -257,6 +297,29 @@ function formatRowToJob(row: AiJobDbRow): AiJobRecord {
     updatedAt: new Date(row.updated_at).toISOString(),
     finishedAt: row.finished_at ? new Date(row.finished_at).toISOString() : null,
   };
+}
+
+async function runInTransaction<Result>(
+  executor: SqlExecutor,
+  work: (tx: SqlExecutor) => Promise<Result>,
+): Promise<Result> {
+  const runner = executor as SqlExecutor & Partial<SqlTransactionRunner>;
+  if (typeof runner.transaction === "function") {
+    return runner.transaction(work);
+  }
+  await executor.execute("BEGIN");
+  try {
+    const result = await work(executor);
+    await executor.execute("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await executor.execute("ROLLBACK");
+    } catch {
+      // Ignore rollback failure
+    }
+    throw err;
+  }
 }
 
 export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepository {
@@ -911,6 +974,277 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
 
       const result = await executor.query<AiJobDbRow>(query, params);
       return result.rows.map(formatRowToJob);
+    },
+
+    async persistIncidentProcessingTransaction(
+      input: PersistIncidentProcessingInput,
+    ): Promise<PersistIncidentProcessingResult> {
+      const now = input.now ?? new Date().toISOString();
+      const pipelineVersion = input.pipelineVersion ?? "v1";
+
+      return runInTransaction(executor, async (tx) => {
+        // 1. Validate worker lease token and status with row lock
+        const jobRes = await tx.query<AiJobDbRow>(
+          `SELECT job_id, dataset_kind, report_revision_id, status, lease_token, lease_expires_at
+           FROM waspada.ai_jobs
+           WHERE job_id = $1
+           FOR UPDATE`,
+          [input.jobId],
+        );
+
+        if (jobRes.rows.length === 0) {
+          throw new StaleLeaseError(`Job not found: ${input.jobId}`);
+        }
+
+        const job = jobRes.rows[0];
+        if (job.status !== "leased" || job.lease_token !== input.leaseToken) {
+          throw new StaleLeaseError(
+            `Worker lease invalid or preempted for job ${input.jobId} (current status: ${job.status}, expected token: ${input.leaseToken})`,
+          );
+        }
+
+        const leaseExpires = job.lease_expires_at ? new Date(job.lease_expires_at).getTime() : 0;
+        if (leaseExpires <= new Date(now).getTime()) {
+          throw new StaleLeaseError(
+            `Worker lease expired for job ${input.jobId} at ${job.lease_expires_at}`,
+          );
+        }
+
+        // 2. Check pipeline processing idempotency
+        const existingRec = await tx.query<{
+          incident_id: string;
+          decision_id: string;
+          proposal_id: string;
+        }>(
+          `SELECT incident_id, decision_id, proposal_id
+           FROM waspada.incident_processing_records
+           WHERE dataset_kind = $1 AND report_revision_id = $2 AND pipeline_version = $3`,
+          [input.datasetKind, input.reportRevisionId, pipelineVersion],
+        );
+
+        if (existingRec.rows.length > 0) {
+          const rec = existingRec.rows[0];
+          await tx.query(
+            `UPDATE waspada.ai_jobs
+             SET status = 'completed',
+                 finished_at = COALESCE(finished_at, $2),
+                 lease_token = NULL,
+                 lease_started_at = NULL,
+                 lease_expires_at = NULL,
+                 updated_at = $2
+             WHERE job_id = $1`,
+            [input.jobId, now],
+          );
+          return {
+            outcome: "already_processed",
+            incidentId: rec.incident_id,
+            decisionId: rec.decision_id,
+            proposalId: rec.proposal_id,
+          };
+        }
+
+        // 3. Apply Incident Create or Update
+        let targetIncidentId: string;
+        if (input.incidentAction.type === "create") {
+          const inc = input.incidentAction.incident;
+          targetIncidentId = inc.incidentId;
+          const status = inc.status ?? "investigating";
+          const severity = inc.severity ?? "unknown";
+          const incCreated = inc.createdAt ?? now;
+          const incUpdated = inc.lastUpdatedAt ?? now;
+          const discrepancies = JSON.stringify(inc.discrepancies ?? []);
+          const uncertaintyNotes = JSON.stringify(inc.uncertaintyNotes ?? []);
+          const eventTime = JSON.stringify(inc.eventTime ?? {});
+          const recordJson = JSON.stringify(inc.recordJson ?? {});
+
+          let shapeSql = "NULL";
+          const params: unknown[] = [
+            inc.incidentId,
+            inc.datasetKind,
+            inc.title,
+            inc.description,
+            inc.incidentType,
+            status,
+            severity,
+            inc.locationLabel ?? null,
+            eventTime,
+            inc.firstObservedAt,
+            incUpdated,
+            discrepancies,
+            uncertaintyNotes,
+            recordJson,
+            incCreated,
+          ];
+          if (inc.coordinates) {
+            shapeSql = `ST_SetSRID(ST_MakePoint($16, $17), 4326)`;
+            params.push(inc.coordinates[0], inc.coordinates[1]);
+          }
+
+          await tx.query(
+            `INSERT INTO waspada.incidents (
+              incident_id, dataset_kind, title, description, incident_type,
+              status, severity, location_label, shape, event_time,
+              first_observed_at, last_updated_at, discrepancies, uncertainty_notes,
+              record_json, created_at
+            )
+            VALUES (
+              $1, $2, $3, $4, $5,
+              $6, $7, $8, ${shapeSql}, $9,
+              $10, $11, $12::jsonb, $13::jsonb,
+              $14::jsonb, $15
+            )
+            ON CONFLICT (dataset_kind, incident_id) DO NOTHING`,
+            params,
+          );
+        } else {
+          const upd = input.incidentAction.incident;
+          targetIncidentId = upd.incidentId;
+          const updates: string[] = ["last_updated_at = $3"];
+          const params: unknown[] = [upd.datasetKind, upd.incidentId, upd.lastUpdatedAt];
+          let pIdx = 4;
+          if (upd.title !== undefined) {
+            updates.push(`title = $${pIdx++}`);
+            params.push(upd.title);
+          }
+          if (upd.description !== undefined) {
+            updates.push(`description = $${pIdx++}`);
+            params.push(upd.description);
+          }
+          if (upd.incidentType !== undefined) {
+            updates.push(`incident_type = $${pIdx++}`);
+            params.push(upd.incidentType);
+          }
+          if (upd.status !== undefined) {
+            updates.push(`status = $${pIdx++}`);
+            params.push(upd.status);
+          }
+          if (upd.severity !== undefined) {
+            updates.push(`severity = $${pIdx++}`);
+            params.push(upd.severity);
+          }
+          if (upd.locationLabel !== undefined) {
+            updates.push(`location_label = $${pIdx++}`);
+            params.push(upd.locationLabel);
+          }
+          if (upd.coordinates !== undefined) {
+            if (upd.coordinates === null) {
+              updates.push(`shape = NULL`);
+            } else {
+              updates.push(`shape = ST_SetSRID(ST_MakePoint($${pIdx++}, $${pIdx++}), 4326)`);
+              params.push(upd.coordinates[0], upd.coordinates[1]);
+            }
+          }
+          if (upd.discrepancies !== undefined) {
+            updates.push(`discrepancies = $${pIdx++}::jsonb`);
+            params.push(JSON.stringify(upd.discrepancies));
+          }
+          if (upd.uncertaintyNotes !== undefined) {
+            updates.push(`uncertainty_notes = $${pIdx++}::jsonb`);
+            params.push(JSON.stringify(upd.uncertaintyNotes));
+          }
+          if (upd.recordJson !== undefined) {
+            updates.push(`record_json = $${pIdx++}::jsonb`);
+            params.push(JSON.stringify(upd.recordJson));
+          }
+
+          await tx.query(
+            `UPDATE waspada.incidents
+             SET ${updates.join(", ")}
+             WHERE dataset_kind = $1 AND incident_id = $2`,
+            params,
+          );
+        }
+
+        // 4. Record Correlation Decision
+        const dec = input.correlationDecision;
+        const decCreated = dec.createdAt ?? now;
+        await tx.query(
+          `INSERT INTO waspada.incident_correlation_decisions (
+            decision_id, dataset_kind, report_revision_id, decision,
+            target_incident_id, reasoning, evidence_quotes, conflicts,
+            uncertainty, record_json, created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11)
+          ON CONFLICT (dataset_kind, decision_id) DO NOTHING`,
+          [
+            dec.decisionId,
+            dec.datasetKind,
+            dec.reportRevisionId,
+            dec.decision,
+            dec.targetIncidentId,
+            dec.reasoning,
+            JSON.stringify(dec.evidenceQuotes ?? []),
+            JSON.stringify(dec.conflicts ?? []),
+            JSON.stringify(dec.uncertainty ?? []),
+            JSON.stringify(dec.recordJson ?? {}),
+            decCreated,
+          ],
+        );
+
+        // 5. Link Report Revision to Incident
+        await tx.query(
+          `INSERT INTO waspada.incident_reports (
+            dataset_kind, incident_id, report_revision_id, relationship,
+            correlation_decision_id, linked_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (dataset_kind, incident_id, report_revision_id)
+          DO UPDATE SET
+            relationship = EXCLUDED.relationship,
+            correlation_decision_id = EXCLUDED.correlation_decision_id,
+            linked_at = EXCLUDED.linked_at`,
+          [
+            input.datasetKind,
+            targetIncidentId,
+            input.reportRevisionId,
+            input.reportLink.relationship,
+            dec.decisionId,
+            now,
+          ],
+        );
+
+        // 6. Persist Proposal and Claims
+        await persistProposalWithTx(tx, input.proposal, input.datasetKind);
+
+        // 7. Record Idempotency Record
+        await tx.query(
+          `INSERT INTO waspada.incident_processing_records (
+            dataset_kind, report_revision_id, pipeline_version,
+            incident_id, decision_id, proposal_id, processed_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (dataset_kind, report_revision_id, pipeline_version) DO NOTHING`,
+          [
+            input.datasetKind,
+            input.reportRevisionId,
+            pipelineVersion,
+            targetIncidentId,
+            dec.decisionId,
+            input.proposal.proposal_id,
+            now,
+          ],
+        );
+
+        // 8. Mark AI Job as Completed
+        await tx.query(
+          `UPDATE waspada.ai_jobs
+           SET status = 'completed',
+               finished_at = $2,
+               lease_token = NULL,
+               lease_started_at = NULL,
+               lease_expires_at = NULL,
+               updated_at = $2
+           WHERE job_id = $1`,
+          [input.jobId, now],
+        );
+
+        return {
+          outcome: "committed",
+          incidentId: targetIncidentId,
+          decisionId: dec.decisionId,
+          proposalId: input.proposal.proposal_id,
+        };
+      });
     },
   };
 }

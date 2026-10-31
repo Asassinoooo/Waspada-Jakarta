@@ -134,6 +134,115 @@ async function ensurePrerequisites(
   );
 }
 
+export async function persistProposalWithTx(
+  tx: SqlExecutor,
+  proposal: EventProposalDto,
+  datasetKind: string = 'live',
+): Promise<{ proposalId: string; outcome: 'created' | 'already_exists' }> {
+  if (!proposal || typeof proposal !== 'object') {
+    throw new TypeError('Proposal must be an object');
+  }
+  if (!proposal.proposal_id || typeof proposal.proposal_id !== 'string') {
+    throw new TypeError('Proposal must have a valid proposal_id');
+  }
+  if (!VALID_DATASETS[datasetKind]) {
+    throw new TypeError(`Invalid dataset_kind: ${datasetKind}`);
+  }
+  if (!Array.isArray(proposal.claims)) {
+    throw new TypeError('Proposal claims must be an array');
+  }
+
+  // Advisory transaction lock on (dataset_kind, proposal_id)
+  const hash = createHash('sha256')
+    .update(datasetKind)
+    .update(':')
+    .update(proposal.proposal_id)
+    .digest();
+  await tx.query('SELECT pg_advisory_xact_lock($1::integer, $2::integer)', [
+    hash.readInt32BE(0),
+    hash.readInt32BE(4),
+  ]);
+
+  // Idempotency check: does the proposal already exist?
+  const existing = await tx.query<{ proposal_id: string }>(
+    `SELECT proposal_id FROM waspada.event_proposals
+     WHERE dataset_kind = $1 AND proposal_id = $2`,
+    [datasetKind, proposal.proposal_id],
+  );
+  if (existing.rows.length > 0) {
+    return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
+  }
+
+  // Lineage IDs
+  const extra = proposal as unknown as Record<string, unknown>;
+  const traceId = (typeof extra.trace_id === 'string' && extra.trace_id) || `trace-${proposal.proposal_id}`;
+  const candidateId = (typeof extra.candidate_id === 'string' && extra.candidate_id) || `candidate-${proposal.proposal_id}`;
+  const contextId = (typeof extra.context_id === 'string' && extra.context_id) || `context-${proposal.proposal_id}`;
+
+  await ensurePrerequisites(tx, datasetKind, traceId, candidateId, contextId);
+
+  // Insert proposal into waspada.event_proposals
+  const inserted = await tx.query<{ proposal_id: string }>(
+    `INSERT INTO waspada.event_proposals
+     (dataset_kind, proposal_id, trace_id, candidate_id, context_id, event_id, base_event_version, investigation_id, proposed_at, record_json)
+     VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, $6::timestamptz, $7::jsonb)
+     ON CONFLICT (dataset_kind, proposal_id) DO NOTHING
+     RETURNING proposal_id`,
+    [
+      datasetKind,
+      proposal.proposal_id,
+      traceId,
+      candidateId,
+      contextId,
+      proposal.proposed_at || new Date().toISOString(),
+      JSON.stringify(proposal),
+    ],
+  );
+
+  if (inserted.rows.length === 0) {
+    return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
+  }
+
+  // Insert claims into waspada.proposal_claims
+  for (const claim of proposal.claims) {
+    await tx.query(
+      `INSERT INTO waspada.proposal_claims
+       (dataset_kind, proposal_id, claim_id, support_assessment, evidence_label, claim_text, record_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+       ON CONFLICT (dataset_kind, proposal_id, claim_id) DO NOTHING`,
+      [
+        datasetKind,
+        proposal.proposal_id,
+        claim.claim_id,
+        claim.support_assessment,
+        claim.evidence_label,
+        claim.claim_text,
+        JSON.stringify(claim),
+      ],
+    );
+
+    // If evidence_ref_id is numeric and exists in evidence_references, link in proposal_claim_evidence
+    if (claim.evidence_ref_id && /^\d+$/.test(claim.evidence_ref_id)) {
+      const refCheck = await tx.query<{ evidence_ref_id: string }>(
+        `SELECT evidence_ref_id::text FROM waspada.evidence_references
+         WHERE dataset_kind = $1 AND evidence_ref_id = $2::bigint`,
+        [datasetKind, claim.evidence_ref_id],
+      );
+      if (refCheck.rows.length > 0) {
+        await tx.query(
+          `INSERT INTO waspada.proposal_claim_evidence
+           (dataset_kind, proposal_id, claim_id, evidence_kind, evidence_ref_id)
+           VALUES ($1, $2, $3, 'support', $4::bigint)
+           ON CONFLICT DO NOTHING`,
+          [datasetKind, proposal.proposal_id, claim.claim_id, claim.evidence_ref_id],
+        );
+      }
+    }
+  }
+
+  return { proposalId: proposal.proposal_id, outcome: 'created' };
+}
+
 export function createEventProposalWriter(executor: SqlExecutor): EventProposalWriter {
   if (!executor || typeof executor.query !== 'function') {
     throw new TypeError('Event proposal persistence requires a SQL executor');
@@ -144,110 +253,7 @@ export function createEventProposalWriter(executor: SqlExecutor): EventProposalW
       proposal: EventProposalDto,
       datasetKind: string = 'live',
     ): Promise<{ proposalId: string; outcome: 'created' | 'already_exists' }> {
-      if (!proposal || typeof proposal !== 'object') {
-        throw new TypeError('Proposal must be an object');
-      }
-      if (!proposal.proposal_id || typeof proposal.proposal_id !== 'string') {
-        throw new TypeError('Proposal must have a valid proposal_id');
-      }
-      if (!VALID_DATASETS[datasetKind]) {
-        throw new TypeError(`Invalid dataset_kind: ${datasetKind}`);
-      }
-      if (!Array.isArray(proposal.claims)) {
-        throw new TypeError('Proposal claims must be an array');
-      }
-
-      return runInTransaction(executor, async (tx) => {
-        // Advisory transaction lock on (dataset_kind, proposal_id)
-        const hash = createHash('sha256')
-          .update(datasetKind)
-          .update(':')
-          .update(proposal.proposal_id)
-          .digest();
-        await tx.query('SELECT pg_advisory_xact_lock($1::integer, $2::integer)', [
-          hash.readInt32BE(0),
-          hash.readInt32BE(4),
-        ]);
-
-        // Idempotency check: does the proposal already exist?
-        const existing = await tx.query<{ proposal_id: string }>(
-          `SELECT proposal_id FROM waspada.event_proposals
-           WHERE dataset_kind = $1 AND proposal_id = $2`,
-          [datasetKind, proposal.proposal_id],
-        );
-        if (existing.rows.length > 0) {
-          return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
-        }
-
-        // Lineage IDs
-        const extra = proposal as unknown as Record<string, unknown>;
-        const traceId = (typeof extra.trace_id === 'string' && extra.trace_id) || `trace-${proposal.proposal_id}`;
-        const candidateId = (typeof extra.candidate_id === 'string' && extra.candidate_id) || `candidate-${proposal.proposal_id}`;
-        const contextId = (typeof extra.context_id === 'string' && extra.context_id) || `context-${proposal.proposal_id}`;
-
-        await ensurePrerequisites(tx, datasetKind, traceId, candidateId, contextId);
-
-        // Insert proposal into waspada.event_proposals
-        const inserted = await tx.query<{ proposal_id: string }>(
-          `INSERT INTO waspada.event_proposals
-           (dataset_kind, proposal_id, trace_id, candidate_id, context_id, event_id, base_event_version, investigation_id, proposed_at, record_json)
-           VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, $6::timestamptz, $7::jsonb)
-           ON CONFLICT (dataset_kind, proposal_id) DO NOTHING
-           RETURNING proposal_id`,
-          [
-            datasetKind,
-            proposal.proposal_id,
-            traceId,
-            candidateId,
-            contextId,
-            proposal.proposed_at || new Date().toISOString(),
-            JSON.stringify(proposal),
-          ],
-        );
-
-        if (inserted.rows.length === 0) {
-          return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
-        }
-
-        // Insert claims into waspada.proposal_claims
-        for (const claim of proposal.claims) {
-          await tx.query(
-            `INSERT INTO waspada.proposal_claims
-             (dataset_kind, proposal_id, claim_id, support_assessment, evidence_label, claim_text, record_json)
-             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-             ON CONFLICT (dataset_kind, proposal_id, claim_id) DO NOTHING`,
-            [
-              datasetKind,
-              proposal.proposal_id,
-              claim.claim_id,
-              claim.support_assessment,
-              claim.evidence_label,
-              claim.claim_text,
-              JSON.stringify(claim),
-            ],
-          );
-
-          // If evidence_ref_id is numeric and exists in evidence_references, link in proposal_claim_evidence
-          if (claim.evidence_ref_id && /^\d+$/.test(claim.evidence_ref_id)) {
-            const refCheck = await tx.query<{ evidence_ref_id: string }>(
-              `SELECT evidence_ref_id::text FROM waspada.evidence_references
-               WHERE dataset_kind = $1 AND evidence_ref_id = $2::bigint`,
-              [datasetKind, claim.evidence_ref_id],
-            );
-            if (refCheck.rows.length > 0) {
-              await tx.query(
-                `INSERT INTO waspada.proposal_claim_evidence
-                 (dataset_kind, proposal_id, claim_id, evidence_kind, evidence_ref_id)
-                 VALUES ($1, $2, $3, 'support', $4::bigint)
-                 ON CONFLICT DO NOTHING`,
-                [datasetKind, proposal.proposal_id, claim.claim_id, claim.evidence_ref_id],
-              );
-            }
-          }
-        }
-
-        return { proposalId: proposal.proposal_id, outcome: 'created' };
-      });
+      return runInTransaction(executor, (tx) => persistProposalWithTx(tx, proposal, datasetKind));
     },
 
     async readPendingProposals(datasetKind: string = 'live'): Promise<readonly EventProposalDto[]> {

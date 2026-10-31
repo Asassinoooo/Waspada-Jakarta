@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "concurrently --kill-others --names web,worker --prefix-colors cyan,magenta \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\"",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json && tsc --noEmit -p tools/ai/tsconfig.json && tsc --noEmit -p tools/local-pipeline/tsconfig.json && tsc --noEmit -p tools/accounts/tsconfig.json",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json && tsc --noEmit -p tools/ai/tsconfig.json && tsc --noEmit -p tools/local-pipeline/tsconfig.json && tsc --noEmit -p tools/accounts/tsconfig.json && tsc --noEmit -p tools/e2e/tsconfig.json",
     "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts && npm run pipeline:test && npm run accounts:test",
     "intelligence:dev": "tsx apps/intelligence/src/worker.ts",
     "test:intelligence": "npm run test --workspace=@waspada/intelligence",
@@ -34,6 +34,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "concurrently": "^10.0.5",
+    "playwright": "^1.64.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "wrangler": "^4.137.0"

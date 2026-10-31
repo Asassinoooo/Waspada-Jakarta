@@ -36,9 +36,9 @@ import {
   readPublicEventUpdatesQuery,
   type PublicEventUpdatesRuntime,
 } from "../../runtime/public-event-updates-runtime.js";
+import type { SqlExecutor } from "../../../../db/src/sql.js";
 
 export interface WorkerEnvironment {
-  AUTH_ENABLED?: string;
   AUTH_APP_ORIGIN?: string;
   AUTH_GOOGLE_CLIENT_ID?: string;
   AUTH_GOOGLE_CLIENT_SECRET?: string;
@@ -54,6 +54,8 @@ export interface WorkerEnvironment {
   FRESHNESS_DUE_HYPERDRIVE?: { readonly connectionString?: string };
   FRESHNESS_DUE_SCHEDULER_ENABLED?: string;
   PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
+  INTERNAL_SERVICE_KEY?: string;
+  SQL_EXECUTOR?: SqlExecutor;
 }
 const readModel = new PublicReadModel(noConfiguredSources);
 const maxBriefingRequestBytes = 256 * 1024;
@@ -181,6 +183,7 @@ export async function handlePublicApiRequest(
       );
     } else if (env.DATASET_MODE
       && env.DATASET_MODE !== "demo"
+      && env.DATASET_MODE !== "synthetic"
       && env.DATASET_MODE !== "live") {
       response = apiError(
         "TEMPORARILY_UNAVAILABLE",
