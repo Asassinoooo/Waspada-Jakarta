@@ -66,9 +66,29 @@ export interface ClassifiedNewsItem {
   readonly title: string;
   readonly link: string;
   readonly pubDate: string | null;
+  readonly descriptionExcerpt: string | null;
   readonly matchedToponyms: readonly string[];
   readonly matchedKeywords: readonly string[];
   readonly isLikelyRelevant: boolean;
+}
+
+/**
+ * Bounded RSS description sanitizer (WJ-INT-02).
+ * Strips tags, decodes common entities, collapses whitespace, NFKC-normalizes,
+ * truncates to 2000 code points. Never fetches or parses full articles.
+ */
+export function sanitizeRssDescription(raw: string | null): string | null {
+  if (raw === null || typeof raw !== "string") return null;
+  const noTags = raw.replace(/<[^>]*>/g, " ");
+  const decoded = noTags
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'");
+  const collapsed = decoded.replace(/\s+/g, " ").trim().normalize("NFKC");
+  if (collapsed.length === 0) return null;
+  return Array.from(collapsed).slice(0, 2000).join("");
 }
 
 export interface PreparedNewsReportRevision {
@@ -104,19 +124,19 @@ export function classifyNewsItem(item: RssDiscoveryItem): {
   readonly matchedToponyms: readonly string[];
   readonly matchedKeywords: readonly string[];
 } {
-  const title = (item.title ?? "").toLowerCase();
-  if (title.length === 0) {
+  const haystack = `${item.title ?? ""}\n${item.description ?? ""}`.toLowerCase();
+  if (haystack.trim().length === 0) {
     return { isRelevant: false, matchedToponyms: [], matchedKeywords: [] };
   }
 
   const matchedToponyms = JAKARTA_TOPONYMS.filter((topo) => {
     // Exact word or boundary match
     const regex = new RegExp(`\\b${escapeRegex(topo)}\\b`, "iu");
-    return regex.test(title);
+    return regex.test(haystack);
   });
 
   const matchedKeywords = INCIDENT_KEYWORDS.filter((keyword) => {
-    return title.includes(keyword.toLowerCase());
+    return haystack.includes(keyword.toLowerCase());
   });
 
   const isRelevant = matchedToponyms.length > 0 && matchedKeywords.length > 0;
@@ -164,25 +184,39 @@ export function parseAndFilterNewsRss(
     const { isRelevant, matchedToponyms, matchedKeywords } = classifyNewsItem(rawItem);
 
     const guid = rawItem.guid ?? rawItem.link;
+    const descriptionExcerpt = sanitizeRssDescription(rawItem.description);
     const classified: ClassifiedNewsItem = {
       guid,
       title: rawItem.title.trim(),
       link: rawItem.link.trim(),
       pubDate: rawItem.pubDate,
+      descriptionExcerpt,
       matchedToponyms,
       matchedKeywords,
       isLikelyRelevant: isRelevant,
     };
     items.push(classified);
 
-    // Prepare L1 report revision (ADR-005: title and headline excerpt only)
-    const permittedText = classified.title;
+    // Prepare L1 report revision: title plus bounded description excerpt when permitted.
+    // content_hash covers link + full permitted text so a changed description re-evaluates.
+    const permittedText = descriptionExcerpt !== null
+      ? `${classified.title}\n\n${descriptionExcerpt}`
+      : classified.title;
     const permittedTextHash = sha256(permittedText);
     const contentHash = sha256(`${classified.link}:${permittedText}`);
     const revisionId = `rep-${sourceId}-${sha256(guid).slice(0, 16)}`;
 
-    // Calculate code points for evidence span
-    const codePointLength = Array.from(permittedText).length;
+    // Calculate code points for evidence spans (chunk 0 = title, chunk 1 = excerpt)
+    const titleCodePoints = Array.from(classified.title).length;
+    const fullCodePoints = Array.from(permittedText).length;
+    const evidenceChunks: PreparedNewsReportRevision["evidence_chunks"] = descriptionExcerpt !== null
+      ? [
+        { chunk_index: 0, text: classified.title, span_start: 0, span_end: titleCodePoints },
+        { chunk_index: 1, text: descriptionExcerpt, span_start: titleCodePoints + 2, span_end: fullCodePoints },
+      ]
+      : [
+        { chunk_index: 0, text: permittedText, span_start: 0, span_end: fullCodePoints },
+      ];
 
     revisions.push({
       report_revision_id: revisionId,
@@ -196,14 +230,7 @@ export function parseAndFilterNewsRss(
       published_at: parsePubDate(classified.pubDate),
       retrieved_at: retrievedAt,
       revision_status: "unreviewed",
-      evidence_chunks: [
-        {
-          chunk_index: 0,
-          text: permittedText,
-          span_start: 0,
-          span_end: codePointLength,
-        },
-      ],
+      evidence_chunks: evidenceChunks,
     });
   }
 

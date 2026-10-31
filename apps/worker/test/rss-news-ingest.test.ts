@@ -23,6 +23,7 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
     link: "https://www.antaranews.com/berita/1001/kebakaran-senen",
     guid: "antara-1001",
     pubDate: "Mon, 26 Oct 2026 03:00:00 +0700",
+    description: null,
   });
   assert.equal(fire.isRelevant, true);
   assert.ok(fire.matchedToponyms.includes("senen"));
@@ -34,6 +35,7 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
     link: "https://www.antaranews.com/berita/1002/banjir-mampang",
     guid: "antara-1002",
     pubDate: "Mon, 26 Oct 2026 04:00:00 +0700",
+    description: null,
   });
   assert.equal(flood.isRelevant, true);
   assert.ok(flood.matchedToponyms.includes("mampang prapatan"));
@@ -45,6 +47,7 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
     link: "https://www.antaranews.com/berita/1003/banjir-padang",
     guid: "antara-1003",
     pubDate: "Mon, 26 Oct 2026 05:00:00 +0700",
+    description: null,
   });
   assert.equal(outsideJakarta.isRelevant, false);
   assert.equal(outsideJakarta.matchedToponyms.length, 0);
@@ -55,6 +58,7 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
     link: "https://www.antaranews.com/berita/1004/beasiswa-jakarta",
     guid: "antara-1004",
     pubDate: "Mon, 26 Oct 2026 06:00:00 +0700",
+    description: null,
   });
   assert.equal(politicalNews.isRelevant, false);
   assert.ok(politicalNews.matchedToponyms.includes("dki jakarta"));
@@ -66,6 +70,7 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
     link: "https://news.detik.com/berita/d-12345/kebakaran-menteng",
     guid: "detik-12345",
     pubDate: "Wed, 28 Oct 2026 08:30:00 +0700",
+    description: null,
   });
   assert.equal(detikItem.isRelevant, true);
   assert.ok(detikItem.matchedToponyms.includes("menteng"));
@@ -79,6 +84,7 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
     link: "https://www.cnnindonesia.com/nasional/20261028-kebakaran-pulau-tidung",
     guid: "cnn-67890",
     pubDate: "Wed, 28 Oct 2026 08:42:31 +0700",
+    description: null,
   });
   assert.equal(cnnItem.isRelevant, true);
   assert.ok(cnnItem.matchedToponyms.includes("pulau tidung"));

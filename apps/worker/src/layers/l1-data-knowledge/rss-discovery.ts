@@ -12,6 +12,7 @@ export const RSS_DISCOVERY_LIMITS = {
   maxGuidCharacters: 512,
   maxPubDateCharacters: 128,
   maxRetrievedAtCharacters: 64,
+  maxDescriptionCharacters: 2000,
 } as const;
 
 export interface RssDiscoveryItem {
@@ -20,6 +21,8 @@ export interface RssDiscoveryItem {
   readonly guid: string | null;
   /** Raw source text only; pubDate is not an incident or observation time. */
   readonly pubDate: string | null;
+  /** Bounded permitted excerpt (sanitized downstream); null when absent. */
+  readonly description: string | null;
 }
 
 export type RssDiscoveryErrorCode =
@@ -41,7 +44,7 @@ export type RssDiscoveryParseResult =
   | { readonly kind: "feed"; readonly retrievedAt: string; readonly items: readonly RssDiscoveryItem[] }
   | { readonly kind: "error"; readonly error: { readonly code: RssDiscoveryErrorCode } };
 
-type ExtractedField = "title" | "link" | "guid" | "pubDate";
+type ExtractedField = "title" | "link" | "guid" | "pubDate" | "description";
 
 interface ItemBuilder {
   readonly seen: Set<ExtractedField>;
@@ -178,7 +181,7 @@ function parseXml(xmlText: string, retrievedAt: string): RssDiscoveryParseResult
       }
       const field = extractedField(tag.local);
       if (field === null) {
-        // Descriptions, enclosures and other bodies remain excluded.
+        // Enclosures and other non-permitted bodies remain excluded.
         stack.push({ role: "ignored" });
         return;
       }
@@ -247,6 +250,7 @@ function extractedField(localName: string): ExtractedField | null {
     case "link":
     case "guid":
     case "pubDate":
+    case "description":
       return localName;
     default:
       return null;
@@ -263,6 +267,8 @@ function fieldLimit(field: ExtractedField): number {
       return RSS_DISCOVERY_LIMITS.maxGuidCharacters;
     case "pubDate":
       return RSS_DISCOVERY_LIMITS.maxPubDateCharacters;
+    case "description":
+      return RSS_DISCOVERY_LIMITS.maxDescriptionCharacters;
   }
 }
 
@@ -272,6 +278,7 @@ function finalizeItem(item: ItemBuilder): RssDiscoveryItem {
     link: item.fields.link ?? null,
     guid: item.fields.guid ?? null,
     pubDate: item.fields.pubDate ?? null,
+    description: item.fields.description ?? null,
   };
 }
 

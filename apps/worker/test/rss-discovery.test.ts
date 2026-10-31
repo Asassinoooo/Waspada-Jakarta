@@ -46,7 +46,7 @@ function exactInputOfBytes(targetBytes: number): string {
   return xml;
 }
 
-test("extracts only discovery fields and excludes article and extension bodies", () => {
+test("extracts discovery fields including bounded description and excludes extension bodies", () => {
   const xml = feed(
     "<title>SYNTHETIC TEST ONLY: ignored channel title</title>" +
     item(
@@ -54,7 +54,7 @@ test("extracts only discovery fields and excludes article and extension bodies",
       "<link>https://untrusted.invalid/path?mode=synthetic&amp;next=raw</link>" +
       "<guid isPermaLink=\"false\">urn:synthetic:item:001</guid>" +
       "<pubDate>raw source date string; not event time</pubDate>" +
-      "<description>SYNTHETIC TEST ONLY: excluded article body</description>" +
+      "<description>SYNTHETIC TEST ONLY: &lt;b&gt;permitted&lt;/b&gt; excerpt</description>" +
       "<content:encoded>SYNTHETIC TEST ONLY: excluded encoded body</content:encoded>" +
       "<ext:payload>SYNTHETIC TEST ONLY: excluded extension body</ext:payload>" +
       "<image><url>https://synthetic.invalid/image-only</url></image>" +
@@ -70,9 +70,11 @@ test("extracts only discovery fields and excludes article and extension bodies",
       link: "https://untrusted.invalid/path?mode=synthetic&next=raw",
       guid: "urn:synthetic:item:001",
       pubDate: "raw source date string; not event time",
+      description: "SYNTHETIC TEST ONLY: &lt;b&gt;permitted&lt;/b&gt; excerpt",
     }],
   });
-  assert.ok(!JSON.stringify(result).includes("excluded"));
+  assert.ok(!JSON.stringify(result).includes("excluded encoded"));
+  assert.ok(!JSON.stringify(result).includes("excluded extension"));
   assert.ok(!JSON.stringify(result).includes("image-only"));
   assert.ok(!JSON.stringify(result).includes("enclosure-only"));
 });
@@ -82,7 +84,7 @@ test("returns empty feeds and nulls for missing optional fields", () => {
   assert.deepEqual(parse(feed(item(""))), {
     kind: "feed",
     retrievedAt: RETRIEVED_AT,
-    items: [{ title: null, link: null, guid: null, pubDate: null }],
+    items: [{ title: null, link: null, guid: null, pubDate: null, description: null }],
   });
 });
 
@@ -94,8 +96,8 @@ test("preserves multiple item order and CDATA values", () => {
     kind: "feed",
     retrievedAt: RETRIEVED_AT,
     items: [
-      { title: "first synthetic title", link: "opaque link one", guid: null, pubDate: null },
-      { title: "second synthetic title", link: null, guid: "opaque-guid-2", pubDate: null },
+      { title: "first synthetic title", link: "opaque link one", guid: null, pubDate: null, description: null },
+      { title: "second synthetic title", link: null, guid: "opaque-guid-2", pubDate: null, description: null },
     ],
   });
 });
