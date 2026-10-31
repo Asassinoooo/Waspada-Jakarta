@@ -54,7 +54,7 @@ test("extracts discovery fields including bounded description and excludes exten
       "<link>https://untrusted.invalid/path?mode=synthetic&amp;next=raw</link>" +
       "<guid isPermaLink=\"false\">urn:synthetic:item:001</guid>" +
       "<pubDate>raw source date string; not event time</pubDate>" +
-      "<description>SYNTHETIC TEST ONLY: &lt;b&gt;permitted&lt;/b&gt; excerpt</description>" +
+      "<description><![CDATA[SYNTHETIC TEST ONLY: <b>permitted</b> excerpt]]></description>" +
       "<content:encoded>SYNTHETIC TEST ONLY: excluded encoded body</content:encoded>" +
       "<ext:payload>SYNTHETIC TEST ONLY: excluded extension body</ext:payload>" +
       "<image><url>https://synthetic.invalid/image-only</url></image>" +
@@ -70,7 +70,7 @@ test("extracts discovery fields including bounded description and excludes exten
       link: "https://untrusted.invalid/path?mode=synthetic&next=raw",
       guid: "urn:synthetic:item:001",
       pubDate: "raw source date string; not event time",
-      description: "SYNTHETIC TEST ONLY: &lt;b&gt;permitted&lt;/b&gt; excerpt",
+      description: "SYNTHETIC TEST ONLY: <b>permitted</b> excerpt",
     }],
   });
   assert.ok(!JSON.stringify(result).includes("excluded encoded"));
@@ -124,7 +124,7 @@ test("ignores unknown namespaces without returning extension text", () => {
   assert.deepEqual(result, {
     kind: "feed",
     retrievedAt: RETRIEVED_AT,
-    items: [{ title: "safe fixture", link: null, guid: null, pubDate: null }],
+    items: [{ title: "safe fixture", link: null, guid: null, pubDate: null, description: null }],
   });
   assert.ok(!JSON.stringify(result).includes("extension sentinel"));
 });
