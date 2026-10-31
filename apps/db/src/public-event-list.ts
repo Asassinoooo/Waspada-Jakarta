@@ -10,17 +10,9 @@ export const PUBLIC_EVENT_LIST_LIMITS = Object.freeze({
   dateTimeLength: 128,
 });
 
-export type PublicEventListCategory =
-  | 'crime_personal_security'
-  | 'demonstrations_public_gatherings'
-  | 'crowds_major_events'
-  | 'violence_immediate_threats'
-  | 'disasters_weather'
-  | 'fires_infrastructure_hazards'
-  | 'transport_road_incidents'
-  | 'utilities_essential_services'
-  | 'health_environmental_advisories'
-  | 'group_specific_critical_notices';
+export type { OfficialIncidentCategory } from './incident-categories.js';
+import { OFFICIAL_INCIDENT_CATEGORIES } from './incident-categories.js';
+export type PublicEventListCategory = (typeof OFFICIAL_INCIDENT_CATEGORIES)[number];
 
 export type PublicEventListLifecycle = 'planned' | 'ongoing' | 'resolved' | 'cancelled' | 'unknown';
 export type PublicEventListFreshness = 'current' | 'needs_update' | 'expired';
@@ -98,18 +90,7 @@ interface ValidatedEventRecord {
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const maxDatabaseInteger = 2_147_483_647;
 const maxDateRangeMicros = 90n * 24n * 60n * 60n * 1_000_000n;
-const categories = new Set<PublicEventListCategory>([
-  'crime_personal_security',
-  'demonstrations_public_gatherings',
-  'crowds_major_events',
-  'violence_immediate_threats',
-  'disasters_weather',
-  'fires_infrastructure_hazards',
-  'transport_road_incidents',
-  'utilities_essential_services',
-  'health_environmental_advisories',
-  'group_specific_critical_notices',
-]);
+const categories = new Set<PublicEventListCategory>(OFFICIAL_INCIDENT_CATEGORIES);
 const lifecycles = new Set<PublicEventListLifecycle>(['planned', 'ongoing', 'resolved', 'cancelled', 'unknown']);
 const freshnessStatuses = new Set<PublicEventListFreshness>(['current', 'needs_update', 'expired']);
 const freshnessBases = new Set([

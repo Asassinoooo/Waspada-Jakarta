@@ -9,8 +9,10 @@ import {
 } from "../../db/src/incident-repository.js";
 import {
   createIncidentIntelligenceWorkflow,
-  type IncidentWorkflowInput,
+  IncidentWorkflowInputSchema,
 } from "./workflows/incident-intelligence-workflow.js";
+import type { z } from "zod";
+type IncidentWorkflowInput = z.infer<typeof IncidentWorkflowInputSchema>;
 import type { NineRouterConfig } from "./providers/ninerouter-adapter.js";
 import { Agent } from "@mastra/core/agent";
 
@@ -157,6 +159,32 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           });
         }
 
+        let triageContext: IncidentWorkflowInput["triage"];
+        try {
+          const triageRes = await options.executor.query<{
+            primary_category: string | null;
+            incident_type: string | null;
+            jakarta_scope: string;
+          }>(
+            `SELECT primary_category, incident_type, jakarta_scope
+             FROM waspada.news_triage_decisions
+             WHERE dataset_kind = $1 AND source_id = $2
+               AND disposition = 'ingest'
+             ORDER BY evaluated_at DESC LIMIT 1`,
+            [rev.dataset_kind, rev.source_id],
+          );
+          const row = triageRes.rows[0];
+          if (row) {
+            triageContext = {
+              primaryCategory: row.primary_category,
+              incidentType: row.incident_type,
+              jakartaScope: row.jakarta_scope,
+            };
+          }
+        } catch {
+          triageContext = undefined;
+        }
+
         const workflowInput: IncidentWorkflowInput = {
           jobId: job.jobId,
           leaseToken,
@@ -168,6 +196,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           datasetKind: rev.dataset_kind,
           traceId: job.traceId || rev.trace_id || `trace-${job.jobId}`,
           evidenceChunks,
+          ...(triageContext ? { triage: triageContext } : {}),
         };
 
         // Execute Mastra Workflow

@@ -69,6 +69,7 @@ describe("WJ-INT-01C: AI-First Classification and Safe Fallback Architecture", (
       summary: "Tiang listrik roboh melintang di Jalan Rasuna Said Kuningan",
       incidentType: "fallen_electrical_pole",
       severity: "high",
+      primaryCategory: "disasters_weather",
       location: {
         label: "Jl. HR Rasuna Said, Kuningan, Jakarta Selatan",
         approximateCoordinates: [106.831, -6.224],
@@ -245,6 +246,7 @@ describe("WJ-INT-01C: AI-First Classification and Safe Fallback Architecture", (
       summary: "Genangan air dilaporkan di lokasi yang belum spesifik",
       incidentType: "genangan_air",
       severity: "unknown",
+      primaryCategory: "disasters_weather",
       location: {
         label: null,
         approximateCoordinates: null,
@@ -324,6 +326,7 @@ describe("WJ-INT-01C: AI-First Classification and Safe Fallback Architecture", (
           summary: "Informasi air naik di terowongan Cawang atau Jatinegara",
           incidentType: "genangan_air",
           severity: "medium",
+      primaryCategory: "disasters_weather",
           confidence: "medium",
         }),
         correlator: createMockCorrelatorAgent({

@@ -99,6 +99,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       '037_ai_incident_intelligence_pipeline',
       '038_ai_incident_classification_and_fallback',
       '039_pipeline_unification_and_idempotency',
+      '040_news_triage_and_primary_category',
     ]);
   });
 

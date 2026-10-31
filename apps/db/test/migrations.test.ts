@@ -167,6 +167,7 @@ describe('DATA-01 migrations', () => {
         '037_ai_incident_intelligence_pipeline',
         '038_ai_incident_classification_and_fallback',
         '039_pipeline_unification_and_idempotency',
+      '040_news_triage_and_primary_category',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -320,6 +321,7 @@ describe('DATA-01 migrations', () => {
       '037_ai_incident_intelligence_pipeline',
       '038_ai_incident_classification_and_fallback',
       '039_pipeline_unification_and_idempotency',
+      '040_news_triage_and_primary_category',
     ]);
   });
 
@@ -357,12 +359,13 @@ describe('DATA-01 migrations', () => {
       '037_ai_incident_intelligence_pipeline',
       '038_ai_incident_classification_and_fallback',
       '039_pipeline_unification_and_idempotency',
+      '040_news_triage_and_primary_category',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '39');
+    assert.equal(count.rows[0]?.count, '40');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -381,7 +384,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 039_pipeline_unification_and_idempotency/,
+      /Cannot apply migration 000_late_backfill before already applied migration 040_news_triage_and_primary_category/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -427,6 +430,7 @@ describe('DATA-01 migrations', () => {
       { version: '037_ai_incident_intelligence_pipeline' },
       { version: '038_ai_incident_classification_and_fallback' },
       { version: '039_pipeline_unification_and_idempotency' },
+      { version: '040_news_triage_and_primary_category' },
     ]);
   });
 
@@ -461,6 +465,7 @@ describe('DATA-01 migrations', () => {
       '037_ai_incident_intelligence_pipeline',
       '038_ai_incident_classification_and_fallback',
       '039_pipeline_unification_and_idempotency',
+      '040_news_triage_and_primary_category',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",

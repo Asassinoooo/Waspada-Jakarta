@@ -12,17 +12,9 @@ export const PUBLIC_EVENT_GEOJSON_CANDIDATE_LIMITS = Object.freeze({
   }),
 });
 
-export type PublicEventGeoJSONCategory =
-  | 'crime_personal_security'
-  | 'demonstrations_public_gatherings'
-  | 'crowds_major_events'
-  | 'violence_immediate_threats'
-  | 'disasters_weather'
-  | 'fires_infrastructure_hazards'
-  | 'transport_road_incidents'
-  | 'utilities_essential_services'
-  | 'health_environmental_advisories'
-  | 'group_specific_critical_notices';
+export type { OfficialIncidentCategory } from './incident-categories.js';
+import { OFFICIAL_INCIDENT_CATEGORIES } from './incident-categories.js';
+export type PublicEventGeoJSONCategory = (typeof OFFICIAL_INCIDENT_CATEGORIES)[number];
 
 export type PublicEventGeoJSONLifecycle = 'planned' | 'ongoing' | 'resolved' | 'cancelled' | 'unknown';
 export type PublicEventGeoJSONFreshness = 'current' | 'needs_update' | 'expired';
@@ -89,18 +81,7 @@ interface ValidatedQuery {
 }
 
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const categories = new Set<PublicEventGeoJSONCategory>([
-  'crime_personal_security',
-  'demonstrations_public_gatherings',
-  'crowds_major_events',
-  'violence_immediate_threats',
-  'disasters_weather',
-  'fires_infrastructure_hazards',
-  'transport_road_incidents',
-  'utilities_essential_services',
-  'health_environmental_advisories',
-  'group_specific_critical_notices',
-]);
+const categories = new Set<PublicEventGeoJSONCategory>(OFFICIAL_INCIDENT_CATEGORIES);
 const lifecycles = new Set<PublicEventGeoJSONLifecycle>([
   'planned', 'ongoing', 'resolved', 'cancelled', 'unknown',
 ]);

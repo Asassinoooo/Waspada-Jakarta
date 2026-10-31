@@ -7,6 +7,7 @@ export function createMockInterpreterAgent(overrides?: Partial<ReportInterpretat
     summary: "Banjir setinggi 50 cm merendam Jalan DI Panjaitan, Cawang",
     incidentType: "genangan_air_luapan_saluran",
     severity: "medium",
+    primaryCategory: "disasters_weather",
     location: {
       label: "Jl. DI Panjaitan, Cawang, Jakarta Timur",
       approximateCoordinates: [106.871, -6.244],
