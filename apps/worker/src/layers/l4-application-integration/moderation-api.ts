@@ -42,7 +42,8 @@ export interface EventProposalDto {
   readonly proposal_id: string;
   readonly title: string;
   readonly incident_type: string;
-  readonly compatibility_category?: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | "other" | "unclassified" | (string & {});
+  /** Canonical WJ-INT-02 primary category; present when produced by the Mastra pipeline. */
+  readonly primary_category?: string;
   readonly severity: "low" | "medium" | "high" | "critical" | "unknown";
   readonly event_time: {
     readonly precision: "exact" | "date" | "range" | "unknown";

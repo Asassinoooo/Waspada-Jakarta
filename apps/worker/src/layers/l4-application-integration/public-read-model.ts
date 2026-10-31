@@ -563,7 +563,10 @@ export function proposalToEventDetail(
   _chunks?: readonly StoredEvidenceChunk[],
 ): EventDetail {
   const eventId = sanitizeEventId(proposal.proposal_id);
-  const category = mapIncidentTypeToCategory(proposal.incident_type);
+  const primaryCategory = (proposal as { primary_category?: unknown }).primary_category;
+  const category = typeof primaryCategory === "string" && categories[primaryCategory]
+    ? (primaryCategory as Category)
+    : mapIncidentTypeToCategory(proposal.incident_type);
   const title = proposal.title ? proposal.title.slice(0, 240) : `Insiden ${category}`;
 
   const summary = proposal.claims && proposal.claims.length > 0
@@ -694,9 +697,9 @@ function rawInputToEventDetail(
   const id = String(input.proposal_id ?? input.proposalId ?? input.event_id ?? input.eventId ?? `evt-${Date.now()}`);
   const eventId = sanitizeEventId(id);
   const title = typeof input.title === "string" ? input.title.slice(0, 240) : `Laporan Kejadian ${eventId}`;
-  const rawCat = typeof input.category === "string" ? input.category : typeof input.incident_type === "string" ? input.incident_type : "disasters_weather";
+  const rawPrimary = typeof input.primary_category === "string" ? input.primary_category : null;
+  const rawCat = rawPrimary ?? (typeof input.category === "string" ? input.category : typeof input.incident_type === "string" ? input.incident_type : "disasters_weather");
   const category = mapIncidentTypeToCategory(rawCat);
-
   const places: string[] = [];
   if (typeof input.location_label === "string" && input.location_label.trim().length > 0) {
     places.push(input.location_label.trim());
