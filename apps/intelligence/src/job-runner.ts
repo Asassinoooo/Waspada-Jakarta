@@ -4,6 +4,7 @@ import type { DatasetKind } from "../../db/src/ports.js";
 import {
   createSqlIncidentRepository,
   type IncidentRepository,
+  type AiJobRecord,
 } from "../../db/src/incident-repository.js";
 import {
   createIncidentIntelligenceWorkflow,
@@ -22,17 +23,16 @@ export interface JobRunnerOptions {
     readonly interpreter?: Agent;
     readonly correlator?: Agent;
   };
-  readonly fallbackMock?: boolean;
 }
 
 export function classifyJobError(err: unknown): string {
   if (!err) return "unknown_error";
   const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
 
-  if (message.includes("timeout") || message.includes("aborted")) {
+  if (message.includes("timeout") || message.includes("timed out") || message.includes("aborted")) {
     return "model_timeout";
   }
-  if (message.includes("ninerouter") || message.includes("500") || message.includes("502") || message.includes("503") || message.includes("econnrefused")) {
+  if (message.includes("ninerouter") || message.includes("500") || message.includes("502") || message.includes("503") || message.includes("429") || message.includes("quota") || message.includes("rate") || message.includes("econnrefused")) {
     return "model_failed";
   }
   if (message.includes("zod") || message.includes("parse") || message.includes("schema") || message.includes("json")) {
@@ -51,6 +51,8 @@ export function calculateBackoffMs(attemptCount: number): number {
 export interface JobRunner {
   processNextJob(datasetKind?: DatasetKind): Promise<boolean>;
   runLoop(signal?: AbortSignal, datasetKind?: DatasetKind): Promise<void>;
+  getJob(jobId: string): Promise<AiJobRecord | null>;
+  retryJob(jobId: string): Promise<boolean>;
 }
 
 export function createJobRunner(options: JobRunnerOptions): JobRunner {
@@ -63,7 +65,6 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
     transactionalExecutor: options.transactionalExecutor,
     config: options.config,
     agentOverrides: options.agentOverrides,
-    fallbackMock: options.fallbackMock,
   });
 
   return {
@@ -168,7 +169,18 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         const execution = await run.start({ inputData: workflowInput });
 
         if (execution.status !== "success") {
-          throw new Error(`Mastra workflow execution failed with status: ${execution.status}`);
+          const stepErrors: string[] = [];
+          if (execution.steps) {
+            for (const [stepName, stepData] of Object.entries(execution.steps as Record<string, any>)) {
+              if (stepData?.error) {
+                stepErrors.push(`${stepName}: ${stepData.error instanceof Error ? stepData.error.message : String(stepData.error)}`);
+              }
+            }
+          }
+          const rootErr = (execution as any).error;
+          const rootErrMsg = rootErr ? (rootErr instanceof Error ? rootErr.message : String(rootErr)) : "";
+          const combinedMsg = [rootErrMsg, ...stepErrors].filter(Boolean).join(" | ");
+          throw new Error(combinedMsg || `Mastra workflow execution failed with status: ${execution.status}`);
         }
 
         // Complete job
@@ -183,6 +195,13 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         heartbeatActive = false;
         clearInterval(heartbeatTimer);
       }
+    },
+    async getJob(jobId: string) {
+      return incidentRepo.getAiJob(jobId);
+    },
+
+    async retryJob(jobId: string) {
+      return incidentRepo.retryAiJob(jobId);
     },
 
     async runLoop(signal?: AbortSignal, datasetKind?: DatasetKind): Promise<void> {

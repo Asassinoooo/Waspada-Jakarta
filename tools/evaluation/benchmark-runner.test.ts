@@ -172,7 +172,7 @@ test("createAiProposalService gracefully falls back to deterministic extraction 
   assert.equal(result.provider, "deterministic-fallback");
   assert.ok(result.proposal !== null);
   assert.equal(result.proposal.incident_type, "fire");
-  assert.ok(result.proposal.location_label.includes("Senen"));
+  assert.ok(result.proposal.location_label?.includes("Senen"));
   assert.ok(result.proposal.coordinates !== null);
   assert.ok(isCoordinateInJakarta(result.proposal.coordinates));
 });

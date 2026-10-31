@@ -8,8 +8,9 @@ export type Category =
   | "transport_road_incidents"
   | "utilities_essential_services"
   | "health_environmental_advisories"
-  | "group_specific_critical_notices";
-
+  | "group_specific_critical_notices"
+  | "other"
+  | "unclassified";
 export type Lifecycle = "planned" | "ongoing" | "resolved" | "cancelled" | "unknown";
 export type FreshnessStatus = "current" | "needs_update" | "expired";
 
@@ -93,6 +94,7 @@ export interface EventView {
   title: string;
   summary: string;
   category: Category;
+  incident_type?: string;
   tags: Array<{
     namespace: "topic" | "service" | "audience" | "hazard" | "transport_mode" | "place_type";
     value: string;

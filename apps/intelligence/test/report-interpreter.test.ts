@@ -3,9 +3,9 @@ import { describe, it } from "node:test";
 import {
   ReportInterpretationSchema,
   interpretReport,
-  generateFallbackInterpretation,
   type InterpretReportInput,
 } from "../src/agents/report-interpretation-agent.js";
+import { createMockInterpreterAgent, createFailingAgent } from "./mock-agents.js";
 
 describe("Mastra Report Interpretation Agent", () => {
   const sampleInput: InterpretReportInput = {
@@ -34,6 +34,7 @@ describe("Mastra Report Interpretation Agent", () => {
     const raw = {
       summary: "Banjir 60 cm di Jalan Kemang Raya akibat hujan deras",
       incidentType: "genangan air luapan drainase",
+      severity: "medium",
       location: {
         label: "Jl. Kemang Raya, Mampang Prapatan, Jakarta Selatan",
         approximateCoordinates: [106.815, -6.273],
@@ -63,20 +64,60 @@ describe("Mastra Report Interpretation Agent", () => {
     const parsed = ReportInterpretationSchema.parse(raw);
     assert.equal(parsed.summary, raw.summary);
     assert.equal(parsed.incidentType, "genangan air luapan drainase");
+    assert.equal(parsed.severity, "medium");
     assert.equal(parsed.location.precision, "approximate");
     assert.equal(parsed.evidence.length, 1);
   });
 
-  it("generates fallback deterministic interpretation when mock requested", async () => {
-    const fallback = await interpretReport(sampleInput, { fallbackMock: true });
-    assert.ok(fallback.summary.length > 0);
-    assert.ok(fallback.incidentType.length > 0);
-    assert.ok(fallback.evidence.length >= 1);
-    assert.equal(fallback.evidence[0].chunkId, "chk-001");
+  it("parses open-ended incident types without enums", () => {
+    const raw = {
+      summary: "Pipa air PDAM pecah menyebabkan semburan air dan aspal terangkat",
+      incidentType: "pipa_air_pdam_bocor",
+      severity: "high",
+      location: {
+        label: "Jl. Rasuna Said Kav. 5",
+        approximateCoordinates: null,
+        precision: "corridor",
+      },
+      eventTime: {
+        value: null,
+        precision: "unknown",
+      },
+      entities: [],
+      impacts: ["aspal_terangkat", "jalur_lambat_ditutup"],
+      operationalStatus: "active",
+      evidence: [],
+      conflictingInfo: [],
+      uncertaintyNotes: ["Tekanan air belum dimatikan"],
+      confidence: "medium",
+    };
+
+    const parsed = ReportInterpretationSchema.parse(raw);
+    assert.equal(parsed.incidentType, "pipa_air_pdam_bocor");
+    assert.equal(parsed.location.approximateCoordinates, null);
+    assert.equal(parsed.eventTime.precision, "unknown");
+    assert.deepEqual(parsed.impacts, ["aspal_terangkat", "jalur_lambat_ditutup"]);
   });
 
-  it("extracts verbatim quote substrings from source chunks", () => {
-    const fallback = generateFallbackInterpretation(sampleInput);
-    assert.ok(sampleInput.reportText.includes(fallback.evidence[0].exactQuote));
+  it("interprets report using provided mock agent", async () => {
+    const mockAgent = createMockInterpreterAgent({
+      incidentType: "fallen_electrical_pole",
+      severity: "high",
+    });
+
+    const result = await interpretReport(sampleInput, { agent: mockAgent });
+    assert.equal(result.incidentType, "fallen_electrical_pole");
+    assert.equal(result.severity, "high");
+    assert.ok(result.evidence.length >= 1);
+  });
+
+  it("fails cleanly when agent throws (no fabricated fallback)", async () => {
+    const failingAgent = createFailingAgent(new Error("NineRouter model timeout"));
+    await assert.rejects(
+      async () => {
+        await interpretReport(sampleInput, { agent: failingAgent });
+      },
+      /model timeout/,
+    );
   });
 });

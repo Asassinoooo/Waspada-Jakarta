@@ -27,7 +27,7 @@ export interface StoredReportRevision {
 }
 
 export type IncidentCategory = "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | (string & {});
-export type IncidentSeverity = "low" | "medium" | "high" | "critical";
+export type IncidentSeverity = "low" | "medium" | "high" | "critical" | "unknown";
 
 export interface EventProposalClaimDto {
   readonly claim_id: string;
@@ -47,9 +47,9 @@ export interface EventProposalDto {
   readonly severity: IncidentSeverity;
   readonly event_time: {
     readonly precision: "exact" | "date" | "range" | "unknown";
-    readonly value: string;
+    readonly value: string | null;
   };
-  readonly location_label: string;
+  readonly location_label: string | null;
   readonly coordinates: readonly [longitude: number, latitude: number] | null;
   readonly claims: readonly EventProposalClaimDto[];
   readonly proposed_at: string;

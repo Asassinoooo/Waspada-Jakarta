@@ -22,9 +22,9 @@ export interface InteractiveIncidentMapProps {
   /** Incident category type (e.g., "flood", "fire", etc.) */
   readonly incidentType: string;
   /** Incident severity level */
-  readonly severity: "low" | "medium" | "high" | "critical";
+  readonly severity: "low" | "medium" | "high" | "critical" | "unknown";
   /** Descriptive location label */
-  readonly locationLabel: string;
+  readonly locationLabel?: string | null;
   /** Proposal title */
   readonly title: string;
   /** Optional external selected facility ID */
@@ -50,7 +50,10 @@ export function mapIncidentTypeLabel(type: string): string {
     case "tree_fall": return "Pohon Tumbang";
     case "crime": return "Kriminalitas";
     case "weather": return "Cuaca Ekstrem";
-    default: return type;
+    default: {
+      const formatted = type.replace(/_/g, " ");
+      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    }
   }
 }
 
@@ -60,20 +63,22 @@ export function mapSeverityLabel(sev: string): string {
     case "high": return "Tinggi";
     case "medium": return "Sedang";
     case "low": return "Rendah";
+    case "unknown": return "Belum Ditentukan";
     default: return sev;
   }
 }
 
 export function incidentTypeIcon(type: string): string {
-  switch (type) {
-    case "flood": return "🌊";
-    case "fire": return "🔥";
-    case "accident": return "🚗";
-    case "tree_fall": return "🌳";
-    case "crime": return "🚨";
-    case "weather": return "⛈️";
-    default: return "⚠️";
-  }
+  const lower = type.toLowerCase();
+  if (lower.includes("flood") || lower.includes("banjir") || lower.includes("genang") || lower.includes("air")) return "🌊";
+  if (lower.includes("fire") || lower.includes("kebakaran") || lower.includes("api")) return "🔥";
+  if (lower.includes("accident") || lower.includes("kecelakaan") || lower.includes("tabrakan") || lower.includes("truk")) return "🚗";
+  if (lower.includes("tree") || lower.includes("pohon") || lower.includes("tumbang")) return "🌳";
+  if (lower.includes("crime") || lower.includes("kriminal") || lower.includes("begal") || lower.includes("tawuran")) return "🚨";
+  if (lower.includes("weather") || lower.includes("cuaca") || lower.includes("angin") || lower.includes("badai")) return "⛈️";
+  if (lower.includes("listrik") || lower.includes("pole") || lower.includes("tiang")) return "⚡";
+  if (lower.includes("pipa") || lower.includes("pdam")) return "🚰";
+  return "⚠️";
 }
 
 export function calculateAffectedRadiusMeters(severity: string, incidentType: string): number {

@@ -41,23 +41,25 @@ export interface EventProposalDto {
   readonly schema_version: "2.0";
   readonly proposal_id: string;
   readonly title: string;
-  readonly incident_type: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | (string & {});
-  readonly severity: "low" | "medium" | "high" | "critical";
+  readonly incident_type: string;
+  readonly compatibility_category?: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | "other" | "unclassified" | (string & {});
+  readonly severity: "low" | "medium" | "high" | "critical" | "unknown";
   readonly event_time: {
     readonly precision: "exact" | "date" | "range" | "unknown";
-    readonly value: string;
+    readonly value: string | null;
   };
-  readonly location_label: string;
+  readonly location_label: string | null;
   readonly coordinates: readonly [longitude: number, latitude: number] | null;
   readonly claims: readonly {
     readonly claim_id: string;
     readonly claim_text: string;
     readonly evidence_label: "under_review";
-    readonly support_assessment: "supported";
+    readonly support_assessment: "supported" | "uncertain" | "disputed";
     readonly quote_text: string;
     readonly evidence_ref_id: string;
     readonly is_corroborated?: boolean;
   }[];
+  readonly impacts?: readonly string[];
   readonly proposed_at: string;
   readonly is_multi_source?: boolean;
   readonly source_count?: number;

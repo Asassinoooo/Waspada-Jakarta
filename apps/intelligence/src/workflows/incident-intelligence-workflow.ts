@@ -54,9 +54,9 @@ export interface IncidentWorkflowOutput {
   readonly proposal: EventProposalDto | null;
 }
 
-export function mapToProposalCategory(
+export function deriveCompatibilityCategory(
   incidentType: string,
-): "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" {
+): "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | "unclassified" {
   const lower = incidentType.toLowerCase();
   if (lower.includes("banjir") || lower.includes("genang") || lower.includes("air") || lower.includes("luapan")) {
     return "flood";
@@ -73,8 +73,12 @@ export function mapToProposalCategory(
   if (lower.includes("begal") || lower.includes("curi") || lower.includes("tawuran") || lower.includes("rampok") || lower.includes("kriminal")) {
     return "crime";
   }
-  return "weather";
+  if (lower.includes("cuaca") || lower.includes("badai") || lower.includes("angin") || lower.includes("hujan")) {
+    return "weather";
+  }
+  return "unclassified";
 }
+
 
 export function createIncidentIntelligenceWorkflow(dependencies: {
   readonly executor: SqlExecutor;
@@ -84,7 +88,6 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
     readonly interpreter?: Agent;
     readonly correlator?: Agent;
   };
-  readonly fallbackMock?: boolean;
 }) {
   const retrievalService = createSemanticRetrievalService({
     executor: dependencies.executor,
@@ -115,7 +118,6 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         },
         {
           agent: dependencies.agentOverrides?.interpreter,
-          fallbackMock: dependencies.fallbackMock,
         },
       );
 
@@ -188,7 +190,6 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         },
         {
           agent: dependencies.agentOverrides?.correlator,
-          fallbackMock: dependencies.fallbackMock,
         },
       );
 
@@ -238,13 +239,17 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             new Set([...existing.incident.uncertaintyNotes, ...interpretation.uncertaintyNotes]),
           );
 
+          const resolvedSeverity = interpretation.severity !== "unknown"
+            ? interpretation.severity
+            : existing.incident.severity;
+
           incident = await incidentRepo.updateIncident({
             incidentId: correlation.candidateIncidentId,
             datasetKind,
             lastUpdatedAt: now,
             discrepancies: mergedDiscrepancies,
             uncertaintyNotes: mergedUncertainties,
-            severity: interpretation.impacts.length > 2 ? "high" : existing.incident.severity,
+            severity: resolvedSeverity,
           });
         } else {
           incident = await incidentRepo.createIncident({
@@ -253,32 +258,44 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             title: interpretation.summary.slice(0, 150),
             description: interpretation.summary,
             incidentType: interpretation.incidentType,
-            status: "active",
-            severity: interpretation.impacts.length > 2 ? "high" : "medium",
+            status: interpretation.confidence === "low" ? "investigating" : "active",
+            severity: interpretation.severity ?? "unknown",
             locationLabel: interpretation.location.label,
             coordinates: interpretation.location.approximateCoordinates,
-            firstObservedAt: interpretation.eventTime.value ?? now,
+            firstObservedAt: interpretation.eventTime.value ?? input.publishedAt ?? now,
             uncertaintyNotes: interpretation.uncertaintyNotes,
+            recordJson: {
+              impacts: interpretation.impacts,
+              confidence: interpretation.confidence,
+            },
             createdAt: now,
           });
         }
       } else {
         relationship = correlation.decision === "unresolved" ? "unresolved" : "primary_initial";
+        const initialStatus = (correlation.decision === "unresolved" || interpretation.confidence === "low")
+          ? "investigating"
+          : "active";
+
         incident = await incidentRepo.createIncident({
           incidentId: `inc-${crypto.randomUUID()}`,
           datasetKind,
           title: interpretation.summary.slice(0, 150),
           description: interpretation.summary,
           incidentType: interpretation.incidentType,
-          status: correlation.decision === "unresolved" ? "investigating" : "active",
-          severity: interpretation.impacts.length > 2 ? "high" : "medium",
+          status: initialStatus,
+          severity: interpretation.severity ?? "unknown",
           locationLabel: interpretation.location.label,
           coordinates: interpretation.location.approximateCoordinates,
-          firstObservedAt: interpretation.eventTime.value ?? now,
+          firstObservedAt: interpretation.eventTime.value ?? input.publishedAt ?? now,
           uncertaintyNotes: [
             ...interpretation.uncertaintyNotes,
             ...(correlation.decision === "unresolved" ? correlation.unresolvedQuestions : []),
           ],
+          recordJson: {
+            impacts: interpretation.impacts,
+            confidence: interpretation.confidence,
+          },
           createdAt: now,
         });
       }
@@ -308,26 +325,26 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
 
       // 4. Generate grounded proposal for moderation queue
       const proposalId = `prop-${crypto.randomUUID()}`;
-      const proposalCategory = mapToProposalCategory(interpretation.incidentType);
+      const compatibilityCat = deriveCompatibilityCategory(interpretation.incidentType);
 
-      const claims = interpretation.evidence.map((ev, idx) => ({
+      const claims: Array<EventProposalDto["claims"][number]> = interpretation.evidence.map((ev, idx) => ({
         claim_id: `claim-${idx + 1}`,
         claim_text: ev.supports,
-        evidence_label: "under_review" as const,
-        support_assessment: "supported" as const,
+        evidence_label: "under_review",
+        support_assessment: "supported",
         quote_text: ev.exactQuote,
         evidence_ref_id: ev.chunkId,
       }));
 
-      // Ensure at least one claim exists
+      // If AI identified no verified evidence quotes from chunks, do not fabricate quote slices
       if (claims.length === 0) {
         claims.push({
           claim_id: "claim-1",
           claim_text: interpretation.summary,
           evidence_label: "under_review",
-          support_assessment: "supported",
-          quote_text: input.reportText.slice(0, 100),
-          evidence_ref_id: input.evidenceChunks[0]?.chunkId || "chunk-default",
+          support_assessment: "uncertain",
+          quote_text: "",
+          evidence_ref_id: input.evidenceChunks[0]?.chunkId || "chunk-unverified",
         });
       }
 
@@ -335,18 +352,20 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         schema_version: "2.0",
         proposal_id: proposalId,
         title: interpretation.summary.slice(0, 120),
-        incident_type: proposalCategory,
-        severity: incident.severity === "critical" || incident.severity === "high" ? incident.severity : "medium",
+        incident_type: interpretation.incidentType,
+        compatibility_category: compatibilityCat,
+        severity: interpretation.severity ?? "unknown",
         event_time: {
-          precision: interpretation.eventTime.precision === "unknown" ? "unknown" : "exact",
-          value: interpretation.eventTime.value ?? now,
+          precision: interpretation.eventTime.precision,
+          value: interpretation.eventTime.value,
         },
-        location_label: interpretation.location.label ?? "DKI Jakarta",
+        location_label: interpretation.location.label,
         coordinates: interpretation.location.approximateCoordinates,
         claims,
+        impacts: interpretation.impacts,
+        caveats: interpretation.uncertaintyNotes,
         proposed_at: now,
       };
-
       try {
         await proposalWriter.persistProposal(proposalDto, datasetKind);
       } catch (err) {

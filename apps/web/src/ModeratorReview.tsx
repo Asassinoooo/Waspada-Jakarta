@@ -37,12 +37,14 @@ export interface EventProposalDto {
   readonly schema_version: "2.0";
   readonly proposal_id: string;
   readonly title: string;
-  readonly incident_type: "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather";
-  readonly severity: "low" | "medium" | "high" | "critical";
-  readonly event_time: { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string };
-  readonly location_label: string;
+  readonly incident_type: string;
+  readonly compatibility_category?: string;
+  readonly severity: "low" | "medium" | "high" | "critical" | "unknown";
+  readonly event_time: { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string | null };
+  readonly location_label: string | null;
   readonly coordinates: readonly [longitude: number, latitude: number] | null;
   readonly claims: readonly ProposalClaim[];
+  readonly impacts?: readonly string[];
   readonly proposed_at: string;
   readonly is_multi_source?: boolean;
   readonly source_count?: number;
@@ -93,7 +95,10 @@ export function incidentTypeLabel(type: string): string {
     case "tree_fall": return "Pohon Tumbang";
     case "crime": return "Kriminalitas";
     case "weather": return "Cuaca Ekstrem";
-    default: return type;
+    default: {
+      const formatted = type.replace(/_/g, " ");
+      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    }
   }
 }
 
@@ -103,6 +108,7 @@ export function severityLabel(sev: string): string {
     case "high": return "Tinggi";
     case "medium": return "Sedang";
     case "low": return "Rendah";
+    case "unknown": return "Belum Ditentukan";
     default: return sev;
   }
 }
@@ -506,12 +512,23 @@ export function ModeratorReviewQueue({
     });
   }, [currentChunks, currentQuotes]);
   // Filter queue by category / multi-source
+  const otherQueueCount = useMemo(() => {
+    return queue.filter(
+      (p) => p.incident_type !== "flood" && p.incident_type !== "fire" && p.compatibility_category !== "flood" && p.compatibility_category !== "fire",
+    ).length;
+  }, [queue]);
+
   const filteredQueue = useMemo(() => {
     if (queueCategoryFilter === "all") return queue;
     if (queueCategoryFilter === "multi_source") {
       return queue.filter((p) => isProposalMultiSource(p));
     }
-    return queue.filter((p) => p.incident_type === queueCategoryFilter);
+    if (queueCategoryFilter === "other") {
+      return queue.filter(
+        (p) => p.incident_type !== "flood" && p.incident_type !== "fire" && p.compatibility_category !== "flood" && p.compatibility_category !== "fire",
+      );
+    }
+    return queue.filter((p) => p.incident_type === queueCategoryFilter || p.compatibility_category === queueCategoryFilter);
   }, [queue, queueCategoryFilter]);
 
   const multiSourceQueueCount = useMemo(() => {
@@ -677,6 +694,17 @@ export function ModeratorReviewQueue({
               >
                 Kebakaran
               </button>
+              {otherQueueCount > 0 && (
+                <button
+                  type="button"
+                  className={`queue-filter-btn ${
+                    queueCategoryFilter === "other" ? "queue-filter-btn--active" : ""
+                  }`}
+                  onClick={() => setQueueCategoryFilter("other")}
+                >
+                  Lainnya ({otherQueueCount})
+                </button>
+              )}
             </div>
 
             <ul className="proposal-queue-list">
@@ -711,10 +739,19 @@ export function ModeratorReviewQueue({
                       </div>
                       <strong className="proposal-card-title">{item.title}</strong>
                       <div className="proposal-card-meta">
-                        <span>📍 {item.location_label}</span>
-                        <span>⏱ {item.event_time.value}</span>
+                        <span>📍 {item.location_label || "Lokasi belum ditentukan"}</span>
+                        <span>⏱ {item.event_time.value || "Waktu belum ditentukan"}</span>
                         <span>📄 {item.claims.length} klaim terverifikasi</span>
                       </div>
+                      {item.impacts && item.impacts.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: "0.35rem" }}>
+                          {item.impacts.map((imp, impIdx) => (
+                            <span key={`card-imp-${impIdx}`} className="severity-chip severity-chip--medium" style={{ fontSize: "0.68rem" }}>
+                              {imp.replace(/_/g, " ")}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </button>
                   </li>
                 );
@@ -764,12 +801,12 @@ export function ModeratorReviewQueue({
                     <div>
                       <dt>Waktu Kejadian</dt>
                       <dd>
-                        {selectedProposal.event_time.value} ({selectedProposal.event_time.precision})
+                        {selectedProposal.event_time.value || "Waktu belum ditentukan"} ({selectedProposal.event_time.precision})
                       </dd>
                     </div>
                     <div>
                       <dt>Lokasi</dt>
-                      <dd>{selectedProposal.location_label}</dd>
+                      <dd>{selectedProposal.location_label || "Lokasi belum ditentukan"}</dd>
                     </div>
                     <div>
                       <dt>Koordinat</dt>

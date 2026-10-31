@@ -49,12 +49,13 @@ Core Evaluation Rules:
    - Same category words describing events at different locations or different days represent a NEW INCIDENT.
 2. Contradiction Preservation:
    - When correlating to an existing incident, if the reports state differing facts (e.g. depth 50cm vs 30cm, 1 casualty vs no casualties), do NOT average or discard either claim. Record them explicitly in 'contradictoryEvidence'.
-3. Unresolved Threshold:
-   - If location or time is too ambiguous to determine whether it overlaps with a candidate incident, choose 'unresolved' and list the questions needed to clarify in 'unresolvedQuestions'.
+3. Substantive Evaluation of Candidates:
+   - When candidate incidents are empty, do NOT automatically assume it is a new incident. Evaluate if the incoming report contains sufficient concrete, verifiable facts (location, timing, physical event) to establish a distinct incident ('new_incident').
+   - If the report is too vague, fragmented, or ambiguous (e.g., "ada kejadian di jalan"), choose 'unresolved'.
 4. Decision Types:
    - 'same_incident': High factual confidence that this describes an existing incident in candidateIncidents. Set candidateIncidentId to that incident's ID.
-   - 'new_incident': High factual confidence that this is a separate, new physical event. Set candidateIncidentId to null.
-   - 'unresolved': Evidence is ambiguous or insufficient to confirm or refute a match. Set candidateIncidentId to the most likely candidate or null.
+   - 'new_incident': High factual confidence that this report contains sufficient concrete facts to establish a distinct new physical event. Set candidateIncidentId to null.
+   - 'unresolved': Evidence is ambiguous, fragmented, or insufficient to confirm or refute a match. Set candidateIncidentId to the most likely candidate or null.
 
 Return ONLY valid JSON matching the requested schema. No markdown wrapping.
 `.trim();
@@ -70,11 +71,8 @@ export function createIncidentCorrelationAgent(agentOverride?: Agent): Agent {
 
 export async function correlateIncident(
   input: CorrelateIncidentInput,
-  options?: { agent?: Agent; fallbackMock?: boolean },
+  options?: { agent?: Agent },
 ): Promise<IncidentCorrelation> {
-  if (options?.fallbackMock) {
-    return generateFallbackCorrelation(input);
-  }
   const agent = options?.agent ?? createIncidentCorrelationAgent();
   const candidatesContext = input.candidateIncidents.length === 0
     ? "No active candidate incidents retrieved from database."
@@ -101,6 +99,7 @@ Compare the incoming report with the candidate incidents and decide correlation.
 Text: ${input.incomingReportText}
 Extracted Summary: ${input.incomingInterpretation.summary}
 Extracted Incident Type: ${input.incomingInterpretation.incidentType}
+Severity: ${input.incomingInterpretation.severity}
 Location: ${input.incomingInterpretation.location.label ?? "Unspecified"} (${input.incomingInterpretation.location.approximateCoordinates ? input.incomingInterpretation.location.approximateCoordinates.join(", ") : "none"})
 Time: ${input.incomingInterpretation.eventTime.value ?? "Unspecified"}
 Impacts: ${input.incomingInterpretation.impacts.join("; ")}
@@ -121,60 +120,7 @@ Format your output as a single JSON object with these keys:
 }
 `.trim();
 
-  try {
-    const response = await agent.generate(prompt);
-    const parsedJson = extractJsonFromText(response.text);
-    return IncidentCorrelationSchema.parse(parsedJson);
-  } catch (error) {
-    if (options?.fallbackMock) {
-      return generateFallbackCorrelation(input);
-    }
-    throw error;
-  }
-}
-
-export function generateFallbackCorrelation(input: CorrelateIncidentInput): IncidentCorrelation {
-  if (input.candidateIncidents.length === 0) {
-    return {
-      decision: "new_incident",
-      candidateIncidentId: null,
-      reasoning: "Tidak ditemukan kandidat insiden aktif yang relevan di basis data.",
-      supportingEvidence: [],
-      contradictoryEvidence: [],
-      distinctions: ["Insiden pertama dalam kategori dan wilayah ini"],
-      unresolvedQuestions: [],
-      uncertainty: [],
-    };
-  }
-
-  const topMatch = input.candidateIncidents[0];
-  if (topMatch.similarityScore >= 0.8) {
-    return {
-      decision: "same_incident",
-      candidateIncidentId: topMatch.incident.incidentId,
-      reasoning: `Kemiripan semantik tinggi (${(topMatch.similarityScore * 100).toFixed(1)}%) dengan insiden aktif ${topMatch.incident.title}.`,
-      supportingEvidence: [
-        {
-          reportRevisionId: input.incomingReportRevisionId,
-          quote: input.incomingReportText.slice(0, 100),
-          relevance: "Lokasi dan jenis kejadian selaras",
-        },
-      ],
-      contradictoryEvidence: [],
-      distinctions: [],
-      unresolvedQuestions: [],
-      uncertainty: [],
-    };
-  }
-
-  return {
-    decision: "new_incident",
-    candidateIncidentId: null,
-    reasoning: "Meskipun ada insiden aktif, rincian lokasi atau peristiwa tidak cukup identik untuk digabungkan.",
-    supportingEvidence: [],
-    contradictoryEvidence: [],
-    distinctions: [`Berbeda lokasi/peristiwa dari ${topMatch.incident.title}`],
-    unresolvedQuestions: [],
-    uncertainty: [],
-  };
+  const response = await agent.generate(prompt);
+  const parsedJson = extractJsonFromText(response.text);
+  return IncidentCorrelationSchema.parse(parsedJson);
 }

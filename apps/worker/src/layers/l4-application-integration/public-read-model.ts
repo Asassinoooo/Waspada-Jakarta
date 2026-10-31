@@ -480,7 +480,8 @@ function sanitizeEventId(id: string): string {
 }
 
 function mapIncidentTypeToCategory(type: string): Category {
-  switch (type) {
+  const lower = type.toLowerCase();
+  switch (lower) {
     case "flood":
     case "weather":
       return "disasters_weather";
@@ -496,7 +497,22 @@ function mapIncidentTypeToCategory(type: string): Category {
       if (categories[type]) {
         return type as Category;
       }
-      return "disasters_weather";
+      if (lower.includes("traffic") || lower.includes("road") || lower.includes("lantas") || lower.includes("jalan") || lower.includes("jalur") || lower.includes("kendaraan") || lower.includes("truk") || lower.includes("motor") || lower.includes("mobil")) {
+        return "transport_road_incidents";
+      }
+      if (lower.includes("listrik") || lower.includes("pole") || lower.includes("tiang") || lower.includes("pipa") || lower.includes("utility") || lower.includes("pdam") || lower.includes("pln") || lower.includes("gas")) {
+        return "utilities_essential_services";
+      }
+      if (lower.includes("api") || lower.includes("kebakaran") || lower.includes("pohon") || lower.includes("roboh") || lower.includes("tumbang") || lower.includes("gedung") || lower.includes("bangunan")) {
+        return "fires_infrastructure_hazards";
+      }
+      if (lower.includes("banjir") || lower.includes("genang") || lower.includes("longsor") || lower.includes("cuaca") || lower.includes("hujan") || lower.includes("badai")) {
+        return "disasters_weather";
+      }
+      if (lower.includes("begal") || lower.includes("curi") || lower.includes("tawuran") || lower.includes("rampok") || lower.includes("kejahatan")) {
+        return "crime_personal_security";
+      }
+      return "other";
   }
 }
 
@@ -636,6 +652,7 @@ export function proposalToEventDetail(
     title,
     summary,
     category,
+    incident_type: proposal.incident_type,
     tags: [
       { namespace: "topic", value: proposal.incident_type || "incident" },
       { namespace: "hazard", value: proposal.severity || "general" },

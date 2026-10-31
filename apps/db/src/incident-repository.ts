@@ -5,7 +5,7 @@ export type IncidentStatus = "investigating" | "active" | "monitoring" | "resolv
 export type IncidentSeverity = "low" | "medium" | "high" | "critical" | "unknown";
 export type IncidentRelationship = "primary_initial" | "corroborating" | "updating" | "contradicting" | "unresolved";
 export type CorrelationDecision = "same_incident" | "new_incident" | "unresolved";
-export type AiJobStatus = "pending" | "leased" | "retry" | "completed" | "terminal";
+export type AiJobStatus = "pending" | "leased" | "retry" | "completed" | "terminal" | "needs_review";
 
 export interface IncidentRecord {
   readonly incidentId: string;
@@ -157,7 +157,11 @@ export interface IncidentRepository {
   claimAiJob(input?: ClaimAiJobInput): Promise<{ readonly job: AiJobRecord; readonly leaseToken: string } | null>;
   renewAiJob(jobId: string, leaseToken: string, leaseDurationMs?: number, now?: string): Promise<boolean>;
   completeAiJob(jobId: string, leaseToken: string, now?: string): Promise<boolean>;
-  failAiJob(jobId: string, leaseToken: string, failureCode: string, retryBackoffMs?: number, now?: string): Promise<{ readonly status: "retry" | "terminal"; readonly attemptCount: number }>;
+  failAiJob(jobId: string, leaseToken: string, failureCode: string, retryBackoffMs?: number, now?: string): Promise<{ readonly status: "retry" | "terminal" | "needs_review"; readonly attemptCount: number }>;
+  markAiJobNeedsReview(jobId: string, leaseToken: string, reasonCode: string, now?: string): Promise<boolean>;
+  retryAiJob(jobId: string, now?: string): Promise<boolean>;
+  getAiJob(jobId: string): Promise<AiJobRecord | null>;
+  listAiJobs(options?: { status?: AiJobStatus; datasetKind?: DatasetKind; limit?: number }): Promise<readonly AiJobRecord[]>;
 }
 
 function parseGeoJsonPoint(geoJsonText: string | null): [number, number] | null {
@@ -768,7 +772,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
       failureCode: string,
       retryBackoffMs: number = 10_000,
       now?: string,
-    ): Promise<{ readonly status: "retry" | "terminal"; readonly attemptCount: number }> {
+    ): Promise<{ readonly status: "retry" | "terminal" | "needs_review"; readonly attemptCount: number }> {
       const nowStr = now ?? new Date().toISOString();
 
       const jobRes = await executor.query<{ attempt_count: number | string; max_attempts: number | string }>(
@@ -787,7 +791,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
         await executor.query(
           `UPDATE waspada.ai_jobs
            SET
-             status = 'terminal',
+             status = 'needs_review',
              lease_token = NULL,
              lease_started_at = NULL,
              lease_expires_at = NULL,
@@ -797,7 +801,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
            WHERE job_id = $3 AND lease_token = $4`,
           [failureCode, nowStr, jobId, leaseToken],
         );
-        return { status: "terminal", attemptCount };
+        return { status: "needs_review", attemptCount };
       }
 
       await executor.query(
@@ -815,6 +819,98 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
       );
 
       return { status: "retry", attemptCount };
+    },
+
+    async markAiJobNeedsReview(jobId: string, leaseToken: string, reasonCode: string, now?: string): Promise<boolean> {
+      const nowStr = now ?? new Date().toISOString();
+      const result = await executor.query<{ job_id: string }>(
+        `UPDATE waspada.ai_jobs
+         SET
+           status = 'needs_review',
+           lease_token = NULL,
+           lease_started_at = NULL,
+           lease_expires_at = NULL,
+           last_failure_code = $1,
+           finished_at = $2,
+           updated_at = $2
+         WHERE job_id = $3 AND lease_token = $4 AND status = 'leased'
+         RETURNING job_id`,
+        [reasonCode, nowStr, jobId, leaseToken],
+      );
+      return result.rows.length > 0;
+    },
+
+    async retryAiJob(jobId: string, now?: string): Promise<boolean> {
+      const nowStr = now ?? new Date().toISOString();
+      const result = await executor.query<{ job_id: string }>(
+        `UPDATE waspada.ai_jobs
+         SET
+           status = 'pending',
+           attempt_count = 0,
+           lease_token = NULL,
+           lease_started_at = NULL,
+           lease_expires_at = NULL,
+           available_at = $1,
+           finished_at = NULL,
+           updated_at = $1
+         WHERE job_id = $2 AND status IN ('retry', 'terminal', 'needs_review')
+         RETURNING job_id`,
+        [nowStr, jobId],
+      );
+      return result.rows.length > 0;
+    },
+
+    async getAiJob(jobId: string): Promise<AiJobRecord | null> {
+      const result = await executor.query<AiJobDbRow>(
+        `SELECT
+           job_id, dataset_kind, report_revision_id, status, attempt_count,
+           max_attempts, available_at, lease_token, lease_started_at,
+           lease_expires_at, last_failure_code, trace_id, created_at,
+           updated_at, finished_at
+         FROM waspada.ai_jobs
+         WHERE job_id = $1`,
+        [jobId],
+      );
+      if (result.rows.length === 0) return null;
+      return formatRowToJob(result.rows[0]);
+    },
+
+    async listAiJobs(options?: {
+      status?: AiJobStatus;
+      datasetKind?: DatasetKind;
+      limit?: number;
+    }): Promise<readonly AiJobRecord[]> {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      let pIdx = 1;
+
+      if (options?.status) {
+        conditions.push(`status = $${pIdx++}`);
+        params.push(options.status);
+      }
+      if (options?.datasetKind) {
+        conditions.push(`dataset_kind = $${pIdx++}`);
+        params.push(options.datasetKind);
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const limit = Math.min(options?.limit ?? 50, 100);
+      params.push(limit);
+
+      const query = `
+        SELECT
+          job_id, dataset_kind, report_revision_id, status, attempt_count,
+          max_attempts, available_at, lease_token, lease_started_at,
+          lease_expires_at, last_failure_code, trace_id, created_at,
+          updated_at, finished_at
+        FROM waspada.ai_jobs
+        ${whereClause}
+        ORDER BY created_at DESC
+        LIMIT $${pIdx}
+      `;
+
+      const result = await executor.query<AiJobDbRow>(query, params);
+      return result.rows.map(formatRowToJob);
     },
   };
 }

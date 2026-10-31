@@ -168,7 +168,7 @@ test("generates valid schema 2.0 accident proposal from report", () => {
 
   // Check event time extraction
   assert.equal(proposal.event_time.precision, "exact");
-  assert.ok(proposal.event_time.value.includes("14:30:00+07:00"));
+  assert.ok(proposal.event_time.value?.includes("14:30:00+07:00"));
 
   assert.ok(proposal.claims.length >= 1);
   for (const claim of proposal.claims) {
@@ -199,7 +199,7 @@ test("generates valid schema 2.0 tree_fall proposal from report", () => {
   const proposal = generateProposalFromReport(report);
   assert.ok(proposal !== null);
   assert.equal(proposal.incident_type, "tree_fall");
-  assert.ok(proposal.location_label.includes("Jakarta Pusat"));
+  assert.ok(proposal.location_label?.includes("Jakarta Pusat"));
   assert.ok(proposal.title.includes("Pohon Tumbang"));
   assert.ok(proposal.claims.length >= 1);
   assert.ok(report.chunks[0]!.text.includes(proposal.claims[0]!.quote_text));

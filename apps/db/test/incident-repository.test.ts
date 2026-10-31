@@ -152,7 +152,7 @@ describe("SqlIncidentRepository", () => {
       assert.equal(emptyClaim, null);
     });
 
-    it("handles retries with backoff and marks terminal at max attempts", async () => {
+    it("handles retries with backoff and marks needs_review at max attempts, supporting inspection and retry", async () => {
       await repo.enqueueAiJob({
         jobId: "job-ai-fail-001",
         datasetKind: "synthetic",
@@ -194,14 +194,43 @@ describe("SqlIncidentRepository", () => {
       assert.ok(claim5);
       assert.equal(claim5.job.attemptCount, 5);
 
-      // Fail attempt 5 -> terminal!
+      // Fail attempt 5 -> needs_review!
       const fail5 = await repo.failAiJob(claim5.job.jobId, claim5.leaseToken, "provider_timeout", 0);
-      assert.equal(fail5.status, "terminal");
+      assert.equal(fail5.status, "needs_review");
       assert.equal(fail5.attemptCount, 5);
 
-      // No more claims
+      // No more claims available while in needs_review
       const finalClaim = await repo.claimAiJob({ datasetKind: "synthetic" });
       assert.equal(finalClaim, null);
+
+      // Inspect job
+      const jobRecord = await repo.getAiJob("job-ai-fail-001");
+      assert.ok(jobRecord);
+      assert.equal(jobRecord.status, "needs_review");
+      assert.equal(jobRecord.lastFailureCode, "provider_timeout");
+      assert.equal(jobRecord.attemptCount, 5);
+
+      // List needs_review jobs
+      const reviewJobs = await repo.listAiJobs({ status: "needs_review", datasetKind: "synthetic" });
+      assert.equal(reviewJobs.length, 1);
+      assert.equal(reviewJobs[0].jobId, "job-ai-fail-001");
+
+      // Manually retry job
+      const retried = await repo.retryAiJob("job-ai-fail-001");
+      assert.equal(retried, true);
+
+      // Can now be claimed again with attemptCount reset to 0
+      const claimAfterRetry = await repo.claimAiJob({ datasetKind: "synthetic" });
+      assert.ok(claimAfterRetry);
+      assert.equal(claimAfterRetry.job.jobId, "job-ai-fail-001");
+      assert.equal(claimAfterRetry.job.attemptCount, 1);
+
+      // Direct markAiJobNeedsReview test
+      const marked = await repo.markAiJobNeedsReview(claimAfterRetry.job.jobId, claimAfterRetry.leaseToken, "manual_escalation");
+      assert.equal(marked, true);
+      const inspectedAfterMark = await repo.getAiJob("job-ai-fail-001");
+      assert.equal(inspectedAfterMark?.status, "needs_review");
+      assert.equal(inspectedAfterMark?.lastFailureCode, "manual_escalation");
     });
   });
 });

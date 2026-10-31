@@ -86,7 +86,6 @@ async function runPipelineSmoke() {
   const runner = createJobRunner({
     executor: db.executor,
     config,
-    fallbackMock: false, // Live NineRouter calls!
   });
 
   console.log("  Executing Mastra Workflow (Interpretation -> Embedding -> Retrieval -> Correlation -> Persistence)...");

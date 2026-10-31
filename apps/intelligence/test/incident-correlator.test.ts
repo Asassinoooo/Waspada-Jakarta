@@ -6,6 +6,7 @@ import {
   type CorrelateIncidentInput,
 } from "../src/agents/incident-correlation-agent.js";
 import type { CandidateIncidentMatch } from "../src/services/semantic-retrieval-service.js";
+import { createMockCorrelatorAgent, createFailingAgent } from "./mock-agents.js";
 
 describe("Mastra Incident Correlation Agent", () => {
   const activeFloodMatch: CandidateIncidentMatch = {
@@ -63,38 +64,37 @@ describe("Mastra Incident Correlation Agent", () => {
     assert.equal(parsed.contradictoryEvidence[0].field, "water_height");
   });
 
-  it("decides new_incident when candidate incidents list is empty", async () => {
-    const input: CorrelateIncidentInput = {
-      incomingReportRevisionId: "rev-new-001",
-      incomingReportText: "Pohon tumbang di Kebayoran Baru menghalangi jalur TransJakarta.",
-      incomingInterpretation: {
-        summary: "Pohon tumbang di Kebayoran Baru",
-        incidentType: "pohon tumbang",
-        location: { label: "Kebayoran Baru", approximateCoordinates: [106.8, -6.24], precision: "approximate" },
-        eventTime: { value: "2026-10-30T15:00:00.000Z", precision: "exact" },
-        entities: [],
-        impacts: ["Jalur TransJakarta terhalang"],
-        operationalStatus: "active",
-        evidence: [],
-        conflictingInfo: [],
-        uncertaintyNotes: [],
-        confidence: "high",
-      },
-      candidateIncidents: [],
+  it("validates unresolved correlation decision with specific questions", () => {
+    const raw = {
+      decision: "unresolved",
+      candidateIncidentId: "inc-cawang-001",
+      reasoning: "Laporan menyebut genangan di sekitar Cawang tetapi tidak ada detail nama ruas jalan spesifik.",
+      supportingEvidence: [],
+      contradictoryEvidence: [],
+      distinctions: ["Ketiadaan nama jalan pasti"],
+      unresolvedQuestions: ["Apakah lokasi genangan berada di Jl. DI Panjaitan atau Jl. MT Haryono?"],
+      uncertainty: ["Lokasi tidak presisi"],
     };
 
-    const result = await correlateIncident(input, { fallbackMock: true });
-    assert.equal(result.decision, "new_incident");
-    assert.equal(result.candidateIncidentId, null);
+    const parsed = IncidentCorrelationSchema.parse(raw);
+    assert.equal(parsed.decision, "unresolved");
+    assert.equal(parsed.unresolvedQuestions.length, 1);
   });
 
-  it("decides same_incident on high semantic similarity match in fallback mode", async () => {
+  it("correlates incident using provided mock agent", async () => {
+    const mockAgent = createMockCorrelatorAgent({
+      decision: "same_incident",
+      candidateIncidentId: "inc-cawang-001",
+      reasoning: "Tingkat kemiripan fakta sangat tinggi dengan insiden luapan Cawang",
+    });
+
     const input: CorrelateIncidentInput = {
       incomingReportRevisionId: "rev-cawang-002",
       incomingReportText: "Akses Cawang arah Tanjung Priok lumpuh total karena air setinggi paha orang dewasa.",
       incomingInterpretation: {
         summary: "Cawang arah Tanjung Priok terendam air",
         incidentType: "genangan banjir jalan raya",
+        severity: "medium",
         location: { label: "Cawang", approximateCoordinates: [106.871, -6.244], precision: "approximate" },
         eventTime: { value: "2026-10-30T10:15:00.000Z", precision: "exact" },
         entities: [],
@@ -108,8 +108,38 @@ describe("Mastra Incident Correlation Agent", () => {
       candidateIncidents: [activeFloodMatch],
     };
 
-    const result = await correlateIncident(input, { fallbackMock: true });
+    const result = await correlateIncident(input, { agent: mockAgent });
     assert.equal(result.decision, "same_incident");
     assert.equal(result.candidateIncidentId, "inc-cawang-001");
+  });
+
+  it("fails cleanly when agent throws (no fabricated fallback)", async () => {
+    const failingAgent = createFailingAgent(new Error("NineRouter 503 Service Unavailable"));
+    const input: CorrelateIncidentInput = {
+      incomingReportRevisionId: "rev-cawang-002",
+      incomingReportText: "Test text",
+      incomingInterpretation: {
+        summary: "Test",
+        incidentType: "test",
+        severity: "unknown",
+        location: { label: null, approximateCoordinates: null, precision: "unknown" },
+        eventTime: { value: null, precision: "unknown" },
+        entities: [],
+        impacts: [],
+        operationalStatus: "unknown",
+        evidence: [],
+        conflictingInfo: [],
+        uncertaintyNotes: [],
+        confidence: "low",
+      },
+      candidateIncidents: [],
+    };
+
+    await assert.rejects(
+      async () => {
+        await correlateIncident(input, { agent: failingAgent });
+      },
+      /503 Service Unavailable/,
+    );
   });
 });

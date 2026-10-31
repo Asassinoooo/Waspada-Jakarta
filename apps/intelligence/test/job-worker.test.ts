@@ -8,9 +8,9 @@ import {
   calculateBackoffMs,
 } from "../src/job-runner.js";
 import { createSqlIncidentRepository } from "../../db/src/incident-repository.js";
-import { createEventProposalWriter } from "../../db/src/event-proposal-writer.js";
+import { createMockInterpreterAgent, createMockCorrelatorAgent, createFailingAgent } from "./mock-agents.js";
 
-describe("Durable Job Processing Worker", () => {
+describe("Durable AI Job Worker", () => {
   let db: TestDatabase;
 
   before(async () => {
@@ -24,12 +24,12 @@ describe("Durable Job Processing Worker", () => {
   });
 
   describe("Error Classification & Backoff", () => {
-    it("classifies error types into exact failure codes", () => {
-      assert.equal(classifyJobError(new Error("Request aborted by timeout")), "model_timeout");
-      assert.equal(classifyJobError(new Error("NineRouter 502 Bad Gateway")), "model_failed");
-      assert.equal(classifyJobError(new Error("ZodError: Invalid type at summary")), "invalid_output");
+    it("classifies error types into standard failure codes", () => {
+      assert.equal(classifyJobError(new Error("Request timed out after 30s")), "model_timeout");
+      assert.equal(classifyJobError(new Error("NineRouter API 500 Internal Server Error")), "model_failed");
+      assert.equal(classifyJobError(new Error("ZodError: Invalid schema output")), "invalid_output");
       assert.equal(classifyJobError(new Error("syntax error at or near 'SELECT'")), "db_error");
-      assert.equal(classifyJobError(new Error("some random failure")), "workflow_execution_failed");
+      assert.equal(classifyJobError(new Error("Unexpected system error")), "workflow_execution_failed");
     });
 
     it("calculates exponential backoff with a 60s cap", () => {
@@ -79,10 +79,17 @@ describe("Durable Job Processing Worker", () => {
       });
       assert.equal(job.status, "pending");
 
-      // Create runner with mock fallback enabled
+      // Create runner with explicit mock agents
       const runner = createJobRunner({
         executor: db.executor,
-        fallbackMock: true,
+        agentOverrides: {
+          interpreter: createMockInterpreterAgent({
+            summary: "Pohon tumbang menutup Jalan Sudirman dekat Halte Tosari",
+            incidentType: "pohon_tumbang",
+            severity: "medium",
+          }),
+          correlator: createMockCorrelatorAgent(),
+        },
       });
 
       // Process job
@@ -93,38 +100,73 @@ describe("Durable Job Processing Worker", () => {
       const checkRes = await db.executor.query<{ status: string; finished_at: string }>(
         `SELECT status, finished_at FROM waspada.ai_jobs WHERE job_id = 'ai-job-test-001'`,
       );
+      assert.equal(checkRes.rows.length, 1);
       assert.equal(checkRes.rows[0].status, "completed");
       assert.ok(checkRes.rows[0].finished_at);
-
-      // Verify proposal was created in database
-      const proposalWriter = createEventProposalWriter(db.executor);
-      const pendingProposals = await proposalWriter.readPendingProposals("synthetic");
-      assert.ok(pendingProposals.length >= 1);
     });
 
-    it("handles failure and sets retry status when revision is missing", async () => {
+    it("handles provider failure gracefully, enters retry, and preserves raw report without fabricating proposals", async () => {
       const incidentRepo = createSqlIncidentRepository(db.executor);
+      const traceId = "trace-job-fail-01";
+      const sourceId = "source-job-fail";
+      const revisionId = "rev-job-fail-001";
+      const dummyHash = "2222222222222222222222222222222222222222222222222222222222222222";
+
+      await db.executor.execute(`
+        INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+        VALUES ('${traceId}', 'synthetic', now(), 'succeeded', '{}'::jsonb)
+        ON CONFLICT (trace_id) DO NOTHING;
+
+        INSERT INTO waspada.source_registry
+          (source_id, trace_id, registry_version, display_name, source_kind, remit,
+           access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+           approval_status, health_status, auto_acquisition_enabled, auto_publication_policy)
+        VALUES ('${sourceId}', '${traceId}', 1, 'Sumber Pengujian', 'other', ARRAY['system'], 'manual_fixture',
+                ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
+        ON CONFLICT (source_id) DO NOTHING;
+
+        INSERT INTO waspada.report_revisions
+          (dataset_kind, report_revision_id, trace_id, source_id, canonical_url, content_hash, permitted_text, permitted_text_hash, normalization_version, retrieved_at, revision_status, record_json)
+        VALUES ('synthetic', '${revisionId}', '${traceId}', '${sourceId}', 'https://waspada.jakarta.go.id/source-fail', '${dummyHash}', 'Laporan penting tetapi model AI sedang offline.', '${dummyHash}', 'v1', now(), 'unreviewed', '{}'::jsonb)
+        ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING;
+      `);
 
       await incidentRepo.enqueueAiJob({
-        jobId: "ai-job-fail-test",
+        jobId: "ai-job-fail-001",
         datasetKind: "synthetic",
-        reportRevisionId: "rev-non-existent",
+        reportRevisionId: revisionId,
+        traceId,
       });
 
+      // Runner with failing interpreter
       const runner = createJobRunner({
         executor: db.executor,
-        fallbackMock: true,
+        agentOverrides: {
+          interpreter: createFailingAgent(new Error("NineRouter 502 Bad Gateway")),
+        },
       });
 
       const processed = await runner.processNextJob("synthetic");
-      assert.equal(processed, false);
+      assert.equal(processed, false, "Should return false on provider failure");
 
-      const checkRes = await db.executor.query<{ status: string; attempt_count: number; last_failure_code: string }>(
-        `SELECT status, attempt_count, last_failure_code FROM waspada.ai_jobs WHERE job_id = 'ai-job-fail-test'`,
+      // Verify job is in retry
+      const jobRecord = await runner.getJob("ai-job-fail-001");
+      assert.ok(jobRecord);
+      assert.equal(jobRecord.status, "retry");
+      assert.equal(jobRecord.lastFailureCode, "model_failed");
+      assert.equal(jobRecord.attemptCount, 1);
+
+      // Verify raw report is preserved
+      const revCheck = await db.executor.query<{ report_revision_id: string }>(
+        `SELECT report_revision_id FROM waspada.report_revisions WHERE report_revision_id = '${revisionId}'`,
       );
-      assert.equal(checkRes.rows[0].status, "retry");
-      assert.equal(checkRes.rows[0].attempt_count, 1);
-      assert.ok(checkRes.rows[0].last_failure_code);
+      assert.equal(revCheck.rows.length, 1);
+
+      // Verify NO proposals were fabricated
+      const propCheck = await db.executor.query<{ proposal_id: string }>(
+        `SELECT proposal_id FROM waspada.event_proposals WHERE dataset_kind = 'synthetic' AND trace_id = '${traceId}'`,
+      );
+      assert.equal(propCheck.rows.length, 0, "No proposal should be created on provider failure");
     });
   });
 });

@@ -43,12 +43,12 @@ export interface EventProposalDto {
   readonly proposal_id: string;
   readonly title: string;
   readonly incident_type: IncidentCategory;
-  readonly severity: IncidentSeverity;
+  readonly severity: IncidentSeverity | "unknown";
   readonly event_time: {
     readonly precision: "exact" | "date" | "range" | "unknown";
-    readonly value: string;
+    readonly value: string | null;
   };
-  readonly location_label: string;
+  readonly location_label: string | null;
   readonly coordinates: readonly [longitude: number, latitude: number] | null;
   readonly claims: readonly EventProposalClaimDto[];
   readonly proposed_at: string;
