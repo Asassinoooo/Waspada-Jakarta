@@ -1,15 +1,17 @@
 import { createHash } from "node:crypto";
 import {
+  buildAuthorizedRevision,
   parseAndFilterNewsRss,
   type PreparedNewsReportRevision,
 } from "../layers/l1-data-knowledge/rss-news-ingest.js";
 import {
   precheckNewsItem,
   triageNewsItemSemantic,
-  DESCRIPTION_REUSE_TOKENS,
   type NewsTriageDecision,
+  type TriageAuthorization,
   type TriageNewsItem,
 } from "../layers/l1-data-knowledge/news-triage.js";
+import { NEWS_TRIAGE_POLICY_VERSION } from "../../../db/src/news-triage-store.js";
 export interface StoredEvidenceChunk {
   readonly chunk_index: number;
   readonly text: string;
@@ -44,6 +46,12 @@ export interface HeldTriageDecision {
   readonly canonicalUrl: string;
   readonly sourceRevisionKey: string | null;
   readonly decision: NewsTriageDecision;
+  /**
+   * WJ-INT-02B replay marker: true when the decision reuses a cached prior
+   * evaluation instead of a fresh one. The persist layer skips writes for
+   * replays; fresh evaluations always record a new attempt row.
+   */
+  readonly replayed?: boolean;
 }
 
 export interface NewsFeedConfig {
@@ -207,8 +215,20 @@ export interface NewsPollRuntimeOptions {
     readonly checkAuthorization?: (sourceId: string) => Promise<{ cleared: boolean }> | { cleared: boolean };
     /** One structured chat completion; transport failures become uncertain. */
     readonly callChat?: (system: string, user: string) => Promise<unknown>;
-    /** Idempotency: hashes already decided in this process or DB. */
-    readonly isDuplicate?: (identityHash: string) => boolean;
+    /**
+     * WJ-INT-02B persistent idempotency: cached decision for an identical
+     * (identity, content, policy) evaluation. Defaults to a miss (null);
+     * synthetic fixtures keep the in-memory default.
+     */
+    readonly findPriorDecision?: (key: {
+      readonly itemIdentityHash: string;
+      readonly contentHash: string;
+      readonly policyVersion: string;
+      /** Content-version pin for the provider-error retry budget (§4 revision id). */
+      readonly reportRevisionId?: string;
+    }) => Promise<NewsTriageDecision | null>;
+    /** Triage policy version pinning the evaluation; defaults to the store version. */
+    readonly policyVersion?: string;
     /** Max concurrent semantic calls; defaults to 4. */
     readonly concurrency?: number;
   };
@@ -280,7 +300,10 @@ export async function applyTriageGate(
   const byGuid = new Map(classified.map((c) => [c.guid, c]));
   const checkAuthorization = triage.checkAuthorization ?? (async () => ({ cleared: true }));
   const callChat = triage.callChat;
-  const isDuplicate = triage.isDuplicate ?? (() => false);
+  // WJ-INT-02B persistent idempotency. Synthetic fixtures keep the in-memory
+  // default (always miss); live ingestion supplies the composition lookup.
+  const findPriorDecision = triage.findPriorDecision ?? (async () => null);
+  const policyVersion = triage.policyVersion ?? NEWS_TRIAGE_POLICY_VERSION;
   const concurrency = Math.max(1, Math.min(triage.concurrency ?? 4, 8));
   const counts = {
     total: stored.length, ingested: 0, dropped: 0, uncertain: 0,
@@ -294,45 +317,75 @@ export async function applyTriageGate(
     const item = byGuid.get(rev.source_revision_key ?? "") ?? byGuid.get(rev.canonical_url);
     const identity = rev.source_revision_key ?? rev.canonical_url;
     const identityHash = createHash("sha256").update(`${rev.source_id}|${identity}`).digest("hex");
-    const preparedBase = (descriptionExcerpt: string | null): TriageNewsItem => ({
+    const contentHash = rev.content_hash ?? rev.permitted_text_hash;
+    // WJ-INT-02B replay short-circuit: an identical (identity, content,
+    // policy) evaluation reuses its cached outcome with no authorization or
+    // model work. The persist layer replays it without new writes.
+    let prior: NewsTriageDecision | null = null;
+    try {
+      prior = await findPriorDecision({ itemIdentityHash: identityHash, contentHash, policyVersion, reportRevisionId: rev.report_revision_id });
+    } catch {
+      prior = null;
+    }
+    if (prior) {
+      if (prior.disposition === "ingest") {
+        counts.ingested += 1;
+        if (prior.primaryCategory) {
+          byCategory[prior.primaryCategory] = (byCategory[prior.primaryCategory] ?? 0) + 1;
+        }
+        kept.push({ ...rev, triage: prior });
+      } else {
+        if (prior.disposition === "drop") {
+          counts.dropped += 1;
+        } else {
+          counts.uncertain += 1;
+        }
+        heldOut.push({
+          sourceId: rev.source_id,
+          itemIdentityHash: identityHash,
+          reportRevisionId: rev.report_revision_id,
+          traceId: `trace-${rev.report_revision_id}`,
+          canonicalUrl: rev.canonical_url,
+          sourceRevisionKey: rev.source_revision_key ?? null,
+          decision: prior,
+          replayed: true,
+        });
+      }
+      return;
+    }
+    // WJ-INT-02B permission-driven single pass (ADR-005): resolve the source
+    // capabilities once, then run Stage A and Stage B on the authorized
+    // excerpt only. Never the original description when description-model use
+    // is denied; never persist what retention denies (see below).
+    let authz: TriageAuthorization = { cleared: true };
+    try {
+      const result = await checkAuthorization(rev.source_id);
+      if (result !== null && typeof result === "object") {
+        authz = result as TriageAuthorization;
+      }
+    } catch {
+      authz = { cleared: false, reason: "source_not_cleared" };
+    }
+    const frozenAuthz = (): TriageAuthorization => authz;
+    const excerptForPrompt =
+      authz.permissions?.descriptionModel === true ? (item?.descriptionExcerpt ?? null) : null;
+    const prepared: TriageNewsItem = {
       sourceId: rev.source_id,
       stableIdentity: identity,
       title: item?.title ?? rev.permitted_text.split("\n\n")[0] ?? null,
-      descriptionExcerpt,
+      descriptionExcerpt: excerptForPrompt,
       link: rev.canonical_url,
       pubDate: item?.pubDate ?? rev.published_at,
       retrievedAt,
       keywordHit: false,
       gazetteerHit: false,
       maxAgeHours: feed.maxAgeHours ?? 48,
-    });
-    // WJ-INT-02A description gate (ADR-005): run Stage A once to learn the
-    // cleared source's reuse_basis, then when it lacks a description token
-    // re-run both Stage A and Stage B on title alone. Never drop for this.
-    let authzBasis: readonly string[] | undefined;
-    const capturingAuthz: typeof checkAuthorization = async (sourceId: string) => {
-      const result = await checkAuthorization(sourceId);
-      if (typeof result === "object" && result !== null && "reuseBasis" in result) {
-        authzBasis = (result as { reuseBasis?: readonly string[] }).reuseBasis;
-      }
-      return result;
     };
     let stageA: Awaited<ReturnType<typeof precheckNewsItem>>;
     try {
-      stageA = await precheckNewsItem(preparedBase(item?.descriptionExcerpt ?? null), isDuplicate(identityHash), capturingAuthz);
+      stageA = await precheckNewsItem(prepared, false, frozenAuthz);
     } catch {
       stageA = { needsSemantic: false, decision: null };
-    }
-    const excerptAllowed =
-      !authzBasis ||
-      authzBasis.some((token) => typeof token === "string" && DESCRIPTION_REUSE_TOKENS.has(token));
-    const prepared = excerptAllowed ? preparedBase(item?.descriptionExcerpt ?? null) : preparedBase(null);
-    if (!excerptAllowed) {
-      try {
-        stageA = await precheckNewsItem(prepared, isDuplicate(identityHash), checkAuthorization);
-      } catch {
-        stageA = { needsSemantic: false, decision: null };
-      }
     }
     let decisionResult: NewsTriageDecision | null = stageA.decision;
     if (stageA.needsSemantic) {
@@ -362,13 +415,81 @@ export async function applyTriageGate(
       reasonCodes: ["provider_error"], evidence: [], modelStatus: "provider_error",
     };
     if (finalDecision.disposition === "ingest") {
+      // Authorized-payload enforcement: persist ONLY permitted parts. Model
+      // use without durable retention (title unretainable, or an evaluated
+      // excerpt that retention denies) routes to held, never to a revision.
+      // Never drop for this.
+      const titleRetained = authz.permissions?.titleRetention === true;
+      const excerptRetained = authz.permissions?.descriptionRetention === true;
+      if (!titleRetained || (prepared.descriptionExcerpt !== null && !excerptRetained)) {
+        counts.uncertain += 1;
+        heldOut.push({
+          sourceId: rev.source_id,
+          itemIdentityHash: identityHash,
+          reportRevisionId: rev.report_revision_id,
+          traceId: `trace-${rev.report_revision_id}`,
+          canonicalUrl: rev.canonical_url,
+          sourceRevisionKey: rev.source_revision_key ?? null,
+          decision: {
+            disposition: "uncertain",
+            jakartaScope: finalDecision.jakartaScope,
+            actionability: finalDecision.actionability,
+            primaryCategory: finalDecision.primaryCategory,
+            incidentType: finalDecision.incidentType,
+            confidence: "low",
+            reasonCodes: ["retention_not_permitted"],
+            evidence: [],
+            modelStatus: "not_cleared",
+          },
+        });
+        return;
+      }
+      const title = prepared.title ?? rev.permitted_text.split("\n\n")[0] ?? "";
+      let authorized: StoredReportRevision;
+      try {
+        const built = buildAuthorizedRevision(
+          rev,
+          {
+            title,
+            descriptionExcerpt: excerptRetained ? prepared.descriptionExcerpt : null,
+            canonicalUrl: rev.canonical_url,
+            retrievedAt,
+          },
+          { titleRetention: true, descriptionRetention: excerptRetained },
+        );
+        authorized = { ...rev, ...built, evidence_chunks: built.chunks };
+      } catch {
+        // TitleRetentionNotPermitted backstop: same held routing as above.
+        counts.uncertain += 1;
+        heldOut.push({
+          sourceId: rev.source_id,
+          itemIdentityHash: identityHash,
+          reportRevisionId: rev.report_revision_id,
+          traceId: `trace-${rev.report_revision_id}`,
+          canonicalUrl: rev.canonical_url,
+          sourceRevisionKey: rev.source_revision_key ?? null,
+          decision: {
+            disposition: "uncertain",
+            jakartaScope: finalDecision.jakartaScope,
+            actionability: finalDecision.actionability,
+            primaryCategory: finalDecision.primaryCategory,
+            incidentType: finalDecision.incidentType,
+            confidence: "low",
+            reasonCodes: ["retention_not_permitted"],
+            evidence: [],
+            modelStatus: "not_cleared",
+          },
+        });
+        return;
+      }
       counts.ingested += 1;
       if (finalDecision.primaryCategory) {
         byCategory[finalDecision.primaryCategory] = (byCategory[finalDecision.primaryCategory] ?? 0) + 1;
       }
-      // Ingest decisions keep their revision; the caller persists the audit
-      // row + revision + chunks + job atomically.
-      kept.push({ ...rev, triage: finalDecision });
+      // The kept revision IS the authorized payload: hashes, chunks, revision
+      // id, and the downstream job all derive from it. The caller persists it
+      // atomically with the decision row.
+      kept.push({ ...authorized, triage: finalDecision });
     } else {
       if (finalDecision.disposition === "drop") {
         counts.dropped += 1;
@@ -394,7 +515,6 @@ export async function applyTriageGate(
       });
     }
   });
-
   for (let i = 0; i < tasks.length; i += concurrency) {
     await Promise.all(tasks.slice(i, i + concurrency).map((run) => run()));
   }
@@ -518,8 +638,8 @@ async function pollSingleFeed(
 export function createLiveNewsPollRuntime(
   options: NewsPollRuntimeOptions & { readonly triage: NonNullable<NewsPollRuntimeOptions["triage"]> },
 ): NewsPollRuntime {
-  if (!options.triage) {
-    throw new TypeError("live RSS ingestion requires an explicit triage gate");
+  if (!options.triage?.checkAuthorization || typeof options.triage.findPriorDecision !== "function") {
+    throw new TypeError("live RSS ingestion requires authorization and idempotency dependencies");
   }
   return createNewsPollRuntime(options);
 }

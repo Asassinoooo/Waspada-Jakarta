@@ -197,14 +197,14 @@ export function parseAndFilterNewsRss(
     };
     items.push(classified);
 
-    // Prepare L1 report revision: title plus bounded description excerpt when permitted.
-    // content_hash covers link + full permitted text so a changed description re-evaluates.
+    // WJ-INT-02B content-version identity: stable item identity across edits,
+    // content hash over the authorized payload, revision id bound to both.
     const permittedText = descriptionExcerpt !== null
       ? `${classified.title}\n\n${descriptionExcerpt}`
       : classified.title;
     const permittedTextHash = sha256(permittedText);
-    const contentHash = sha256(`${classified.link}:${permittedText}`);
-    const revisionId = `rep-${sourceId}-${sha256(guid).slice(0, 16)}`;
+    const contentHash = newsContentHash(permittedText, classified.link);
+    const revisionId = newsRevisionId(sourceId, guid, contentHash);
 
     // Calculate code points for evidence spans (chunk 0 = title, chunk 1 = excerpt)
     const titleCodePoints = Array.from(classified.title).length;
@@ -256,4 +256,113 @@ function sha256(input: string): string {
 
 function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * WJ-INT-02B content-version identity. `stableIdentity` (RSS guid, falling
+ * back to link) never changes across edits; the content hash changes on any
+ * authorized title/description edit; the revision id binds both so a new
+ * content version is a new revision while the item stays the same.
+ */
+export function newsItemIdentityHash(sourceId: string, stableIdentity: string): string {
+  if (!sourceId || typeof sourceId !== "string") {
+    throw new TypeError("sourceId must be a non-empty string");
+  }
+  if (!stableIdentity || typeof stableIdentity !== "string") {
+    throw new TypeError("stableIdentity (guid || link) must be a non-empty string");
+  }
+  return sha256(`${sourceId}|${stableIdentity}`);
+}
+
+export function newsContentHash(authorizedPermittedText: string, canonicalUrl: string): string {
+  return sha256(`${canonicalUrl}:${authorizedPermittedText}`);
+}
+
+export function newsRevisionId(sourceId: string, stableIdentity: string, contentHash: string): string {
+  return `rep-${sourceId}-${sha256(`${sourceId}|${stableIdentity}|${contentHash}`).slice(0, 16)}`;
+}
+
+export interface AuthorizedRevisionInputs {
+  readonly title: string;
+  readonly descriptionExcerpt: string | null;
+  readonly canonicalUrl: string;
+  readonly retrievedAt: string;
+}
+
+export interface AuthorizedRevisionPermissions {
+  readonly titleRetention: boolean;
+  readonly descriptionRetention: boolean;
+}
+
+interface AuthorizedChunkShape {
+  readonly chunk_index: number;
+  readonly text: string;
+  readonly span_start: number;
+  readonly span_end: number;
+}
+
+/**
+ * WJ-INT-02B authorized-payload rebuild. Rebuilds the persisted revision from
+ * ONLY the permitted parts: title when titleRetention holds (otherwise the
+ * item cannot persist and this throws), plus the description excerpt only
+ * when descriptionRetention holds. Hashes, revision id, and chunks all derive
+ * from the authorized payload; every other field is preserved from storage.
+ */
+export function buildAuthorizedRevision(
+  stored: {
+    readonly report_revision_id: string;
+    readonly source_id: string;
+    readonly canonical_url: string;
+    readonly source_revision_key?: string | null;
+    readonly published_at?: string | null;
+    readonly retrieved_at?: string;
+    readonly revision_status?: "unreviewed";
+  },
+  classified: AuthorizedRevisionInputs,
+  permissions: AuthorizedRevisionPermissions,
+): {
+  readonly report_revision_id: string;
+  readonly source_id: string;
+  readonly canonical_url: string;
+  readonly permitted_text: string;
+  readonly permitted_text_hash: string;
+  readonly published_at: string | null;
+  readonly retrieved_at: string;
+  readonly revision_status: "unreviewed";
+  readonly chunks: readonly AuthorizedChunkShape[];
+  readonly content_hash: string;
+  readonly source_revision_key: string | null;
+} {
+  if (!permissions.titleRetention) {
+    throw new Error("TitleRetentionNotPermitted");
+  }
+  const stableIdentity = stored.source_revision_key ?? stored.canonical_url;
+  const title = classified.title;
+  const excerpt = permissions.descriptionRetention ? classified.descriptionExcerpt : null;
+  const permittedText = excerpt !== null ? `${title}\n\n${excerpt}` : title;
+  const permittedTextHash = sha256(permittedText);
+  const contentHash = newsContentHash(permittedText, stored.canonical_url);
+  const titleCodePoints = Array.from(title).length;
+  const fullCodePoints = Array.from(permittedText).length;
+  const chunks: readonly AuthorizedChunkShape[] = excerpt !== null
+    ? [
+      { chunk_index: 0, text: title, span_start: 0, span_end: titleCodePoints },
+      { chunk_index: 1, text: excerpt, span_start: titleCodePoints + 2, span_end: fullCodePoints },
+    ]
+    : [
+      { chunk_index: 0, text: permittedText, span_start: 0, span_end: fullCodePoints },
+    ];
+  return {
+    report_revision_id: newsRevisionId(stored.source_id, stableIdentity, contentHash),
+    source_id: stored.source_id,
+    canonical_url: stored.canonical_url,
+    permitted_text: permittedText,
+    permitted_text_hash: permittedTextHash,
+    published_at: stored.published_at ?? null,
+    retrieved_at: classified.retrievedAt,
+    revision_status: "unreviewed",
+    chunks,
+    content_hash: contentHash,
+    source_revision_key: stored.source_revision_key ?? null,
+  };
 }

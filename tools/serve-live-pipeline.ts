@@ -15,9 +15,12 @@ import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petaben
 import { createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
 import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-composition.js";
-import { recordTriageDecision, newsTriageIdentityHash } from "../apps/db/src/news-triage-store.js";
+import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowledge/news-triage.js";
+import { newsTriageIdentityHash } from "../apps/db/src/news-triage-store.js";
+import { persistAcceptedRssItem, persistHeldTriageItem } from "../apps/worker/src/runtime/gated-rss-persistence.js";
 import worker from "../apps/worker/src/index.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
+import { PublicReadModel } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -227,29 +230,37 @@ async function main() {
       } else {
         console.log("  [ANTARA News] 0 new ingest articles.");
       }
-      // Held (drop/uncertain): audit metadata only, never revisions/jobs.
+      // Held (drop/uncertain): audit metadata only via the shared held
+      // contract. Never revisions, chunks, or jobs.
       for (const held of newsRes.held) {
-        await recordTriageDecision(executor, {
-          datasetKind: "live",
-          itemIdentityHash: held.itemIdentityHash,
-          sourceId: held.sourceId,
-          traceId: held.traceId,
-          disposition: held.decision.disposition,
-          jakartaScope: held.decision.jakartaScope,
-          actionability: held.decision.actionability,
-          primaryCategory: held.decision.primaryCategory,
-          incidentType: held.decision.incidentType,
-          confidence: held.decision.confidence,
-          reasonCodes: [...held.decision.reasonCodes],
-          modelStatus: held.decision.modelStatus,
-        }).catch(() => {});
+        await persistHeldTriageItem(executor, held, "live", TRIAGE_POLICY_VERSION, held.replayed ?? false).catch(() => {});
       }
     } catch (e: any) {
       console.warn(`  [ANTARA News] Poll error: ${e.message}`);
     }
 
-    // Persist to PostgreSQL and enqueue AI jobs
+    // Persist to PostgreSQL and enqueue AI jobs. Gated RSS revisions go
+    // through the single shared contract (WJ-INT-02B); structured revisions
+    // keep their existing plain-executor path.
+    let persistFailures = 0;
     for (const rev of discoveredRevisions) {
+      const triageDecision = rev.triage;
+      if (triageDecision && triageDecision.disposition === "ingest") {
+        try {
+          await persistAcceptedRssItem(executor, {
+            datasetKind: "live",
+            rev: { ...rev, triage: triageDecision },
+            itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
+            contentHash: rev.content_hash ?? rev.permitted_text_hash,
+            supersedesHash: null,
+            policyVersion: TRIAGE_POLICY_VERSION,
+          });
+        } catch {
+          // Fail closed per item; never whole-batch abort.
+          persistFailures += 1;
+        }
+        continue;
+      }
       const traceId = `trace-${rev.report_revision_id}`;
       const contentHash = rev.permitted_text_hash;
 
@@ -322,6 +333,9 @@ async function main() {
         reportRevisionId: rev.report_revision_id,
         traceId,
       }).catch(() => {});
+    }
+    if (persistFailures > 0) {
+      console.log(`[news-triage] persist_failures=${persistFailures}`);
     }
 
     if (discoveredRevisions.length > 0) {
