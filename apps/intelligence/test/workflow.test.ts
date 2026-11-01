@@ -104,4 +104,110 @@ describe("Mastra Incident Intelligence Workflow", () => {
     assert.equal(matchedProp.incident_type, "genangan_air_luapan_saluran");
     assert.equal(matchedProp.compatibility_category, "flood");
   });
+
+  it("uses the accepted triage category when the interpreter agrees", async () => {
+    const workflow = createIncidentIntelligenceWorkflow({
+      executor: db.executor,
+      agentOverrides: {
+        interpreter: createMockInterpreterAgent({ primaryCategory: "transport_road_incidents" }),
+        correlator: createMockCorrelatorAgent(),
+      },
+    });
+    const input: IncidentWorkflowInput = {
+      reportRevisionId: "rev-wf-agree-001",
+      reportText: "Kecelakaan beruntun menutup ruas tol dalam kota.",
+      sourceKind: "rss",
+      sourceDisplayName: "Media Indonesia",
+      publishedAt: "2026-10-30T16:00:00.000Z",
+      datasetKind: "synthetic",
+      traceId: "trace-wf-agree-01",
+      evidenceChunks: [{ chunkId: "chk-wf-agree-001", spanStart: 0, spanEnd: 10, text: "Kecelakaan" }],
+      triage: {
+        disposition: "ingest",
+        primaryCategory: "transport_road_incidents",
+        incidentType: "kecelakaan_beruntun",
+        jakartaScope: "dki_jakarta",
+        actionability: "actionable",
+        confidence: "high",
+      },
+    };
+    const run = await workflow.createRun();
+    const execution = await run.start({ inputData: input });
+    assert.equal(execution.status, "success");
+    const result = execution.result as any;
+    assert.equal(result.proposal.primary_category, "transport_road_incidents");
+    const incidents = await db.executor.query<{ record_json: unknown }>(
+      `SELECT record_json FROM waspada.incidents WHERE dataset_kind = 'synthetic' AND incident_id = 'inc-rev-wf-agree-001'`,
+    );
+    const recordJson = incidents.rows[0]?.record_json as unknown as Record<string, unknown>;
+    assert.equal((recordJson.triage as Record<string, unknown>).primaryCategory, "transport_road_incidents");
+    assert.equal(recordJson.triage_mismatch, undefined);
+  });
+
+  it("preserves both values and flags mismatch on disagreement", async () => {
+    const workflow = createIncidentIntelligenceWorkflow({
+      executor: db.executor,
+      agentOverrides: {
+        interpreter: createMockInterpreterAgent({ primaryCategory: "disasters_weather" }),
+        correlator: createMockCorrelatorAgent(),
+      },
+    });
+    const input: IncidentWorkflowInput = {
+      reportRevisionId: "rev-wf-disagree-001",
+      reportText: "Demonstrasi menutup jalan utama.",
+      sourceKind: "rss",
+      sourceDisplayName: "Media Indonesia",
+      publishedAt: "2026-10-30T16:00:00.000Z",
+      datasetKind: "synthetic",
+      traceId: "trace-wf-disagree-01",
+      evidenceChunks: [{ chunkId: "chk-wf-disagree-001", spanStart: 0, spanEnd: 10, text: "Demonstrasi" }],
+      triage: {
+        disposition: "ingest",
+        primaryCategory: "demonstrations_public_gatherings",
+        incidentType: "demonstrasi",
+        jakartaScope: "dki_jakarta",
+        actionability: "actionable",
+        confidence: "high",
+      },
+    };
+    const run = await workflow.createRun();
+    const execution = await run.start({ inputData: input });
+    assert.equal(execution.status, "success");
+    const result = execution.result as any;
+    // Triage authoritative; interpreter preserved for comparison only.
+    assert.equal(result.proposal.primary_category, "demonstrations_public_gatherings");
+    assert.ok((result.proposal.caveats as string[]).includes("category_mismatch_review"));
+    const incidents = await db.executor.query<{ record_json: unknown }>(
+      `SELECT record_json FROM waspada.incidents WHERE dataset_kind = 'synthetic' AND incident_id = 'inc-rev-wf-disagree-001'`,
+    );
+    const recordJson = incidents.rows[0]?.record_json as unknown as Record<string, unknown>;
+    assert.equal(recordJson.triage_mismatch, true);
+    assert.equal((recordJson.interpretation as Record<string, unknown>).primaryCategory, "disasters_weather");
+  });
+
+  it("keeps interpreter authorship for structured sources without triage", async () => {
+    const workflow = createIncidentIntelligenceWorkflow({
+      executor: db.executor,
+      agentOverrides: {
+        interpreter: createMockInterpreterAgent({ primaryCategory: "fires_infrastructure_hazards" }),
+        correlator: createMockCorrelatorAgent(),
+      },
+    });
+    const input: IncidentWorkflowInput = {
+      reportRevisionId: "rev-wf-plain-001",
+      reportText: "Kebakaran melanda pasar.",
+      sourceKind: "api",
+      sourceDisplayName: "BMKG",
+      publishedAt: "2026-10-30T16:00:00.000Z",
+      datasetKind: "synthetic",
+      traceId: "trace-wf-plain-01",
+      evidenceChunks: [{ chunkId: "chk-wf-plain-001", spanStart: 0, spanEnd: 10, text: "Kebakaran" }],
+    };
+    const run = await workflow.createRun();
+    const execution = await run.start({ inputData: input });
+    assert.equal(execution.status, "success");
+    const result = execution.result as any;
+    assert.equal(result.proposal.primary_category, "fires_infrastructure_hazards");
+    assert.ok(!(result.proposal.caveats as string[]).includes("category_mismatch_review"));
+  });
 });

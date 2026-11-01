@@ -74,6 +74,9 @@ export interface ModeratorDecisionCommand {
   readonly action: "publish" | "reject" | "investigate";
   readonly evidence_label: "attributed_report" | "crowdsourced_observation";
   readonly reason?: string;
+  /** WJ-INT-02B: required to publish a proposal whose record carries an
+   *  unresolved triage/interpreter category mismatch. */
+  readonly category_resolution?: "accept_triage" | "accept_interpretation";
 }
 
 // ============================================================================
@@ -609,7 +612,27 @@ export function createModerationApiHandler(
         evidence_label:
           (body.evidence_label as ModeratorDecisionCommand["evidence_label"]) ?? "attributed_report",
         reason: typeof body.reason === "string" ? body.reason : undefined,
+        category_resolution:
+          body.category_resolution === "accept_triage" || body.category_resolution === "accept_interpretation"
+            ? body.category_resolution
+            : undefined,
       };
+      // WJ-INT-02B: a proposal carrying an unresolved triage/interpreter
+      // category mismatch (workflow caveat) cannot publish until the
+      // moderator explicitly resolves it. No auto-mapping, no silent
+      // agreement. Structured proposals carry no such caveat and pass.
+      if (decisionCommand.action === "publish") {
+        const caveats = (await fetchProposalDetail(route.proposalId, dependencies))?.proposal.caveats;
+        if (Array.isArray(caveats) && caveats.includes("category_mismatch_review")) {
+          if (!decisionCommand.category_resolution) {
+            return apiError(
+              "CATEGORY_MISMATCH_UNRESOLVED",
+              `Proposal ${route.proposalId} has an unresolved triage/interpreter category mismatch; provide category_resolution`,
+              409,
+            );
+          }
+        }
+      }
 
       let publishInput: unknown;
       if (dependencies.buildPublicationInput) {

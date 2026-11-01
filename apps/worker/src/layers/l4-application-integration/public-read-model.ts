@@ -563,6 +563,17 @@ export function proposalToEventDetail(
 ): EventDetail {
   const eventId = sanitizeEventId(proposal.proposal_id);
   const primaryCategory = (proposal as { primary_category?: unknown }).primary_category;
+  // WJ-INT-02B: missing/invalid canonical category on new pipeline records
+  // is INVALID_EVENT (same rule as rawInputToEventDetail). Keyword guessing
+  // survives ONLY behind explicit record_json.legacy_category === true.
+  const legacy = (proposal as { record_json?: unknown }).record_json !== null &&
+    typeof (proposal as { record_json?: unknown }).record_json === "object" &&
+    ((proposal as { record_json?: Record<string, unknown> }).record_json as Record<string, unknown>).legacy_category === true;
+  if (typeof primaryCategory !== "string" || !categories[primaryCategory]) {
+    if (!legacy) {
+      throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
+    }
+  }
   const category = typeof primaryCategory === "string" && categories[primaryCategory]
     ? (primaryCategory as Category)
     : mapIncidentTypeToCategory(proposal.incident_type);

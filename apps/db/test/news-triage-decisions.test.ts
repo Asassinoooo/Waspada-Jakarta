@@ -293,4 +293,36 @@ describe('WJ-INT-02 news triage decisions: audit-only persistence, idempotent up
     assert.equal(latest?.traceId, 'trace-triage-latest-2');
     assert.equal(latest?.contentHash, 'c'.repeat(64));
   });
+
+  it('markTriageReviewed only flips the uncertain flag and never creates revisions or jobs', async () => {
+    const hash = newsTriageIdentityHash('source-review-pin', 'feed-review');
+    await recordTriageDecision(db.executor, {
+      datasetKind: 'synthetic',
+      itemIdentityHash: hash,
+      sourceId: 'source-review-pin',
+      traceId: 'trace-review-pin',
+      disposition: 'uncertain',
+      jakartaScope: 'unknown',
+      actionability: 'unknown',
+      primaryCategory: null,
+      incidentType: null,
+      confidence: 'low',
+      reasonCodes: ['provider_error'],
+      modelStatus: 'provider_error',
+    });
+    const marked = await markTriageReviewed(db.executor, 'synthetic', hash, 'mod-1');
+    assert.equal(marked, true);
+    const row = await readTriageDecision(db.executor, 'synthetic', hash);
+    assert.equal(row?.reviewedBy, 'mod-1');
+    assert.ok(row?.reviewedAt);
+    assert.equal(row?.disposition, 'uncertain');
+    const revs = await db.executor.query<{ report_revision_id: string }>(
+      `SELECT report_revision_id FROM waspada.report_revisions WHERE trace_id = 'trace-review-pin'`,
+    );
+    assert.equal(revs.rows.length, 0);
+    const jobs = await db.executor.query<{ job_id: string }>(
+      `SELECT job_id FROM waspada.ai_jobs WHERE trace_id = 'trace-review-pin'`,
+    );
+    assert.equal(jobs.rows.length, 0);
+  });
 });

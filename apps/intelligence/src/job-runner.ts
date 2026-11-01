@@ -8,6 +8,10 @@ import {
   StaleLeaseError,
 } from "../../db/src/incident-repository.js";
 import {
+  readLatestAttemptForRevision,
+  readTriageDecisionForRevision,
+} from "../../db/src/news-triage-store.js";
+import {
   createIncidentIntelligenceWorkflow,
   IncidentWorkflowInputSchema,
 } from "./workflows/incident-intelligence-workflow.js";
@@ -106,12 +110,13 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           readonly retrieved_at: string | Date;
           readonly display_name: string | null;
           readonly source_kind: string | null;
+          readonly triage_required: boolean;
         }
 
         const revResult = await options.executor.query<RevisionDbRow>(
           `SELECT
              r.report_revision_id, r.dataset_kind, r.trace_id, r.source_id,
-             r.permitted_text, r.retrieved_at,
+             r.permitted_text, r.retrieved_at, r.triage_required,
              s.display_name, s.source_kind
            FROM waspada.report_revisions r
            LEFT JOIN waspada.source_registry s ON s.source_id = r.source_id
@@ -159,45 +164,46 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           });
         }
 
-        // WJ-INT-02A revision-keyed triage gate: applies ONLY to revisions
-        // produced by the news/RSS gate. Missing rows mean the revision was
-        // never gated (structured feeds, webhooks, synthetic fixtures) — run
-        // untriaged as before. Drop/uncertain rows mean the news item was
-        // held: route to needs_review, never run the workflow.
-        const triageRow = await options.executor
-          .query<{
-            disposition: string;
-            primary_category: string | null;
-            incident_type: string | null;
-            jakarta_scope: string;
-            actionability: string;
-            confidence: string;
-            reason_codes: readonly string[];
-            item_identity_hash: string;
-          }>(
-            `SELECT disposition, primary_category, incident_type, jakarta_scope,
-               actionability, confidence, reason_codes, item_identity_hash
-             FROM waspada.news_triage_decisions
-             WHERE dataset_kind = $1 AND report_revision_id = $2`,
-            [rev.dataset_kind, rev.report_revision_id],
-          )
-          .then((res) => res.rows[0] ?? null)
-          .catch(() => null);
-        if (triageRow && triageRow.disposition !== "ingest") {
-          await incidentRepo.markAiJobNeedsReview(job.jobId, leaseToken, "triage_decision_held");
-          return false;
+        // WJ-INT-02B explicit-provenance triage gate. `triage_required` marks
+        // RSS-origin revisions; false means structured/webhook/synthetic and
+        // runs untriaged exactly as before. Required-RSS revisions load the
+        // revision-specific decision AND latest attempt; either missing or
+        // non-ingest routes to needs_review. Lookup errors propagate into the
+        // existing retry/error path — never swallowed into an untriaged run.
+        let triageContext: IncidentWorkflowInput["triage"] | undefined;
+        if (rev.triage_required === true) {
+          const triageRow = await readTriageDecisionForRevision(
+            options.executor,
+            rev.dataset_kind,
+            rev.report_revision_id,
+          );
+          if (!triageRow) {
+            await incidentRepo.markAiJobNeedsReview(job.jobId, leaseToken, "triage_decision_missing");
+            return false;
+          }
+          const latestAttempt = await readLatestAttemptForRevision(
+            options.executor,
+            rev.dataset_kind,
+            rev.report_revision_id,
+          );
+          if (!latestAttempt) {
+            await incidentRepo.markAiJobNeedsReview(job.jobId, leaseToken, "triage_decision_missing");
+            return false;
+          }
+          if (triageRow.disposition !== "ingest" || latestAttempt.disposition !== "ingest") {
+            await incidentRepo.markAiJobNeedsReview(job.jobId, leaseToken, "triage_decision_held");
+            return false;
+          }
+          triageContext = {
+            disposition: "ingest",
+            primaryCategory: triageRow.primaryCategory,
+            incidentType: triageRow.incidentType,
+            jakartaScope: triageRow.jakartaScope,
+            actionability: triageRow.actionability,
+            confidence: triageRow.confidence,
+            itemIdentityHash: triageRow.itemIdentityHash,
+          };
         }
-        const triageContext: IncidentWorkflowInput["triage"] | undefined = triageRow
-          ? {
-              disposition: "ingest",
-              primaryCategory: triageRow.primary_category,
-              incidentType: triageRow.incident_type,
-              jakartaScope: triageRow.jakarta_scope,
-              actionability: triageRow.actionability,
-              confidence: triageRow.confidence,
-              itemIdentityHash: triageRow.item_identity_hash,
-            }
-          : undefined;
 
         const workflowInput: IncidentWorkflowInput = {
           jobId: job.jobId,

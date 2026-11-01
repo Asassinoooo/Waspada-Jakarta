@@ -663,3 +663,84 @@ test("POST triage review enforces CSRF and sets reviewed flag idempotently", asy
   assert.equal(again?.status, 200);
   assert.equal(marked, 2);
 });
+
+test("POST publish rejects unresolved category mismatch with 409 until resolved", async () => {
+  const published: unknown[] = [];
+  const mismatched = {
+    schema_version: "2.0" as const,
+    proposal_id: "prop-mismatch-001",
+    title: "Demonstrasi menutup jalan",
+    incident_type: "demonstrasi",
+    primary_category: "demonstrations_public_gatherings",
+    severity: "medium" as const,
+    event_time: { precision: "exact" as const, value: "2026-10-30T16:00:00.000Z" },
+    location_label: "Jakarta",
+    coordinates: null,
+    claims: [],
+    impacts: [],
+    caveats: ["category_mismatch_review"],
+    proposed_at: "2026-10-30T16:00:00.000Z",
+  };
+  const handler = createModerationApiHandler({
+    principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-mismatch" },
+    getProposalDetail: async () => ({ proposal: mismatched, chunks: [] }),
+    publicationService: {
+      publish: async (input: unknown) => {
+        published.push(input);
+        return { status: "written" };
+      },
+    },
+  });
+  const post = (body: unknown) =>
+    handler(
+      new Request("http://localhost/api/v1/moderation/proposals/prop-mismatch-001/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": "csrf-mismatch" },
+        body: JSON.stringify(body),
+      }),
+    );
+  const blocked = await post({ action: "publish" });
+  assert.equal(blocked?.status, 409);
+  assert.equal(published.length, 0);
+  const resolved = await post({ action: "publish", category_resolution: "accept_triage" });
+  assert.equal(resolved?.status, 200);
+  assert.equal(published.length, 1);
+});
+
+test("POST publish passes structured proposals without mismatch caveat", async () => {
+  const published: unknown[] = [];
+  const plain = {
+    schema_version: "2.0" as const,
+    proposal_id: "prop-plain-001",
+    title: "Kebakaran melanda pasar",
+    incident_type: "kebakaran_pasar",
+    primary_category: "fires_infrastructure_hazards",
+    severity: "high" as const,
+    event_time: { precision: "exact" as const, value: "2026-10-30T16:00:00.000Z" },
+    location_label: "Jakarta",
+    coordinates: null,
+    claims: [],
+    impacts: [],
+    caveats: [],
+    proposed_at: "2026-10-30T16:00:00.000Z",
+  };
+  const handler = createModerationApiHandler({
+    principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-plain" },
+    getProposalDetail: async () => ({ proposal: plain, chunks: [] }),
+    publicationService: {
+      publish: async (input: unknown) => {
+        published.push(input);
+        return { status: "written" };
+      },
+    },
+  });
+  const res = await handler(
+    new Request("http://localhost/api/v1/moderation/proposals/prop-plain-001/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-plain" },
+      body: JSON.stringify({ action: "publish" }),
+    }),
+  );
+  assert.equal(res?.status, 200);
+  assert.equal(published.length, 1);
+});

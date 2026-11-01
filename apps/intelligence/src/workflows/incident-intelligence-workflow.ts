@@ -233,15 +233,30 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
 
       const decisionId = `dec-${input.reportRevisionId}`;
       const proposalId = `prop-${input.reportRevisionId}`;
-      // WJ-INT-02A: interpreter stays the category author; on mismatch the
-      // triage gate value is preserved in recordJson for moderator review,
-      // never silently replaced or dropped.
+      // WJ-INT-02B: triage category is authoritative for RSS reports (input
+      // carries it only on the gated path). The interpreter's independent
+      // value is preserved for comparison; mismatches are flagged, never
+      // silently resolved. Structured sources (no input.triage) keep
+      // interpreter authorship exactly as before.
       const triageLineage = input.triage
         ? {
             primaryCategory: input.triage.primaryCategory,
             jakartaScope: input.triage.jakartaScope,
             disposition: input.triage.disposition,
             itemIdentityHash: input.triage.itemIdentityHash ?? null,
+          }
+        : null;
+      const triageCategory = input.triage?.primaryCategory ?? null;
+      const triageMismatch =
+        triageCategory !== null && triageCategory !== interpretation.primaryCategory;
+      // Triage upstream guarantees a canonical slug on ingest; the interpreter
+      // schema guarantees its own value. Structured path uses interpretation.
+      const authoritativeCategory = (triageCategory ?? interpretation.primaryCategory) as ReportInterpretation["primaryCategory"];
+      const interpretationLineage = input.triage
+        ? {
+            primaryCategory: interpretation.primaryCategory,
+            incidentType: interpretation.incidentType,
+            confidence: interpretation.confidence,
           }
         : null;
       let incidentAction: PersistIncidentProcessingInput["incidentAction"];
@@ -269,7 +284,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             incidentId: targetIncidentId,
             datasetKind,
             lastUpdatedAt: now,
-            primaryCategory: interpretation.primaryCategory,
+            primaryCategory: authoritativeCategory,
             discrepancies: mergedDiscrepancies,
             uncertaintyNotes: mergedUncertainties,
             severity: resolvedSeverity,
@@ -284,7 +299,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             incidentId: targetIncidentId,
             datasetKind,
             lastUpdatedAt: now,
-            primaryCategory: interpretation.primaryCategory,
+            primaryCategory: authoritativeCategory,
           },
         };
       } else {
@@ -302,7 +317,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             title: interpretation.summary.slice(0, 150),
             description: interpretation.summary,
             incidentType: interpretation.incidentType,
-            primaryCategory: interpretation.primaryCategory,
+            primaryCategory: authoritativeCategory,
             status: initialStatus,
             severity: interpretation.severity ?? "unknown",
             locationLabel: interpretation.location.label,
@@ -316,6 +331,8 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
               impacts: interpretation.impacts,
               confidence: interpretation.confidence,
               ...(triageLineage ? { triage: triageLineage } : {}),
+              ...(interpretationLineage ? { interpretation: interpretationLineage } : {}),
+              ...(triageMismatch ? { triage_mismatch: true } : {}),
             },
             createdAt: now,
           },
@@ -345,14 +362,12 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         });
       }
 
-      const triageCategory = input.triage?.primaryCategory ?? null;
-      const triageMismatch = triageCategory !== null && triageCategory !== interpretation.primaryCategory;
       const proposalDto: EventProposalDto = {
         schema_version: "2.0",
         proposal_id: proposalId,
         title: interpretation.summary.slice(0, 120),
         incident_type: interpretation.incidentType,
-        primary_category: interpretation.primaryCategory,
+        primary_category: authoritativeCategory,
         compatibility_category: compatibilityCat,
         severity: interpretation.severity ?? "unknown",
         event_time: {

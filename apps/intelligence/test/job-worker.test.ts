@@ -170,4 +170,181 @@ describe("Durable AI Job Worker", () => {
       assert.equal(propCheck.rows.length, 0, "No proposal should be created on provider failure");
     });
   });
+
+  describe("WJ-INT-02B fail-closed triage gate", () => {
+    const gateHash = (n: number) => String(n).repeat(64).slice(0, 64);
+    async function seedGatedRevision(input: {
+      readonly key: string;
+      readonly triageRequired: boolean;
+      readonly sourceId?: string;
+    }): Promise<{ traceId: string; sourceId: string; revisionId: string }> {
+      const traceId = `trace-gate-${input.key}`;
+      const sourceId = input.sourceId ?? `source-gate-${input.key}`;
+      const revisionId = `rev-gate-${input.key}`;
+      const dummyHash = gateHash(3);
+      await db.executor.execute(`
+        INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+        VALUES ('${traceId}', 'synthetic', now(), 'succeeded', '{}'::jsonb)
+        ON CONFLICT (trace_id) DO NOTHING;
+
+        INSERT INTO waspada.source_registry
+          (source_id, trace_id, registry_version, display_name, source_kind, remit,
+           access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+           approval_status, health_status, auto_acquisition_enabled, auto_publication_policy)
+        VALUES ('${sourceId}', '${traceId}', 1, 'Gated Source', 'other', ARRAY['system'], 'manual_fixture',
+                ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
+        ON CONFLICT (source_id) DO NOTHING;
+
+        INSERT INTO waspada.report_revisions
+          (dataset_kind, report_revision_id, trace_id, source_id, canonical_url, content_hash, permitted_text, permitted_text_hash, normalization_version, retrieved_at, revision_status, record_json, triage_required)
+        VALUES ('synthetic', '${revisionId}', '${traceId}', '${sourceId}', 'https://synthetic.invalid/${revisionId}', '${dummyHash}', 'Pohon tumbang menutup jalan.', '${dummyHash}', 'v1', now(), 'unreviewed', '{}'::jsonb, ${input.triageRequired})
+        ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING;
+      `);
+      return { traceId, sourceId, revisionId };
+    }
+    async function seedDecision(input: {
+      readonly revisionId: string;
+      readonly sourceId: string;
+      readonly traceId: string;
+      readonly disposition: "ingest" | "drop" | "uncertain";
+    }): Promise<void> {
+      const { recordTriageDecision, recordTriageAttempt } = await import("../../db/src/news-triage-store.js");
+      const itemIdentityHash = gateHash(7);
+      const contentHash = gateHash(8);
+      await recordTriageDecision(db.executor, {
+        datasetKind: "synthetic",
+        itemIdentityHash,
+        sourceId: input.sourceId,
+        traceId: input.traceId,
+        disposition: input.disposition,
+        jakartaScope: "dki_jakarta",
+        actionability: "actionable",
+        primaryCategory: "disasters_weather",
+        incidentType: "pohon_tumbang",
+        confidence: "high",
+        reasonCodes: ["triage_v1_ingest"],
+        modelStatus: "ok",
+        reportRevisionId: input.revisionId,
+        contentHash,
+        attemptCount: 1,
+      });
+      await recordTriageAttempt(db.executor, {
+        datasetKind: "synthetic",
+        itemIdentityHash,
+        reportRevisionId: input.revisionId,
+        sourceId: input.sourceId,
+        traceId: input.traceId,
+        disposition: input.disposition,
+        jakartaScope: "dki_jakarta",
+        actionability: "actionable",
+        primaryCategory: "disasters_weather",
+        incidentType: "pohon_tumbang",
+        confidence: "high",
+        reasonCodes: ["triage_v1_ingest"],
+        modelStatus: "ok",
+        contentHash,
+      });
+    }
+
+    it("runs required-RSS revisions with decision-ingest and attempt-ingest", async () => {
+      const incidentRepo = createSqlIncidentRepository(db.executor);
+      const { traceId, revisionId, sourceId } = await seedGatedRevision({ key: "ok", triageRequired: true });
+      await seedDecision({ revisionId, sourceId, traceId, disposition: "ingest" });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-ok", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      const runner = createJobRunner({
+        executor: db.executor,
+        agentOverrides: {
+          interpreter: createMockInterpreterAgent({
+            summary: "Pohon tumbang menutup jalan",
+            incidentType: "pohon_tumbang",
+            severity: "medium",
+            primaryCategory: "disasters_weather",
+          }),
+          correlator: createMockCorrelatorAgent(),
+        },
+      });
+      assert.equal(await runner.processNextJob("synthetic"), true);
+      const check = await db.executor.query<{ status: string }>(
+        `SELECT status FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-ok'`,
+      );
+      assert.equal(check.rows[0]?.status, "completed");
+    });
+
+    it("routes missing decision to needs_review without interpretation", async () => {
+      const incidentRepo = createSqlIncidentRepository(db.executor);
+      const { traceId, revisionId } = await seedGatedRevision({ key: "missing", triageRequired: true });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-missing", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      const runner = createJobRunner({ executor: db.executor });
+      assert.equal(await runner.processNextJob("synthetic"), false);
+      const check = await db.executor.query<{ status: string; last_failure_code: string | null }>(
+        `SELECT status, last_failure_code FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-missing'`,
+      );
+      assert.equal(check.rows[0]?.status, "needs_review");
+      assert.equal(check.rows[0]?.last_failure_code, "triage_decision_missing");
+      const props = await db.executor.query<{ proposal_id: string }>(
+        `SELECT proposal_id FROM waspada.event_proposals WHERE proposal_id = 'prop-${revisionId}'`,
+      );
+      assert.equal(props.rows.length, 0);
+    });
+
+    it("propagates triage lookup errors into the retry path", async () => {
+      const incidentRepo = createSqlIncidentRepository(db.executor);
+      const { traceId, revisionId } = await seedGatedRevision({ key: "throw", triageRequired: true });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-throw", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      // Executor that throws only on the triage lookups; everything else passes through.
+      const throwing = {
+        query: async (stmt: string, params?: readonly unknown[]) => {
+          if (typeof stmt === "string" && stmt.includes("news_triage_")) {
+            throw new Error("simulated triage lookup failure");
+          }
+          return db.executor.query(stmt, params);
+        },
+        execute: (stmt: string) => db.executor.execute(stmt),
+      };
+      const runner = createJobRunner({ executor: throwing as unknown as typeof db.executor });
+      assert.equal(await runner.processNextJob("synthetic"), false);
+      const check = await db.executor.query<{ status: string }>(
+        `SELECT status FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-throw'`,
+      );
+      // Lookup error must NOT become needs_review or completed: retry path.
+      assert.equal(check.rows[0]?.status, "retry");
+    });
+
+    it("routes held decisions to needs_review without interpretation", async () => {
+      const incidentRepo = createSqlIncidentRepository(db.executor);
+      const { traceId, revisionId, sourceId } = await seedGatedRevision({ key: "held", triageRequired: true });
+      await seedDecision({ revisionId, sourceId, traceId, disposition: "uncertain" });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-held", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      const runner = createJobRunner({ executor: db.executor });
+      assert.equal(await runner.processNextJob("synthetic"), false);
+      const check = await db.executor.query<{ status: string; last_failure_code: string | null }>(
+        `SELECT status, last_failure_code FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-held'`,
+      );
+      assert.equal(check.rows[0]?.status, "needs_review");
+      assert.equal(check.rows[0]?.last_failure_code, "triage_decision_held");
+    });
+
+    it("runs explicitly untriaged structured revisions without a decision row", async () => {
+      const incidentRepo = createSqlIncidentRepository(db.executor);
+      const { traceId, revisionId } = await seedGatedRevision({ key: "plain", triageRequired: false });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-plain", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      const runner = createJobRunner({
+        executor: db.executor,
+        agentOverrides: {
+          interpreter: createMockInterpreterAgent({
+            summary: "Laporan struktur tanpa triase",
+            incidentType: "laporan_struktur",
+            severity: "low",
+            primaryCategory: "disasters_weather",
+          }),
+          correlator: createMockCorrelatorAgent(),
+        },
+      });
+      assert.equal(await runner.processNextJob("synthetic"), true);
+      const check = await db.executor.query<{ status: string }>(
+        `SELECT status FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-plain'`,
+      );
+      assert.equal(check.rows[0]?.status, "completed");
+    });
+  });
 });
