@@ -496,7 +496,7 @@ describe('gated RSS rights enforcement', () => {
   it('title-only retention keeps the description out of the prompt payload and the persisted text', async () => {
     const database = await createMigratedDatabase();
     try {
-      await seedSource(database.executor, SOURCE_ID, ['model_triage', 'retain_title']);
+      await seedSource(database.executor, SOURCE_ID, ['model_triage', 'retain_title', 'retain_derived']);
       const env = { NINEROUTER_URL: 'https://example.test', NINEROUTER_KEY: 'k' } as WorkerEnvironment;
       const gate = buildLiveTriageGate(env, database.executor);
       const calls: Array<{ system: string; user: string }> = [];
@@ -521,6 +521,34 @@ describe('gated RSS rights enforcement', () => {
       assert.equal(stored.rows.length, 1);
       assert.ok(!stored.rows[0]!.permitted_text.includes(EXCERPT_A));
       assert.equal(stored.rows[0]!.chunk_count, '1');
+    } finally {
+      await database.close();
+    }
+  });
+
+  it('narrowed permissions re-evaluate instead of replaying the cached full-text outcome', async () => {
+    const database = await createMigratedDatabase();
+    try {
+      await seedSource(database.executor, SOURCE_ID, FULL_BASIS);
+      const env = { NINEROUTER_URL: 'https://example.test', NINEROUTER_KEY: 'k' } as WorkerEnvironment;
+      const gate = buildLiveTriageGate(env, database.executor);
+      const calls: Array<{ system: string; user: string }> = [];
+      const triage = { ...gate, callChat: ingestChatMock(calls) };
+      const xml = feedXml([{ guid: 'g1', title: TITLE, link: 'https://example.test/news/1', excerpt: EXCERPT_A }], recentPubDate());
+      const first = await pollOnce(database.executor, xml, triage);
+      assert.equal(first.revisions.length, 1);
+      assert.equal(first.revisions[0]!.permitted_text, `${TITLE}\n\n${EXCERPT_A}`);
+      await persistPollResult(database.executor, first.revisions, first.held);
+      await database.executor.query(
+        `UPDATE waspada.source_registry SET reuse_basis = $1 WHERE source_id = $2`,
+        [['model_triage', 'retain_title', 'retain_derived'], SOURCE_ID],
+      );
+      const second = await pollOnce(database.executor, xml, triage);
+      assert.equal(calls.length, 2);
+      assert.equal(second.revisions.length, 1);
+      assert.notEqual(second.revisions[0]!.report_revision_id, first.revisions[0]!.report_revision_id);
+      assert.equal(second.revisions[0]!.permitted_text, TITLE);
+      assert.ok(!second.revisions[0]!.permitted_text.includes(EXCERPT_A));
     } finally {
       await database.close();
     }

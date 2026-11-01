@@ -182,9 +182,12 @@ describe("Durable AI Job Worker", () => {
       const sourceId = input.sourceId ?? `source-gate-${input.key}`;
       const revisionId = `rev-gate-${input.key}`;
       const dummyHash = gateHash(3);
+      // WJ-INT-02B: gate behavior is a live-dataset behavior. Synthetic rows
+      // bypass triage by design (042 backfill was over-broad; the flag on
+      // synthetic rows is immutable history under the append-only trigger).
       await db.executor.execute(`
         INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
-        VALUES ('${traceId}', 'synthetic', now(), 'succeeded', '{}'::jsonb)
+        VALUES ('${traceId}', 'live', now(), 'succeeded', '{}'::jsonb)
         ON CONFLICT (trace_id) DO NOTHING;
 
         INSERT INTO waspada.source_registry
@@ -197,7 +200,7 @@ describe("Durable AI Job Worker", () => {
 
         INSERT INTO waspada.report_revisions
           (dataset_kind, report_revision_id, trace_id, source_id, canonical_url, content_hash, permitted_text, permitted_text_hash, normalization_version, retrieved_at, revision_status, record_json, triage_required)
-        VALUES ('synthetic', '${revisionId}', '${traceId}', '${sourceId}', 'https://synthetic.invalid/${revisionId}', '${dummyHash}', 'Pohon tumbang menutup jalan.', '${dummyHash}', 'v1', now(), 'unreviewed', '{}'::jsonb, ${input.triageRequired})
+        VALUES ('live', '${revisionId}', '${traceId}', '${sourceId}', 'https://live.invalid/${revisionId}', '${dummyHash}', 'Pohon tumbang menutup jalan.', '${dummyHash}', 'v1', now(), 'unreviewed', '{}'::jsonb, ${input.triageRequired})
         ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING;
       `);
       return { traceId, sourceId, revisionId };
@@ -210,9 +213,11 @@ describe("Durable AI Job Worker", () => {
     }): Promise<void> {
       const { recordTriageDecision, recordTriageAttempt } = await import("../../db/src/news-triage-store.js");
       const itemIdentityHash = gateHash(7);
-      const contentHash = gateHash(8);
+      // WJ-INT-02B: the gate requires the decision/attempt content hash to
+      // match the revision's stored content_hash (gateHash(3) in the seed).
+      const contentHash = gateHash(3);
       await recordTriageDecision(db.executor, {
-        datasetKind: "synthetic",
+        datasetKind: "live",
         itemIdentityHash,
         sourceId: input.sourceId,
         traceId: input.traceId,
@@ -229,7 +234,7 @@ describe("Durable AI Job Worker", () => {
         attemptCount: 1,
       });
       await recordTriageAttempt(db.executor, {
-        datasetKind: "synthetic",
+        datasetKind: "live",
         itemIdentityHash,
         reportRevisionId: input.revisionId,
         sourceId: input.sourceId,
@@ -250,7 +255,7 @@ describe("Durable AI Job Worker", () => {
       const incidentRepo = createSqlIncidentRepository(db.executor);
       const { traceId, revisionId, sourceId } = await seedGatedRevision({ key: "ok", triageRequired: true });
       await seedDecision({ revisionId, sourceId, traceId, disposition: "ingest" });
-      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-ok", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-ok", datasetKind: "live", reportRevisionId: revisionId, traceId });
       const runner = createJobRunner({
         executor: db.executor,
         agentOverrides: {
@@ -263,7 +268,7 @@ describe("Durable AI Job Worker", () => {
           correlator: createMockCorrelatorAgent(),
         },
       });
-      assert.equal(await runner.processNextJob("synthetic"), true);
+      assert.equal(await runner.processNextJob("live"), true);
       const check = await db.executor.query<{ status: string }>(
         `SELECT status FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-ok'`,
       );
@@ -273,9 +278,9 @@ describe("Durable AI Job Worker", () => {
     it("routes missing decision to needs_review without interpretation", async () => {
       const incidentRepo = createSqlIncidentRepository(db.executor);
       const { traceId, revisionId } = await seedGatedRevision({ key: "missing", triageRequired: true });
-      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-missing", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-missing", datasetKind: "live", reportRevisionId: revisionId, traceId });
       const runner = createJobRunner({ executor: db.executor });
-      assert.equal(await runner.processNextJob("synthetic"), false);
+      assert.equal(await runner.processNextJob("live"), false);
       const check = await db.executor.query<{ status: string; last_failure_code: string | null }>(
         `SELECT status, last_failure_code FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-missing'`,
       );
@@ -290,7 +295,7 @@ describe("Durable AI Job Worker", () => {
     it("propagates triage lookup errors into the retry path", async () => {
       const incidentRepo = createSqlIncidentRepository(db.executor);
       const { traceId, revisionId } = await seedGatedRevision({ key: "throw", triageRequired: true });
-      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-throw", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-throw", datasetKind: "live", reportRevisionId: revisionId, traceId });
       // Executor that throws only on the triage lookups; everything else passes through.
       const throwing = {
         query: async (stmt: string, params?: readonly unknown[]) => {
@@ -302,7 +307,7 @@ describe("Durable AI Job Worker", () => {
         execute: (stmt: string) => db.executor.execute(stmt),
       };
       const runner = createJobRunner({ executor: throwing as unknown as typeof db.executor });
-      assert.equal(await runner.processNextJob("synthetic"), false);
+      assert.equal(await runner.processNextJob("live"), false);
       const check = await db.executor.query<{ status: string }>(
         `SELECT status FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-throw'`,
       );
@@ -314,9 +319,9 @@ describe("Durable AI Job Worker", () => {
       const incidentRepo = createSqlIncidentRepository(db.executor);
       const { traceId, revisionId, sourceId } = await seedGatedRevision({ key: "held", triageRequired: true });
       await seedDecision({ revisionId, sourceId, traceId, disposition: "uncertain" });
-      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-held", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-held", datasetKind: "live", reportRevisionId: revisionId, traceId });
       const runner = createJobRunner({ executor: db.executor });
-      assert.equal(await runner.processNextJob("synthetic"), false);
+      assert.equal(await runner.processNextJob("live"), false);
       const check = await db.executor.query<{ status: string; last_failure_code: string | null }>(
         `SELECT status, last_failure_code FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-held'`,
       );
@@ -327,7 +332,7 @@ describe("Durable AI Job Worker", () => {
     it("runs explicitly untriaged structured revisions without a decision row", async () => {
       const incidentRepo = createSqlIncidentRepository(db.executor);
       const { traceId, revisionId } = await seedGatedRevision({ key: "plain", triageRequired: false });
-      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-plain", datasetKind: "synthetic", reportRevisionId: revisionId, traceId });
+      await incidentRepo.enqueueAiJob({ jobId: "ai-job-gate-plain", datasetKind: "live", reportRevisionId: revisionId, traceId });
       const runner = createJobRunner({
         executor: db.executor,
         agentOverrides: {
@@ -340,7 +345,7 @@ describe("Durable AI Job Worker", () => {
           correlator: createMockCorrelatorAgent(),
         },
       });
-      assert.equal(await runner.processNextJob("synthetic"), true);
+      assert.equal(await runner.processNextJob("live"), true);
       const check = await db.executor.query<{ status: string }>(
         `SELECT status FROM waspada.ai_jobs WHERE job_id = 'ai-job-gate-plain'`,
       );

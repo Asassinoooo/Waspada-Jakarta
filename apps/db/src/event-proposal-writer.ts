@@ -32,8 +32,11 @@ export interface EventProposalDto {
   readonly has_discrepancy?: boolean;
   readonly discrepancies?: readonly unknown[];
   readonly caveats?: readonly string[];
+  /** WJ-INT-02B: interpreter's independent category for moderator resolution. */
+  readonly interpretation_category?: string | null;
+  /** WJ-INT-02B: registry source id for the public-display rights gate. */
+  readonly source_id?: string | null;
 }
-
 export interface EventProposalWriter {
   persistProposal(
     proposal: EventProposalDto,
@@ -114,8 +117,8 @@ async function ensurePrerequisites(
   const revisionId = `rev-${candidateId}`;
   await tx.query(
     `INSERT INTO waspada.report_revisions
-     (dataset_kind, report_revision_id, trace_id, source_id, canonical_url, content_hash, permitted_text, permitted_text_hash, normalization_version, retrieved_at, revision_status, record_json)
-     VALUES ($1, $2, $3, $4, 'https://waspada.jakarta.go.id/source', $5, 'placeholder', $5, 'v1', now(), 'unreviewed', '{}'::jsonb)
+     (dataset_kind, report_revision_id, trace_id, source_id, canonical_url, content_hash, permitted_text, permitted_text_hash, normalization_version, retrieved_at, revision_status, record_json, triage_required)
+     VALUES ($1, $2, $3, $4, 'https://waspada.jakarta.go.id/source', $5, 'placeholder', $5, 'v1', now(), 'unreviewed', '{}'::jsonb, false)
      ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
     [datasetKind, revisionId, traceId, sourceId, DUMMY_HASH],
   );

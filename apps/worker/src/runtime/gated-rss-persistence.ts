@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../../../db/src/sql.js";
 import { createSqlIncidentRepository } from "../../../db/src/incident-repository.js";
 import {
+  persistHeldTriageTransaction,
   recordTriageAttempt,
   recordTriageDecision,
 } from "../../../db/src/news-triage-store.js";
@@ -76,20 +77,45 @@ export async function persistAcceptedRssItem(
       report_revision_id: string | null;
       disposition: string;
       primary_category: string | null;
+      incident_type: string | null;
+      content_hash: string | null;
+      policy_version: string;
     }>(
-      `SELECT report_revision_id, disposition, primary_category
+      `SELECT report_revision_id, disposition, primary_category, incident_type,
+              content_hash, policy_version
        FROM waspada.news_triage_decisions
        WHERE dataset_kind = $1 AND item_identity_hash = $2`,
       [input.datasetKind, input.itemIdentityHash],
     );
     const snapshotRow = snapshot.rows[0] ?? null;
-    // Identical replay: same revision row and same snapshot outcome already
-    // stored — return the existing job with NO new writes (no decision,
-    // attempt, revision, chunk, or job writes).
+    // Consistency first: an existing row under the same id MUST carry the
+    // same bytes; silently keeping stale text via ON CONFLICT DO NOTHING is
+    // forbidden. The throw rolls back every write in this transaction.
+    // Checked BEFORE any early return so a conflicting reuse can never
+    // masquerade as an identical replay.
+    if (
+      existingRevision.rows.length > 0 &&
+      existingRevision.rows[0]!.permitted_text_hash !== rev.permitted_text_hash
+    ) {
+      throw new Error("RevisionContentConflict");
+    }
+    // Exact-retry replay (WJ-INT-02B idempotency contract §F): return the
+    // existing job with NO new writes only when every evaluation dimension
+    // matches — same revision row, same snapshot revision, ingest
+    // disposition, same content hash, same policy version, same primary
+    // category and incident type. Any changed content, policy, category, or
+    // evaluation state falls through to a fresh evaluation below (new
+    // attempt row, updated snapshot, supersede linkage). Permission state
+    // was already enforced upstream: the caller persists only the authorized
+    // revision built under the current permissions.
     if (
       existingRevision.rows.length > 0 &&
       snapshotRow?.report_revision_id === rev.report_revision_id &&
-      snapshotRow?.disposition === "ingest"
+      snapshotRow?.disposition === "ingest" &&
+      snapshotRow?.content_hash === input.contentHash &&
+      snapshotRow?.policy_version === input.policyVersion &&
+      snapshotRow?.primary_category === triage.primaryCategory &&
+      (snapshotRow?.incident_type ?? null) === (triage.incidentType ?? null)
     ) {
       const existingJob = await tx.query<{ job_id: string }>(
         `SELECT job_id FROM waspada.ai_jobs
@@ -97,15 +123,6 @@ export async function persistAcceptedRssItem(
         [input.datasetKind, rev.report_revision_id],
       );
       return { jobId: existingJob.rows[0]?.job_id ?? jobId };
-    }
-    // Consistency first: an existing row under the same id MUST carry the
-    // same bytes; silently keeping stale text via ON CONFLICT DO NOTHING is
-    // forbidden. The throw rolls back every write in this transaction.
-    if (
-      existingRevision.rows.length > 0 &&
-      existingRevision.rows[0]!.permitted_text_hash !== rev.permitted_text_hash
-    ) {
-      throw new Error("RevisionContentConflict");
     }
     // Supersession link: a different revision row for the same
     // (dataset, source, revision key) is the predecessor version.
@@ -117,6 +134,7 @@ export async function persistAcceptedRssItem(
        WHERE dataset_kind = $1 AND source_id = $2
          AND source_revision_key IS NOT DISTINCT FROM $3
          AND report_revision_id <> $4
+       ORDER BY retrieved_at DESC, report_revision_id DESC
        LIMIT 1`,
       [input.datasetKind, rev.source_id, rev.source_revision_key ?? null, rev.report_revision_id],
     );
@@ -250,16 +268,17 @@ export async function persistAcceptedRssItem(
  * report_revisions, evidence_chunks, or ai_jobs.
  */
 export async function persistHeldTriageItem(
-  executor: SqlExecutor,
+  executor: TransactionalSqlExecutor,
   held: HeldTriageDecision,
   datasetKind: string,
   policyVersion: string,
   replayed: boolean = held.replayed ?? false,
 ): Promise<void> {
   const decision = held.decision;
-  await executor.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    held.itemIdentityHash,
-  ]);
+  // WJ-INT-02B: the freed advisory lock outside a transaction protected
+  // nothing. Writes below run inside persistHeldTriageTransaction (lock,
+  // snapshot, review-clear, attempt — all-or-nothing). No-tx executors fail
+  // closed there. Replay and snapshot pre-reads stay outside the write tx.
   const snapshot = await executor.query<{
     report_revision_id: string | null;
     disposition: string;
@@ -295,53 +314,45 @@ export async function persistHeldTriageItem(
       return;
     }
   }
-  const attemptCount = await readAttemptCount(executor, datasetKind, held.itemIdentityHash);
-  await recordTriageDecision(executor, {
-    datasetKind,
-    itemIdentityHash: held.itemIdentityHash,
-    sourceId: held.sourceId,
-    traceId: held.traceId,
-    disposition: decision.disposition,
-    jakartaScope: decision.jakartaScope,
-    actionability: decision.actionability,
-    primaryCategory: decision.primaryCategory,
-    incidentType: decision.incidentType,
-    confidence: decision.confidence,
-    reasonCodes: [...decision.reasonCodes],
-    policyVersion,
-    modelStatus: decision.modelStatus,
-    attemptCount,
-  });
-  if (
-    snapshotRow !== null &&
-    (snapshotRow.disposition !== decision.disposition ||
-      snapshotRow.primary_category !== decision.primaryCategory)
-  ) {
-    await executor.query(
-      `UPDATE waspada.news_triage_decisions
-       SET reviewed_at = NULL, reviewed_by = NULL
-       WHERE dataset_kind = $1 AND item_identity_hash = $2`,
-      [datasetKind, held.itemIdentityHash],
-    );
-  }
-  await recordTriageAttempt(executor, {
-    datasetKind,
-    itemIdentityHash: held.itemIdentityHash,
-    reportRevisionId: held.reportRevisionId,
-    sourceId: held.sourceId,
-    traceId: held.traceId,
-    disposition: decision.disposition,
-    jakartaScope: decision.jakartaScope,
-    actionability: decision.actionability,
-    primaryCategory: decision.primaryCategory,
-    incidentType: decision.incidentType,
-    confidence: decision.confidence,
-    reasonCodes: [...decision.reasonCodes],
-    policyVersion,
-    modelStatus: decision.modelStatus,
-    contentHash: null,
-    supersedesHash: null,
-  });
+  await persistHeldTriageTransaction(
+    executor,
+    {
+      datasetKind,
+      itemIdentityHash: held.itemIdentityHash,
+      sourceId: held.sourceId,
+      traceId: held.traceId,
+      reportRevisionId: snapshotRow?.report_revision_id ?? null,
+      disposition: decision.disposition,
+      jakartaScope: decision.jakartaScope,
+      actionability: decision.actionability,
+      primaryCategory: decision.primaryCategory,
+      incidentType: decision.incidentType,
+      confidence: decision.confidence,
+      reasonCodes: [...decision.reasonCodes],
+      policyVersion,
+      modelStatus: decision.modelStatus,
+      contentHash: null,
+      supersedesHash: null,
+      priorDisposition: snapshotRow?.disposition ?? null,
+      priorPrimaryCategory: snapshotRow?.primary_category ?? null,
+    },
+    {
+      sourceId: held.sourceId,
+      traceId: held.traceId,
+      reportRevisionId: held.reportRevisionId,
+      disposition: decision.disposition,
+      jakartaScope: decision.jakartaScope,
+      actionability: decision.actionability,
+      primaryCategory: decision.primaryCategory,
+      incidentType: decision.incidentType,
+      confidence: decision.confidence,
+      reasonCodes: [...decision.reasonCodes],
+      policyVersion,
+      modelStatus: decision.modelStatus,
+      contentHash: null,
+      supersedesHash: null,
+    },
+  );
 }
 
 async function readAttemptCount(

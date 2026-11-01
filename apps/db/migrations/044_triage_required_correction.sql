@@ -1,0 +1,21 @@
+-- 044_triage_required_correction.sql
+-- WJ-INT-02B: document the 042 backfill limitation. No data change.
+--
+-- Finding: 042 marked every row with a non-null source_revision_key as
+-- triage_required=true. That predicate is over-broad for dataset_kind =
+-- 'synthetic' rows: the local/synthetic pipeline also writes revision keys,
+-- and those rows must run the untriaged local path, not the RSS triage gate.
+--
+-- This migration intentionally performs NO UPDATE: waspada.report_revisions
+-- is append-only (001 report_revisions_append_only trigger rejects every
+-- UPDATE/DELETE with 'report_revisions is append-only'), so historical flags
+-- are immutable history and must not be rewritten. The compensation lives in
+-- the reader, not the data: apps/intelligence/src/job-runner.ts treats
+-- dataset_kind='synthetic' as never triage-required regardless of the flag.
+-- Live and historical rows keep their 042 value: a live/historical row
+-- carrying a revision key is RSS-origin, and unknown provenance fails toward
+-- triage (needs_review, visible) rather than silent untriaged execution.
+--
+-- New inserts must always list the triage_required column explicitly with
+-- the correct provenance (true only for gated-RSS persistence).
+SELECT 1;

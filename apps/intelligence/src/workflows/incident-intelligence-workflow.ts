@@ -41,6 +41,8 @@ export const IncidentWorkflowInputSchema = z.object({
   reportText: z.string(),
   sourceKind: z.string(),
   sourceDisplayName: z.string(),
+  /** WJ-INT-02B: registry source id for the public-display rights gate. */
+  sourceId: z.string().optional(),
   publishedAt: z.string().nullable().optional(),
   datasetKind: z.enum(["live", "historical", "synthetic"]),
   traceId: z.string(),
@@ -378,12 +380,15 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         coordinates: interpretation.location.approximateCoordinates,
         claims,
         impacts: interpretation.impacts,
+        // WJ-INT-02B: interpreter's independent value for accept_interpretation.
+        interpretation_category: input.triage ? interpretation.primaryCategory : null,
+        // WJ-INT-02B: registry source id for the public-display rights gate.
+        source_id: input.sourceId ?? null,
         caveats: triageMismatch
           ? [...interpretation.uncertaintyNotes, "category_mismatch_review"]
           : interpretation.uncertaintyNotes,
         proposed_at: now,
       };
-
       let resolvedIncident: IncidentRecord | Record<string, unknown>;
       if (input.jobId && input.leaseToken) {
         await incidentRepo.persistIncidentProcessingTransaction({

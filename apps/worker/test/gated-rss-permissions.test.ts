@@ -94,7 +94,7 @@ describe('evaluateSourcePermissions', () => {
       reuse_reviewed_at: '2026-06-01T00:00:00.000Z',
       reuse_expires_at: null,
     };
-    const permissions = evaluateSourcePermissions(licensed, NOW);
+    const permissions = evaluateSourcePermissions(licensed, NOW, 'source-antara-metro');
     assert.equal(permissions.titleModel, true);
     assert.equal(permissions.descriptionModel, true);
     assert.equal(permissions.titleRetention, true);
@@ -103,6 +103,18 @@ describe('evaluateSourcePermissions', () => {
     assert.equal(permissions.publicDisplay, true);
   });
 
+  it('denies legacy-basis capabilities when the license binds a different source', () => {
+    const licensed: RegistryPermissionRow = {
+      ...baseRow(),
+      reuse_basis: ['public'],
+      reuse_license_url: 'https://example.test/license/antaranews',
+      reuse_scope: 'source-antara-metro model and retention grant',
+      reuse_reviewer: 'registrar-1',
+      reuse_reviewed_at: '2026-06-01T00:00:00.000Z',
+      reuse_expires_at: null,
+    };
+    assert.equal(evaluateSourcePermissions(licensed, NOW, 'source-detik-news').titleModel, false);
+  });
   it('fails legacy-basis capabilities closed on stale, expired, or missing evidence', () => {
     const stale: RegistryPermissionRow = {
       ...baseRow(),

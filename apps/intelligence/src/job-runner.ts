@@ -166,12 +166,21 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
 
         // WJ-INT-02B explicit-provenance triage gate. `triage_required` marks
         // RSS-origin revisions; false means structured/webhook/synthetic and
-        // runs untriaged exactly as before. Required-RSS revisions load the
-        // revision-specific decision AND latest attempt; either missing or
+        // runs untriaged exactly as before. Synthetic rows never require
+        // triage even when the flag is set: migration 042's backfill predicate
+        // (source_revision_key IS NOT NULL) was over-broad on synthetic rows,
+        // and report_revisions is append-only (001 trigger rejects UPDATE), so
+        // the historical flag cannot be rewritten. Required-RSS revisions load
+        // the revision-specific decision AND latest attempt; either missing or
         // non-ingest routes to needs_review. Lookup errors propagate into the
         // existing retry/error path — never swallowed into an untriaged run.
+        // Consistency: the decision and attempt must agree on revision,
+        // content, policy, disposition, and category — otherwise the
+        // evaluation does not describe this revision and cannot authorize it.
         let triageContext: IncidentWorkflowInput["triage"] | undefined;
-        if (rev.triage_required === true) {
+        const triageRequiredForDataset =
+          rev.triage_required === true && rev.dataset_kind !== "synthetic";
+        if (triageRequiredForDataset) {
           const triageRow = await readTriageDecisionForRevision(
             options.executor,
             rev.dataset_kind,
@@ -190,8 +199,30 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
             await incidentRepo.markAiJobNeedsReview(job.jobId, leaseToken, "triage_decision_missing");
             return false;
           }
-          if (triageRow.disposition !== "ingest" || latestAttempt.disposition !== "ingest") {
-            await incidentRepo.markAiJobNeedsReview(job.jobId, leaseToken, "triage_decision_held");
+          const attemptRevision = await options.executor.query<{ content_hash: string }>(
+            `SELECT content_hash FROM waspada.report_revisions
+             WHERE dataset_kind = $1 AND report_revision_id = $2 LIMIT 1`,
+            [rev.dataset_kind, rev.report_revision_id],
+          );
+          const revisionContentHash = attemptRevision.rows[0]?.content_hash ?? null;
+          const consistent =
+            triageRow.reportRevisionId === rev.report_revision_id &&
+            latestAttempt.reportRevisionId === rev.report_revision_id &&
+            triageRow.disposition === "ingest" &&
+            latestAttempt.disposition === "ingest" &&
+            triageRow.disposition === latestAttempt.disposition &&
+            (triageRow.contentHash ?? null) === (latestAttempt.contentHash ?? null) &&
+            (revisionContentHash === null || (triageRow.contentHash ?? null) === revisionContentHash) &&
+            triageRow.policyVersion === latestAttempt.policyVersion &&
+            (triageRow.primaryCategory ?? null) === (latestAttempt.primaryCategory ?? null) &&
+            (triageRow.itemIdentityHash ?? null) === (latestAttempt.itemIdentityHash ?? null);
+          if (!consistent) {
+            const held = triageRow.disposition !== "ingest" || latestAttempt.disposition !== "ingest";
+            await incidentRepo.markAiJobNeedsReview(
+              job.jobId,
+              leaseToken,
+              held ? "triage_decision_held" : "triage_decision_missing",
+            );
             return false;
           }
           triageContext = {
@@ -212,6 +243,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           reportText: rev.permitted_text,
           sourceKind: rev.source_kind || "webhook",
           sourceDisplayName: rev.display_name || "Laporan Lapangan",
+          sourceId: rev.source_id,
           publishedAt: new Date(rev.retrieved_at).toISOString(),
           datasetKind: rev.dataset_kind,
           traceId: job.traceId || rev.trace_id || `trace-${job.jobId}`,

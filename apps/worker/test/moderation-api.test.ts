@@ -744,3 +744,92 @@ test("POST publish passes structured proposals without mismatch caveat", async (
   assert.equal(res?.status, 200);
   assert.equal(published.length, 1);
 });
+
+test("POST publish denies when current registry rights withhold public display", async () => {
+  const published: unknown[] = [];
+  let checks = 0;
+  const gated = {
+    schema_version: "2.0" as const,
+    proposal_id: "prop-gated-001",
+    title: "Banjir 60cm di Tebet Barat",
+    incident_type: "flood",
+    primary_category: "disasters_weather",
+    severity: "high" as const,
+    event_time: { precision: "exact" as const, value: "2026-10-30T16:00:00.000Z" },
+    location_label: "Tebet Barat, Jakarta Selatan",
+    coordinates: null,
+    claims: [],
+    impacts: [],
+    caveats: [],
+    proposed_at: "2026-10-30T16:00:00.000Z",
+    source_id: "source-restricted-001",
+  };
+  const handler = createModerationApiHandler({
+    principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-gated" },
+    getProposalDetail: async () => ({ proposal: gated, chunks: [] }),
+    checkPublicDisplay: async (sourceId: string) => {
+      checks += 1;
+      assert.equal(sourceId, "source-restricted-001");
+      return false;
+    },
+    publicationService: {
+      publish: async (input: unknown) => {
+        published.push(input);
+        return { status: "written" };
+      },
+    },
+  });
+  const res = await handler(
+    new Request("http://localhost/api/v1/moderation/proposals/prop-gated-001/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-gated" },
+      body: JSON.stringify({ action: "publish" }),
+    }),
+  );
+  assert.equal(res?.status, 403);
+  const body = (await res!.json()) as { code: string };
+  assert.equal(body.code, "PUBLICATION_NOT_AUTHORIZED");
+  assert.equal(checks, 1);
+  assert.equal(published.length, 0);
+});
+
+test("POST publish with accept_interpretation publishes the interpreter category", async () => {
+  const published: Array<Record<string, unknown>> = [];
+  const mismatched = {
+    schema_version: "2.0" as const,
+    proposal_id: "prop-mismatch-002",
+    title: "Truk terguling menutup jalan tol",
+    incident_type: "kecelakaan_truk",
+    primary_category: "disasters_weather",
+    interpretation_category: "transport_road_incidents",
+    severity: "high" as const,
+    event_time: { precision: "exact" as const, value: "2026-10-30T16:00:00.000Z" },
+    location_label: "Tol Dalam Kota, Jakarta",
+    coordinates: null,
+    claims: [],
+    impacts: [],
+    caveats: ["category_mismatch_review"],
+    proposed_at: "2026-10-30T16:00:00.000Z",
+  };
+  const handler = createModerationApiHandler({
+    principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-interp" },
+    getProposalDetail: async () => ({ proposal: mismatched, chunks: [] }),
+    publicationService: {
+      publish: async (input: unknown) => {
+        published.push(input as Record<string, unknown>);
+        return { status: "written" };
+      },
+    },
+  });
+  const res = await handler(
+    new Request("http://localhost/api/v1/moderation/proposals/prop-mismatch-002/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-interp" },
+      body: JSON.stringify({ action: "publish", category_resolution: "accept_interpretation" }),
+    }),
+  );
+  assert.equal(res?.status, 200);
+  assert.equal(published.length, 1);
+  assert.equal(published[0]!.resolved_category, "transport_road_incidents");
+  assert.equal(published[0]!.category_resolution, "accept_interpretation");
+});

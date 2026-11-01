@@ -385,6 +385,93 @@ export async function readTriageDecisionForRevision(
 }
 
 /**
+ * WJ-INT-02B held persistence contract: one real transaction containing the
+ * advisory lock, decision snapshot upsert, reviewed-flag clearing, and
+ * attempt insert. All-or-nothing: any throw rolls back every write.
+ * Requires a transaction-capable executor; fails closed otherwise.
+ */
+export interface HeldTriagePersistInput {
+  readonly datasetKind: string;
+  readonly itemIdentityHash: string;
+  readonly sourceId: string;
+  readonly traceId: string;
+  readonly reportRevisionId: string | null;
+  readonly disposition: NewsTriageDisposition;
+  readonly jakartaScope: NewsTriageJakartaScope;
+  readonly actionability: NewsTriageActionability;
+  readonly primaryCategory: string | null;
+  readonly incidentType: string | null;
+  readonly confidence: NewsTriageConfidence;
+  readonly reasonCodes: readonly string[];
+  readonly policyVersion?: string;
+  readonly modelStatus: NewsTriageModelStatus;
+  readonly contentHash?: string | null;
+  readonly supersedesHash?: string | null;
+  readonly priorDisposition: string | null;
+  readonly priorPrimaryCategory: string | null;
+}
+export async function persistHeldTriageTransaction(
+  executor: SqlExecutor & Partial<{ transaction: (work: (tx: SqlExecutor) => Promise<unknown>) => Promise<unknown> }>,
+  input: HeldTriagePersistInput,
+  attempt: Omit<RecordTriageAttemptInput, "datasetKind" | "itemIdentityHash" | "reportRevisionId"> & { reportRevisionId: string },
+): Promise<void> {
+  if (!VALID_DATASETS[input.datasetKind]) {
+    throw new TypeError(`Invalid dataset_kind: ${input.datasetKind}`);
+  }
+  if (typeof executor.transaction !== "function") {
+    throw new Error("held triage persistence requires a transaction-capable executor");
+  }
+  await executor.transaction(async (tx) => {
+    await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+      input.itemIdentityHash,
+    ]);
+    const currentCount = await tx.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM waspada.news_triage_attempts
+       WHERE dataset_kind = $1 AND item_identity_hash = $2`,
+      [input.datasetKind, input.itemIdentityHash],
+    );
+    const attemptCount = 1 + Number(currentCount.rows[0]?.count ?? "0");
+    await recordTriageDecision(tx, {
+      datasetKind: input.datasetKind,
+      itemIdentityHash: input.itemIdentityHash,
+      sourceId: input.sourceId,
+      traceId: input.traceId,
+      disposition: input.disposition,
+      jakartaScope: input.jakartaScope,
+      actionability: input.actionability,
+      primaryCategory: input.primaryCategory,
+      incidentType: input.incidentType,
+      confidence: input.confidence,
+      reasonCodes: [...input.reasonCodes],
+      policyVersion: input.policyVersion,
+      modelStatus: input.modelStatus,
+      reportRevisionId: input.reportRevisionId,
+      contentHash: input.contentHash ?? null,
+      attemptCount,
+      supersedesHash: input.supersedesHash ?? null,
+    });
+    if (
+      input.priorDisposition !== null &&
+      (input.priorDisposition !== input.disposition ||
+        input.priorPrimaryCategory !== input.primaryCategory)
+    ) {
+      await tx.query(
+        `UPDATE waspada.news_triage_decisions
+         SET reviewed_at = NULL, reviewed_by = NULL
+         WHERE dataset_kind = $1 AND item_identity_hash = $2`,
+        [input.datasetKind, input.itemIdentityHash],
+      );
+    }
+    await recordTriageAttempt(tx, {
+      ...attempt,
+      datasetKind: input.datasetKind,
+      itemIdentityHash: input.itemIdentityHash,
+      reportRevisionId: attempt.reportRevisionId,
+    });
+  });
+}
+
+/**
  * WJ-INT-02A inspection-only reviewed flag. Sets reviewed_at/by only where
  * the row is still uncertain; returns false otherwise (including missing).
  */

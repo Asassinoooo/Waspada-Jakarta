@@ -23,7 +23,7 @@ import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
-import { TRIAGE_POLICY_VERSION } from "./layers/l1-data-knowledge/news-triage.js";
+import { TRIAGE_POLICY_VERSION, evaluateSourcePermissions } from "./layers/l1-data-knowledge/news-triage.js";
 import { buildLiveTriageGate } from "./runtime/news-triage-composition.js";
 import { newsTriageIdentityHash, readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
 import { persistAcceptedRssItem, persistHeldTriageItem } from "./runtime/gated-rss-persistence.js";
@@ -126,6 +126,55 @@ function getModerationHandler(env: WorkerEnvironment) {
     markTriageReviewed: async (itemIdentityHash: string, actorId: string) => {
       if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
       return withSqlExecutor(env, (executor) => markTriageReviewed(executor, datasetKind, itemIdentityHash, actorId));
+    },
+    // WJ-INT-02B: live public-display rights check against current registry
+    // permissions. Fail-closed: missing row, error, or denied capability
+    // denies publication. Moderator approval never overrides this.
+    checkPublicDisplay: async (sourceId: string) => {
+      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
+      try {
+        return await withSqlExecutor(env, async (executor) => {
+          const res = await executor.query<{
+            approval_status: string;
+            auto_acquisition_enabled: boolean;
+            registry_status: string;
+            reuse_basis: readonly string[] | string | null;
+            reuse_license_url: string | null;
+            reuse_scope: string | null;
+            reuse_reviewer: string | null;
+            reuse_reviewed_at: string | null;
+            reuse_expires_at: string | null;
+          }>(
+            `SELECT approval_status, auto_acquisition_enabled, registry_status,
+                    reuse_basis, reuse_license_url, reuse_scope, reuse_reviewer,
+                    reuse_reviewed_at::text AS reuse_reviewed_at,
+                    reuse_expires_at::text AS reuse_expires_at
+             FROM waspada.source_registry WHERE source_id = $1 LIMIT 1`,
+            [sourceId],
+          );
+          const row = res.rows[0];
+          if (!row) return false;
+          const basis = Array.isArray(row.reuse_basis) ? row.reuse_basis : null;
+          const permissions = evaluateSourcePermissions(
+            {
+              approval_status: row.approval_status,
+              auto_acquisition_enabled: row.auto_acquisition_enabled,
+              registry_status: row.registry_status,
+              reuse_basis: basis,
+              reuse_license_url: row.reuse_license_url,
+              reuse_scope: row.reuse_scope,
+              reuse_reviewer: row.reuse_reviewer,
+              reuse_reviewed_at: row.reuse_reviewed_at,
+              reuse_expires_at: row.reuse_expires_at,
+            },
+            new Date().toISOString(),
+            sourceId,
+          );
+          return permissions.publicDisplay === true;
+        });
+      } catch {
+        return false;
+      }
     },
     getProposalDetail: async (id: string) => {
       if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
@@ -376,9 +425,9 @@ export default {
                     `INSERT INTO waspada.report_revisions (
                        dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
                        content_hash, permitted_text, permitted_text_hash, normalization_version,
-                       retrieved_at, revision_status, record_json
+                       retrieved_at, revision_status, record_json, triage_required
                      )
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb, false)
                      ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
                     [
                       datasetKind,
@@ -624,9 +673,9 @@ export default {
           `INSERT INTO waspada.report_revisions (
              dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
              content_hash, permitted_text, permitted_text_hash, normalization_version,
-             retrieved_at, revision_status, record_json
+             retrieved_at, revision_status, record_json, triage_required
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb, false)
            ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
           [
             datasetKind,
@@ -707,13 +756,16 @@ export default {
         console.log(`[news-triage] persist_failures=${persistFailures}`);
       }
         // WJ-INT-02B: drop/uncertain news — audit metadata only via the shared
-        // held contract. Never create revisions, chunks, embeddings, jobs,
-        // incidents, or proposals.
+        // held contract (real tx: lock + snapshot + review-clear + attempt).
+        // Never create revisions, chunks, embeddings, jobs, incidents, or
+        // proposals. Failures count, never block the cycle.
         for (const held of newsResult.held) {
           try {
-            await persistHeldTriageItem(executor, held, datasetKind, TRIAGE_POLICY_VERSION, held.replayed ?? false);
+            await withTransactionalSqlExecutor(env, (txExecutor) =>
+              persistHeldTriageItem(txExecutor, held, datasetKind, TRIAGE_POLICY_VERSION, held.replayed ?? false),
+            );
           } catch {
-            // Audit write failure never blocks the ingestion cycle.
+            persistFailures += 1;
           }
         }
       });

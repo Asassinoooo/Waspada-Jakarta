@@ -103,7 +103,7 @@ function hasAnyToken(basis: readonly string[], tokens: ReadonlySet<string>): boo
  * ambiguous, or expired evidence fails that capability closed. New explicit
  * tokens need no license evidence.
  */
-export function evaluateSourcePermissions(row: RegistryPermissionRow, nowIso: string): SourcePermissions {
+export function evaluateSourcePermissions(row: RegistryPermissionRow, nowIso: string, sourceId?: string): SourcePermissions {
   const denied: SourcePermissions = {
     acquisition: false,
     titleModel: false,
@@ -128,7 +128,11 @@ export function evaluateSourcePermissions(row: RegistryPermissionRow, nowIso: st
     hasAnyToken(basis, DERIVED_RETAIN_TOKENS) ||
     hasAnyToken(basis, PUBLIC_DISPLAY_TOKENS);
   const legacyOnly = !explicit && hasAnyToken(basis, LEGACY_REUSE_TOKENS);
-  const licensed = legacyOnly && hasLicenseEvidence(row, nowIso);
+  // WJ-INT-02B: legacy `public`/`open_access` never grant by themselves.
+  // The reviewer-recorded license must bind the evidence to the actual
+  // source under evaluation: reuse_scope must name the source id. A scope
+  // that names a different source (or no source) fails closed.
+  const licensed = legacyOnly && hasLicenseEvidence(row, nowIso, sourceId);
   const grant = (tokens: ReadonlySet<string>): boolean =>
     hasAnyToken(basis, tokens) || licensed;
   return {
@@ -141,18 +145,27 @@ export function evaluateSourcePermissions(row: RegistryPermissionRow, nowIso: st
     publicDisplay: grant(PUBLIC_DISPLAY_TOKENS),
   };
 }
-
 /**
- * Reviewer-recorded reuse license evidence. The row carries no source
- * identifier, so scope presence (non-empty, recorded by the reviewer) is the
- * checkable evidence; exact source/operation binding is the reviewer's
- * attestation pinned by reuse_reviewer + reuse_reviewed_at. Anything missing,
- * unparseable, stale, or expired fails closed.
+ * Reviewer-recorded reuse license evidence bound to the source under
+ * evaluation. The scope must name the source id: a license recorded for
+ * another source (or for no identifiable source) cannot authorize this one.
+ * Anything missing, unparseable, stale, expired, or bound to a different
+ * source fails closed.
  */
-function hasLicenseEvidence(row: RegistryPermissionRow, nowIso: string): boolean {
+function hasLicenseEvidence(row: RegistryPermissionRow, nowIso: string, sourceId?: string): boolean {
   if (!row.reuse_license_url || !/^https?:\/\/.+/i.test(row.reuse_license_url.trim())) return false;
   if (!row.reuse_reviewer || row.reuse_reviewer.trim().length === 0) return false;
   if (!row.reuse_scope || row.reuse_scope.trim().length === 0) return false;
+  // Scope must bind the evidence to the evaluated source. Without the
+  // source id in scope, a reviewer note written for one publisher would
+  // silently authorize every other publisher carrying a legacy token.
+  if (typeof sourceId === "string" && sourceId.length > 0) {
+    if (!row.reuse_scope.includes(sourceId)) return false;
+  } else {
+    // No source identity to bind against (synthetic/test path): only exact
+    // self-naming scopes count, never a bare description.
+    if (!/^source-[A-Za-z0-9._:-]+$/.test(row.reuse_scope.trim())) return false;
+  }
   const nowMs = Date.parse(nowIso);
   const reviewedMs = row.reuse_reviewed_at ? Date.parse(row.reuse_reviewed_at) : NaN;
   if (!Number.isFinite(nowMs) || !Number.isFinite(reviewedMs)) return false;

@@ -127,6 +127,7 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
             reuse_expires_at: row.reuse_expires_at,
           },
           new Date().toISOString(),
+          sourceId,
         );
         if (!permissions.acquisition) return { cleared: false, reason: "source_not_cleared" };
         if (!(permissions.titleModel || permissions.descriptionModel)) {

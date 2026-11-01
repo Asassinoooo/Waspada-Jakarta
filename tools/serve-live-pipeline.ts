@@ -231,9 +231,14 @@ async function main() {
         console.log("  [ANTARA News] 0 new ingest articles.");
       }
       // Held (drop/uncertain): audit metadata only via the shared held
-      // contract. Never revisions, chunks, or jobs.
+      // contract (real tx: lock + snapshot + review-clear + attempt).
+      // Never revisions, chunks, or jobs. Failures count, never throw.
       for (const held of newsRes.held) {
-        await persistHeldTriageItem(executor, held, "live", TRIAGE_POLICY_VERSION, held.replayed ?? false).catch(() => {});
+        try {
+          await persistHeldTriageItem(executor, held, "live", TRIAGE_POLICY_VERSION, held.replayed ?? false);
+        } catch {
+          persistFailures += 1;
+        }
       }
     } catch (e: any) {
       console.warn(`  [ANTARA News] Poll error: ${e.message}`);
@@ -246,6 +251,11 @@ async function main() {
     for (const rev of discoveredRevisions) {
       const triageDecision = rev.triage;
       if (triageDecision && triageDecision.disposition === "ingest") {
+        if (typeof executor.transaction !== "function") {
+          // Fail closed without a real transaction — same rule as scheduled().
+          persistFailures += 1;
+          continue;
+        }
         try {
           await persistAcceptedRssItem(executor, {
             datasetKind: "live",
@@ -262,7 +272,6 @@ async function main() {
         continue;
       }
       const traceId = `trace-${rev.report_revision_id}`;
-      const contentHash = rev.permitted_text_hash;
 
       // Ensure trace and source exist for foreign keys
       await executor.query(
@@ -288,9 +297,9 @@ async function main() {
         `INSERT INTO waspada.report_revisions (
            dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
            content_hash, permitted_text, permitted_text_hash, normalization_version,
-           retrieved_at, revision_status, record_json
+           retrieved_at, revision_status, record_json, triage_required
          )
-         VALUES ('live', $1, $2, $3, $4, $5, $6, $7, 'v1', $8, 'unreviewed', '{}'::jsonb)
+         VALUES ('live', $1, $2, $3, $4, $5, $6, $7, 'v1', $8, 'unreviewed', '{}'::jsonb, false)
          ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
         [
           rev.report_revision_id,

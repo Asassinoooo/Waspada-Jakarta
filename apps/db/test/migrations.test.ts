@@ -171,6 +171,7 @@ describe('DATA-01 migrations', () => {
         '041_triage_revision_lineage',
         '042_triage_required_provenance',
         '043_source_permission_evidence',
+        '044_triage_required_correction',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -328,6 +329,7 @@ describe('DATA-01 migrations', () => {
       '041_triage_revision_lineage',
       '042_triage_required_provenance',
       '043_source_permission_evidence',
+      '044_triage_required_correction',
     ]);
   });
 
@@ -369,12 +371,13 @@ describe('DATA-01 migrations', () => {
       '041_triage_revision_lineage',
       '042_triage_required_provenance',
       '043_source_permission_evidence',
+      '044_triage_required_correction',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '43');
+    assert.equal(count.rows[0]?.count, '44');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -393,7 +396,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 043_source_permission_evidence/,
+      /Cannot apply migration 000_late_backfill before already applied migration 044_triage_required_correction/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -443,6 +446,7 @@ describe('DATA-01 migrations', () => {
       { version: '041_triage_revision_lineage' },
       { version: '042_triage_required_provenance' },
       { version: '043_source_permission_evidence' },
+      { version: '044_triage_required_correction' },
     ]);
   });
 
@@ -481,6 +485,7 @@ describe('DATA-01 migrations', () => {
       '041_triage_revision_lineage',
       '042_triage_required_provenance',
       '043_source_permission_evidence',
+      '044_triage_required_correction',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -2214,8 +2219,84 @@ describe('DATA-01 migrations', () => {
       await migrationDatabase.close();
     }
   });
-});
 
+  it('044 documents the synthetic backfill limitation without rewriting history', async () => {
+    const correction = migrations.find(({ version }) => version === '044_triage_required_correction');
+    assert.ok(correction, 'the triage-required correction migration is loaded');
+    const migrationDatabase = await createTestDatabase();
+    try {
+      await applyMigrations(migrationDatabase.executor,
+        migrationsBefore(migrations, correction.version));
+      const seed = async (
+        dataset: string, revisionId: string, sourceId: string, revisionKey: string | null, required: boolean,
+      ) => {
+        await migrationDatabase.executor.query(
+          `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+           VALUES ($1, $2, now(), 'succeeded', '{}'::jsonb)
+           ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
+          [`trace-044-${revisionId}`, dataset],
+        );
+        await migrationDatabase.executor.query(
+          `INSERT INTO waspada.source_registry
+             (source_id, trace_id, registry_version, display_name, source_kind, remit,
+              access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+              approval_status, health_status, auto_acquisition_enabled, auto_publication_policy)
+           VALUES ($1, $2, 1, 'Provenance fixture', 'other', ARRAY['test'],
+             'manual_fixture', ARRAY[]::text[], ARRAY[]::text[], ARRAY['test fixture'],
+             'active', 'approved', 'unknown', false, 'never')
+           ON CONFLICT (source_id) DO NOTHING`,
+          [sourceId, `trace-044-${revisionId}`],
+        );
+        const textHash = sha256(`text-044-${revisionId}`);
+        await migrationDatabase.executor.query(
+          `INSERT INTO waspada.report_revisions
+             (dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+              source_revision_key, content_hash, permitted_text, permitted_text_hash,
+              normalization_version, retrieved_at, revision_status, record_json, triage_required)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'v1', now(), 'unreviewed', '{}'::jsonb, $10)`,
+          [dataset, revisionId, `trace-044-${revisionId}`, sourceId,
+            `https://synthetic.invalid/044/${revisionId}`, revisionKey,
+            textHash, `text-044-${revisionId}`, textHash, required],
+        );
+      };
+      // Representative pre-migration rows: synthetic keyed (flag stays true —
+      // immutable history; the job-runner bypasses synthetic by design), live
+      // RSS keyed (true), live plain (false), unknown live keyed (true).
+      await seed('synthetic', 'rev-044-synthetic-keyed', 'source-044-synth', 'local-v1:abc', true);
+      await seed('live', 'rev-044-rss-keyed', 'source-antara-metro', 'guid-rss-1', true);
+      await seed('live', 'rev-044-live-plain', 'source-bmkg-gempa', null, false);
+      await seed('live', 'rev-044-unknown-keyed', 'source-legacy', 'legacy-key', true);
+      const applied = await applyMigrations(migrationDatabase.executor,
+        migrationsThrough(migrations, correction.version));
+      assert.ok(applied.applied.includes('044_triage_required_correction'));
+      // 044 performs no data change: the append-only trigger rejects every
+      // UPDATE on report_revisions, so the flags are byte-identical.
+      const rows = await migrationDatabase.executor.query<{ report_revision_id: string; triage_required: boolean }>(
+        `SELECT report_revision_id, triage_required FROM waspada.report_revisions
+         ORDER BY report_revision_id`,
+      );
+      assert.deepEqual(
+        rows.rows.map((row) => `${row.report_revision_id}:${row.triage_required}`),
+        [
+          'rev-044-live-plain:false',
+          'rev-044-rss-keyed:true',
+          'rev-044-synthetic-keyed:true',
+          'rev-044-unknown-keyed:true',
+        ],
+      );
+      // And the trigger still guards the table: a direct UPDATE is rejected.
+      await assert.rejects(
+        migrationDatabase.executor.query(
+          `UPDATE waspada.report_revisions SET triage_required = false
+           WHERE report_revision_id = 'rev-044-synthetic-keyed'`,
+        ),
+        /append-only/,
+      );
+    } finally {
+      await migrationDatabase.close();
+    }
+  });
+});
 async function readEvidenceRelationRoleSnapshot(testDatabase: TestDatabase) {
   const roleAttributes = await testDatabase.executor.query<{
     rolname: string;

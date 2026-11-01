@@ -318,22 +318,86 @@ export async function applyTriageGate(
     const identity = rev.source_revision_key ?? rev.canonical_url;
     const identityHash = createHash("sha256").update(`${rev.source_id}|${identity}`).digest("hex");
     const contentHash = rev.content_hash ?? rev.permitted_text_hash;
-    // WJ-INT-02B replay short-circuit: an identical (identity, content,
-    // policy) evaluation reuses its cached outcome with no authorization or
-    // model work. The persist layer replays it without new writes.
-    let prior: NewsTriageDecision | null = null;
+    // WJ-INT-02B concurrency note (§G): authorization, cache lookup, and the
+    // model call below happen BEFORE the persistence xact lock, so two
+    // overlapping polls can both observe a cache miss and issue duplicate
+    // model calls for the same evaluation. This is accepted by design: no
+    // long-lived transaction is held across the external model call, and no
+    // new lock/queue infrastructure is introduced. Safety comes from the
+    // persistence layer — the xact-scoped advisory lock plus the
+    // conflict-before-early-return check make the second committer replay
+    // idempotently (no duplicate revisions, jobs, or history corruption);
+    // the bounded provider-error budget suppresses hot retry loops.
+    // WJ-INT-02B authorization-first order: resolve the source capabilities
+    // BEFORE consulting the cache. A cached decision never bypasses current
+    // authorization — revoked or narrowed permissions re-evaluate instead.
+    let authz: TriageAuthorization = { cleared: true };
     try {
-      prior = await findPriorDecision({ itemIdentityHash: identityHash, contentHash, policyVersion, reportRevisionId: rev.report_revision_id });
+      const result = await checkAuthorization(rev.source_id);
+      if (result !== null && typeof result === "object") {
+        authz = result as TriageAuthorization;
+      }
     } catch {
-      prior = null;
+      authz = { cleared: false, reason: "source_not_cleared" };
     }
-    if (prior) {
+    const permissionsAllowReplay =
+      authz.cleared === true &&
+      authz.permissions?.titleRetention === true &&
+      authz.permissions?.derivedRetention === true &&
+      (authz.permissions?.descriptionRetention === true || (item?.descriptionExcerpt ?? null) === null);
+    let prior: NewsTriageDecision | null = null;
+    if (permissionsAllowReplay) {
+      try {
+        prior = await findPriorDecision({ itemIdentityHash: identityHash, contentHash, policyVersion, reportRevisionId: rev.report_revision_id });
+      } catch {
+        // Lookup failure is not a cache miss: skip the replay and run the
+        // fresh authorized evaluation below; the persist layer records it.
+        prior = null;
+      }
+    }
+    if (prior && permissionsAllowReplay) {
       if (prior.disposition === "ingest") {
         counts.ingested += 1;
         if (prior.primaryCategory) {
           byCategory[prior.primaryCategory] = (byCategory[prior.primaryCategory] ?? 0) + 1;
         }
-        kept.push({ ...rev, triage: prior });
+        // The kept revision is rebuilt under the CURRENT permissions below
+        // (same authorized path as a fresh evaluation); the cache supplies
+        // only the disposition outcome, never raw text.
+        const replayTitle = item?.title ?? rev.permitted_text.split("\n\n")[0] ?? "";
+        const replayExcerpt = authz.permissions?.descriptionRetention === true
+          ? (item?.descriptionExcerpt ?? null)
+          : null;
+        try {
+          const rebuilt = buildAuthorizedRevision(
+            rev,
+            { title: replayTitle, descriptionExcerpt: replayExcerpt, canonicalUrl: rev.canonical_url, retrievedAt },
+            { titleRetention: true, descriptionRetention: replayExcerpt !== null },
+          );
+          kept.push({ ...rev, ...rebuilt, evidence_chunks: rebuilt.chunks, triage: prior });
+        } catch {
+          counts.ingested -= 1;
+          counts.uncertain += 1;
+          heldOut.push({
+            sourceId: rev.source_id,
+            itemIdentityHash: identityHash,
+            reportRevisionId: rev.report_revision_id,
+            traceId: `trace-${rev.report_revision_id}`,
+            canonicalUrl: rev.canonical_url,
+            sourceRevisionKey: rev.source_revision_key ?? null,
+            decision: {
+              disposition: "uncertain",
+              jakartaScope: prior.jakartaScope,
+              actionability: prior.actionability,
+              primaryCategory: prior.primaryCategory,
+              incidentType: prior.incidentType,
+              confidence: "low",
+              reasonCodes: ["retention_not_permitted"],
+              evidence: [],
+              modelStatus: "not_cleared",
+            },
+          });
+        }
       } else {
         if (prior.disposition === "drop") {
           counts.dropped += 1;
@@ -353,19 +417,10 @@ export async function applyTriageGate(
       }
       return;
     }
-    // WJ-INT-02B permission-driven single pass (ADR-005): resolve the source
-    // capabilities once, then run Stage A and Stage B on the authorized
-    // excerpt only. Never the original description when description-model use
-    // is denied; never persist what retention denies (see below).
-    let authz: TriageAuthorization = { cleared: true };
-    try {
-      const result = await checkAuthorization(rev.source_id);
-      if (result !== null && typeof result === "object") {
-        authz = result as TriageAuthorization;
-      }
-    } catch {
-      authz = { cleared: false, reason: "source_not_cleared" };
-    }
+    // Fresh evaluation continues with the capabilities resolved above
+    // (single pass: Stage A and Stage B on the authorized excerpt only).
+    // Never the original description when description-model use is denied;
+    // never persist what retention denies (see below).
     const frozenAuthz = (): TriageAuthorization => authz;
     const excerptForPrompt =
       authz.permissions?.descriptionModel === true ? (item?.descriptionExcerpt ?? null) : null;
@@ -416,12 +471,14 @@ export async function applyTriageGate(
     };
     if (finalDecision.disposition === "ingest") {
       // Authorized-payload enforcement: persist ONLY permitted parts. Model
-      // use without durable retention (title unretainable, or an evaluated
-      // excerpt that retention denies) routes to held, never to a revision.
-      // Never drop for this.
+      // use without durable retention (title unretainable, an evaluated
+      // excerpt that retention denies, or derived retention denied so no
+      // chunks/embeddings/summaries may be derived) routes to held, never to
+      // a revision. Never drop for this.
       const titleRetained = authz.permissions?.titleRetention === true;
       const excerptRetained = authz.permissions?.descriptionRetention === true;
-      if (!titleRetained || (prepared.descriptionExcerpt !== null && !excerptRetained)) {
+      const derivedRetained = authz.permissions?.derivedRetention === true;
+      if (!titleRetained || (prepared.descriptionExcerpt !== null && !excerptRetained) || !derivedRetained) {
         counts.uncertain += 1;
         heldOut.push({
           sourceId: rev.source_id,

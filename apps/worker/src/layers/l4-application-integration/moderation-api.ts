@@ -59,16 +59,18 @@ export interface EventProposalDto {
     readonly evidence_ref_id: string;
     readonly is_corroborated?: boolean;
   }[];
-  readonly impacts?: readonly string[];
-  readonly proposed_at: string;
   readonly is_multi_source?: boolean;
   readonly source_count?: number;
   readonly has_discrepancy?: boolean;
   readonly discrepancies?: readonly unknown[];
   readonly caveats?: readonly string[];
+  readonly impacts?: readonly string[];
+  /** WJ-INT-02B: interpreter's independent category for moderator resolution. */
+  readonly interpretation_category?: string | null;
+  /** WJ-INT-02B: registry source id for the public-display rights gate. */
+  readonly source_id?: string | null;
+  readonly proposed_at: string;
 }
-
-/** L4 Moderation Frozen Contract: ModeratorDecisionCommand */
 export interface ModeratorDecisionCommand {
   readonly proposal_id: string;
   readonly action: "publish" | "reject" | "investigate";
@@ -78,7 +80,6 @@ export interface ModeratorDecisionCommand {
    *  unresolved triage/interpreter category mismatch. */
   readonly category_resolution?: "accept_triage" | "accept_interpretation";
 }
-
 // ============================================================================
 // Moderation API Interfaces & Types
 // ============================================================================
@@ -127,6 +128,13 @@ export interface ModerationApiDependencies {
     command: ModeratorDecisionCommand,
     principal: ModerationPrincipal,
   ) => Promise<unknown> | unknown;
+  /**
+   * WJ-INT-02B public-display rights gate. When the proposal carries a
+   * source_id and this checker is wired, publication is denied (403) unless
+   * the source's current registry permissions grant public display.
+   * Moderator approval never overrides missing redistribution rights.
+   */
+  readonly checkPublicDisplay?: (sourceId: string) => Promise<boolean>;
   readonly appOrigin?: string;
   readonly cookieMode?: AccountCookieMode;
   readonly expectedCsrfToken?: string;
@@ -622,7 +630,8 @@ export function createModerationApiHandler(
       // moderator explicitly resolves it. No auto-mapping, no silent
       // agreement. Structured proposals carry no such caveat and pass.
       if (decisionCommand.action === "publish") {
-        const caveats = (await fetchProposalDetail(route.proposalId, dependencies))?.proposal.caveats;
+        const detail = await fetchProposalDetail(route.proposalId, dependencies);
+        const caveats = detail?.proposal.caveats;
         if (Array.isArray(caveats) && caveats.includes("category_mismatch_review")) {
           if (!decisionCommand.category_resolution) {
             return apiError(
@@ -632,8 +641,31 @@ export function createModerationApiHandler(
             );
           }
         }
+        // WJ-INT-02B public-display rights gate: when the proposal carries
+        // a source_id and a checker is wired, publication is denied unless
+        // the source's current registry permissions grant public display.
+        // Moderator approval never overrides missing redistribution rights.
+        const proposalSourceId = (detail?.proposal as { source_id?: unknown } | undefined)?.source_id;
+        if (
+          typeof proposalSourceId === "string" &&
+          proposalSourceId.length > 0 &&
+          typeof dependencies.checkPublicDisplay === "function"
+        ) {
+          let allowed = false;
+          try {
+            allowed = await dependencies.checkPublicDisplay(proposalSourceId);
+          } catch {
+            allowed = false;
+          }
+          if (!allowed) {
+            return apiError(
+              "PUBLICATION_NOT_AUTHORIZED",
+              `Proposal ${route.proposalId} source ${proposalSourceId} does not grant public display`,
+              403,
+            );
+          }
+        }
       }
-
       let publishInput: unknown;
       if (dependencies.buildPublicationInput) {
         publishInput = await dependencies.buildPublicationInput(
@@ -656,21 +688,53 @@ export function createModerationApiHandler(
           ...body,
         };
       }
-      // WJ-INT-02A: when the stored proposal carries a canonical category,
-      // copy it into the publication input's eventDraft so the live writer
-      // validates the canonical slug instead of a mapper guess. Invalid
-      // categories are rejected here, never defaulted.
+      // WJ-INT-02B resolution-aware publication: the moderator's explicit
+      // choice decides the published category, and the choice is recorded in
+      // the publication input for downstream audit (no silent default wins).
+      // accept_triage → proposal.primary_category; accept_interpretation →
+      // proposal.interpretation_category; non-mismatch publishes keep the
+      // stored canonical slug. Invalid or missing selected category → 400.
       {
         const stored = await fetchProposalDetail(route.proposalId, dependencies);
-        const rawCategory = (stored?.proposal as { primary_category?: unknown } | undefined)?.primary_category;
-        if (stored && typeof rawCategory === "string") {
-          if (!isOfficialIncidentCategory(rawCategory)) {
-            return apiError("INVALID_CATEGORY", `Proposal ${route.proposalId} has an unrecognized primary category`, 400);
+        if (stored) {
+          const proposal = stored.proposal as {
+            primary_category?: unknown;
+            interpretation_category?: unknown;
+            caveats?: readonly unknown[];
+          };
+          const mismatched =
+            Array.isArray(proposal.caveats) && proposal.caveats.includes("category_mismatch_review");
+          const rawStored = proposal.primary_category;
+          let selected: unknown;
+          if (mismatched && decisionCommand.action === "publish") {
+            selected =
+              decisionCommand.category_resolution === "accept_interpretation"
+                ? proposal.interpretation_category
+                : proposal.primary_category;
+            if (
+              typeof selected !== "string" ||
+              !isOfficialIncidentCategory(selected)
+            ) {
+              return apiError(
+                "INVALID_CATEGORY",
+                `Proposal ${route.proposalId} has an unrecognized or missing selected category for resolution ${decisionCommand.category_resolution ?? "none"}`,
+                400,
+              );
+            }
+          } else if (typeof rawStored === "string") {
+            if (!isOfficialIncidentCategory(rawStored)) {
+              return apiError("INVALID_CATEGORY", `Proposal ${route.proposalId} has an unrecognized primary category`, 400);
+            }
+            selected = rawStored;
           }
-          const input = publishInput as Record<string, unknown>;
-          const draft = (input.eventDraft ?? input.event) as Record<string, unknown> | undefined;
-          if (draft && typeof draft === "object") {
-            draft.category = rawCategory;
+          if (typeof selected === "string") {
+            const input = publishInput as Record<string, unknown>;
+            const draft = (input.eventDraft ?? input.event) as Record<string, unknown> | undefined;
+            if (draft && typeof draft === "object") {
+              draft.category = selected;
+            }
+            (input as Record<string, unknown>).category_resolution = decisionCommand.category_resolution ?? null;
+            (input as Record<string, unknown>).resolved_category = selected;
           }
         }
       }
