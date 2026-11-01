@@ -10,9 +10,8 @@
 
 import type { AccountRole, AccountStore } from "../../../../db/src/accounts.js";
 import type { AccountCookieMode } from "../../accounts/types.js";
+import { isOfficialIncidentCategory } from "../../../../db/src/incident-categories.js";
 
-// ============================================================================
-// Frozen Contract Types
 // ============================================================================
 
 /** L1 -> L2 Frozen Contract: Stored Evidence Chunk */
@@ -115,6 +114,8 @@ export interface ModerationApiDependencies {
   readonly listPendingProposals?: () => Promise<readonly EventProposalDto[]>;
   readonly getProposalDetail?: (proposalId: string) => Promise<ModerationProposalDetail | null>;
   readonly proposals?: readonly EventProposalDto[];
+  readonly listUncertainTriage?: (options?: { limit?: number }) => Promise<readonly TriageReviewItem[]>;
+  readonly markTriageReviewed?: (itemIdentityHash: string, actorId: string) => Promise<boolean>;
   readonly chunks?:
     | ReadonlyMap<string, readonly StoredEvidenceChunk[]>
     | Record<string, readonly StoredEvidenceChunk[]>;
@@ -128,6 +129,24 @@ export interface ModerationApiDependencies {
   readonly expectedCsrfToken?: string;
   readonly csrfProtection?: boolean;
   readonly now?: () => number;
+}
+
+/** WJ-INT-02A inspection-only uncertain queue item: metadata, never content. */
+export interface TriageReviewItem {
+  readonly source_id: string;
+  readonly item_identity_hash: string;
+  readonly disposition: string;
+  readonly jakarta_scope: string;
+  readonly actionability: string;
+  readonly primary_category: string | null;
+  readonly incident_type: string | null;
+  readonly confidence: string;
+  readonly reason_codes: readonly string[];
+  readonly model_status: string;
+  readonly policy_version: string;
+  readonly evaluated_at: string;
+  readonly reviewed_at: string | null;
+  readonly reviewed_by: string | null;
 }
 
 export type ModerationApiHandler = (request: Request) => Promise<Response | undefined>;
@@ -209,6 +228,8 @@ type ParsedModerationRoute =
   | { readonly kind: "list" }
   | { readonly kind: "detail"; readonly proposalId: string }
   | { readonly kind: "publish"; readonly proposalId: string }
+  | { readonly kind: "triage-list" }
+  | { readonly kind: "triage-review" }
   | { readonly kind: "method_not_allowed"; readonly allowed: string }
   | { readonly kind: "not_found" };
 
@@ -220,6 +241,17 @@ function parseModerationRoute(pathname: string, method: string): ParsedModeratio
   if (cleanPath === "/api/v1/moderation/proposals") {
     if (method === "GET") return { kind: "list" };
     return { kind: "method_not_allowed", allowed: "GET" };
+  }
+  // WJ-INT-02A inspection-only uncertain queue. Reevaluation happens only via
+  // the next authorized poll cycle (new attempt row), never via a
+  // promote-to-ingest or refetch action here.
+  if (cleanPath === "/api/v1/moderation/triage") {
+    if (method === "GET") return { kind: "triage-list" };
+    return { kind: "method_not_allowed", allowed: "GET" };
+  }
+  if (cleanPath === "/api/v1/moderation/triage/review") {
+    if (method === "POST") return { kind: "triage-review" };
+    return { kind: "method_not_allowed", allowed: "POST" };
   }
   const match = cleanPath.match(/^\/api\/v1\/moderation\/proposals\/([^/]+)(?:\/([^/]+))?$/);
   if (!match) {
@@ -474,6 +506,50 @@ export function createModerationApiHandler(
       );
     }
 
+    // WJ-INT-02A GET /api/v1/moderation/triage — inspection-only uncertain
+    // queue. Metadata only: no title, description, URL, or chunk text.
+    if (route.kind === "triage-list") {
+      const reader = dependencies.listUncertainTriage;
+      if (!reader) {
+        return apiError("TRIAGE_UNAVAILABLE", "Uncertain triage review is not configured", 503);
+      }
+      const limitParam = new URL(request.url, "http://localhost").searchParams.get("limit");
+      const limit = limitParam === null ? 100 : Math.max(1, Math.min(100, Math.floor(Number(limitParam) || 100)));
+      const items = await reader({ limit });
+      return jsonResponse({ items, total: items.length }, 200);
+    }
+
+    // WJ-INT-02A POST /api/v1/moderation/triage/review — inspection-only
+    // reviewed flag. No promote-to-ingest, no refetch, no re-ingest path.
+    if (route.kind === "triage-review") {
+      const csrfCheck = checkCsrf(request, currentPrincipal, dependencies);
+      if (!csrfCheck.valid) {
+        return apiError(csrfCheck.code, csrfCheck.message, csrfCheck.status);
+      }
+      let body: Record<string, unknown> = {};
+      try {
+        const rawText = await request.text();
+        if (rawText.trim().length > 0) {
+          body = JSON.parse(rawText);
+          if (typeof body !== "object" || body === null || Array.isArray(body)) {
+            return apiError("INVALID_JSON", "Request body must be a JSON object", 400);
+          }
+        }
+      } catch {
+        return apiError("INVALID_JSON", "Malformed JSON payload", 400);
+      }
+      const hash = body.item_identity_hash;
+      if (typeof hash !== "string" || !/^[0-9a-f]{64}$/.test(hash)) {
+        return apiError("INVALID_JSON", "item_identity_hash must be a 64-char lowercase hex sha256", 400);
+      }
+      const marker = dependencies.markTriageReviewed;
+      if (!marker) {
+        return apiError("TRIAGE_UNAVAILABLE", "Uncertain triage review is not configured", 503);
+      }
+      const marked = await marker(hash, currentPrincipal.actorId);
+      return jsonResponse({ ok: true, reviewed: marked }, 200);
+    }
+
     // 2. GET /api/v1/moderation/proposals/:id
     if (route.kind === "detail") {
       const detail = await fetchProposalDetail(route.proposalId, dependencies);
@@ -556,6 +632,24 @@ export function createModerationApiHandler(
           command: decisionCommand,
           ...body,
         };
+      }
+      // WJ-INT-02A: when the stored proposal carries a canonical category,
+      // copy it into the publication input's eventDraft so the live writer
+      // validates the canonical slug instead of a mapper guess. Invalid
+      // categories are rejected here, never defaulted.
+      {
+        const stored = await fetchProposalDetail(route.proposalId, dependencies);
+        const rawCategory = (stored?.proposal as { primary_category?: unknown } | undefined)?.primary_category;
+        if (stored && typeof rawCategory === "string") {
+          if (!isOfficialIncidentCategory(rawCategory)) {
+            return apiError("INVALID_CATEGORY", `Proposal ${route.proposalId} has an unrecognized primary category`, 400);
+          }
+          const input = publishInput as Record<string, unknown>;
+          const draft = (input.eventDraft ?? input.event) as Record<string, unknown> | undefined;
+          if (draft && typeof draft === "object") {
+            draft.category = rawCategory;
+          }
+        }
       }
 
       try {

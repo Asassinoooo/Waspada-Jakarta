@@ -13,8 +13,9 @@ import { createJobRunner } from "../apps/intelligence/src/job-runner.js";
 import { getNineRouterConfig } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
-import { createNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "../apps/worker/src/runtime/news-poll-runtime.js";
-import { PublicReadModel } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
+import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
+import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-composition.js";
+import { recordTriageDecision, newsTriageIdentityHash } from "../apps/db/src/news-triage-store.js";
 import worker from "../apps/worker/src/index.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
 
@@ -180,20 +181,7 @@ async function main() {
   console.log("[Ingestion] Initializing live source pollers (PetaBencana, BMKG, ANTARA News)...");
   async function pollLiveFeeds() {
     console.log("\n[Ingestion Cycle] Polling live Jakarta sources...");
-    const discoveredRevisions: Array<{
-      report_revision_id: string;
-      source_id: string;
-      canonical_url: string;
-      permitted_text: string;
-      permitted_text_hash: string;
-      retrieved_at: string;
-      chunks: readonly {
-        chunk_index: number;
-        span_start: number;
-        span_end: number;
-        text: string;
-      }[];
-    }> = [];
+    const discoveredRevisions: StoredReportRevision[] = [];
 
     // A. PetaBencana
     try {
@@ -223,15 +211,38 @@ async function main() {
       console.warn(`  [BMKG] Poll error: ${e.message}`);
     }
 
-    // C. ANTARA Megapolitan RSS
+    // C. ANTARA Megapolitan RSS — WJ-INT-02A: mandatory shared live gate.
     try {
-      const newsRunner = createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS });
+      const toolEnv: WorkerEnvironment = {
+        NINEROUTER_URL: process.env.NINEROUTER_URL,
+        NINEROUTER_KEY: process.env.NINEROUTER_KEY,
+        NINEROUTER_CHAT_MODEL: process.env.NINEROUTER_CHAT_MODEL,
+      };
+      const gate = buildLiveTriageGate(toolEnv, executor);
+      const newsRunner = createLiveNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS, triage: gate });
       const newsRes = await newsRunner.poll();
       if (newsRes.revisions.length > 0) {
-        console.log(`  [ANTARA News] Discovered ${newsRes.revisions.length} megapolitan articles.`);
+        console.log(`  [ANTARA News] Discovered ${newsRes.revisions.length} megapolitan articles (ingest).`);
         discoveredRevisions.push(...newsRes.revisions);
       } else {
-        console.log("  [ANTARA News] 0 new articles.");
+        console.log("  [ANTARA News] 0 new ingest articles.");
+      }
+      // Held (drop/uncertain): audit metadata only, never revisions/jobs.
+      for (const held of newsRes.held) {
+        await recordTriageDecision(executor, {
+          datasetKind: "live",
+          itemIdentityHash: held.itemIdentityHash,
+          sourceId: held.sourceId,
+          traceId: held.traceId,
+          disposition: held.decision.disposition,
+          jakartaScope: held.decision.jakartaScope,
+          actionability: held.decision.actionability,
+          primaryCategory: held.decision.primaryCategory,
+          incidentType: held.decision.incidentType,
+          confidence: held.decision.confidence,
+          reasonCodes: [...held.decision.reasonCodes],
+          modelStatus: held.decision.modelStatus,
+        }).catch(() => {});
       }
     } catch (e: any) {
       console.warn(`  [ANTARA News] Poll error: ${e.message}`);

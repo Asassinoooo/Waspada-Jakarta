@@ -338,6 +338,71 @@ export async function publishModerationDecision(
   return (await response.json()) as { ok: boolean; status: string };
 }
 
+export interface UncertainTriageItem {
+  readonly source_id: string;
+  readonly item_identity_hash: string;
+  readonly disposition: string;
+  readonly jakarta_scope: string;
+  readonly actionability: string;
+  readonly primary_category: string | null;
+  readonly incident_type: string | null;
+  readonly confidence: string;
+  readonly reason_codes: readonly string[];
+  readonly model_status: string;
+  readonly policy_version: string;
+  readonly evaluated_at: string;
+  readonly reviewed_at: string | null;
+  readonly reviewed_by: string | null;
+}
+
+export async function fetchUncertainTriage(
+  options: { apiBaseUrl?: string; fetcher?: typeof fetch; signal?: AbortSignal } = {}
+): Promise<UncertainTriageItem[]> {
+  const base = options.apiBaseUrl ?? "/api/v1/moderation";
+  const fetchFn =
+    options.fetcher ??
+    (typeof window !== "undefined" && window.fetch ? window.fetch.bind(window) : globalThis.fetch);
+  const response = await fetchFn(`${base}/triage`, {
+    headers: { accept: "application/json" },
+    credentials: "same-origin",
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch uncertain triage: HTTP ${response.status}`);
+  }
+  const data = (await response.json()) as { items?: UncertainTriageItem[] };
+  return data.items || [];
+}
+
+export async function markTriageItemReviewed(
+  itemIdentityHash: string,
+  options: { apiBaseUrl?: string; fetcher?: typeof fetch; csrfToken?: string; signal?: AbortSignal } = {}
+): Promise<{ ok: boolean; reviewed: boolean }> {
+  const base = options.apiBaseUrl ?? "/api/v1/moderation";
+  const fetchFn =
+    options.fetcher ??
+    (typeof window !== "undefined" && window.fetch ? window.fetch.bind(window) : globalThis.fetch);
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    accept: "application/json",
+  };
+  if (options.csrfToken) {
+    headers["X-CSRF-Token"] = options.csrfToken;
+    headers["x-csrf-token"] = options.csrfToken;
+  }
+  const response = await fetchFn(`${base}/triage/review`, {
+    method: "POST",
+    headers,
+    credentials: "same-origin",
+    body: JSON.stringify({ item_identity_hash: itemIdentityHash }),
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Triage review failed: HTTP ${response.status}`);
+  }
+  return (await response.json()) as { ok: boolean; reviewed: boolean };
+}
+
 export function ModeratorReviewQueue({
   proposals: controlledProposals,
   initialChunks = {},
@@ -371,8 +436,25 @@ export function ModeratorReviewQueue({
   const [queueCategoryFilter, setQueueCategoryFilter] = useState<string>("all");
   const [activeClaimId, setActiveClaimId] = useState<string | null>(null);
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
+  const [reviewView, setReviewView] = useState<"proposals" | "triage">("proposals");
+  const [triageItems, setTriageItems] = useState<UncertainTriageItem[]>([]);
+  const [triageLoading, setTriageLoading] = useState<boolean>(false);
+  const [triageFeedback, setTriageFeedback] = useState<string | null>(null);
 
   const effectiveCsrfToken = propCsrfToken || sessionCsrf;
+
+  const loadTriage = async () => {
+    setTriageLoading(true);
+    setTriageFeedback(null);
+    try {
+      const items = await fetchUncertainTriage({ apiBaseUrl, fetcher });
+      setTriageItems(items);
+    } catch {
+      setTriageFeedback("Gagal memuat antrean tertahan.");
+    } finally {
+      setTriageLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (controlledProposals) {
@@ -406,6 +488,12 @@ export function ModeratorReviewQueue({
       cancelled = true;
     };
   }, [controlledProposals, apiBaseUrl, fetcher]);
+
+  useEffect(() => {
+    if (reviewView === "triage" && !controlledProposals) {
+      void loadTriage();
+    }
+  }, [reviewView]);
   // Real-time EventSource listener for streaming ingestion & auto-updates
   useEffect(() => {
     if (controlledProposals || typeof window === "undefined" || typeof EventSource === "undefined") {
@@ -652,6 +740,27 @@ export function ModeratorReviewQueue({
         </div>
       </section>
 
+      <div className="queue-filter-bar" role="tablist" aria-label="Tampilan moderasi">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={reviewView === "proposals"}
+          className={`queue-filter-btn ${reviewView === "proposals" ? "queue-filter-btn--active" : ""}`}
+          onClick={() => setReviewView("proposals")}
+        >
+          Proposal ({queue.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={reviewView === "triage"}
+          className={`queue-filter-btn ${reviewView === "triage" ? "queue-filter-btn--active" : ""}`}
+          onClick={() => setReviewView("triage")}
+        >
+          Tinjauan Tertahan
+        </button>
+      </div>
+
       {feedback && (
         <div
           className={`feedback-banner feedback-banner--${feedback.type}`}
@@ -669,11 +778,57 @@ export function ModeratorReviewQueue({
         </div>
       )}
 
-      {loading ? (
-        <div className="state-panel" role="status">
-          Memuat antrean proposal moderasi…
-        </div>
-      ) : queue.length === 0 ? (
+      {reviewView === "triage" ? (
+        <section className="state-panel" aria-label="Antrean tertahan untuk inspeksi">
+          <p className="section-kicker">Inspeksi metadata — tanpa teks artikel</p>
+          <h3>Tinjauan Tertahan</h3>
+          <p>Keputusan drop/uncertain hanya metadata. Peninjauan ulang terjadi lewat siklus polling resmi berikutnya.</p>
+          {triageFeedback && <p role="alert">{triageFeedback}</p>}
+          {triageLoading ? (
+            <p role="status">Memuat antrean tertahan…</p>
+          ) : triageItems.length === 0 ? (
+            <p role="status">Tidak ada keputusan tertahan.</p>
+          ) : (
+            <ul className="proposal-queue-list">
+              {triageItems.map((item) => (
+                <li key={item.item_identity_hash}>
+                  <div>
+                    <strong>{item.source_id}</strong>
+                    <span> · {item.item_identity_hash.slice(0, 12)}… · {item.disposition} · {item.jakarta_scope} · {item.actionability}</span>
+                  </div>
+                  <div>
+                    <span>Kategori: {item.primary_category ?? item.incident_type ?? "—"}</span>
+                    <span> · Keyakinan: {item.confidence} · {item.model_status}</span>
+                  </div>
+                  <div>
+                    <span>Alasan: {item.reason_codes.join(", ")}</span>
+                    <span> · Ditinjau: {item.reviewed_at ? `${item.reviewed_at} oleh ${item.reviewed_by ?? "—"}` : "belum"}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="queue-filter-btn"
+                    onClick={async () => {
+                      try {
+                        await markTriageItemReviewed(item.item_identity_hash, {
+                          apiBaseUrl,
+                          fetcher,
+                          csrfToken: effectiveCsrfToken,
+                        });
+                        setTriageFeedback("Ditandai ditinjau.");
+                        await loadTriage();
+                      } catch {
+                        setTriageFeedback("Gagal menandai ditinjau.");
+                      }
+                    }}
+                  >
+                    Tandai ditinjau
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : loading ? (
         <div className="moderator-empty-queue" role="status">
           <div className="empty-queue-icon">✓</div>
           <h3>Semua proposal telah ditinjau</h3>

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Agent } from "@mastra/core/agent";
+import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../db/src/incident-categories.js";
 import {
   createNineRouterMastraAgent,
   extractJsonFromText,
@@ -9,18 +10,7 @@ export const ReportInterpretationSchema = z.object({
   summary: z.string().min(1),
   incidentType: z.string().min(1),
   severity: z.enum(["low", "medium", "high", "critical", "unknown"]).default("unknown"),
-  primaryCategory: z.enum([
-    "crime_personal_security",
-    "demonstrations_public_gatherings",
-    "crowds_major_events",
-    "violence_immediate_threats",
-    "disasters_weather",
-    "fires_infrastructure_hazards",
-    "transport_road_incidents",
-    "utilities_essential_services",
-    "health_environmental_advisories",
-    "group_specific_critical_notices",
-  ]),
+  primaryCategory: z.enum(OFFICIAL_INCIDENT_CATEGORIES),
   location: z.object({
     label: z.string().nullable(),
     approximateCoordinates: z.tuple([z.number(), z.number()]).nullable(),
@@ -125,7 +115,7 @@ Format your output as a single JSON object with these keys:
 {
   "summary": string,
   "incidentType": string,
-  "primaryCategory": "crime_personal_security"|"demonstrations_public_gatherings"|"crowds_major_events"|"violence_immediate_threats"|"disasters_weather"|"fires_infrastructure_hazards"|"transport_road_incidents"|"utilities_essential_services"|"health_environmental_advisories"|"group_specific_critical_notices",
+  "primaryCategory": ${OFFICIAL_INCIDENT_CATEGORIES.map((slug) => `"${slug}"`).join("|")},
   "location": { "label": string | null, "approximateCoordinates": [number, number] | null, "precision": "exact"|"approximate"|"corridor"|"district"|"unknown" },
   "eventTime": { "value": string | null, "precision": "exact"|"date"|"range"|"unknown" },
   "entities": [{ "name": string, "kind": "person"|"organization"|"vehicle"|"infrastructure"|"other" }],

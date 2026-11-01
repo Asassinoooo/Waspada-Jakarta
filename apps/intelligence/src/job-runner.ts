@@ -159,31 +159,45 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           });
         }
 
-        let triageContext: IncidentWorkflowInput["triage"];
-        try {
-          const triageRes = await options.executor.query<{
+        // WJ-INT-02A revision-keyed triage gate: applies ONLY to revisions
+        // produced by the news/RSS gate. Missing rows mean the revision was
+        // never gated (structured feeds, webhooks, synthetic fixtures) — run
+        // untriaged as before. Drop/uncertain rows mean the news item was
+        // held: route to needs_review, never run the workflow.
+        const triageRow = await options.executor
+          .query<{
+            disposition: string;
             primary_category: string | null;
             incident_type: string | null;
             jakarta_scope: string;
+            actionability: string;
+            confidence: string;
+            reason_codes: readonly string[];
+            item_identity_hash: string;
           }>(
-            `SELECT primary_category, incident_type, jakarta_scope
+            `SELECT disposition, primary_category, incident_type, jakarta_scope,
+               actionability, confidence, reason_codes, item_identity_hash
              FROM waspada.news_triage_decisions
-             WHERE dataset_kind = $1 AND source_id = $2
-               AND disposition = 'ingest'
-             ORDER BY evaluated_at DESC LIMIT 1`,
-            [rev.dataset_kind, rev.source_id],
-          );
-          const row = triageRes.rows[0];
-          if (row) {
-            triageContext = {
-              primaryCategory: row.primary_category,
-              incidentType: row.incident_type,
-              jakartaScope: row.jakarta_scope,
-            };
-          }
-        } catch {
-          triageContext = undefined;
+             WHERE dataset_kind = $1 AND report_revision_id = $2`,
+            [rev.dataset_kind, rev.report_revision_id],
+          )
+          .then((res) => res.rows[0] ?? null)
+          .catch(() => null);
+        if (triageRow && triageRow.disposition !== "ingest") {
+          await incidentRepo.markAiJobNeedsReview(job.jobId, leaseToken, "triage_decision_held");
+          return false;
         }
+        const triageContext: IncidentWorkflowInput["triage"] | undefined = triageRow
+          ? {
+              disposition: "ingest",
+              primaryCategory: triageRow.primary_category,
+              incidentType: triageRow.incident_type,
+              jakartaScope: triageRow.jakarta_scope,
+              actionability: triageRow.actionability,
+              confidence: triageRow.confidence,
+              itemIdentityHash: triageRow.item_identity_hash,
+            }
+          : undefined;
 
         const workflowInput: IncidentWorkflowInput = {
           jobId: job.jobId,

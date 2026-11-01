@@ -151,6 +151,8 @@ test("createNewsPollRuntime polls feeds, preserves all valid fresh items pre-gat
   assert.equal(result.revisions.length, 4);
   assert.equal(result.length, 4); // Array-like access
   assert.equal(callbackRevisions.length, 4);
+  // WJ-INT-02A: no gate ran, so nothing is held.
+  assert.equal(result.held.length, 0);
 
   // Check first revision adherence to Frozen Contract (StoredReportRevision)
   const rev1 = result.revisions[0]!;

@@ -568,3 +568,98 @@ test("POST publish handles publisher conflict outcome (409)", async () => {
   assert.equal(body.status, "conflict");
   assert.equal(body.code, "proposal_already_decided");
 });
+
+// ============================================================================
+// WJ-INT-02A Inspection-only uncertain triage review
+// ============================================================================
+
+const triageItems = [
+  {
+    source_id: "source-antara-metro",
+    item_identity_hash: "a1b2c3d4e5f6…",
+    disposition: "uncertain",
+    jakarta_scope: "unknown",
+    actionability: "unknown",
+    primary_category: null,
+    incident_type: null,
+    confidence: "low",
+    reason_codes: ["ambiguous_location"],
+    model_status: "ok",
+    policy_version: "wj-int-02-v1",
+    evaluated_at: "2026-10-26T08:00:00Z",
+    reviewed_at: null,
+    reviewed_by: null,
+  },
+];
+
+test("GET triage requires auth: anonymous 401, inactive 403, non-moderator 403", async () => {
+  const anon = createModerationApiHandler({ authenticate: async () => null, listUncertainTriage: async () => triageItems });
+  const anonRes = await anon(new Request("http://localhost/api/v1/moderation/triage"));
+  assert.equal(anonRes?.status, 401);
+
+  const suspended = createModerationApiHandler({
+    principal: { actorId: "m", role: "moderator", active: false },
+    listUncertainTriage: async () => triageItems,
+  });
+  assert.equal((await suspended(new Request("http://localhost/api/v1/moderation/triage")))?.status, 403);
+
+  const user = createModerationApiHandler({
+    principal: { actorId: "u", role: "user", active: true },
+    listUncertainTriage: async () => triageItems,
+  });
+  assert.equal((await user(new Request("http://localhost/api/v1/moderation/triage")))?.status, 403);
+});
+
+test("GET triage returns safelisted metadata fields only", async () => {
+  const handler = createModerationApiHandler({
+    principal: { actorId: "mod-1", role: "moderator", active: true },
+    listUncertainTriage: async () => triageItems,
+  });
+  const response = await handler(new Request("http://localhost/api/v1/moderation/triage"));
+  assert.equal(response?.status, 200);
+  const body = (await response!.json()) as { items: Record<string, unknown>[] };
+  assert.equal(body.items.length, 1);
+  const item = body.items[0]!;
+  assert.ok(!("permitted_text" in item) && !("title" in item) && !("canonical_url" in item) && !("url" in item));
+  assert.equal(item.source_id, "source-antara-metro");
+  assert.equal(item.disposition, "uncertain");
+});
+
+test("POST triage review enforces CSRF and sets reviewed flag idempotently", async () => {
+  let marked = 0;
+  const fullHash = "a".repeat(64);
+  const handler = createModerationApiHandler({
+    principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-triage" },
+    markTriageReviewed: async () => {
+      marked += 1;
+      return true;
+    },
+  });
+  const noCsrf = await handler(
+    new Request("http://localhost/api/v1/moderation/triage/review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ item_identity_hash: fullHash }),
+    }),
+  );
+  assert.equal(noCsrf?.status, 403);
+
+  const ok = await handler(
+    new Request("http://localhost/api/v1/moderation/triage/review", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-triage" },
+      body: JSON.stringify({ item_identity_hash: fullHash }),
+    }),
+  );
+  assert.equal(ok?.status, 200);
+  assert.equal(marked, 1);
+  const again = await handler(
+    new Request("http://localhost/api/v1/moderation/triage/review", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-triage" },
+      body: JSON.stringify({ item_identity_hash: fullHash }),
+    }),
+  );
+  assert.equal(again?.status, 200);
+  assert.equal(marked, 2);
+});

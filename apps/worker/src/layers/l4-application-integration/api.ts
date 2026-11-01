@@ -56,6 +56,10 @@ export interface WorkerEnvironment {
   PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
   INTERNAL_SERVICE_KEY?: string;
   SQL_EXECUTOR?: SqlExecutor;
+  /** WJ-INT-02A live triage transport (Worker bindings; secrets via dashboard/wrangler secret). */
+  NINEROUTER_URL?: string;
+  NINEROUTER_KEY?: string;
+  NINEROUTER_CHAT_MODEL?: string;
 }
 const readModel = new PublicReadModel(noConfiguredSources);
 const maxBriefingRequestBytes = 256 * 1024;
