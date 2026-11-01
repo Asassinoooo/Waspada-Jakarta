@@ -4,7 +4,7 @@ import { buildLiveTriageGate, triageChatEndpoint } from "../src/runtime/news-tri
 import type { SqlExecutor } from "../../db/src/sql.js";
 const fakeExecutor = {
   async query() {
-    return { rows: [{ approval_status: "approved", auto_acquisition_enabled: true, registry_status: "active", reuse_basis: ["public"], remit: "general news" }] };
+    return { rows: [{ approval_status: "approved", auto_acquisition_enabled: true, registry_status: "active", reuse_basis: ["model_triage", "model_description"], remit: "general news" }] };
   },
   async execute() {},
 } as unknown as SqlExecutor;
@@ -110,7 +110,7 @@ test("transport failures and garbage responses resolve without leaking secrets",
     const gateOk = buildLiveTriageGate({ NINEROUTER_URL: `${secretBase}/v1/`, NINEROUTER_KEY: secretKey }, fakeExecutor);
     const parsed = await gateOk.callChat!("system-prompt", "user-prompt");
     assert.deepEqual(parsed, { disposition: "ingest" });
-    assert.ok(seenBodies.some((b) => b.includes("ag/gemini-3.8-flash")));
+    assert.ok(seenBodies.some((b) => b.includes("Waspada-Jakarta")));
     for (const blob of [...seenBodies, ...logged]) {
       assert.ok(!blob.includes(secretKey), "secret key must never appear in bodies or logs");
     }

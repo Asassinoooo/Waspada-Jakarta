@@ -21,7 +21,7 @@ export function getNineRouterConfig(): NineRouterConfig {
   const rawUrl = process.env.NINEROUTER_URL?.trim() || "http://127.0.0.1:9090";
   const baseUrl = rawUrl.replace(/\/+$/, "");
   const apiKey = process.env.NINEROUTER_KEY?.trim() || "";
-  const chatModel = process.env.NINEROUTER_CHAT_MODEL?.trim() || "ag/gemini-3.8-flash";
+  const chatModel = process.env.NINEROUTER_CHAT_MODEL?.trim() || "Waspada-Jakarta";
   const embeddingModel = process.env.NINEROUTER_EMBEDDING_MODEL?.trim() || "gemini/gemini-embedding-2-preview";
   const rawMode = process.env.NINEROUTER_MODE?.trim().toLowerCase();
   const executionMode: NineRouterExecutionMode =

@@ -15,4 +15,4 @@ AUTH_GOOGLE_ANDROID_CLIENT_ID=REPLACE_WITH_ANDROID_CLIENT_ID.apps.googleusercont
 # to the same names in process env (see .env.local).
 # NINEROUTER_URL=https://your-ninerouter-host:9090/v1
 # NINEROUTER_KEY=REPLACE_LOCALLY
-# NINEROUTER_CHAT_MODEL=ag/gemini-3.8-flash
+# NINEROUTER_CHAT_MODEL=Waspada-Jakarta

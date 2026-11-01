@@ -26,7 +26,7 @@ export interface AiProposalServiceOptions {
   readonly baseUrl?: string;
   /** API key for authenticating with LLM provider. */
   readonly apiKey?: string;
-  /** Generative model identifier (defaults to my-gateway/ag/gemini-3.8-flash-high). */
+  /** Generative model identifier (defaults to Waspada-Jakarta). */
   readonly model?: string;
   /** Alternative alias for model. */
   readonly chatModel?: string;
@@ -73,7 +73,7 @@ export interface AiProposalService {
   ): Promise<AiProposalExtractionResult>;
 }
 
-const DEFAULT_MODEL = "my-gateway/ag/gemini-3.8-flash-high";
+const DEFAULT_MODEL = "Waspada-Jakarta";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 const SYSTEM_PROMPT = `You are the Waspada Jakarta incident extraction model.

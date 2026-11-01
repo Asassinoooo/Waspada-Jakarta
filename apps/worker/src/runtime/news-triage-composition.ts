@@ -81,8 +81,8 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
   const baseUrl = readCredential(env.NINEROUTER_URL, "NINEROUTER_URL");
   const apiKey = readCredential(env.NINEROUTER_KEY, "NINEROUTER_KEY");
   const chatModel =
-    readCredential(env.NINEROUTER_CHAT_MODEL, "NINEROUTER_CHAT_MODEL", "ag/gemini-3.8-flash") ||
-    "ag/gemini-3.8-flash";
+    readCredential(env.NINEROUTER_CHAT_MODEL, "NINEROUTER_CHAT_MODEL", "Waspada-Jakarta") ||
+    "Waspada-Jakarta";
 
   const gate: LiveTriageGate = {
     sourceRemit: "general news",
