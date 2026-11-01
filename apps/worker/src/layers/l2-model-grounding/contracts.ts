@@ -6,20 +6,9 @@
 
 export const CONTRACT_VERSION = "2.0" as const;
 
-export const CATEGORIES = [
-  "crime_personal_security",
-  "demonstrations_public_gatherings",
-  "crowds_major_events",
-  "violence_immediate_threats",
-  "disasters_weather",
-  "fires_infrastructure_hazards",
-  "transport_road_incidents",
-  "utilities_essential_services",
-  "health_environmental_advisories",
-  "group_specific_critical_notices",
-] as const;
-
-export type Category = (typeof CATEGORIES)[number];
+import type { OfficialIncidentCategory } from "../../../../db/src/incident-categories.js";
+export { OFFICIAL_INCIDENT_CATEGORIES as CATEGORIES } from "../../../../db/src/incident-categories.js";
+export type Category = OfficialIncidentCategory;
 export type DatasetKind = "live" | "historical" | "synthetic";
 export type RevisionStatus = "unreviewed" | "eligible" | "quarantined" | "superseded" | "retracted";
 export type EvidenceRelation = "supports" | "contradicts" | "updates" | "context";

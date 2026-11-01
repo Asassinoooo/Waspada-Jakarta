@@ -14,6 +14,8 @@
  * entirely; it applies only to free-text news/RSS ingestion.
  */
 
+import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-categories.js";
+
 export const TRIAGE_POLICY_VERSION = 'wj-int-02-v1' as const;
 
 export type TriageDisposition = 'ingest' | 'drop' | 'uncertain';
@@ -53,6 +55,21 @@ export interface NewsTriageDecision {
   readonly modelStatus: TriageModelStatus;
 }
 
+/** Reuse tokens that explicitly permit model triage use (ADR-005). */
+export const MODEL_TRIAGE_REUSE_TOKENS: ReadonlySet<string> = new Set([
+  'model_triage',
+  'ai_processing',
+  'open_access',
+  'public',
+]);
+
+/** Reuse tokens that permit retaining the RSS description excerpt. */
+export const DESCRIPTION_REUSE_TOKENS: ReadonlySet<string> = new Set([
+  'excerpt_permitted',
+  'open_access',
+  'public',
+]);
+
 export const TRIAGE_REASON_CODES = [
   'invalid_entry',
   'missing_identity',
@@ -67,6 +84,7 @@ export const TRIAGE_REASON_CODES = [
   'conflicting_evidence',
   'provider_error',
   'invalid_model_output',
+  'provider_context_only_exception',
   'triage_v1_ingest',
   'triage_v1_stage_a',
 ] as const;
@@ -94,6 +112,8 @@ export interface TriageNewsItem {
 export interface TriageAuthorization {
   readonly cleared: boolean;
   readonly reason?: string;
+  /** Registry reuse_basis echoed for description gating; absent when uncleared. */
+  readonly reuseBasis?: readonly string[];
 }
 
 /** Function the poller supplies: checks source_registry approval for acquisition+model use. */
@@ -220,18 +240,7 @@ export async function precheckNewsItem(
   return { needsSemantic: true, decision: null };
 }
 
-const OFFICIAL_CATEGORIES: ReadonlySet<string> = new Set([
-  'crime_personal_security',
-  'demonstrations_public_gatherings',
-  'crowds_major_events',
-  'violence_immediate_threats',
-  'disasters_weather',
-  'fires_infrastructure_hazards',
-  'transport_road_incidents',
-  'utilities_essential_services',
-  'health_environmental_advisories',
-  'group_specific_critical_notices',
-]);
+const OFFICIAL_CATEGORIES: ReadonlySet<string> = new Set<string>(OFFICIAL_INCIDENT_CATEGORIES);
 
 const DISPOSITIONS: ReadonlySet<string> = new Set(['ingest', 'drop', 'uncertain']);
 const SCOPES: ReadonlySet<string> = new Set([
@@ -357,14 +366,61 @@ export function parseTriageModelOutput(
   }
 
   // Semantic coherence rules (hard-fail, not silent repair).
-  if (disposition === 'drop' && jakartaScope !== 'outside_scope') {
-    // A drop is only ever justified by clear out-of-scope or non-actionable evidence.
+  // Ingest is strict: only in-scope Jakarta events with actionable impact,
+  // a real category, a described incident type, non-low confidence, quoted
+  // evidence, and ingest-justifying reason codes.
+  if (disposition === 'ingest') {
+    if (jakartaScope !== 'dki_jakarta' && jakartaScope !== 'direct_jakarta_impact') {
+      throw new TriageOutputError('ingest requires jakartaScope dki_jakarta or direct_jakarta_impact');
+    }
     const codes = raw.reasonCodes as readonly string[];
-    const justified = codes.includes('outside_scope') || codes.includes('non_actionable') || codes.includes('invalid_entry') || codes.includes('stale_item');
-    if (!justified) throw new TriageOutputError('drop requires outside_scope or non_actionable evidence');
+    if (actionability === 'context_only') {
+      // context_only ingests only under the explicit policy exception with
+      // documented Jakarta impact evidence (code checked here, prose in prompt).
+      if (!codes.includes('provider_context_only_exception')) {
+        throw new TriageOutputError('ingest with context_only requires provider_context_only_exception');
+      }
+    } else if (actionability !== 'immediate' && actionability !== 'actionable') {
+      throw new TriageOutputError('ingest requires actionability immediate or actionable');
+    }
+    if (primaryCategory === null) {
+      throw new TriageOutputError('ingest requires a primaryCategory');
+    }
+    if (typeof incidentType !== 'string' || incidentType.trim().length < 1) {
+      throw new TriageOutputError('ingest requires a non-empty incidentType');
+    }
+    if (confidence === 'low') {
+      throw new TriageOutputError('ingest requires confidence above low');
+    }
+    if (evidence.length < 1) {
+      throw new TriageOutputError('ingest requires at least one evidence quote');
+    }
+    for (const code of codes) {
+      if (code !== 'triage_v1_ingest' && code !== 'provider_context_only_exception') {
+        throw new TriageOutputError(`ingest forbids reasonCode ${code}`);
+      }
+    }
   }
-  if (primaryCategory === null && disposition === 'ingest') {
-    throw new TriageOutputError('ingest requires a primaryCategory');
+  // Drop is strict: only high-confidence, evidenced, in-scope-justified drops.
+  // Deterministic Stage A codes (invalid_entry, missing_identity, stale_item,
+  // duplicate_item) originate in precheckNewsItem and never reach this validator.
+  if (disposition === 'drop') {
+    if (jakartaScope === 'unknown' || jakartaScope === 'direct_jakarta_impact') {
+      throw new TriageOutputError('drop forbids jakartaScope unknown or direct_jakarta_impact');
+    }
+    if (confidence !== 'high') {
+      throw new TriageOutputError('drop requires high confidence');
+    }
+    if (evidence.length < 1) {
+      throw new TriageOutputError('drop requires at least one evidence quote');
+    }
+    const codes = raw.reasonCodes as readonly string[];
+    const justified =
+      codes.includes('non_actionable') ||
+      (jakartaScope === 'outside_scope' && codes.includes('outside_scope'));
+    if (!justified) {
+      throw new TriageOutputError('drop requires outside_scope or non_actionable evidence');
+    }
   }
 
   return {

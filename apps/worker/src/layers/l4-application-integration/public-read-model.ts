@@ -18,19 +18,11 @@ import type { EventProposalDto, StoredEvidenceChunk } from "./moderation-api.js"
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
+import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-categories.js";
 
-const categories: Record<string, true> = {
-  crime_personal_security: true,
-  demonstrations_public_gatherings: true,
-  crowds_major_events: true,
-  violence_immediate_threats: true,
-  disasters_weather: true,
-  fires_infrastructure_hazards: true,
-  transport_road_incidents: true,
-  utilities_essential_services: true,
-  health_environmental_advisories: true,
-  group_specific_critical_notices: true,
-};
+const categories: Record<string, true> = Object.fromEntries(
+  OFFICIAL_INCIDENT_CATEGORIES.map((slug) => [slug, true]),
+) as Record<string, true>;
 
 const lifecycles: Record<string, true> = {
   planned: true,
@@ -53,6 +45,13 @@ export class QueryValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "QueryValidationError";
+  }
+}
+
+export class PublicEventDetailProjectionServiceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PublicEventDetailProjectionServiceError";
   }
 }
 
@@ -698,8 +697,16 @@ function rawInputToEventDetail(
   const eventId = sanitizeEventId(id);
   const title = typeof input.title === "string" ? input.title.slice(0, 240) : `Laporan Kejadian ${eventId}`;
   const rawPrimary = typeof input.primary_category === "string" ? input.primary_category : null;
-  const rawCat = rawPrimary ?? (typeof input.category === "string" ? input.category : typeof input.incident_type === "string" ? input.incident_type : "disasters_weather");
-  const category = mapIncidentTypeToCategory(rawCat);
+  // WJ-INT-02A: no silent default. New pipeline records must carry a valid
+  // canonical category; legacy rows opt in via record_json.legacy_category.
+  const rawCat = rawPrimary ?? (typeof input.category === "string" ? input.category : typeof input.incident_type === "string" ? input.incident_type : null);
+  const legacy = (input.record_json as Record<string, unknown> | undefined)?.legacy_category === true;
+  if (typeof rawCat !== "string") {
+    if (!legacy) {
+      throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
+    }
+  }
+  const category = mapIncidentTypeToCategory(typeof rawCat === "string" ? rawCat : "other");
   const places: string[] = [];
   if (typeof input.location_label === "string" && input.location_label.trim().length > 0) {
     places.push(input.location_label.trim());

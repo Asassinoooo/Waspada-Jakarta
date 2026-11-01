@@ -6,6 +6,7 @@ import {
   triageNewsItemSemantic,
   buildTriagePrompt,
   uncertainOnFailure,
+  TriageOutputError,
   TRIAGE_POLICY_VERSION,
   type TriageNewsItem,
 } from "../src/layers/l1-data-knowledge/news-triage.js";
@@ -468,8 +469,91 @@ test("unjustified drop without outside_scope or non_actionable is rejected", () 
         "Warga dievakuasi setelah kondisi air meningkat",
         null,
       ),
-    /requires outside_scope or non_actionable/,
+    /drop forbids jakartaScope|requires outside_scope or non_actionable/,
   );
+});
+
+// WJ-INT-02A: semantic coherence matrix — each invalid combination throws
+// (callers map to uncertain/invalid_model_output, never drop).
+test("validator rejects incoherent ingest and drop combinations", async () => {
+  const validIngest = (overrides: Record<string, unknown>) =>
+    parseTriageModelOutput(
+      {
+        disposition: "ingest",
+        jakartaScope: "dki_jakarta",
+        actionability: "actionable",
+        primaryCategory: "disasters_weather",
+        incidentType: "banjir",
+        confidence: "high",
+        reasonCodes: ["triage_v1_ingest"],
+        evidence: [{ field: "title", exactQuote: "Banjir di Tebet" }],
+        ...overrides,
+      },
+      "Banjir di Tebet",
+      null,
+    );
+  const validDrop = (overrides: Record<string, unknown>) =>
+    parseTriageModelOutput(
+      {
+        disposition: "drop",
+        jakartaScope: "outside_scope",
+        actionability: "none",
+        primaryCategory: null,
+        incidentType: null,
+        confidence: "high",
+        reasonCodes: ["outside_scope"],
+        evidence: [{ field: "title", exactQuote: "Padang Pariaman" }],
+        ...overrides,
+      },
+      "Banjir bandang di Padang Pariaman",
+      null,
+    );
+
+  // ingest invalid combinations
+  for (const [label, overrides] of [
+    ["ingest+unknown", { jakartaScope: "unknown" }],
+    ["ingest+outside_scope", { jakartaScope: "outside_scope" }],
+    ["ingest+none", { actionability: "none" }],
+    ["ingest+context_only", { actionability: "context_only" }],
+    ["ingest+low", { confidence: "low" }],
+    ["ingest+null-category", { primaryCategory: null }],
+    ["ingest+empty-incidentType", { incidentType: "  " }],
+    ["ingest+empty-evidence", { evidence: [] }],
+    ["ingest+wrong-code", { reasonCodes: ["outside_scope"] }],
+  ] as const) {
+    assert.throws(() => validIngest(overrides), TriageOutputError, label);
+  }
+  // context_only exception code passes the validator (prompt governs prose).
+  const ctxOnly = validIngest({ actionability: "context_only", reasonCodes: ["provider_context_only_exception"] });
+  assert.equal(ctxOnly.disposition, "ingest");
+
+  // drop invalid combinations
+  for (const [label, overrides] of [
+    ["drop+unknown", { jakartaScope: "unknown" }],
+    ["drop+low", { confidence: "low" }],
+    ["drop+medium", { confidence: "medium" }],
+    ["drop+no-evidence", { evidence: [] }],
+    ["drop+unjustified", { reasonCodes: ["ambiguous_location"] }],
+  ] as const) {
+    assert.throws(() => validDrop(overrides), TriageOutputError, label);
+  }
+  // dki_jakarta + non_actionable stays a valid drop (routine local announcement).
+  const localDrop = validDrop({ jakartaScope: "dki_jakarta", reasonCodes: ["non_actionable"] });
+  assert.equal(localDrop.disposition, "drop");
+
+  // through the semantic wrapper every rejection becomes uncertain
+  const title = "Laporan banjir di Tebet";
+  for (const raw of [
+    { disposition: "ingest", jakartaScope: "unknown", actionability: "actionable", primaryCategory: "disasters_weather", incidentType: "banjir", confidence: "high", reasonCodes: ["triage_v1_ingest"], evidence: [{ field: "title", exactQuote: "Tebet" }] },
+    { disposition: "drop", jakartaScope: "unknown", actionability: "unknown", primaryCategory: null, incidentType: null, confidence: "low", reasonCodes: ["triage_v1_stage_a"], evidence: [] },
+  ]) {
+    const decision = await triageNewsItemSemantic(
+      { sourceId: "s", sourceRemit: "metro", title, descriptionExcerpt: null, pubDate: null, retrievedAt: RETRIEVED_AT },
+      async () => raw,
+    );
+    assert.equal(decision.disposition, "uncertain");
+    assert.ok(decision.reasonCodes.includes("invalid_model_output"));
+  }
 });
 
 test("overlong descriptions truncate safely and prompts bound excerpt size", () => {

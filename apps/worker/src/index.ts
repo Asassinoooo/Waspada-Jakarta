@@ -22,18 +22,19 @@ import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceC
 import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
-import { createNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
+import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
 import { TRIAGE_POLICY_VERSION } from "./layers/l1-data-knowledge/news-triage.js";
-import { recordTriageDecision, newsTriageIdentityHash } from "../../db/src/news-triage-store.js";
+import { buildLiveTriageGate } from "./runtime/news-triage-composition.js";
+import { recordTriageDecision, newsTriageIdentityHash, readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
 
 import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
 import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-integration/event-broadcaster.js";
 import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-data-knowledge/webhook-ingest.js";
-import { withPostgresSqlExecutor } from "../../db/src/postgres-sql-executor.js";
+import { withPostgresSqlExecutor, withPostgresTransactionalSqlExecutor } from "../../db/src/postgres-sql-executor.js";
 import { createSqlIncidentRepository } from "../../db/src/incident-repository.js";
 import { createEventProposalWriter } from "../../db/src/event-proposal-writer.js";
 import type { DatasetKind } from "../../db/src/ports.js";
-import type { SqlExecutor } from "../../db/src/sql.js";
+import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js";
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 
@@ -48,78 +49,13 @@ const webhookIngest = createWebhookIngestHandler({
   },
 });
 
-/**
- * WJ-INT-02 gate wiring for scheduled news ingestion. Structured feeds
- * (PetaBencana, BMKG) never pass through this; only general news/RSS does.
- * Returns undefined (legacy pass-through) when NineRouter credentials are
- * absent so the cron never hard-fails on configuration.
- */
-function buildScheduledTriageChat(): ((system: string, user: string) => Promise<unknown>) | undefined {
-  const baseUrl = (typeof process !== "undefined" ? process.env?.NINEROUTER_URL : undefined) ?? "";
-  const apiKey = (typeof process !== "undefined" ? process.env?.NINEROUTER_KEY : undefined) ?? "";
-  const chatModel = (typeof process !== "undefined" ? process.env?.NINEROUTER_CHAT_MODEL : undefined)
-    ?? "ag/gemini-3.8-flash";
-  if (!baseUrl || !apiKey) return undefined;
-  const endpoint = `${baseUrl.replace(/\/+$/, "")}/v1/chat/completions`;
-  return async (system: string, user: string): Promise<unknown> => {
-    let lastError: unknown = new Error("triage transport failed");
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15_000);
-      try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: chatModel, messages: [{ role: "system", content: system }, { role: "user", content: user }], stream: false }),
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(`triage chat HTTP ${response.status}`);
-        const envelope = (await response.json()) as unknown;
-        if (!envelope || typeof envelope !== "object" || !("choices" in envelope)) {
-          throw new Error("triage chat bad envelope");
-        }
-        const choices = (envelope as { choices: unknown }).choices;
-        if (!Array.isArray(choices) || choices.length === 0) throw new Error("triage chat no choices");
-        const first = choices[0] as { message?: { content?: unknown } };
-        const content = first?.message?.content;
-        if (typeof content !== "string" || content.length === 0) throw new Error("triage chat empty content");
-        const start = content.indexOf("{");
-        const end = content.lastIndexOf("}");
-        if (start < 0 || end <= start) throw new Error("triage chat no JSON object");
-        return JSON.parse(content.slice(start, end + 1)) as unknown;
-      } catch (error) {
-        lastError = error;
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-    throw lastError;
-  };
-}
-
-async function syncLivePipelineProposals(): Promise<void> {
-  const newRevisions: StoredReportRevision[] = [];
-  try {
-    const pbResult = await createPetaBencanaPollRuntime().poll();
-    newRevisions.push(...pbResult.revisions);
-  } catch {}
-  try {
-    const bmkgResult = await createBmkgPollRuntime().poll();
-    newRevisions.push(...bmkgResult.revisions);
-  } catch {}
-  try {
-    const newsResult = await createNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS }).poll();
-    newRevisions.push(...newsResult.revisions);
-  } catch {}
-  if (newRevisions.length > 0) {
-    for (const rev of newRevisions) {
-      activeRevisions.set(rev.report_revision_id, rev);
-    }
-  }
-}
-
-// Initial live background sync
-void syncLivePipelineProposals();
+// WJ-INT-02A: live RSS triage flows only through `buildLiveTriageGate`.
+// Structured feeds (PetaBencana, BMKG) bypass the news gate; only general
+// news/RSS does. The legacy ungated startup sync and inline chat builder
+// were removed: `buildScheduledTriageChat` moved to
+// `runtime/news-triage-composition.ts`; `syncLivePipelineProposals` only
+// warmed an in-memory map no read path consults after the DB cutover.
+// Webhook ingestion is unaffected.
 async function withSqlExecutor<Result>(
   env: WorkerEnvironment,
   operation: (executor: SqlExecutor) => Promise<Result>,
@@ -129,6 +65,23 @@ async function withSqlExecutor<Result>(
   }
   if (env.HYPERDRIVE?.connectionString) {
     return withPostgresSqlExecutor(env.HYPERDRIVE.connectionString, operation);
+  }
+  throw new Error("No database executor or connection string configured in environment");
+}
+
+async function withTransactionalSqlExecutor<Result>(
+  env: WorkerEnvironment,
+  operation: (executor: TransactionalSqlExecutor) => Promise<Result>,
+): Promise<Result> {
+  if (env.SQL_EXECUTOR) {
+    const candidate = env.SQL_EXECUTOR as Partial<TransactionalSqlExecutor>;
+    if (typeof candidate.transaction === "function") {
+      return candidate.transaction((tx) => operation(tx as TransactionalSqlExecutor));
+    }
+    return operation(env.SQL_EXECUTOR as unknown as TransactionalSqlExecutor);
+  }
+  if (env.HYPERDRIVE?.connectionString) {
+    return withPostgresTransactionalSqlExecutor(env.HYPERDRIVE.connectionString, operation);
   }
   throw new Error("No database executor or connection string configured in environment");
 }
@@ -144,6 +97,32 @@ function getModerationHandler(env: WorkerEnvironment) {
         });
       }
       return Array.from(activeProposals.values());
+    },
+    listUncertainTriage: async ({ limit }: { limit?: number } = {}) => {
+      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return [];
+      return withSqlExecutor(env, async (executor) => {
+        const rows = await readUncertainTriage(executor, datasetKind, limit ?? 100);
+        return rows.map((row) => ({
+          source_id: row.sourceId,
+          item_identity_hash: row.itemIdentityHash,
+          disposition: row.disposition,
+          jakarta_scope: row.jakartaScope,
+          actionability: row.actionability,
+          primary_category: row.primaryCategory,
+          incident_type: row.incidentType,
+          confidence: row.confidence,
+          reason_codes: [...row.reasonCodes],
+          model_status: row.modelStatus,
+          policy_version: row.policyVersion,
+          evaluated_at: row.evaluatedAt,
+          reviewed_at: row.reviewedAt,
+          reviewed_by: row.reviewedBy,
+        }));
+      });
+    },
+    markTriageReviewed: async (itemIdentityHash: string, actorId: string) => {
+      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
+      return withSqlExecutor(env, (executor) => markTriageReviewed(executor, datasetKind, itemIdentityHash, actorId));
     },
     getProposalDetail: async (id: string) => {
       if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
@@ -594,30 +573,12 @@ export default {
       await withSqlExecutor(env, async (executor) => {
         const datasetKind = ((env.DATASET_MODE as string) || "live") as DatasetKind;
         const repo = createSqlIncidentRepository(executor);
-        const callChat = buildScheduledTriageChat();
-        const newsRunner = createNewsPollRuntime({
+        // WJ-INT-02A: one shared composition for all live RSS paths. Missing
+        // credentials yield a chat-less gate (uncertain, never ingest).
+        const gate = buildLiveTriageGate(env, executor);
+        const newsRunner = createLiveNewsPollRuntime({
           feeds: DEFAULT_NEWS_FEEDS,
-          triage: {
-            sourceRemit: "general news",
-            concurrency: 4,
-            ...(callChat ? { callChat } : {}),
-            checkAuthorization: async (sourceId: string) => {
-              try {
-                const res = await executor.query<{ approval_status: string; auto_acquisition_enabled: boolean; registry_status: string }>(
-                  `SELECT approval_status, auto_acquisition_enabled, registry_status
-                   FROM waspada.source_registry WHERE source_id = $1 LIMIT 1`,
-                  [sourceId],
-                );
-                const row = res.rows[0];
-                if (!row) return { cleared: false };
-                return {
-                  cleared: row.approval_status === "approved" && row.auto_acquisition_enabled === true && row.registry_status === "active",
-                };
-              } catch {
-                return { cleared: false };
-              }
-            },
-          },
+          triage: gate,
         });
         const newsResult = await newsRunner.poll();
       if (newsResult.triageCounts) {
@@ -628,15 +589,13 @@ export default {
           `provider_failures=${c.providerFailures} by_category=${JSON.stringify(c.byCategory)}`,
         );
       }
-      // Structured authoritative feeds (PetaBencana, BMKG) bypass the news gate.
+      // WJ-INT-02A: revisions are ingest-only; held carries drop/uncertain
+      // metadata (no content). Structured authoritative feeds (PetaBencana,
+      // BMKG) bypass the news gate.
       const structuredRevisions = [...pbResult.revisions, ...bmkgResult.revisions];
-      const gatedNewsRevisions = newsResult.revisions.filter(
-        (rev) => !rev.triage || rev.triage.disposition === "ingest",
-      );
-      const heldNewsRevisions = newsResult.revisions.filter(
-        (rev) => rev.triage && rev.triage.disposition !== "ingest",
-      );
-      for (const rev of [...structuredRevisions, ...gatedNewsRevisions]) {
+      const gatedNewsRevisions = newsResult.revisions;
+      let persistFailures = 0;
+      for (const rev of structuredRevisions) {
         const revRecord: Record<string, unknown> =
           rev !== null && typeof rev === "object" ? (rev as unknown as Record<string, unknown>) : {};
         const traceId = typeof revRecord.trace_id === "string" ? revRecord.trace_id : `trace-${rev.report_revision_id}`;
@@ -647,7 +606,109 @@ export default {
            ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
           [traceId, datasetKind],
         );
-            await executor.query(
+        await executor.query(
+          `INSERT INTO waspada.source_registry (
+             source_id, trace_id, registry_version, display_name, source_kind, remit,
+             access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+             approval_status, health_status, auto_acquisition_enabled, auto_publication_policy
+           )
+           VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
+                   ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
+           ON CONFLICT (source_id) DO NOTHING`,
+          [rev.source_id, traceId, rev.source_id],
+        );
+        await executor.query(
+          `INSERT INTO waspada.report_revisions (
+             dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
+             content_hash, permitted_text, permitted_text_hash, normalization_version,
+             retrieved_at, revision_status, record_json
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb)
+           ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
+          [
+            datasetKind,
+            rev.report_revision_id,
+            traceId,
+            rev.source_id,
+            rev.canonical_url,
+            contentHash,
+            rev.permitted_text,
+            rev.permitted_text_hash,
+            rev.retrieved_at,
+          ],
+        );
+        const rawChunks = revRecord.chunks;
+        const chunks: readonly { text: string; span_start: number; span_end: number }[] =
+          Array.isArray(rawChunks) ? (rawChunks as readonly { text: string; span_start: number; span_end: number }[]) : [];
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+          const chk = chunks[chunkIndex];
+          if (!chk || typeof chk.text !== "string") continue;
+          const chunkTextHash = createHash("sha256").update(chk.text).digest("hex");
+          await executor.query(
+            `INSERT INTO waspada.evidence_chunks (
+               dataset_kind, chunk_id, trace_id, report_revision_id, permitted_text_hash,
+               span_start, span_end, offset_unit, chunker_version, chunk_text_hash, status
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'unicode_code_points', 'v1', $8, 'active')
+             ON CONFLICT (dataset_kind, chunk_id) DO NOTHING`,
+            [
+              datasetKind,
+              `chk-${rev.report_revision_id}-${chunkIndex}`,
+              traceId,
+              rev.report_revision_id,
+              rev.permitted_text_hash,
+              chk.span_start,
+              chk.span_end,
+              chunkTextHash,
+            ],
+          );
+        }
+        await repo.enqueueAiJob({
+          jobId: `job-${crypto.randomUUID()}`,
+          datasetKind,
+          reportRevisionId: rev.report_revision_id,
+          traceId,
+        }).catch(() => {});
+      }
+      for (const rev of gatedNewsRevisions) {
+        // WJ-INT-02A atomic ingest: decision row + revision + chunks + job in
+        // one transaction. Any triage-write failure skips revision/job
+        // creation for that item (fail closed per item, counted below).
+        const revRecord: Record<string, unknown> =
+          rev !== null && typeof rev === "object" ? (rev as unknown as Record<string, unknown>) : {};
+        const traceId = typeof revRecord.trace_id === "string" ? revRecord.trace_id : `trace-${rev.report_revision_id}`;
+        const contentHash = typeof revRecord.content_hash === "string" ? revRecord.content_hash : rev.permitted_text_hash;
+        const triageDecision = rev.triage;
+        if (!triageDecision || triageDecision.disposition !== "ingest") {
+          continue;
+        }
+        try {
+          await withTransactionalSqlExecutor(env, async (tx) => {
+            const txRepo = createSqlIncidentRepository(tx);
+            await tx.query(
+              `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+               VALUES ($1, $2, now(), 'succeeded', '{}'::jsonb)
+               ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
+              [traceId, datasetKind],
+            );
+            await recordTriageDecision(tx, {
+              datasetKind,
+              itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
+              sourceId: rev.source_id,
+              traceId,
+              disposition: triageDecision.disposition,
+              jakartaScope: triageDecision.jakartaScope,
+              actionability: triageDecision.actionability,
+              primaryCategory: triageDecision.primaryCategory,
+              incidentType: triageDecision.incidentType,
+              confidence: triageDecision.confidence,
+              reasonCodes: [...triageDecision.reasonCodes],
+              policyVersion: TRIAGE_POLICY_VERSION,
+              modelStatus: triageDecision.modelStatus,
+              reportRevisionId: rev.report_revision_id,
+              contentHash,
+            });
+            await tx.query(
               `INSERT INTO waspada.source_registry (
                  source_id, trace_id, registry_version, display_name, source_kind, remit,
                  access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
@@ -658,7 +719,7 @@ export default {
                ON CONFLICT (source_id) DO NOTHING`,
               [rev.source_id, traceId, rev.source_id],
             );
-            await executor.query(
+            await tx.query(
               `INSERT INTO waspada.report_revisions (
                  dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
                  content_hash, permitted_text, permitted_text_hash, normalization_version,
@@ -678,8 +739,6 @@ export default {
                 rev.retrieved_at,
               ],
             );
-            // Persist evidence chunks for gated news revisions (structured paths
-            // write their own; the legacy loop omitted news chunks entirely).
             const rawChunks = revRecord.chunks;
             const chunks: readonly { text: string; span_start: number; span_end: number }[] =
               Array.isArray(rawChunks) ? (rawChunks as readonly { text: string; span_start: number; span_end: number }[]) : [];
@@ -687,7 +746,7 @@ export default {
               const chk = chunks[chunkIndex];
               if (!chk || typeof chk.text !== "string") continue;
               const chunkTextHash = createHash("sha256").update(chk.text).digest("hex");
-              await executor.query(
+              await tx.query(
                 `INSERT INTO waspada.evidence_chunks (
                    dataset_kind, chunk_id, trace_id, report_revision_id, permitted_text_hash,
                    span_start, span_end, offset_unit, chunker_version, chunk_text_hash, status
@@ -706,25 +765,32 @@ export default {
                 ],
               );
             }
-            await repo.enqueueAiJob({
+            await txRepo.enqueueAiJob({
               jobId: `job-${crypto.randomUUID()}`,
               datasetKind,
               reportRevisionId: rev.report_revision_id,
               traceId,
-            }).catch(() => {});
-          }
-        // Drop/uncertain news: audit metadata only. Never create revisions,
-        // chunks, embeddings, jobs, incidents, or proposals for these rows.
-        for (const rev of heldNewsRevisions) {
-          const triageDecision = rev.triage;
-          if (!triageDecision) continue;
-          const identity = rev.source_revision_key ?? rev.canonical_url;
+            });
+          });
+        } catch {
+          // Fail closed per item: no revision/job without a decision row.
+          // Never whole-batch abort; reported in the summary line below.
+          persistFailures += 1;
+        }
+      }
+      if (persistFailures > 0) {
+        console.log(`[news-triage] persist_failures=${persistFailures}`);
+      }
+        // WJ-INT-02A: drop/uncertain news — audit metadata only. Never create
+        // revisions, chunks, embeddings, jobs, incidents, or proposals.
+        for (const held of newsResult.held) {
+          const triageDecision = held.decision;
           try {
             await recordTriageDecision(executor, {
               datasetKind,
-              itemIdentityHash: newsTriageIdentityHash(rev.source_id, identity),
-              sourceId: rev.source_id,
-              traceId: `trace-${rev.report_revision_id}`,
+              itemIdentityHash: held.itemIdentityHash,
+              sourceId: held.sourceId,
+              traceId: held.traceId,
               disposition: triageDecision.disposition,
               jakartaScope: triageDecision.jakartaScope,
               actionability: triageDecision.actionability,
@@ -743,4 +809,4 @@ export default {
     } catch {}
   },
 };
-export { activeProposals, activeChunks, syncLivePipelineProposals };
+export { activeProposals, activeChunks };

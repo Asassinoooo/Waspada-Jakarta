@@ -46,9 +46,13 @@ export const IncidentWorkflowInputSchema = z.object({
   traceId: z.string(),
   evidenceChunks: z.array(WorkflowChunkSchema),
   triage: z.object({
+    disposition: z.enum(["ingest"]),
     primaryCategory: z.string().nullable(),
     incidentType: z.string().nullable(),
     jakartaScope: z.string(),
+    actionability: z.string(),
+    confidence: z.string(),
+    itemIdentityHash: z.string().optional(),
   }).optional(),
 });
 
@@ -229,11 +233,20 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
 
       const decisionId = `dec-${input.reportRevisionId}`;
       const proposalId = `prop-${input.reportRevisionId}`;
-
+      // WJ-INT-02A: interpreter stays the category author; on mismatch the
+      // triage gate value is preserved in recordJson for moderator review,
+      // never silently replaced or dropped.
+      const triageLineage = input.triage
+        ? {
+            primaryCategory: input.triage.primaryCategory,
+            jakartaScope: input.triage.jakartaScope,
+            disposition: input.triage.disposition,
+            itemIdentityHash: input.triage.itemIdentityHash ?? null,
+          }
+        : null;
       let incidentAction: PersistIncidentProcessingInput["incidentAction"];
       let targetIncidentId: string;
       let relationship: IncidentRelationship;
-
       if (correlation.decision === "same_incident" && correlation.candidateIncidentId) {
         relationship = "corroborating";
         targetIncidentId = correlation.candidateIncidentId;
@@ -302,6 +315,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             recordJson: {
               impacts: interpretation.impacts,
               confidence: interpretation.confidence,
+              ...(triageLineage ? { triage: triageLineage } : {}),
             },
             createdAt: now,
           },

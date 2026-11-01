@@ -10,3 +10,9 @@ AUTH_GOOGLE_NATIVE_CLIENT_ID=REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.c
 AUTH_GOOGLE_ANDROID_CLIENT_ID=REPLACE_WITH_ANDROID_CLIENT_ID.apps.googleusercontent.com
 # AUTH_HYPERDRIVE is a Worker binding for the dedicated auth DB connection.
 # Do not place a production DB password or provider token in this template.
+# WJ-INT-02A live triage transport. Secrets only via dashboard/wrangler
+# secret/.dev.vars — never in wrangler.toml. Local node tooling falls back
+# to the same names in process env (see .env.local).
+# NINEROUTER_URL=https://your-ninerouter-host:9090/v1
+# NINEROUTER_KEY=REPLACE_LOCALLY
+# NINEROUTER_CHAT_MODEL=ag/gemini-3.8-flash

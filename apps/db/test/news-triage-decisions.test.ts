@@ -4,8 +4,11 @@ import { applyMigrations, readMigrations } from '../src/migrations.js';
 import {
   newsTriageIdentityHash,
   recordTriageDecision,
+  recordTriageAttempt,
   readTriageDecision,
+  readTriageDecisionForRevision,
   readUncertainTriage,
+  markTriageReviewed,
   NEWS_TRIAGE_POLICY_VERSION,
 } from '../src/news-triage-store.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
@@ -72,6 +75,99 @@ describe('WJ-INT-02 news triage decisions: audit-only persistence, idempotent up
       [hash],
     );
     assert.equal(count.rows[0]?.count, '1');
+  });
+
+  it('keys accepted decisions by revision and preserves attempt history', async () => {
+    const hash = newsTriageIdentityHash('source-antara-metro', 'feed-7010');
+    await recordTriageDecision(db.executor, {
+      datasetKind: 'synthetic',
+      itemIdentityHash: hash,
+      sourceId: 'source-antara-metro',
+      traceId: 'trace-triage-010',
+      disposition: 'ingest',
+      jakartaScope: 'dki_jakarta',
+      actionability: 'actionable',
+      primaryCategory: 'disasters_weather',
+      incidentType: 'banjir',
+      confidence: 'high',
+      reasonCodes: ['triage_v1_ingest'],
+      modelStatus: 'ok',
+      reportRevisionId: 'rep-7010-a',
+      contentHash: 'a'.repeat(64),
+    });
+    const byRevision = await readTriageDecisionForRevision(db.executor, 'synthetic', 'rep-7010-a');
+    assert.equal(byRevision?.itemIdentityHash, hash);
+    assert.equal(byRevision?.reportRevisionId, 'rep-7010-a');
+
+    // Changed content: new revision row + attempt linked by supersedes_hash.
+    await recordTriageAttempt(db.executor, {
+      datasetKind: 'synthetic',
+      itemIdentityHash: hash,
+      reportRevisionId: 'rep-7010-b',
+      sourceId: 'source-antara-metro',
+      traceId: 'trace-triage-011',
+      disposition: 'ingest',
+      jakartaScope: 'dki_jakarta',
+      actionability: 'actionable',
+      primaryCategory: 'disasters_weather',
+      incidentType: 'banjir',
+      confidence: 'high',
+      reasonCodes: ['triage_v1_ingest'],
+      modelStatus: 'ok',
+      contentHash: 'b'.repeat(64),
+      supersedesHash: 'a'.repeat(64),
+    });
+    await recordTriageDecision(db.executor, {
+      datasetKind: 'synthetic',
+      itemIdentityHash: hash,
+      sourceId: 'source-antara-metro',
+      traceId: 'trace-triage-011',
+      disposition: 'ingest',
+      jakartaScope: 'dki_jakarta',
+      actionability: 'actionable',
+      primaryCategory: 'disasters_weather',
+      incidentType: 'banjir',
+      confidence: 'high',
+      reasonCodes: ['triage_v1_ingest'],
+      modelStatus: 'ok',
+      reportRevisionId: 'rep-7010-b',
+      contentHash: 'b'.repeat(64),
+      supersedesHash: 'a'.repeat(64),
+    });
+    const attempts = await db.executor.query<{ report_revision_id: string }>(
+      `SELECT report_revision_id FROM waspada.news_triage_attempts
+       WHERE dataset_kind = 'synthetic' AND item_identity_hash = $1
+       ORDER BY evaluated_at ASC`,
+      [hash],
+    );
+    assert.ok(attempts.rows.some((r) => r.report_revision_id === 'rep-7010-b'));
+    const moved = await readTriageDecisionForRevision(db.executor, 'synthetic', 'rep-7010-b');
+    assert.equal(moved?.supersedesHash, 'a'.repeat(64));
+  });
+
+  it('marks uncertain rows reviewed only where still uncertain', async () => {
+    const hash = newsTriageIdentityHash('source-metro', 'feed-7011');
+    await recordTriageDecision(db.executor, {
+      datasetKind: 'synthetic',
+      itemIdentityHash: hash,
+      sourceId: 'source-metro',
+      traceId: 'trace-triage-012',
+      disposition: 'uncertain',
+      jakartaScope: 'unknown',
+      actionability: 'unknown',
+      primaryCategory: null,
+      incidentType: null,
+      confidence: 'low',
+      reasonCodes: ['ambiguous_location'],
+      modelStatus: 'ok',
+    });
+    const marked = await markTriageReviewed(db.executor, 'synthetic', hash, 'mod-01');
+    assert.equal(marked, true);
+    const reread = await readTriageDecision(db.executor, 'synthetic', hash);
+    assert.equal(reread?.reviewedBy, 'mod-01');
+    assert.ok(typeof reread?.reviewedAt === 'string');
+    const idempotent = await markTriageReviewed(db.executor, 'synthetic', hash, 'mod-01');
+    assert.equal(idempotent, true);
   });
 
   it('lists only uncertain rows for bounded review and rejects invented categories', async () => {

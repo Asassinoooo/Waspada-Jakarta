@@ -6,10 +6,10 @@ import {
 import {
   precheckNewsItem,
   triageNewsItemSemantic,
+  DESCRIPTION_REUSE_TOKENS,
   type NewsTriageDecision,
   type TriageNewsItem,
 } from "../layers/l1-data-knowledge/news-triage.js";
-/** L1 -> L2 frozen contract: evidence chunk representation */
 export interface StoredEvidenceChunk {
   readonly chunk_index: number;
   readonly text: string;
@@ -33,6 +33,17 @@ export interface StoredReportRevision {
   readonly source_revision_key?: string | null;
   /** WJ-INT-02 triage outcome; present only when the poller ran the gate. */
   readonly triage?: NewsTriageDecision;
+}
+
+/** WJ-INT-02A held triage decision: metadata only, never article content. */
+export interface HeldTriageDecision {
+  readonly sourceId: string;
+  readonly itemIdentityHash: string;
+  readonly reportRevisionId: string;
+  readonly traceId: string;
+  readonly canonicalUrl: string;
+  readonly sourceRevisionKey: string | null;
+  readonly decision: NewsTriageDecision;
 }
 
 export interface NewsFeedConfig {
@@ -133,6 +144,8 @@ export interface NewsFeedPollResult {
   readonly matchedCount: number;
   readonly rejectedCount: number;
   readonly revisions: readonly StoredReportRevision[];
+  /** WJ-INT-02A held decisions (drop/uncertain metadata only). */
+  readonly held: readonly HeldTriageDecision[];
   /** WJ-INT-02 per-feed triage counts; present only when the gate ran. */
   readonly triageCounts?: NewsTriageCounts;
 }
@@ -160,6 +173,8 @@ export interface NewsPollSummary {
   readonly totalRejected: number;
   readonly feedResults: readonly NewsFeedPollResult[];
   readonly revisions: readonly StoredReportRevision[];
+  /** WJ-INT-02A held decisions across feeds (metadata only). */
+  readonly held: readonly HeldTriageDecision[];
   /** WJ-INT-02 aggregated gate counts across feeds; present only when the gate ran. */
   readonly triageCounts?: NewsTriageCounts;
 }
@@ -182,6 +197,8 @@ export interface NewsPollRuntimeOptions {
   /**
    * WJ-INT-02 gate wiring. When absent, the poller preserves its legacy
    * behavior (all valid fresh items returned, no triage attached).
+   * Synthetic fixtures and unit tests only — live RSS ingestion MUST use
+   * `createLiveNewsPollRuntime`, which requires an explicit gate.
    */
   readonly triage?: {
     /** Source remit label for the prompt, e.g. "metro news". */
@@ -241,25 +258,25 @@ export function createNewsPollResult(summary: NewsPollSummary): NewsPollResult {
     totalRejected: { value: summary.totalRejected, enumerable: true },
     feedResults: { value: summary.feedResults, enumerable: true },
     revisions: { value: summary.revisions, enumerable: true },
+    held: { value: summary.held ?? [], enumerable: true },
     ...(summary.triageCounts ? { triageCounts: { value: summary.triageCounts, enumerable: true } } : {}),
   });
   return arr;
 }
 
 /**
- * WJ-INT-02 gate: Stage A deterministic pre-check per item, then bounded
- * concurrent Stage B semantic triage for unresolved items. Ingest decisions
- * keep their revision; drop/uncertain decisions are recorded via
- * `recordDecision` and excluded from revisions. Never throws: every failure
- * path resolves to `uncertain`.
+ * WJ-INT-02A gate: Stage A deterministic pre-check per item, then bounded
+ * concurrent Stage B semantic triage. Ingest decisions keep their revision;
+ * drop/uncertain decisions become held metadata (never article content).
+ * Never throws: every failure path resolves to `uncertain`.
  */
-async function applyTriageGate(
+export async function applyTriageGate(
   stored: readonly StoredReportRevision[],
   classified: ReadonlyArray<{ guid: string; title: string; descriptionExcerpt: string | null; link: string; pubDate: string | null }>,
   feed: NewsFeedConfig,
   retrievedAt: string,
   triage: NonNullable<NewsPollRuntimeOptions["triage"]>,
-): Promise<{ revisions: StoredReportRevision[]; triageCounts: NewsTriageCounts }> {
+): Promise<{ revisions: StoredReportRevision[]; held: HeldTriageDecision[]; triageCounts: NewsTriageCounts }> {
   const byGuid = new Map(classified.map((c) => [c.guid, c]));
   const checkAuthorization = triage.checkAuthorization ?? (async () => ({ cleared: true }));
   const callChat = triage.callChat;
@@ -271,28 +288,51 @@ async function applyTriageGate(
   };
   const byCategory: Record<string, number> = {};
   const kept: StoredReportRevision[] = [];
+  const heldOut: HeldTriageDecision[] = [];
 
   const tasks = stored.map((rev) => async (): Promise<void> => {
     const item = byGuid.get(rev.source_revision_key ?? "") ?? byGuid.get(rev.canonical_url);
     const identity = rev.source_revision_key ?? rev.canonical_url;
     const identityHash = createHash("sha256").update(`${rev.source_id}|${identity}`).digest("hex");
-    const prepared: TriageNewsItem = {
+    const preparedBase = (descriptionExcerpt: string | null): TriageNewsItem => ({
       sourceId: rev.source_id,
       stableIdentity: identity,
       title: item?.title ?? rev.permitted_text.split("\n\n")[0] ?? null,
-      descriptionExcerpt: item?.descriptionExcerpt ?? null,
+      descriptionExcerpt,
       link: rev.canonical_url,
       pubDate: item?.pubDate ?? rev.published_at,
       retrievedAt,
       keywordHit: false,
       gazetteerHit: false,
       maxAgeHours: feed.maxAgeHours ?? 48,
+    });
+    // WJ-INT-02A description gate (ADR-005): run Stage A once to learn the
+    // cleared source's reuse_basis, then when it lacks a description token
+    // re-run both Stage A and Stage B on title alone. Never drop for this.
+    let authzBasis: readonly string[] | undefined;
+    const capturingAuthz: typeof checkAuthorization = async (sourceId: string) => {
+      const result = await checkAuthorization(sourceId);
+      if (typeof result === "object" && result !== null && "reuseBasis" in result) {
+        authzBasis = (result as { reuseBasis?: readonly string[] }).reuseBasis;
+      }
+      return result;
     };
     let stageA: Awaited<ReturnType<typeof precheckNewsItem>>;
     try {
-      stageA = await precheckNewsItem(prepared, isDuplicate(identityHash), checkAuthorization);
+      stageA = await precheckNewsItem(preparedBase(item?.descriptionExcerpt ?? null), isDuplicate(identityHash), capturingAuthz);
     } catch {
       stageA = { needsSemantic: false, decision: null };
+    }
+    const excerptAllowed =
+      !authzBasis ||
+      authzBasis.some((token) => typeof token === "string" && DESCRIPTION_REUSE_TOKENS.has(token));
+    const prepared = excerptAllowed ? preparedBase(item?.descriptionExcerpt ?? null) : preparedBase(null);
+    if (!excerptAllowed) {
+      try {
+        stageA = await precheckNewsItem(prepared, isDuplicate(identityHash), checkAuthorization);
+      } catch {
+        stageA = { needsSemantic: false, decision: null };
+      }
     }
     let decisionResult: NewsTriageDecision | null = stageA.decision;
     if (stageA.needsSemantic) {
@@ -326,6 +366,9 @@ async function applyTriageGate(
       if (finalDecision.primaryCategory) {
         byCategory[finalDecision.primaryCategory] = (byCategory[finalDecision.primaryCategory] ?? 0) + 1;
       }
+      // Ingest decisions keep their revision; the caller persists the audit
+      // row + revision + chunks + job atomically.
+      kept.push({ ...rev, triage: finalDecision });
     } else {
       if (finalDecision.disposition === "drop") {
         counts.dropped += 1;
@@ -338,18 +381,25 @@ async function applyTriageGate(
       if (finalDecision.modelStatus === "provider_error" || finalDecision.modelStatus === "invalid_model_output") {
         counts.providerFailures += 1;
       }
+      // Held decisions carry metadata only: no permitted_text, no chunks,
+      // no title/description. The caller persists the audit row; nothing else.
+      heldOut.push({
+        sourceId: rev.source_id,
+        itemIdentityHash: identityHash,
+        reportRevisionId: rev.report_revision_id,
+        traceId: `trace-${rev.report_revision_id}`,
+        canonicalUrl: rev.canonical_url,
+        sourceRevisionKey: rev.source_revision_key ?? null,
+        decision: finalDecision,
+      });
     }
-    // The poller never persists audit rows itself (no executor here); scheduled()
-    // records drop/uncertain rows and persists ingest revisions. Every revision
-    // keeps its triage decision attached for the downstream split.
-    kept.push({ ...rev, triage: finalDecision });
   });
 
   for (let i = 0; i < tasks.length; i += concurrency) {
     await Promise.all(tasks.slice(i, i + concurrency).map((run) => run()));
   }
 
-  return { revisions: kept, triageCounts: { ...counts, byCategory } };
+  return { revisions: kept, held: heldOut, triageCounts: { ...counts, byCategory } };
 }
 async function pollSingleFeed(
   feed: NewsFeedConfig,
@@ -385,6 +435,7 @@ async function pollSingleFeed(
         matchedCount: 0,
         rejectedCount: 0,
         revisions: [],
+        held: [],
       };
     }
 
@@ -406,6 +457,7 @@ async function pollSingleFeed(
       matchedCount: 0,
       rejectedCount: 0,
       revisions: [],
+      held: [],
     };
   } finally {
     clearTimeout(timer);
@@ -424,13 +476,14 @@ async function pollSingleFeed(
         matchedCount: 0,
         rejectedCount: 0,
         revisions: [],
+        held: [],
       };
     }
 
     const store = parseResult.revisions.map(toStoredReportRevision);
     const gated = triage
       ? await applyTriageGate(store, parseResult.items, feed, retrievedAt, triage)
-      : { revisions: store, triageCounts: undefined };
+      : { revisions: store, held: [], triageCounts: undefined };
     return {
       url: feed.url,
       sourceId: feed.sourceId,
@@ -439,6 +492,7 @@ async function pollSingleFeed(
       matchedCount: parseResult.matchedCount,
       rejectedCount: parseResult.rejectedCount,
       revisions: gated.revisions,
+      held: gated.held,
       ...(gated.triageCounts ? { triageCounts: gated.triageCounts } : {}),
     };
   } catch (error: unknown) {
@@ -451,8 +505,23 @@ async function pollSingleFeed(
       matchedCount: 0,
       rejectedCount: 0,
       revisions: [],
+      held: [],
     };
   }
+}
+
+/**
+ * WJ-INT-02A live news poller: synthetic/test-only legacy behavior is
+ * preserved in `createNewsPollRuntime`; live RSS ingestion MUST use this
+ * factory, which throws without an explicit triage gate.
+ */
+export function createLiveNewsPollRuntime(
+  options: NewsPollRuntimeOptions & { readonly triage: NonNullable<NewsPollRuntimeOptions["triage"]> },
+): NewsPollRuntime {
+  if (!options.triage) {
+    throw new TypeError("live RSS ingestion requires an explicit triage gate");
+  }
+  return createNewsPollRuntime(options);
 }
 
 export function createNewsPollRuntime(
@@ -478,6 +547,8 @@ export function createNewsPollRuntime(
 
       const seenKeys = new Set<string>();
       const allRevisions: StoredReportRevision[] = [];
+      const allHeld: HeldTriageDecision[] = [];
+      const seenHeld = new Set<string>();
       let totalItemsParsed = 0;
       let totalMatched = 0;
       let totalRejected = 0;
@@ -499,6 +570,12 @@ export function createNewsPollRuntime(
             allRevisions.push(rev);
           }
         }
+        for (const held of result.held ?? []) {
+          if (!seenHeld.has(held.itemIdentityHash)) {
+            seenHeld.add(held.itemIdentityHash);
+            allHeld.push(held);
+          }
+        }
       }
 
       if (options.onRevisions && allRevisions.length > 0) {
@@ -516,6 +593,7 @@ export function createNewsPollRuntime(
         totalRejected,
         feedResults,
         revisions: allRevisions,
+        held: allHeld,
         triageCounts: aggregateTriageCounts(feedResults),
       };
 
