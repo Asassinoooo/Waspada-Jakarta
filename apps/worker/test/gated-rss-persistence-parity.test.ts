@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../../db/src/migrations.js';
 import { createTestDatabase, type TestDatabase } from '../../db/test/harness.js';
@@ -9,15 +10,18 @@ import { TRIAGE_POLICY_VERSION, type NewsTriageDecision } from '../src/layers/l1
 import {
   persistAcceptedRssItem,
   persistHeldTriageItem,
+  runGatedRssCycle,
 } from '../src/runtime/gated-rss-persistence.js';
 import type {
   HeldTriageDecision,
   StoredReportRevision,
 } from '../src/runtime/news-poll-runtime.js';
 
-// WJ-INT-02B: parity between the two gated-RSS caller shapes (scheduled worker
-// loop vs serve-live loop). Both shapes call the shared persistence contract;
-// identical synthetic input must yield identical projected row sets.
+// WJ-INT-02B: parity through the shared cycle — both live entry points
+// (scheduled worker loop, serve-live loop) call ONLY runGatedRssCycle.
+// This test invokes the shared function twice over identical synthetic feeds
+// (mirroring only the callers' executor wrapping, not their logic) and
+// asserts byte-identical projected row sets plus identical failure accounting.
 
 const SOURCE_ID = 'source-synthetic-test';
 
@@ -129,8 +133,9 @@ async function seedRegistry(executor: TransactionalSqlExecutor): Promise<void> {
        approval_status, health_status, auto_acquisition_enabled, auto_publication_policy
      )
      VALUES ('${SOURCE_ID}', 'trace-seed', 1, 'Synthetic Test', 'newsroom', ARRAY['test'],
-             'rss', ARRAY[]::text[], ARRAY[]::text[], ARRAY['model_triage'],
-             'active', 'approved', 'healthy', false, 'never')
+             'rss', ARRAY[]::text[], ARRAY[]::text[],
+             ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived'],
+             'active', 'approved', 'healthy', true, 'never')
      ON CONFLICT (source_id) DO NOTHING`,
   );
 }
@@ -147,70 +152,35 @@ async function createMigratedDatabase(): Promise<TestDatabase> {
   }
 }
 
-// Mirrors the apps/worker/src/index.ts scheduled() gated-news section:
-// per-item try/catch around the shared accept/held calls.
+// Thin wrappers mirroring ONLY the callers' executor handling (scheduled
+// re-wraps per item via withTransactionalSqlExecutor; serve-live passes its
+// own tx-capable executor once). Both delegate the split to runGatedRssCycle:
+// if either caller regresses to inline SQL, the wire assertions below fail.
 async function runScheduledShape(
   executor: TransactionalSqlExecutor,
   feed: SyntheticFeed,
 ): Promise<number> {
-  let persistFailures = 0;
-  for (const rev of feed.revisions) {
-    const triageDecision = rev.triage;
-    if (!triageDecision || triageDecision.disposition !== 'ingest') continue;
-    try {
-      await persistAcceptedRssItem(executor, {
-        datasetKind: 'live',
-        rev: { ...rev, triage: triageDecision },
-        itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
-        contentHash: rev.content_hash ?? rev.permitted_text_hash,
-        supersedesHash: null,
-        policyVersion: TRIAGE_POLICY_VERSION,
-      });
-    } catch {
-      persistFailures += 1;
-    }
-  }
-  for (const held of feed.held) {
-    try {
-      await persistHeldTriageItem(executor, held, 'live', TRIAGE_POLICY_VERSION);
-    } catch {
-      // Audit write failure never blocks the ingestion cycle.
-    }
-  }
-  return persistFailures;
+  const cycle = await runGatedRssCycle(executor, {
+    datasetKind: 'live',
+    revisions: feed.revisions,
+    held: feed.held,
+    policyVersion: TRIAGE_POLICY_VERSION,
+  });
+  return cycle.persistFailures;
 }
 
-// Mirrors the tools/serve-live-pipeline.ts RSS section: one mixed pass where
-// triage-ingest revisions take the shared accept path and held items take the
-// shared held path (no structured rows in this parity feed).
 async function runServeLiveShape(
   executor: TransactionalSqlExecutor,
   feed: SyntheticFeed,
 ): Promise<number> {
-  for (const held of feed.held) {
-    await persistHeldTriageItem(executor, held, 'live', TRIAGE_POLICY_VERSION).catch(() => {});
-  }
-  let persistFailures = 0;
-  for (const rev of feed.revisions) {
-    const triageDecision = rev.triage;
-    if (triageDecision && triageDecision.disposition === 'ingest') {
-      try {
-        await persistAcceptedRssItem(executor, {
-          datasetKind: 'live',
-          rev: { ...rev, triage: triageDecision },
-          itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
-          contentHash: rev.content_hash ?? rev.permitted_text_hash,
-          supersedesHash: null,
-          policyVersion: TRIAGE_POLICY_VERSION,
-        });
-      } catch {
-        persistFailures += 1;
-      }
-      continue;
-    }
-    throw new Error('structured revisions are out of scope for this parity feed');
-  }
-  return persistFailures;
+  if (typeof executor.transaction !== 'function') return feed.revisions.length + feed.held.length;
+  const cycle = await runGatedRssCycle(executor, {
+    datasetKind: 'live',
+    revisions: feed.revisions,
+    held: feed.held,
+    policyVersion: TRIAGE_POLICY_VERSION,
+  });
+  return cycle.persistFailures;
 }
 
 async function projectRows(executor: TransactionalSqlExecutor): Promise<Record<string, unknown[]>> {
@@ -252,6 +222,14 @@ async function projectRows(executor: TransactionalSqlExecutor): Promise<Record<s
 }
 
 describe('gated RSS persistence parity', () => {
+  it('both live entry points route gated RSS through runGatedRssCycle', () => {
+    const scheduled = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+    const serveLive = readFileSync(new URL('../../../tools/serve-live-pipeline.ts', import.meta.url), 'utf8');
+    assert.ok(scheduled.includes('runGatedRssCycle'), 'scheduled() must call runGatedRssCycle');
+    assert.ok(serveLive.includes('runGatedRssCycle'), 'pollLiveFeeds() must call runGatedRssCycle');
+    assert.ok(!serveLive.includes('persistAcceptedRssItem'), 'serve-live must not call persistAcceptedRssItem directly');
+    assert.ok(!serveLive.includes('persistHeldTriageItem'), 'serve-live must not call persistHeldTriageItem directly');
+  });
   it('scheduled and serve-live caller shapes produce identical row sets', async () => {
     const scheduledDb = await createMigratedDatabase();
     const serveLiveDb = await createMigratedDatabase();

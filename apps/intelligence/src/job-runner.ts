@@ -8,6 +8,7 @@ import {
   StaleLeaseError,
 } from "../../db/src/incident-repository.js";
 import {
+  effectiveTriageRequired,
   readLatestAttemptForRevision,
   readTriageDecisionForRevision,
 } from "../../db/src/news-triage-store.js";
@@ -164,22 +165,25 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           });
         }
 
-        // WJ-INT-02B explicit-provenance triage gate. `triage_required` marks
-        // RSS-origin revisions; false means structured/webhook/synthetic and
-        // runs untriaged exactly as before. Synthetic rows never require
-        // triage even when the flag is set: migration 042's backfill predicate
-        // (source_revision_key IS NOT NULL) was over-broad on synthetic rows,
-        // and report_revisions is append-only (001 trigger rejects UPDATE), so
-        // the historical flag cannot be rewritten. Required-RSS revisions load
-        // the revision-specific decision AND latest attempt; either missing or
-        // non-ingest routes to needs_review. Lookup errors propagate into the
-        // existing retry/error path — never swallowed into an untriaged run.
+        // WJ-INT-02B explicit-provenance triage gate via effectiveTriageRequired().
+        // `triage_required` marks RSS-origin revisions; false means
+        // structured/webhook/synthetic and runs untriaged exactly as before.
+        // Synthetic rows never require triage even when the flag is set:
+        // migration 042's backfill predicate (source_revision_key IS NOT NULL)
+        // was over-broad on synthetic rows, and report_revisions is append-only
+        // (001 trigger rejects UPDATE), so the historical flag cannot be
+        // rewritten. Required-RSS revisions load the revision-specific decision
+        // AND latest attempt; either missing or non-ingest routes to
+        // needs_review. Lookup errors propagate into the existing retry/error
+        // path — never swallowed into an untriaged run.
         // Consistency: the decision and attempt must agree on revision,
         // content, policy, disposition, and category — otherwise the
         // evaluation does not describe this revision and cannot authorize it.
         let triageContext: IncidentWorkflowInput["triage"] | undefined;
-        const triageRequiredForDataset =
-          rev.triage_required === true && rev.dataset_kind !== "synthetic";
+        const triageRequiredForDataset = effectiveTriageRequired({
+          triage_required: rev.triage_required === true,
+          dataset_kind: rev.dataset_kind,
+        });
         if (triageRequiredForDataset) {
           const triageRow = await readTriageDecisionForRevision(
             options.executor,

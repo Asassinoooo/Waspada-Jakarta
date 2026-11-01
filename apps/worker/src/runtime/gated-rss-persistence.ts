@@ -2,11 +2,15 @@ import { createHash } from "node:crypto";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../../../db/src/sql.js";
 import { createSqlIncidentRepository } from "../../../db/src/incident-repository.js";
 import {
+  newsTriageIdentityHash,
   persistHeldTriageTransaction,
   recordTriageAttempt,
   recordTriageDecision,
 } from "../../../db/src/news-triage-store.js";
-import type { NewsTriageDecision } from "../layers/l1-data-knowledge/news-triage.js";
+import {
+  evaluateSourcePermissions,
+  type NewsTriageDecision,
+} from "../layers/l1-data-knowledge/news-triage.js";
 import type {
   HeldTriageDecision,
   StoredReportRevision,
@@ -14,9 +18,10 @@ import type {
 
 // WJ-INT-02B: single persistence contract for accepted/held gated RSS items.
 // Both `apps/worker/src/index.ts` scheduled() and `tools/serve-live-pipeline.ts`
-// call ONLY these two functions. Structured pollers (PetaBencana, BMKG) keep
-// their own plain-executor path and never touch this module.
-
+// call ONLY the shared cycle `runGatedRssCycle` below (poll → split → per-item
+// shared persist calls with per-item try/catch accounting). Structured pollers
+// (PetaBencana, BMKG) keep their own plain-executor path and never touch this
+// module.
 /** Accepted RSS item: revision carries the ingest triage decision. */
 export interface AcceptedRssPersistInput {
   readonly datasetKind: "live" | "historical" | "synthetic";
@@ -28,6 +33,14 @@ export interface AcceptedRssPersistInput {
   /** Previous content hash for the same (dataset, source, revision key), if any. */
   readonly supersedesHash: string | null;
   readonly policyVersion: string;
+  /**
+   * WJ-INT-02B retention capability fingerprint (§4): the poller computes it
+   * from the CURRENT authz.permissions; the tx recomputes it from the freshly
+   * read registry row and blocks replay on mismatch. Changed model/retention
+   * capabilities force fresh evaluation; display-only narrowing still replays
+   * (publish/read gates block redistribution downstream).
+   */
+  readonly permissionsFingerprint?: string;
 }
 
 /**
@@ -58,13 +71,77 @@ export async function persistAcceptedRssItem(
       input.itemIdentityHash,
     ]);
     // Fail closed: no registry row, no writes at all for this item.
-    const registry = await tx.query<{ one: number }>(
-      `SELECT 1 AS one FROM waspada.source_registry WHERE source_id = $1`,
+    // WJ-INT-02B defense in depth (§3): re-enforce the retention/model
+    // capabilities inside the same tx, covering callers that bypass the
+    // poller's authz-first gate. The registry row is read fresh here, so a
+    // permission narrowed between poll and persist cannot leak unauthorized
+    // text into revisions, chunks, or jobs. Missing row or lookup error →
+    // throw, rolling back the whole item.
+    const registry = await tx.query<{
+      approval_status: string;
+      auto_acquisition_enabled: boolean;
+      registry_status: string;
+      reuse_basis: readonly string[] | string | null;
+      reuse_license_url: string | null;
+      reuse_scope: string | null;
+      reuse_reviewer: string | null;
+      reuse_reviewed_at: string | null;
+      reuse_expires_at: string | null;
+    }>(
+      `SELECT approval_status, auto_acquisition_enabled, registry_status,
+              reuse_basis, reuse_license_url, reuse_scope, reuse_reviewer,
+              reuse_reviewed_at::text AS reuse_reviewed_at,
+              reuse_expires_at::text AS reuse_expires_at
+       FROM waspada.source_registry WHERE source_id = $1`,
       [rev.source_id],
     );
-    if (registry.rows.length === 0) {
+    const registryRow = registry.rows[0] ?? null;
+    if (!registryRow) {
       throw new Error(`triage source not registered: ${rev.source_id}`);
     }
+    const basis = Array.isArray(registryRow.reuse_basis) ? registryRow.reuse_basis : null;
+    const permissions = evaluateSourcePermissions(
+      {
+        approval_status: registryRow.approval_status,
+        auto_acquisition_enabled: registryRow.auto_acquisition_enabled,
+        registry_status: registryRow.registry_status,
+        reuse_basis: basis,
+        reuse_license_url: registryRow.reuse_license_url,
+        reuse_scope: registryRow.reuse_scope,
+        reuse_reviewer: registryRow.reuse_reviewer,
+        reuse_reviewed_at: registryRow.reuse_reviewed_at,
+        reuse_expires_at: registryRow.reuse_expires_at,
+      },
+      new Date().toISOString(),
+      rev.source_id,
+    );
+    const hasExcerpt = rev.permitted_text.includes("\n\n");
+    if (
+      permissions.acquisition !== true ||
+      permissions.titleRetention !== true ||
+      permissions.derivedRetention !== true ||
+      (hasExcerpt && permissions.descriptionRetention !== true)
+    ) {
+      throw new Error(`triage source permissions deny retention: ${rev.source_id}`);
+    }
+    // WJ-INT-02B permission-aware replay (§4): recompute the capability
+    // fingerprint from the freshly read registry row. A mismatch with the
+    // caller-supplied fingerprint means model/retention capabilities changed
+    // between poll and persist — block replay, force fresh evaluation below.
+    // Display-only narrowing leaves the fingerprint unchanged, so identical
+    // payloads still replay (publish/read gates block redistribution).
+    const currentFingerprint = createHash("sha256")
+      .update(JSON.stringify({
+        titleRetention: permissions.titleRetention === true,
+        descriptionRetention: permissions.descriptionRetention === true,
+        derivedRetention: permissions.derivedRetention === true,
+        titleModel: permissions.titleModel === true,
+        descriptionModel: permissions.descriptionModel === true,
+      }), "utf8")
+      .digest("hex");
+    const fingerprintMatches =
+      input.permissionsFingerprint === undefined ||
+      input.permissionsFingerprint === currentFingerprint;
     const existingRevision = await tx.query<{
       permitted_text_hash: string;
       content_hash: string;
@@ -99,16 +176,16 @@ export async function persistAcceptedRssItem(
     ) {
       throw new Error("RevisionContentConflict");
     }
-    // Exact-retry replay (WJ-INT-02B idempotency contract §F): return the
-    // existing job with NO new writes only when every evaluation dimension
-    // matches — same revision row, same snapshot revision, ingest
-    // disposition, same content hash, same policy version, same primary
-    // category and incident type. Any changed content, policy, category, or
+    // Exact-retry replay (WJ-INT-02B idempotency contract §F + permission-aware
+    // §4): return the existing job with NO new writes only when every
+    // evaluation dimension matches — same revision row, same snapshot
+    // revision, ingest disposition, same content hash, same policy version,
+    // same primary category and incident type, AND same capability
+    // fingerprint. Any changed content, policy, category, permission state, or
     // evaluation state falls through to a fresh evaluation below (new
-    // attempt row, updated snapshot, supersede linkage). Permission state
-    // was already enforced upstream: the caller persists only the authorized
-    // revision built under the current permissions.
+    // attempt row, updated snapshot, supersede linkage).
     if (
+      fingerprintMatches &&
       existingRevision.rows.length > 0 &&
       snapshotRow?.report_revision_id === rev.report_revision_id &&
       snapshotRow?.disposition === "ingest" &&
@@ -353,6 +430,75 @@ export async function persistHeldTriageItem(
       supersedesHash: null,
     },
   );
+}
+
+/**
+ * WJ-INT-02B shared gated-RSS cycle (§6): poll → split → per-item shared
+ * persist calls with per-item try/catch accounting. Both live entry points
+ * (`scheduled()` cron and `pollLiveFeeds()` serve-live tool) call ONLY this
+ * function for the gated-news half of the cycle. Structured revisions keep
+ * their own path and never enter here.
+ *
+ * Poll and persist stay in the caller (different executor wrapping: Worker
+ * re-wraps per item via withTransactionalSqlExecutor, serve-live guards the
+ * tx capability once). This function owns the split: exactly one accepted
+ * call per ingest revision, exactly one held call per held decision, every
+ * throw counted per item, never whole-batch abort.
+ */
+export interface GatedRssCycleResult {
+  readonly persisted: number;
+  readonly persistFailures: number;
+}
+export async function runGatedRssCycle(
+  executor: TransactionalSqlExecutor,
+  options: {
+    readonly datasetKind: "live" | "historical" | "synthetic";
+    readonly revisions: readonly StoredReportRevision[];
+    readonly held: readonly HeldTriageDecision[];
+    readonly policyVersion: string;
+  },
+): Promise<GatedRssCycleResult> {
+  let persisted = 0;
+  let persistFailures = 0;
+  for (const rev of options.revisions) {
+    const triageDecision = rev.triage;
+    if (!triageDecision || triageDecision.disposition !== "ingest") continue;
+    const revRecord: Record<string, unknown> =
+      rev !== null && typeof rev === "object" ? (rev as unknown as Record<string, unknown>) : {};
+    const contentHash =
+      typeof revRecord.content_hash === "string" ? revRecord.content_hash : rev.permitted_text_hash;
+    const supersedesHash =
+      typeof revRecord.supersedes_hash === "string" ? revRecord.supersedes_hash : null;
+    const fingerprint =
+      typeof revRecord.permissionsFingerprint === "string"
+        ? (revRecord.permissionsFingerprint as string)
+        : typeof rev.permissionsFingerprint === "string"
+          ? rev.permissionsFingerprint
+          : undefined;
+    try {
+      await persistAcceptedRssItem(executor, {
+        datasetKind: options.datasetKind,
+        rev: { ...rev, triage: triageDecision },
+        itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
+        contentHash,
+        supersedesHash,
+        policyVersion: options.policyVersion,
+        ...(fingerprint === undefined ? {} : { permissionsFingerprint: fingerprint }),
+      });
+      persisted += 1;
+    } catch {
+      persistFailures += 1;
+    }
+  }
+  for (const held of options.held) {
+    try {
+      await persistHeldTriageItem(executor, held, options.datasetKind, options.policyVersion, held.replayed ?? false);
+      persisted += 1;
+    } catch {
+      persistFailures += 1;
+    }
+  }
+  return { persisted, persistFailures };
 }
 
 async function readAttemptCount(

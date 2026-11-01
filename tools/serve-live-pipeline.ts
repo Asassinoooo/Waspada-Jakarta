@@ -16,9 +16,7 @@ import { createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runt
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
 import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-composition.js";
 import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowledge/news-triage.js";
-import { newsTriageIdentityHash } from "../apps/db/src/news-triage-store.js";
-import { persistAcceptedRssItem, persistHeldTriageItem } from "../apps/worker/src/runtime/gated-rss-persistence.js";
-import worker from "../apps/worker/src/index.js";
+import { runGatedRssCycle } from "../apps/worker/src/runtime/gated-rss-persistence.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
 import { PublicReadModel } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
 
@@ -214,7 +212,10 @@ async function main() {
       console.warn(`  [BMKG] Poll error: ${e.message}`);
     }
 
-    // C. ANTARA Megapolitan RSS — WJ-INT-02A: mandatory shared live gate.
+    // C. ANTARA Megapolitan RSS — WJ-INT-02B shared gated-RSS cycle (§6):
+    // poll → split → per-item shared persist calls. Structured revisions
+    // above/below keep their own plain-executor path and never enter here.
+    let gatedPersistFailures = 0;
     try {
       const toolEnv: WorkerEnvironment = {
         NINEROUTER_URL: process.env.NINEROUTER_URL,
@@ -226,54 +227,36 @@ async function main() {
       const newsRes = await newsRunner.poll();
       if (newsRes.revisions.length > 0) {
         console.log(`  [ANTARA News] Discovered ${newsRes.revisions.length} megapolitan articles (ingest).`);
-        discoveredRevisions.push(...newsRes.revisions);
       } else {
         console.log("  [ANTARA News] 0 new ingest articles.");
       }
-      // Held (drop/uncertain): audit metadata only via the shared held
-      // contract (real tx: lock + snapshot + review-clear + attempt).
-      // Never revisions, chunks, or jobs. Failures count, never throw.
-      for (const held of newsRes.held) {
-        try {
-          await persistHeldTriageItem(executor, held, "live", TRIAGE_POLICY_VERSION, held.replayed ?? false);
-        } catch {
-          persistFailures += 1;
-        }
+      if (typeof executor.transaction !== "function") {
+        // Fail closed without a real transaction — same rule as scheduled().
+        gatedPersistFailures = newsRes.revisions.length + newsRes.held.length;
+      } else {
+        const cycle = await runGatedRssCycle(executor, {
+          datasetKind: "live",
+          revisions: newsRes.revisions,
+          held: newsRes.held,
+          policyVersion: TRIAGE_POLICY_VERSION,
+        });
+        gatedPersistFailures = cycle.persistFailures;
       }
     } catch (e: any) {
       console.warn(`  [ANTARA News] Poll error: ${e.message}`);
     }
 
-    // Persist to PostgreSQL and enqueue AI jobs. Gated RSS revisions go
-    // through the single shared contract (WJ-INT-02B); structured revisions
-    // keep their existing plain-executor path.
-    let persistFailures = 0;
+    // Persist structured revisions (PetaBencana/BMKG) to PostgreSQL and enqueue
+    // AI jobs. discoveredRevisions contains ONLY structured revisions: the
+    // gated RSS half already persisted through runGatedRssCycle above.
+    let persistFailures = gatedPersistFailures;
     for (const rev of discoveredRevisions) {
-      const triageDecision = rev.triage;
-      if (triageDecision && triageDecision.disposition === "ingest") {
-        if (typeof executor.transaction !== "function") {
-          // Fail closed without a real transaction — same rule as scheduled().
-          persistFailures += 1;
-          continue;
-        }
-        try {
-          await persistAcceptedRssItem(executor, {
-            datasetKind: "live",
-            rev: { ...rev, triage: triageDecision },
-            itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
-            contentHash: rev.content_hash ?? rev.permitted_text_hash,
-            supersedesHash: null,
-            policyVersion: TRIAGE_POLICY_VERSION,
-          });
-        } catch {
-          // Fail closed per item; never whole-batch abort.
-          persistFailures += 1;
-        }
-        continue;
-      }
+      const revRecord = rev as unknown as Record<string, unknown>;
+      const contentHash = typeof revRecord.content_hash === "string"
+        ? (revRecord.content_hash as string)
+        : rev.permitted_text_hash;
       const traceId = `trace-${rev.report_revision_id}`;
 
-      // Ensure trace and source exist for foreign keys
       await executor.query(
         `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
          VALUES ($1, 'live', now(), 'succeeded', '{}'::jsonb)

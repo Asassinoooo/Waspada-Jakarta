@@ -208,7 +208,7 @@ async function pollOnce(
     }) => Promise<NewsTriageDecision | null>;
   },
   sourceId: string = SOURCE_ID,
-): Promise<{ revisions: readonly StoredReportRevision[]; held: readonly HeldTriageDecision[] }> {
+): Promise<{ revisions: readonly StoredReportRevision[]; held: readonly HeldTriageDecision[]; triageCounts?: { authzRejected: number } }> {
   const feed: NewsFeedConfig = { url: 'https://example.test/rss.xml', sourceId };
   const runtime = createLiveNewsPollRuntime({
     feeds: [feed],
@@ -216,7 +216,7 @@ async function pollOnce(
     triage: { sourceRemit: 'general news', ...triage },
   });
   const result = await runtime.poll();
-  return { revisions: result.revisions, held: result.held };
+  return { revisions: result.revisions, held: result.held, triageCounts: result.triageCounts };
 }
 
 async function persistPollResult(
@@ -394,7 +394,7 @@ describe('gated RSS revision identity and idempotency', () => {
   });
 
 
-  it('concurrent polls for the same version create one evaluation and one job', async () => {
+  it('concurrent polls for the same version persist exactly one evaluation and one job (model calls may duplicate)', async () => {
     const database = await createMigratedDatabase();
     try {
       await seedSource(database.executor, SOURCE_ID, FULL_BASIS);
@@ -413,6 +413,13 @@ describe('gated RSS revision identity and idempotency', () => {
         persistPollResult(database.executor, second.revisions, second.held),
       ]);
 
+      // Limited guarantee (§G): overlapping polls may both miss and both call
+      // the model (provider-cost-only race), but persistence is exactly-once.
+      assert.ok(calls.length <= 2, `expected at most 2 model calls, got ${calls.length}`);
+      const decisions = await database.executor.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM waspada.news_triage_decisions WHERE dataset_kind = 'live'`,
+      );
+      assert.equal(decisions.rows[0]!.n, '1');
       const jobs = await database.executor.query<{ n: string }>(
         `SELECT COUNT(*)::text AS n FROM waspada.ai_jobs WHERE dataset_kind = 'live'`,
       );
@@ -465,7 +472,7 @@ describe('gated RSS revision identity and idempotency', () => {
 });
 
 describe('gated RSS rights enforcement', () => {
-  it('denies model use for a public-only basis without license evidence: no prompt, no revision, no job', async () => {
+  it('denies acquisition for a public-only basis without license evidence: no fetch, no prompt, no revision, no job', async () => {
     const database = await createMigratedDatabase();
     try {
       await seedSource(database.executor, SOURCE_ID, ['public']);
@@ -477,9 +484,12 @@ describe('gated RSS rights enforcement', () => {
         callChat: ingestChatMock(calls),
       });
       assert.equal(calls.length, 0);
+      // WJ-INT-02B §3 feed-skip: the uncleared source is skipped before fetch,
+      // so no item evaluation exists to audit — held stays empty and the
+      // denial is counted once at the feed level.
       assert.equal(polled.revisions.length, 0);
-      assert.equal(polled.held.length, 1);
-      await persistPollResult(database.executor, polled.revisions, polled.held);
+      assert.equal(polled.held.length, 0);
+      assert.equal(polled.triageCounts?.authzRejected, 1);
       const revisions = await database.executor.query<{ n: string }>(
         `SELECT COUNT(*)::text AS n FROM waspada.report_revisions WHERE dataset_kind = 'live'`,
       );

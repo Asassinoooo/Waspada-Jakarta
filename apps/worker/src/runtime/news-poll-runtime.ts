@@ -35,6 +35,12 @@ export interface StoredReportRevision {
   readonly source_revision_key?: string | null;
   /** WJ-INT-02 triage outcome; present only when the poller ran the gate. */
   readonly triage?: NewsTriageDecision;
+  /**
+   * WJ-INT-02B retention capability fingerprint (§4): sha256 of the five
+   * model/retention grants evaluated at poll time. The persist layer
+   * recomputes it from the fresh registry row; mismatch blocks replay.
+   */
+  readonly permissionsFingerprint?: string;
 }
 
 /** WJ-INT-02A held triage decision: metadata only, never article content. */
@@ -49,7 +55,6 @@ export interface HeldTriageDecision {
   /**
    * WJ-INT-02B replay marker: true when the decision reuses a cached prior
    * evaluation instead of a fresh one. The persist layer skips writes for
-   * replays; fresh evaluations always record a new attempt row.
    */
   readonly replayed?: boolean;
 }
@@ -226,6 +231,13 @@ export interface NewsPollRuntimeOptions {
       readonly policyVersion: string;
       /** Content-version pin for the provider-error retry budget (§4 revision id). */
       readonly reportRevisionId?: string;
+      /**
+       * WJ-INT-02B retention capability fingerprint (§4): changed
+       * model/retention capabilities block replay and force fresh evaluation.
+       * Display-only narrowing leaves the fingerprint unchanged (publish/read
+       * gates still block redistribution downstream).
+       */
+      readonly permissionsFingerprint?: string;
     }) => Promise<NewsTriageDecision | null>;
     /** Triage policy version pinning the evaluation; defaults to the store version. */
     readonly policyVersion?: string;
@@ -340,6 +352,15 @@ export async function applyTriageGate(
     } catch {
       authz = { cleared: false, reason: "source_not_cleared" };
     }
+    const permissionsFingerprint = createHash("sha256")
+      .update(JSON.stringify({
+        titleRetention: authz.permissions?.titleRetention === true,
+        descriptionRetention: authz.permissions?.descriptionRetention === true,
+        derivedRetention: authz.permissions?.derivedRetention === true,
+        titleModel: authz.permissions?.titleModel === true,
+        descriptionModel: authz.permissions?.descriptionModel === true,
+      }), "utf8")
+      .digest("hex");
     const permissionsAllowReplay =
       authz.cleared === true &&
       authz.permissions?.titleRetention === true &&
@@ -348,7 +369,13 @@ export async function applyTriageGate(
     let prior: NewsTriageDecision | null = null;
     if (permissionsAllowReplay) {
       try {
-        prior = await findPriorDecision({ itemIdentityHash: identityHash, contentHash, policyVersion, reportRevisionId: rev.report_revision_id });
+        prior = await findPriorDecision({
+          itemIdentityHash: identityHash,
+          contentHash,
+          policyVersion,
+          reportRevisionId: rev.report_revision_id,
+          permissionsFingerprint,
+        });
       } catch {
         // Lookup failure is not a cache miss: skip the replay and run the
         // fresh authorized evaluation below; the persist layer records it.
@@ -374,7 +401,7 @@ export async function applyTriageGate(
             { title: replayTitle, descriptionExcerpt: replayExcerpt, canonicalUrl: rev.canonical_url, retrievedAt },
             { titleRetention: true, descriptionRetention: replayExcerpt !== null },
           );
-          kept.push({ ...rev, ...rebuilt, evidence_chunks: rebuilt.chunks, triage: prior });
+          kept.push({ ...rev, ...rebuilt, evidence_chunks: rebuilt.chunks, triage: prior, permissionsFingerprint });
         } catch {
           counts.ingested -= 1;
           counts.uncertain += 1;
@@ -546,7 +573,7 @@ export async function applyTriageGate(
       // The kept revision IS the authorized payload: hashes, chunks, revision
       // id, and the downstream job all derive from it. The caller persists it
       // atomically with the decision row.
-      kept.push({ ...authorized, triage: finalDecision });
+      kept.push({ ...authorized, triage: finalDecision, permissionsFingerprint });
     } else {
       if (finalDecision.disposition === "drop") {
         counts.dropped += 1;
@@ -586,6 +613,42 @@ async function pollSingleFeed(
   maxAgeHours?: number,
   triage?: NewsPollRuntimeOptions["triage"],
 ): Promise<NewsFeedPollResult> {
+  // WJ-INT-02B acquisition enforcement (§3): an uncleared source is skipped
+  // BEFORE any fetch or parse — no request, no bytes, no model use. Denied
+  // when cleared is false, the lookup throws/returns nothing (fail closed),
+  // or explicit permissions deny acquisition. Legacy callers returning a bare
+  // { cleared: true } without permissions keep the old allow behavior.
+  if (triage?.checkAuthorization) {
+    let authz: TriageAuthorization | null = null;
+    try {
+      const result = await triage.checkAuthorization(feed.sourceId);
+      if (result !== null && typeof result === "object") {
+        authz = result as TriageAuthorization;
+      }
+    } catch {
+      authz = null;
+    }
+    const denied = authz === null ||
+      authz.cleared !== true ||
+      (authz.permissions !== undefined && authz.permissions.acquisition !== true);
+    if (denied) {
+      return {
+        url: feed.url,
+        sourceId: feed.sourceId,
+        status: "success",
+        error: "source_not_cleared",
+        totalParsed: 0,
+        matchedCount: 0,
+        rejectedCount: 0,
+        revisions: [],
+        held: [],
+        triageCounts: {
+          total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 1,
+          geoRejected: 0, nonActionable: 0, providerFailures: 0, byCategory: {},
+        },
+      };
+    }
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort(new Error(`Request timed out after ${timeoutMs}ms`));

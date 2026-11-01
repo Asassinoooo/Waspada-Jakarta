@@ -25,8 +25,8 @@ import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
 import { TRIAGE_POLICY_VERSION, evaluateSourcePermissions } from "./layers/l1-data-knowledge/news-triage.js";
 import { buildLiveTriageGate } from "./runtime/news-triage-composition.js";
-import { newsTriageIdentityHash, readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
-import { persistAcceptedRssItem, persistHeldTriageItem } from "./runtime/gated-rss-persistence.js";
+import { readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
+import { runGatedRssCycle } from "./runtime/gated-rss-persistence.js";
 
 import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
 import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-integration/event-broadcaster.js";
@@ -645,7 +645,6 @@ export default {
       // metadata (no content). Structured authoritative feeds (PetaBencana,
       // BMKG) bypass the news gate.
       const structuredRevisions = [...pbResult.revisions, ...bmkgResult.revisions];
-      const gatedNewsRevisions = newsResult.revisions;
       let persistFailures = 0;
       for (const rev of structuredRevisions) {
         const revRecord: Record<string, unknown> =
@@ -722,52 +721,27 @@ export default {
           traceId,
         }).catch(() => {});
       }
-      for (const rev of gatedNewsRevisions) {
-        // WJ-INT-02B: single persistence contract for accepted RSS items.
-        // Any throw rolls back the item; counted below, never whole-batch abort.
-        const triageDecision = rev.triage;
-        if (!triageDecision || triageDecision.disposition !== "ingest") {
-          continue;
-        }
-        const revRecord: Record<string, unknown> =
-          rev !== null && typeof rev === "object" ? (rev as unknown as Record<string, unknown>) : {};
-        const contentHash =
-          typeof revRecord.content_hash === "string" ? revRecord.content_hash : rev.permitted_text_hash;
-        const supersedesHash =
-          typeof revRecord.supersedes_hash === "string" ? revRecord.supersedes_hash : null;
-        try {
-          await withTransactionalSqlExecutor(env, (txExecutor) =>
-            persistAcceptedRssItem(txExecutor, {
-              datasetKind,
-              rev: { ...rev, triage: triageDecision },
-              itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
-              contentHash,
-              supersedesHash,
-              policyVersion: TRIAGE_POLICY_VERSION,
-            }),
-          );
-        } catch {
-          // Fail closed per item: no revision/job without the full atomic write.
-          // Never whole-batch abort; reported in the summary line below.
-          persistFailures += 1;
-        }
+      // WJ-INT-02B shared gated-RSS cycle (§6): poll → split → per-item
+      // shared persist calls. Structured revisions above keep their own
+      // plain-executor path and never enter the gated cycle. The outer
+      // executor is plain SQL; each item re-wraps transactionally inside
+      // runGatedRssCycle via the tx-capable executor below.
+      try {
+        await withTransactionalSqlExecutor(env, async (txExecutor) => {
+          const cycle = await runGatedRssCycle(txExecutor, {
+            datasetKind,
+            revisions: newsResult.revisions,
+            held: newsResult.held,
+            policyVersion: TRIAGE_POLICY_VERSION,
+          });
+          persistFailures = cycle.persistFailures;
+        });
+      } catch {
+        persistFailures = newsResult.revisions.length + newsResult.held.length;
       }
       if (persistFailures > 0) {
         console.log(`[news-triage] persist_failures=${persistFailures}`);
       }
-        // WJ-INT-02B: drop/uncertain news — audit metadata only via the shared
-        // held contract (real tx: lock + snapshot + review-clear + attempt).
-        // Never create revisions, chunks, embeddings, jobs, incidents, or
-        // proposals. Failures count, never block the cycle.
-        for (const held of newsResult.held) {
-          try {
-            await withTransactionalSqlExecutor(env, (txExecutor) =>
-              persistHeldTriageItem(txExecutor, held, datasetKind, TRIAGE_POLICY_VERSION, held.replayed ?? false),
-            );
-          } catch {
-            persistFailures += 1;
-          }
-        }
       });
     } catch {}
   },

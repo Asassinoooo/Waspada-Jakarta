@@ -1,19 +1,31 @@
 -- 044_triage_required_correction.sql
 -- WJ-INT-02B: document the 042 backfill limitation. No data change.
 --
--- Finding: 042 marked every row with a non-null source_revision_key as
--- triage_required=true. That predicate is over-broad for dataset_kind =
--- 'synthetic' rows: the local/synthetic pipeline also writes revision keys,
--- and those rows must run the untriaged local path, not the RSS triage gate.
+-- Effective RSS provenance (discovered from production INSERT sites):
+-- (dataset_kind IN ('live','historical'))
+--   AND source_registry.access_method = 'rss'
+--   AND source_revision_key IS NOT NULL.
+-- Why: structured scheduled paths (apps/worker/src/index.ts:424-431,
+-- 672-679) and serve-live structured seeds (tools/serve-live-pipeline.ts:296-303)
+-- write access_method='manual_fixture' with triage_required=false and no
+-- revision key. The gated-RSS path
+-- (apps/worker/src/runtime/gated-rss-persistence.ts:206-214) is the ONLY
+-- writer of triage_required=true and always carries a revision key. Bare
+-- `source_revision_key IS NOT NULL` is NEVER a valid predicate: the
+-- local/synthetic pipeline also writes keys, and 042's backfill therefore
+-- over-marked synthetic rows. No ID list observed during development is a
+-- discriminator either.
 --
 -- This migration intentionally performs NO UPDATE: waspada.report_revisions
 -- is append-only (001 report_revisions_append_only trigger rejects every
 -- UPDATE/DELETE with 'report_revisions is append-only'), so historical flags
 -- are immutable history and must not be rewritten. The compensation lives in
--- the reader, not the data: apps/intelligence/src/job-runner.ts treats
--- dataset_kind='synthetic' as never triage-required regardless of the flag.
--- Live and historical rows keep their 042 value: a live/historical row
--- carrying a revision key is RSS-origin, and unknown provenance fails toward
+-- the reader, not the data: effectiveTriageRequired() in
+-- apps/db/src/news-triage-store.ts treats dataset_kind='synthetic' as never
+-- triage-required regardless of the flag, and
+-- apps/intelligence/src/job-runner.ts calls it instead of reading the raw
+-- flag. Live and historical rows keep their 042 value: a live/historical row
+-- that cannot be proven RSS (no registry rss row, missing key) fails toward
 -- triage (needs_review, visible) rather than silent untriaged execution.
 --
 -- New inserts must always list the triage_required column explicitly with

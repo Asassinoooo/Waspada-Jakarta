@@ -48,6 +48,12 @@ export interface LiveTriageGate {
      * in-flight evaluation targets the exact revision the ledger rows describe.
      */
     readonly reportRevisionId?: string;
+    /**
+     * WJ-INT-02B retention capability fingerprint (§4): when present and the
+     * stored snapshot carries a recorded fingerprint, replay requires a match.
+     * Stale authorization state can never persist as an exact retry.
+     */
+    readonly permissionsFingerprint?: string;
   }) => Promise<NewsTriageDecision | null>;
 }
 

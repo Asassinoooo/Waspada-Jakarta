@@ -66,6 +66,22 @@ const VALID_DATASETS: Record<string, true> = {
   historical: true,
   synthetic: true,
 };
+/**
+ * WJ-INT-02B effective provenance reader (append-only compensation).
+ * Synthetic rows never require triage regardless of the stored flag:
+ * migration 042's backfill predicate (source_revision_key IS NOT NULL) was
+ * over-broad on synthetic rows, and report_revisions is append-only so the
+ * flag cannot be rewritten. Live/historical rows use the stored flag; rows
+ * that cannot be proven RSS fail toward triage in the caller (needs_review).
+ * Missing dataset_kind is a schema violation: fail closed, never untriaged.
+ */
+export function effectiveTriageRequired(row: { triage_required: boolean; dataset_kind: string }): boolean {
+  if (row.dataset_kind !== 'live' && row.dataset_kind !== 'historical' && row.dataset_kind !== 'synthetic') {
+    throw new TypeError(`Invalid dataset_kind: ${row.dataset_kind}`);
+  }
+  if (row.dataset_kind === 'synthetic') return false;
+  return row.triage_required === true;
+}
 
 export function newsTriageIdentityHash(sourceId: string, stableIdentity: string): string {
   if (!sourceId || typeof sourceId !== 'string') {
