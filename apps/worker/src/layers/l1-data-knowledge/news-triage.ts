@@ -55,20 +55,115 @@ export interface NewsTriageDecision {
   readonly modelStatus: TriageModelStatus;
 }
 
-/** Reuse tokens that explicitly permit model triage use (ADR-005). */
-export const MODEL_TRIAGE_REUSE_TOKENS: ReadonlySet<string> = new Set([
-  'model_triage',
-  'ai_processing',
-  'open_access',
-  'public',
-]);
+/** WJ-INT-02B explicit capability vocabulary (ADR-005). Bare `public` and
+ *  `open_access` appear in NO set: a public URL, HTTP 200, or public RSS
+ *  feed is not a reuse license. The old names survive only as aliases below
+ *  for title-model callers, never as description/retention/display grants. */
+export const TITLE_MODEL_TOKENS: ReadonlySet<string> = new Set(["model_triage", "ai_processing", "model_title"]);
+export const DESCRIPTION_MODEL_TOKENS: ReadonlySet<string> = new Set(["model_description"]);
+export const TITLE_RETAIN_TOKENS: ReadonlySet<string> = new Set(["retain_title", "excerpt_permitted", "retain_description"]);
+export const DESCRIPTION_RETAIN_TOKENS: ReadonlySet<string> = new Set(["retain_description", "excerpt_permitted"]);
+export const DERIVED_RETAIN_TOKENS: ReadonlySet<string> = new Set(["retain_derived", "ai_processing"]);
+export const PUBLIC_DISPLAY_TOKENS: ReadonlySet<string> = new Set(["public_display"]);
+export interface RegistryPermissionRow {
+  readonly approval_status: string;
+  readonly auto_acquisition_enabled: boolean;
+  readonly registry_status: string;
+  readonly reuse_basis: readonly string[] | null;
+  readonly reuse_license_url: string | null;
+  readonly reuse_scope: string | null;
+  readonly reuse_reviewer: string | null;
+  readonly reuse_reviewed_at: string | null;
+  readonly reuse_expires_at: string | null;
+}
 
-/** Reuse tokens that permit retaining the RSS description excerpt. */
-export const DESCRIPTION_REUSE_TOKENS: ReadonlySet<string> = new Set([
-  'excerpt_permitted',
-  'open_access',
-  'public',
-]);
+export interface SourcePermissions {
+  readonly acquisition: boolean;
+  readonly titleModel: boolean;
+  readonly descriptionModel: boolean;
+  readonly titleRetention: boolean;
+  readonly descriptionRetention: boolean;
+  readonly derivedRetention: boolean;
+  readonly publicDisplay: boolean;
+}
+
+const LEGACY_REUSE_TOKENS: ReadonlySet<string> = new Set(["public", "open_access"]);
+const LICENSE_EVIDENCE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+function hasAnyToken(basis: readonly string[], tokens: ReadonlySet<string>): boolean {
+  return basis.some((token) => typeof token === "string" && tokens.has(token));
+}
+
+/**
+ * WJ-INT-02B explicit capability evaluation (ADR-005, pure: no I/O).
+ * `acquisition` is the unchanged approval gate. Every other capability needs
+ * its explicit token present. Rows carrying ONLY legacy `public` /
+ * `open_access` tokens additionally need reviewer-recorded license evidence
+ * (URL + reviewer + fresh review + unexpired scope); unknown, missing,
+ * ambiguous, or expired evidence fails that capability closed. New explicit
+ * tokens need no license evidence.
+ */
+export function evaluateSourcePermissions(row: RegistryPermissionRow, nowIso: string): SourcePermissions {
+  const denied: SourcePermissions = {
+    acquisition: false,
+    titleModel: false,
+    descriptionModel: false,
+    titleRetention: false,
+    descriptionRetention: false,
+    derivedRetention: false,
+    publicDisplay: false,
+  };
+  const acquisition =
+    row.approval_status === "approved" &&
+    row.auto_acquisition_enabled === true &&
+    row.registry_status === "active";
+  if (!acquisition) return denied;
+  const basis = Array.isArray(row.reuse_basis) ? row.reuse_basis : null;
+  if (!basis || basis.length === 0) return { ...denied, acquisition };
+  const explicit =
+    hasAnyToken(basis, TITLE_MODEL_TOKENS) ||
+    hasAnyToken(basis, DESCRIPTION_MODEL_TOKENS) ||
+    hasAnyToken(basis, TITLE_RETAIN_TOKENS) ||
+    hasAnyToken(basis, DESCRIPTION_RETAIN_TOKENS) ||
+    hasAnyToken(basis, DERIVED_RETAIN_TOKENS) ||
+    hasAnyToken(basis, PUBLIC_DISPLAY_TOKENS);
+  const legacyOnly = !explicit && hasAnyToken(basis, LEGACY_REUSE_TOKENS);
+  const licensed = legacyOnly && hasLicenseEvidence(row, nowIso);
+  const grant = (tokens: ReadonlySet<string>): boolean =>
+    hasAnyToken(basis, tokens) || licensed;
+  return {
+    acquisition,
+    titleModel: grant(TITLE_MODEL_TOKENS),
+    descriptionModel: grant(DESCRIPTION_MODEL_TOKENS),
+    titleRetention: grant(TITLE_RETAIN_TOKENS),
+    descriptionRetention: grant(DESCRIPTION_RETAIN_TOKENS),
+    derivedRetention: grant(DERIVED_RETAIN_TOKENS),
+    publicDisplay: grant(PUBLIC_DISPLAY_TOKENS),
+  };
+}
+
+/**
+ * Reviewer-recorded reuse license evidence. The row carries no source
+ * identifier, so scope presence (non-empty, recorded by the reviewer) is the
+ * checkable evidence; exact source/operation binding is the reviewer's
+ * attestation pinned by reuse_reviewer + reuse_reviewed_at. Anything missing,
+ * unparseable, stale, or expired fails closed.
+ */
+function hasLicenseEvidence(row: RegistryPermissionRow, nowIso: string): boolean {
+  if (!row.reuse_license_url || !/^https?:\/\/.+/i.test(row.reuse_license_url.trim())) return false;
+  if (!row.reuse_reviewer || row.reuse_reviewer.trim().length === 0) return false;
+  if (!row.reuse_scope || row.reuse_scope.trim().length === 0) return false;
+  const nowMs = Date.parse(nowIso);
+  const reviewedMs = row.reuse_reviewed_at ? Date.parse(row.reuse_reviewed_at) : NaN;
+  if (!Number.isFinite(nowMs) || !Number.isFinite(reviewedMs)) return false;
+  if (reviewedMs > nowMs || nowMs - reviewedMs > LICENSE_EVIDENCE_MAX_AGE_MS) return false;
+  if (row.reuse_expires_at !== null && row.reuse_expires_at !== undefined) {
+    const expiresMs = Date.parse(row.reuse_expires_at);
+    if (!Number.isFinite(expiresMs) || expiresMs < nowMs) return false;
+  }
+  return true;
+}
+
 
 export const TRIAGE_REASON_CODES = [
   'invalid_entry',
@@ -84,6 +179,7 @@ export const TRIAGE_REASON_CODES = [
   'conflicting_evidence',
   'provider_error',
   'invalid_model_output',
+  'retention_not_permitted',
   'provider_context_only_exception',
   'triage_v1_ingest',
   'triage_v1_stage_a',
@@ -114,6 +210,8 @@ export interface TriageAuthorization {
   readonly reason?: string;
   /** Registry reuse_basis echoed for description gating; absent when uncleared. */
   readonly reuseBasis?: readonly string[];
+  /** Explicit capability grants; absent when uncleared. */
+  readonly permissions?: SourcePermissions;
 }
 
 /** Function the poller supplies: checks source_registry approval for acquisition+model use. */

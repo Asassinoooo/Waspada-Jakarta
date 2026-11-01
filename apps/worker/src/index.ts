@@ -25,7 +25,8 @@ import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
 import { TRIAGE_POLICY_VERSION } from "./layers/l1-data-knowledge/news-triage.js";
 import { buildLiveTriageGate } from "./runtime/news-triage-composition.js";
-import { recordTriageDecision, newsTriageIdentityHash, readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
+import { newsTriageIdentityHash, readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
+import { persistAcceptedRssItem, persistHeldTriageItem } from "./runtime/gated-rss-persistence.js";
 
 import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
 import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-integration/event-broadcaster.js";
@@ -74,9 +75,11 @@ async function withTransactionalSqlExecutor<Result>(
   operation: (executor: TransactionalSqlExecutor) => Promise<Result>,
 ): Promise<Result> {
   if (env.SQL_EXECUTOR) {
+    // WJ-INT-02B fail closed: accepted RSS persistence is only correct inside
+    // a real transaction. Never degrade to a bare pooled executor here.
     const candidate = env.SQL_EXECUTOR as Partial<TransactionalSqlExecutor>;
-    if (typeof candidate.transaction === "function") {
-      return candidate.transaction((tx) => operation(tx as TransactionalSqlExecutor));
+    if (typeof candidate.transaction !== "function") {
+      throw new Error("accepted RSS persistence requires a transaction-capable executor");
     }
     return operation(env.SQL_EXECUTOR as unknown as TransactionalSqlExecutor);
   }
@@ -671,109 +674,31 @@ export default {
         }).catch(() => {});
       }
       for (const rev of gatedNewsRevisions) {
-        // WJ-INT-02A atomic ingest: decision row + revision + chunks + job in
-        // one transaction. Any triage-write failure skips revision/job
-        // creation for that item (fail closed per item, counted below).
-        const revRecord: Record<string, unknown> =
-          rev !== null && typeof rev === "object" ? (rev as unknown as Record<string, unknown>) : {};
-        const traceId = typeof revRecord.trace_id === "string" ? revRecord.trace_id : `trace-${rev.report_revision_id}`;
-        const contentHash = typeof revRecord.content_hash === "string" ? revRecord.content_hash : rev.permitted_text_hash;
+        // WJ-INT-02B: single persistence contract for accepted RSS items.
+        // Any throw rolls back the item; counted below, never whole-batch abort.
         const triageDecision = rev.triage;
         if (!triageDecision || triageDecision.disposition !== "ingest") {
           continue;
         }
+        const revRecord: Record<string, unknown> =
+          rev !== null && typeof rev === "object" ? (rev as unknown as Record<string, unknown>) : {};
+        const contentHash =
+          typeof revRecord.content_hash === "string" ? revRecord.content_hash : rev.permitted_text_hash;
+        const supersedesHash =
+          typeof revRecord.supersedes_hash === "string" ? revRecord.supersedes_hash : null;
         try {
-          await withTransactionalSqlExecutor(env, async (tx) => {
-            const txRepo = createSqlIncidentRepository(tx);
-            await tx.query(
-              `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
-               VALUES ($1, $2, now(), 'succeeded', '{}'::jsonb)
-               ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
-              [traceId, datasetKind],
-            );
-            await recordTriageDecision(tx, {
+          await withTransactionalSqlExecutor(env, (txExecutor) =>
+            persistAcceptedRssItem(txExecutor, {
               datasetKind,
+              rev: { ...rev, triage: triageDecision },
               itemIdentityHash: newsTriageIdentityHash(rev.source_id, rev.source_revision_key ?? rev.canonical_url),
-              sourceId: rev.source_id,
-              traceId,
-              disposition: triageDecision.disposition,
-              jakartaScope: triageDecision.jakartaScope,
-              actionability: triageDecision.actionability,
-              primaryCategory: triageDecision.primaryCategory,
-              incidentType: triageDecision.incidentType,
-              confidence: triageDecision.confidence,
-              reasonCodes: [...triageDecision.reasonCodes],
-              policyVersion: TRIAGE_POLICY_VERSION,
-              modelStatus: triageDecision.modelStatus,
-              reportRevisionId: rev.report_revision_id,
               contentHash,
-            });
-            await tx.query(
-              `INSERT INTO waspada.source_registry (
-                 source_id, trace_id, registry_version, display_name, source_kind, remit,
-                 access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
-                 approval_status, health_status, auto_acquisition_enabled, auto_publication_policy
-               )
-               VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
-                       ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
-               ON CONFLICT (source_id) DO NOTHING`,
-              [rev.source_id, traceId, rev.source_id],
-            );
-            await tx.query(
-              `INSERT INTO waspada.report_revisions (
-                 dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
-                 content_hash, permitted_text, permitted_text_hash, normalization_version,
-                 retrieved_at, revision_status, record_json
-               )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb)
-               ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
-              [
-                datasetKind,
-                rev.report_revision_id,
-                traceId,
-                rev.source_id,
-                rev.canonical_url,
-                contentHash,
-                rev.permitted_text,
-                rev.permitted_text_hash,
-                rev.retrieved_at,
-              ],
-            );
-            const rawChunks = revRecord.chunks;
-            const chunks: readonly { text: string; span_start: number; span_end: number }[] =
-              Array.isArray(rawChunks) ? (rawChunks as readonly { text: string; span_start: number; span_end: number }[]) : [];
-            for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-              const chk = chunks[chunkIndex];
-              if (!chk || typeof chk.text !== "string") continue;
-              const chunkTextHash = createHash("sha256").update(chk.text).digest("hex");
-              await tx.query(
-                `INSERT INTO waspada.evidence_chunks (
-                   dataset_kind, chunk_id, trace_id, report_revision_id, permitted_text_hash,
-                   span_start, span_end, offset_unit, chunker_version, chunk_text_hash, status
-                 )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'unicode_code_points', 'v1', $8, 'active')
-                 ON CONFLICT (dataset_kind, chunk_id) DO NOTHING`,
-                [
-                  datasetKind,
-                  `chk-${rev.report_revision_id}-${chunkIndex}`,
-                  traceId,
-                  rev.report_revision_id,
-                  rev.permitted_text_hash,
-                  chk.span_start,
-                  chk.span_end,
-                  chunkTextHash,
-                ],
-              );
-            }
-            await txRepo.enqueueAiJob({
-              jobId: `job-${crypto.randomUUID()}`,
-              datasetKind,
-              reportRevisionId: rev.report_revision_id,
-              traceId,
-            });
-          });
+              supersedesHash,
+              policyVersion: TRIAGE_POLICY_VERSION,
+            }),
+          );
         } catch {
-          // Fail closed per item: no revision/job without a decision row.
+          // Fail closed per item: no revision/job without the full atomic write.
           // Never whole-batch abort; reported in the summary line below.
           persistFailures += 1;
         }
@@ -781,26 +706,12 @@ export default {
       if (persistFailures > 0) {
         console.log(`[news-triage] persist_failures=${persistFailures}`);
       }
-        // WJ-INT-02A: drop/uncertain news — audit metadata only. Never create
-        // revisions, chunks, embeddings, jobs, incidents, or proposals.
+        // WJ-INT-02B: drop/uncertain news — audit metadata only via the shared
+        // held contract. Never create revisions, chunks, embeddings, jobs,
+        // incidents, or proposals.
         for (const held of newsResult.held) {
-          const triageDecision = held.decision;
           try {
-            await recordTriageDecision(executor, {
-              datasetKind,
-              itemIdentityHash: held.itemIdentityHash,
-              sourceId: held.sourceId,
-              traceId: held.traceId,
-              disposition: triageDecision.disposition,
-              jakartaScope: triageDecision.jakartaScope,
-              actionability: triageDecision.actionability,
-              primaryCategory: triageDecision.primaryCategory,
-              incidentType: triageDecision.incidentType,
-              confidence: triageDecision.confidence,
-              reasonCodes: [...triageDecision.reasonCodes],
-              policyVersion: TRIAGE_POLICY_VERSION,
-              modelStatus: triageDecision.modelStatus,
-            });
+            await persistHeldTriageItem(executor, held, datasetKind, TRIAGE_POLICY_VERSION, held.replayed ?? false);
           } catch {
             // Audit write failure never blocks the ingestion cycle.
           }
