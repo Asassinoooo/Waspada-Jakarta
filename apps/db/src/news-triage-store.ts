@@ -286,6 +286,76 @@ export async function recordTriageAttempt(
     ],
   );
 }
+/**
+ * WJ-INT-02B latest-attempt lookup for the job-runner triage gate.
+ * Returns the newest attempt row for a revision (evaluated_at DESC) or null.
+ * Selects metadata only; attempt rows never carry title/description/body text.
+ */
+export interface NewsTriageAttemptRow {
+  readonly datasetKind: string;
+  readonly itemIdentityHash: string;
+  readonly reportRevisionId: string;
+  readonly sourceId: string;
+  readonly traceId: string;
+  readonly disposition: NewsTriageDisposition;
+  readonly jakartaScope: NewsTriageJakartaScope;
+  readonly actionability: NewsTriageActionability;
+  readonly primaryCategory: string | null;
+  readonly incidentType: string | null;
+  readonly confidence: NewsTriageConfidence;
+  readonly reasonCodes: readonly string[];
+  readonly policyVersion: string;
+  readonly modelStatus: NewsTriageModelStatus;
+  readonly contentHash: string | null;
+  readonly supersedesHash: string | null;
+  readonly evaluatedAt: string;
+}
+
+export async function readLatestAttemptForRevision(
+  executor: SqlExecutor,
+  datasetKind: string,
+  reportRevisionId: string,
+): Promise<NewsTriageAttemptRow | null> {
+  if (!VALID_DATASETS[datasetKind]) {
+    throw new TypeError(`Invalid dataset_kind: ${datasetKind}`);
+  }
+  const result = await executor.query<Record<string, unknown>>(
+    `SELECT dataset_kind, item_identity_hash, report_revision_id, source_id, trace_id,
+       disposition, jakarta_scope, actionability, primary_category, incident_type,
+       confidence, reason_codes, policy_version, model_status,
+       content_hash, supersedes_hash,
+       evaluated_at::text AS evaluated_at
+     FROM waspada.news_triage_attempts
+     WHERE dataset_kind = $1 AND report_revision_id = $2
+     ORDER BY evaluated_at DESC
+     LIMIT 1`,
+    [datasetKind, reportRevisionId],
+  );
+  if (result.rows.length === 0) return null;
+  return mapAttemptRow(result.rows[0]!);
+}
+
+function mapAttemptRow(row: Record<string, unknown>): NewsTriageAttemptRow {
+  return {
+    datasetKind: row.dataset_kind as string,
+    itemIdentityHash: row.item_identity_hash as string,
+    reportRevisionId: row.report_revision_id as string,
+    sourceId: row.source_id as string,
+    traceId: row.trace_id as string,
+    disposition: row.disposition as NewsTriageDisposition,
+    jakartaScope: row.jakarta_scope as NewsTriageJakartaScope,
+    actionability: row.actionability as NewsTriageActionability,
+    primaryCategory: (row.primary_category as string | null) ?? null,
+    incidentType: (row.incident_type as string | null) ?? null,
+    confidence: row.confidence as NewsTriageConfidence,
+    reasonCodes: Array.isArray(row.reason_codes) ? [...(row.reason_codes as string[])] : [],
+    policyVersion: row.policy_version as string,
+    modelStatus: row.model_status as NewsTriageModelStatus,
+    contentHash: (row.content_hash as string | null) ?? null,
+    supersedesHash: (row.supersedes_hash as string | null) ?? null,
+    evaluatedAt: row.evaluated_at as string,
+  };
+}
 
 /**
  * WJ-INT-02A revision-keyed decision lookup. Returns the accepted decision

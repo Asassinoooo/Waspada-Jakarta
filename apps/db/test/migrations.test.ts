@@ -167,8 +167,10 @@ describe('DATA-01 migrations', () => {
         '037_ai_incident_intelligence_pipeline',
         '038_ai_incident_classification_and_fallback',
         '039_pipeline_unification_and_idempotency',
-      '040_news_triage_and_primary_category',
-      '041_triage_revision_lineage',
+        '040_news_triage_and_primary_category',
+        '041_triage_revision_lineage',
+        '042_triage_required_provenance',
+        '043_source_permission_evidence',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -324,6 +326,8 @@ describe('DATA-01 migrations', () => {
       '039_pipeline_unification_and_idempotency',
       '040_news_triage_and_primary_category',
       '041_triage_revision_lineage',
+      '042_triage_required_provenance',
+      '043_source_permission_evidence',
     ]);
   });
 
@@ -363,12 +367,14 @@ describe('DATA-01 migrations', () => {
       '039_pipeline_unification_and_idempotency',
       '040_news_triage_and_primary_category',
       '041_triage_revision_lineage',
+      '042_triage_required_provenance',
+      '043_source_permission_evidence',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '41');
+    assert.equal(count.rows[0]?.count, '43');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -387,7 +393,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 041_triage_revision_lineage/,
+      /Cannot apply migration 000_late_backfill before already applied migration 043_source_permission_evidence/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -435,6 +441,8 @@ describe('DATA-01 migrations', () => {
       { version: '039_pipeline_unification_and_idempotency' },
       { version: '040_news_triage_and_primary_category' },
       { version: '041_triage_revision_lineage' },
+      { version: '042_triage_required_provenance' },
+      { version: '043_source_permission_evidence' },
     ]);
   });
 
@@ -471,6 +479,8 @@ describe('DATA-01 migrations', () => {
       '039_pipeline_unification_and_idempotency',
       '040_news_triage_and_primary_category',
       '041_triage_revision_lineage',
+      '042_triage_required_provenance',
+      '043_source_permission_evidence',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",

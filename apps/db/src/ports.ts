@@ -65,6 +65,8 @@ export interface NewReportRevision {
   readonly supersedesId: string | null;
   readonly revisionStatus: RevisionStatus;
   readonly recordJson: JsonObject;
+  /** WJ-INT-02B explicit provenance: true only for RSS-origin revisions. Defaults false. */
+  readonly triageRequired?: boolean;
 }
 
 export interface ReportRevisionRecord extends NewReportRevision {}
@@ -193,8 +195,8 @@ class SqlReportRevisionRepository implements ReportRevisionRepository {
            (dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
             source_revision_key, content_hash, permitted_text, permitted_text_hash,
             normalization_version, published_at, observed_at, retrieved_at, valid_from,
-            valid_until, supersedes_id, revision_status, record_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb)
+            valid_until, supersedes_id, revision_status, record_json, triage_required)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19)
          ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
         revisionParameters(input),
       );
@@ -215,7 +217,8 @@ class SqlReportRevisionRepository implements ReportRevisionRepository {
                   AND r.valid_until IS NOT DISTINCT FROM $15::timestamptz
                   AND r.supersedes_id IS NOT DISTINCT FROM $16::text
                   AND r.revision_status IS NOT DISTINCT FROM $17::text
-                  AND r.record_json = $18::jsonb AS matches
+                  AND r.record_json = $18::jsonb
+                  AND r.triage_required IS NOT DISTINCT FROM $19::boolean AS matches
          FROM waspada.report_revisions AS r
          WHERE r.dataset_kind = $1 AND r.report_revision_id = $2`,
         revisionParameters(input),
@@ -303,6 +306,7 @@ function revisionParameters(input: NewReportRevision): readonly unknown[] {
     input.supersedesId,
     input.revisionStatus,
     JSON.stringify(input.recordJson),
+    input.triageRequired ?? false,
   ];
 }
 
@@ -317,7 +321,7 @@ async function findReportRevision(
             normalization_version, published_at::text AS published_at,
             observed_at::text AS observed_at, retrieved_at::text AS retrieved_at,
             valid_from::text AS valid_from, valid_until::text AS valid_until,
-            supersedes_id, revision_status, record_json
+            supersedes_id, revision_status, record_json, triage_required
      FROM waspada.report_revisions
      WHERE dataset_kind = $1 AND report_revision_id = $2`,
     [datasetKind, reportRevisionId],
@@ -434,6 +438,7 @@ interface ReportRevisionRecordRow {
   supersedes_id: string | null;
   revision_status: RevisionStatus;
   record_json: JsonObject;
+  triage_required: boolean | null;
 }
 
 interface AuditRecordRow {
@@ -493,6 +498,7 @@ function mapReportRevision(row: ReportRevisionRecordRow): ReportRevisionRecord {
     supersedesId: row.supersedes_id,
     revisionStatus: row.revision_status,
     recordJson: row.record_json,
+    triageRequired: row.triage_required ?? false,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   recordTriageAttempt,
   readTriageDecision,
   readTriageDecisionForRevision,
+  readLatestAttemptForRevision,
   readUncertainTriage,
   markTriageReviewed,
   NEWS_TRIAGE_POLICY_VERSION,
@@ -261,5 +262,35 @@ describe('WJ-INT-02 news triage decisions: audit-only persistence, idempotent up
       ),
       /check constraint/i,
     );
+  });
+
+  it('reads the latest attempt for a revision and null when none exists', async () => {
+    const missing = await readLatestAttemptForRevision(db.executor, 'synthetic', 'rep-latest-none');
+    assert.equal(missing, null);
+
+    const hash = newsTriageIdentityHash('source-antara-metro', 'feed-latest');
+    const base = {
+      datasetKind: 'synthetic',
+      itemIdentityHash: hash,
+      reportRevisionId: 'rep-latest-001',
+      sourceId: 'source-antara-metro',
+      traceId: 'trace-triage-latest',
+      disposition: 'ingest' as const,
+      jakartaScope: 'dki_jakarta' as const,
+      actionability: 'actionable' as const,
+      primaryCategory: 'disasters_weather' as const,
+      incidentType: 'banjir' as const,
+      confidence: 'high' as const,
+      reasonCodes: ['triage_v1_ingest'],
+      modelStatus: 'ok' as const,
+      contentHash: 'c'.repeat(64),
+    };
+    await recordTriageAttempt(db.executor, base);
+    await recordTriageAttempt(db.executor, { ...base, traceId: 'trace-triage-latest-2' });
+    const latest = await readLatestAttemptForRevision(db.executor, 'synthetic', 'rep-latest-001');
+    assert.equal(latest?.reportRevisionId, 'rep-latest-001');
+    assert.equal(latest?.itemIdentityHash, hash);
+    assert.equal(latest?.traceId, 'trace-triage-latest-2');
+    assert.equal(latest?.contentHash, 'c'.repeat(64));
   });
 });
