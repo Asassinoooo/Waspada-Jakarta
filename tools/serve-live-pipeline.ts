@@ -18,6 +18,7 @@ import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-comp
 import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowledge/news-triage.js";
 import { runGatedRssCycle } from "../apps/worker/src/runtime/gated-rss-persistence.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
+import worker from "../apps/worker/src/index.js";
 import { PublicReadModel } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
