@@ -329,11 +329,7 @@ export function createNewsPollResult(summary: NewsPollSummary): NewsPollResult {
 
 /** DET-FILTER-01 count-only observability: increments counters from a verdict. */
 function recordDeterministicCounters(
-  counts: {
-    detConsidered: number; detCandidate: number; detAmbiguous: number; detLowSignal: number;
-    detBroadOnly: number; detSpecific: number; detStrong: number; detSupporting: number;
-    detAlertOnly: number; detNonScene: number; detUnknownRole: number; detModelCallsSkipped: number;
-  },
+  counts: { -readonly [K in keyof Pick<NewsTriageCounts, 'detConsidered' | 'detCandidate' | 'detAmbiguous' | 'detLowSignal' | 'detBroadOnly' | 'detSpecific' | 'detStrong' | 'detSupporting' | 'detAlertOnly' | 'detNonScene' | 'detUnknownRole' | 'detModelCallsSkipped'>]: number },
   verdict: DeterministicRelevanceResult,
 ): void {
   counts.detConsidered += 1;
@@ -390,15 +386,12 @@ export async function applyTriageGate(
   const concurrency = Math.max(1, Math.min(triage.concurrency ?? 4, 8));
   const deterministicMode: DeterministicTriageMode = triage.deterministicMode ?? 'shadow';
   const detVersions = getDeterministicDatasetVersions();
-  const detCounts = {
-    detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
-    detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
-    detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
-  };
   const counts = {
     total: stored.length, ingested: 0, dropped: 0, uncertain: 0,
     authzRejected: 0, geoRejected: 0, nonActionable: 0, providerFailures: 0,
-    ...detCounts,
+    detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
+    detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
+    detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
     byCategory: {} as Record<string, number>,
     detRuleVersion: detVersions.rule,
     detGazetteerVersion: detVersions.gazetteer,
@@ -538,14 +531,18 @@ export async function applyTriageGate(
     // DET-FILTER-01: run the pure prefilter on the SAME authorized text the
     // model would receive (title + authorized excerpt only). Never sees
     // unauthorized description text.
+    // Auth-denied items never enter the matcher: behavior and counters for
+    // those paths stay exactly as before (precheck still reports the denial).
     let deterministic: DeterministicRelevanceResult | undefined;
-    try {
-      deterministic = matchDeterministicRelevance(preparedTitle ?? '', excerptForPrompt);
-    } catch {
-      deterministic = undefined;
+    if (authz.cleared === true) {
+      try {
+        deterministic = matchDeterministicRelevance(preparedTitle ?? '', excerptForPrompt);
+      } catch {
+        deterministic = undefined;
+      }
     }
     if (deterministic !== undefined) {
-      recordDeterministicCounters(detCounts, deterministic);
+      recordDeterministicCounters(counts, deterministic);
     }
     const hasStrongOrSupport = deterministic !== undefined && deterministic.eventMatches.some(
       (match) => match.strength === 'strong' || match.strength === 'supporting',
@@ -574,7 +571,7 @@ export async function applyTriageGate(
     }
     let decisionResult: NewsTriageDecision | null = stageA.decision;
     if (!stageA.needsSemantic && deterministic !== undefined && deterministic.status !== 'candidate' && deterministicMode === 'enforce') {
-      detCounts.detModelCallsSkipped += 1;
+      counts.detModelCallsSkipped += 1;
     }
     if (stageA.needsSemantic) {
       if (!callChat) {
