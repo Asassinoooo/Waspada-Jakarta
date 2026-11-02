@@ -60,6 +60,8 @@ export interface WorkerEnvironment {
   NINEROUTER_URL?: string;
   NINEROUTER_KEY?: string;
   NINEROUTER_CHAT_MODEL?: string;
+  /** DET-FILTER-01 shadow/enforce switch (`enforce` = test-only opt-in; default `shadow`). */
+  NEWS_DETERMINISTIC_FILTER_MODE?: string;
 }
 const readModel = new PublicReadModel(noConfiguredSources);
 const maxBriefingRequestBytes = 256 * 1024;

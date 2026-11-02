@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { SqlExecutor } from './sql.js';
 /** WJ-INT-02 triage policy version. */
-export const NEWS_TRIAGE_POLICY_VERSION = 'wj-int-02-v1' as const;
+export const NEWS_TRIAGE_POLICY_VERSION = 'wj-int-02-v2' as const;
 
 export type NewsTriageDisposition = 'ingest' | 'drop' | 'uncertain';
 export type NewsTriageJakartaScope =
