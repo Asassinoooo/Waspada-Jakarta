@@ -4,41 +4,23 @@ import {
   type RssDiscoveryItem,
   type RssDiscoveryParseResult,
 } from "./rss-discovery.js";
+import {
+  matchDeterministicRelevance,
+  loadDeterministicDatasets,
+} from "./deterministic-relevance.js";
 
-/** Daftar toponimi kecamatan, wilayah administrasi, dan koridor utama DKI Jakarta */
-export const JAKARTA_TOPONYMS: readonly string[] = [
-  // 5 Wilayah Administrasi & Singkatan Populer
-  "jakarta", "dki jakarta", "jakarta pusat", "jakarta selatan", "jakarta barat", "jakarta timur", "jakarta utara", "kepulauan seribu",
-  "jakpus", "jaksel", "jakbar", "jaktim", "jakut", "pulau tidung", "pulau pramuka", "pulau pari",
-  // Jakarta Pusat (8 Kecamatan)
-  "gambir", "sawah besar", "kemayoran", "senen", "cempaka putih", "menteng", "tanah abang", "johar baru",
-  // Jakarta Selatan (10 Kecamatan)
-  "kebayoran baru", "kebayoran lama", "pesanggrahan", "cilandak", "pasar minggu", "jagakarsa", "mampang prapatan", "pancoran", "tebet", "setiabudi",
-  // Jakarta Barat (8 Kecamatan)
-  "cengkareng", "grogol petamburan", "taman sari", "tambora", "kebon jeruk", "kalideres", "palmerah", "kembangan",
-  // Jakarta Timur (10 Kecamatan)
-  "matraman", "pulo gadung", "pulogadung", "jatinegara", "duren sawit", "kramat jati", "makasar", "pasar rebo", "ciracas", "cipayung", "cakung",
-  // Jakarta Utara (6 Kecamatan)
-  "koja", "kelapa gading", "tanjung priok", "pademangan", "penjaringan", "cilincing",
-  // Koridor & Tempat Penting
-  "sudirman", "thamrin", "gatot subroto", "rasuna said", "kuningan", "monas", "harmoni", "cawang", "rawamangun", "pluit", "ancol", "grogol",
-  "pejompongan", "benhil", "kemang", "blok m", "petojo", "cideng", "glodok", "roxy", "manggarai", "slipi", "tomang", "kalibata",
-  "gandaria", "senayan", "pondok indah", "fatmawati", "lebak bulus", "ragunan", "cipete", "bintaro", "pulomas", "klender", "cibubur", "salemba", "kramat",
-  "semanggi", "dukuh atas", "casablanca", "antasari", "kampung rambutan", "pulo gebang", "csw",
-];
+/**
+ * DET-FILTER-01: the versioned JSON datasets are the sole location/incident
+ * vocabulary for RSS triage. The legacy `JAKARTA_TOPONYMS` /
+ * `INCIDENT_KEYWORDS` string lists were removed; use `loadDeterministicDatasets()`
+ * (re-exported here for tests) or `matchDeterministicRelevance()` instead.
+ * `geographic-gazetteer.ts` keeps its own unrelated `JAKARTA_TOPONYMS`
+ * (typed `GazetteerPlace[]` spatial hints) and is untouched by this task.
+ */
+export function loadRssDeterministicDatasets(): ReturnType<typeof loadDeterministicDatasets> {
+  return loadDeterministicDatasets();
+}
 
-/** Kata kunci kejadian darurat, gangguan keselamatan, dan bencana perkotaan */
-export const INCIDENT_KEYWORDS: readonly string[] = [
-  "banjir", "genangan", "tergenang", "tenggelam", "kebakaran", "api melahap", "damkar", "gulkarmat", "terbakar", "hangus",
-  "pohon tumbang", "kecelakaan", "tabrakan", "terguling", "tabrak", "laka lantas", "tawuran", "bentrokan",
-  "cuaca ekstrem", "hujan lebat", "angin kencang", "angin puting beliung", "amblas", "longsor", "ambruk", "runtuh",
-  "rob", "tanggul", "pintu air", "siaga", "gempa", "evakuasi", "macet total", "ledakan",
-  "tewas", "meninggal", "korban", "jenazah", "luka", "kritis", "pembunuhan", "penusukan", "penembakan", "begal", "pencurian", "rampok",
-  // Disrupsi lalu lintas dan koridor transportasi
-  "rekayasa lalu lintas", "rekayasa lalin", "penutupan jalan", "pengalihan arus", "contraflow", "macet parah",
-  "antrean kendaraan", "tabrakan beruntun", "truk terguling", "transjakarta dialihkan", "rute distop",
-  "krl anjlok", "gangguan persinyalan", "krl tertahan", "underpass tergenang", "jalan amblas", "catenary putus",
-];
 export const DEFAULT_LOCAL_NEWS_MAX_AGE_HOURS = 48;
 export const DEFAULT_PROD_NEWS_MAX_AGE_HOURS = 6;
 
@@ -113,7 +95,10 @@ export interface PreparedNewsReportRevision {
 
 export interface FilteredNewsResult {
   readonly totalParsed: number;
+  /** Relevant kept items (`isLikelyRelevant === true`); kept volume is `keptCount`. */
   readonly matchedCount: number;
+  /** All kept valid/fresh items (revisions built for every kept item). */
+  readonly keptCount: number;
   readonly rejectedCount: number;
   readonly items: readonly ClassifiedNewsItem[];
   readonly revisions: readonly PreparedNewsReportRevision[];
@@ -124,25 +109,17 @@ export function classifyNewsItem(item: RssDiscoveryItem): {
   readonly matchedToponyms: readonly string[];
   readonly matchedKeywords: readonly string[];
 } {
-  const haystack = `${item.title ?? ""}\n${item.description ?? ""}`.toLowerCase();
-  if (haystack.trim().length === 0) {
+  const title = item.title ?? "";
+  const excerpt = sanitizeRssDescription(item.description);
+  if (`${title}\n${excerpt ?? ""}`.trim().length === 0) {
     return { isRelevant: false, matchedToponyms: [], matchedKeywords: [] };
   }
 
-  const matchedToponyms = JAKARTA_TOPONYMS.filter((topo) => {
-    // Exact word or boundary match
-    const regex = new RegExp(`\\b${escapeRegex(topo)}\\b`, "iu");
-    return regex.test(haystack);
-  });
-
-  const matchedKeywords = INCIDENT_KEYWORDS.filter((keyword) => {
-    return haystack.includes(keyword.toLowerCase());
-  });
-
-  const isRelevant = matchedToponyms.length > 0 && matchedKeywords.length > 0;
-  return { isRelevant, matchedToponyms, matchedKeywords };
+  const result = matchDeterministicRelevance(title, excerpt);
+  const matchedToponyms = result.locationMatches.map((match) => match.matchedAlias);
+  const matchedKeywords = result.eventMatches.map((match) => match.matchedTerm);
+  return { isRelevant: result.status === "candidate", matchedToponyms, matchedKeywords };
 }
-
 export function parseAndFilterNewsRss(
   xmlText: string,
   retrievedAt: string,
@@ -236,7 +213,8 @@ export function parseAndFilterNewsRss(
 
   return {
     totalParsed: parseResult.items.length,
-    matchedCount: items.length,
+    matchedCount: items.filter((entry) => entry.isLikelyRelevant).length,
+    keptCount: items.length,
     rejectedCount,
     items,
     revisions,
@@ -254,9 +232,6 @@ function sha256(input: string): string {
   return createHash("sha256").update(input, "utf8").digest("hex");
 }
 
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 /**
  * WJ-INT-02B content-version identity. `stableIdentity` (RSS guid, falling

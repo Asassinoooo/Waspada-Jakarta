@@ -198,7 +198,8 @@ test("pollFeed executes polling on an individual feed config", async () => {
   assert.equal(feedResult.status, "success");
   assert.equal(feedResult.sourceId, "custom-metro");
   assert.equal(feedResult.totalParsed, 3);
-  assert.equal(feedResult.matchedCount, 3);
+  assert.equal(feedResult.keptCount, 3);
+  assert.ok(feedResult.matchedCount <= feedResult.keptCount);
   assert.equal(feedResult.rejectedCount, 0);
   assert.equal(feedResult.revisions.length, 3);
   assert.equal(feedResult.revisions[0]!.source_id, "custom-metro");
@@ -480,7 +481,10 @@ test("filters out stale articles older than maxAgeHours (50h, 2 months) and acce
 
   const result = await runtime.poll();
   assert.equal(result.totalItemsParsed, 3);
-  assert.equal(result.totalMatched, 1);
+  // Kept volume is unchanged (fresh items always persist pre-gate); matched
+  // carries only the deterministic-relevant subset (title-only, no scene cue).
+  assert.equal(result.feedResults[0]!.keptCount, 1);
+  assert.equal(result.totalMatched, result.feedResults[0]!.matchedCount);
   assert.equal(result.totalRejected, 2);
   assert.equal(result.revisions.length, 1);
   assert.equal(result.revisions[0]!.canonical_url, "https://www.antaranews.com/berita/9101/kebakaran-tebet-fresh");
@@ -529,7 +533,8 @@ test("runtime respects NEWS_MAX_AGE_HOURS env variable for filtering stale news"
 
     const result = await runtime.poll();
     assert.equal(result.totalItemsParsed, 2);
-    assert.equal(result.totalMatched, 1);
+    assert.equal(result.feedResults[0]!.keptCount, 1);
+    assert.equal(result.totalMatched, result.feedResults[0]!.matchedCount);
     assert.equal(result.totalRejected, 1);
     assert.equal(result.revisions.length, 1);
     assert.equal(result.revisions[0]!.canonical_url, "https://www.antaranews.com/berita/9201/kebakaran-menteng");

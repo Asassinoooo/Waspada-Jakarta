@@ -154,7 +154,10 @@ export interface NewsFeedPollResult {
   readonly status: NewsFeedPollStatus;
   readonly error?: string;
   readonly totalParsed: number;
+  /** Relevant kept items (`parseAndFilterNewsRss().matchedCount`); kept volume is `keptCount`. */
   readonly matchedCount: number;
+  /** All kept valid/fresh items. */
+  readonly keptCount: number;
   readonly rejectedCount: number;
   readonly revisions: readonly StoredReportRevision[];
   /** WJ-INT-02A held decisions (drop/uncertain metadata only). */
@@ -639,6 +642,7 @@ async function pollSingleFeed(
         error: "source_not_cleared",
         totalParsed: 0,
         matchedCount: 0,
+        keptCount: 0,
         rejectedCount: 0,
         revisions: [],
         held: [],
@@ -673,6 +677,7 @@ async function pollSingleFeed(
         error: `HTTP ${response.status} ${response.statusText}`,
         totalParsed: 0,
         matchedCount: 0,
+        keptCount: 0,
         rejectedCount: 0,
         revisions: [],
         held: [],
@@ -695,6 +700,7 @@ async function pollSingleFeed(
       error: error instanceof Error ? error.message : String(error),
       totalParsed: 0,
       matchedCount: 0,
+      keptCount: 0,
       rejectedCount: 0,
       revisions: [],
       held: [],
@@ -714,6 +720,7 @@ async function pollSingleFeed(
         error: `XML parse error: ${parseResult.error}`,
         totalParsed: 0,
         matchedCount: 0,
+        keptCount: 0,
         rejectedCount: 0,
         revisions: [],
         held: [],
@@ -730,6 +737,7 @@ async function pollSingleFeed(
       status: "success",
       totalParsed: parseResult.totalParsed,
       matchedCount: parseResult.matchedCount,
+      keptCount: parseResult.keptCount,
       rejectedCount: parseResult.rejectedCount,
       revisions: gated.revisions,
       held: gated.held,
@@ -743,6 +751,7 @@ async function pollSingleFeed(
       error: error instanceof Error ? error.message : String(error),
       totalParsed: 0,
       matchedCount: 0,
+      keptCount: 0,
       rejectedCount: 0,
       revisions: [],
       held: [],
