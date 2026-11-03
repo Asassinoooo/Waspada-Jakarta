@@ -25,6 +25,7 @@
     "ai:smoke": "tsx tools/ai/run-ninerouter-smoke.ts",
     "ai:smoke:live": "node --env-file=.env.local --import tsx tools/ai/run-ninerouter-smoke.ts --live",
     "eval:casebook": "tsx tools/evaluation/casebook-cli.ts",
+    "eval:det-shadow": "tsx tools/evaluation/det-filter-shadow-eval.ts",
     "db:test": "npm run test --workspace=@waspada/db",
     "smoke": "npm run smoke --workspace=@waspada/web",
     "build:web": "npm run build --workspace=@waspada/web",

@@ -11,10 +11,10 @@
  * cap (excess -> `oversized`, body discarded); at most 5 live feeds; stop
  * after 100 raw parsed items total (feed order as configured, document order
  * within a feed; mid-feed stop is deterministic; `truncated: true` when hit).
- * Never fetches article pages, images, or media. Freshness mirrors the
+ * Never fetches story pages, images, or media. Freshness mirrors the
  * poller: `ageHours > lookbackHours -> stale` with the same `Date.parse`
  * semantics (unparseable dates never count as stale); default lookback 48h.
- * Never reads `NEWS_MAX_AGE_HOURS` and never changes production defaults.
+ * Never reads the production max-age env and never changes production defaults.
  *
  * Isolation: parse (`parseRssDiscoveryXml`) -> sanitize
  * (`sanitizeRssDescription`) -> match (`matchDeterministicRelevance`) ->
@@ -25,9 +25,9 @@
  * helpers plus `DEFAULT_NEWS_FEEDS` (feed allowlist) and
  * `evaluateSourcePermissions` (clearance semantics re-used read-only); the
  * transitive closure is pure (node:crypto, saxes, versioned JSON datasets).
- * Nothing here imports or calls gated persistence, AI/chat providers,
- * embeddings, semantic triage, or queues. `NEWS_DETERMINISTIC_FILTER_MODE`
- * stays `shadow`; candidate/ambiguous/low_signal semantics stay frozen.
+ * Nothing here imports or calls gated persistence, AI providers,
+ * embeddings, semantic triage, or queues. The production deterministic
+ * filter mode stays `shadow`; candidate/ambiguous/low_signal semantics stay frozen.
  *
  * Clearance for this task: acquisition approved+enabled AND a recorded grant
  * covering deterministic processing of RSS title/excerpt metadata (a
