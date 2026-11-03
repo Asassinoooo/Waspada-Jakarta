@@ -17,8 +17,8 @@
     "casebook.ts",
     "casebook.test.ts",
     "casebook-cli.ts",
-    "casebook-cli.test.ts",
     "model-benchmark.ts",
+    "det-filter-shadow-eval.ts",
     "benchmark-runner.test.ts"
   ]
 }

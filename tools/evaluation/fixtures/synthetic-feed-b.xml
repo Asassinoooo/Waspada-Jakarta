@@ -1,0 +1,9 @@
+<rss version="2.0"><channel>
+<title>SYNTHETIC TEST ONLY: shadow-eval feed B</title>
+<item><title>SYNTHETIC TEST ONLY: Kecelakaan beruntun terjadi di Cawang Jakarta Timur</title><link>https://synthetic.invalid/eval-b/001</link><guid>urn:synthetic:eval-b:001</guid><pubDate>2026-11-02T11:00:00Z</pubDate><description>SYNTHETIC TEST ONLY: Tabrakan beruntun melibatkan lima kendaraan di Cawang.</description></item>
+<item><title>SYNTHETIC TEST ONLY: Rekayasa lalu lintas di Cawang Jakarta Timur</title><link>https://synthetic.invalid/eval-b/002</link><guid>urn:synthetic:eval-b:002</guid><pubDate>2026-11-02T10:30:00Z</pubDate><description>SYNTHETIC TEST ONLY: Pengalihan arus diberlakukan pada pagi hari.</description></item>
+<item><title>SYNTHETIC TEST ONLY: Kebakaran tidak terjadi, simulasi di Senen</title><link>https://synthetic.invalid/eval-b/003</link><guid>urn:synthetic:eval-b:003</guid><pubDate>2026-11-02T10:00:00Z</pubDate><description>SYNTHETIC TEST ONLY: Latihan simulasi kebakaran di Senen.</description></item>
+<item><link>https://synthetic.invalid/eval-b/004</link><guid>urn:synthetic:eval-b:004</guid><pubDate>2026-11-02T09:50:00Z</pubDate><description>SYNTHETIC TEST ONLY: Item tanpa judul untuk jalur invalid.</description></item>
+<item><title>SYNTHETIC TEST ONLY: Kebakaran rumah terjadi di Tebet Jakarta Selatan</title><link>https://synthetic.invalid/eval-b/005</link><guid>urn:synthetic:eval-b:005</guid><pubDate>2026-11-02T09:45:00Z</pubDate></item>
+<item><title>SYNTHETIC TEST ONLY: Kebakaran terjadi di Baru</title><link>https://synthetic.invalid/eval-b/006</link><guid>urn:synthetic:eval-b:006</guid><pubDate>2026-11-02T09:15:00Z</pubDate><description>SYNTHETIC TEST ONLY: Petugas memadamkan kebakaran.</description></item>
+</channel></rss>
