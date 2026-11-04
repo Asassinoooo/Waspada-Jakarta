@@ -50,6 +50,12 @@ async function main() {
   // 2. Persistent PGlite Database Setup
   const dataDir = path.resolve(process.cwd(), ".data/live-db");
   fs.mkdirSync(dataDir, { recursive: true });
+  const pidFile = path.join(dataDir, "postmaster.pid");
+  if (fs.existsSync(pidFile)) {
+    try {
+      fs.unlinkSync(pidFile);
+    } catch {}
+  }
   console.log(`\n[Database] Opening persistent database at: ${dataDir}`);
   const database = await PGlite.create({
     dataDir,
@@ -87,6 +93,42 @@ async function main() {
   // Clear demo synthetic fixtures so only genuine live data is shown
   PublicReadModel.clearPublishedEvents();
 
+  // Seed the 14 news feeds into waspada.source_registry for live user testing
+  console.log(`\n[Source Registry] Seeding ${DEFAULT_NEWS_FEEDS.length} RSS sources...`);
+  const seedTraceId = "trace-seed-rss-sources";
+  await executor.query(
+    `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
+     VALUES ($1, 'live', now(), 'succeeded', '{"seed": "all_rss_feeds"}'::jsonb)
+     ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
+    [seedTraceId],
+  );
+
+  for (const feed of DEFAULT_NEWS_FEEDS) {
+    const host = new URL(feed.url).host;
+    const displayName = feed.sourceId.replace(/^source-/, "").replace(/-/g, " ").toUpperCase();
+    await executor.query(
+      `INSERT INTO waspada.source_registry (
+         source_id, trace_id, registry_version, display_name, source_kind, remit,
+         access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
+         approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
+         polling_interval_seconds
+       )
+       VALUES (
+         $1, $2, 1, $3, 'media', ARRAY['news', 'incidents'],
+         'rss', ARRAY[$4]::text[], ARRAY[]::text[],
+         ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
+         'active', 'approved', 'healthy', true, 'never', 600
+       )
+       ON CONFLICT (source_id) DO UPDATE SET
+         approval_status = 'approved',
+         auto_acquisition_enabled = true,
+         registry_status = 'active',
+         reuse_basis = ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
+         health_status = 'healthy'`,
+      [feed.sourceId, seedTraceId, displayName, host],
+    );
+  }
+  console.log(`✓ Seeded ${DEFAULT_NEWS_FEEDS.length} RSS sources in source_registry.`);
   const incidentRepo = createSqlIncidentRepository(executor);
 
   // 3. Worker Environment Configuration
@@ -227,9 +269,9 @@ async function main() {
       const newsRunner = createLiveNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS, triage: gate });
       const newsRes = await newsRunner.poll();
       if (newsRes.revisions.length > 0) {
-        console.log(`  [ANTARA News] Discovered ${newsRes.revisions.length} megapolitan articles (ingest).`);
+        console.log(`  [RSS Feeds (14)] Discovered ${newsRes.revisions.length} articles (ingest), ${newsRes.held.length} held.`);
       } else {
-        console.log("  [ANTARA News] 0 new ingest articles.");
+        console.log(`  [RSS Feeds (14)] 0 new ingest articles (${newsRes.held.length} held).`);
       }
       if (typeof executor.transaction !== "function") {
         // Fail closed without a real transaction — same rule as scheduled().
