@@ -114,7 +114,7 @@ async function main() {
          polling_interval_seconds
        )
        VALUES (
-         $1, $2, 1, $3, 'media', ARRAY['news', 'incidents'],
+         $1, $2, 1, $3, 'newsroom', ARRAY['news', 'incidents'],
          'rss', ARRAY[$4]::text[], ARRAY[]::text[],
          ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
          'active', 'approved', 'healthy', true, 'never', 600
