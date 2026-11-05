@@ -421,6 +421,7 @@ async function main() {
   console.log("  Web Application UI   : http://127.0.0.1:5173");
   console.log("  Moderator Review     : http://127.0.0.1:5173/#tinjau-bukti");
   console.log("  Public Incident Map  : http://127.0.0.1:5173/#peta");
+  console.log("  3D Embedding Visual  : http://127.0.0.1:5173/#visualisasi-3d");
   console.log("  Live API & Ingestion : http://127.0.0.1:8787/api/v1");
   console.log("  Fast Demo Login      : http://127.0.0.1:8787/api/v1/auth/demo-login?role=moderator");
   console.log("==================================================================");
