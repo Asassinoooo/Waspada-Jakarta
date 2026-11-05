@@ -638,7 +638,13 @@ export default {
         console.log(
           `[news-triage] discovered=${c.total} ingested=${c.ingested} dropped=${c.dropped} uncertain=${c.uncertain} ` +
           `authz_rejected=${c.authzRejected} geo_rejected=${c.geoRejected} non_actionable=${c.nonActionable} ` +
-          `provider_failures=${c.providerFailures} by_category=${JSON.stringify(c.byCategory)}`,
+          `provider_failures=${c.providerFailures} by_category=${JSON.stringify(c.byCategory)} ` +
+          `det_considered=${c.detConsidered} det_candidate=${c.detCandidate} det_ambiguous=${c.detAmbiguous} ` +
+          `det_low_signal=${c.detLowSignal} det_broad_only=${c.detBroadOnly} det_specific=${c.detSpecific} ` +
+          `det_strong=${c.detStrong} det_supporting=${c.detSupporting} det_alert_only=${c.detAlertOnly} ` +
+          `det_non_scene=${c.detNonScene} det_unknown_role=${c.detUnknownRole} ` +
+          `det_model_calls_skipped=${c.detModelCallsSkipped} det_rule=${c.detRuleVersion} ` +
+          `det_gazetteer=${c.detGazetteerVersion} det_lexicon=${c.detLexiconVersion}`,
         );
       }
       // WJ-INT-02A: revisions are ingest-only; held carries drop/uncertain

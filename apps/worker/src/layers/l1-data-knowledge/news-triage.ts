@@ -15,8 +15,10 @@
  */
 
 import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-categories.js";
+import type { DeterministicRelevanceResult } from "./deterministic-relevance.js";
 
-export const TRIAGE_POLICY_VERSION = 'wj-int-02-v1' as const;
+export const TRIAGE_POLICY_VERSION = 'wj-int-02-v2' as const;
+
 
 export type TriageDisposition = 'ingest' | 'drop' | 'uncertain';
 export type TriageJakartaScope =
@@ -216,6 +218,12 @@ export interface TriageNewsItem {
   /** Positive signal only; absence never drops. */
   readonly gazetteerHit: boolean;
   readonly maxAgeHours: number;
+  /**
+   * DET-FILTER-01 deterministic prefilter verdict over the SAME authorized
+   * text the model would receive. Optional so existing constructors compile;
+   * `undefined` is shadow-safe (`needsSemantic: true`).
+   */
+  readonly deterministic?: DeterministicRelevanceResult;
 }
 
 export interface TriageAuthorization {
@@ -260,10 +268,13 @@ function ageHours(pubDate: string | null, retrievedAt: string): number | null {
  * the injected authorization check (called only when the item is otherwise
  * valid, to avoid registry lookups for malformed entries).
  */
+export type DeterministicTriageMode = 'shadow' | 'enforce';
+
 export async function precheckNewsItem(
   item: TriageNewsItem,
   isDuplicate: boolean,
   checkAuthorization: TriageAuthorizationCheck,
+  deterministicMode: DeterministicTriageMode = 'shadow',
 ): Promise<StageAResult> {
   if (!item.title || !item.link || !item.stableIdentity) {
     return {
@@ -347,8 +358,61 @@ export async function precheckNewsItem(
       }),
     };
   }
-
-  return { needsSemantic: true, decision: null };
+  // DET-FILTER-01 shadow/enforce fork. Branches 1-5 above are byte-identical;
+  // shadow (or an absent verdict) preserves current behavior exactly.
+  const verdict = item.deterministic;
+  if (deterministicMode !== 'enforce' || verdict === undefined) {
+    return { needsSemantic: true, decision: null };
+  }
+  if (verdict.status === 'candidate') {
+    return { needsSemantic: true, decision: null };
+  }
+  if (verdict.status === 'low_signal') {
+    return {
+      needsSemantic: false,
+      decision: decision({
+        disposition: 'drop',
+        jakartaScope: 'unknown',
+        actionability: 'unknown',
+        primaryCategory: null,
+        incidentType: null,
+        confidence: 'low',
+        reasonCodes: ['vague_report'],
+        modelStatus: 'skipped_stage_a',
+      }),
+    };
+  }
+  // ambiguous: map the cause to existing reason codes only (no new codes).
+  const hasWeakLocation = verdict.locationMatches.every(
+    (match) => match.matchStrength !== 'specific',
+  );
+  const hasStrongEvent = verdict.eventMatches.some((match) => match.strength === 'strong');
+  const hasSupportOrAlert = verdict.eventMatches.some(
+    (match) => match.strength === 'supporting' || match.strength === 'alert_only',
+  );
+  const causeCode = hasWeakLocation &&
+      (verdict.locationRole === 'unknown' || verdict.locationRole === 'non_scene_or_reference')
+    ? 'ambiguous_location'
+    : hasWeakLocation
+    ? 'ambiguous_location'
+    : !hasStrongEvent && hasSupportOrAlert
+    ? 'vague_report'
+    : !hasStrongEvent
+    ? 'ambiguous_category'
+    : 'ambiguous_location';
+  return {
+    needsSemantic: false,
+    decision: decision({
+      disposition: 'uncertain',
+      jakartaScope: 'unknown',
+      actionability: 'unknown',
+      primaryCategory: null,
+      incidentType: null,
+      confidence: 'low',
+      reasonCodes: [causeCode],
+      modelStatus: 'skipped_stage_a',
+    }),
+  };
 }
 
 const OFFICIAL_CATEGORIES: ReadonlySet<string> = new Set<string>(OFFICIAL_INCIDENT_CATEGORIES);
