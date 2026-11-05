@@ -25,6 +25,7 @@ playwright-report/
 .env
 .env*.local
 *.zip
+*PRIVATE*.md
 .data/
 !.env.example
 .dev.vars
