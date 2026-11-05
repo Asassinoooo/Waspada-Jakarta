@@ -28,6 +28,7 @@ type Route =
   | { screen: "review" }
   | { screen: "source-preview" }
   | { screen: "local-pipeline" }
+  | { screen: "embedding-3d" }
   | { screen: "admin" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
@@ -35,6 +36,9 @@ type Route =
 const LocalPipelinePreview = import.meta.env?.DEV === true
   ? lazy(() => import("./LocalPipelinePreview.js").then((module) => ({ default: module.LocalPipelinePreview })))
   : null;
+const Embedding3DVisualization = lazy(() =>
+  import("./Embedding3DVisualization.js").then((module) => ({ default: module.Embedding3DVisualization }))
+);
 
 export interface DiscoveryState {
   query: string;
@@ -150,6 +154,7 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#admin" || hash === "#admin-workspace") return { screen: "admin" };
   if (hash === "#pipeline-lokal" && import.meta.env?.DEV === true) return { screen: "local-pipeline" };
   if (hash === "#demo-sumber") return { screen: "source-preview" };
+  if (hash === "#visualisasi-3d" || hash === "#embedding-3d") return { screen: "embedding-3d" };
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
@@ -165,7 +170,7 @@ export function routeFromHash(hash: string): Route {
 }
 
 export function SiteHeader({ route, context = null }: { route: Route; context?: PublicContext | null }) {
-  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen.startsWith("detail");
+  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen === "embedding-3d" || route.screen.startsWith("detail");
   const onForYou = route.screen === "preferences" || route.screen === "updates" || route.screen === "onboarding" || route.screen === "account";
   const onHelp = route.screen === "help";
   const onAccount = route.screen === "login" || route.screen === "onboarding" || route.screen === "account";
@@ -211,6 +216,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
             <nav className="context-nav" aria-label="Peta dan laporan">
               <a href="#jelajah" aria-current={route.screen === "discover" || route.screen.startsWith("detail") ? "page" : undefined}>Laporan publik</a>
               {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Peta sumber · demo</a>}
+              <a href="#visualisasi-3d" aria-current={route.screen === "embedding-3d" ? "page" : undefined}>Visualisasi 3D</a>
             </nav>
           )}
           {onForYou && (
@@ -623,6 +629,11 @@ export function App() {
           <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />
         </Suspense>
       )}
+      {route.screen === "embedding-3d" && (
+        <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat Visualisasi 3D…</section></main>}>
+          <Embedding3DVisualization />
+        </Suspense>
+      )}
       {route.screen === "source-preview" && (
         <UnifiedSourceExplorer
           datasetMode={context?.dataset_mode ?? null}
@@ -645,6 +656,7 @@ export function App() {
         <a href="#bantuan">Bantuan</a>
         <a href="#admin">Ruang administrator</a>
         <a href="#tinjau-bukti">Tinjau bukti · baca saja</a>
+        <a href="#visualisasi-3d">Visualisasi 3D</a>
       </footer>
     </div>
   );

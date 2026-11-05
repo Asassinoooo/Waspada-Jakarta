@@ -38,6 +38,7 @@ import type { DatasetKind } from "../../db/src/ports.js";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js";
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
+import { createEmbeddingVisualizationHandler } from "./layers/l4-application-integration/embedding-visualization-handler.js";
 
 const activeRevisions = new Map<string, StoredReportRevision>();
 const activeProposals = new Map<string, EventProposalDto>();
@@ -88,6 +89,9 @@ async function withTransactionalSqlExecutor<Result>(
   }
   throw new Error("No database executor or connection string configured in environment");
 }
+const embeddingVisualizationHandler = createEmbeddingVisualizationHandler({
+  executorRunner: withSqlExecutor,
+});
 
 function getModerationHandler(env: WorkerEnvironment) {
   const datasetKind = ((env.DATASET_MODE as string) || "live") as DatasetKind;
@@ -531,6 +535,9 @@ export default {
     }
     if (url.pathname === "/api/v1/demo/source-preview") {
       return sourcePreviewHandler(request, env);
+    }
+    if (url.pathname === "/api/v1/embeddings/visualization") {
+      return embeddingVisualizationHandler(request, env);
     }
     const eventListPageService =
       env.DATASET_MODE === "live"

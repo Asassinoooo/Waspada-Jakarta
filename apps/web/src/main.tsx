@@ -10,6 +10,7 @@ import "./experience.css";
 import "./help-page.css";
 import "./account.css";
 import "./landing.css";
+import "./embedding-3d.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("The app root element is missing.");
