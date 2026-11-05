@@ -171,6 +171,7 @@ export interface PersistIncidentProcessingInput {
     readonly relationship: IncidentRelationship;
   };
   readonly proposal: EventProposalDto;
+  readonly proposalAction?: "create" | "upsert";
   readonly now?: string;
 }
 
@@ -1219,8 +1220,8 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
         );
 
         // 6. Persist Proposal and Claims
-        await persistProposalWithTx(tx, input.proposal, input.datasetKind);
-
+        const shouldUpsert = input.proposalAction === "upsert" || input.incidentAction.type === "update";
+        await persistProposalWithTx(tx, input.proposal, input.datasetKind, { upsert: shouldUpsert });
         // 7. Record Idempotency Record
         await tx.query(
           `INSERT INTO waspada.incident_processing_records (

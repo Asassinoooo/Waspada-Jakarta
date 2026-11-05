@@ -96,10 +96,8 @@ export function incidentTypeLabel(type: string): string {
     case "tree_fall": return "Pohon Tumbang";
     case "crime": return "Kriminalitas";
     case "weather": return "Cuaca Ekstrem";
-    default: {
-      const formatted = type.replace(/_/g, " ");
-      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
-    }
+    default:
+      return type;
   }
 }
 
@@ -129,7 +127,7 @@ export function severityLabel(sev: string): string {
     case "high": return "Tinggi";
     case "medium": return "Sedang";
     case "low": return "Rendah";
-    case "unknown": return "Belum Ditentukan";
+    case "unknown": return "unknown";
     default: return sev;
   }
 }
@@ -828,7 +826,7 @@ export function ModeratorReviewQueue({
             </ul>
           )}
         </section>
-      ) : loading ? (
+      ) : (queue.length === 0 && !loading) ? (
         <div className="moderator-empty-queue" role="status">
           <div className="empty-queue-icon">✓</div>
           <h3>Semua proposal telah ditinjau</h3>
