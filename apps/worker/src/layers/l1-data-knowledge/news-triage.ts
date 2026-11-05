@@ -15,8 +15,10 @@
  */
 
 import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-categories.js";
+import type { DeterministicRelevanceResult } from "./deterministic-relevance.js";
 
-export const TRIAGE_POLICY_VERSION = 'wj-int-02-v1' as const;
+export const TRIAGE_POLICY_VERSION = 'wj-int-02-v2' as const;
+
 
 export type TriageDisposition = 'ingest' | 'drop' | 'uncertain';
 export type TriageJakartaScope =
@@ -216,6 +218,12 @@ export interface TriageNewsItem {
   /** Positive signal only; absence never drops. */
   readonly gazetteerHit: boolean;
   readonly maxAgeHours: number;
+  /**
+   * DET-FILTER-01 deterministic prefilter verdict over the SAME authorized
+   * text the model would receive. Optional so existing constructors compile;
+   * `undefined` is shadow-safe (`needsSemantic: true`).
+   */
+  readonly deterministic?: DeterministicRelevanceResult;
 }
 
 export interface TriageAuthorization {
@@ -260,10 +268,13 @@ function ageHours(pubDate: string | null, retrievedAt: string): number | null {
  * the injected authorization check (called only when the item is otherwise
  * valid, to avoid registry lookups for malformed entries).
  */
+export type DeterministicTriageMode = 'shadow' | 'enforce';
+
 export async function precheckNewsItem(
   item: TriageNewsItem,
   isDuplicate: boolean,
   checkAuthorization: TriageAuthorizationCheck,
+  deterministicMode: DeterministicTriageMode = 'shadow',
 ): Promise<StageAResult> {
   if (!item.title || !item.link || !item.stableIdentity) {
     return {
@@ -347,8 +358,61 @@ export async function precheckNewsItem(
       }),
     };
   }
-
-  return { needsSemantic: true, decision: null };
+  // DET-FILTER-01 shadow/enforce fork. Branches 1-5 above are byte-identical;
+  // shadow (or an absent verdict) preserves current behavior exactly.
+  const verdict = item.deterministic;
+  if (deterministicMode !== 'enforce' || verdict === undefined) {
+    return { needsSemantic: true, decision: null };
+  }
+  if (verdict.status === 'candidate') {
+    return { needsSemantic: true, decision: null };
+  }
+  if (verdict.status === 'low_signal') {
+    return {
+      needsSemantic: false,
+      decision: decision({
+        disposition: 'drop',
+        jakartaScope: 'unknown',
+        actionability: 'unknown',
+        primaryCategory: null,
+        incidentType: null,
+        confidence: 'low',
+        reasonCodes: ['vague_report'],
+        modelStatus: 'skipped_stage_a',
+      }),
+    };
+  }
+  // ambiguous: map the cause to existing reason codes only (no new codes).
+  const hasWeakLocation = verdict.locationMatches.every(
+    (match) => match.matchStrength !== 'specific',
+  );
+  const hasStrongEvent = verdict.eventMatches.some((match) => match.strength === 'strong');
+  const hasSupportOrAlert = verdict.eventMatches.some(
+    (match) => match.strength === 'supporting' || match.strength === 'alert_only',
+  );
+  const causeCode = hasWeakLocation &&
+      (verdict.locationRole === 'unknown' || verdict.locationRole === 'non_scene_or_reference')
+    ? 'ambiguous_location'
+    : hasWeakLocation
+    ? 'ambiguous_location'
+    : !hasStrongEvent && hasSupportOrAlert
+    ? 'vague_report'
+    : !hasStrongEvent
+    ? 'ambiguous_category'
+    : 'ambiguous_location';
+  return {
+    needsSemantic: false,
+    decision: decision({
+      disposition: 'uncertain',
+      jakartaScope: 'unknown',
+      actionability: 'unknown',
+      primaryCategory: null,
+      incidentType: null,
+      confidence: 'low',
+      reasonCodes: [causeCode],
+      modelStatus: 'skipped_stage_a',
+    }),
+  };
 }
 
 const OFFICIAL_CATEGORIES: ReadonlySet<string> = new Set<string>(OFFICIAL_INCIDENT_CATEGORIES);
@@ -586,6 +650,7 @@ export function buildTriagePrompt(input: {
     'Geography: DKI Jakarta means Jakarta Pusat, Selatan, Barat, Timur, Utara, Kepulauan Seribu. Bintaro, Cibubur, Bekasi, Depok, Tangerang are NOT DKI on name alone; return unknown when ambiguous. A publisher mentioning Jakarta does not establish the event occurred in Jakarta. Never invent coordinates or Jakarta impacts from proximity. The query rectangle west 106.32 south -6.40 east 106.98 north -5.16 is NOT an administrative boundary.',
     'Categories (exactly one, never invent): crime_personal_security, demonstrations_public_gatherings, crowds_major_events, violence_immediate_threats, disasters_weather, fires_infrastructure_hazards, transport_road_incidents, utilities_essential_services, health_environmental_advisories, group_specific_critical_notices.',
     'Return exactly one JSON object, no commentary: {"disposition","jakartaScope","actionability","primaryCategory","incidentType","confidence","reasonCodes","evidence"}. jakartaScope is dki_jakarta|direct_jakarta_impact|outside_scope|unknown. actionability is immediate|actionable|context_only|none|unknown. primaryCategory is one official slug or null (null only when disposition is not ingest). incidentType is a short descriptive string or null. confidence is high|medium|low. reasonCodes is a non-empty string array. evidence is an array of {"field":"title"|"description","exactQuote":verbatim substring of the cited field}.',
+    'reasonCodes rules: for disposition "ingest", reasonCodes MUST be ["triage_v1_ingest"] (or ["provider_context_only_exception"] if actionability is context_only). For disposition "drop", reasonCodes MUST contain "outside_scope" or "non_actionable". For disposition "uncertain", reasonCodes MUST contain one of: "ambiguous_location", "ambiguous_category", "vague_report", "conflicting_evidence". Never invent any other code.',
   ].join(' ');
   const user = JSON.stringify({
     sourceId: input.sourceId,

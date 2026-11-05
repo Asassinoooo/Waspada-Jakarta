@@ -17,8 +17,6 @@ import {
 } from "../src/layers/l1-data-knowledge/multisource-correlator.js";
 import {
   classifyNewsItem,
-  INCIDENT_KEYWORDS,
-  JAKARTA_TOPONYMS as RSS_TOPONYMS,
 } from "../src/layers/l1-data-knowledge/rss-news-ingest.js";
 
 function makeReport(overrides: Partial<StoredReportRevision> = {}): StoredReportRevision {
@@ -307,31 +305,31 @@ test("multisource-correlator locates micro-landmarks and clusters multi-source t
   assert.equal(clusters[0]?.coordinates[1], -6.2201);
 });
 
-test("rss-news-ingest identifies traffic disruption news items as relevant", () => {
-  assert.ok(INCIDENT_KEYWORDS.includes("contraflow"));
-  assert.ok(INCIDENT_KEYWORDS.includes("truk terguling"));
-  assert.ok(INCIDENT_KEYWORDS.includes("krl anjlok"));
-  assert.ok(INCIDENT_KEYWORDS.includes("rekayasa lalu lintas"));
-  assert.ok(INCIDENT_KEYWORDS.includes("catenary putus"));
-
-  assert.ok(RSS_TOPONYMS.includes("semanggi"));
-  assert.ok(RSS_TOPONYMS.includes("dukuh atas"));
-  assert.ok(RSS_TOPONYMS.includes("casablanca"));
-
+test("rss-news-ingest routes traffic disruption news through the deterministic matcher", () => {
   const trafficItem = {
-    title: "Truk Terguling di Semanggi, Rekayasa Lalu Lintas Diberlakukan",
+    title: "Truk terguling terjadi di Cawang Jakarta Timur, arus dialihkan",
     link: "https://antara.news/101",
     guid: "guid-traffic-101",
     pubDate: "2026-10-26T08:00:00.000Z",
-    description: "Insiden di Semanggi Jakarta Selatan",
+    description: "Kecelakaan truk terguling terjadi di Cawang, pengalihan arus diberlakukan",
   };
 
   const classification = classifyNewsItem(trafficItem);
   assert.equal(classification.isRelevant, true);
-  assert.ok(classification.matchedToponyms.includes("semanggi"));
+  assert.ok(classification.matchedToponyms.some((topo) => topo.toLowerCase().includes("cawang")));
   assert.ok(
     classification.matchedKeywords.some((k) =>
-      ["truk terguling", "terguling", "rekayasa lalu lintas"].includes(k),
+      ["truk terguling", "kecelakaan"].some((term) => k.toLowerCase().includes(term)),
     ),
   );
+
+  // Planned-traffic language alone (no unplanned incident) stays non-relevant.
+  const plannedOnly = classifyNewsItem({
+    title: "Rekayasa lalu lintas di sekitar Monas",
+    link: "https://antara.news/102",
+    guid: "guid-traffic-102",
+    pubDate: "2026-10-26T08:00:00.000Z",
+    description: "Pengalihan arus karena acara, contraflow diberlakukan",
+  });
+  assert.equal(plannedOnly.isRelevant, false);
 });

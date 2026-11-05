@@ -36,12 +36,14 @@ export interface EventProposalDto {
   readonly interpretation_category?: string | null;
   /** WJ-INT-02B: registry source id for the public-display rights gate. */
   readonly source_id?: string | null;
+  readonly incident_id?: string | null;
 }
 export interface EventProposalWriter {
   persistProposal(
     proposal: EventProposalDto,
     datasetKind?: string,
-  ): Promise<{ proposalId: string; outcome: 'created' | 'already_exists' }>;
+    options?: { upsert?: boolean },
+  ): Promise<{ proposalId: string; outcome: 'created' | 'updated' | 'already_exists' }>;
   readPendingProposals(datasetKind?: string): Promise<readonly EventProposalDto[]>;
   readProposalById(proposalId: string, datasetKind?: string): Promise<EventProposalDto | null>;
 }
@@ -146,7 +148,8 @@ export async function persistProposalWithTx(
   tx: SqlExecutor,
   proposal: EventProposalDto,
   datasetKind: string = 'live',
-): Promise<{ proposalId: string; outcome: 'created' | 'already_exists' }> {
+  _options?: { upsert?: boolean },
+): Promise<{ proposalId: string; outcome: 'created' | 'updated' | 'already_exists' }> {
   if (!proposal || typeof proposal !== 'object') {
     throw new TypeError('Proposal must be an object');
   }
@@ -177,6 +180,14 @@ export async function persistProposalWithTx(
     hash.readInt32BE(4),
   ]);
 
+  function mapEvidenceLabel(prop: EventProposalDto, clm: EventProposalDto["claims"][number]): string {
+    const raw = clm.evidence_label as string;
+    if (raw === 'issuer_notice' || raw === 'independent_corroboration' || raw === 'crowdsourced_observation') {
+      return raw;
+    }
+    return prop.is_multi_source || clm.is_corroborated ? 'independent_corroboration' : 'attributed_report';
+  }
+
   // Idempotency check: does the proposal already exist?
   const existing = await tx.query<{ proposal_id: string }>(
     `SELECT proposal_id FROM waspada.event_proposals
@@ -186,7 +197,6 @@ export async function persistProposalWithTx(
   if (existing.rows.length > 0) {
     return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
   }
-
   // Lineage IDs
   const extra = proposal as unknown as Record<string, unknown>;
   const traceId = (typeof extra.trace_id === 'string' && extra.trace_id) || `trace-${proposal.proposal_id}`;
@@ -216,7 +226,6 @@ export async function persistProposalWithTx(
   if (inserted.rows.length === 0) {
     return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
   }
-
   // Insert claims into waspada.proposal_claims
   for (const claim of proposal.claims) {
     await tx.query(
@@ -229,7 +238,7 @@ export async function persistProposalWithTx(
         proposal.proposal_id,
         claim.claim_id,
         claim.support_assessment,
-        claim.evidence_label,
+        mapEvidenceLabel(proposal, claim),
         claim.claim_text,
         JSON.stringify(claim),
       ],
@@ -266,8 +275,9 @@ export function createEventProposalWriter(executor: SqlExecutor): EventProposalW
     async persistProposal(
       proposal: EventProposalDto,
       datasetKind: string = 'live',
-    ): Promise<{ proposalId: string; outcome: 'created' | 'already_exists' }> {
-      return runInTransaction(executor, (tx) => persistProposalWithTx(tx, proposal, datasetKind));
+      _options?: { upsert?: boolean },
+    ): Promise<{ proposalId: string; outcome: 'created' | 'updated' | 'already_exists' }> {
+      return runInTransaction(executor, (tx) => persistProposalWithTx(tx, proposal, datasetKind, _options));
     },
 
     async readPendingProposals(datasetKind: string = 'live'): Promise<readonly EventProposalDto[]> {
@@ -286,11 +296,23 @@ export function createEventProposalWriter(executor: SqlExecutor): EventProposalW
         [datasetKind],
       );
 
-      return result.rows.map((row) =>
+      const proposals = result.rows.map((row) =>
         typeof row.record_json === 'string'
           ? (JSON.parse(row.record_json) as EventProposalDto)
           : (row.record_json as EventProposalDto),
       );
+
+      // Deduplicate: If multiple proposals exist for the same physical incident, keep the latest one
+      const seenIncidents = new Set<string>();
+      const deduped: EventProposalDto[] = [];
+      for (const prop of proposals) {
+        const key = prop.incident_id || (prop.proposal_id.startsWith("prop-inc-") ? prop.proposal_id.replace(/-v\d+$/, "") : prop.proposal_id);
+        if (!seenIncidents.has(key)) {
+          seenIncidents.add(key);
+          deduped.push(prop);
+        }
+      }
+      return deduped;
     },
 
     async readProposalById(proposalId: string, datasetKind?: string): Promise<EventProposalDto | null> {

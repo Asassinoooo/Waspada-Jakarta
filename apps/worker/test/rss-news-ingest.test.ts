@@ -3,45 +3,56 @@ import test from "node:test";
 import {
   classifyNewsItem,
   parseAndFilterNewsRss,
-  JAKARTA_TOPONYMS,
-  INCIDENT_KEYWORDS,
+  loadRssDeterministicDatasets,
 } from "../src/layers/l1-data-knowledge/rss-news-ingest.js";
+import {
+  getDeterministicDatasetVersions,
+} from "../src/layers/l1-data-knowledge/deterministic-relevance.js";
 
-test("toponyms and keywords arrays are populated", () => {
-  assert.ok(JAKARTA_TOPONYMS.length >= 44);
-  assert.ok(INCIDENT_KEYWORDS.length >= 15);
-  assert.ok(JAKARTA_TOPONYMS.includes("jakarta"));
-  assert.ok(JAKARTA_TOPONYMS.includes("senen"));
-  assert.ok(INCIDENT_KEYWORDS.includes("kebakaran"));
-  assert.ok(INCIDENT_KEYWORDS.includes("banjir"));
+test("deterministic datasets are versioned and canonical (44 districts, 267 kelurahan)", () => {
+  const datasets = loadRssDeterministicDatasets();
+  const versions = getDeterministicDatasetVersions();
+  assert.equal(versions.gazetteer, "2026-11-02-seed-1");
+  assert.equal(versions.lexicon, "2026-11-02-seed-1");
+  assert.equal(versions.rule, "det-filter-v1");
+  let districts = 0;
+  let villages = 0;
+  for (const area of datasets.gazetteer.hierarchy.administrativeAreas) {
+    districts += area.districts.length;
+    for (const district of area.districts) villages += district.villages.length;
+  }
+  assert.equal(districts, 44);
+  assert.equal(villages, 267);
 });
 
-test("classifyNewsItem identifies relevant Jakarta safety incidents and filters out off-topic items", () => {
-  // Case 1: Relevant fire incident in Jakarta Pusat
+
+test("classifyNewsItem uses the deterministic matcher (scene + specific + strong = relevant)", () => {
+  // Case 1: fire in Tebet with an explicit scene cue is relevant.
   const fire = classifyNewsItem({
-    title: "Kebakaran hanguskan puluhan kios di kawasan Pasar Senen Jakarta Pusat",
-    link: "https://www.antaranews.com/berita/1001/kebakaran-senen",
+    title: "Kebakaran rumah terjadi di Tebet Jakarta Selatan",
+    link: "https://www.antaranews.com/berita/1001/kebakaran-tebet",
     guid: "antara-1001",
     pubDate: "Mon, 26 Oct 2026 03:00:00 +0700",
-    description: null,
+    description: "Petugas damkar memadamkan kebakaran rumah yang terjadi di Tebet",
   });
   assert.equal(fire.isRelevant, true);
-  assert.ok(fire.matchedToponyms.includes("senen"));
-  assert.ok(fire.matchedKeywords.includes("kebakaran"));
+  assert.ok(fire.matchedToponyms.some((topo) => topo.toLowerCase().includes("tebet")));
+  assert.ok(fire.matchedKeywords.some((keyword) => keyword.toLowerCase().includes("kebakaran")));
 
-  // Case 2: Relevant flood incident in Jakarta Selatan
-  const flood = classifyNewsItem({
-    title: "Banjir tergenang hingga 50 cm di Mampang Prapatan Jakarta Selatan akibat hujan lebat",
-    link: "https://www.antaranews.com/berita/1002/banjir-mampang",
+  // Case 2: specific location + strong event but no scene cue stays non-relevant
+  // (conservative: ambiguous, never silently promoted).
+  const noScene = classifyNewsItem({
+    title: "Kebakaran hanguskan puluhan kios di kawasan Pasar Senen Jakarta Pusat",
+    link: "https://www.antaranews.com/berita/1002/kebakaran-senen",
     guid: "antara-1002",
     pubDate: "Mon, 26 Oct 2026 04:00:00 +0700",
     description: null,
   });
-  assert.equal(flood.isRelevant, true);
-  assert.ok(flood.matchedToponyms.includes("mampang prapatan"));
-  assert.ok(flood.matchedKeywords.includes("banjir"));
+  assert.equal(noScene.isRelevant, false);
+  assert.ok(noScene.matchedToponyms.some((topo) => topo.toLowerCase().includes("senen")));
+  assert.ok(noScene.matchedKeywords.some((keyword) => keyword.toLowerCase().includes("kebakaran")));
 
-  // Case 3: Incident outside Jakarta (must be rejected)
+  // Case 3: incident outside Jakarta (must be rejected).
   const outsideJakarta = classifyNewsItem({
     title: "Banjir bandang terjang ratusan rumah warga di Padang Pariaman",
     link: "https://www.antaranews.com/berita/1003/banjir-padang",
@@ -52,45 +63,43 @@ test("classifyNewsItem identifies relevant Jakarta safety incidents and filters 
   assert.equal(outsideJakarta.isRelevant, false);
   assert.equal(outsideJakarta.matchedToponyms.length, 0);
 
-  // Case 4: Jakarta news but unrelated to safety/incidents (must be rejected)
+  // Case 4: Jakarta news but unrelated to safety/incidents (must be rejected).
   const politicalNews = classifyNewsItem({
-    title: "Pemerintah Provinsi DKI Jakarta luncurkan program beasiswa baru bagi pelajar berprestasi",
+    title: "Pemerintah Provinsi DKI Jakarta luncurkan program beasiswa baru",
     link: "https://www.antaranews.com/berita/1004/beasiswa-jakarta",
     guid: "antara-1004",
     pubDate: "Mon, 26 Oct 2026 06:00:00 +0700",
     description: null,
   });
   assert.equal(politicalNews.isRelevant, false);
-  assert.ok(politicalNews.matchedToponyms.includes("dki jakarta"));
+  assert.ok(politicalNews.matchedToponyms.some((topo) => topo.toLowerCase().includes("jakarta")));
   assert.equal(politicalNews.matchedKeywords.length, 0);
 
-  // Case 5: Detik News emergency with Menteng and Jakpus abbreviation
-  const detikItem = classifyNewsItem({
-    title: "Kebakaran Rumah di Menteng Jaya Jakpus, 20 Unit Damkar Dikerahkan",
-    link: "https://news.detik.com/berita/d-12345/kebakaran-menteng",
+  // Case 5: arrest mention is a reference role, never a candidate scene.
+  const arrest = classifyNewsItem({
+    title: "Pelaku pembunuhan ditangkap di Menteng",
+    link: "https://news.detik.com/berita/d-12345/pembunuhan-menteng",
     guid: "detik-12345",
     pubDate: "Wed, 28 Oct 2026 08:30:00 +0700",
-    description: null,
+    description: "Pelaku pembunuhan ditangkap di Menteng Jakarta Pusat",
   });
-  assert.equal(detikItem.isRelevant, true);
-  assert.ok(detikItem.matchedToponyms.includes("menteng"));
-  assert.ok(detikItem.matchedToponyms.includes("jakpus"));
-  assert.ok(detikItem.matchedKeywords.includes("kebakaran"));
-  assert.ok(detikItem.matchedKeywords.includes("damkar"));
+  assert.equal(arrest.isRelevant, false);
+  assert.ok(arrest.matchedToponyms.some((topo) => topo.toLowerCase().includes("menteng")));
+  assert.ok(arrest.matchedKeywords.some((keyword) => keyword.toLowerCase().includes("pembunuhan")));
 
-  // Case 6: CNN Indonesia emergency in Pulau Tidung Kepulauan Seribu
-  const cnnItem = classifyNewsItem({
-    title: "Puntung Rokok Picu Kebakaran Lahan di Pulau Tidung Kepulauan Seribu",
+  // Case 6: kelurahan-level fire with scene cue is relevant.
+  const kelurahan = classifyNewsItem({
+    title: "Kebakaran lahan terjadi di Pulau Tidung Kepulauan Seribu",
     link: "https://www.cnnindonesia.com/nasional/20261028-kebakaran-pulau-tidung",
     guid: "cnn-67890",
     pubDate: "Wed, 28 Oct 2026 08:42:31 +0700",
     description: null,
   });
-  assert.equal(cnnItem.isRelevant, true);
-  assert.ok(cnnItem.matchedToponyms.includes("pulau tidung"));
-  assert.ok(cnnItem.matchedToponyms.includes("kepulauan seribu"));
-  assert.ok(cnnItem.matchedKeywords.includes("kebakaran"));
+  assert.equal(kelurahan.isRelevant, true);
+  assert.ok(kelurahan.matchedToponyms.some((topo) => topo.toLowerCase().includes("pulau tidung")));
+  assert.ok(kelurahan.matchedKeywords.some((keyword) => keyword.toLowerCase().includes("kebakaran")));
 });
+
 
 test("parseAndFilterNewsRss extracts valid report_revisions and evidence_chunks for L1 persistence", () => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>
@@ -125,8 +134,10 @@ test("parseAndFilterNewsRss extracts valid report_revisions and evidence_chunks 
 
   assert.ok("totalParsed" in result);
   assert.equal(result.totalParsed, 3);
-  // All 3 technically valid items are preserved for downstream interpretation
-  assert.equal(result.matchedCount, 3);
+  // All 3 technically valid items are kept for downstream interpretation;
+  // matchedCount carries only the deterministic-relevant subset.
+  assert.equal(result.keptCount, 3);
+  assert.equal(result.matchedCount, result.items.filter((entry) => entry.isLikelyRelevant).length);
   assert.equal(result.rejectedCount, 0);
 
   // Inspect generated L1 report revisions
@@ -190,7 +201,8 @@ test("parseAndFilterNewsRss accepts articles within max age (2h) and rejects sta
 
   assert.ok("totalParsed" in result);
   assert.equal(result.totalParsed, 3);
-  assert.equal(result.matchedCount, 1);
+  assert.equal(result.keptCount, 1);
+  assert.equal(result.matchedCount, result.items.filter((entry) => entry.isLikelyRelevant).length);
   assert.equal(result.rejectedCount, 2);
   assert.equal(result.revisions.length, 1);
   assert.equal(result.revisions[0]!.canonical_url, "https://www.antaranews.com/berita/6001/kebakaran-tebet-2h");
@@ -219,7 +231,8 @@ test("parseAndFilterNewsRss respects NEWS_MAX_AGE_HOURS env variable and NODE_EN
   // Default in test/dev is 48 hours -> 8 hours old is accepted
   const defaultResult = parseAndFilterNewsRss(xml, retrievedAt, "source-antara-metro");
   assert.ok("totalParsed" in defaultResult);
-  assert.equal(defaultResult.matchedCount, 1);
+  assert.equal(defaultResult.keptCount, 1);
+  assert.equal(defaultResult.matchedCount, defaultResult.items.filter((entry) => entry.isLikelyRelevant).length);
   assert.equal(defaultResult.rejectedCount, 0);
 
   // NEWS_MAX_AGE_HOURS=6 -> 8 hours old is rejected
@@ -228,8 +241,10 @@ test("parseAndFilterNewsRss respects NEWS_MAX_AGE_HOURS env variable and NODE_EN
     process.env.NEWS_MAX_AGE_HOURS = "6";
     const envResult = parseAndFilterNewsRss(xml, retrievedAt, "source-antara-metro");
     assert.ok("totalParsed" in envResult);
-    assert.equal(envResult.matchedCount, 0);
-    assert.equal(envResult.rejectedCount, 1);
+    if ("totalParsed" in envResult) {
+      assert.equal(envResult.keptCount, 0);
+      assert.equal(envResult.rejectedCount, 1);
+    }
   } finally {
     if (origEnv === undefined) {
       delete process.env.NEWS_MAX_AGE_HOURS;
@@ -245,8 +260,10 @@ test("parseAndFilterNewsRss respects NEWS_MAX_AGE_HOURS env variable and NODE_EN
     delete process.env.NEWS_MAX_AGE_HOURS;
     const prodResult = parseAndFilterNewsRss(xml, retrievedAt, "source-antara-metro");
     assert.ok("totalParsed" in prodResult);
-    assert.equal(prodResult.matchedCount, 0);
-    assert.equal(prodResult.rejectedCount, 1);
+    if ("totalParsed" in prodResult) {
+      assert.equal(prodResult.keptCount, 0);
+      assert.equal(prodResult.rejectedCount, 1);
+    }
   } finally {
     if (origNodeEnv === undefined) {
       delete process.env.NODE_ENV;
@@ -290,7 +307,7 @@ test("parseAndFilterNewsRss does not reject reports lacking explicit Jakarta top
 
   assert.ok("totalParsed" in result);
   assert.equal(result.totalParsed, 3);
-  assert.equal(result.matchedCount, 3, "All 3 reports must be preserved for AI downstream interpretation");
+  assert.equal(result.keptCount, 3, "All 3 reports must be preserved for AI downstream interpretation");
   assert.equal(result.rejectedCount, 0);
 
   // Verify provenance and source metadata

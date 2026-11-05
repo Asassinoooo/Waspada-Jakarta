@@ -1,0 +1,1363 @@
+{
+  "schemaVersion": "1.0.0",
+  "datasetId": "waspada-jakarta-incident-lexicon",
+  "datasetVersion": "2026-11-02-seed-1",
+  "language": "id-ID",
+  "description": "Versioned seed lexicon for deterministic pre-filtering of Indonesian free-text incident/news reports relevant to Jakarta. It is not a complete Indonesian dictionary, not a legal taxonomy, and not a replacement for semantic triage or human review.",
+  "sources": [
+    {
+      "id": "bpbd-dki-2024-retrospective",
+      "kind": "official_jakarta_incident_reporting",
+      "publisher": "BPBD DKI Jakarta",
+      "url": "https://bpbd.jakarta.go.id/data/files/perpustakaan/2025/02/03/303/1738556224100-infografis-kejadian-bencana-2024.pdf",
+      "supports": [
+        "Kebakaran",
+        "Pohon tumbang",
+        "Jalan tergenang",
+        "Banjir",
+        "Tanah longsor",
+        "Angin kencang",
+        "Kejadian lainnya"
+      ],
+      "limitations": "A year-specific list of BPBD reported event labels, not a complete taxonomy for all city-safety, transport, crime, health, or utility incidents."
+    },
+    {
+      "id": "bpbd-dki-open-data-dashboard",
+      "kind": "official_jakarta_dashboard",
+      "publisher": "BPBD DKI Jakarta",
+      "url": "https://gis-bpbd.jakarta.go.id/open-data-bpbd/",
+      "supports": [
+        "Dashboard filtering by incident type and year."
+      ],
+      "limitations": "Use for later data validation and category discovery; current JSON aliases are not scraped from it."
+    },
+    {
+      "id": "bnpb-juklak-7-2023",
+      "kind": "national_disaster_data_standard",
+      "publisher": "BNPB",
+      "url": "https://data.bnpb.go.id/dataset/juklak-standar-data-kejadian-dan-dampak-bencana",
+      "supports": [
+        "National event/damage data standard as a reference for expanding disaster terminology."
+      ],
+      "limitations": "Not used as a complete list of the phrases below; supplemental aliases are curated."
+    },
+    {
+      "id": "bmkg-early-warning",
+      "kind": "official_weather_alert_reference",
+      "publisher": "BMKG",
+      "url": "https://www.bmkg.go.id/peringatan-dini",
+      "supports": [
+        "Weather early-warning and hazard-advisory terminology."
+      ],
+      "limitations": "Forecast/advisory terms are kept separate from occurred incidents."
+    },
+    {
+      "id": "legacy-wj-rss-keywords",
+      "kind": "repository_legacy_terms",
+      "publisher": "Waspada Jakarta repository",
+      "url": "https://github.com/Asassinoooo/Waspada-Jakarta/blob/main/apps/worker/src/layers/l1-data-knowledge/rss-news-ingest.ts",
+      "supports": [
+        "Migrates all current hardcoded INCIDENT_KEYWORDS into explicit strong/supporting/alert-only treatment."
+      ],
+      "limitations": "This is code provenance, not an official event taxonomy."
+    },
+    {
+      "id": "curated-indonesian-seed",
+      "kind": "curated_phrase_expansion",
+      "publisher": "Waspada Jakarta development seed",
+      "supports": [
+        "Supplemental Indonesian phrases for violence, transport, utility, crowd, maritime, health and infrastructure events."
+      ],
+      "limitations": "Curated seed terms require evaluation against rights-cleared reports and human-labelled fixtures before enforcement."
+    },
+    {
+      "id": "bpbd-dki-2025-infographic",
+      "kind": "official_jakarta_annual_reference",
+      "publisher": "BPBD DKI Jakarta",
+      "url": "https://bpbd.jakarta.go.id/perpustakaan/SDJka2V4R3cwZnd0OG9BSVk5WkFGUT09/infografis-kejadian-bencana-2025",
+      "supports": [
+        "A newer annual incident infographic exists and should be checked during lexicon maintenance."
+      ],
+      "limitations": "This starter lexicon was not extracted from the 2025 infographic; the BPBD labels explicitly enumerated in this file come from the 2024 retrospective."
+    }
+  ],
+  "officialBpbdLabels": [
+    "Kebakaran",
+    "Pohon tumbang",
+    "Jalan tergenang",
+    "Banjir",
+    "Tanah longsor",
+    "Angin kencang",
+    "Kejadian lainnya"
+  ],
+  "eventGroups": [
+    {
+      "id": "flood",
+      "label": "Banjir",
+      "signalType": "incident",
+      "primaryCategoryHint": "disasters_weather",
+      "sourceClass": "bpbd_dki_label",
+      "sourceRefs": [
+        "bpbd-dki-2024-retrospective"
+      ],
+      "strongTerms": [
+        "banjir",
+        "banjir rob",
+        "banjir kiriman",
+        "banjir bandang",
+        "banjir luapan",
+        "banjir merendam",
+        "banjir merendam rumah",
+        "banjir menggenangi",
+        "banjir melanda",
+        "air sungai meluap",
+        "sungai meluap",
+        "kali meluap",
+        "luapan sungai",
+        "luapan kali",
+        "tanggul jebol",
+        "tanggul bocor hingga banjir",
+        "permukiman terendam banjir"
+      ],
+      "supportingTerms": [
+        "rob",
+        "tanggul",
+        "pintu air",
+        "siaga",
+        "evakuasi",
+        "genangan",
+        "tergenang",
+        "air naik",
+        "debit air meningkat",
+        "korban",
+        "rumah terendam"
+      ],
+      "notes": "BPBD DKI lists Banjir as a headline event type. Strong terms express an actual flood or overflow; status/forecast terms alone are not an event."
+    },
+    {
+      "id": "road_inundation",
+      "label": "Jalan tergenang",
+      "signalType": "incident",
+      "primaryCategoryHint": "disasters_weather",
+      "sourceClass": "bpbd_dki_label",
+      "sourceRefs": [
+        "bpbd-dki-2024-retrospective"
+      ],
+      "strongTerms": [
+        "jalan tergenang",
+        "jalan terendam air",
+        "genangan air di jalan",
+        "genangan di jalan",
+        "underpass tergenang",
+        "akses jalan tergenang",
+        "ruas jalan tergenang",
+        "jalan digenangi air",
+        "jalan terendam banjir"
+      ],
+      "supportingTerms": [
+        "genangan",
+        "tergenang",
+        "underpass",
+        "jalan ditutup akibat genangan",
+        "kendaraan mogok akibat genangan"
+      ],
+      "notes": "BPBD DKI lists Jalan tergenang separately from Banjir. Generic genangan/tergenang is supporting-only unless tied to a road/underpass/access."
+    },
+    {
+      "id": "fire",
+      "label": "Kebakaran",
+      "signalType": "incident",
+      "primaryCategoryHint": "fires_infrastructure_hazards",
+      "sourceClass": "bpbd_dki_label",
+      "sourceRefs": [
+        "bpbd-dki-2024-retrospective"
+      ],
+      "strongTerms": [
+        "kebakaran",
+        "kebakaran rumah",
+        "kebakaran gedung",
+        "kebakaran bangunan",
+        "kebakaran ruko",
+        "kebakaran pasar",
+        "kebakaran gudang",
+        "kebakaran kendaraan",
+        "kebakaran mobil",
+        "kebakaran motor",
+        "kebakaran lahan",
+        "kebakaran permukiman",
+        "dilalap api",
+        "api melahap",
+        "api membakar",
+        "api berkobar melahap"
+      ],
+      "supportingTerms": [
+        "damkar",
+        "gulkarmat",
+        "terbakar",
+        "hangus",
+        "asap tebal",
+        "petugas pemadam",
+        "unit pemadam",
+        "evakuasi penghuni"
+      ],
+      "notes": "BPBD DKI lists Kebakaran as a headline event type. Damkar/Gulkarmat, hangus, and terbakar are supporting cues, not standalone incident triggers."
+    },
+    {
+      "id": "fallen_tree",
+      "label": "Pohon tumbang",
+      "signalType": "incident",
+      "primaryCategoryHint": "disasters_weather",
+      "sourceClass": "bpbd_dki_label",
+      "sourceRefs": [
+        "bpbd-dki-2024-retrospective"
+      ],
+      "strongTerms": [
+        "pohon tumbang",
+        "pohon roboh",
+        "pohon ambruk",
+        "dahan pohon patah",
+        "pohon menimpa rumah",
+        "pohon menimpa kendaraan",
+        "pohon menimpa mobil",
+        "pohon menimpa motor",
+        "batang pohon patah dan jatuh"
+      ],
+      "supportingTerms": [
+        "dahan patah",
+        "ranting jatuh",
+        "pohon miring",
+        "akses jalan tertutup pohon",
+        "evakuasi pohon"
+      ],
+      "notes": "BPBD DKI lists Pohon tumbang as a headline event type. Generic dahan/ranting references are supporting cues."
+    },
+    {
+      "id": "landslide",
+      "label": "Tanah longsor",
+      "signalType": "incident",
+      "primaryCategoryHint": "disasters_weather",
+      "sourceClass": "bpbd_dki_label",
+      "sourceRefs": [
+        "bpbd-dki-2024-retrospective"
+      ],
+      "strongTerms": [
+        "tanah longsor",
+        "longsor",
+        "tebing longsor",
+        "lereng longsor",
+        "talud longsor",
+        "turap longsor",
+        "tanah bergerak",
+        "gerakan tanah",
+        "material longsor menutup jalan",
+        "longsor menimpa rumah"
+      ],
+      "supportingTerms": [
+        "retakan tanah",
+        "talud",
+        "turap",
+        "lereng",
+        "tebing",
+        "amblas",
+        "evakuasi warga"
+      ],
+      "notes": "BPBD DKI lists Tanah longsor. Structural words such as talud/tebing need an event phrase to become strong."
+    },
+    {
+      "id": "strong_wind",
+      "label": "Angin kencang",
+      "signalType": "incident",
+      "primaryCategoryHint": "disasters_weather",
+      "sourceClass": "bpbd_dki_label",
+      "sourceRefs": [
+        "bpbd-dki-2024-retrospective"
+      ],
+      "strongTerms": [
+        "angin puting beliung",
+        "puting beliung",
+        "diterjang angin kencang",
+        "angin kencang merusak",
+        "angin kencang melanda permukiman",
+        "angin kencang merobohkan",
+        "angin kencang menerjang",
+        "atap rumah beterbangan akibat angin"
+      ],
+      "supportingTerms": [
+        "angin kencang",
+        "cuaca ekstrem",
+        "hujan lebat",
+        "pohon tumbang",
+        "atap rusak",
+        "genteng beterbangan"
+      ],
+      "notes": "BPBD DKI lists Angin kencang. Bare Angin kencang is a supporting/hazard signal, while a damaging event phrase is strong."
+    },
+    {
+      "id": "other_incident",
+      "label": "Kejadian lainnya",
+      "signalType": "incident",
+      "primaryCategoryHint": null,
+      "sourceClass": "bpbd_dki_label",
+      "sourceRefs": [
+        "bpbd-dki-2024-retrospective"
+      ],
+      "strongTerms": [],
+      "supportingTerms": [],
+      "notes": "BPBD DKI uses Kejadian lainnya as a reporting bucket. It intentionally has no keyword triggers; never match any arbitrary incident to this group."
+    },
+    {
+      "id": "earthquake",
+      "label": "Gempa bumi",
+      "signalType": "incident",
+      "primaryCategoryHint": "disasters_weather",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "gempa bumi",
+        "gempa tektonik",
+        "gempa terasa di jakarta",
+        "guncangan gempa dirasakan",
+        "bangunan rusak akibat gempa"
+      ],
+      "supportingTerms": [
+        "gempa",
+        "guncangan",
+        "getaran gempa",
+        "BMKG mencatat gempa"
+      ],
+      "notes": "Supplemental hazard/event group. Bare earthquake mentions may be national or historical; Jakarta location/impact must be resolved separately."
+    },
+    {
+      "id": "traffic_accident",
+      "label": "Kecelakaan lalu lintas",
+      "signalType": "incident",
+      "primaryCategoryHint": "transport_road_incidents",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "kecelakaan lalu lintas",
+        "kecelakaan beruntun",
+        "tabrakan beruntun",
+        "kecelakaan tunggal",
+        "laka lantas",
+        "tabrak lari",
+        "truk terguling",
+        "bus terguling",
+        "mobil terguling",
+        "motor tertabrak",
+        "kendaraan terguling",
+        "kendaraan menabrak",
+        "pengendara tertabrak",
+        "mobil menabrak pembatas jalan",
+        "sepeda motor bertabrakan",
+        "tabrakan maut"
+      ],
+      "supportingTerms": [
+        "kecelakaan",
+        "tabrakan",
+        "terguling",
+        "tabrak",
+        "luka",
+        "korban",
+        "tewas",
+        "meninggal",
+        "jenazah",
+        "laka"
+      ],
+      "notes": "Supplemental urban incident group. Generic tabrak/terguling and casualty words are supporting-only; use strong phrases for incident admission."
+    },
+    {
+      "id": "transport_disruption",
+      "label": "Gangguan transportasi dan lalu lintas",
+      "signalType": "incident",
+      "primaryCategoryHint": "transport_road_incidents",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "krl anjlok",
+        "kereta anjlok",
+        "krl tertahan",
+        "gangguan persinyalan",
+        "catenary putus",
+        "transjakarta dialihkan",
+        "rute transjakarta dialihkan",
+        "rute distop",
+        "layanan krl terhenti",
+        "perjalanan krl terganggu",
+        "perjalanan mrt terganggu",
+        "layanan transjakarta terhenti",
+        "perjalanan kereta terganggu",
+        "operasional kereta dihentikan"
+      ],
+      "supportingTerms": [
+        "rekayasa lalu lintas",
+        "rekayasa lalin",
+        "penutupan jalan",
+        "pengalihan arus",
+        "contraflow",
+        "macet total",
+        "macet parah",
+        "antrean kendaraan",
+        "krl tertahan",
+        "transjakarta dialihkan",
+        "rute distop"
+      ],
+      "notes": "Transit service and road disruption terms. Planned road closures, contraflow, and traffic management are supporting-only; do not interpret them as accidents automatically."
+    },
+    {
+      "id": "infrastructure_failure",
+      "label": "Kerusakan infrastruktur",
+      "signalType": "incident",
+      "primaryCategoryHint": "fires_infrastructure_hazards",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "jalan amblas",
+        "jalan ambles",
+        "bangunan runtuh",
+        "gedung runtuh",
+        "bangunan ambruk",
+        "gedung ambruk",
+        "jembatan runtuh",
+        "jembatan ambruk",
+        "atap bangunan ambruk",
+        "tembok roboh",
+        "tembok runtuh",
+        "tanggul jebol",
+        "turap ambruk",
+        "konstruksi roboh"
+      ],
+      "supportingTerms": [
+        "amblas",
+        "ambles",
+        "ambruk",
+        "runtuh",
+        "roboh",
+        "retak",
+        "kerusakan bangunan",
+        "tanggul",
+        "pintu air"
+      ],
+      "notes": "Structural damage group. Generic verbs amblas/ambruk/runtuh are supporting-only unless paired with a physical object/incident phrase."
+    },
+    {
+      "id": "explosion_gas_incident",
+      "label": "Ledakan dan kebocoran gas",
+      "signalType": "incident",
+      "primaryCategoryHint": "fires_infrastructure_hazards",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "ledakan",
+        "tabung gas meledak",
+        "tabung gas bocor lalu meledak",
+        "ledakan tabung gas",
+        "ledakan gas",
+        "pipa gas meledak",
+        "kebocoran gas memicu ledakan",
+        "kebocoran gas menyebabkan kebakaran"
+      ],
+      "supportingTerms": [
+        "gas bocor",
+        "kebocoran gas",
+        "bau gas menyengat",
+        "tabung gas",
+        "suara ledakan"
+      ],
+      "notes": "A reported explosion is a strong event phrase; gas leak/odor alone is a hazard signal and should remain ambiguous."
+    },
+    {
+      "id": "utility_failure",
+      "label": "Gangguan layanan utilitas",
+      "signalType": "incident",
+      "primaryCategoryHint": "utilities_essential_services",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "pemadaman listrik meluas",
+        "listrik padam di",
+        "gangguan distribusi air",
+        "pasokan air terhenti",
+        "pipa air pecah",
+        "pipa air bocor",
+        "jaringan listrik putus",
+        "kabel listrik putus",
+        "gardu listrik terbakar",
+        "layanan listrik terhenti"
+      ],
+      "supportingTerms": [
+        "pemadaman listrik",
+        "listrik padam",
+        "air tidak mengalir",
+        "pipa bocor",
+        "kabel putus",
+        "gangguan listrik",
+        "gangguan air"
+      ],
+      "notes": "Utility/essential-service disruption. Generic words such as padam or putus need service/object context."
+    },
+    {
+      "id": "crime_personal_security",
+      "label": "Kejahatan dan keamanan personal",
+      "signalType": "incident",
+      "primaryCategoryHint": "crime_personal_security",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "aksi pembegalan",
+        "begal motor",
+        "kasus pencurian",
+        "pencurian kendaraan bermotor",
+        "curanmor",
+        "perampokan",
+        "aksi perampokan",
+        "penjambretan",
+        "penodongan",
+        "pencurian dengan kekerasan",
+        "pelaku begal",
+        "korban begal"
+      ],
+      "supportingTerms": [
+        "begal",
+        "pencurian",
+        "rampok",
+        "maling",
+        "jambret",
+        "dirampas",
+        "dibegal"
+      ],
+      "notes": "Security incidents. Terms can refer to arrests/case follow-ups; location role must be resolved independently."
+    },
+    {
+      "id": "violence_immediate_threat",
+      "label": "Kekerasan dan ancaman langsung",
+      "signalType": "incident",
+      "primaryCategoryHint": "violence_immediate_threats",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "tawuran",
+        "bentrokan",
+        "pembunuhan",
+        "kasus pembunuhan",
+        "penusukan",
+        "penembakan",
+        "pengeroyokan",
+        "penganiayaan berat",
+        "pembacokan",
+        "kerusuhan",
+        "baku hantam",
+        "serangan bersenjata"
+      ],
+      "supportingTerms": [
+        "tewas",
+        "meninggal",
+        "korban",
+        "luka",
+        "kritis",
+        "jenazah",
+        "senjata tajam",
+        "senjata api"
+      ],
+      "notes": "Violence event group. Casualty terms alone never trigger an incident. A police-station/arrest mention is not scene location."
+    },
+    {
+      "id": "demonstration_public_gathering",
+      "label": "Demonstrasi dan aksi publik",
+      "signalType": "incident",
+      "primaryCategoryHint": "demonstrations_public_gatherings",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "demonstrasi",
+        "unjuk rasa",
+        "aksi unjuk rasa",
+        "aksi demonstrasi",
+        "aksi massa",
+        "aksi protes",
+        "long march",
+        "massa berunjuk rasa"
+      ],
+      "supportingTerms": [
+        "massa berkumpul",
+        "menyampaikan aspirasi",
+        "pengamanan aksi",
+        "rekayasa lalu lintas",
+        "penutupan jalan"
+      ],
+      "notes": "Demonstrations can be scheduled/planned events; treat as actionable incident candidates only when the configured product scope includes public gatherings or disruption."
+    },
+    {
+      "id": "crowds_major_event",
+      "label": "Kerumunan dan kepadatan massa",
+      "signalType": "incident",
+      "primaryCategoryHint": "crowds_major_events",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "desak-desakan",
+        "penumpukan massa",
+        "massa berdesakan",
+        "kerumunan tidak terkendali",
+        "kepadatan pengunjung",
+        "kepadatan penonton",
+        "crowd crush",
+        "berdesakan hingga terinjak"
+      ],
+      "supportingTerms": [
+        "kerumunan",
+        "keramaian",
+        "antrean panjang",
+        "pengunjung membludak",
+        "penonton memadati"
+      ],
+      "notes": "Crowd-safety group. Ordinary crowds/queues are not necessarily incidents; prefer strong crowd-danger phrases."
+    },
+    {
+      "id": "water_rescue_maritime",
+      "label": "Tenggelam dan insiden perairan",
+      "signalType": "incident",
+      "primaryCategoryHint": null,
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "orang tenggelam",
+        "korban tenggelam",
+        "kapal tenggelam",
+        "perahu tenggelam",
+        "kapal karam",
+        "perahu terbalik",
+        "kecelakaan kapal",
+        "kecelakaan laut",
+        "terseret arus",
+        "hanyut terbawa arus",
+        "ditemukan tewas tenggelam"
+      ],
+      "supportingTerms": [
+        "tenggelam",
+        "hanyut",
+        "evakuasi korban",
+        "pencarian korban",
+        "perairan",
+        "sungai",
+        "kali",
+        "laut"
+      ],
+      "notes": "No fixed primaryCategoryHint: drowning/rescue and vessel incidents can belong to different official categories. Leave semantic categorization to the existing model/human workflow."
+    },
+    {
+      "id": "health_environmental_incident",
+      "label": "Kesehatan dan lingkungan",
+      "signalType": "incident",
+      "primaryCategoryHint": "health_environmental_advisories",
+      "sourceClass": "supplemental_curated",
+      "sourceRefs": [
+        "legacy-wj-rss-keywords",
+        "curated-indonesian-seed"
+      ],
+      "strongTerms": [
+        "keracunan massal",
+        "keracunan makanan",
+        "wabah penyakit",
+        "dugaan wabah",
+        "pencemaran udara",
+        "pencemaran air",
+        "polusi udara memburuk",
+        "kebocoran bahan kimia",
+        "paparan bahan berbahaya",
+        "kabut asap pekat"
+      ],
+      "supportingTerms": [
+        "keracunan",
+        "wabah",
+        "pencemaran",
+        "polusi udara",
+        "kabut asap",
+        "kualitas udara memburuk"
+      ],
+      "notes": "Health/environment group. Advisory-only statements should be marked as alert/advisory rather than an occurred incident."
+    }
+  ],
+  "alertSignals": [
+    {
+      "id": "weather_alert",
+      "label": "Peringatan atau potensi cuaca",
+      "terms": [
+        "cuaca ekstrem",
+        "hujan lebat",
+        "hujan sangat lebat",
+        "hujan disertai angin kencang",
+        "peringatan dini cuaca",
+        "potensi hujan lebat",
+        "potensi banjir",
+        "siaga banjir",
+        "waspada banjir",
+        "peringatan banjir",
+        "imbauan waspada cuaca"
+      ],
+      "strength": "alert_only",
+      "notes": "Alert terms can indicate risk or forecast, not proof that an incident has occurred. Return ambiguous/alert-only when no occurred-event phrase exists."
+    },
+    {
+      "id": "general_alert_status",
+      "label": "Status kewaspadaan",
+      "terms": [
+        "siaga",
+        "status siaga",
+        "waspada",
+        "peringatan dini",
+        "imbauan",
+        "diperkirakan",
+        "diprediksi",
+        "berpotensi",
+        "potensi"
+      ],
+      "strength": "context_only",
+      "notes": "Never trigger an incident alone; do not suppress a report that also contains clear occurred-event evidence."
+    }
+  ],
+  "globalSupportingTerms": [
+    {
+      "term": "damkar",
+      "role": "responder_or_agency",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "gulkarmat",
+      "role": "responder_or_agency",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "api",
+      "role": "context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "hangus",
+      "role": "damage_or_result",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "terbakar",
+      "role": "damage_or_result",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "genangan",
+      "role": "hazard_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "tergenang",
+      "role": "hazard_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "tenggelam",
+      "role": "event_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "terguling",
+      "role": "event_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "tabrak",
+      "role": "event_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "amblas",
+      "role": "damage_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "ambruk",
+      "role": "damage_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "runtuh",
+      "role": "damage_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "rob",
+      "role": "hazard_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "tanggul",
+      "role": "infrastructure_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "pintu air",
+      "role": "infrastructure_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "evakuasi",
+      "role": "response_action",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "tewas",
+      "role": "casualty_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "meninggal",
+      "role": "casualty_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "korban",
+      "role": "casualty_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "jenazah",
+      "role": "casualty_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "luka",
+      "role": "casualty_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "kritis",
+      "role": "casualty_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "rekayasa lalu lintas",
+      "role": "traffic_management",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "rekayasa lalin",
+      "role": "traffic_management",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "penutupan jalan",
+      "role": "traffic_management",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "pengalihan arus",
+      "role": "traffic_management",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "contraflow",
+      "role": "traffic_management",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "antrean kendaraan",
+      "role": "traffic_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "macet total",
+      "role": "traffic_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "macet parah",
+      "role": "traffic_context",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "cuaca ekstrem",
+      "role": "weather_alert",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "hujan lebat",
+      "role": "weather_alert",
+      "notSufficientAlone": true
+    },
+    {
+      "term": "angin kencang",
+      "role": "weather_alert_or_event_context",
+      "notSufficientAlone": true
+    }
+  ],
+  "legacyKeywordCoverage": [
+    {
+      "term": "banjir",
+      "mappedTo": "flood",
+      "treatment": "strong"
+    },
+    {
+      "term": "genangan",
+      "mappedTo": "road_inundation",
+      "treatment": "supporting"
+    },
+    {
+      "term": "tergenang",
+      "mappedTo": "road_inundation",
+      "treatment": "supporting"
+    },
+    {
+      "term": "tenggelam",
+      "mappedTo": "water_rescue_maritime",
+      "treatment": "supporting"
+    },
+    {
+      "term": "kebakaran",
+      "mappedTo": "fire",
+      "treatment": "strong"
+    },
+    {
+      "term": "api melahap",
+      "mappedTo": "fire",
+      "treatment": "strong"
+    },
+    {
+      "term": "damkar",
+      "mappedTo": "fire",
+      "treatment": "supporting"
+    },
+    {
+      "term": "gulkarmat",
+      "mappedTo": "fire",
+      "treatment": "supporting"
+    },
+    {
+      "term": "terbakar",
+      "mappedTo": "fire",
+      "treatment": "supporting"
+    },
+    {
+      "term": "hangus",
+      "mappedTo": "fire",
+      "treatment": "supporting"
+    },
+    {
+      "term": "pohon tumbang",
+      "mappedTo": "fallen_tree",
+      "treatment": "strong"
+    },
+    {
+      "term": "kecelakaan",
+      "mappedTo": "traffic_accident",
+      "treatment": "supporting"
+    },
+    {
+      "term": "tabrakan",
+      "mappedTo": "traffic_accident",
+      "treatment": "supporting"
+    },
+    {
+      "term": "terguling",
+      "mappedTo": "traffic_accident",
+      "treatment": "supporting"
+    },
+    {
+      "term": "tabrak",
+      "mappedTo": "traffic_accident",
+      "treatment": "supporting"
+    },
+    {
+      "term": "laka lantas",
+      "mappedTo": "traffic_accident",
+      "treatment": "strong"
+    },
+    {
+      "term": "tawuran",
+      "mappedTo": "violence_immediate_threat",
+      "treatment": "strong"
+    },
+    {
+      "term": "bentrokan",
+      "mappedTo": "violence_immediate_threat",
+      "treatment": "strong"
+    },
+    {
+      "term": "cuaca ekstrem",
+      "mappedTo": "strong_wind",
+      "treatment": "supporting"
+    },
+    {
+      "term": "hujan lebat",
+      "mappedTo": "strong_wind",
+      "treatment": "supporting"
+    },
+    {
+      "term": "angin kencang",
+      "mappedTo": "strong_wind",
+      "treatment": "supporting"
+    },
+    {
+      "term": "angin puting beliung",
+      "mappedTo": "strong_wind",
+      "treatment": "strong"
+    },
+    {
+      "term": "amblas",
+      "mappedTo": "infrastructure_failure",
+      "treatment": "supporting"
+    },
+    {
+      "term": "longsor",
+      "mappedTo": "landslide",
+      "treatment": "strong"
+    },
+    {
+      "term": "ambruk",
+      "mappedTo": "infrastructure_failure",
+      "treatment": "supporting"
+    },
+    {
+      "term": "runtuh",
+      "mappedTo": "infrastructure_failure",
+      "treatment": "supporting"
+    },
+    {
+      "term": "rob",
+      "mappedTo": "flood",
+      "treatment": "supporting"
+    },
+    {
+      "term": "tanggul",
+      "mappedTo": "flood",
+      "treatment": "supporting"
+    },
+    {
+      "term": "pintu air",
+      "mappedTo": "flood",
+      "treatment": "supporting"
+    },
+    {
+      "term": "siaga",
+      "mappedTo": "alert-signals",
+      "treatment": "alert_only"
+    },
+    {
+      "term": "gempa",
+      "mappedTo": "earthquake",
+      "treatment": "supporting"
+    },
+    {
+      "term": "evakuasi",
+      "mappedTo": "global-context",
+      "treatment": "supporting"
+    },
+    {
+      "term": "macet total",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "ledakan",
+      "mappedTo": "explosion_gas_incident",
+      "treatment": "strong"
+    },
+    {
+      "term": "tewas",
+      "mappedTo": "global-context",
+      "treatment": "supporting"
+    },
+    {
+      "term": "meninggal",
+      "mappedTo": "global-context",
+      "treatment": "supporting"
+    },
+    {
+      "term": "korban",
+      "mappedTo": "global-context",
+      "treatment": "supporting"
+    },
+    {
+      "term": "jenazah",
+      "mappedTo": "global-context",
+      "treatment": "supporting"
+    },
+    {
+      "term": "luka",
+      "mappedTo": "global-context",
+      "treatment": "supporting"
+    },
+    {
+      "term": "kritis",
+      "mappedTo": "global-context",
+      "treatment": "supporting"
+    },
+    {
+      "term": "pembunuhan",
+      "mappedTo": "violence_immediate_threat",
+      "treatment": "strong"
+    },
+    {
+      "term": "penusukan",
+      "mappedTo": "violence_immediate_threat",
+      "treatment": "strong"
+    },
+    {
+      "term": "penembakan",
+      "mappedTo": "violence_immediate_threat",
+      "treatment": "strong"
+    },
+    {
+      "term": "begal",
+      "mappedTo": "crime_personal_security",
+      "treatment": "strong"
+    },
+    {
+      "term": "pencurian",
+      "mappedTo": "crime_personal_security",
+      "treatment": "strong"
+    },
+    {
+      "term": "rampok",
+      "mappedTo": "crime_personal_security",
+      "treatment": "supporting"
+    },
+    {
+      "term": "rekayasa lalu lintas",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "rekayasa lalin",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "penutupan jalan",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "pengalihan arus",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "contraflow",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "macet parah",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "antrean kendaraan",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "tabrakan beruntun",
+      "mappedTo": "traffic_accident",
+      "treatment": "strong"
+    },
+    {
+      "term": "truk terguling",
+      "mappedTo": "traffic_accident",
+      "treatment": "strong"
+    },
+    {
+      "term": "transjakarta dialihkan",
+      "mappedTo": "transport_disruption",
+      "treatment": "strong"
+    },
+    {
+      "term": "rute distop",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "krl anjlok",
+      "mappedTo": "transport_disruption",
+      "treatment": "strong"
+    },
+    {
+      "term": "gangguan persinyalan",
+      "mappedTo": "transport_disruption",
+      "treatment": "strong"
+    },
+    {
+      "term": "krl tertahan",
+      "mappedTo": "transport_disruption",
+      "treatment": "supporting"
+    },
+    {
+      "term": "underpass tergenang",
+      "mappedTo": "road_inundation",
+      "treatment": "strong"
+    },
+    {
+      "term": "jalan amblas",
+      "mappedTo": "infrastructure_failure",
+      "treatment": "strong"
+    },
+    {
+      "term": "catenary putus",
+      "mappedTo": "transport_disruption",
+      "treatment": "strong"
+    }
+  ],
+  "matchingPolicy": {
+    "normalizationVersion": "nfkc-id-lower-space-v1",
+    "normalization": [
+      "Unicode NFKC",
+      "lowercase",
+      "replace punctuation with spaces but preserve token order",
+      "collapse whitespace",
+      "tokenize once"
+    ],
+    "matchMethod": "Exact token sequence / phrase matching with token boundaries; do not use substring includes. Precompile a token index once when loading this JSON.",
+    "signalStrength": [
+      "strong",
+      "supporting",
+      "alert_only",
+      "context_only"
+    ],
+    "strongTermRequirement": "Only a strong term from eventGroups can provide the incident side of a candidate. supporting/globalSupportingTerms/alertSignals never independently satisfy it.",
+    "alertHandling": "Alert-only signals without an occurred-event strong term produce at most ambiguous, not candidate.",
+    "negativeContext": "Forecast, planned activity, historical retrospectives, hypothetical examples, and quoted old incidents need additional context. Do not apply one global negation regex that incorrectly suppresses actual events in the same sentence.",
+    "candidateRule": "A candidate requires (a) a specific Jakarta kelurahan or kecamatan match, not merely Jakarta/province/city, and (b) at least one strong occurred-incident phrase. Scene-role must not be known non-scene; unknown scene role should downgrade to ambiguous unless other clear scene evidence exists.",
+    "ambiguousRule": "Use ambiguous when only a broad/city/province location exists, only an incident signal exists, only alert/supporting terms exist, a locality alias is context-required, or location role cannot be determined.",
+    "lowSignalRule": "Use low_signal when neither a Jakarta-specific location nor a strong incident/alert/supporting signal is present. Low signal must not be silently deleted.",
+    "primaryCategoryPolicy": "primaryCategoryHint is a non-binding suggestion only. The matcher must not set final primaryCategory or incidentType. Existing semantic triage and human review remain authoritative.",
+    "idPolicy": "eventGroups[].id is a JSON lexicon key, not a TypeScript enum, database enum, official primaryCategory, or closed incidentType list."
+  },
+  "contextualOverrides": [
+    {
+      "id": "forecast-only-flood-language",
+      "targetGroupIds": [
+        "flood",
+        "road_inundation"
+      ],
+      "patterns": [
+        "potensi banjir",
+        "siaga banjir",
+        "waspada banjir",
+        "prakiraan banjir",
+        "peringatan banjir",
+        "diperkirakan banjir",
+        "berpotensi banjir"
+      ],
+      "effect": "downgrade_generic_flood_term_to_alert_only_when_no_observed_impact_phrase_exists",
+      "observedImpactPhrases": [
+        "banjir merendam",
+        "banjir menggenangi",
+        "banjir melanda",
+        "terendam banjir",
+        "air sungai meluap",
+        "kali meluap",
+        "jalan tergenang",
+        "underpass tergenang",
+        "rumah terendam"
+      ],
+      "notes": "Do not downgrade a report that also describes an observed impact. This is a phrase-level override, not a whole-document delete rule."
+    },
+    {
+      "id": "planned-traffic-management-is-not-automatically-an-incident",
+      "targetGroupIds": [
+        "transport_disruption"
+      ],
+      "patterns": [
+        "rekayasa lalu lintas",
+        "rekayasa lalin",
+        "penutupan jalan",
+        "pengalihan arus",
+        "contraflow"
+      ],
+      "effect": "keep_as_supporting_only_unless_an_actual_unplanned_disruption_or_safety_incident_is_described",
+      "notes": "Planned road works, event routes, and scheduled traffic management may be useful context but must not create an incident candidate by themselves."
+    },
+    {
+      "id": "weather-forecast-is-not-an-observed-damage-event",
+      "targetGroupIds": [
+        "strong_wind"
+      ],
+      "patterns": [
+        "peringatan dini cuaca",
+        "prakiraan cuaca",
+        "potensi hujan lebat",
+        "diperkirakan hujan lebat",
+        "imbauan waspada cuaca"
+      ],
+      "effect": "alert_only_unless_damage_or_observed_event_phrase_exists",
+      "observedImpactPhrases": [
+        "pohon tumbang",
+        "atap rumah rusak",
+        "rumah rusak diterjang angin",
+        "angin kencang merobohkan",
+        "diterjang angin kencang"
+      ],
+      "notes": "Weather warning and forecast expressions are not proof of an occurred incident."
+    }
+  ],
+  "locationRoleCues": {
+    "nonSceneOrReferenceExamples": [
+      "ditangkap di",
+      "diamankan di",
+      "dibekuk di",
+      "diperiksa di",
+      "ditahan di",
+      "dilarikan ke",
+      "dibawa ke rumah sakit",
+      "dirawat di",
+      "menjalani perawatan di",
+      "konferensi pers di",
+      "jumpa pers di",
+      "bertemu di kantor",
+      "dilaporkan oleh",
+      "menurut keterangan"
+    ],
+    "sceneExamples": [
+      "terjadi di",
+      "berlokasi di",
+      "berlangsung di",
+      "melanda",
+      "merendam",
+      "menimpa",
+      "terbakar di",
+      "kecelakaan di"
+    ],
+    "policy": "Cues are contextual clues only. Do not decide scene role from a single preposition or one keyword. When ambiguous, return unknown."
+  }
+}

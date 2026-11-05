@@ -32,6 +32,12 @@ export interface LiveTriageGate {
   readonly sourceRemit: string;
   readonly concurrency: number;
   readonly checkAuthorization: (sourceId: string) => Promise<TriageAuthorization>;
+  /**
+   * DET-FILTER-01 shadow/enforce switch. Default `shadow` (zero behavior
+   * change); `enforce` skips the model call for deterministic non-candidates.
+   * Tests set this per-case; never set in production paths by this task.
+   */
+  readonly deterministicMode: 'shadow' | 'enforce';
   readonly callChat?: (system: string, user: string) => Promise<unknown>;
   /**
    * WJ-INT-02B persistent idempotency: cached decision for an identical
@@ -89,10 +95,15 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
   const chatModel =
     readCredential(env.NINEROUTER_CHAT_MODEL, "NINEROUTER_CHAT_MODEL", "Waspada-Jakarta") ||
     "Waspada-Jakarta";
+  // DET-FILTER-01: explicit test-only opt-in; anything but 'enforce' is shadow.
+  const deterministicMode: 'shadow' | 'enforce' =
+    readCredential(env.NEWS_DETERMINISTIC_FILTER_MODE, "NEWS_DETERMINISTIC_FILTER_MODE", "shadow")
+      .trim().toLowerCase() === "enforce" ? "enforce" : "shadow";
 
   const gate: LiveTriageGate = {
     sourceRemit: "general news",
-    concurrency: 4,
+    concurrency: 2,
+    deterministicMode,
     checkAuthorization: async (sourceId: string) => {
       try {
         const res = await executor.query<{
@@ -264,8 +275,11 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
   const callChat = async (system: string, user: string): Promise<unknown> => {
     let lastError: unknown = new Error("triage transport failed");
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+      }
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15_000);
+      const timer = setTimeout(() => controller.abort(), 60_000);
       try {
         const response = await fetch(endpoint, {
           method: "POST",

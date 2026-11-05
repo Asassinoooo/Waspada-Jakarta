@@ -234,7 +234,6 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       const datasetKind = input.datasetKind as DatasetKind;
 
       const decisionId = `dec-${input.reportRevisionId}`;
-      const proposalId = `prop-${input.reportRevisionId}`;
       // WJ-INT-02B: triage category is authoritative for RSS reports (input
       // carries it only on the gated path). The interpreter's independent
       // value is preserved for comparison; mismatches are flagged, never
@@ -364,9 +363,88 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         });
       }
 
+      let proposalId = `prop-${targetIncidentId}`;
+      let isMultiSource = false;
+      let sourceCount = 1;
+      let proposalClaims = claims;
+      let proposalDiscrepancies: unknown[] = [];
+      let hasDiscrepancy = false;
+      let proposalCaveats = triageMismatch
+        ? [...interpretation.uncertaintyNotes, "category_mismatch_review"]
+        : [...interpretation.uncertaintyNotes];
+
+      if (correlation.decision === "same_incident" && correlation.candidateIncidentId) {
+        const existingProposalRow = await dependencies.executor.query<{ proposal_id: string; record_json: unknown }>(
+          `SELECT ep.proposal_id, ep.record_json
+           FROM waspada.event_proposals ep
+           WHERE ep.dataset_kind = $1 AND (
+             ep.proposal_id = $2
+             OR ep.proposal_id IN (
+               SELECT ipr.proposal_id
+               FROM waspada.incident_processing_records ipr
+               WHERE ipr.dataset_kind = $1 AND ipr.incident_id = $3
+             )
+           )
+           ORDER BY (ep.proposal_id = $2) DESC
+           LIMIT 1`,
+          [datasetKind, `prop-${correlation.candidateIncidentId}`, correlation.candidateIncidentId],
+        );
+
+        if (existingProposalRow.rows.length > 0) {
+          const rawExisting = existingProposalRow.rows[0]!.record_json;
+          const existing = (typeof rawExisting === "string" ? JSON.parse(rawExisting) : rawExisting) as EventProposalDto;
+          sourceCount = Math.max(2, (existing.source_count ?? 1) + 1);
+          proposalId = `prop-${correlation.candidateIncidentId}-v${sourceCount}`;
+          isMultiSource = true;
+
+          const updatedExistingClaims = (existing.claims ?? []).map((c) => ({
+            ...c,
+            is_corroborated: true,
+          }));
+
+          const newCorroboratedClaims = claims.map((c, idx) => ({
+            ...c,
+            claim_id: `claim-${updatedExistingClaims.length + idx + 1}`,
+            is_corroborated: true,
+          }));
+
+          proposalClaims = [...updatedExistingClaims, ...newCorroboratedClaims];
+
+          const mappedDiscrepancies = (correlation.contradictoryEvidence ?? []).map((diff) => ({
+            kind: diff.field || "general_conflict",
+            description: `Perbedaan ${diff.field}: "${diff.claimA}" vs "${diff.claimB}"`,
+            source_a: {
+              source_id: (existing as any).source_id ?? "sumber_sebelumnya",
+              claim_text: diff.claimA,
+            },
+            source_b: {
+              source_id: input.sourceDisplayName ?? input.sourceId ?? "sumber_baru",
+              claim_text: diff.claimB,
+            },
+          }));
+
+          proposalDiscrepancies = [
+            ...((existing.discrepancies as any[]) ?? []),
+            ...mappedDiscrepancies,
+          ];
+          hasDiscrepancy = proposalDiscrepancies.length > 0;
+
+          proposalCaveats = Array.from(new Set([
+            ...((existing.caveats as string[]) ?? []),
+            ...proposalCaveats,
+          ]));
+        } else {
+          isMultiSource = true;
+          sourceCount = 2;
+          proposalId = `prop-${correlation.candidateIncidentId}-v2`;
+          proposalClaims = claims.map((c) => ({ ...c, is_corroborated: true }));
+        }
+      }
+
       const proposalDto: EventProposalDto = {
         schema_version: "2.0",
         proposal_id: proposalId,
+        incident_id: targetIncidentId,
         title: interpretation.summary.slice(0, 120),
         incident_type: interpretation.incidentType,
         primary_category: authoritativeCategory,
@@ -378,15 +456,17 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         },
         location_label: interpretation.location.label,
         coordinates: interpretation.location.approximateCoordinates,
-        claims,
+        claims: proposalClaims,
         impacts: interpretation.impacts,
         // WJ-INT-02B: interpreter's independent value for accept_interpretation.
         interpretation_category: input.triage ? interpretation.primaryCategory : null,
         // WJ-INT-02B: registry source id for the public-display rights gate.
         source_id: input.sourceId ?? null,
-        caveats: triageMismatch
-          ? [...interpretation.uncertaintyNotes, "category_mismatch_review"]
-          : interpretation.uncertaintyNotes,
+        is_multi_source: isMultiSource,
+        source_count: sourceCount,
+        has_discrepancy: hasDiscrepancy,
+        discrepancies: proposalDiscrepancies,
+        caveats: proposalCaveats,
         proposed_at: now,
       };
       let resolvedIncident: IncidentRecord | Record<string, unknown>;
@@ -414,6 +494,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             relationship,
           },
           proposal: proposalDto,
+          proposalAction: correlation.decision === "same_incident" ? "upsert" : "create",
           now,
         });
         const loaded = await incidentRepo.getIncidentById(datasetKind, targetIncidentId);
@@ -444,7 +525,9 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
           correlationDecisionId: decisionId,
           linkedAt: now,
         });
-        await proposalWriter.persistProposal(proposalDto, datasetKind);
+        await proposalWriter.persistProposal(proposalDto, datasetKind, {
+          upsert: correlation.decision === "same_incident",
+        });
       }
 
       return {

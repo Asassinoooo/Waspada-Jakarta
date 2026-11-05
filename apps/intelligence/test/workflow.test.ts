@@ -210,4 +210,151 @@ describe("Mastra Incident Intelligence Workflow", () => {
     assert.equal(result.proposal.primary_category, "fires_infrastructure_hazards");
     assert.ok(!(result.proposal.caveats as string[]).includes("category_mismatch_review"));
   });
+
+  it("consolidates corroborating multi-source reports into a single unified incident proposal with is_multi_source = true and merged claims", async () => {
+    // 1. Report 1 (Detik) creates initial incident
+    const interpreter1 = createMockInterpreterAgent({
+      summary: "Ledakan gas di Duri Kepa Kebon Jeruk merusak 3 rumah warga",
+      incidentType: "ledakan_gas",
+      primaryCategory: "fires_infrastructure_hazards",
+      severity: "high",
+      evidence: [
+        {
+          chunkId: "chk-multi-001",
+          exactQuote: "Ledakan gas di Duri Kepa merusak 3 rumah",
+          supports: "3 rumah rusak akibat ledakan gas",
+        },
+      ],
+    });
+
+    const correlator1 = createMockCorrelatorAgent({
+      decision: "new_incident",
+      candidateIncidentId: null,
+      reasoning: "Laporan pertama ledakan gas Duri Kepa",
+    });
+
+    const workflow1 = createIncidentIntelligenceWorkflow({
+      executor: db.executor,
+      agentOverrides: { interpreter: interpreter1, correlator: correlator1 },
+    });
+
+    const input1: IncidentWorkflowInput = {
+      reportRevisionId: "rev-multi-001",
+      reportText: "Ledakan gas di Duri Kepa merusak 3 rumah warga pada Kamis pagi.",
+      sourceKind: "rss",
+      sourceDisplayName: "Detik News",
+      sourceId: "source-detik-multi",
+      publishedAt: "2026-11-05T08:00:00.000Z",
+      datasetKind: "synthetic",
+      traceId: "trace-multi-01",
+      evidenceChunks: [
+        {
+          chunkId: "chk-multi-001",
+          spanStart: 0,
+          spanEnd: 60,
+          text: "Ledakan gas di Duri Kepa merusak 3 rumah warga pada Kamis pagi.",
+        },
+      ],
+    };
+
+    const run1 = await workflow1.createRun();
+    const exec1 = await run1.start({ inputData: input1 });
+    assert.equal(exec1.status, "success");
+    const res1 = exec1.result as any;
+    const initialIncidentId = res1.incident.incidentId;
+    assert.ok(initialIncidentId);
+    assert.equal(res1.proposal.is_multi_source, false);
+    assert.equal(res1.proposal.source_count, 1);
+    assert.equal(res1.proposal.claims.length, 1);
+    assert.equal(res1.proposal.proposal_id, `prop-${initialIncidentId}`);
+
+    // 2. Report 2 (Antara) reports same incident with conflicting casualty/damage count
+    const interpreter2 = createMockInterpreterAgent({
+      summary: "Polisi selidiki ledakan tabung gas di Duri Kepa Jakbar, 5 rumah terdampak",
+      incidentType: "ledakan_gas",
+      primaryCategory: "fires_infrastructure_hazards",
+      severity: "high",
+      evidence: [
+        {
+          chunkId: "chk-multi-002",
+          exactQuote: "5 rumah terdampak ledakan tabung gas",
+          supports: "5 rumah terdampak di Duri Kepa",
+        },
+      ],
+    });
+
+    const correlator2 = createMockCorrelatorAgent({
+      decision: "same_incident",
+      candidateIncidentId: initialIncidentId,
+      reasoning: "Kedua berita meliput ledakan tabung gas di Duri Kepa Kebon Jeruk pada waktu yang sama.",
+      contradictoryEvidence: [
+        {
+          field: "casualty_count",
+          claimA: "merusak 3 rumah",
+          claimB: "5 rumah terdampak",
+        },
+      ],
+    });
+
+    const workflow2 = createIncidentIntelligenceWorkflow({
+      executor: db.executor,
+      agentOverrides: { interpreter: interpreter2, correlator: correlator2 },
+    });
+
+    const input2: IncidentWorkflowInput = {
+      reportRevisionId: "rev-multi-002",
+      reportText: "Polisi selidiki ledakan tabung gas di Duri Kepa Jakbar, 5 rumah terdampak.",
+      sourceKind: "rss",
+      sourceDisplayName: "Antara News",
+      sourceId: "source-antara-multi",
+      publishedAt: "2026-11-05T08:30:00.000Z",
+      datasetKind: "synthetic",
+      traceId: "trace-multi-02",
+      evidenceChunks: [
+        {
+          chunkId: "chk-multi-002",
+          spanStart: 0,
+          spanEnd: 60,
+          text: "Polisi selidiki ledakan tabung gas di Duri Kepa Jakbar, 5 rumah terdampak.",
+        },
+      ],
+    };
+
+    const run2 = await workflow2.createRun();
+    const exec2 = await run2.start({ inputData: input2 });
+    assert.equal(exec2.status, "success");
+    const res2 = exec2.result as any;
+
+    // Verify consolidated proposal
+    assert.equal(res2.proposal.proposal_id, `prop-${initialIncidentId}-v2`, "Proposal ID must remain keyed to the incident with version");
+    assert.equal(res2.proposal.is_multi_source, true, "Must be flagged as multi-source");
+    assert.equal(res2.proposal.source_count, 2, "Source count must be incremented to 2");
+    assert.equal(res2.proposal.has_discrepancy, true, "Must flag discrepancy between 3 vs 5 houses");
+    assert.equal(res2.proposal.discrepancies.length, 1);
+    assert.equal(res2.proposal.discrepancies[0].kind, "casualty_count");
+    assert.equal(res2.proposal.claims.length, 2, "Must contain claims from both sources");
+    assert.equal(res2.proposal.claims[0].is_corroborated, true, "Existing claim must be corroborated");
+    assert.equal(res2.proposal.claims[1].is_corroborated, true, "New claim must be corroborated");
+
+    // Verify moderation queue: only 1 consolidated proposal for this incident in the DB!
+    const proposalWriter = createEventProposalWriter(db.executor);
+    const pending = await proposalWriter.readPendingProposals("synthetic");
+    const matchingProposals = pending.filter((p) => p.incident_id === initialIncidentId || p.proposal_id.startsWith(`prop-${initialIncidentId}`));
+    assert.equal(matchingProposals.length, 1, "There must be exactly ONE consolidated proposal in the queue");
+    const singleProposal = matchingProposals[0]!;
+    assert.equal(singleProposal.is_multi_source, true);
+    assert.equal(singleProposal.source_count, 2);
+    assert.equal(singleProposal.claims.length, 2);
+
+    // Verify DB claims have evidence_label upgraded to independent_corroboration
+    const dbClaims = await db.executor.query<{ claim_id: string; evidence_label: string }>(
+      `SELECT claim_id, evidence_label FROM waspada.proposal_claims
+       WHERE dataset_kind = 'synthetic' AND proposal_id = $1`,
+      [singleProposal.proposal_id],
+    );
+    assert.equal(dbClaims.rows.length, 2);
+    for (const c of dbClaims.rows) {
+      assert.equal(c.evidence_label, "independent_corroboration");
+    }
+  });
 });

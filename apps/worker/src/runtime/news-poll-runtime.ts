@@ -7,10 +7,16 @@ import {
 import {
   precheckNewsItem,
   triageNewsItemSemantic,
+  type DeterministicTriageMode,
   type NewsTriageDecision,
   type TriageAuthorization,
   type TriageNewsItem,
 } from "../layers/l1-data-knowledge/news-triage.js";
+import {
+  getDeterministicDatasetVersions,
+  matchDeterministicRelevance,
+  type DeterministicRelevanceResult,
+} from "../layers/l1-data-knowledge/deterministic-relevance.js";
 import { NEWS_TRIAGE_POLICY_VERSION } from "../../../db/src/news-triage-store.js";
 export interface StoredEvidenceChunk {
   readonly chunk_index: number;
@@ -154,7 +160,10 @@ export interface NewsFeedPollResult {
   readonly status: NewsFeedPollStatus;
   readonly error?: string;
   readonly totalParsed: number;
+  /** Relevant kept items (`parseAndFilterNewsRss().matchedCount`); kept volume is `keptCount`. */
   readonly matchedCount: number;
+  /** All kept valid/fresh items. */
+  readonly keptCount: number;
   readonly rejectedCount: number;
   readonly revisions: readonly StoredReportRevision[];
   /** WJ-INT-02A held decisions (drop/uncertain metadata only). */
@@ -173,6 +182,22 @@ export interface NewsTriageCounts {
   readonly nonActionable: number;
   readonly providerFailures: number;
   readonly byCategory: Readonly<Record<string, number>>;
+  /** DET-FILTER-01 count-only observability (no content in logs). */
+  readonly detConsidered: number;
+  readonly detCandidate: number;
+  readonly detAmbiguous: number;
+  readonly detLowSignal: number;
+  readonly detBroadOnly: number;
+  readonly detSpecific: number;
+  readonly detStrong: number;
+  readonly detSupporting: number;
+  readonly detAlertOnly: number;
+  readonly detNonScene: number;
+  readonly detUnknownRole: number;
+  readonly detModelCallsSkipped: number;
+  readonly detRuleVersion: string;
+  readonly detGazetteerVersion: string;
+  readonly detLexiconVersion: string;
 }
 
 export interface NewsPollSummary {
@@ -243,6 +268,12 @@ export interface NewsPollRuntimeOptions {
     readonly policyVersion?: string;
     /** Max concurrent semantic calls; defaults to 4. */
     readonly concurrency?: number;
+    /**
+     * DET-FILTER-01 shadow/enforce switch. Default `shadow` (zero behavior
+     * change). The live composition resolves this from
+     * `NEWS_DETERMINISTIC_FILTER_MODE`; tests set it per-case.
+     */
+    readonly deterministicMode?: DeterministicTriageMode;
   };
 }
 
@@ -296,12 +327,48 @@ export function createNewsPollResult(summary: NewsPollSummary): NewsPollResult {
   return arr;
 }
 
+/** DET-FILTER-01 count-only observability: increments counters from a verdict. */
+function recordDeterministicCounters(
+  counts: { -readonly [K in keyof Pick<NewsTriageCounts, 'detConsidered' | 'detCandidate' | 'detAmbiguous' | 'detLowSignal' | 'detBroadOnly' | 'detSpecific' | 'detStrong' | 'detSupporting' | 'detAlertOnly' | 'detNonScene' | 'detUnknownRole' | 'detModelCallsSkipped'>]: number },
+  verdict: DeterministicRelevanceResult,
+): void {
+  counts.detConsidered += 1;
+  if (verdict.status === 'candidate') {
+    counts.detCandidate += 1;
+  } else if (verdict.status === 'ambiguous') {
+    counts.detAmbiguous += 1;
+  } else {
+    counts.detLowSignal += 1;
+  }
+  if (verdict.locationMatches.some((match) => match.matchStrength === 'specific')) {
+    counts.detSpecific += 1;
+  }
+  if (verdict.locationMatches.some((match) => match.matchStrength === 'broad_only')) {
+    counts.detBroadOnly += 1;
+  }
+  if (verdict.eventMatches.some((match) => match.strength === 'strong')) {
+    counts.detStrong += 1;
+  }
+  if (verdict.eventMatches.some((match) => match.strength === 'supporting')) {
+    counts.detSupporting += 1;
+  }
+  if (verdict.eventMatches.some((match) => match.strength === 'alert_only')) {
+    counts.detAlertOnly += 1;
+  }
+  if (verdict.locationRole === 'non_scene_or_reference') {
+    counts.detNonScene += 1;
+  } else if (verdict.locationRole === 'unknown') {
+    counts.detUnknownRole += 1;
+  }
+}
+
 /**
  * WJ-INT-02A gate: Stage A deterministic pre-check per item, then bounded
  * concurrent Stage B semantic triage. Ingest decisions keep their revision;
  * drop/uncertain decisions become held metadata (never article content).
  * Never throws: every failure path resolves to `uncertain`.
  */
+
 export async function applyTriageGate(
   stored: readonly StoredReportRevision[],
   classified: ReadonlyArray<{ guid: string; title: string; descriptionExcerpt: string | null; link: string; pubDate: string | null }>,
@@ -317,11 +384,20 @@ export async function applyTriageGate(
   const findPriorDecision = triage.findPriorDecision ?? (async () => null);
   const policyVersion = triage.policyVersion ?? NEWS_TRIAGE_POLICY_VERSION;
   const concurrency = Math.max(1, Math.min(triage.concurrency ?? 4, 8));
+  const deterministicMode: DeterministicTriageMode = triage.deterministicMode ?? 'shadow';
+  const detVersions = getDeterministicDatasetVersions();
   const counts = {
     total: stored.length, ingested: 0, dropped: 0, uncertain: 0,
     authzRejected: 0, geoRejected: 0, nonActionable: 0, providerFailures: 0,
+    detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
+    detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
+    detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
+    byCategory: {} as Record<string, number>,
+    detRuleVersion: detVersions.rule,
+    detGazetteerVersion: detVersions.gazetteer,
+    detLexiconVersion: detVersions.lexicon,
   };
-  const byCategory: Record<string, number> = {};
+  const byCategory: Record<string, number> = counts.byCategory;
   const kept: StoredReportRevision[] = [];
   const heldOut: HeldTriageDecision[] = [];
 
@@ -451,25 +527,52 @@ export async function applyTriageGate(
     const frozenAuthz = (): TriageAuthorization => authz;
     const excerptForPrompt =
       authz.permissions?.descriptionModel === true ? (item?.descriptionExcerpt ?? null) : null;
+    const preparedTitle = item?.title ?? rev.permitted_text.split("\n\n")[0] ?? null;
+    // DET-FILTER-01: run the pure prefilter on the SAME authorized text the
+    // model would receive (title + authorized excerpt only). Never sees
+    // unauthorized description text.
+    // Auth-denied items never enter the matcher: behavior and counters for
+    // those paths stay exactly as before (precheck still reports the denial).
+    let deterministic: DeterministicRelevanceResult | undefined;
+    if (authz.cleared === true) {
+      try {
+        deterministic = matchDeterministicRelevance(preparedTitle ?? '', excerptForPrompt);
+      } catch {
+        deterministic = undefined;
+      }
+    }
+    if (deterministic !== undefined) {
+      recordDeterministicCounters(counts, deterministic);
+    }
+    const hasStrongOrSupport = deterministic !== undefined && deterministic.eventMatches.some(
+      (match) => match.strength === 'strong' || match.strength === 'supporting',
+    );
+    const hasSpecificOrBroad = deterministic !== undefined && deterministic.locationMatches.some(
+      (match) => match.matchStrength === 'specific' || match.matchStrength === 'broad_only',
+    );
     const prepared: TriageNewsItem = {
       sourceId: rev.source_id,
       stableIdentity: identity,
-      title: item?.title ?? rev.permitted_text.split("\n\n")[0] ?? null,
+      title: preparedTitle,
       descriptionExcerpt: excerptForPrompt,
       link: rev.canonical_url,
       pubDate: item?.pubDate ?? rev.published_at,
       retrievedAt,
-      keywordHit: false,
-      gazetteerHit: false,
+      keywordHit: hasStrongOrSupport,
+      gazetteerHit: hasSpecificOrBroad,
       maxAgeHours: feed.maxAgeHours ?? 48,
+      deterministic,
     };
     let stageA: Awaited<ReturnType<typeof precheckNewsItem>>;
     try {
-      stageA = await precheckNewsItem(prepared, false, frozenAuthz);
+      stageA = await precheckNewsItem(prepared, false, frozenAuthz, deterministicMode);
     } catch {
       stageA = { needsSemantic: false, decision: null };
     }
     let decisionResult: NewsTriageDecision | null = stageA.decision;
+    if (!stageA.needsSemantic && deterministic !== undefined && deterministic.status !== 'candidate' && deterministicMode === 'enforce') {
+      counts.detModelCallsSkipped += 1;
+    }
     if (stageA.needsSemantic) {
       if (!callChat) {
         decisionResult = {
@@ -603,7 +706,7 @@ export async function applyTriageGate(
     await Promise.all(tasks.slice(i, i + concurrency).map((run) => run()));
   }
 
-  return { revisions: kept, held: heldOut, triageCounts: { ...counts, byCategory } };
+  return { revisions: kept, held: heldOut, triageCounts: counts };
 }
 async function pollSingleFeed(
   feed: NewsFeedConfig,
@@ -639,12 +742,17 @@ async function pollSingleFeed(
         error: "source_not_cleared",
         totalParsed: 0,
         matchedCount: 0,
+        keptCount: 0,
         rejectedCount: 0,
         revisions: [],
         held: [],
         triageCounts: {
           total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 1,
           geoRejected: 0, nonActionable: 0, providerFailures: 0, byCategory: {},
+          detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
+          detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
+          detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
+          detRuleVersion: '', detGazetteerVersion: '', detLexiconVersion: '',
         },
       };
     }
@@ -673,6 +781,7 @@ async function pollSingleFeed(
         error: `HTTP ${response.status} ${response.statusText}`,
         totalParsed: 0,
         matchedCount: 0,
+        keptCount: 0,
         rejectedCount: 0,
         revisions: [],
         held: [],
@@ -695,6 +804,7 @@ async function pollSingleFeed(
       error: error instanceof Error ? error.message : String(error),
       totalParsed: 0,
       matchedCount: 0,
+      keptCount: 0,
       rejectedCount: 0,
       revisions: [],
       held: [],
@@ -714,6 +824,7 @@ async function pollSingleFeed(
         error: `XML parse error: ${parseResult.error}`,
         totalParsed: 0,
         matchedCount: 0,
+        keptCount: 0,
         rejectedCount: 0,
         revisions: [],
         held: [],
@@ -730,6 +841,7 @@ async function pollSingleFeed(
       status: "success",
       totalParsed: parseResult.totalParsed,
       matchedCount: parseResult.matchedCount,
+      keptCount: parseResult.keptCount,
       rejectedCount: parseResult.rejectedCount,
       revisions: gated.revisions,
       held: gated.held,
@@ -743,6 +855,7 @@ async function pollSingleFeed(
       error: error instanceof Error ? error.message : String(error),
       totalParsed: 0,
       matchedCount: 0,
+      keptCount: 0,
       rejectedCount: 0,
       revisions: [],
       held: [],
@@ -781,9 +894,12 @@ export function createNewsPollRuntime(
 
     async poll(): Promise<NewsPollResult> {
       const retrievedAt = now();
-      const feedResults = await Promise.all(
-        feeds.map((feed) => pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs, maxAgeHours, options.triage)),
-      );
+      const feedResults: NewsFeedPollResult[] = [];
+      for (const feed of feeds) {
+        feedResults.push(
+          await pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs, maxAgeHours, options.triage),
+        );
+      }
 
       const seenKeys = new Set<string>();
       const allRevisions: StoredReportRevision[] = [];
@@ -844,7 +960,14 @@ export function createNewsPollRuntime(
 
 function aggregateTriageCounts(results: readonly NewsFeedPollResult[]): NewsTriageCounts | undefined {
   if (!results.some((r) => r.triageCounts)) return undefined;
-  const total = { total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 0, geoRejected: 0, nonActionable: 0, providerFailures: 0 };
+  const total = {
+    total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 0, geoRejected: 0,
+    nonActionable: 0, providerFailures: 0,
+    detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
+    detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
+    detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
+    detRuleVersion: '', detGazetteerVersion: '', detLexiconVersion: '',
+  };
   const byCategory: Record<string, number> = {};
   for (const r of results) {
     const c = r.triageCounts;
@@ -853,6 +976,15 @@ function aggregateTriageCounts(results: readonly NewsFeedPollResult[]): NewsTria
     total.uncertain += c.uncertain; total.authzRejected += c.authzRejected;
     total.geoRejected += c.geoRejected; total.nonActionable += c.nonActionable;
     total.providerFailures += c.providerFailures;
+    total.detConsidered += c.detConsidered; total.detCandidate += c.detCandidate;
+    total.detAmbiguous += c.detAmbiguous; total.detLowSignal += c.detLowSignal;
+    total.detBroadOnly += c.detBroadOnly; total.detSpecific += c.detSpecific;
+    total.detStrong += c.detStrong; total.detSupporting += c.detSupporting;
+    total.detAlertOnly += c.detAlertOnly; total.detNonScene += c.detNonScene;
+    total.detUnknownRole += c.detUnknownRole; total.detModelCallsSkipped += c.detModelCallsSkipped;
+    total.detRuleVersion = c.detRuleVersion;
+    total.detGazetteerVersion = c.detGazetteerVersion;
+    total.detLexiconVersion = c.detLexiconVersion;
     for (const [k, v] of Object.entries(c.byCategory)) byCategory[k] = (byCategory[k] ?? 0) + v;
   }
   return { ...total, byCategory };
