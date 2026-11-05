@@ -129,6 +129,11 @@ async function main() {
     );
   }
   console.log(`✓ Seeded ${DEFAULT_NEWS_FEEDS.length} RSS sources in source_registry.`);
+
+  // Clear poisoned triage attempts and decisions from prior runs
+  await executor.execute("TRUNCATE TABLE waspada.news_triage_attempts, waspada.news_triage_decisions;");
+  console.log("✓ Cleared prior triage attempts and decisions cache.");
+
   const incidentRepo = createSqlIncidentRepository(executor);
 
   // 3. Worker Environment Configuration
@@ -223,8 +228,15 @@ async function main() {
 
   // 6. Start Live Ingestion Pollers (PetaBencana, BMKG, ANTARA News)
   console.log("[Ingestion] Initializing live source pollers (PetaBencana, BMKG, ANTARA News)...");
+  let isPolling = false;
   async function pollLiveFeeds() {
-    console.log("\n[Ingestion Cycle] Polling live Jakarta sources...");
+    if (isPolling) {
+      console.log("  [Ingestion Cycle] Previous poll cycle still running, skipping.");
+      return;
+    }
+    isPolling = true;
+    try {
+      console.log("\n[Ingestion Cycle] Polling live Jakarta sources...");
     const discoveredRevisions: StoredReportRevision[] = [];
 
     // A. PetaBencana
@@ -237,8 +249,8 @@ async function main() {
       } else {
         console.log("  [PetaBencana] 0 new flood reports in the last 24h.");
       }
-    } catch (e: any) {
-      console.warn(`  [PetaBencana] Poll error: ${e.message}`);
+    } catch (e: unknown) {
+      console.warn(`  [PetaBencana] Poll error: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // B. BMKG CAP Alerts
@@ -251,13 +263,13 @@ async function main() {
       } else {
         console.log("  [BMKG] No active alerts for Jakarta.");
       }
-    } catch (e: any) {
-      console.warn(`  [BMKG] Poll error: ${e.message}`);
+    } catch (e: unknown) {
+      console.warn(`  [BMKG] Poll error: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    // C. ANTARA Megapolitan RSS — WJ-INT-02B shared gated-RSS cycle (§6):
-    // poll → split → per-item shared persist calls. Structured revisions
-    // above/below keep their own plain-executor path and never enter here.
+    // C. RSS Feeds (14 sources) — WJ-INT-02B shared gated-RSS cycle (§6):
+    // Process feeds sequentially to avoid overwhelming LLM gateway concurrency.
+    // Persist after each feed so decisions are immediately saved to DB cache.
     let gatedPersistFailures = 0;
     try {
       const toolEnv: WorkerEnvironment = {
@@ -267,26 +279,34 @@ async function main() {
       };
       const gate = buildLiveTriageGate(toolEnv, executor);
       const newsRunner = createLiveNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS, triage: gate });
-      const newsRes = await newsRunner.poll();
-      if (newsRes.revisions.length > 0) {
-        console.log(`  [RSS Feeds (14)] Discovered ${newsRes.revisions.length} articles (ingest), ${newsRes.held.length} held.`);
-      } else {
-        console.log(`  [RSS Feeds (14)] 0 new ingest articles (${newsRes.held.length} held).`);
+
+      let totalIngest = 0;
+      let totalHeld = 0;
+      for (let i = 0; i < DEFAULT_NEWS_FEEDS.length; i++) {
+        const feed = DEFAULT_NEWS_FEEDS[i]!;
+        try {
+          const feedRes = await newsRunner.pollFeed(feed);
+          if (feedRes.revisions.length > 0 || (feedRes.held && feedRes.held.length > 0)) {
+            if (typeof executor.transaction === "function") {
+              const cycle = await runGatedRssCycle(executor, {
+                datasetKind: "live",
+                revisions: feedRes.revisions,
+                held: feedRes.held ?? [],
+                policyVersion: TRIAGE_POLICY_VERSION,
+              });
+              gatedPersistFailures += cycle.persistFailures;
+            }
+          }
+          totalIngest += feedRes.revisions.length;
+          totalHeld += feedRes.held ? feedRes.held.length : 0;
+          console.log(`  [RSS ${i + 1}/${DEFAULT_NEWS_FEEDS.length}: ${feed.sourceId}] ${feedRes.revisions.length} ingest, ${feedRes.held ? feedRes.held.length : 0} held.`);
+        } catch (feedErr: unknown) {
+          console.warn(`  [RSS ${i + 1}/${DEFAULT_NEWS_FEEDS.length}: ${feed.sourceId}] Poll error: ${feedErr instanceof Error ? feedErr.message : String(feedErr)}`);
+        }
       }
-      if (typeof executor.transaction !== "function") {
-        // Fail closed without a real transaction — same rule as scheduled().
-        gatedPersistFailures = newsRes.revisions.length + newsRes.held.length;
-      } else {
-        const cycle = await runGatedRssCycle(executor, {
-          datasetKind: "live",
-          revisions: newsRes.revisions,
-          held: newsRes.held,
-          policyVersion: TRIAGE_POLICY_VERSION,
-        });
-        gatedPersistFailures = cycle.persistFailures;
-      }
-    } catch (e: any) {
-      console.warn(`  [ANTARA News] Poll error: ${e.message}`);
+      console.log(`  [RSS Feeds (14)] Total: ${totalIngest} articles (ingest), ${totalHeld} held.`);
+    } catch (e: unknown) {
+      console.warn(`  [RSS Feeds] Poll error: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // Persist structured revisions (PetaBencana/BMKG) to PostgreSQL and enqueue
@@ -375,6 +395,9 @@ async function main() {
 
     if (discoveredRevisions.length > 0) {
       console.log(`✓ Enqueued ${discoveredRevisions.length} new durable AI jobs into waspada.ai_jobs.`);
+    }
+    } finally {
+      isPolling = false;
     }
   }
 

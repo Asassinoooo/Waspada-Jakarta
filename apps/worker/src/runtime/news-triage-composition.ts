@@ -92,7 +92,7 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
 
   const gate: LiveTriageGate = {
     sourceRemit: "general news",
-    concurrency: 4,
+    concurrency: 2,
     checkAuthorization: async (sourceId: string) => {
       try {
         const res = await executor.query<{
@@ -264,8 +264,11 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
   const callChat = async (system: string, user: string): Promise<unknown> => {
     let lastError: unknown = new Error("triage transport failed");
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+      }
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15_000);
+      const timer = setTimeout(() => controller.abort(), 60_000);
       try {
         const response = await fetch(endpoint, {
           method: "POST",

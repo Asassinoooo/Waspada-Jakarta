@@ -578,3 +578,19 @@ test("uncertainOnFailure never produces drop", () => {
   assert.equal(uncertainOnFailure("invalid_model_output").disposition, "uncertain");
   assert.ok(TRIAGE_POLICY_VERSION.startsWith("wj-int-02"));
 });
+
+test("prompt specifies explicit reasonCodes enum rules", () => {
+  const { system } = buildTriagePrompt({
+    sourceId: "source-test",
+    sourceRemit: "metro",
+    title: "Test title",
+    descriptionExcerpt: null,
+    pubDate: null,
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.ok(system.includes("triage_v1_ingest"));
+  assert.ok(system.includes("provider_context_only_exception"));
+  assert.ok(system.includes("outside_scope"));
+  assert.ok(system.includes("non_actionable"));
+  assert.ok(system.includes("ambiguous_location"));
+});

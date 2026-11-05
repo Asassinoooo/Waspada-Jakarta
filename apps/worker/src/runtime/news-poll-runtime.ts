@@ -781,9 +781,12 @@ export function createNewsPollRuntime(
 
     async poll(): Promise<NewsPollResult> {
       const retrievedAt = now();
-      const feedResults = await Promise.all(
-        feeds.map((feed) => pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs, maxAgeHours, options.triage)),
-      );
+      const feedResults: NewsFeedPollResult[] = [];
+      for (const feed of feeds) {
+        feedResults.push(
+          await pollSingleFeed(feed, retrievedAt, fetchFn, timeoutMs, maxAgeHours, options.triage),
+        );
+      }
 
       const seenKeys = new Set<string>();
       const allRevisions: StoredReportRevision[] = [];
