@@ -276,10 +276,11 @@ async function main() {
         NINEROUTER_URL: process.env.NINEROUTER_URL,
         NINEROUTER_KEY: process.env.NINEROUTER_KEY,
         NINEROUTER_CHAT_MODEL: process.env.NINEROUTER_CHAT_MODEL,
+        NEWS_DETERMINISTIC_FILTER_MODE: process.env.NEWS_DETERMINISTIC_FILTER_MODE ?? "enforce",
       };
       const gate = buildLiveTriageGate(toolEnv, executor);
+      console.log(`  [Deterministic Filter] Active mode: ${gate.deterministicMode}`);
       const newsRunner = createLiveNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS, triage: gate });
-
       let totalIngest = 0;
       let totalHeld = 0;
       for (let i = 0; i < DEFAULT_NEWS_FEEDS.length; i++) {
