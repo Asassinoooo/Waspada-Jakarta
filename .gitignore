@@ -24,6 +24,7 @@ playwright-report/
 # Credentials and local runtime state
 .env
 .env*.local
+*.zip
 .data/
 !.env.example
 .dev.vars
