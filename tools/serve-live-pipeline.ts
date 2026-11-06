@@ -57,10 +57,28 @@ async function main() {
     } catch {}
   }
   console.log(`\n[Database] Opening persistent database at: ${dataDir}`);
-  const database = await PGlite.create({
-    dataDir,
-    extensions: { postgis, vector },
-  });
+  let database: PGlite;
+  try {
+    database = await PGlite.create({
+      dataDir,
+      extensions: { postgis, vector },
+    });
+  } catch (err) {
+    console.warn(`\n[Database] Warning: Could not open ${dataDir} (possibly ungraceful shutdown or corrupted WAL): ${String(err)}`);
+    const backupDir = path.resolve(process.cwd(), ".data/live-db-backup");
+    if (fs.existsSync(backupDir)) {
+      console.log(`[Database] Auto-recovering database from ${backupDir}...`);
+      fs.rmSync(dataDir, { recursive: true, force: true });
+      fs.cpSync(backupDir, dataDir, { recursive: true });
+      database = await PGlite.create({
+        dataDir,
+        extensions: { postgis, vector },
+      });
+      console.log(`[Database] Database recovered and opened successfully.`);
+    } else {
+      throw err;
+    }
+  }
 
   const executor: TransactionalSqlExecutor = {
     async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
@@ -92,6 +110,25 @@ async function main() {
 
   // Clear demo synthetic fixtures so only genuine live data is shown
   PublicReadModel.clearPublishedEvents();
+
+  // Load and publish verified multi-source / corroborated live incidents into PublicReadModel
+  console.log("\n[Public Read Model] Publishing verified multi-source incidents into public feed...");
+  const verifiedRes = await executor.query<{ record_json: unknown }>(
+    `SELECT record_json FROM waspada.event_proposals WHERE dataset_kind = 'live'`
+  );
+  let pubCount = 0;
+  for (const row of verifiedRes.rows) {
+    const p = typeof row.record_json === "string" ? JSON.parse(row.record_json) : row.record_json;
+    if (p && (p.is_multi_source === true || (typeof p.source_count === "number" && p.source_count > 1))) {
+      try {
+        PublicReadModel.publish(p);
+        pubCount++;
+      } catch {
+        // skip if invalid
+      }
+    }
+  }
+  console.log(`✓ Published ${pubCount} verified live incidents into PublicReadModel.`);
 
   // Seed the 14 news feeds into waspada.source_registry for live user testing
   console.log(`\n[Source Registry] Seeding ${DEFAULT_NEWS_FEEDS.length} RSS sources...`);

@@ -2,8 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } 
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPublicContext, listEvents, type ApiReadState, type PublicGeoJSONFilters } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
-import { DEFAULT_FEED_FILTERS, EventFeed, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
+import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
+import { LaporanPublik } from "./LaporanPublik.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
 import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
@@ -158,6 +159,9 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
+  if (hash === "#laporan-publik-demo" || hash === "#laporan-publik" || hash === "#publik-demo" || hash === "#jelajah") {
+    return { screen: "discover" };
+  }
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
     try {
@@ -294,6 +298,9 @@ export function App() {
   const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>(() =>
     new URLSearchParams(window.location.search).get("panel") === "map" ? "map" : "list",
   );
+  void geoJSONState;
+  void dispatchDiscovery;
+  void setMobilePanel;
   const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review"
     ? route.screen
     : null;
@@ -567,34 +574,7 @@ export function App() {
         <Landing context={context} contextStatus={contextStatus} events={events} status={status} onRetry={() => setRetryKey((current) => current + 1)} />
       )}
       {route.screen === "discover" && (
-        <EventFeed
-          status={status}
-          events={events}
-          context={context}
-          query={discovery.query}
-          onQueryChange={(query) => dispatchDiscovery({ type: "query-changed", query })}
-          filters={discovery.filters}
-          onCategoryChange={(value) => dispatchDiscovery({ type: "category-changed", value })}
-          onLifecycleChange={(value) => dispatchDiscovery({ type: "lifecycle-changed", value })}
-          onFreshnessChange={(value) => dispatchDiscovery({ type: "freshness-changed", value })}
-          onClearFilters={() => dispatchDiscovery({ type: "filters-cleared" })}
-          onRetry={() => setRetryKey((current) => current + 1)}
-          mapSelection={discovery.mapSelection}
-          geoJSONState={geoJSONState}
-          onSelectApiEvent={(event, featureId) => dispatchDiscovery({
-            type: "map-selection-changed",
-            selection: featureId === undefined
-              ? { kind: "api-event", event }
-              : { kind: "api-event", event, featureId },
-          })}
-          onSelectPresentation={() => {
-            dispatchDiscovery({ type: "map-selection-changed", selection: { kind: "presentation" } });
-            setMobilePanel("map");
-          }}
-          onRetryMap={() => setMapRetryKey((current) => current + 1)}
-          mobilePanel={mobilePanel}
-          onMobilePanelChange={setMobilePanel}
-        />
+        <LaporanPublik />
       )}
       {route.screen === "detail-api" && currentDetailState && currentHistoryState && (
         <EventDetail
@@ -652,10 +632,11 @@ export function App() {
               ? "Mode live · data berasal dari API; cakupan sesuai halaman yang dimuat."
               : "Status dataset tidak tersedia."}
         </span>
+        <a href="#laporan-publik-demo">Laporan Publik Demo</a>
         <a href="#jelajah">Kembali ke jelajah</a>
         <a href="#bantuan">Bantuan</a>
         <a href="#admin">Ruang administrator</a>
-        <a href="#tinjau-bukti">Tinjau bukti · baca saja</a>
+        <a href="#tinjau-bukti">Tinjau bukti (Moderator)</a>
         <a href="#visualisasi-3d">Visualisasi 3D</a>
       </footer>
     </div>
