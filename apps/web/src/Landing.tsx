@@ -1,16 +1,15 @@
 import React from "react";
 import type { EventView, PublicContext } from "@waspada/worker/public-contracts";
-import { categoryLabel, evidenceLabel, formatDate, formatInstant } from "./display.js";
 import { HeroIllustration } from "./HeroIllustration.js";
 
 type LandingStatus = "loading" | "loaded" | "unavailable";
 type LandingContextStatus = "loading" | "loaded" | "unavailable";
 
 export interface LandingProps {
-  context: PublicContext | null;
+  context?: PublicContext | null;
   contextStatus?: LandingContextStatus;
-  events: readonly EventView[];
-  status: LandingStatus;
+  events?: readonly EventView[];
+  status?: LandingStatus;
   onRetry?: () => void;
 }
 
@@ -37,58 +36,7 @@ const guideItems = [
 
 type GuideId = (typeof guideItems)[number]["id"];
 
-function lifecycleText(value: EventView["lifecycle"]) {
-  switch (value) {
-    case "planned":
-      return "Direncanakan";
-    case "ongoing":
-      return "Berlangsung";
-    case "resolved":
-      return "Selesai";
-    case "cancelled":
-      return "Dibatalkan";
-    case "unknown":
-      return "Belum diketahui";
-  }
-}
-
-function freshnessText(value: EventView["freshness"]["status"]) {
-  switch (value) {
-    case "current":
-      return "Pembaruan dalam batas waktu";
-    case "needs_update":
-      return "Perlu diperbarui";
-    case "expired":
-      return "Masa berlaku sumber berakhir";
-  }
-}
-
-function eventTimeText(event: EventView) {
-  const { start, end, precision } = event.event_time;
-  if (precision === "unknown" || !start) return "Waktu kejadian tidak diketahui";
-
-  const format = precision === "date" ? formatDate : formatInstant;
-  const first = format(start);
-  if (end) {
-    const last = format(end);
-    return first + " sampai " + last + (precision === "date" ? " · rentang tanggal" : " · rentang waktu");
-  }
-  if (precision === "date") return first + " · tanggal saja";
-  if (precision === "range") return first + " · rentang waktu";
-  return first + " · waktu tepat";
-}
-
-function datasetText(context: PublicContext) {
-  if (context.dataset_mode === "live") return "Record dari API · mode live";
-  if (context.dataset_label === "historical") return "Contoh historis · mode demo";
-  return "Data sintetis · mode demo";
-}
-
-function eventDetailHref(eventId: string) {
-  return "#detail/api/" + encodeURIComponent(eventId);
-}
-
-export function Landing({ context, contextStatus, events, status, onRetry }: LandingProps) {
+export function Landing(_props: LandingProps = {}) {
   const [selectedGuide, setSelectedGuide] = React.useState<GuideId>("laporan");
   const selectedItem = guideItems.find((item) => item.id === selectedGuide) ?? guideItems[0];
 
