@@ -2,9 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } 
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPublicContext, listEvents, type ApiReadState, type PublicGeoJSONFilters } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
-import { DEFAULT_FEED_FILTERS, EventFeed, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
+import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
-import { LaporanPublikDemo } from "./LaporanPublikDemo.js";
+import { LaporanPublik } from "./LaporanPublik.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
 import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
@@ -32,8 +32,7 @@ type Route =
   | { screen: "embedding-3d" }
   | { screen: "admin" }
   | { screen: "detail-presentation" }
-  | { screen: "detail-api"; eventId: string }
-  | { screen: "laporan-publik-demo" };
+  | { screen: "detail-api"; eventId: string };
 
 const LocalPipelinePreview = import.meta.env?.DEV === true
   ? lazy(() => import("./LocalPipelinePreview.js").then((module) => ({ default: module.LocalPipelinePreview })))
@@ -160,8 +159,8 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
-  if (hash === "#laporan-publik-demo" || hash === "#laporan-publik" || hash === "#publik-demo") {
-    return { screen: "laporan-publik-demo" };
+  if (hash === "#laporan-publik-demo" || hash === "#laporan-publik" || hash === "#publik-demo" || hash === "#jelajah") {
+    return { screen: "discover" };
   }
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
@@ -175,7 +174,7 @@ export function routeFromHash(hash: string): Route {
 }
 
 export function SiteHeader({ route, context = null }: { route: Route; context?: PublicContext | null }) {
-  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen === "embedding-3d" || route.screen === "laporan-publik-demo" || route.screen.startsWith("detail");
+  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen === "embedding-3d" || route.screen.startsWith("detail");
   const onForYou = route.screen === "preferences" || route.screen === "updates" || route.screen === "onboarding" || route.screen === "account";
   const onHelp = route.screen === "help";
   const onAccount = route.screen === "login" || route.screen === "onboarding" || route.screen === "account";
@@ -221,7 +220,6 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
             <nav className="context-nav" aria-label="Peta dan laporan">
               <a href="#jelajah" aria-current={route.screen === "discover" || route.screen.startsWith("detail") ? "page" : undefined}>Laporan publik</a>
               {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Peta sumber · demo</a>}
-              <a href="#laporan-publik-demo" aria-current={route.screen === "laporan-publik-demo" ? "page" : undefined}>Laporan Publik Demo</a>
               <a href="#visualisasi-3d" aria-current={route.screen === "embedding-3d" ? "page" : undefined}>Visualisasi 3D</a>
             </nav>
           )}
@@ -300,6 +298,9 @@ export function App() {
   const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>(() =>
     new URLSearchParams(window.location.search).get("panel") === "map" ? "map" : "list",
   );
+  void geoJSONState;
+  void dispatchDiscovery;
+  void setMobilePanel;
   const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review"
     ? route.screen
     : null;
@@ -573,34 +574,7 @@ export function App() {
         <Landing context={context} contextStatus={contextStatus} events={events} status={status} onRetry={() => setRetryKey((current) => current + 1)} />
       )}
       {route.screen === "discover" && (
-        <EventFeed
-          status={status}
-          events={events}
-          context={context}
-          query={discovery.query}
-          onQueryChange={(query) => dispatchDiscovery({ type: "query-changed", query })}
-          filters={discovery.filters}
-          onCategoryChange={(value) => dispatchDiscovery({ type: "category-changed", value })}
-          onLifecycleChange={(value) => dispatchDiscovery({ type: "lifecycle-changed", value })}
-          onFreshnessChange={(value) => dispatchDiscovery({ type: "freshness-changed", value })}
-          onClearFilters={() => dispatchDiscovery({ type: "filters-cleared" })}
-          onRetry={() => setRetryKey((current) => current + 1)}
-          mapSelection={discovery.mapSelection}
-          geoJSONState={geoJSONState}
-          onSelectApiEvent={(event, featureId) => dispatchDiscovery({
-            type: "map-selection-changed",
-            selection: featureId === undefined
-              ? { kind: "api-event", event }
-              : { kind: "api-event", event, featureId },
-          })}
-          onSelectPresentation={() => {
-            dispatchDiscovery({ type: "map-selection-changed", selection: { kind: "presentation" } });
-            setMobilePanel("map");
-          }}
-          onRetryMap={() => setMapRetryKey((current) => current + 1)}
-          mobilePanel={mobilePanel}
-          onMobilePanelChange={setMobilePanel}
-        />
+        <LaporanPublik />
       )}
       {route.screen === "detail-api" && currentDetailState && currentHistoryState && (
         <EventDetail
@@ -630,9 +604,6 @@ export function App() {
       {route.screen === "review" && (sessionState.status === "authenticated" && hasProtectedShellAccess("review", sessionState.session)
         ? <ModeratorReview />
         : <AccountAccessGate shell="review" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
-      {route.screen === "laporan-publik-demo" && (
-        <LaporanPublikDemo />
-      )}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
           <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />

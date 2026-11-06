@@ -990,3 +990,150 @@
   line-height: 1.45;
 }
 
+/* ==========================================================================
+   Laporan Publik Demo: Full-width Header, Tags & Collapsible Cards
+   ========================================================================== */
+
+/* Full-width Title & Subheading */
+.laporan-intro-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+
+.laporan-intro-section .section-kicker {
+  margin-bottom: 0.15rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--kali-teal);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.laporan-intro-section h1 {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--tinta-kota);
+  margin: 0;
+  max-width: 100%;
+  letter-spacing: -0.02em;
+}
+
+.laporan-intro-section .laporan-intro-copy {
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: var(--quiet-ink);
+  margin: 0.25rem 0 0;
+  max-width: 82ch;
+}
+
+/* Full-width Search and Controls */
+.discovery-controls--full-width {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+  max-width: 100% !important;
+  margin-bottom: 1.5rem;
+}
+
+.discovery-controls--full-width .search-control {
+  width: 100%;
+  max-width: 100% !important;
+}
+
+/* Category Pressable Button Tags */
+.category-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.category-tag-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 620;
+  padding: 0.45rem 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid var(--beton);
+  background: var(--surface);
+  color: var(--tinta-kota);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.category-tag-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.category-tag-btn--active {
+  background: var(--kali-teal) !important;
+  color: #ffffff !important;
+  border-color: var(--kali-teal) !important;
+  box-shadow: 0 2px 4px rgba(13, 110, 100, 0.2);
+}
+
+.category-tag-btn--active:hover {
+  background: #0d6e64 !important;
+  border-color: #0d6e64 !important;
+}
+
+.category-tag-btn--clear {
+  border-style: dashed;
+  color: var(--quiet-ink);
+  background: transparent;
+}
+
+.category-tag-btn--clear:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+/* Collapsible Event Cards */
+.event-card--collapsible {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  position: relative;
+  align-self: start;
+}
+
+.event-card--collapsible:hover {
+  border-color: var(--kali-teal);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.event-card__collapse-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--kali-teal);
+  border-top: 1px dotted var(--beton);
+}
+
+.event-card__collapse-body {
+  animation: fadeInCollapseBody 0.15s ease-out;
+}
+
+@keyframes fadeInCollapseBody {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+

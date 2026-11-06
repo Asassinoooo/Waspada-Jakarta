@@ -57,10 +57,28 @@ async function main() {
     } catch {}
   }
   console.log(`\n[Database] Opening persistent database at: ${dataDir}`);
-  const database = await PGlite.create({
-    dataDir,
-    extensions: { postgis, vector },
-  });
+  let database: PGlite;
+  try {
+    database = await PGlite.create({
+      dataDir,
+      extensions: { postgis, vector },
+    });
+  } catch (err) {
+    console.warn(`\n[Database] Warning: Could not open ${dataDir} (possibly ungraceful shutdown or corrupted WAL): ${String(err)}`);
+    const backupDir = path.resolve(process.cwd(), ".data/live-db-backup");
+    if (fs.existsSync(backupDir)) {
+      console.log(`[Database] Auto-recovering database from ${backupDir}...`);
+      fs.rmSync(dataDir, { recursive: true, force: true });
+      fs.cpSync(backupDir, dataDir, { recursive: true });
+      database = await PGlite.create({
+        dataDir,
+        extensions: { postgis, vector },
+      });
+      console.log(`[Database] Database recovered and opened successfully.`);
+    } else {
+      throw err;
+    }
+  }
 
   const executor: TransactionalSqlExecutor = {
     async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
