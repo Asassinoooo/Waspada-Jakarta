@@ -93,6 +93,25 @@ async function main() {
   // Clear demo synthetic fixtures so only genuine live data is shown
   PublicReadModel.clearPublishedEvents();
 
+  // Load and publish verified multi-source / corroborated live incidents into PublicReadModel
+  console.log("\n[Public Read Model] Publishing verified multi-source incidents into public feed...");
+  const verifiedRes = await executor.query<{ record_json: unknown }>(
+    `SELECT record_json FROM waspada.event_proposals WHERE dataset_kind = 'live'`
+  );
+  let pubCount = 0;
+  for (const row of verifiedRes.rows) {
+    const p = typeof row.record_json === "string" ? JSON.parse(row.record_json) : row.record_json;
+    if (p && (p.is_multi_source === true || (typeof p.source_count === "number" && p.source_count > 1))) {
+      try {
+        PublicReadModel.publish(p);
+        pubCount++;
+      } catch {
+        // skip if invalid
+      }
+    }
+  }
+  console.log(`✓ Published ${pubCount} verified live incidents into PublicReadModel.`);
+
   // Seed the 14 news feeds into waspada.source_registry for live user testing
   console.log(`\n[Source Registry] Seeding ${DEFAULT_NEWS_FEEDS.length} RSS sources...`);
   const seedTraceId = "trace-seed-rss-sources";

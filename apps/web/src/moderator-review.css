@@ -956,3 +956,37 @@
 .moderator-page--queue .review-footer {
   margin-top: 2rem;
 }
+
+/* Public Trust Seal Bar for Laporan Publik Demo */
+.public-trust-seal-bar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.1rem 1.4rem;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  margin-top: 1.5rem;
+  box-shadow: 0 1px 4px rgba(22, 101, 52, 0.08);
+}
+
+.trust-seal-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.trust-seal-content strong {
+  display: block;
+  font-size: 1rem;
+  color: #14532d;
+  margin-bottom: 0.25rem;
+}
+
+.trust-seal-content p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #15803d;
+  line-height: 1.45;
+}
+

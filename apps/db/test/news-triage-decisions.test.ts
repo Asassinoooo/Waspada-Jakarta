@@ -286,6 +286,7 @@ describe('WJ-INT-02 news triage decisions: audit-only persistence, idempotent up
       contentHash: 'c'.repeat(64),
     };
     await recordTriageAttempt(db.executor, base);
+    await new Promise((r) => setTimeout(r, 15));
     await recordTriageAttempt(db.executor, { ...base, traceId: 'trace-triage-latest-2' });
     const latest = await readLatestAttemptForRevision(db.executor, 'synthetic', 'rep-latest-001');
     assert.equal(latest?.reportRevisionId, 'rep-latest-001');

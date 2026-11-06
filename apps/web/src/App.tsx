@@ -4,6 +4,7 @@ import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPubl
 import { EventDetail } from "./EventDetail.js";
 import { DEFAULT_FEED_FILTERS, EventFeed, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
+import { LaporanPublikDemo } from "./LaporanPublikDemo.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
 import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
@@ -31,7 +32,8 @@ type Route =
   | { screen: "embedding-3d" }
   | { screen: "admin" }
   | { screen: "detail-presentation" }
-  | { screen: "detail-api"; eventId: string };
+  | { screen: "detail-api"; eventId: string }
+  | { screen: "laporan-publik-demo" };
 
 const LocalPipelinePreview = import.meta.env?.DEV === true
   ? lazy(() => import("./LocalPipelinePreview.js").then((module) => ({ default: module.LocalPipelinePreview })))
@@ -158,6 +160,9 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
+  if (hash === "#laporan-publik-demo" || hash === "#laporan-publik" || hash === "#publik-demo") {
+    return { screen: "laporan-publik-demo" };
+  }
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
     try {
@@ -170,7 +175,7 @@ export function routeFromHash(hash: string): Route {
 }
 
 export function SiteHeader({ route, context = null }: { route: Route; context?: PublicContext | null }) {
-  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen === "embedding-3d" || route.screen.startsWith("detail");
+  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen === "embedding-3d" || route.screen === "laporan-publik-demo" || route.screen.startsWith("detail");
   const onForYou = route.screen === "preferences" || route.screen === "updates" || route.screen === "onboarding" || route.screen === "account";
   const onHelp = route.screen === "help";
   const onAccount = route.screen === "login" || route.screen === "onboarding" || route.screen === "account";
@@ -216,6 +221,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
             <nav className="context-nav" aria-label="Peta dan laporan">
               <a href="#jelajah" aria-current={route.screen === "discover" || route.screen.startsWith("detail") ? "page" : undefined}>Laporan publik</a>
               {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Peta sumber · demo</a>}
+              <a href="#laporan-publik-demo" aria-current={route.screen === "laporan-publik-demo" ? "page" : undefined}>Laporan Publik Demo</a>
               <a href="#visualisasi-3d" aria-current={route.screen === "embedding-3d" ? "page" : undefined}>Visualisasi 3D</a>
             </nav>
           )}
@@ -624,6 +630,9 @@ export function App() {
       {route.screen === "review" && (sessionState.status === "authenticated" && hasProtectedShellAccess("review", sessionState.session)
         ? <ModeratorReview />
         : <AccountAccessGate shell="review" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
+      {route.screen === "laporan-publik-demo" && (
+        <LaporanPublikDemo />
+      )}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
           <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />
@@ -652,10 +661,11 @@ export function App() {
               ? "Mode live · data berasal dari API; cakupan sesuai halaman yang dimuat."
               : "Status dataset tidak tersedia."}
         </span>
+        <a href="#laporan-publik-demo">Laporan Publik Demo</a>
         <a href="#jelajah">Kembali ke jelajah</a>
         <a href="#bantuan">Bantuan</a>
         <a href="#admin">Ruang administrator</a>
-        <a href="#tinjau-bukti">Tinjau bukti · baca saja</a>
+        <a href="#tinjau-bukti">Tinjau bukti (Moderator)</a>
         <a href="#visualisasi-3d">Visualisasi 3D</a>
       </footer>
     </div>
