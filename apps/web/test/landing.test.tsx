@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Landing } from "../src/Landing.js";
+import { Landing, type LandingProps } from "../src/Landing.js";
 
 test("landing provides direct account-free actions and a captioned illustrative hero", () => {
-  const markup = renderToStaticMarkup(<Landing />);
+  const markup = renderToStaticMarkup(createElement(Landing));
 
   assert.match(markup, /<main[^>]*tabindex="-1"/);
   assert.match(markup, /Pahami Jakarta sebelum melangkah/);
@@ -16,7 +17,7 @@ test("landing provides direct account-free actions and a captioned illustrative 
 });
 
 test("reading guide uses user-controlled instructional panels without verification claims", () => {
-  const markup = renderToStaticMarkup(<Landing />);
+  const markup = renderToStaticMarkup(createElement(Landing));
 
   assert.match(markup, /aria-label="Pilih topik panduan"/);
   assert.match(markup, /aria-pressed="true" aria-controls="landing-guide-panel">.*?Laporan/s);
@@ -27,13 +28,14 @@ test("reading guide uses user-controlled instructional panels without verificati
 });
 
 test("landing accepts optional props safely without errors", () => {
+  const props: LandingProps = {
+    context: null,
+    events: [],
+    status: "loaded",
+    onRetry: () => {},
+  };
   const markup = renderToStaticMarkup(
-    <Landing
-      context={null}
-      events={[]}
-      status="loaded"
-      onRetry={() => {}}
-    />
+    createElement(Landing as ComponentType<LandingProps>, props)
   );
 
   assert.match(markup, /Pahami Jakarta sebelum melangkah/);
