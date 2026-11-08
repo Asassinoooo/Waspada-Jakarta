@@ -1,5 +1,7 @@
 # Waspada Jakarta — Current Checkpoint
 
+**Status update — 8 November 2026:** `main` at `33528c6`. Team 12 accepted the 26 October–6 November work as local live mode (`npm run serve:live`); see LIVE-LOCAL-01 and the `FIX-*`/`TEST-LIST-01` rows in [the backlog](IMPLEMENTATION_BACKLOG.md) for the defects found in a read-only repository review on 8 November. No tests were run for this documentation update. Hosted deployment, Neon and hosted/public source rights remain gated.
+
 **Current continuation guide — 18 October 2026:** read [the software plan](../SOFTWARE_DEVELOPMENT_PLAN.md) first, then [HANDOFF.md](../HANDOFF.md). The universal handoff supersedes the stale continuation summary below while preserving its historical evidence. Latest accepted implementation is AUTH-01 at `d007d02f8f277e64ec7ea10f15b82a80c414b860` (15 October): web/Android accounts and onboarding, role-gated web shells, durable synthetic account demo, with real Google/hosted/device gates still open. The repository and remote were checked on18October; application tests/services were not rerun for this documentation task. [Latest implementation evidence](assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md).
 
 **Current continuation guide — 26 October 2026 (Parallel Orchestration Wave):**

@@ -74,6 +74,8 @@ The clearance gate is complete for a connector only when its permission basis an
 
 ## Current decision
 
+**Update 8 November 2026:** the statement below predates local live mode. `npm run serve:live` now polls PetaBencana, BMKG CAP and RSS feeds from ANTARA (six feeds), detik, CNN Indonesia, CNBC Indonesia, Sindonews and Tempo for local Team 12 testing, including model processing and local retention. detik, CNN Indonesia, CNBC Indonesia, Sindonews and Tempo are not yet assessed in this plan. Local acceptance does not clear BMKG, ANTARA or the other publishers for hosted or public display, AI processing or retention; those rows remain open.
+
 **No live connector is enabled.** Use synthetic fixtures for demos and tests until an exact source path is recorded and implemented. This does not mean every source needs a separate permission letter. Satu Data is the leading no-letter candidate for historical/background use, subject to exact dataset and protected-data review. PetaBencana may fit the non-commercial CC BY-NC route if the API data and processing are covered; use that more restrictive license while the first-party statements conflict. BMKG remains the first formal request because its terms explicitly require written permission for third-party-app integration. ANTARA and Korlantas remain limited to source links/discovery until Waspada's display, AI-processing, and retention rights are clear. No requests have been sent and this plan does not authorize contacting source owners on behalf of Team 12.
 
 Team 12 chose to leave the sender, university, and supervisor placeholders in the BMKG draft for the team to complete before sending.
