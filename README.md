@@ -1,60 +1,136 @@
-# Waspada Jakarta — Team 12
+# Waspada Jakarta
 
-Start with the **[Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md)** for the complete project scope, requirements, milestones and acceptance gates. The [implementation backlog](docs/IMPLEMENTATION_BACKLOG.md) defines the work packages. Local agent instructions are retained in the Git-ignored `AGENTS.md` file.
+**Informasi insiden Jakarta yang tenang, berbasis bukti, dan jujur soal ketidakpastian.**
+*Calm, evidence-first incident information for Jakarta residents and visitors.*
 
-For a new coding agent or developer continuing the project, use **[HANDOFF.md](HANDOFF.md)**: a tool-independent guide to the current baseline, implemented boundaries, startup, historical test evidence, outstanding gates and next local work. It does not depend on access to earlier chats.
+Waspada Jakarta helps people understand a reported incident in Jakarta. It tries to answer what happened, whether it may affect them, how current the information is, and what evidence supports it. It collects reports from public sources, uses AI to structure and cross-check them, and publishes an incident only after a human moderator has reviewed the evidence.
 
-This repository contains the engineering plan and partial prototype. The published-incident demo uses synthetic scenarios and read-only moderator review. A separate **Demo sumber** page adds a dated real OpenStreetMap facility snapshot, an interactive OSM basemap and explicit bounded OSM/PetaBencana source requests. Source previews are unreviewed and never enter published incident APIs. The five layers also have locally tested ingestion, grounding, bounded investigation and publication components; hosted model providers, Neon database connections, authenticated publication and hosted deployment remain inactive. Broader source rights and human-reviewed evaluation remain pending. Local development/testing uses WSL; see the [bootstrap guide](docs/BOOTSTRAP.md) and [delivery log](docs/DELIVERY_LOG.md).
+> ⚠️ **University prototype — not an emergency service.** Waspada Jakarta is a Team 12 project for a Software Engineering (*Rekayasa Perangkat Lunak*) course. It is not hosted publicly, it is not a dispatcher, and it never declares an area "safe". In an emergency, contact **112**.
 
-## Local live mode (accepted 8 November 2026)
+---
 
-`npm run serve:live` (WSL, ignored `.env.local` with `NINEROUTER_URL`/`NINEROUTER_KEY`) runs the accepted **local** live pipeline: it polls PetaBencana, BMKG CAP and 14 news RSS feeds every 60 seconds, applies the triage gate and deterministic prefilter, runs the Mastra intelligence job runner against the private NineRouter gateway, stores state in persistent local PGlite (`.data/live-db`), and serves the API on `127.0.0.1:8787` plus the web app on `127.0.0.1:5173` (build `apps/web` first). Moderators review proposals at `#tinjau-bukti`. It makes real network and model calls; it is not hosted and does not use Neon. Source rights for hosted or public reuse remain gated by the [clearance plan](docs/SOURCE_CLEARANCE_PLAN.md). Known defects found on 8 November (public page reading the moderation queue, demo moderator/demo-login shortcuts, unauthenticated webhook/SSE/embedding endpoints, destructive live-server startup) are tracked as `FIX-*` rows in the [backlog](docs/IMPLEMENTATION_BACKLOG.md).
+## Highlights
 
-## Web navigation and admin demo
+- **Evidence before claims.** Every published statement links back to the exact source text that supports it. Contrary evidence, source status and timestamps are preserved, not overwritten.
+- **Human-in-the-loop publication.** AI drafts proposals; moderators review them in an interactive evidence view (`#tinjau-bukti`). Model confidence or valid JSON alone is never treated as proof.
+- **Honest freshness.** Lifecycle, evidence status, freshness and personal relevance are tracked separately. "No new reports" or an expired notice is never presented as "resolved" or "safe".
+- **Multi-source monitoring.** The local live mode polls PetaBencana flood reports, BMKG weather and earthquake alerts, and 14 Indonesian news RSS feeds. Feeds pass a deterministic relevance filter and a structured triage gate before any AI processing.
+- **Map-first web experience** in Bahasa Indonesia. It includes report lists, incident details and history, a source map with OpenStreetMap facilities, local interest preferences, and a 3D view of the evidence embedding space.
+- **Accounts and roles.** Google sign-in is optional, with server-assigned user, moderator and admin roles. Public browsing is designed to work without an account.
+- **Android reader** built with Flutter.
 
-Run `npm run dev` from WSL Ubuntu-26.04, then open [Beranda](http://127.0.0.1:5173/#beranda). Four primary destinations group existing features: **Beranda**, **Peta & laporan**, **Untuk Anda**, and **Bantuan**, with an **Akun** utility. Report/source maps and interests/updates have contextual choices; help combines guide/privacy and preserves old bookmarks. Public browsing remains account-free; admin/review shells now require the appropriate account role. The development/demo private inspector remains gated.
+## How it works
 
-Admin leads with **Laporan dan peta**: search, report list, map and readable selected details. **Contoh tampilan** uses finite fictional examples; **Data aplikasi** reads existing public endpoints while active. Complete sources/times/process diagnostics can be opened when needed. The unified source map, browser-data controls and current visual style remain. Incident operations remain read-only; private telemetry and publication controls remain unavailable. [Integration provenance](docs/assignments/UX-WEB-01-INTEGRATION-HANDOFF.md), [navigation design](docs/assignments/UX-WEB-02-SIMPLIFY-HANDOFF.md).
+The system is organised into five layers ([architecture](ARCHITECTURE.md), [diagram](docs/diagrams/five-layer-architecture.svg)):
 
-## Accounts, onboarding and Android
+| Layer | Role |
+| --- | --- |
+| **L1 Data & Knowledge** | Acquire approved sources, clean and triage them, chunk text, store evidence, geometry and embeddings |
+| **L2 Model & Grounding** | Retrieve existing evidence first, then extract structured, citation-bound incident proposals |
+| **L3 Investigation** | Investigate remaining gaps within fixed budgets, with checkpoints and audit trails |
+| **L4 Application Integration** | Public and moderation APIs, accounts, the publication gate and public projections |
+| **L5 Evaluation & Monitoring** | Quality, latency, cost and source-health telemetry across all layers |
 
-Optional Google accounts have server-assigned user, moderator and admin roles. Web and Android provide guest introduction, own profile, onboarding and logout; interests stay on the device. Desktop web adds role-gated read-only review/dashboard and bounded account administration. Android and narrow mobile web have no admin dashboard or user-management controls. The imported Flutter public reader retains its existing scope; a native map remains deferred.
+```
+Sources (PetaBencana · BMKG · news RSS)
+   → triage gate + deterministic filter
+   → report revisions & evidence chunks
+   → AI job queue → interpretation · embedding · correlation
+   → incident proposals → moderator review → published event versions → public views
+```
 
-Google OAuth clients are not configured. To try the **synthetic local account demo**, use two WSL terminals: `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. Open [Akun](http://127.0.0.1:5173/#akun); login shows an explicit fictional-account selector and never contacts Google. Account-only PGlite state is separate from incidents/private AI and persists across restart. Without this opt-in, login explains its unavailable configuration and public browsing works. [Startup, role rules, Android build and Google setup](docs/ACCOUNTS_AND_ONBOARDING.md).
+## Tech stack
 
-## Try the source/map demo locally
+| Area | Technology |
+| --- | --- |
+| Web | React 19, Vite, Three.js |
+| API | Cloudflare Workers (TypeScript) |
+| Data | PostgreSQL + PostGIS + pgvector (PGlite for local/test) |
+| AI pipeline | Mastra agents, OpenAI-compatible gateway, 768-dim embeddings |
+| Mobile | Flutter / Dart (Android) |
+| Planned hosting | Cloudflare Workers + Neon (free tiers) |
 
-From WSL Ubuntu-26.04 with native Linux Node on `PATH`, run `npm run dev`, then open [Demo sumber](http://localhost:5173/#demo-sumber). No API key, model service or cloud account is needed. The default contains 100 dated OSM reference points in a bounded central-Jakarta sample; it is incomplete and does not show facility readiness. **Ambil fasilitas & banjir** explicitly requests OSM facilities and PetaBencana reports; **Ambil cuaca & gempa** requests weather forecasts and the regional USGS catalog. Source points share one map with a linked list. Numbered groups count loaded records per provider, expand on zoom, and do not represent danger or corroboration. A source can return empty or unavailable; neither result establishes safety. Snapshot/context resets require no acquisition. Internet is required for the basemap and source refreshes.
+## Getting started
 
-See [data integration and demo flow](docs/DEMO_DATA_INTEGRATION.md) for the source terms, typed preview contract and request limits. This demo performs deterministic L1 acquisition/validation and a separate L4 preview; model/RAG and L3 investigation are not invoked. It does not persist to Neon or deploy to Cloudflare. Ordinary OSM tiles use visible attribution and browser caching; automated browser checks stub tiles rather than downloading them.
+Requires Node.js 24 (developed and tested on WSL Ubuntu). Clone the repo and install:
 
-## Test the private AI gateway locally
+```sh
+npm ci
+```
 
-From the repository root in WSL, `npm run ai:smoke` stays disabled and makes no model calls. The explicit `npm run ai:smoke:live` command loads ignored `.env.local` variables `NINEROUTER_URL` and `NINEROUTER_KEY`, checks the exact `Waspada-Jakarta` / `gemini/gemini-embedding-2-preview` aliases, and exercises five typed capabilities with authored synthetic reports. It writes only a safe private manifest under ignored `.codex-build`; it does not execute investigation tools, persist to Neon or publish events. The map/source demo remains independent. See [the test guide, bounds and actual results](docs/PRIVATE_AI_GATEWAY_TESTING.md).
+**Demo mode** uses synthetic, clearly labelled data and needs no API keys:
 
-Neither full live smoke passed: the latest v2 run accepted classification, embedding768, reasoning and planner but extraction timed out. Separately, the later15-minute local durable pipeline completed extraction/embedding/grounding/reasoning/private persistence once on authored synthetic data, yielding zero claims/one unresolved item. It does not establish useful-claim quality or live-source readiness. See [actual results](docs/PRIVATE_AI_GATEWAY_TESTING.md); further real tests require a bounded assignment, and routine checks remain mocked.
+```sh
+npm run dev
+# Web: http://127.0.0.1:5173/#beranda   ·   API: http://127.0.0.1:8787/api/v1
+```
 
-GitHub remote: [Asassinoooo/Waspada-Jakarta](https://github.com/Asassinoooo/Waspada-Jakarta), configured locally as `origin`. Root periodically pushes reviewed, integrated checkpoints; implementation agents commit on their own task branches and do not push.
+You can try the source map at `#demo-sumber`. It shows a dated OpenStreetMap facility snapshot and has buttons for bounded PetaBencana, Open-Meteo and USGS requests. Map clusters count loaded records only. They do not indicate danger or corroboration.
 
-The current report is the [Google Docs project overview](https://docs.google.com/document/d/1xwSzLJmsHau6jlNGQCZ3deaVnrvCyqS0oNyDZaTv6tM). Google Docs is the maintained report format; the previous LaTeX files are historical and are no longer updated or compiled.
+**Local live mode** makes real network and model calls. It needs a model gateway configured in an untracked `.env.local` (see [`.env.example`](.env.example)):
 
-## Current design documents
+```sh
+npm run build:web
+npm run serve:live
+# Web: http://127.0.0.1:5173 · Moderator review: #tinjau-bukti · 3D embeddings: #visualisasi-3d
+```
 
-The [local private pipeline](docs/LOCAL_PRIVATE_PIPELINE.md) is a separate, locally accepted synthetic polling/PGlite/AI composition. `npm run pipeline:local` remains disabled unless `--enable` is provided; `--enable --once` runs mocked models and private proposals in disposable state. It does not alter the source map or public event API. Startup, tests and remaining source/model/retrieval gates are documented in the guide.
+**Optional demos**
+- **Synthetic accounts** (no Google): `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. See the [accounts guide](docs/ACCOUNTS_AND_ONBOARDING.md).
+- **Mocked private pipeline:** `npm run pipeline:local -- --enable --once --state demo`. See the [pipeline guide](docs/LOCAL_PRIVATE_PIPELINE.md).
+- **Android:** see [apps/mobile/README.md](apps/mobile/README.md).
 
-- [Project plan](PROJECT_PLAN.md): users, event coverage, application scope, five layers and delivery.
-- [Architecture](ARCHITECTURE.md): layer responsibilities, model/grounding strategy, investigation limits, publication interfaces and monitoring.
-- [AI model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md): selected local test routes, typed adapter and opt-in synthetic CLI; public/hosted provider activation remains gated.
-- [Source acquisition and verification](SOURCE_VERIFICATION_PLAN.md): source combinations, evidence rules, freshness and verification scenarios.
-- [Source feasibility](docs/SOURCE_FEASIBILITY.md): dated endpoint checks, live/manual/demo delivery modes, activation gates and retention rules.
-- [Domain model](docs/DOMAIN_MODEL.md): schema 2.0 relationships, state transitions and domain invariants.
-- [Typed contracts](docs/contracts.schema.json) and [synthetic examples](docs/contracts.examples.json): proposed data boundaries, not a running backend.
-- [UI/API specification](docs/UX_API_SPEC.md) and [OpenAPI definition](docs/api/openapi.yaml): proposed wireframes and public/moderator HTTP contracts.
-- [Cloudflare/Neon Free decision](docs/decisions/ADR-010-cloudflare-neon-free.md): deployment target, hard quotas, degraded behavior and validation gates.
-- [Cloudflare/Neon Free compatibility report](docs/PLATFORM_COMPATIBILITY.md): official limits, local WSL measurements, sensitivity estimates and unverified provider gates.
-- [Architecture diagram](docs/diagrams/five-layer-architecture.svg): editable vector source for the report figure.
-- [Reference register](REFERENCES.md): sources retained locally until the report's final bibliography is prepared.
-- [Updated kickoff deck](deliverables/Waspada_Jakarta_Project_Kickoff_Layered.pptx): five-layer presentation; supersedes the earlier kickoff deck.
-- [Architecture alignment record](docs/ARCHITECTURE_ALIGNMENT.md): audit findings, scope and remaining implementation work.
+## Testing
 
-PLATFORM-01 documented Cloudflare Workers and Neon Free compatibility using WSL and current official documentation, without creating cloud resources or enabling live data. DATA-01 now adds a locally tested PostgreSQL/PostGIS/pgvector schema, migration runner and persistence ports. Worker/Neon integration, actual provider behavior and the required off-provider recovery path remain unverified. The supplied course lecture deck and earlier deliverables are retained as source/history, not current architecture specifications.
+```sh
+npm run typecheck
+npm test          # all workspace suites (mocked providers, no external network)
+npm run build     # Vite build + Worker dry-run (no deployment)
+```
+
+Routine tests use fixtures and mocked model providers. Database tests run each file in its own process on in-memory PGlite. See the [unit test report](DOKUMENTASI_UNIT_TESTING.md) (Indonesian) for the course test documentation.
+
+## Repository layout
+
+```
+apps/web           React web app
+apps/worker        Cloudflare Worker API (layers L1–L5)
+apps/db            SQL migrations, stores, PGlite tests
+apps/intelligence  Mastra AI job runner and agents
+apps/mobile        Flutter Android client
+tools/             Local servers, pipelines, evaluation and AI tooling
+docs/              Plans, ADRs, contracts, API spec, assignments
+```
+
+## Project status
+
+| Area | Status |
+| --- | --- |
+| Demo web app, source map, accounts (synthetic) | Working locally |
+| Local live mode (real feeds + AI + moderator review) | Accepted locally, 8 Nov 2026 |
+| Android reader | Working locally (debug build) |
+| Hosted deployment (Cloudflare / Neon) | Not yet deployed |
+| Source reuse rights for public/hosted use | Pending ([clearance plan](docs/SOURCE_CLEARANCE_PLAN.md)) |
+| Human-reviewed evaluation casebook | Pending |
+
+Known issues and planned fixes are tracked in the [implementation backlog](docs/IMPLEMENTATION_BACKLOG.md).
+
+## Documentation
+
+- [Software Development Plan](SOFTWARE_DEVELOPMENT_PLAN.md): scope, requirements, milestones and acceptance gates
+- [Project plan](PROJECT_PLAN.md) and [architecture](ARCHITECTURE.md)
+- [Domain model](docs/DOMAIN_MODEL.md), [typed contracts](docs/contracts.schema.json) and [UI/API spec](docs/UX_API_SPEC.md) / [OpenAPI](docs/api/openapi.yaml)
+- [Source verification plan](SOURCE_VERIFICATION_PLAN.md), [source feasibility](docs/SOURCE_FEASIBILITY.md) and [clearance plan](docs/SOURCE_CLEARANCE_PLAN.md)
+- [AI model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md)
+- [Cloudflare/Neon Free decision](docs/decisions/ADR-010-cloudflare-neon-free.md) and [platform compatibility](docs/PLATFORM_COMPATIBILITY.md)
+- [Architecture decision records](docs/decisions/README.md)
+- [Developer handoff](HANDOFF.md) and [delivery log](docs/DELIVERY_LOG.md)
+- [Project report (Google Docs)](https://docs.google.com/document/d/1xwSzLJmsHau6jlNGQCZ3deaVnrvCyqS0oNyDZaTv6tM)
+
+## Data sources & attribution
+
+Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Flood reports from [PetaBencana.id](https://petabencana.id). Weather and earthquake information from [BMKG](https://www.bmkg.go.id), [Open-Meteo](https://open-meteo.com) and [USGS](https://earthquake.usgs.gov). News items link back to their original publishers. Each source's terms apply, and source text is treated as data, never as instructions.
+
+## Team
+
+Built by **Team 12** for the Software Engineering (RPL) course. See the [contributors](https://github.com/Asassinoooo/Waspada-Jakarta/graphs/contributors).
