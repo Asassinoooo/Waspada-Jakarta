@@ -61,3 +61,15 @@ MERGE-REVIEW-01 is covered by these tests, which use mocks and PGlite and make n
 - Updated: `apps/worker/test/service-auth-routes.test.ts` (the internal route answers 503 without a database), `apps/web/test/moderator-review.test.tsx` (no pre-selected corroboration, discrepancy-first detail, no radius).
 
 Not verified: a bounded `npm run serve:live` session with real feeds and model calls, and any hosted deployment.
+
+## Amendment (2026-11-11): local live mode
+
+MERGE-REVIEW-01B. Most live outlets have no recorded public-display permission, so nearly every agent proposal would wait for a moderator in the local live prototype. The owner accepted a narrow relaxation for local live mode only.
+
+- **Flag.** `AUTO_PUBLISH_SOURCE_PERMISSION` takes `required` or `local_relaxed`. It is parsed by `parseAutoPublishSourcePermission` in `publication-policy.ts`. Unset or any other value means `required`, so the check fails closed.
+- **What `local_relaxed` waives.** Only the public-display permission check (`source_rights_missing`) in `evaluateAutoPublication`, for claims that would otherwise fail it. Every other automatic check still applies: no discrepancy, a `primary_initial` or `corroborating` correlation, supported and quoted claims, allowed labels, an `https` source link on every claim, a valid schema, and a location and an event time from the source.
+- **Where it is set.** Only `tools/serve-live-pipeline.ts` sets `local_relaxed`, in the `WorkerEnvironment` it passes to the Worker's `fetch`. That server binds to `127.0.0.1` and logs one startup line when the relaxation is active. `wrangler.toml`, `.dev.vars.example` (the default is documented as a comment only), and the hosted environment never set it. **Hosted or public deployments must keep `required`.** Any change to that rule needs a new ADR.
+- **Moderators are unchanged.** The moderator publish path uses `assessProposalSourceGate`, which has no waiver. Moderator approval still never overrides missing rights.
+- **Audit.** A waiver is recorded only when the check actually failed and was skipped. The publication decision's `record_json.waivers` then holds `source_permission_waived_local`. The public `EventDetail.publication` gains the same additive `waivers` array, so a published event shows that its permission was waived. Startup restore keeps the label. A version published with every source already permitted has no waiver field.
+- **Scope of the waiver.** A claim with no registry `source_id`, but with an outlet and link, is covered by the same waiver because it fails the same `source_rights_missing` check. Its source link is still required.
+- **Verification.** `apps/worker/test/merge-review-gate.test.ts` covers the parser, the default, the waiver, and that discrepancy and missing-link checks still queue. `apps/worker/test/merge-review-publication.test.ts` covers unset and garbage values queuing, `local_relaxed` publishing with the waiver on the decision and the event, and moderator publish staying denied. Both use mocks or PGlite and make no network or model calls.

@@ -8,6 +8,10 @@ import {
   decideProposal,
   type ProposalDecisionDependencies,
 } from "../src/layers/l4-application-integration/proposal-publication.js";
+import {
+  parseAutoPublishSourcePermission,
+  SOURCE_PERMISSION_WAIVED_LOCAL,
+} from "../src/layers/l4-application-integration/publication-policy.js";
 import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
 
 /**
@@ -260,6 +264,116 @@ describe("MERGE-REVIEW-01 decision writer", () => {
     assert.equal(outcome.status, "denied");
     assert.ok(outcome.status === "denied" && outcome.code === "publication_not_authorized");
     assert.equal(publishedEvent("inc-d"), null, "moderator approval never overrides missing rights");
+  });
+
+  describe("ADR-061 amendment: local live source-permission waiver", () => {
+    const unpermittedClaim = (id: string, url: string | null = `https://news.example/${id}`) => ({
+      ...claim("claim-1", "Hujan deras di Kemang", { id: "source-unlicensed", outlet: "Outlet Tanpa Izin", url: url ?? "" }),
+      source_url: url,
+    });
+
+    it("queues an unpermitted source when the permission check is required (unset or unrecognised value)", async () => {
+      await writer().persistProposal(
+        proposal("prop-inc-r1", "inc-r1", { claims: [unpermittedClaim("inc-r1")] }),
+        "live",
+      );
+      const unset = await decideProposal(deps, {
+        proposalId: "prop-inc-r1",
+        action: "auto_publish",
+        actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+      });
+      assert.equal(unset.status, "queued");
+      assert.ok(unset.status === "queued" && unset.reasons.includes("source_rights_missing"));
+
+      const garbage = await decideProposal(deps, {
+        proposalId: "prop-inc-r1",
+        action: "auto_publish",
+        actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+        sourcePermission: parseAutoPublishSourcePermission("yes"),
+      });
+      assert.equal(garbage.status, "queued");
+      assert.ok(garbage.status === "queued" && garbage.reasons.includes("source_rights_missing"));
+
+      assert.equal((await decisionsFor("prop-inc-r1")).length, 0, "no decision row for a queued proposal");
+      assert.equal(publishedEvent("inc-r1"), null, "nothing is public");
+    });
+
+    it("auto-publishes an unpermitted source under local_relaxed and records the waiver on the decision and the public version", async () => {
+      await writer().persistProposal(
+        proposal("prop-inc-r2", "inc-r2", { claims: [unpermittedClaim("inc-r2")] }),
+        "live",
+      );
+      const outcome = await decideProposal(deps, {
+        proposalId: "prop-inc-r2",
+        action: "auto_publish",
+        actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+        sourcePermission: parseAutoPublishSourcePermission("local_relaxed"),
+      });
+      assert.equal(outcome.status, "published");
+
+      const [decision] = await decisionsFor("prop-inc-r2");
+      assert.equal(decision?.record_json.disposition, "publish");
+      assert.equal(decision?.record_json.gate, "agent_auto_publication");
+      assert.deepEqual(decision?.record_json.waivers, [SOURCE_PERMISSION_WAIVED_LOCAL]);
+
+      const event = publishedEvent("inc-r2");
+      assert.ok(event, "the event is public");
+      assert.equal(event.publication?.mode, "agent_auto");
+      assert.deepEqual(event.publication?.waivers, [SOURCE_PERMISSION_WAIVED_LOCAL]);
+    });
+
+    it("still queues a discrepancy under local_relaxed", async () => {
+      await writer().persistProposal(
+        proposal("prop-inc-r3", "inc-r3", {
+          claims: [unpermittedClaim("inc-r3")],
+          hasDiscrepancy: true,
+          discrepancySummary: "Laporan rev-r3a menyebut 50 cm, laporan rev-r3b menyebut 30 cm.",
+        }),
+        "live",
+      );
+      const outcome = await decideProposal(deps, {
+        proposalId: "prop-inc-r3",
+        action: "auto_publish",
+        actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+        sourcePermission: "local_relaxed",
+      });
+      assert.equal(outcome.status, "queued");
+      assert.ok(outcome.status === "queued" && outcome.reasons.includes("discrepancy_flagged"));
+      assert.equal(publishedEvent("inc-r3"), null);
+      assert.equal((await decisionsFor("prop-inc-r3")).length, 0);
+    });
+
+    it("still queues a claim without a source link under local_relaxed", async () => {
+      await writer().persistProposal(
+        proposal("prop-inc-r4", "inc-r4", { claims: [unpermittedClaim("inc-r4", null)] }),
+        "live",
+      );
+      const outcome = await decideProposal(deps, {
+        proposalId: "prop-inc-r4",
+        action: "auto_publish",
+        actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+        sourcePermission: "local_relaxed",
+      });
+      assert.equal(outcome.status, "queued");
+      assert.ok(outcome.status === "queued" && outcome.reasons.includes("claim_source_link_missing"));
+      assert.equal(publishedEvent("inc-r4"), null);
+    });
+
+    it("keeps moderator publication unchanged: local_relaxed never waives the moderator's rights check", async () => {
+      await writer().persistProposal(
+        proposal("prop-inc-r5", "inc-r5", { claims: [unpermittedClaim("inc-r5")] }),
+        "live",
+      );
+      const outcome = await decideProposal(deps, {
+        proposalId: "prop-inc-r5",
+        action: "publish",
+        actor: { kind: "moderator", actorId: "mod-1" },
+        sourcePermission: "local_relaxed",
+      });
+      assert.equal(outcome.status, "denied");
+      assert.ok(outcome.status === "denied" && outcome.code === "publication_not_authorized");
+      assert.equal(publishedEvent("inc-r5"), null, "moderator approval still never overrides missing rights");
+    });
   });
 
   it("reports an unknown proposal as not found", async () => {

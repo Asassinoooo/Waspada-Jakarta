@@ -7,6 +7,9 @@ AUTH_APP_ORIGIN=https://waspada.example
 # Shared secrets for machine routes. Unset means those routes answer 503.
 # INTERNAL_SERVICE_KEY=REPLACE_LOCALLY
 # WEBHOOK_SERVICE_KEY=REPLACE_LOCALLY
+# Automatic publication source-permission check (ADR-061). Unset or any other value means `required`.
+# Only the local serve:live server sets `local_relaxed`, and it is never set for hosted deployments.
+# AUTO_PUBLISH_SOURCE_PERMISSION=required
 # WJ-INT-02A live triage transport. Secrets only via dashboard/wrangler
 # secret/.dev.vars — never in wrangler.toml. Local node tooling falls back
 # to the same names in process env (see .env.local).

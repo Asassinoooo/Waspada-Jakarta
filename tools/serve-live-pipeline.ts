@@ -26,6 +26,7 @@ import worker from "../apps/worker/src/index.js";
 import { seedAdminAccount } from "../apps/worker/src/accounts/seed-admin.js";
 import { generateServiceKey } from "../apps/worker/src/security/service-key.js";
 import { PublicReadModel, proposalToEventDetail } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
+import { SOURCE_PERMISSION_WAIVED_LOCAL } from "../apps/worker/src/layers/l4-application-integration/publication-policy.js";
 import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
 
@@ -180,11 +181,13 @@ async function main() {
     event_version: number | null;
     publication_mode: string | null;
     source_count: string | null;
+    waivers: unknown;
   }>(
     `SELECT ep.record_json,
             pd.event_version,
             pd.record_json->>'publication_mode' AS publication_mode,
-            pd.record_json->>'source_count' AS source_count
+            pd.record_json->>'source_count' AS source_count,
+            pd.record_json->'waivers' AS waivers
      FROM waspada.publication_decisions pd
      JOIN waspada.event_proposals ep
        ON ep.dataset_kind = pd.dataset_kind AND ep.proposal_id = pd.proposal_id
@@ -197,9 +200,18 @@ async function main() {
     if (!p || row.event_version === null) continue;
     try {
       const mode = row.publication_mode === "agent_auto" ? "agent_auto" : "moderator_reviewed";
+      // ADR-061 amendment: keep the waiver label on versions published under local relaxation.
+      const storedWaivers = typeof row.waivers === "string" ? JSON.parse(row.waivers) : row.waivers;
+      const waivers = Array.isArray(storedWaivers)
+        ? storedWaivers.filter((waiver) => waiver === SOURCE_PERMISSION_WAIVED_LOCAL)
+        : [];
       const detail = proposalToEventDetail(p, undefined, {
         version: row.event_version,
-        publication: { mode, source_count: Number(row.source_count ?? 0) },
+        publication: {
+          mode,
+          source_count: Number(row.source_count ?? 0),
+          ...(waivers.length > 0 ? { waivers } : {}),
+        },
       });
       PublicReadModel.publish(detail);
       pubCount++;
@@ -263,6 +275,9 @@ async function main() {
   }
 
   // 3. Worker Environment Configuration
+  // ADR-061 amendment: only this local server relaxes the automatic gate's public-display permission
+  // check. It is bound to 127.0.0.1. Hosted deployments keep the default `required`.
+  console.log("[Publication] Source-permission check is relaxed for local live mode (AUTO_PUBLISH_SOURCE_PERMISSION=local_relaxed). Other automatic gate checks still apply.");
   const env: WorkerEnvironment = {
     DATASET_MODE: "live",
     AUTH_ENABLED: "true",
@@ -270,6 +285,7 @@ async function main() {
     INTERNAL_SERVICE_KEY: internalServiceKey,
     WEBHOOK_SERVICE_KEY: process.env.WEBHOOK_SERVICE_KEY,
     SQL_EXECUTOR: executor,
+    AUTO_PUBLISH_SOURCE_PERMISSION: "local_relaxed",
   };
 
   // 4. Start Unified Live Worker Server (Port 8787)

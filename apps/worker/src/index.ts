@@ -20,6 +20,7 @@ import { createContextSourcesHandler } from "./layers/l4-application-integration
 import { handleAccountRequest, type AccountRuntimeConfig } from "./runtime/account-runtime.js";
 import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
 import { AGENT_AUTO_PUBLISHER_ID, decideProposal } from "./layers/l4-application-integration/proposal-publication.js";
+import { parseAutoPublishSourcePermission } from "./layers/l4-application-integration/publication-policy.js";
 import { moderationAccountConfig, moderatorSurfaceDenial, readModeratorPrincipal } from "./runtime/moderator-session.js";
 import { checkServiceKey } from "./security/service-key.js";
 import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
@@ -462,7 +463,12 @@ export default {
           datasetKind: config.datasetKind as "live" | "historical" | "synthetic",
           checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
         },
-        { proposalId, action: "auto_publish", actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID } },
+        {
+          proposalId,
+          action: "auto_publish",
+          actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+          sourcePermission: parseAutoPublishSourcePermission(env.AUTO_PUBLISH_SOURCE_PERMISSION),
+        },
       ));
       if (outcome.status === "published") {
         eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });

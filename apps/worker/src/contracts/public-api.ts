@@ -146,6 +146,8 @@ export interface EventDetail extends EventView {
   publication?: {
     readonly mode: "agent_auto" | "moderator_reviewed";
     readonly source_count: number;
+    /** ADR-061 amendment: checks waived for local live mode (`source_permission_waived_local`). Absent otherwise. */
+    readonly waivers?: readonly string[];
   };
 }
 

@@ -623,6 +623,34 @@ export interface ProposalGateOptions {
   readonly publicDisplaySourceIds: ReadonlySet<string>;
 }
 
+/**
+ * ADR-061 amendment (local live mode). `local_relaxed` waives only the public-display permission
+ * check in the automatic gate. Only `serve:live` on 127.0.0.1 sets it. Hosted deployments keep `required`.
+ */
+export type AutoPublishSourcePermission = "required" | "local_relaxed";
+
+/** Recorded on a publication decision and its public event when the permission check was waived. */
+export const SOURCE_PERMISSION_WAIVED_LOCAL = "source_permission_waived_local";
+
+export type AutoPublicationWaiver = typeof SOURCE_PERMISSION_WAIVED_LOCAL;
+
+/** Fail closed: only the exact value `local_relaxed` relaxes the check. Unset or any other value is `required`. */
+export function parseAutoPublishSourcePermission(value: unknown): AutoPublishSourcePermission {
+  return value === "local_relaxed" ? "local_relaxed" : "required";
+}
+
+export interface AutoPublicationGateOptions extends ProposalGateOptions {
+  /** Defaults to `required` when omitted. */
+  readonly sourcePermission?: AutoPublishSourcePermission;
+}
+
+export interface AutoPublicationAssessment {
+  /** Blocking reasons. An empty list means the proposal may publish. */
+  readonly reasons: ProposalGateReason[];
+  /** Checks that failed and were skipped by a waiver. Recorded for audit, never a blocking reason. */
+  readonly waivers: AutoPublicationWaiver[];
+}
+
 function gateRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -651,13 +679,16 @@ function sortedReasons(reasons: ReadonlySet<ProposalGateReason>): ProposalGateRe
   return [...reasons].sort();
 }
 
-/**
- * Checks that every proposal is well formed, that each claim is supported and quoted, and that each
- * claim's source has a link and public-display permission. It does not check labels, discrepancies or
- * correlation. Moderator publication uses this check.
- */
-export function assessProposalSourceGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
+interface SourceGateResult {
+  readonly reasons: ProposalGateReason[];
+  /** True when a claim failed the public-display check and that check was waived. */
+  readonly permissionWaived: boolean;
+}
+
+/** The shared source gate. `waivePermission` skips only the public-display check, and reports that it did. */
+function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, waivePermission: boolean): SourceGateResult {
   const reasons = new Set<ProposalGateReason>();
+  let permissionWaived = false;
   const record = gateRecord(proposal);
   if (!record
     || record.schema_version !== "2.0"
@@ -669,7 +700,7 @@ export function assessProposalSourceGate(proposal: unknown, options: ProposalGat
   }
   if (!Array.isArray(record?.claims) || record.claims.length === 0) {
     reasons.add("claims_missing");
-    return sortedReasons(reasons);
+    return { reasons: sortedReasons(reasons), permissionWaived };
   }
 
   const seenClaimIds = new Set<string>();
@@ -684,20 +715,38 @@ export function assessProposalSourceGate(proposal: unknown, options: ProposalGat
     if (!isNonEmptyText(claim.quote_text)) reasons.add("claim_quote_missing");
     if (!isHttpUrl(claim.source_url)) reasons.add("claim_source_link_missing");
     if (!isNonEmptyText(claim.source_id) || !options.publicDisplaySourceIds.has(claim.source_id)) {
-      reasons.add("source_rights_missing");
+      if (waivePermission) {
+        permissionWaived = true;
+      } else {
+        reasons.add("source_rights_missing");
+      }
     }
   }
-  return sortedReasons(reasons);
+  return { reasons: sortedReasons(reasons), permissionWaived };
+}
+
+/**
+ * Checks that every proposal is well formed, that each claim is supported and quoted, and that each
+ * claim's source has a link and public-display permission. It does not check labels, discrepancies or
+ * correlation. Moderator publication uses this check. It has no waiver, so ADR-061's local relaxation
+ * never reaches moderator publication.
+ */
+export function assessProposalSourceGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
+  return runProposalSourceGate(proposal, options, false).reasons;
 }
 
 /**
  * Automatic publication gate. Every check must pass. An empty result means the proposal may publish
  * without a moderator. A non-empty result means it waits for review, with the reasons recorded.
+ * With `sourcePermission: "local_relaxed"` only the public-display permission check is skipped, and
+ * the skip is reported in `waivers`. All other checks still apply.
  */
-export function assessAutoPublication(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
-  const reasons = new Set<ProposalGateReason>(assessProposalSourceGate(proposal, options));
+export function evaluateAutoPublication(proposal: unknown, options: AutoPublicationGateOptions): AutoPublicationAssessment {
+  const source = runProposalSourceGate(proposal, options, options.sourcePermission === "local_relaxed");
+  const reasons = new Set<ProposalGateReason>(source.reasons);
+  const waivers: AutoPublicationWaiver[] = source.permissionWaived ? [SOURCE_PERMISSION_WAIVED_LOCAL] : [];
   const record = gateRecord(proposal);
-  if (!record) return sortedReasons(reasons);
+  if (!record) return { reasons: sortedReasons(reasons), waivers };
 
   if (Array.isArray(record.claims)) {
     for (const raw of record.claims) {
@@ -728,5 +777,10 @@ export function assessAutoPublication(proposal: unknown, options: ProposalGateOp
   if (!eventTime || !isIsoInstant(eventTime.value) || eventTime.precision === "unknown") {
     reasons.add("time_missing");
   }
-  return sortedReasons(reasons);
+  return { reasons: sortedReasons(reasons), waivers };
+}
+
+/** Reason-only view of evaluateAutoPublication, for callers that do not record waivers. */
+export function assessAutoPublication(proposal: unknown, options: AutoPublicationGateOptions): ProposalGateReason[] {
+  return evaluateAutoPublication(proposal, options).reasons;
 }
