@@ -3,15 +3,18 @@ info:
   title: Waspada Jakarta API
   version: 0.1.0
   description: >
-    Proposed same-origin API. No runtime service exists. Public routes return only
-    published event projections. Private source text, raw evidence spans, model
-    traces, credentials, and moderator notes are not part of public responses.
+    Same-origin API under /api/v1. The /auth routes (account-v1) match
+    apps/worker/src/accounts/api.ts. Other paths in this file are a proposal and may
+    not be registered; the Worker's moderation routes live under /api/v1/moderation.
+    Public routes return only published event projections. Private source text, raw
+    evidence spans, model traces, credentials, and moderator notes are not part of
+    public responses.
 servers:
   - url: /api/v1
 security: []
 tags:
   - name: Public
-  - name: Moderator session
+  - name: Account session
   - name: Moderation
 paths:
   /context:
@@ -209,44 +212,88 @@ paths:
               example: { code: CURSOR_RESTART_REQUIRED, message: Restart update polling from the current public snapshot., request_id: demo-trace-1 }
         '429': { $ref: '#/components/responses/RateLimited' }
         default: { $ref: '#/components/responses/UnexpectedError' }
-  /moderation/csrf:
+  /auth/session:
     get:
-      tags: [Moderator session]
-      operationId: getPreAuthCsrfToken
-      summary: Issue a short-lived same-origin token before login
-      description: Also sets a host-only Secure HttpOnly SameSite=Strict pre-auth cookie.
+      tags: [Account session]
+      operationId: getAccountSession
+      summary: Read the anonymous or authenticated account envelope
+      description: Anonymous callers receive status anonymous with null csrf_token and user. A web cookie session receives its CSRF token; a bearer session receives null.
       responses:
         '200':
-          description: Pre-auth token to send in X-CSRF-Token
+          description: Account envelope; never contains a password, password hash, or identity proof
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountSessionEnvelope' }
+              example: { version: account-v1, status: anonymous, password_login_available: true, registration_available: true, csrf_token: null, user: null }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /auth/register:
+    post:
+      tags: [Account session]
+      operationId: registerPasswordAccount
+      summary: Create a username and password account and start a web session
+      description: Self-registration always creates role user. Any role field in the body is ignored. Requires the exact application Origin and the X-Waspada-Request header set to 1. Sets the session cookie on success.
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/WaspadaRequest' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordRegistrationRequest' }
+      responses:
+        '200':
+          description: Account created and signed in
           headers:
             Set-Cookie:
               schema: { type: string }
-              description: Short-lived __Host-waspada_pre_auth cookie; Secure, HttpOnly, SameSite=Strict, Path=/; no Domain.
+              description: Opaque session cookie, HttpOnly and SameSite=Strict; Secure with the __Host- prefix on HTTPS origins, waspada_session_dev on loopback development.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/CsrfToken' }
-              example: { csrf_token: synthetic-token-value-not-usable, expires_at: '2026-09-24T09:10:00+07:00' }
+              schema: { $ref: '#/components/schemas/AccountSessionEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Registration is not open on this service }
+        '409': { description: Username is already registered }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { description: Account service unavailable; generic body }
         default: { $ref: '#/components/responses/UnexpectedError' }
-  /moderation/session:
-    get:
-      tags: [Moderator session]
-      operationId: getModeratorSession
-      summary: Read the server-authorized role for the active session
-      security: [{ ModeratorSessionCookie: [] }]
+  /auth/login:
+    post:
+      tags: [Account session]
+      operationId: loginPasswordAccount
+      summary: Sign in with username and password
+      description: Unknown usernames and wrong passwords return the same 401 body. Both per-client and per-username throttles are consumed on every attempt.
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/WaspadaRequest' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordLoginRequest' }
       responses:
         '200':
-          description: Current session
+          description: Session created; any prior cookie session is revoked
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Opaque session cookie, HttpOnly and SameSite=Strict; Secure with the __Host- prefix on HTTPS origins.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ModeratorSession' }
-              example: { moderator_id: demo-moderator, role: moderator, csrf_token: synthetic-session-token-not-usable, expires_at: '2026-09-24T17:00:00+07:00' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+              schema: { $ref: '#/components/schemas/AccountSessionEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { description: Username or password is not correct; generic body }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { description: Account service unavailable; generic body }
         default: { $ref: '#/components/responses/UnexpectedError' }
-  /moderation/login:
+  /auth/password:
     post:
-      tags: [Moderator session]
-      operationId: loginModerator
-      summary: Authenticate a provisioned moderator
+      tags: [Account session]
+      operationId: changePassword
+      summary: Change the signed-in account password
+      description: Requires a web cookie session, the exact Origin and X-CSRF-Token. The current password is verified first. Every other session of the account is revoked; the current session stays active.
+      security: [{ AccountSessionCookie: [] }]
       parameters:
         - { $ref: '#/components/parameters/Origin' }
         - { $ref: '#/components/parameters/CsrfToken' }
@@ -254,29 +301,27 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/LoginRequest' }
-            example: { username: demo-user, password: never-use-this-placeholder }
+            schema: { $ref: '#/components/schemas/PasswordChangeRequest' }
       responses:
         '200':
-          description: Session created and CSRF token rotated
-          headers:
-            Set-Cookie:
-              schema: { type: string }
-              description: __Host-waspada_session; Secure, HttpOnly, SameSite=Strict, Path=/; no Domain.
+          description: Password changed; envelope with the same CSRF token
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ModeratorSession' }
-              example: { moderator_id: demo-moderator, role: moderator, csrf_token: synthetic-session-token-not-usable, expires_at: '2026-09-24T17:00:00+07:00' }
+              schema: { $ref: '#/components/schemas/AccountSessionEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403': { description: Current password is not correct, or the request is not a permitted web write; generic body }
+        '409': { description: Account changed while the request was processed }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { description: Account service unavailable; generic body }
         default: { $ref: '#/components/responses/UnexpectedError' }
-  /moderation/logout:
+  /auth/logout:
     post:
-      tags: [Moderator session]
-      operationId: logoutModerator
-      summary: Revoke the active moderator session
-      security: [{ ModeratorSessionCookie: [] }]
+      tags: [Account session]
+      operationId: logoutAccount
+      summary: Revoke the active session
+      description: Web sessions require the exact Origin and X-CSRF-Token and clear the session cookie. Bearer sessions require no Origin or Cookie header.
+      security: [{ AccountSessionCookie: [] }]
       parameters:
         - { $ref: '#/components/parameters/Origin' }
         - { $ref: '#/components/parameters/CsrfToken' }
@@ -290,7 +335,7 @@ paths:
       tags: [Moderation]
       operationId: listReviewQueue
       summary: Read a bounded page of held proposals
-      security: [{ ModeratorSessionCookie: [] }]
+      security: [{ AccountSessionCookie: [] }]
       parameters:
         - { $ref: '#/components/parameters/Cursor' }
         - { $ref: '#/components/parameters/PageSize' }
@@ -309,7 +354,7 @@ paths:
       tags: [Moderation]
       operationId: getReview
       summary: Read a proposed change and permitted supporting or contrary evidence
-      security: [{ ModeratorSessionCookie: [] }]
+      security: [{ AccountSessionCookie: [] }]
       parameters:
         - name: proposal_id
           in: path
@@ -331,7 +376,7 @@ paths:
       operationId: decideReview
       summary: Submit claim dispositions to the L4 publication gate
       description: A moderator cannot bypass source, evidence, geometry or concurrency checks.
-      security: [{ ModeratorSessionCookie: [] }]
+      security: [{ AccountSessionCookie: [] }]
       parameters:
         - name: proposal_id
           in: path
@@ -373,7 +418,7 @@ paths:
       tags: [Moderation]
       operationId: retractEvent
       summary: Request a retraction through the publication gate
-      security: [{ ModeratorSessionCookie: [] }]
+      security: [{ AccountSessionCookie: [] }]
       parameters:
         - { $ref: '#/components/parameters/EventId' }
         - { $ref: '#/components/parameters/Origin' }
@@ -404,7 +449,7 @@ paths:
       operationId: updateSourceApproval
       summary: Change source approval (admin only)
       description: Approval does not grant source-content reuse rights or approve individual claims.
-      security: [{ ModeratorSessionCookie: [] }]
+      security: [{ AccountSessionCookie: [] }]
       parameters:
         - name: source_id
           in: path
@@ -439,11 +484,11 @@ paths:
         default: { $ref: '#/components/responses/UnexpectedError' }
 components:
   securitySchemes:
-    ModeratorSessionCookie:
+    AccountSessionCookie:
       type: apiKey
       in: cookie
       name: __Host-waspada_session
-      description: Opaque server-side session; Secure, HttpOnly, SameSite=Strict.
+      description: Opaque server-side session; HttpOnly and SameSite=Strict. The __Host- prefix with Secure applies on HTTPS origins; loopback development uses waspada_session_dev.
   parameters:
     EventId: { name: event_id, in: path, required: true, schema: { type: string, maxLength: 128 } }
     Cursor: { name: cursor, in: query, required: false, schema: { type: string, maxLength: 2048 } }
@@ -455,6 +500,7 @@ components:
     To: { name: to, in: query, required: false, schema: { type: string, format: date-time } }
     Origin: { name: Origin, in: header, required: true, description: Must exactly match the application origin., schema: { type: string, format: uri } }
     CsrfToken: { name: X-CSRF-Token, in: header, required: true, schema: { type: string, minLength: 32, maxLength: 512 } }
+    WaspadaRequest: { name: X-Waspada-Request, in: header, required: true, description: Pre-session marker for register and login; must be the value 1., schema: { type: string, enum: ['1'] } }
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, description: Reuse with identical actor, operation and body; changed-body reuse is rejected., schema: { type: string, minLength: 16, maxLength: 128 } }
   responses:
     BadRequest:
@@ -857,29 +903,50 @@ components:
         next_cursor: { type: string, minLength: 1, maxLength: 2048 }
         cursor_expires_at: { type: string, format: date-time }
         checked_at: { type: string, format: date-time }
-    CsrfToken:
+    AccountSessionEnvelope:
       type: object
       additionalProperties: false
-      required: [csrf_token, expires_at]
+      required: [version, status, password_login_available, registration_available, csrf_token, user]
       properties:
-        csrf_token: { type: string, minLength: 32 }
-        expires_at: { type: string, format: date-time }
-    LoginRequest:
+        version: { type: string, enum: [account-v1] }
+        status: { type: string, enum: [anonymous, authenticated] }
+        password_login_available: { type: boolean }
+        registration_available: { type: boolean }
+        csrf_token: { type: [string, 'null'], minLength: 16, maxLength: 512 }
+        user: { oneOf: [{ $ref: '#/components/schemas/AccountUser' }, { type: 'null' }] }
+    AccountUser:
       type: object
       additionalProperties: false
+      required: [id, display_name, email, role, active, onboarding_version, onboarding_completed_at, version]
+      properties:
+        id: { type: string, maxLength: 200 }
+        display_name: { type: string, minLength: 1, maxLength: 200 }
+        email: { type: [string, 'null'], description: Null for username accounts. Accounts linked to an earlier external sign-in may still carry an email. }
+        role: { type: string, enum: [user, moderator, admin] }
+        active: { type: boolean }
+        onboarding_version: { type: integer, enum: [0, 1] }
+        onboarding_completed_at: { type: [string, 'null'], format: date-time }
+        version: { type: integer, minimum: 1 }
+    PasswordRegistrationRequest:
+      type: object
+      required: [username, password]
+      description: The server trims and lowercases username before the format check. Other fields, including role, are ignored.
+      properties:
+        username: { type: string, pattern: '^[A-Za-z0-9_.]{3,32}$' }
+        password: { type: string, minLength: 10, maxLength: 256, writeOnly: true, description: Length-only policy; no composition rules. }
+        display_name: { type: string, minLength: 1, maxLength: 200, description: Defaults to the username. }
+    PasswordLoginRequest:
+      type: object
       required: [username, password]
       properties:
-        username: { type: string, minLength: 1, maxLength: 200 }
+        username: { type: string, minLength: 1, maxLength: 256 }
         password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
-    ModeratorSession:
+    PasswordChangeRequest:
       type: object
-      additionalProperties: false
-      required: [moderator_id, role, csrf_token, expires_at]
+      required: [current_password, new_password]
       properties:
-        moderator_id: { type: string }
-        role: { type: string, enum: [moderator, admin] }
-        csrf_token: { type: string, minLength: 32 }
-        expires_at: { type: string, format: date-time }
+        current_password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
+        new_password: { type: string, minLength: 10, maxLength: 256, writeOnly: true }
     ReviewSummary:
       type: object
       additionalProperties: false

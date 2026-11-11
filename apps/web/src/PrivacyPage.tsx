@@ -149,20 +149,28 @@ export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPag
 
       <section className="experience-card experience-card--wide" aria-labelledby="privacy-account-title">
         <p className="experience-kicker">Identitas dan sesi akun</p>
-        <SectionTitle id="privacy-account-title">Jika Anda masuk dengan Google</SectionTitle>
+        <SectionTitle id="privacy-account-title">Jika Anda membuat akun dengan username</SectionTitle>
         <p>
-          SDK Google tidak dimuat otomatis. Jika layanan Google resmi telah disiapkan, Google hanya
-          dihubungi setelah Anda memilih masuk dengan Google. Persetujuan pada demo lokal bersifat
-          sintetis dan tidak menghubungi Google. Setelah berhasil masuk lewat Google resmi, layanan
-          menyimpan issuer dan subject Google sebagai identitas akun, nama dan email, peran yang
-          ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Minat Anda
-          tetap di browser dan tidak dikirim saat masuk.
+          Akun username menyimpan username, nama tampilan (secara bawaan sama dengan username), hash
+          kata sandi PBKDF2-SHA256 dengan salt acak, peran yang ditetapkan server, status aktif, sesi
+          akun, serta versi dan waktu penyelesaian pengenalan. Kata sandi tidak disimpan dalam bentuk
+          teks biasa. Layanan tidak meminta alamat email untuk akun username.
         </p>
         <p>
-          Browser menerima cookie sesi HttpOnly; token sesi tidak disimpan di localStorage atau
-          sessionStorage. Tautan Keluar di halaman Akun mencabut sesi web yang sedang digunakan dan
+          Akun lama yang dibuat melalui login Google, bila ada di layanan ini, dapat tetap menyimpan
+          alamat email dan identitas penyedia dari saat itu. Login Google tidak lagi digunakan untuk masuk.
+        </p>
+        <p>
+          Browser menerima cookie sesi HttpOnly; token sesi dan kata sandi tidak disimpan di
+          localStorage atau sessionStorage. Sesi web berakhir setelah 30 menit tidak aktif atau 8 jam
+          sejak masuk. Tautan Keluar di halaman Akun mencabut sesi web yang sedang digunakan dan
           menghapus cookie sesi, tetapi tidak menghapus akun, profil, atau pengenalan yang tersimpan
-          di server.
+          di server. Mengubah kata sandi mencabut sesi lain untuk akun yang sama. Minat Anda tetap di
+          browser dan tidak dikirim saat masuk.
+        </p>
+        <p>
+          Belum ada fitur lupa kata sandi. Jika kata sandi hilang, layanan tidak dapat memulihkannya
+          secara mandiri.
         </p>
         <a className="text-link" href="#akun">Periksa halaman akun</a>
       </section>

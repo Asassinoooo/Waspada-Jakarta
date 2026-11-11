@@ -8,6 +8,7 @@ import {
   fetchEmbeddingVisualizationData,
   EmbeddingClientError,
 } from "../src/embedding-client.js";
+import { moderatorAccessMessage } from "../src/account-messages.js";
 
 test("routeFromHash maps #visualisasi-3d and #embedding-3d to embedding-3d screen", () => {
   assert.deepEqual(routeFromHash("#visualisasi-3d"), { screen: "embedding-3d" });
@@ -72,4 +73,19 @@ test("Embedding3DVisualization renders static markup cleanly without WebGL crash
   assert.ok(markup.includes("Garis Klaster"));
   assert.ok(markup.includes("Reset Kamera"));
   assert.ok(markup.includes("Daftar Vektor Chunk Terproyeksi"));
+});
+
+test("anonymous or non-moderator embedding requests map to moderator copy instead of a transport error", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const status of [401, 403]) {
+      globalThis.fetch = async () => new Response("{}", { status, headers: { "content-type": "application/json" } });
+      await assert.rejects(
+        async () => fetchEmbeddingVisualizationData({ limit: 1 }),
+        (err: unknown) => err instanceof EmbeddingClientError && err.status === status && moderatorAccessMessage(err.status) !== null,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

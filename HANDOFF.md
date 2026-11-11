@@ -45,7 +45,7 @@ The stack is an npm/TypeScript workspace with React/Vite web, a Cloudflare Worke
 | Published-incident demo | Labelled synthetic context, list, details, reviewed history and public UI | No real warning feed; default public GeoJSON is empty because these fixtures lack supported geometry |
 | Unified source map | OSM facility snapshot; explicit bounded OSM/PetaBencana/Open-Meteo/USGS preview requests; clustering | Source/context previews are not reviewed published incidents; no LLM or source-to-publication pipeline is invoked |
 | Local private pipeline | Authored JSON feed → immutable snapshots/durable jobs → L1 evidence → L2 extraction/embedding/retrieval → private proposals; loopback inspector | Separate disposable PGlite; mocks by default; no public event publication, real-source polling, or L3 tool dispatch |
-| Accounts | Google web/native adapters, durable role-scoped accounts/sessions, guest/account onboarding, desktop account administration | Google clients and hosted bindings are not configured; the opt-in local browser demo uses synthetic identities |
+| Accounts | Username and password accounts (ADR-060, AUTH-PW-01): durable role-scoped accounts/sessions, guest/account onboarding, desktop account administration | Google sign-in was removed. Hosted bindings are not configured; the opt-in local browser demo uses seeded synthetic username accounts |
 | Android Flutter | Public reader/details/history/local interests/guide plus optional Android account/onboarding | No native admin/moderation dashboard; native maps, briefings, update polling and incident offline cache remain deferred |
 | L3/L4 components | Bounded investigation, ledger/checkpoint/recovery and publication-policy/writer components with synthetic integration proofs | No complete hosted autonomous investigation or authenticated incident-publication route is activated |
 
@@ -134,7 +134,7 @@ npm run accounts:local -- --enable --demo --state accounts-demo
 WASPADA_LOCAL_ACCOUNTS=true npm run dev
 ```
 
-Open `http://127.0.0.1:5173/#akun`. The consent page says **DEMO LOKAL — akun rekaan, bukan Google** and offers pre-provisioned user/moderator/admin profiles. This is a test fixture, not signup role selection. Without the opt-in, Google login is unavailable and public browsing continues.
+Open `http://127.0.0.1:5173/#masuk` and sign in with `demo.warga` (user), `demo.moderator` or `demo.admin`. The synthetic password is the documented value in `tools/accounts/demo-accounts.ts`. These are test fixtures, not signup role selection. Without the opt-in, sign-in is unavailable and public browsing continues.
 
 ### Mocked local pipeline and inspection
 
@@ -166,18 +166,18 @@ flutter test
 flutter build apk --debug
 ```
 
-The generated APK is `apps/mobile/build/app/outputs/flutter-apk/app-debug.apk`; it is ignored and may be absent in a fresh checkout. Native Google sign-in requires configured HTTPS `API_ORIGIN`, a public web/server `GOOGLE_SERVER_CLIENT_ID`, Android package/SHA registration and server verification configuration. Never embed an OAuth secret. The Node synthetic browser account provider does not enable native sign-in; native account tests use injected SDK/API/storage doubles. Responsive browser account support lives in `apps/web`; Flutter web remains guest-only for accounts.
+The generated APK is `apps/mobile/build/app/outputs/flutter-apk/app-debug.apk`; it is ignored and may be absent in a fresh checkout. Native Google sign-in was removed by AUTH-PW-01 ([ADR-060](docs/decisions/ADR-060-password-accounts.md)). The Android client is public-read only: it has no account routes, no Google SDK and no session store, and release builds need only an HTTPS `API_ORIGIN`. Browser account support lives in `apps/web`.
 
 ## 6. Accounts: preserve the security boundary
 
-AUTH-01 latest details: [assignment/handoff](docs/assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md), [ADR-059](docs/decisions/ADR-059-google-accounts-and-onboarding.md), [setup guide](docs/ACCOUNTS_AND_ONBOARDING.md).
+AUTH-01 latest details: [assignment/handoff](docs/assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md), [ADR-059](docs/decisions/ADR-059-google-accounts-and-onboarding.md), [setup guide](docs/ACCOUNTS_AND_ONBOARDING.md). The Google sign-in bullets below are superseded by AUTH-PW-01 ([ADR-060](docs/decisions/ADR-060-password-accounts.md)); the role, session and onboarding rules still apply.
 
 - New verified Google issuer+subject creates a **user**. No email matching/domain, first-user promotion, browser storage edit, token role claim or onboarding choice may grant privilege.
 - Visitor: public browsing/local interests/guest introduction. User: own account/onboarding/logout. Moderator: read-only web evidence-review example. Admin: read-only desktop incident dashboard plus audited account-role/active changes for another account. Android/narrow web have no dashboard/user-management controls.
-- Web uses state/PKCE/nonce, signed Google ID-token checks, hashed opaque server sessions and production Secure/HttpOnly/Strict host cookies. Browser writes require exact Origin and **`X-CSRF-Token`**. An earlier server/client header mismatch was fixed; do not reintroduce it.
+- Web (Google parts superseded by AUTH-PW-01) used state/PKCE/nonce and signed Google ID-token checks. Hashed opaque server sessions and production Secure/HttpOnly/Strict host cookies still apply. Browser writes require exact Origin and **`X-CSRF-Token`**. An earlier server/client header mismatch was fixed; do not reintroduce it.
 - Bind prior session rotation at login start: the Strict session cookie may be absent on the cross-site callback. Attempts are one-use; failed login preserves the prior session. Provider initialization failure must permit a later retry.
 - Accounts/roles/sessions are permanently scoped to server-selected demo/live. Store factory: `createAccountStore(executor, datasetMode)`. A demo admin is not a live admin.
-- Native verifies Google proof against fixed issuer/audience/JWKS and allowed Android authorized party, then issues a separate opaque app token held in OS secure storage. Native bearer sessions have own-account actions only, even for a privileged profile; no admin API or browser token storage.
+- Superseded by AUTH-PW-01: native Google proof verification and the app's opaque token store were removed. Native bearer sessions have own-account actions only, even for a privileged profile; no admin API or browser token storage.
 - Current role/active state are revalidated server-side. Admin changes require reason/version, prohibit self change, append audit and revoke target sessions. Initial privilege is operator-only provisioning, with no public bootstrap endpoint.
 - Session API idle limit 30 minutes / absolute 8 hours. Android offline logout clears the local token but cannot promise unconfirmed server revocation; expiry remains relevant. Account deletion/export and interest synchronization are not implemented.
 - Migration036 and `waspada_auth_service` support a dedicated auth connection. Hosted LOGIN membership/Hyperdrive must be separately configured and verified. Do not reuse public/ingestion/model/publication credentials.
@@ -240,7 +240,7 @@ No implementation task is started by this documentation handoff. Choose one boun
 | Track | Existing IDs / useful next step | Gate or limit |
 | --- | --- | --- |
 | Local AI robustness | **RAG-01 / JOB-01**: characterize corpus-growth retrieval failures, then plan a bounded identity-aware retrieval repair; separately design terminal-predecessor recovery | Synthetic fixtures and mocks can progress locally. Preserve contrary evidence, truncation signals, restart/replay and no-publication boundary |
-| Account follow-through | **AUTH-01** local slice is accepted; maintain security/composition regressions and prepare setup when requested | Real Google project/consent/web+Android clients, package/SHA, dedicated DB LOGIN and HTTPS hosting remain unconfigured |
+| Account follow-through | **AUTH-01** local slice is accepted; **AUTH-PW-01** replaces Google sign-in with username/password accounts ([ADR-060](docs/decisions/ADR-060-password-accounts.md)) | Hosted DB LOGIN and HTTPS hosting remain unconfigured. Google setup is no longer needed |
 | Source integration | **INT-01**, ingestion/source tasks: choose an exact permitted endpoint/use and document access, retention and model transfer | No blanket clearance from map preview; rights/privacy/retention conditions must cover each use |
 | Evaluation | **EVAL-01** casebook tooling exists; collect only rights-cleared cases and obtain genuine review | Perry and Jesaya are nominated independent human reviewers; labels are not supplied. Target ≥40 reports, ≥12 incident cases, ≥3 reports/case, incident-level splits and held-out cases. Synthetic/model labels do not count |
 | Investigation/runtime | **AGENT-01 / RAG-01**: component tests exist; hosted resumable runtime, execution fencing and end-to-end gap investigation remain work | Do not treat uncertain-progress holds as termination proof or open autonomous tools without budgets/assignment |

@@ -4,6 +4,7 @@ import { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
 import {
   type EventProposalDto,
   type StoredEvidenceChunk,
+  ModerationHttpError,
   fetchModerationProposals,
   fetchProposalDetail,
   proposalCategoryLabel,
@@ -12,8 +13,20 @@ import {
   renderHighlightedText,
 } from "./ModeratorReview.js";
 
+
 if (typeof document !== "undefined") {
   void import("./moderator-review.css");
+}
+
+/**
+ * The catalog reads the moderation endpoint, which answers 401/403 to visitors without a moderator
+ * session. Show a plain access message instead of a raw HTTP error.
+ */
+export function catalogLoadErrorMessage(err: unknown): string {
+  if (err instanceof ModerationHttpError && (err.status === 401 || err.status === 403)) {
+    return "Katalog ini hanya tersedia untuk moderator yang sudah masuk.";
+  }
+  return `Gagal memuat katalog laporan terpercaya: ${err instanceof Error ? err.message : String(err)}`;
 }
 
 export interface LaporanPublikProps {
@@ -86,9 +99,7 @@ export function LaporanPublik({
       .catch((err) => {
         if (cancelled) return;
         setLoading(false);
-        setErrorMessage(
-          `Gagal memuat katalog laporan terpercaya: ${err instanceof Error ? err.message : String(err)}`
-        );
+        setErrorMessage(catalogLoadErrorMessage(err));
       });
 
     return () => {

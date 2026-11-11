@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'account_auth.dart';
-import 'account_screens.dart';
 import 'city_illustration.dart';
 import 'event_detail_screen.dart';
 import 'event_list_screen.dart';
@@ -13,56 +11,29 @@ import 'read_guide_screen.dart';
 import 'theme.dart';
 import 'ui_helpers.dart';
 
-class WaspadaApp extends StatefulWidget {
+class WaspadaApp extends StatelessWidget {
   const WaspadaApp({
     super.key,
     required this.api,
     required this.preferences,
-    required this.auth,
   });
 
   final PublicApi api;
   final PreferencesRepository preferences;
-  final AccountAuthController auth;
-
-  @override
-  State<WaspadaApp> createState() => _WaspadaAppState();
-}
-
-class _WaspadaAppState extends State<WaspadaApp> {
-  @override
-  void initState() {
-    super.initState();
-    widget.auth.restore();
-  }
-
-  @override
-  void dispose() {
-    widget.auth.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'Waspada Jakarta',
         debugShowCheckedModeBanner: false,
         theme: buildWaspadaTheme(),
-        home: LandingScreen(
-            api: widget.api,
-            preferences: widget.preferences,
-            auth: widget.auth),
+        home: LandingScreen(api: api, preferences: preferences),
       );
 }
 
 class LandingScreen extends StatefulWidget {
-  const LandingScreen(
-      {super.key,
-      required this.api,
-      required this.preferences,
-      required this.auth});
+  const LandingScreen({super.key, required this.api, required this.preferences});
   final PublicApi api;
   final PreferencesRepository preferences;
-  final AccountAuthController auth;
 
   @override
   State<LandingScreen> createState() => _LandingScreenState();
@@ -178,25 +149,6 @@ class _LandingScreenState extends State<LandingScreen> {
         .push(MaterialPageRoute<void>(builder: (_) => const ReadGuideScreen()));
   }
 
-  void _openAccount() {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => AccountScreen(
-        auth: widget.auth,
-        preferences: widget.preferences,
-        onOpenOnboarding: _openOnboarding,
-      ),
-    ));
-  }
-
-  void _openOnboarding() {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => AccountOnboardingScreen(
-        auth: widget.auth,
-        preferences: widget.preferences,
-      ),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,10 +163,6 @@ class _LandingScreenState extends State<LandingScreen> {
               tooltip: 'Panduan membaca',
               onPressed: _openGuide,
               icon: const Icon(Icons.help_outline)),
-          IconButton(
-              tooltip: 'Akun',
-              onPressed: _openAccount,
-              icon: const Icon(Icons.account_circle_outlined)),
           const SizedBox(width: 4),
         ],
       ),

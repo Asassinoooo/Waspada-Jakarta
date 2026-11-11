@@ -110,11 +110,14 @@ test("privacy page lists only known local values and waits for a second confirma
   assert.match(html, /<main id="main-content" tabindex="-1"/u);
   assert.match(html, /Yang tersimpan di browser/u);
   assert.match(html, /Identitas dan sesi akun/u);
-  assert.match(html, /issuer dan subject Google/u);
-  assert.match(html, /nama dan email, peran yang ditetapkan server, sesi akun/u);
+  assert.match(html, /Jika Anda membuat akun dengan username/u);
+  assert.match(html, /hash kata sandi PBKDF2-SHA256 dengan salt acak, peran yang ditetapkan server, status aktif, sesi/u);
+  assert.match(html, /Layanan tidak meminta alamat email untuk akun username/u);
   assert.match(html, /versi dan waktu penyelesaian pengenalan/u);
-  assert.match(html, /SDK Google tidak dimuat otomatis/u);
-  assert.match(html, /Persetujuan pada demo lokal bersifat sintetis dan tidak menghubungi Google/u);
+  assert.match(html, /Kata sandi tidak disimpan dalam bentuk teks biasa/u);
+  assert.match(html, /Sesi web berakhir setelah 30 menit tidak aktif atau 8 jam/u);
+  assert.match(html, /Belum ada fitur lupa kata sandi/u);
+  assert.doesNotMatch(html, /SDK Google|accounts\.google\.com|issuer dan subject/u);
   assert.match(html, /cookie sesi HttpOnly/u);
   assert.match(html, /Tautan Keluar di halaman Akun mencabut sesi web yang sedang digunakan/u);
   assert.match(html, /Reset lokal ini tidak mengeluarkan akun atau mencabut sesi server/u);
