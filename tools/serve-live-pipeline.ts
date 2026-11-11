@@ -12,7 +12,7 @@ import { createAccountStore } from "../apps/db/src/accounts.js";
 import { createSqlIncidentRepository, requeueStrandedAiJobs } from "../apps/db/src/incident-repository.js";
 import { createJobRunner } from "../apps/intelligence/src/job-runner.js";
 import { getNineRouterConfig, patchGlobalFetchForNineRouter } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
-import { getNineRouterCallCounts } from "../apps/db/src/ninerouter-rate-gate.js";
+import { getNineRouterCallCounts, getNineRouterRateGateSnapshot } from "../apps/db/src/ninerouter-rate-gate.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
 import { createCycleRevisionDedupe, createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
@@ -21,6 +21,7 @@ import { createRecentItemIndex } from "../apps/worker/src/layers/l1-data-knowled
 import { parseLiveCycleConfig } from "../apps/worker/src/runtime/live-cycle-config.js";
 import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowledge/news-triage.js";
 import { runGatedRssCycle } from "../apps/worker/src/runtime/gated-rss-persistence.js";
+import { createPipelineRuntimeStatus } from "../apps/worker/src/runtime/pipeline-runtime-status.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
 import worker from "../apps/worker/src/index.js";
 import { seedAdminAccount } from "../apps/worker/src/accounts/seed-admin.js";
@@ -278,6 +279,8 @@ async function main() {
   // ADR-061 amendment: only this local server relaxes the automatic gate's public-display permission
   // check. It is bound to 127.0.0.1. Hosted deployments keep the default `required`.
   console.log("[Publication] Source-permission check is relaxed for local live mode (AUTO_PUBLISH_SOURCE_PERMISSION=local_relaxed). Other automatic gate checks still apply.");
+  // FLOW-VIS-01: in-process cycle, source, dedupe and NineRouter status for the moderator pipeline view.
+  const pipelineStatus = createPipelineRuntimeStatus({ ninerouter: () => getNineRouterRateGateSnapshot() });
   const env: WorkerEnvironment = {
     DATASET_MODE: "live",
     AUTH_ENABLED: "true",
@@ -286,6 +289,7 @@ async function main() {
     WEBHOOK_SERVICE_KEY: process.env.WEBHOOK_SERVICE_KEY,
     SQL_EXECUTOR: executor,
     AUTO_PUBLISH_SOURCE_PERMISSION: "local_relaxed",
+    PIPELINE_STATUS: pipelineStatus,
   };
 
   // 4. Start Unified Live Worker Server (Port 8787)
@@ -390,6 +394,10 @@ async function main() {
     }
     isPolling = true;
     const callsAtCycleStart = getNineRouterCallCounts();
+    // FLOW-VIS-01: the fresh-call budget object is read at cycle end, after every feed has spent from it.
+    let triageBudget: { remaining: number } | undefined;
+    let cycleFeedFailures = 0;
+    pipelineStatus.recordCycleStart({ newItemsCap: liveCycle.maxNewItemsPerCycle, feedsTotal: liveFeeds.length });
     try {
       console.log("\n[Ingestion Cycle] Polling live Jakarta sources...");
     const discoveredRevisions: StoredReportRevision[] = [];
@@ -404,8 +412,10 @@ async function main() {
       } else {
         console.log("  [PetaBencana] 0 new flood reports in the last 24h.");
       }
+      pipelineStatus.recordSourceCycle("petabencana", { ingest: pbRes.revisions.length, held: 0, duplicate: 0, deferred: 0, errors: 0 });
     } catch (e: unknown) {
       console.warn(`  [PetaBencana] Poll error: ${e instanceof Error ? e.message : String(e)}`);
+      pipelineStatus.recordSourceCycle("petabencana", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
     }
 
     // B. BMKG CAP Alerts
@@ -418,8 +428,10 @@ async function main() {
       } else {
         console.log("  [BMKG] No active alerts for Jakarta.");
       }
+      pipelineStatus.recordSourceCycle("bmkg", { ingest: bmkgRes.revisions.length, held: 0, duplicate: 0, deferred: 0, errors: 0 });
     } catch (e: unknown) {
       console.warn(`  [BMKG] Poll error: ${e instanceof Error ? e.message : String(e)}`);
+      pipelineStatus.recordSourceCycle("bmkg", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
     }
 
     // C. RSS Feeds (14 sources) — WJ-INT-02B shared gated-RSS cycle (§6):
@@ -439,6 +451,7 @@ async function main() {
         maxFreshCallsPerCycle: liveCycle.maxNewItemsPerCycle,
       });
       console.log(`  [Deterministic Filter] Active mode: ${gate.deterministicMode}`);
+      triageBudget = gate.freshCallBudget;
       const newsRunner = createLiveNewsPollRuntime({ feeds: liveFeeds, triage: gate });
       // AI-RPM-01: the same revision dedupe as poll(), kept across this cycle's feeds.
       const cycleDedupe = createCycleRevisionDedupe();
@@ -451,6 +464,13 @@ async function main() {
         try {
           const feedRes = await newsRunner.pollFeed(feed);
           const admitted = feedRes.revisions.filter((rev) => cycleDedupe.admit(rev));
+          // FLOW-VIS-01: title-dedupe hits come from Stage A; cycle-dedupe hits are the revisions this cycle already admitted.
+          const counts = feedRes.triageCounts;
+          pipelineStatus.recordDedupeHits({ title: counts?.duplicate ?? 0, cycle: feedRes.revisions.length - admitted.length, ref: `feed-${feed.sourceId}` });
+          pipelineStatus.recordDetFilter({
+            mode: gate.deterministicMode,
+            dropped: Math.max(0, (counts?.detConsidered ?? 0) - (counts?.detCandidate ?? 0) - (counts?.detAmbiguous ?? 0)),
+          });
           if (admitted.length > 0 || (feedRes.held && feedRes.held.length > 0)) {
             if (typeof executor.transaction === "function") {
               const cycle = await runGatedRssCycle(executor, {
@@ -466,9 +486,18 @@ async function main() {
           totalHeld += feedRes.held ? feedRes.held.length : 0;
           totalDuplicates += feedRes.triageCounts?.duplicate ?? 0;
           totalBudgetDeferred += feedRes.triageCounts?.budgetDeferred ?? 0;
+          pipelineStatus.recordSourceCycle("rss", {
+            ingest: admitted.length,
+            held: feedRes.held ? feedRes.held.length : 0,
+            duplicate: feedRes.triageCounts?.duplicate ?? 0,
+            deferred: feedRes.triageCounts?.budgetDeferred ?? 0,
+            errors: 0,
+          });
           console.log(`  [RSS ${i + 1}/${liveFeeds.length}: ${feed.sourceId}] ${admitted.length} ingest, ${feedRes.held ? feedRes.held.length : 0} held.`);
         } catch (feedErr: unknown) {
           console.warn(`  [RSS ${i + 1}/${liveFeeds.length}: ${feed.sourceId}] Poll error: ${feedErr instanceof Error ? feedErr.message : String(feedErr)}`);
+          pipelineStatus.recordSourceCycle("rss", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
+          cycleFeedFailures += 1;
         }
       }
       console.log(`  [RSS Feeds (${liveFeeds.length})] Total: ${totalIngest} articles (ingest), ${totalHeld} held, ${totalDuplicates} duplicate, ${totalBudgetDeferred} deferred by cycle cap.`);
@@ -566,7 +595,12 @@ async function main() {
     // AI-RPM-01: counts only. Requests include concurrent AI jobs, not just triage.
     const callsNow = getNineRouterCallCounts();
     console.log(`  [NineRouter] requests since cycle start: chat=${callsNow.chat - callsAtCycleStart.chat} embed=${callsNow.embed - callsAtCycleStart.embed}`);
+    pipelineStatus.recordNineRouterCalls((callsNow.chat - callsAtCycleStart.chat) + (callsNow.embed - callsAtCycleStart.embed));
     } finally {
+      pipelineStatus.recordCycleEnd({
+        newItemsUsed: triageBudget ? liveCycle.maxNewItemsPerCycle - triageBudget.remaining : null,
+        feedsFailed: cycleFeedFailures,
+      });
       isPolling = false;
     }
   }

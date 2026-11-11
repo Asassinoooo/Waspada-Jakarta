@@ -281,3 +281,55 @@ describe("NineRouter rate gate (AI-RATE-01)", () => {
     });
   });
 });
+
+describe("NineRouter rate gate snapshot (FLOW-VIS-01)", () => {
+  it("reports pacing tokens, in-flight and queued callers without changing the gate", async () => {
+    const fc = fakeClock();
+    const gate = createNineRouterRateGate({ clock: fc.clock, chatRpm: 10, embedRpm: 30, random: () => 0, log: () => {} });
+    const first = await gate.acquire("chat");
+    const snapshotInFlight = gate.snapshot();
+    assert.equal(snapshotInFlight.chat.inFlight, 1);
+    assert.equal(snapshotInFlight.chat.rpm, 10);
+    assert.equal(snapshotInFlight.chat.tokensAvailable, 9, "one send in the trailing minute leaves nine");
+    assert.equal(snapshotInFlight.callCounts.chat, 1);
+
+    const waiting = gate.acquire("chat");
+    await flush();
+    assert.equal(gate.snapshot().chat.queued, 1, "a second chat caller waits behind the single slot");
+    first.release();
+    (await waiting).release();
+    const after = gate.snapshot();
+    assert.equal(after.chat.inFlight, 0);
+    assert.equal(after.chat.queued, 0);
+    assert.equal(after.callCounts.chat, 2);
+    assert.equal(after.embed.rpm, 30);
+    assert.equal(after.embed.inFlight, 0);
+  });
+
+  it("shows cooldown remaining after a rate-limited response and clears it when the time passes", async () => {
+    const fc = fakeClock();
+    const gate = createNineRouterRateGate({
+      clock: fc.clock,
+      chatRpm: 10,
+      random: () => 0,
+      log: () => {},
+      transport: transportReturning(() => new Response("slow down", { status: 429, headers: { "retry-after": "30" } })),
+    });
+    await assert.rejects(gate.request(CHAT_URL, { method: "POST" }), RateLimitedError);
+    assert.equal(gate.snapshot().chat.cooldownRemainingMs, 30_000);
+    assert.equal(gate.snapshot().embed.cooldownRemainingMs, 0, "the embed bucket is not in cooldown");
+    assert.equal(gate.snapshot().chat.cooldownRemainingMs, 30_000);
+    await fc.clock.sleep(30_000);
+    assert.equal(gate.snapshot().chat.cooldownRemainingMs, 0);
+  });
+
+  it("forgets sends older than 60 seconds when counting tokens", async () => {
+    const fc = fakeClock();
+    const gate = createNineRouterRateGate({ clock: fc.clock, chatRpm: 2, random: () => 0, log: () => {} });
+    (await gate.acquire("chat")).release();
+    assert.equal(gate.snapshot().chat.tokensAvailable, 1);
+    await fc.clock.sleep(61_000);
+    assert.equal(gate.snapshot().chat.tokensAvailable, 2, "the earlier send left the trailing window");
+    assert.equal(gate.snapshot().callCounts.chat, 1, "lifetime call counts are unchanged");
+  });
+});

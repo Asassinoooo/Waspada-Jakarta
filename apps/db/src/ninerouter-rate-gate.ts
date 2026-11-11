@@ -118,6 +118,24 @@ export interface NineRouterSlot {
   release(): void;
 }
 
+/** FLOW-VIS-01: read-only view of one bucket. Counts and timings only; never request content. */
+export interface NineRouterBucketSnapshot {
+  readonly rpm: number;
+  /** Sends still allowed in the trailing 60 s under the configured RPM (never negative). */
+  readonly tokensAvailable: number;
+  readonly cooldownRemainingMs: number;
+  /** Slots currently held by sent requests (chat is capped at 1). */
+  readonly inFlight: number;
+  /** Callers waiting for an in-flight slot. */
+  readonly queued: number;
+}
+
+export interface NineRouterRateSnapshot {
+  readonly chat: NineRouterBucketSnapshot;
+  readonly embed: NineRouterBucketSnapshot;
+  readonly callCounts: Readonly<Record<NineRouterRateBucket, number>>;
+}
+
 export interface NineRouterRateGate {
   /** Bucket for a NineRouter chat or embedding URL, or null when not gated. */
   classify(input: string | URL | Request): NineRouterRateBucket | null;
@@ -135,6 +153,8 @@ export interface NineRouterRateGate {
    * created. Counts sent requests (including rate-limited ones), never content.
    */
   callCounts(): Readonly<Record<NineRouterRateBucket, number>>;
+  /** FLOW-VIS-01: read-only snapshot of pacing, cooldown and in-flight state. Mutates nothing. */
+  snapshot(): NineRouterRateSnapshot;
   /** Patches globalThis.fetch so NineRouter calls made through it are gated. Idempotent. */
   installGlobalFetch(beforeRequest?: (url: string, init: RequestInit | undefined) => RequestInit | undefined): void;
 }
@@ -142,11 +162,16 @@ export interface NineRouterRateGate {
 interface BucketState {
   readonly minIntervalMs: number;
   readonly maxInFlight: number;
+  readonly rpm: number;
   nextAt: number;
   cooldownUntil: number;
   active: number;
   readonly waiters: Array<() => void>;
+  /** Start times of sent requests within the trailing 60 s (FLOW-VIS-01 token view). */
+  readonly sentAt: number[];
 }
+
+const RPM_WINDOW_MS = 60_000;
 
 function abortError(): Error {
   const error = new Error("aborted");
@@ -188,8 +213,8 @@ export function createNineRouterRateGate(options: NineRouterRateGateOptions = {}
   const embedRpm = options.embedRpm ?? DEFAULT_NINEROUTER_EMBED_RPM;
 
   const states: Record<NineRouterRateBucket, BucketState> = {
-    chat: { minIntervalMs: 60_000 / chatRpm, maxInFlight: 1, nextAt: 0, cooldownUntil: 0, active: 0, waiters: [] },
-    embed: { minIntervalMs: 60_000 / embedRpm, maxInFlight: Number.POSITIVE_INFINITY, nextAt: 0, cooldownUntil: 0, active: 0, waiters: [] },
+    chat: { minIntervalMs: 60_000 / chatRpm, maxInFlight: 1, rpm: chatRpm, nextAt: 0, cooldownUntil: 0, active: 0, waiters: [], sentAt: [] },
+    embed: { minIntervalMs: 60_000 / embedRpm, maxInFlight: Number.POSITIVE_INFINITY, rpm: embedRpm, nextAt: 0, cooldownUntil: 0, active: 0, waiters: [], sentAt: [] },
   };
 
   const sentCounts: Record<NineRouterRateBucket, number> = { chat: 0, embed: 0 };
@@ -226,6 +251,30 @@ export function createNineRouterRateGate(options: NineRouterRateGateOptions = {}
       return;
     }
     state.active -= 1;
+  }
+
+  function trimSentWindow(state: BucketState, nowMs: number): void {
+    while (state.sentAt.length > 0 && nowMs - state.sentAt[0]! >= RPM_WINDOW_MS) {
+      state.sentAt.shift();
+    }
+  }
+
+  function recordSend(state: BucketState): void {
+    const nowMs = clock.now();
+    trimSentWindow(state, nowMs);
+    state.sentAt.push(nowMs);
+  }
+
+  function bucketSnapshot(state: BucketState): NineRouterBucketSnapshot {
+    const nowMs = clock.now();
+    trimSentWindow(state, nowMs);
+    return {
+      rpm: state.rpm,
+      tokensAvailable: Math.max(0, state.rpm - state.sentAt.length),
+      cooldownRemainingMs: Math.max(0, state.cooldownUntil - nowMs),
+      inFlight: state.active,
+      queued: state.waiters.length,
+    };
   }
 
   async function waitUntil(targetMs: number, signal: AbortSignal | undefined): Promise<void> {
@@ -269,6 +318,7 @@ export function createNineRouterRateGate(options: NineRouterRateGateOptions = {}
       // Counted once the slot is held: every acquire is followed by one send,
       // including the direct triage transport that bypasses request().
       sentCounts[bucket] += 1;
+      recordSend(state);
       let released = false;
       return {
         release() {
@@ -327,6 +377,14 @@ export function createNineRouterRateGate(options: NineRouterRateGateOptions = {}
       return { ...sentCounts };
     },
 
+    snapshot() {
+      return {
+        chat: bucketSnapshot(states.chat),
+        embed: bucketSnapshot(states.embed),
+        callCounts: { ...sentCounts },
+      };
+    },
+
     installGlobalFetch(beforeRequest) {
       if (installedWrapper !== undefined) return;
       const previous = globalThis.fetch;
@@ -368,6 +426,11 @@ export function getNineRouterRateGate(): NineRouterRateGate {
 /** AI-RPM-01: requests sent through the shared gate, per bucket. Counts only. */
 export function getNineRouterCallCounts(): Readonly<Record<NineRouterRateBucket, number>> {
   return getNineRouterRateGate().callCounts();
+}
+
+/** FLOW-VIS-01: read-only pacing, cooldown and in-flight state of the shared gate. */
+export function getNineRouterRateGateSnapshot(): NineRouterRateSnapshot {
+  return getNineRouterRateGate().snapshot();
 }
 
 /** Replaces the shared gate (tests inject a fake clock or a high RPM). */

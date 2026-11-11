@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminOperationsMap } from "./AdminOperationsMap.js";
 import { createSimulationSnapshot, SIMULATION_STEPS } from "./admin-fixtures.js";
 import { createAdminMonitor } from "./admin-monitoring.js";
+import { PIPELINE_LAYER_NAMES, PIPELINE_LAYER_SHORT_NAMES } from "./pipeline-layers.js";
 import {
   categoryLabel,
   formatEventTime,
@@ -21,20 +22,9 @@ import type {
 } from "./admin-types.js";
 
 const LAYERS: readonly AdminLayer[] = ["L1", "L2", "L3", "L4", "L5"];
-const LAYER_NAMES: Record<AdminLayer, string> = {
-  L1: "Penerimaan laporan",
-  L2: "Pencarian bukti",
-  L3: "Pemeriksaan lanjutan",
-  L4: "Tinjauan laporan",
-  L5: "Pemantauan sistem",
-};
-const LAYER_SHORT_NAMES: Record<AdminLayer, string> = {
-  L1: "Terima",
-  L2: "Cari bukti",
-  L3: "Periksa",
-  L4: "Tinjau",
-  L5: "Pantau",
-};
+// FLOW-VIS-01: the layer names live in one module shared with the moderator flow view.
+const LAYER_NAMES: Record<AdminLayer, string> = PIPELINE_LAYER_NAMES;
+const LAYER_SHORT_NAMES: Record<AdminLayer, string> = PIPELINE_LAYER_SHORT_NAMES;
 const STATUS_OPTIONS: readonly { value: AdminItemState | "all"; label: string }[] = [
   { value: "all", label: "Semua status" },
   { value: "queued", label: "Dalam antrean" },
@@ -925,6 +915,7 @@ export function AdminDashboard({
         </div>
         <div className="admin-header__actions">
           <a className="admin-button admin-button--quiet" href="#tinjau-bukti">Tinjau bukti publik</a>
+          <a className="admin-button admin-button--quiet" href="#alur-agen">Alur agen</a>
         </div>
       </header>
 
@@ -1109,6 +1100,8 @@ export function AdminDashboard({
         <strong>Halaman ini hanya membaca data.</strong>
         <p>Halaman tidak mengambil laporan dari sumber, menjalankan pemeriksaan, atau mengubah status laporan.</p>
         <a className="admin-link" href="#tinjau-bukti">Buka tinjau bukti publik</a>
+        <span aria-hidden="true"> · </span>
+        <a className="admin-link" href="#alur-agen">Buka alur agen</a>
         <span aria-hidden="true"> · </span>
         <a className="admin-link" href="#beranda">Kembali ke Waspada Jakarta</a>
       </footer>
