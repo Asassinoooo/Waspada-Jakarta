@@ -12,10 +12,13 @@ import { createAccountStore } from "../apps/db/src/accounts.js";
 import { createSqlIncidentRepository, requeueStrandedAiJobs } from "../apps/db/src/incident-repository.js";
 import { createJobRunner } from "../apps/intelligence/src/job-runner.js";
 import { getNineRouterConfig, patchGlobalFetchForNineRouter } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
+import { getNineRouterCallCounts } from "../apps/db/src/ninerouter-rate-gate.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
-import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
+import { createCycleRevisionDedupe, createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
 import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-composition.js";
+import { createRecentItemIndex } from "../apps/worker/src/layers/l1-data-knowledge/news-title-dedupe.js";
+import { parseLiveCycleConfig } from "../apps/worker/src/runtime/live-cycle-config.js";
 import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowledge/news-triage.js";
 import { runGatedRssCycle } from "../apps/worker/src/runtime/gated-rss-persistence.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
@@ -309,6 +312,13 @@ async function main() {
 
   // 6. Start Live Ingestion Pollers (PetaBencana, BMKG, ANTARA News)
   console.log("[Ingestion] Initializing live source pollers (PetaBencana, BMKG, ANTARA News)...");
+  // AI-RPM-01 knobs: RSS article age limit and new triage calls per cycle (defaults 6 h, 5).
+  // Feeds get the age limit explicitly, so the parse filter and Stage A stale check agree.
+  const liveCycle = parseLiveCycleConfig(process.env);
+  const liveFeeds = DEFAULT_NEWS_FEEDS.map((feed) => ({ ...feed, maxAgeHours: liveCycle.rssMaxAgeHours }));
+  // One process-scoped index: Stage A duplicates across feeds and cycles (48 h window).
+  const liveRecentItems = createRecentItemIndex();
+  console.log(`[Ingestion] RSS max age ${liveCycle.rssMaxAgeHours} h; up to ${liveCycle.maxNewItemsPerCycle} new triage calls per cycle.`);
   let isPolling = false;
   async function pollLiveFeeds() {
     if (isPolling) {
@@ -316,6 +326,7 @@ async function main() {
       return;
     }
     isPolling = true;
+    const callsAtCycleStart = getNineRouterCallCounts();
     try {
       console.log("\n[Ingestion Cycle] Polling live Jakarta sources...");
     const discoveredRevisions: StoredReportRevision[] = [];
@@ -359,34 +370,45 @@ async function main() {
         NINEROUTER_CHAT_MODEL: process.env.NINEROUTER_CHAT_MODEL,
         NEWS_DETERMINISTIC_FILTER_MODE: process.env.NEWS_DETERMINISTIC_FILTER_MODE ?? "enforce",
       };
-      const gate = buildLiveTriageGate(toolEnv, executor);
+      // Gate per cycle: the fresh-call budget resets each cycle and is shared by all feeds in it.
+      const gate = buildLiveTriageGate(toolEnv, executor, {
+        recentItems: liveRecentItems,
+        maxFreshCallsPerCycle: liveCycle.maxNewItemsPerCycle,
+      });
       console.log(`  [Deterministic Filter] Active mode: ${gate.deterministicMode}`);
-      const newsRunner = createLiveNewsPollRuntime({ feeds: DEFAULT_NEWS_FEEDS, triage: gate });
+      const newsRunner = createLiveNewsPollRuntime({ feeds: liveFeeds, triage: gate });
+      // AI-RPM-01: the same revision dedupe as poll(), kept across this cycle's feeds.
+      const cycleDedupe = createCycleRevisionDedupe();
       let totalIngest = 0;
       let totalHeld = 0;
-      for (let i = 0; i < DEFAULT_NEWS_FEEDS.length; i++) {
-        const feed = DEFAULT_NEWS_FEEDS[i]!;
+      let totalDuplicates = 0;
+      let totalBudgetDeferred = 0;
+      for (let i = 0; i < liveFeeds.length; i++) {
+        const feed = liveFeeds[i]!;
         try {
           const feedRes = await newsRunner.pollFeed(feed);
-          if (feedRes.revisions.length > 0 || (feedRes.held && feedRes.held.length > 0)) {
+          const admitted = feedRes.revisions.filter((rev) => cycleDedupe.admit(rev));
+          if (admitted.length > 0 || (feedRes.held && feedRes.held.length > 0)) {
             if (typeof executor.transaction === "function") {
               const cycle = await runGatedRssCycle(executor, {
                 datasetKind: "live",
-                revisions: feedRes.revisions,
+                revisions: admitted,
                 held: feedRes.held ?? [],
                 policyVersion: TRIAGE_POLICY_VERSION,
               });
               gatedPersistFailures += cycle.persistFailures;
             }
           }
-          totalIngest += feedRes.revisions.length;
+          totalIngest += admitted.length;
           totalHeld += feedRes.held ? feedRes.held.length : 0;
-          console.log(`  [RSS ${i + 1}/${DEFAULT_NEWS_FEEDS.length}: ${feed.sourceId}] ${feedRes.revisions.length} ingest, ${feedRes.held ? feedRes.held.length : 0} held.`);
+          totalDuplicates += feedRes.triageCounts?.duplicate ?? 0;
+          totalBudgetDeferred += feedRes.triageCounts?.budgetDeferred ?? 0;
+          console.log(`  [RSS ${i + 1}/${liveFeeds.length}: ${feed.sourceId}] ${admitted.length} ingest, ${feedRes.held ? feedRes.held.length : 0} held.`);
         } catch (feedErr: unknown) {
-          console.warn(`  [RSS ${i + 1}/${DEFAULT_NEWS_FEEDS.length}: ${feed.sourceId}] Poll error: ${feedErr instanceof Error ? feedErr.message : String(feedErr)}`);
+          console.warn(`  [RSS ${i + 1}/${liveFeeds.length}: ${feed.sourceId}] Poll error: ${feedErr instanceof Error ? feedErr.message : String(feedErr)}`);
         }
       }
-      console.log(`  [RSS Feeds (14)] Total: ${totalIngest} articles (ingest), ${totalHeld} held.`);
+      console.log(`  [RSS Feeds (${liveFeeds.length})] Total: ${totalIngest} articles (ingest), ${totalHeld} held, ${totalDuplicates} duplicate, ${totalBudgetDeferred} deferred by cycle cap.`);
     } catch (e: unknown) {
       console.warn(`  [RSS Feeds] Poll error: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -478,6 +500,9 @@ async function main() {
     if (discoveredRevisions.length > 0) {
       console.log(`✓ Enqueued ${discoveredRevisions.length} new durable AI jobs into waspada.ai_jobs.`);
     }
+    // AI-RPM-01: counts only. Requests include concurrent AI jobs, not just triage.
+    const callsNow = getNineRouterCallCounts();
+    console.log(`  [NineRouter] requests since cycle start: chat=${callsNow.chat - callsAtCycleStart.chat} embed=${callsNow.embed - callsAtCycleStart.embed}`);
     } finally {
       isPolling = false;
     }

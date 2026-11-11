@@ -7,6 +7,14 @@ import {
 import type { ReportInterpretation } from "./report-interpretation-agent.js";
 import type { CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
 
+/**
+ * AI-RPM-01: a retrieved candidate only reaches the correlation model when its
+ * similarity is at least this value. It equals the retrieval default
+ * (`candidateThreshold` distance 0.40, i.e. similarity 0.60), so the workflow
+ * never sends the model a candidate that retrieval itself would not accept.
+ */
+export const CORRELATION_MIN_SIMILARITY = 0.6;
+
 export const IncidentCorrelationSchema = z.object({
   decision: z.enum(["same_incident", "new_incident", "unresolved"]),
   candidateIncidentId: z.string().nullable(),
@@ -141,6 +149,39 @@ Core Evaluation Rules:
 
 Return ONLY valid JSON matching the requested schema. No markdown wrapping.
 `.trim();
+
+/**
+ * AI-RPM-01: correlation with no candidate at or above CORRELATION_MIN_SIMILARITY,
+ * decided without a model call. It follows the prompt rule for empty candidates:
+ * a report that names a location is a new incident; a report without a location
+ * stays unresolved. A blanket new_incident would skip that rule.
+ */
+export function correlateWithoutCandidates(interpretation: ReportInterpretation): IncidentCorrelation {
+  const basis = `Deterministic correlation, no model call: no candidate incident reached similarity ${CORRELATION_MIN_SIMILARITY.toFixed(2)}.`;
+  const hasLocation = interpretation.location.label !== null || interpretation.location.approximateCoordinates !== null;
+  if (hasLocation) {
+    return {
+      decision: "new_incident",
+      candidateIncidentId: null,
+      reasoning: `${basis} The report names a location, so it is recorded as a new incident.`,
+      supportingEvidence: [],
+      contradictoryEvidence: [],
+      distinctions: [],
+      unresolvedQuestions: [],
+      uncertainty: [],
+    };
+  }
+  return {
+    decision: "unresolved",
+    candidateIncidentId: null,
+    reasoning: `${basis} The report names no concrete location, so it stays unresolved for review.`,
+    supportingEvidence: [],
+    contradictoryEvidence: [],
+    distinctions: [],
+    unresolvedQuestions: ["Lokasi kejadian tidak dinyatakan dalam laporan."],
+    uncertainty: [],
+  };
+}
 
 export function createIncidentCorrelationAgent(agentOverride?: Agent): Agent {
   if (agentOverride) return agentOverride;

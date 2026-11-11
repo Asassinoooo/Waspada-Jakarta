@@ -18,6 +18,10 @@ import {
   type DeterministicRelevanceResult,
 } from "../layers/l1-data-knowledge/deterministic-relevance.js";
 import { NEWS_TRIAGE_POLICY_VERSION } from "../../../db/src/news-triage-store.js";
+import {
+  normalizedTitleKey,
+  type RecentItemIndex,
+} from "../layers/l1-data-knowledge/news-title-dedupe.js";
 export interface StoredEvidenceChunk {
   readonly chunk_index: number;
   readonly text: string;
@@ -185,6 +189,10 @@ export interface NewsTriageCounts {
   readonly rateLimited: number;
   /** AI-RATE-01: fresh Stage B items held without a call during a chat cooldown. */
   readonly rateLimitDeferred: number;
+  /** AI-RPM-01: Stage A duplicates (same normalised title already settled recently); no call. */
+  readonly duplicate: number;
+  /** AI-RPM-01: fresh Stage B items held without a call because the cycle budget was spent. */
+  readonly budgetDeferred: number;
   readonly byCategory: Readonly<Record<string, number>>;
   /** DET-FILTER-01 count-only observability (no content in logs). */
   readonly detConsidered: number;
@@ -280,6 +288,18 @@ export interface NewsPollRuntimeOptions {
      * `NEWS_DETERMINISTIC_FILTER_MODE`; tests set it per-case.
      */
     readonly deterministicMode?: DeterministicTriageMode;
+    /**
+     * AI-RPM-01: recently settled normalised titles. A match is a Stage A
+     * duplicate (no model call, recorded as `duplicate_item`). Absent: no
+     * title dedupe. Synthetic fixtures and unit tests keep it absent.
+     */
+    readonly recentItems?: RecentItemIndex;
+    /**
+     * AI-RPM-01: fresh Stage B calls left in one cycle. The same object is shared
+     * by every feed polled in that cycle. Items past the budget are held without
+     * a call and are not persisted, so a later cycle evaluates them. Absent: no cap.
+     */
+    readonly freshCallBudget?: { remaining: number };
   };
 }
 
@@ -395,7 +415,7 @@ export async function applyTriageGate(
   const counts = {
     total: stored.length, ingested: 0, dropped: 0, uncertain: 0,
     authzRejected: 0, geoRejected: 0, nonActionable: 0, providerFailures: 0,
-    rateLimited: 0, rateLimitDeferred: 0,
+    rateLimited: 0, rateLimitDeferred: 0, duplicate: 0, budgetDeferred: 0,
     detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
     detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
     detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
@@ -570,9 +590,19 @@ export async function applyTriageGate(
       maxAgeHours: feed.maxAgeHours ?? 48,
       deterministic,
     };
+    // AI-RPM-01: a title settled in the recent window by a *different* item (for
+    // example a syndicated copy in another feed) is a Stage A duplicate. The same
+    // item (same identity) is never a duplicate, so a corrected description takes
+    // the normal triage path. The existing duplicate branch records the duplicate.
+    const titleKey = normalizedTitleKey(preparedTitle);
+    const nowMs = Date.parse(retrievedAt);
+    const dedupe = triage.recentItems !== undefined && titleKey !== null && Number.isFinite(nowMs)
+      ? { index: triage.recentItems, key: titleKey, identity: identityHash, nowMs }
+      : null;
+    const isDuplicate = dedupe !== null && dedupe.index.isDuplicate(dedupe.key, dedupe.identity, dedupe.nowMs);
     let stageA: Awaited<ReturnType<typeof precheckNewsItem>>;
     try {
-      stageA = await precheckNewsItem(prepared, false, frozenAuthz, deterministicMode);
+      stageA = await precheckNewsItem(prepared, isDuplicate, frozenAuthz, deterministicMode);
     } catch {
       stageA = { needsSemantic: false, decision: null };
     }
@@ -595,6 +625,17 @@ export async function applyTriageGate(
           reasonCodes: ["provider_error"], evidence: [], modelStatus: "provider_error",
         };
       } else {
+        // AI-RPM-01: the cycle's fresh-call budget. Checked and spent synchronously,
+        // before the await, so concurrent items cannot overspend it. An item over
+        // budget is held without a call and is not persisted as decided.
+        const budget = triage.freshCallBudget;
+        if (budget !== undefined) {
+          if (budget.remaining <= 0) {
+            counts.budgetDeferred += 1;
+            return;
+          }
+          budget.remaining -= 1;
+        }
         decisionResult = await triageNewsItemSemantic(
           {
             sourceId: rev.source_id,
@@ -613,6 +654,14 @@ export async function applyTriageGate(
       primaryCategory: null, incidentType: null, confidence: "low",
       reasonCodes: ["provider_error"], evidence: [], modelStatus: "provider_error",
     };
+    if (finalDecision.reasonCodes.includes("duplicate_item")) {
+      counts.duplicate += 1;
+    }
+    // AI-RPM-01: remember only a model-settled outcome. Provider errors, rate
+    // limits, and auth refusals are not remembered, so a later feed still evaluates it.
+    if (dedupe !== null && !isDuplicate && finalDecision.modelStatus === "ok") {
+      dedupe.index.remember(dedupe.key, dedupe.identity, dedupe.nowMs);
+    }
     if (finalDecision.disposition === "ingest") {
       // Authorized-payload enforcement: persist ONLY permitted parts. Model
       // use without durable retention (title unretainable, an evaluated
@@ -765,7 +814,8 @@ async function pollSingleFeed(
         held: [],
         triageCounts: {
           total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 1,
-          geoRejected: 0, nonActionable: 0, providerFailures: 0, rateLimited: 0, rateLimitDeferred: 0, byCategory: {},
+          geoRejected: 0, nonActionable: 0, providerFailures: 0, rateLimited: 0, rateLimitDeferred: 0,
+          duplicate: 0, budgetDeferred: 0, byCategory: {},
           detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
           detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
           detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
@@ -918,7 +968,7 @@ export function createNewsPollRuntime(
         );
       }
 
-      const seenKeys = new Set<string>();
+      const cycleDedupe = createCycleRevisionDedupe();
       const allRevisions: StoredReportRevision[] = [];
       const allHeld: HeldTriageDecision[] = [];
       const seenHeld = new Set<string>();
@@ -936,10 +986,7 @@ export function createNewsPollRuntime(
         totalRejected += result.rejectedCount;
 
         for (const rev of result.revisions) {
-          const dedupKey = rev.canonical_url || rev.report_revision_id;
-          if (!seenKeys.has(dedupKey) && !seenKeys.has(rev.report_revision_id)) {
-            seenKeys.add(dedupKey);
-            seenKeys.add(rev.report_revision_id);
+          if (cycleDedupe.admit(rev)) {
             allRevisions.push(rev);
           }
         }
@@ -975,11 +1022,30 @@ export function createNewsPollRuntime(
   };
 }
 
+/**
+ * AI-RPM-01: cross-feed revision dedupe for one poll cycle. The first revision
+ * for a canonical URL or revision id wins. poll() and the serve:live cycle both
+ * use this helper, so the rule lives in one place.
+ */
+export function createCycleRevisionDedupe(): { admit(rev: StoredReportRevision): boolean } {
+  const seenKeys = new Set<string>();
+  return {
+    admit(rev: StoredReportRevision): boolean {
+      const dedupKey = rev.canonical_url || rev.report_revision_id;
+      if (seenKeys.has(dedupKey) || seenKeys.has(rev.report_revision_id)) return false;
+      seenKeys.add(dedupKey);
+      seenKeys.add(rev.report_revision_id);
+      return true;
+    },
+  };
+}
+
 function aggregateTriageCounts(results: readonly NewsFeedPollResult[]): NewsTriageCounts | undefined {
   if (!results.some((r) => r.triageCounts)) return undefined;
   const total = {
     total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 0, geoRejected: 0,
     nonActionable: 0, providerFailures: 0, rateLimited: 0, rateLimitDeferred: 0,
+    duplicate: 0, budgetDeferred: 0,
     detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
     detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
     detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
@@ -994,6 +1060,7 @@ function aggregateTriageCounts(results: readonly NewsFeedPollResult[]): NewsTria
     total.geoRejected += c.geoRejected; total.nonActionable += c.nonActionable;
     total.providerFailures += c.providerFailures;
     total.rateLimited += c.rateLimited; total.rateLimitDeferred += c.rateLimitDeferred;
+    total.duplicate += c.duplicate; total.budgetDeferred += c.budgetDeferred;
     total.detConsidered += c.detConsidered; total.detCandidate += c.detCandidate;
     total.detAmbiguous += c.detAmbiguous; total.detLowSignal += c.detLowSignal;
     total.detBroadOnly += c.detBroadOnly; total.detSpecific += c.detSpecific;

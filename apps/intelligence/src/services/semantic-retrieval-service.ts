@@ -98,6 +98,12 @@ export interface SemanticRetrievalService {
   retrieveCandidates(input: {
     readonly datasetKind: DatasetKind;
     readonly queryText: string;
+    /**
+     * AI-RPM-01: an already computed query vector (for example the report's
+     * first chunk embedding). Used only when it has the identity dimensions;
+     * otherwise the query text is embedded as before.
+     */
+    readonly queryVector?: readonly number[];
     readonly maxResults?: number;
   }): Promise<CandidateEvidenceResult>;
 }
@@ -158,10 +164,15 @@ export function createSemanticRetrievalService(dependencies: {
     async retrieveCandidates(input: {
       readonly datasetKind: DatasetKind;
       readonly queryText: string;
+      readonly queryVector?: readonly number[];
       readonly maxResults?: number;
       readonly candidateThreshold?: number;
     }): Promise<CandidateEvidenceResult> {
-      const queryVector = await generateNineRouterEmbedding(input.queryText, { config });
+      const reusable = input.queryVector !== undefined
+        && input.queryVector.length === NINEROUTER_EMBEDDING_IDENTITY.dimensions;
+      const queryVector = reusable
+        ? input.queryVector!
+        : await generateNineRouterEmbedding(input.queryText, { config });
       const maxResults = input.maxResults ?? 10;
       const candidateThreshold = input.candidateThreshold ?? 0.40;
       const vectorLiteral = `[${queryVector.join(",")}]`;

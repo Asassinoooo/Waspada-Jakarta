@@ -246,4 +246,38 @@ describe("NineRouter rate gate (AI-RATE-01)", () => {
       }
     });
   });
+
+  describe("call counts (AI-RPM-01)", () => {
+    it("counts sent requests per bucket, including a direct triage-style acquire", async () => {
+      const fc = fakeClock();
+      const seen: string[] = [];
+      const gate = createNineRouterRateGate({
+        clock: fc.clock,
+        random: () => 0,
+        log: () => {},
+        transport: transportReturning(() => new Response("{}", { status: 200 }), seen),
+      });
+      assert.deepEqual(gate.callCounts(), { chat: 0, embed: 0 });
+
+      await gate.request(CHAT_URL, { method: "POST" });
+      await gate.request(EMBED_URL, { method: "POST" });
+      await gate.request(EMBED_URL, { method: "POST" });
+      // The direct triage transport acquires a chat slot without request().
+      const slot = await gate.acquire("chat");
+      slot.release();
+
+      assert.deepEqual(gate.callCounts(), { chat: 2, embed: 2 });
+      assert.equal(seen.length, 3, "only request() sends through the transport");
+    });
+
+    it("does not count non-NineRouter URLs or a request that is never sent", async () => {
+      const gate = createNineRouterRateGate({
+        clock: fakeClock().clock,
+        log: () => {},
+        transport: transportReturning(() => new Response("{}", { status: 200 })),
+      });
+      await gate.request("http://other.test/not-nineRouter", { method: "GET" });
+      assert.deepEqual(gate.callCounts(), { chat: 0, embed: 0 });
+    });
+  });
 });

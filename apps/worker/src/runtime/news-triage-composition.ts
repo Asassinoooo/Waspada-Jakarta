@@ -26,6 +26,7 @@ import {
   type HeldTriageDecision,
   type StoredReportRevision,
 } from "./news-poll-runtime.js";
+import type { RecentItemIndex } from "../layers/l1-data-knowledge/news-title-dedupe.js";
 /**
  * WJ-INT-02A live triage gate composition. Single shared source for all live
  * RSS paths (worker `scheduled()` cron and `tools/serve-live-pipeline.ts`).
@@ -71,6 +72,17 @@ export interface LiveTriageGate {
      */
     readonly permissionsFingerprint?: string;
   }) => Promise<NewsTriageDecision | null>;
+  /** AI-RPM-01: process-scoped recent-title index (Stage A duplicates), when supplied by the caller. */
+  readonly recentItems?: RecentItemIndex;
+  /** AI-RPM-01: fresh Stage B calls left in this gate's cycle, when a cap was supplied. */
+  readonly freshCallBudget?: { remaining: number };
+}
+
+export interface LiveTriageGateOptions {
+  /** Process-scoped index shared across cycles. Absent: no cross-cycle title dedupe. */
+  readonly recentItems?: RecentItemIndex;
+  /** Fresh Stage B calls allowed for this gate (one cycle). Absent: no cap. */
+  readonly maxFreshCallsPerCycle?: number;
 }
 
 /**
@@ -99,7 +111,11 @@ function readCredential(envValue: string | undefined, processKey: string, fallba
  * gate: Stage B items resolve `uncertain/provider_error`, never ingest.
  * Never throws for missing credentials.
  */
-export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecutor): LiveTriageGate {
+export function buildLiveTriageGate(
+  env: WorkerEnvironment,
+  executor: SqlExecutor,
+  options: LiveTriageGateOptions = {},
+): LiveTriageGate {
   const baseUrl = readCredential(env.NINEROUTER_URL, "NINEROUTER_URL");
   const apiKey = readCredential(env.NINEROUTER_KEY, "NINEROUTER_KEY");
   const chatModel =
@@ -114,6 +130,10 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
     sourceRemit: "general news",
     concurrency: 2,
     deterministicMode,
+    recentItems: options.recentItems,
+    freshCallBudget: options.maxFreshCallsPerCycle === undefined
+      ? undefined
+      : { remaining: options.maxFreshCallsPerCycle },
     checkAuthorization: async (sourceId: string) => {
       try {
         const res = await executor.query<{

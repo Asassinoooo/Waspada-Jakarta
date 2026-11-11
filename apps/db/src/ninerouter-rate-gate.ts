@@ -130,6 +130,11 @@ export interface NineRouterRateGate {
   /** The transport used by gated calls; never the installed gate wrapper. */
   transport(): NineRouterFetch;
   cooldownRemainingMs(bucket: NineRouterRateBucket): number;
+  /**
+   * AI-RPM-01: gateway requests this gate has sent, per bucket, since it was
+   * created. Counts sent requests (including rate-limited ones), never content.
+   */
+  callCounts(): Readonly<Record<NineRouterRateBucket, number>>;
   /** Patches globalThis.fetch so NineRouter calls made through it are gated. Idempotent. */
   installGlobalFetch(beforeRequest?: (url: string, init: RequestInit | undefined) => RequestInit | undefined): void;
 }
@@ -186,6 +191,8 @@ export function createNineRouterRateGate(options: NineRouterRateGateOptions = {}
     chat: { minIntervalMs: 60_000 / chatRpm, maxInFlight: 1, nextAt: 0, cooldownUntil: 0, active: 0, waiters: [] },
     embed: { minIntervalMs: 60_000 / embedRpm, maxInFlight: Number.POSITIVE_INFINITY, nextAt: 0, cooldownUntil: 0, active: 0, waiters: [] },
   };
+
+  const sentCounts: Record<NineRouterRateBucket, number> = { chat: 0, embed: 0 };
 
   let installedWrapper: typeof fetch | undefined;
   let originalFetch: NineRouterFetch | undefined;
@@ -259,6 +266,9 @@ export function createNineRouterRateGate(options: NineRouterRateGateOptions = {}
         releaseSlot(state);
         throw error;
       }
+      // Counted once the slot is held: every acquire is followed by one send,
+      // including the direct triage transport that bypasses request().
+      sentCounts[bucket] += 1;
       let released = false;
       return {
         release() {
@@ -313,6 +323,10 @@ export function createNineRouterRateGate(options: NineRouterRateGateOptions = {}
       return Math.max(0, states[bucket].cooldownUntil - clock.now());
     },
 
+    callCounts() {
+      return { ...sentCounts };
+    },
+
     installGlobalFetch(beforeRequest) {
       if (installedWrapper !== undefined) return;
       const previous = globalThis.fetch;
@@ -349,6 +363,11 @@ export function getNineRouterRateGate(): NineRouterRateGate {
     });
   }
   return sharedGate;
+}
+
+/** AI-RPM-01: requests sent through the shared gate, per bucket. Counts only. */
+export function getNineRouterCallCounts(): Readonly<Record<NineRouterRateBucket, number>> {
+  return getNineRouterRateGate().callCounts();
 }
 
 /** Replaces the shared gate (tests inject a fake clock or a high RPM). */

@@ -19,11 +19,14 @@ import {
   type ReportInterpretation,
 } from "../agents/report-interpretation-agent.js";
 import {
+  CORRELATION_MIN_SIMILARITY,
   IncidentCorrelationSchema,
   correlateIncident,
+  correlateWithoutCandidates,
   type IncidentCorrelation,
 } from "../agents/incident-correlation-agent.js";
 import { createSemanticRetrievalService, type CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
+import { deterministicStructuredInterpretation } from "../structured-interpretation.js";
 import type { NineRouterConfig } from "../providers/ninerouter-adapter.js";
 import { Agent } from "@mastra/core/agent";
 
@@ -144,6 +147,19 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       interpretation: ReportInterpretationSchema,
     }),
     execute: async ({ inputData }) => {
+      // AI-RPM-01: PetaBencana and BMKG revisions are structured and untriaged.
+      // Their interpretation is built from the source text, with no model call.
+      if (inputData.triage === undefined) {
+        const structured = deterministicStructuredInterpretation({
+          sourceId: inputData.sourceId,
+          reportText: inputData.reportText,
+          evidenceChunks: inputData.evidenceChunks,
+        });
+        if (structured) {
+          return { input: inputData, interpretation: structured };
+        }
+      }
+
       // A retry after a later-step failure (for example a rate limit during
       // correlation) resumes from the saved interpretation: no second model call.
       const checkpointed = await readInterpretationCheckpoint(inputData);
@@ -184,21 +200,32 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       candidateIncidents: z.array(z.record(z.unknown())),
     }),
     execute: async ({ inputData }) => {
-      // Generate and persist chunk embeddings
-      for (const chunk of inputData.input.evidenceChunks) {
-        await retrievalService.generateAndPersistEmbedding({
+      // AI-RPM-01: an RSS revision (triage-gated) embeds only its first chunk, the
+      // title. The excerpt chunk stays in evidence and citations, with no vector.
+      // Other revisions embed every chunk as before.
+      const embedChunks = inputData.input.triage
+        ? inputData.input.evidenceChunks.slice(0, 1)
+        : inputData.input.evidenceChunks;
+
+      // Generate and persist chunk embeddings. The first chunk's vector is the
+      // retrieval query, so the query is not embedded a second time.
+      let queryVector: readonly number[] | undefined;
+      for (const chunk of embedChunks) {
+        const vector = await retrievalService.generateAndPersistEmbedding({
           traceId: inputData.input.traceId,
           datasetKind: inputData.input.datasetKind,
           chunkId: chunk.chunkId,
           chunkText: chunk.text,
         });
+        queryVector ??= vector;
       }
 
-      // Query candidates using summary and incident type
+      // Query text still feeds the lexical fallback when no vector is available.
       const queryText = `${inputData.interpretation.summary} ${inputData.interpretation.incidentType} ${inputData.interpretation.location.label ?? ""}`.trim();
       const retrievalResult = await retrievalService.retrieveCandidates({
         datasetKind: inputData.input.datasetKind,
         queryText,
+        queryVector,
         maxResults: 5,
       });
 
@@ -224,17 +251,23 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       correlation: IncidentCorrelationSchema,
     }),
     execute: async ({ inputData }) => {
-      const correlation = await correlateIncident(
-        {
-          incomingReportRevisionId: inputData.input.reportRevisionId,
-          incomingReportText: inputData.input.reportText,
-          incomingInterpretation: inputData.interpretation,
-          candidateIncidents: inputData.candidateIncidents as unknown as readonly CandidateIncidentMatch[],
-        },
-        {
-          agent: dependencies.agentOverrides?.correlator,
-        },
-      );
+      // AI-RPM-01: only candidates at or above CORRELATION_MIN_SIMILARITY reach the
+      // model. With none left, the decision is deterministic and no model is called.
+      const candidates = inputData.candidateIncidents as unknown as readonly CandidateIncidentMatch[];
+      const relevantCandidates = candidates.filter((match) => match.similarityScore >= CORRELATION_MIN_SIMILARITY);
+      const correlation = relevantCandidates.length === 0
+        ? correlateWithoutCandidates(inputData.interpretation)
+        : await correlateIncident(
+          {
+            incomingReportRevisionId: inputData.input.reportRevisionId,
+            incomingReportText: inputData.input.reportText,
+            incomingInterpretation: inputData.interpretation,
+            candidateIncidents: relevantCandidates,
+          },
+          {
+            agent: dependencies.agentOverrides?.correlator,
+          },
+        );
 
       return {
         input: inputData.input,

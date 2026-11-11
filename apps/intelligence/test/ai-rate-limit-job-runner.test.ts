@@ -43,6 +43,14 @@ describe("AI-RATE-01 job runner: rate limits defer, checkpoints resume, classifi
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
     await applyMigrations(db.executor, migrations);
+    // AI-RPM-01: correlation calls the model only when a candidate incident is retrieved.
+    // Seed one active incident, so the correlation-step tests below still reach the correlator.
+    await enqueue("ai-job-rl-seed", "seed");
+    const seeder = createJobRunner({
+      executor: db.executor,
+      agentOverrides: { interpreter: createMockInterpreterAgent(), correlator: createMockCorrelatorAgent() },
+    });
+    assert.equal(await seeder.processNextJob("synthetic"), true, "the seed incident is created");
   });
 
   after(async () => {
