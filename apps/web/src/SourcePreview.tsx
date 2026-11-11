@@ -118,7 +118,7 @@ export function SourcePreviewStatusCard({
         <>
           <p className="source-preview__source-note">{errorLabel(source) ?? "Data sumber tidak dapat ditampilkan."}</p>
           {isOsm && (
-            <p className="source-preview__source-note" style={{ color: "var(--kali-teal)", fontWeight: 600 }}>
+            <p className="source-preview__source-note" style={{ color: "var(--color-accent)", fontWeight: "var(--weight-semibold)" }}>
               Mode cadangan aktif: Fasilitas rujukan tetap ditampilkan dari registri lokal (server eksternal sedang gangguan).
             </p>
           )}

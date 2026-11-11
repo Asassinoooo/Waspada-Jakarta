@@ -224,7 +224,7 @@ export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPag
           Data browser lain, laporan pada sumber, dan log layanan atau hosting tidak
           dihapus. Tidak ada penghapusan akun atau langganan notifikasi di sini.
         </p>
-        <p>Reset lokal ini tidak mengeluarkan akun atau mencabut sesi server. Untuk keluar, gunakan tombol Keluar di halaman Akun.</p>
+        <p>Atur ulang data lokal ini tidak mengeluarkan akun atau mencabut sesi server. Untuk keluar, gunakan tombol Keluar di halaman Akun.</p>
 
         {result && (
           <div

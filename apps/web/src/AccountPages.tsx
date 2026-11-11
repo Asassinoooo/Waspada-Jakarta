@@ -911,8 +911,8 @@ export function AccountAccessGate({
       <section className="account-card" role="status">
         <h1>Sesi diperlukan</h1>
         <p>{shell === "admin" ? "Ruang administrator hanya tersedia untuk akun administrator yang masuk." : "Tampilan tinjau hanya tersedia untuk akun moderator atau administrator yang masuk."}</p>
-        <div className="account-actions" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-start" }}>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="account-actions" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
             <a className="button button--quiet" href="#masuk">Masuk dengan username</a>
             <a className="button button--quiet" href="#beranda">Kembali ke layanan publik</a>
           </div>

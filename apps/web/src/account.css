@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 0.35rem 0.65rem;
+  gap: var(--space-1) var(--space-3);
 }
 
 .account-nav-link {
@@ -12,11 +12,11 @@
   min-height: 2.75rem;
   align-items: center;
   border: 1px solid var(--kali-teal);
-  border-radius: 0.25rem;
-  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-xs);
+  padding: var(--space-2) var(--space-3);
   color: var(--kali-teal);
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
@@ -29,13 +29,13 @@
 
 .account-page {
   max-width: 74rem;
-  padding-top: 2rem;
+  padding-top: var(--space-8);
 }
 
 .account-page__intro {
   min-width: 0;
   max-width: 100%;
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-4);
 }
 
 .account-page__intro h1 {
@@ -54,20 +54,21 @@
 .account-flow {
   display: grid;
   min-width: 0;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .account-flow > *,
 .account-card > * {
   min-width: 0;
   max-width: 100%;
-}
-
-.account-card,
-.account-admin-users {
+}.account-admin-users{
   min-width: 0;
   border: 1px solid var(--beton);
   background: var(--surface);
+  padding: clamp(0.85rem, 2vw, 1.25rem);
+}
+.account-card{
+  min-width: 0;
   padding: clamp(0.85rem, 2vw, 1.25rem);
 }
 
@@ -77,8 +78,8 @@
 
 .account-card h2,
 .account-admin-users h2 {
-  margin-bottom: 0.45rem;
-  font-size: clamp(1.1rem, 2.3vw, 1.45rem);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-2xl);
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -94,8 +95,8 @@
   min-width: 0;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem 0.7rem;
-  margin-top: 0.8rem;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
 }
 
 .account-actions > * {
@@ -120,25 +121,25 @@
 .account-privacy-link {
   margin: 0;
   color: var(--quiet-ink);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .account-message {
   border-left: 3px solid var(--kali-teal);
   background: var(--hujan-pagi);
-  margin: 0.75rem 0;
-  padding: 0.65rem 0.8rem;
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-3);
   overflow-wrap: anywhere;
 }
 
 .account-message--error {
   border-left-color: var(--merah-tanda);
-  background: #FAEEEE;
+  background: var(--color-danger-soft);
 }
 
 .account-inline-note {
-  margin: 0.65rem 0;
-  font-size: 0.9rem;
+  margin: var(--space-3) 0;
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -148,17 +149,17 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  margin-bottom: 1.15rem;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-5);
   color: var(--quiet-ink);
-  font-size: 0.9rem;
-  font-weight: 650;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .account-onboarding__progress ol {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -170,7 +171,7 @@
   min-height: 1.9rem;
   place-items: center;
   border: 1px solid var(--beton);
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   background: var(--surface);
   color: var(--quiet-ink);
   font-variant-numeric: tabular-nums;
@@ -185,7 +186,7 @@
 .account-onboarding__actions {
   justify-content: flex-end;
   border-top: 1px solid var(--beton);
-  padding-top: 0.9rem;
+  padding-top: var(--space-4);
 }
 
 .account-profile__heading,
@@ -195,7 +196,7 @@
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .account-role-chip {
@@ -203,45 +204,45 @@
   min-height: 2rem;
   align-items: center;
   border: 1px solid var(--kali-teal);
-  border-radius: 999px;
-  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
   color: var(--kali-teal);
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
 }
 
 .account-profile__facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem 1rem;
-  margin: 1rem 0;
+  gap: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0;
 }
 
 .account-profile__facts > div {
   min-width: 0;
   border-top: 1px solid var(--beton);
-  padding-top: 0.55rem;
+  padding-top: var(--space-2);
 }
 
 .account-profile__facts dt {
   color: var(--quiet-ink);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .account-profile__facts dd {
   margin: 0.15rem 0 0;
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   overflow-wrap: anywhere;
 }
 
 .account-admin-users {
-  margin-top: 0.25rem;
+  margin-top: var(--space-1);
   scroll-margin-top: 1rem;
 }
 
 .account-admin-users__heading {
   align-items: center;
-  margin-bottom: 0.3rem;
+  margin-bottom: var(--space-1);
 }
 
 .account-admin-users__heading h2 {
@@ -251,8 +252,8 @@
 .account-user-list {
   display: grid;
   min-width: 0;
-  gap: 0.7rem;
-  margin: 1rem 0;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
 }
 
 .account-user-row {
@@ -260,9 +261,9 @@
   min-width: 0;
   grid-template-columns: minmax(12rem, 0.75fr) minmax(0, 1.25fr);
   align-items: start;
-  gap: 0.8rem 1rem;
+  gap: var(--space-3) var(--space-4);
   border-top: 1px solid var(--beton);
-  padding: 0.9rem 0 0;
+  padding: var(--space-4) 0 0;
 }
 
 .account-user-row__identity,
@@ -272,7 +273,7 @@
 
 .account-user-row__identity h3 {
   margin: 0 0 0.2rem;
-  font-size: 1rem;
+  font-size: var(--text-md);
   overflow-wrap: anywhere;
 }
 
@@ -283,35 +284,35 @@
 
 .account-user-row__meta {
   display: block;
-  margin-top: 0.3rem;
+  margin-top: var(--space-1);
   color: var(--quiet-ink);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .account-user-row__editor {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
-  gap: 0.55rem 0.75rem;
+  gap: var(--space-2) var(--space-3);
 }
 
 .account-user-row__editor label {
   display: grid;
   min-width: 0;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-  font-weight: 650;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .account-user-row__editor select,
 .account-user-row__editor textarea {
   width: 100%;
   min-width: 0;
-  border: 1px solid #82938E;
-  border-radius: 0.2rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
   background: var(--surface);
   color: var(--tinta-kota);
-  padding: 0.5rem;
+  padding: var(--space-2);
   font: inherit;
 }
 
@@ -322,7 +323,7 @@
 .account-user-row__editor .account-checkbox {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   min-height: 2.7rem;
 }
 
@@ -334,31 +335,31 @@
 
 .account-form {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--space-3);
   max-width: 28rem;
-  margin-top: 0.75rem;
+  margin-top: var(--space-3);
 }
 
 .account-form__field {
   display: grid;
   min-width: 0;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 
 .account-form__field label {
-  font-size: 0.9rem;
-  font-weight: 650;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .account-form__field input {
   width: 100%;
   min-width: 0;
   min-height: 2.6rem;
-  border: 1px solid #82938E;
-  border-radius: 0.2rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
   background: var(--surface);
   color: var(--tinta-kota);
-  padding: 0.5rem 0.6rem;
+  padding: var(--space-2) var(--space-2);
   font: inherit;
 }
 
@@ -368,13 +369,13 @@
 
 .account-form__hint {
   color: var(--quiet-ink);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .account-form__error {
   color: var(--merah-tanda);
-  font-size: 0.85rem;
-  font-weight: 650;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .account-user-row__editor label:nth-of-type(3),
@@ -386,10 +387,10 @@
   display: flex;
   width: min(100% - 2rem, 88rem);
   justify-content: flex-end;
-  gap: 0.5rem 1rem;
+  gap: var(--space-2) var(--space-4);
   flex-wrap: wrap;
-  margin: 0.75rem auto;
-  font-weight: 650;
+  margin: var(--space-3) auto;
+  font-weight: var(--weight-semibold);
 }
 
 .admin-shell-tools a {
@@ -406,7 +407,7 @@
 
 @media (max-width: 600px) {
   .account-page {
-    padding-top: 1.35rem;
+    padding-top: var(--space-5);
   }
 
   .site-header__tools {
@@ -416,7 +417,7 @@
     align-items: flex-start;
     justify-content: flex-start;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-1);
   }
 
   .site-header__tools > * {
@@ -427,7 +428,7 @@
   }
 
   .brand {
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .brand-mark {
@@ -435,18 +436,18 @@
   }
 
   .brand strong {
-    font-size: 0.95rem;
+    font-size: var(--text-md);
   }
 
   .brand small {
     max-width: 13ch;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
 
   .account-nav-link {
     min-height: 2.5rem;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.82rem;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-sm);
   }
 
   .account-profile__facts,

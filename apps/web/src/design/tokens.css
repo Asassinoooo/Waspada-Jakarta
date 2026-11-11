@@ -1,0 +1,306 @@
+/*
+ * Waspada Jakarta design tokens (UI-SYSTEM-01).
+ *
+ * Single source of truth for colour, type, spacing, radius, elevation and
+ * motion. Component and page CSS must use these tokens instead of literals.
+ * The legacy Indonesian-named tokens (--hujan-pagi, --tinta-kota, ...) are kept
+ * as aliases so existing selectors keep working while files migrate.
+ *
+ * Palette intent: calm civic teal on cool paper; amber = perhatian (attention),
+ * red = tanda bahaya (hazard signal). Never use green/"safe" semantics for
+ * incident state — the service never claims an area is safe.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- Neutral ramp (cool, slightly green-grey) ---- */
+  --gray-0: #FFFFFF;
+  --gray-25: #F8FAF9;
+  --gray-50: #F2F6F4;
+  --gray-100: #E8EEEB;
+  --gray-200: #D5DEDB;
+  --gray-300: #B9C6C2;
+  --gray-400: #8A9C98;
+  --gray-500: #64777A;
+  --gray-600: #4C6064;
+  --gray-700: #33494F;
+  --gray-800: #213A41;
+  --gray-900: #18323A;
+
+  /* ---- Brand teal ---- */
+  --teal-50: #E7F3F1;
+  --teal-100: #CDE7E3;
+  --teal-300: #6FB8B0;
+  --teal-500: #0B8C85;
+  --teal-600: #087B75;
+  --teal-700: #06625D;
+
+  /* ---- Semantic hues ---- */
+  --amber-50: #FDF6E6;
+  --amber-200: #F3D98F;
+  --amber-500: #E7B448;
+  --amber-700: #8A6212;
+  --red-50: #FBEDEB;
+  --red-200: #EBB8B2;
+  --red-600: #A7433B;
+  --red-700: #86342D;
+  --blue-50: #EAF2FA;
+  --blue-600: #2F6497;
+
+  /* ---- Role tokens (use these in components) ---- */
+  --color-bg: var(--gray-50);
+  --color-surface: var(--gray-0);
+  --color-surface-raised: var(--gray-0);
+  --color-surface-sunken: var(--gray-100);
+  --color-surface-hover: var(--teal-50);
+  --color-border: var(--gray-200);
+  --color-border-strong: var(--gray-300);
+  --color-text: var(--gray-900);
+  --color-text-muted: var(--gray-600);
+  --color-text-subtle: var(--gray-500);
+  --color-text-inverse: var(--gray-0);
+
+  --color-accent: var(--teal-600);
+  --color-accent-hover: var(--teal-700);
+  --color-accent-soft: var(--teal-50);
+  --color-accent-border: var(--teal-100);
+  --color-on-accent: var(--gray-0);
+
+  --color-warning: var(--amber-500);
+  --color-warning-text: var(--amber-700);
+  --color-warning-soft: var(--amber-50);
+  --color-warning-border: var(--amber-200);
+  --color-danger: var(--red-600);
+  --color-danger-text: var(--red-700);
+  --color-danger-soft: var(--red-50);
+  --color-danger-border: var(--red-200);
+  --color-info: var(--blue-600);
+  --color-info-soft: var(--blue-50);
+
+  --color-focus: var(--teal-500);
+  --color-overlay: rgb(24 50 58 / 0.45);
+  /* Ink used for shadows and drop-shadows (black in dark theme so shadows stay dark). */
+  --color-shadow: rgb(24 50 58);
+
+  /* ---- Map geography (admin map; UI-SYSTEM-01 addition) ---- */
+  --map-sea: #DBEEED;
+  --map-land: #FFFFFF;
+  --map-coast: #087B75;
+  --map-river: #7BB5B2;
+
+  /* ---- 3D embedding stage: fixed dark palette in both themes (UI-SYSTEM-01 addition) ---- */
+  --viz-stage: #0B1120;
+  --viz-panel: rgb(15 23 42 / 0.85);
+  --viz-panel-strong: rgb(15 23 42 / 0.95);
+  --viz-border: rgb(255 255 255 / 0.1);
+  --viz-text: #E2E8F0;
+  --viz-text-strong: #FFFFFF;
+  --viz-text-muted: #94A3B8;
+  --viz-accent: #38BDF8;
+
+  /* ---- Incident category badges (UI-SYSTEM-01 addition; text is --cat-on) ---- */
+  --cat-flood: #087B75;
+  --cat-fire: #A7433B;
+  --cat-traffic: #2563EB;
+  --cat-security: #DC2626;
+  --cat-health: #16A34A;
+  --cat-utility: #D97706;
+  --cat-crowd: #7C3AED;
+  --cat-notice: #4B5563;
+  --cat-on: #FFFFFF;
+
+  /* ---- Legacy aliases (do not use in new code) ---- */
+  --hujan-pagi: var(--color-bg);
+  --tinta-kota: var(--color-text);
+  --kali-teal: var(--color-accent);
+  --beton: var(--color-border);
+  --kuning-perhatian: var(--color-warning);
+  --merah-tanda: var(--color-danger);
+  --surface: var(--color-surface);
+  --quiet-ink: var(--color-text-muted);
+  --soft-panel: var(--color-surface-sunken);
+  --ink-on-teal: var(--color-on-accent);
+
+  /* ---- Typography ---- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-2xs: 0.6875rem; /* 11px – micro labels only */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-md: 1rem;       /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;    /* 24px */
+  --text-3xl: 1.875rem;  /* 30px */
+  --text-display: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+
+  --weight-regular: 400;
+  --weight-medium: 550;
+  --weight-semibold: 650;
+  --weight-bold: 750;
+
+  /* ---- Spacing (4px base) ---- */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ---- Radius ---- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --radius-round: 50%;
+
+  /* ---- Elevation ---- */
+  --shadow-xs: 0 1px 2px rgb(24 50 58 / 0.06);
+  --shadow-sm: 0 1px 3px rgb(24 50 58 / 0.08), 0 1px 2px rgb(24 50 58 / 0.04);
+  --shadow-md: 0 4px 12px rgb(24 50 58 / 0.10), 0 1px 3px rgb(24 50 58 / 0.06);
+  --shadow-lg: 0 12px 32px rgb(24 50 58 / 0.18), 0 2px 6px rgb(24 50 58 / 0.08);
+  --shadow-focus: 0 0 0 3px rgb(11 140 133 / 0.35);
+
+  /* ---- Layout ---- */
+  --content-max: 76rem;
+  --gutter: clamp(1rem, 0.6rem + 1.6vw, 2rem);
+  --header-height: 4rem;
+  --control-height: 2.5rem;
+  --control-height-sm: 2rem;
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+
+  /* ---- Layers ---- */
+  --z-header: 50;
+  --z-overlay: 90;
+  --z-modal: 100;
+  --z-toast: 110;
+}
+
+/*
+ * Dark theme. Applied when the OS prefers dark (unless the page pins
+ * data-theme="light") or when data-theme="dark" is set explicitly.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #0F1D21;
+    --color-surface: #15262B;
+    --color-surface-raised: #1B2F35;
+    --color-surface-sunken: #0B171A;
+    --color-surface-hover: #1E3A3D;
+    --color-border: #2A4148;
+    --color-border-strong: #3A545B;
+    --color-text: #E6EEEC;
+    --color-text-muted: #A9BBB8;
+    --color-text-subtle: #84999A;
+    --color-text-inverse: #0F1D21;
+    --color-accent: #3FB8AE;
+    --color-accent-hover: #6FCDC5;
+    --color-accent-soft: #143A3A;
+    --color-accent-border: #1F5552;
+    --color-on-accent: #06211F;
+    --color-warning: #F0C463;
+    --color-warning-text: #F3D58F;
+    --color-warning-soft: #3A2F14;
+    --color-warning-border: #6B5520;
+    --color-danger: #E0796F;
+    --color-danger-text: #F0A39B;
+    --color-danger-soft: #3D1E1B;
+    --color-danger-border: #6E3530;
+    --color-info: #7FB0E0;
+    --color-info-soft: #172A3D;
+    --color-focus: #6FCDC5;
+    --color-overlay: rgb(0 0 0 / 0.6);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.35);
+    --shadow-md: 0 4px 12px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+    --shadow-focus: 0 0 0 3px rgb(63 184 174 / 0.45);
+    --color-shadow: rgb(0 0 0);
+    --map-sea: #0E2A2E;
+    --map-land: #15262B;
+    --map-coast: #3FB8AE;
+    --map-river: #2E7C78;
+    --cat-flood: #0B7068;
+    --cat-fire: #9C3B34;
+    --cat-traffic: #2358C9;
+    --cat-security: #C41E1E;
+    --cat-health: #15803D;
+    --cat-utility: #B45309;
+    --cat-crowd: #6D35D6;
+    --cat-notice: #4B5563;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0F1D21;
+  --color-surface: #15262B;
+  --color-surface-raised: #1B2F35;
+  --color-surface-sunken: #0B171A;
+  --color-surface-hover: #1E3A3D;
+  --color-border: #2A4148;
+  --color-border-strong: #3A545B;
+  --color-text: #E6EEEC;
+  --color-text-muted: #A9BBB8;
+  --color-text-subtle: #84999A;
+  --color-text-inverse: #0F1D21;
+  --color-accent: #3FB8AE;
+  --color-accent-hover: #6FCDC5;
+  --color-accent-soft: #143A3A;
+  --color-accent-border: #1F5552;
+  --color-on-accent: #06211F;
+  --color-warning: #F0C463;
+  --color-warning-text: #F3D58F;
+  --color-warning-soft: #3A2F14;
+  --color-warning-border: #6B5520;
+  --color-danger: #E0796F;
+  --color-danger-text: #F0A39B;
+  --color-danger-soft: #3D1E1B;
+  --color-danger-border: #6E3530;
+  --color-info: #7FB0E0;
+  --color-info-soft: #172A3D;
+  --color-focus: #6FCDC5;
+  --color-overlay: rgb(0 0 0 / 0.6);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.35);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+  --shadow-focus: 0 0 0 3px rgb(63 184 174 / 0.45);
+  --color-shadow: rgb(0 0 0);
+  --map-sea: #0E2A2E;
+  --map-land: #15262B;
+  --map-coast: #3FB8AE;
+  --map-river: #2E7C78;
+  --cat-flood: #0B7068;
+  --cat-fire: #9C3B34;
+  --cat-traffic: #2358C9;
+  --cat-security: #C41E1E;
+  --cat-health: #15803D;
+  --cat-utility: #B45309;
+  --cat-crowd: #6D35D6;
+  --cat-notice: #4B5563;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}

@@ -120,7 +120,7 @@ test("privacy page lists only known local values and waits for a second confirma
   assert.doesNotMatch(html, /SDK Google|accounts\.google\.com|issuer dan subject/u);
   assert.match(html, /cookie sesi HttpOnly/u);
   assert.match(html, /Tautan Keluar di halaman Akun mencabut sesi web yang sedang digunakan/u);
-  assert.match(html, /Reset lokal ini tidak mengeluarkan akun atau mencabut sesi server/u);
+  assert.match(html, /Atur ulang data lokal ini tidak mengeluarkan akun atau mencabut sesi server/u);
   assert.match(html, /Apa yang dikirim dari browser/u);
   assert.match(html, /tile\.openstreetmap\.org/u);
   assert.match(html, /alamat ubin[\s\S]*area peta yang sedang dilihat, bukan lokasi presisi perangkat/u);

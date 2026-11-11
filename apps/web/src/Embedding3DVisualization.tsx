@@ -48,6 +48,16 @@ function getSourceColorHex(sourceId: string): number {
   return 0x94a3b8;
 }
 
+// Reads a CSS custom property as a three.js colour; falls back when unset or unparsable.
+function readCssColor(name: string, fallback: number): number {
+  try {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value ? new THREE.Color(value).getHex() : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function getSourceColorCss(sourceId: string): string {
   const hex = getSourceColorHex(sourceId);
   return "#" + hex.toString(16).padStart(6, "0");
@@ -204,7 +214,7 @@ export function Embedding3DVisualization() {
 
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0x0b1120, 1);
+    renderer.setClearColor(readCssColor("--viz-stage", 0x0b1120), 1);
     container.innerHTML = "";
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -451,11 +461,11 @@ export function Embedding3DVisualization() {
   }, [searchQuery, selectedSource, selectedPointIndex]);
 
   return (
-    <main className="embedding-3d" aria-label="Visualisasi 3D Embedding Chunk">
+    <main className="embedding-3d" aria-label="Visualisasi 3D Embedding Potongan Teks">
       {/* Header and Context Metadata */}
       <header className="embedding-3d__header">
         <div className="embedding-3d__title-group">
-          <h1>Visualisasi 3D Embedding Chunk</h1>
+          <h1>Visualisasi 3D Embedding Potongan Teks</h1>
           <p className="embedding-3d__subtitle">
             Proyeksi vektor 768-dimensi (NineRouter Gemini Embedding) ke ruang 3D melalui Dual Gram-Matrix PCA.
           </p>
@@ -612,7 +622,7 @@ export function Embedding3DVisualization() {
                 </button>
               </div>
 
-              <time dateTime={selectedPoint.createdAt} style={{ fontSize: "0.8125rem", color: "var(--quiet-ink, #64748b)" }}>
+              <time dateTime={selectedPoint.createdAt} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
                 Waktu: {formatWibDate(selectedPoint.createdAt)}
               </time>
 
@@ -640,7 +650,7 @@ export function Embedding3DVisualization() {
                     aria-label={`Pilih tetangga ${match.point.title}`}
                   >
                     <div className="embedding-3d__neighbor-header">
-                      <span style={{ color: getSourceColorCss(match.point.sourceId), fontWeight: 600 }}>
+                      <span style={{ color: getSourceColorCss(match.point.sourceId), fontWeight: "var(--weight-semibold)" }}>
                         {match.point.sourceId}
                       </span>
                       <span className="embedding-3d__neighbor-sim">
