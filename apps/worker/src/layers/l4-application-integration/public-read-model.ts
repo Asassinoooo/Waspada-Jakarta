@@ -103,11 +103,12 @@ export class PublicReadModel {
   static publish(
     eventOrProposal: EventDetail | EventView | EventProposalDto | Record<string, unknown>,
     chunks?: readonly StoredEvidenceChunk[],
+    options?: PublishOptions,
   ): EventDetail {
     const detail = isEventDetail(eventOrProposal)
       ? eventOrProposal
       : isEventProposalDto(eventOrProposal)
-        ? proposalToEventDetail(eventOrProposal, chunks)
+        ? proposalToEventDetail(eventOrProposal, chunks, options)
         : isEventView(eventOrProposal)
           ? eventViewToDetail(eventOrProposal)
           : rawInputToEventDetail(eventOrProposal, chunks);
@@ -128,8 +129,9 @@ export class PublicReadModel {
   publish(
     eventOrProposal: EventDetail | EventView | EventProposalDto | Record<string, unknown>,
     chunks?: readonly StoredEvidenceChunk[],
+    options?: PublishOptions,
   ): EventDetail {
-    const detail = PublicReadModel.publish(eventOrProposal, chunks);
+    const detail = PublicReadModel.publish(eventOrProposal, chunks, options);
     const existingIndex = this.instancePublishedEvents.findIndex((e) => e.event_id === detail.event_id);
     if (existingIndex >= 0) {
       this.instancePublishedEvents[existingIndex] = detail;
@@ -319,7 +321,8 @@ export class PublicReadModel {
     if (this.instancePublishedEvents.length > 0) {
       return this.instancePublishedEvents;
     }
-    if (this.fixtures === syntheticEventFixtures && sharedPublishedEvents.length > 0) {
+    // MERGE-REVIEW-01: an empty fixture list is the live model. It shows only published events.
+    if ((this.fixtures === syntheticEventFixtures || this.fixtures.length === 0) && sharedPublishedEvents.length > 0) {
       return sharedPublishedEvents;
     }
     return this.fixtures;
@@ -331,6 +334,7 @@ export class PublicReadModel {
 
   private toEventDetail(event: EventView | EventDetail): EventDetail {
     const withFreshness = withAggregateFreshness(event);
+    const publication = "publication" in event ? event.publication : undefined;
     const geometries = hasPublicGeometries(event) ? [...event.geometries] : [];
     return {
       event_id: withFreshness.event_id,
@@ -348,6 +352,7 @@ export class PublicReadModel {
       impacts: withFreshness.impacts,
       published_at: withFreshness.published_at,
       geometries,
+      ...(publication ? { publication } : {}),
     };
   }
 
@@ -557,11 +562,30 @@ function eventViewToDetail(event: EventView): EventDetail {
   };
 }
 
+/** MERGE-REVIEW-01: a merged version keeps its incident's public event id, so a new version replaces it. */
+export interface PublishOptions {
+  /** Public version number of this event. Defaults to 1. */
+  readonly version?: number;
+  /** Who published this version. Agent-only versions are labelled as such on the public page. */
+  readonly publication?: EventPublicationMetadata;
+}
+
+export interface EventPublicationMetadata {
+  readonly mode: "agent_auto" | "moderator_reviewed";
+  /** Distinct publishers counted once, so syndicated copies do not add up. */
+  readonly source_count: number;
+}
+
+export function publicEventIdForProposal(proposal: EventProposalDto): string {
+  return sanitizeEventId(proposal.incident_id || proposal.proposal_id);
+}
+
 export function proposalToEventDetail(
   proposal: EventProposalDto,
   _chunks?: readonly StoredEvidenceChunk[],
+  options?: PublishOptions,
 ): EventDetail {
-  const eventId = sanitizeEventId(proposal.proposal_id);
+  const eventId = publicEventIdForProposal(proposal);
   const primaryCategory = (proposal as { primary_category?: unknown }).primary_category;
   // WJ-INT-02B: missing/invalid canonical category on new pipeline records
   // is INVALID_EVENT (same rule as rawInputToEventDetail). Keyword guessing
@@ -637,9 +661,11 @@ export function proposalToEventDetail(
 
   const publishedAt = proposal.proposed_at || new Date().toISOString();
 
+  // MERGE-REVIEW-01: each claim links only to its own source. A claim without a source link lists
+  // no source, and no publisher, date or URL is invented.
   const claims: PublicClaim[] = (proposal.claims || []).map((claim, index) => ({
     claim_id: sanitizeEventId(claim.claim_id || `${eventId}-claim-${index + 1}`),
-    text: claim.claim_text || claim.quote_text || "Klaim laporan terverifikasi",
+    text: claim.claim_text || claim.quote_text || "Klaim laporan",
     event_time: {
       start: eventStart,
       end: null,
@@ -648,21 +674,23 @@ export function proposalToEventDetail(
     validity: { valid_from: null, valid_until: null },
     scope: { places: [...places], services: [], institutions: [], audiences: [] },
     qualifiers: [],
-    evidence_label: "attributed_report",
-    sources: [
-      {
-        display_name: "Laporan Terverifikasi",
-        url: "https://waspada.jakarta.go.id",
-        published_at: proposal.proposed_at || null,
-        observed_at: null,
-        excerpt: claim.quote_text || null,
-      },
-    ],
+    evidence_label: publicClaimLabel(claim.evidence_label),
+    sources: typeof claim.source_url === "string" && claim.source_url.length > 0
+      ? [
+        {
+          display_name: typeof claim.outlet === "string" && claim.outlet.length > 0 ? claim.outlet : "Sumber tanpa nama",
+          url: claim.source_url,
+          published_at: null,
+          observed_at: null,
+          excerpt: claim.quote_text || null,
+        },
+      ]
+      : [],
   }));
 
   return {
     event_id: eventId,
-    version: 1,
+    version: options?.version ?? 1,
     title,
     summary,
     category,
@@ -697,7 +725,14 @@ export function proposalToEventDetail(
     impacts: [],
     published_at: publishedAt,
     geometries,
+    ...(options?.publication ? { publication: options.publication } : {}),
   };
+}
+
+function publicClaimLabel(label: unknown): PublicClaim["evidence_label"] {
+  return label === "issuer_notice" || label === "crowdsourced_observation" || label === "independent_corroboration"
+    ? label
+    : "attributed_report";
 }
 
 function rawInputToEventDetail(

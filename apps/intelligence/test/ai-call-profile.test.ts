@@ -81,6 +81,8 @@ const NEW_INCIDENT_CORRELATION = {
   distinctions: [],
   unresolvedQuestions: [],
   uncertainty: [],
+  has_discrepancy: false,
+  discrepancy_summary: null,
 };
 
 /** Fake NineRouter transport: answers embeddings, records each embedded input, rejects chat. */

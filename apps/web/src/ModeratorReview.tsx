@@ -24,14 +24,19 @@ export interface ProposalClaim {
   readonly support_assessment: "supported";
   readonly quote_text: string;
   readonly evidence_ref_id: string;
+  /** MERGE-REVIEW-01: the claim's publisher name and its own article link. */
+  readonly outlet?: string | null;
+  readonly source_id?: string | null;
+  readonly source_url?: string | null;
+  /** Legacy field, never written by new code. */
   readonly is_corroborated?: boolean;
 }
 
 export interface ProposalDiscrepancy {
   readonly kind: "water_depth" | "severity_assessment" | "casualty_count" | "operational_status" | string;
   readonly description: string;
-  readonly source_a?: { readonly source_id: string; readonly claim_text: string };
-  readonly source_b?: { readonly source_id: string; readonly claim_text: string };
+  readonly source_a?: { readonly source_id: string | null; readonly claim_text: string };
+  readonly source_b?: { readonly source_id: string | null; readonly outlet?: string | null; readonly claim_text: string };
 }
 
 export interface EventProposalDto {
@@ -51,7 +56,11 @@ export interface EventProposalDto {
   readonly is_multi_source?: boolean;
   readonly source_count?: number;
   readonly has_discrepancy?: boolean;
+  /** MERGE-REVIEW-01: AI-written Bahasa Indonesia summary of the conflict. */
+  readonly discrepancy_summary?: string | null;
   readonly discrepancies?: readonly ProposalDiscrepancy[];
+  /** Set on published public versions: who published and how many distinct publishers. */
+  readonly publication_mode?: "agent_auto" | "moderator_reviewed" | null;
   readonly caveats?: readonly string[];
 }
 export interface ModeratorDecisionCommand {
@@ -150,12 +159,13 @@ export function isProposalCrowdsourced(proposal: EventProposalDto): boolean {
   return text.includes("petabencana") || text.includes("warga") || text.includes("laporan publik");
 }
 
+/**
+ * MERGE-REVIEW-01: never pre-selects independent_corroboration. Only a moderator's explicit
+ * choice may set it, and this build does not offer that choice.
+ */
 export function autoDetectEvidenceLabel(
   proposal: EventProposalDto
-): "independent_corroboration" | "attributed_report" | "crowdsourced_observation" {
-  if (isProposalMultiSource(proposal)) {
-    return "independent_corroboration";
-  }
+): "attributed_report" | "crowdsourced_observation" {
   if (isProposalCrowdsourced(proposal)) {
     return "crowdsourced_observation";
   }
@@ -430,8 +440,9 @@ export function ModeratorReviewQueue({
   const [chunksMap, setChunksMap] = useState<Record<string, readonly StoredEvidenceChunk[]>>(initialChunks);
   const [loading, setLoading] = useState<boolean>(!controlledProposals);
   const [modalOpen, setModalOpen] = useState<boolean>(initialModalOpen);
+  // MERGE-REVIEW-01: the moderator chooses only attributed or crowdsourced labels. Corroboration is never preselected.
   const [evidenceLabelChoice, setEvidenceLabelChoice] = useState<
-    "attributed_report" | "crowdsourced_observation" | "independent_corroboration"
+    "attributed_report" | "crowdsourced_observation"
   >(() => {
     const first = controlledProposals?.[0];
     return first ? autoDetectEvidenceLabel(first) : "attributed_report";
@@ -646,8 +657,8 @@ export function ModeratorReviewQueue({
 
   const filteredQueue = useMemo(() => {
     if (queueCategoryFilter === "all") return queue;
-    if (queueCategoryFilter === "multi_source") {
-      return queue.filter((p) => isProposalMultiSource(p));
+    if (queueCategoryFilter === "discrepancy") {
+      return queue.filter((p) => p.has_discrepancy === true);
     }
     if (queueCategoryFilter === "other") {
       return queue.filter((p) => {
@@ -667,14 +678,15 @@ export function ModeratorReviewQueue({
     });
   }, [queue, queueCategoryFilter]);
 
-  const multiSourceQueueCount = useMemo(() => {
-    return queue.filter((p) => isProposalMultiSource(p)).length;
+  // MERGE-REVIEW-01: the queue lists proposals a moderator must decide. Discrepancies come first.
+  const discrepancyQueueCount = useMemo(() => {
+    return queue.filter((p) => p.has_discrepancy === true).length;
   }, [queue]);
 
   const handleAction = useCallback(
     async (
       action: "publish" | "reject" | "investigate",
-      evidence_label: "attributed_report" | "crowdsourced_observation" | "independent_corroboration" = "attributed_report",
+      evidence_label: "attributed_report" | "crowdsourced_observation" = "attributed_report",
       reason?: string
     ) => {
       if (!selectedProposal || submitting) return;
@@ -874,15 +886,15 @@ export function ModeratorReviewQueue({
               >
                 Semua ({queue.length})
               </button>
-              {multiSourceQueueCount > 0 && (
+              {discrepancyQueueCount > 0 && (
                 <button
                   type="button"
                   className={`queue-filter-btn ${
-                    queueCategoryFilter === "multi_source" ? "queue-filter-btn--active" : ""
+                    queueCategoryFilter === "discrepancy" ? "queue-filter-btn--active" : ""
                   }`}
-                  onClick={() => setQueueCategoryFilter("multi_source")}
+                  onClick={() => setQueueCategoryFilter("discrepancy")}
                 >
-                  ⚡ Multi-Sumber ({multiSourceQueueCount})
+                  ⚠️ Perbedaan ({discrepancyQueueCount})
                 </button>
               )}
               <button
@@ -942,7 +954,7 @@ export function ModeratorReviewQueue({
                         </span>
                         {isMultiSource && (
                           <span className="multi-source-badge">
-                            ⚡ {item.source_count ?? 2} Sumber Terkorelasi
+                            Dilaporkan oleh {item.source_count ?? "?"} media
                           </span>
                         )}
                       </div>
@@ -977,9 +989,9 @@ export function ModeratorReviewQueue({
                   <div>
                     <div className="review-case-kicker-row">
                       <p className="section-kicker">Kandidat Terpilih</p>
-                      {isProposalMultiSource(selectedProposal) && (
+                      {typeof selectedProposal.source_count === "number" && (
                         <span className="multi-source-badge">
-                          ⚡ {selectedProposal.source_count ?? 2} Sumber Terkorelasi
+                          Dilaporkan oleh {selectedProposal.source_count} media
                         </span>
                       )}
                       {selectedProposal.has_discrepancy && (
@@ -1027,16 +1039,27 @@ export function ModeratorReviewQueue({
                     </div>
                   </dl>
                 </section>
-                {selectedProposal.has_discrepancy && selectedProposal.discrepancies && selectedProposal.discrepancies.length > 0 && (
-                  <aside className="discrepancy-callout" role="alert" aria-label="Peringatan inkonsistensi data antar sumber">
-                    <strong>⚠️ Catatan Inkonsistensi Antar Sumber:</strong>
-                    <ul>
-                      {selectedProposal.discrepancies.map((disc, dIdx) => (
-                        <li key={`disc-${dIdx}`}>
-                          <span className="discrepancy-kind-pill">{disc.kind.replaceAll("_", " ")}</span>: {disc.description}
-                        </li>
-                      ))}
-                    </ul>
+                {selectedProposal.has_discrepancy && (
+                  <aside className="discrepancy-callout" role="alert" aria-label="Ringkasan perbedaan dari agen AI">
+                    <strong>⚠️ Perbedaan terdeteksi, diringkas agen AI</strong>
+                    <p>{selectedProposal.discrepancy_summary ?? "Ringkasan tidak tersedia. Bandingkan klaim berikut."}</p>
+                    {selectedProposal.discrepancies && selectedProposal.discrepancies.length > 0 && (
+                      <div className="discrepancy-pairs">
+                        {selectedProposal.discrepancies.map((disc, dIdx) => (
+                          <div className="discrepancy-pair" key={`disc-${dIdx}`}>
+                            <span className="discrepancy-kind-pill">{disc.kind.replaceAll("_", " ")}</span>
+                            <div className="discrepancy-side">
+                              <strong>Laporan A</strong>
+                              <p>{disc.source_a?.claim_text ?? "-"}</p>
+                            </div>
+                            <div className="discrepancy-side">
+                              <strong>{disc.source_b?.outlet ?? "Laporan B"}</strong>
+                              <p>{disc.source_b?.claim_text ?? "-"}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </aside>
                 )}
 
@@ -1065,9 +1088,9 @@ export function ModeratorReviewQueue({
                         Verifikasi Grounding L2 · Klaim &amp; Dokumen Sumber Asli
                       </p>
                     </div>
-                    {isProposalMultiSource(selectedProposal) && (
-                      <span className="corroborated-badge">
-                        ⚡ Fusi Multi-Sumber Aktif
+                    {typeof selectedProposal.source_count === "number" && (
+                      <span className="multi-source-badge">
+                        Dilaporkan oleh {selectedProposal.source_count} media
                       </span>
                     )}
                   </header>
@@ -1146,11 +1169,6 @@ export function ModeratorReviewQueue({
                                 <header className="claim-card-top">
                                   <span className="claim-ref-badge">ID: {claim.claim_id}</span>
                                   <div className="claim-badges-group">
-                                    {claim.is_corroborated && (
-                                      <span className="corroborated-badge">
-                                        ✓ Terkonfirmasi Independen
-                                      </span>
-                                    )}
                                     <span className="claim-status-badge">under_review</span>
                                   </div>
                                 </header>
@@ -1241,29 +1259,6 @@ export function ModeratorReviewQueue({
                 <p className="modal-help-text">
                   Pilih label bukti yang tepat sebelum diterbitkan ke feed publik Waspada Jakarta:
                 </p>
-
-                {/* Option 1: Independent Corroboration */}
-                <label
-                  className={`label-choice-card ${
-                    evidenceLabelChoice === "independent_corroboration"
-                      ? "label-choice-card--selected"
-                      : ""
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="evidence_label"
-                    value="independent_corroboration"
-                    checked={evidenceLabelChoice === "independent_corroboration"}
-                    onChange={() => setEvidenceLabelChoice("independent_corroboration")}
-                  />
-                  <div className="label-choice-text">
-                    <strong>Konfirmasi Multi-Sumber (independent_corroboration)</strong>
-                    <span>
-                      Diverifikasi silang dari minimal dua sumber independen (mis. PetaBencana + ANTARA News).
-                    </span>
-                  </div>
-                </label>
 
                 {/* Option 2: Attributed Report */}
                 <label

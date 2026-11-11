@@ -457,17 +457,15 @@ test("multi-source correlated proposal renders multi-source badge and corroborat
     })
   );
 
-  // Multi-source indicators
+  // MERGE-REVIEW-01: the count is the number of distinct media. No "corroborated" badge is shown.
   assert.match(html, /multi-source-badge/);
-  assert.match(html, /2 Sumber Terkorelasi/);
-  assert.match(html, /Fusi Multi-Sumber Aktif/);
-
-  // Corroborated claim badges
-  assert.match(html, /corroborated-badge/);
-  assert.match(html, /Terkonfirmasi Independen/);
+  assert.match(html, /Dilaporkan oleh 2 media/);
+  assert.doesNotMatch(html, /Fusi Multi-Sumber Aktif/);
+  assert.doesNotMatch(html, /corroborated-badge/);
+  assert.doesNotMatch(html, /Terkonfirmasi Independen/);
 });
 
-test("interactive map renders Web Mercator canvas, animated beacon pin, affected radius, and nearby facilities", () => {
+test("interactive map renders Web Mercator canvas, animated beacon pin, and nearby facilities", () => {
   const html = renderToStaticMarkup(
     createElement(ModeratorReviewQueue, {
       proposals: [sampleProposal1],
@@ -486,8 +484,8 @@ test("interactive map renders Web Mercator canvas, animated beacon pin, affected
   assert.match(html, /incident-beacon-core/);
 
   // Affected area radius circle and badge
-  assert.match(html, /map-affected-radius/);
-  assert.match(html, /Radius: 1000 m/);
+  assert.doesNotMatch(html, /map-affected-radius/);
+  assert.doesNotMatch(html, /Radius: \d+ m/);
 
   // Nearby emergency facilities from the 200 registry (Kampung Melayu vicinity)
   assert.match(html, /facility-pin--hospital/);
@@ -508,7 +506,7 @@ test("interactive map renders Web Mercator canvas, animated beacon pin, affected
   assert.match(html, /Pusatkan/);
 });
 
-test("approval modal auto-selects independent_corroboration for multi-source proposal", () => {
+test("approval modal never pre-selects independent_corroboration, even for a multi-source proposal", () => {
   const html = renderToStaticMarkup(
     createElement(ModeratorReviewQueue, {
       proposals: [sampleMultiSourceProposal],
@@ -517,14 +515,35 @@ test("approval modal auto-selects independent_corroboration for multi-source pro
   );
 
   assert.match(html, /role="dialog"/);
-  assert.match(html, /value="independent_corroboration"/);
-  assert.match(html, /Konfirmasi Multi-Sumber \(independent_corroboration\)/);
-  assert.match(html, /checked=""\s+value="independent_corroboration"|value="independent_corroboration"[^>]*checked/);
-  assert.match(html, /label-choice-card--selected/);
+  // MERGE-REVIEW-01: only a moderator's explicit choice may set independent_corroboration, and this build offers none.
+  assert.doesNotMatch(html, /independent_corroboration/);
+  assert.match(html, /value="attributed_report"[^>]*checked|checked=""\s+value="attributed_report"/);
 });
 
-test("autoDetectEvidenceLabel detects independent_corroboration, crowdsourced_observation, and attributed_report", () => {
-  assert.equal(autoDetectEvidenceLabel(sampleMultiSourceProposal), "independent_corroboration");
+test("moderator detail leads with the AI discrepancy summary and shows conflicting claims side by side", () => {
+  const discrepant = {
+    ...sampleMultiSourceProposal,
+    has_discrepancy: true,
+    discrepancy_summary: "Laporan proposal-a menyebut 50 cm, sedangkan laporan proposal-b menyebut 30 cm.",
+    discrepancies: [
+      {
+        kind: "water_depth",
+        description: "50 cm vs 30 cm",
+        source_a: { source_id: "source-detik", claim_text: "Genangan 50 cm" },
+        source_b: { source_id: "source-antara", outlet: "Antara News", claim_text: "Genangan 30 cm" },
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(createElement(ModeratorReviewQueue, { proposals: [discrepant] }));
+  assert.match(html, /Laporan proposal-a menyebut 50 cm/);
+  assert.match(html, /discrepancy-pair/);
+  assert.match(html, /Genangan 30 cm/);
+  assert.match(html, /Antara News/);
+});
+
+test("autoDetectEvidenceLabel never pre-selects independent_corroboration, even for multi-source proposals", () => {
+  // MERGE-REVIEW-01: multi-source alone is not corroboration, so the label is never auto-selected.
+  assert.equal(autoDetectEvidenceLabel(sampleMultiSourceProposal), "attributed_report");
   assert.equal(autoDetectEvidenceLabel(sampleProposal1), "attributed_report");
   assert.equal(isProposalMultiSource(sampleMultiSourceProposal), true);
   assert.equal(isProposalMultiSource(sampleProposal1), false);
@@ -564,7 +583,7 @@ test("publishModerationDecision supports independent_corroboration evidence labe
   assert.equal(body.evidence_label, "independent_corroboration");
 });
 
-test("InteractiveIncidentMap renders coordinates, affected radius, and nearby facilities correctly", () => {
+test("InteractiveIncidentMap renders coordinates and nearby facilities correctly", () => {
   const html = renderToStaticMarkup(
     createElement(InteractiveIncidentMap, {
       coordinates: [106.822, -6.136], // Pasar Pagi Mangga Dua
@@ -577,7 +596,8 @@ test("InteractiveIncidentMap renders coordinates, affected radius, and nearby fa
 
   assert.match(html, /interactive-incident-map/);
   assert.match(html, /incident-beacon-pulse/);
-  assert.match(html, /Radius: 1200 m/);
+  // MERGE-REVIEW-01: no invented affected radius is drawn.
+  assert.doesNotMatch(html, /Radius: \d+ m/);
   assert.match(html, /facility-pin--fire/);
 });
 

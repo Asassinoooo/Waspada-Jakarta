@@ -64,6 +64,8 @@ export interface WorkerEnvironment {
   NEWS_DETERMINISTIC_FILTER_MODE?: string;
 }
 const readModel = new PublicReadModel(noConfiguredSources);
+// MERGE-REVIEW-01: live mode reads only published versions and never falls back to demo fixtures.
+const liveReadModel = new PublicReadModel(noConfiguredSources, []);
 const maxBriefingRequestBytes = 256 * 1024;
 
 class BriefingRequestBodyError extends Error {
@@ -151,6 +153,7 @@ export async function handlePublicApiRequest(
 ) {
   const startedAt = Date.now();
   const url = new URL(request.url);
+  const activeReadModel = env.DATASET_MODE === "live" ? liveReadModel : readModel;
   const selectedEventRoute = eventRoute(url.pathname);
   const selectedGeoJSONRoute = url.pathname === "/api/v1/events.geojson";
   const selectedBriefingRoute = url.pathname === "/api/v1/briefings";
@@ -249,7 +252,7 @@ export async function handlePublicApiRequest(
         }
       }
     } else if (route === "context") {
-      const context: PublicContext = readModel.context(
+      const context: PublicContext = activeReadModel.context(
         env.DATASET_MODE === "live" ? "live" : "demo",
       );
       response = jsonResponse(context);
@@ -259,7 +262,7 @@ export async function handlePublicApiRequest(
         if (env.DATASET_MODE === "live") {
           if (!eventGeoJSONRuntime) {
             if (env.SQL_EXECUTOR) {
-              response = geoJSONResponse(readModel.geoJSON());
+              response = geoJSONResponse(activeReadModel.geoJSON());
             } else {
               response = apiError("TEMPORARILY_UNAVAILABLE", "The public read could not be completed.", 503);
             }
@@ -267,13 +270,13 @@ export async function handlePublicApiRequest(
             response = geoJSONResponse(await eventGeoJSONRuntime.read(url.searchParams));
           }
         } else {
-          const featureCollection: PublicFeatureCollection = readModel.geoJSON();
+          const featureCollection: PublicFeatureCollection = activeReadModel.geoJSON();
           response = geoJSONResponse(featureCollection);
         }
       } else if (url.pathname === "/api/v1/events") {
         const page: EventPage = eventListPageService
           ? await eventListPageService.read(url.searchParams)
-          : readModel.events(url.searchParams);
+          : activeReadModel.events(url.searchParams);
         response = jsonResponse(page);
       } else if (selectedEventRoute) {
         const eventId = decodeEventId(selectedEventRoute.encodedId);
@@ -287,7 +290,7 @@ export async function handlePublicApiRequest(
               ? jsonResponse(result.detail)
               : apiError("NOT_FOUND", "The requested public route was not found.", 404);
           } else {
-            const detail: EventDetail | null = readModel.detail(eventId);
+            const detail: EventDetail | null = activeReadModel.detail(eventId);
             response = detail
               ? jsonResponse(detail)
               : apiError("NOT_FOUND", "The requested public route was not found.", 404);
@@ -298,7 +301,7 @@ export async function handlePublicApiRequest(
             ? jsonResponse(result.page)
             : apiError("NOT_FOUND", "The requested public route was not found.", 404);
         } else {
-          const history: HistoryPage | null = readModel.history(eventId, url.searchParams);
+          const history: HistoryPage | null = activeReadModel.history(eventId, url.searchParams);
           response = history
             ? jsonResponse(history)
             : apiError("NOT_FOUND", "The requested public route was not found.", 404);

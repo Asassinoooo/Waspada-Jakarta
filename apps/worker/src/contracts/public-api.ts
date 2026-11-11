@@ -138,6 +138,15 @@ export interface PublicGeometry {
 
 export interface EventDetail extends EventView {
   geometries: PublicGeometry[];
+  /**
+   * MERGE-REVIEW-01 (additive): how this public version was published. Present only for
+   * published versions from the proposal pipeline. Clients label agent-only versions as
+   * automatic and count sources as distinct publishers.
+   */
+  publication?: {
+    readonly mode: "agent_auto" | "moderator_reviewed";
+    readonly source_count: number;
+  };
 }
 
 export interface PublicFeature {

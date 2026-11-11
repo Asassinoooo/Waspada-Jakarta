@@ -19,10 +19,21 @@ export interface EventProposalDto {
   readonly claims: readonly {
     readonly claim_id: string;
     readonly claim_text: string;
-    readonly evidence_label: 'under_review';
+    /**
+     * `under_review` is the model's pre-persist value. The writer maps it to the stored label.
+     * MERGE-REVIEW-01: AI claims are never independent_corroboration.
+     */
+    readonly evidence_label: 'under_review' | 'attributed_report' | 'issuer_notice' | 'crowdsourced_observation' | 'independent_corroboration';
     readonly support_assessment: 'supported' | 'uncertain' | 'disputed';
     readonly quote_text: string;
     readonly evidence_ref_id: string;
+    /** MERGE-REVIEW-01: the publisher of this claim. Null when the report has no registry source. */
+    readonly source_id?: string | null;
+    /** Publisher display name (the outlet). */
+    readonly outlet?: string | null;
+    /** Canonical article URL, the claim's source link. Null when unknown. */
+    readonly source_url?: string | null;
+    /** Legacy field from before MERGE-REVIEW-01. Never written by new code. */
     readonly is_corroborated?: boolean;
   }[];
   readonly impacts?: readonly string[];
@@ -30,7 +41,11 @@ export interface EventProposalDto {
   readonly is_multi_source?: boolean;
   readonly source_count?: number;
   readonly has_discrepancy?: boolean;
+  /** MERGE-REVIEW-01: AI-written Bahasa Indonesia summary naming the conflicting reports. */
+  readonly discrepancy_summary?: string | null;
   readonly discrepancies?: readonly unknown[];
+  /** How the correlator related this report to the incident. Unresolved proposals are not chained. */
+  readonly correlation_relationship?: 'primary_initial' | 'corroborating' | 'unresolved';
   readonly caveats?: readonly string[];
   /** WJ-INT-02B: interpreter's independent category for moderator resolution. */
   readonly interpretation_category?: string | null;

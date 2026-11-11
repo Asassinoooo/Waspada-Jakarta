@@ -96,6 +96,9 @@ function correlation(prompt: string): Record<string, unknown> {
     unresolvedQuestions: [],
     uncertainty: ["Keputusan mock deterministik: tanpa model bahasa."],
     supportingEvidence: [],
+    // MERGE-REVIEW-01: mock mode never invents a discrepancy.
+    has_discrepancy: false,
+    discrepancy_summary: null,
   };
   if (candidate) {
     return {

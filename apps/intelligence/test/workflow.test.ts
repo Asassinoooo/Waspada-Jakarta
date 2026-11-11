@@ -333,8 +333,13 @@ describe("Mastra Incident Intelligence Workflow", () => {
     assert.equal(res2.proposal.discrepancies.length, 1);
     assert.equal(res2.proposal.discrepancies[0].kind, "casualty_count");
     assert.equal(res2.proposal.claims.length, 2, "Must contain claims from both sources");
-    assert.equal(res2.proposal.claims[0].is_corroborated, true, "Existing claim must be corroborated");
-    assert.equal(res2.proposal.claims[1].is_corroborated, true, "New claim must be corroborated");
+    // MERGE-REVIEW-01: no claim is marked corroborated. Each keeps its own publisher and link.
+    assert.equal(res2.proposal.claims[0].is_corroborated, undefined, "Existing claim is not marked corroborated");
+    assert.equal(res2.proposal.claims[1].is_corroborated, undefined, "New claim is not marked corroborated");
+    assert.equal(res2.proposal.claims[0].source_id, "source-detik-multi");
+    assert.equal(res2.proposal.claims[0].outlet, "Detik News");
+    assert.equal(res2.proposal.claims[1].source_id, "source-antara-multi");
+    assert.equal(res2.proposal.claims[1].outlet, "Antara News");
 
     // Verify moderation queue: only 1 consolidated proposal for this incident in the DB!
     const proposalWriter = createEventProposalWriter(db.executor);
@@ -345,6 +350,9 @@ describe("Mastra Incident Intelligence Workflow", () => {
     assert.equal(singleProposal.is_multi_source, true);
     assert.equal(singleProposal.source_count, 2);
     assert.equal(singleProposal.claims.length, 2);
+    assert.equal(singleProposal.has_discrepancy, true);
+    // The correlator listed a contradiction but gave no summary, so the summary stays null (never invented).
+    assert.equal(singleProposal.discrepancy_summary, null);
 
     // AI claims are never auto-labelled independent_corroboration, even when multi-source.
     const dbClaims = await db.executor.query<{ claim_id: string; evidence_label: string }>(

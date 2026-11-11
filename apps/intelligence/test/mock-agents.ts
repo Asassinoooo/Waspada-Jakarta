@@ -50,6 +50,8 @@ export function createMockCorrelatorAgent(overrides?: Partial<IncidentCorrelatio
     distinctions: ["Insiden baru di koridor ini"],
     unresolvedQuestions: [],
     uncertainty: [],
+    has_discrepancy: false,
+    discrepancy_summary: null,
     ...overrides,
   };
 

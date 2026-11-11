@@ -14,6 +14,7 @@ import type {
   ReasoningResult,
   RevisionStatus,
 } from "../l2-model-grounding/contracts.js";
+import { isOfficialIncidentCategory } from "../../../../db/src/incident-categories.js";
 
 export type PublicationPolicyDisposition = "publish" | "hold" | "reject";
 export type EvidenceRemitStatus = "in_scope" | "out_of_scope" | "unknown";
@@ -588,4 +589,144 @@ function proposalDisposition(
 
 function orderedReasonCodes(reasons: ReadonlySet<ReasonCode>): readonly ReasonCode[] {
   return [...reasons].sort();
+}
+
+/*
+ * MERGE-REVIEW-01: deterministic gate for agent-driven publication (ADR-061).
+ *
+ * The AI proposes and merges. It never decides publication. These checks are plain data checks,
+ * and any missing or unknown value fails closed into the moderator queue. The L2 grounding policy
+ * above (assessPublicationPolicy) needs grounding contexts, reasoning results and evidence
+ * freshness state that agent proposals do not carry, so this gate does not call it. Source
+ * permission is checked per claim source through the caller-supplied set of public-display sources.
+ */
+
+/** Stored claim labels an agent-written claim may carry on automatic publication. */
+export const AUTO_PUBLICATION_LABELS = ["attributed_report", "issuer_notice", "crowdsourced_observation"] as const;
+
+export type ProposalGateReason =
+  | "schema_invalid"
+  | "claims_missing"
+  | "claim_unsupported"
+  | "claim_quote_missing"
+  | "claim_source_link_missing"
+  | "claim_label_not_allowed"
+  | "source_rights_missing"
+  | "correlation_unresolved"
+  | "discrepancy_flagged"
+  | "discrepancy_status_unknown"
+  | "location_missing"
+  | "time_missing";
+
+export interface ProposalGateOptions {
+  /** Registry source ids whose current permissions grant public display. Resolved by the caller. */
+  readonly publicDisplaySourceIds: ReadonlySet<string>;
+}
+
+function gateRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isNonEmptyText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isIsoInstant(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function sortedReasons(reasons: ReadonlySet<ProposalGateReason>): ProposalGateReason[] {
+  return [...reasons].sort();
+}
+
+/**
+ * Checks that every proposal is well formed, that each claim is supported and quoted, and that each
+ * claim's source has a link and public-display permission. It does not check labels, discrepancies or
+ * correlation. Moderator publication uses this check.
+ */
+export function assessProposalSourceGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
+  const reasons = new Set<ProposalGateReason>();
+  const record = gateRecord(proposal);
+  if (!record
+    || record.schema_version !== "2.0"
+    || !isNonEmptyText(record.proposal_id)
+    || !isNonEmptyText(record.title)
+    || !isOfficialIncidentCategory(record.primary_category)
+    || !isIsoInstant(record.proposed_at)) {
+    reasons.add("schema_invalid");
+  }
+  if (!Array.isArray(record?.claims) || record.claims.length === 0) {
+    reasons.add("claims_missing");
+    return sortedReasons(reasons);
+  }
+
+  const seenClaimIds = new Set<string>();
+  for (const raw of record.claims) {
+    const claim = gateRecord(raw);
+    if (!claim || !isNonEmptyText(claim.claim_id) || seenClaimIds.has(claim.claim_id) || !isNonEmptyText(claim.claim_text)) {
+      reasons.add("schema_invalid");
+      continue;
+    }
+    seenClaimIds.add(claim.claim_id);
+    if (claim.support_assessment !== "supported") reasons.add("claim_unsupported");
+    if (!isNonEmptyText(claim.quote_text)) reasons.add("claim_quote_missing");
+    if (!isHttpUrl(claim.source_url)) reasons.add("claim_source_link_missing");
+    if (!isNonEmptyText(claim.source_id) || !options.publicDisplaySourceIds.has(claim.source_id)) {
+      reasons.add("source_rights_missing");
+    }
+  }
+  return sortedReasons(reasons);
+}
+
+/**
+ * Automatic publication gate. Every check must pass. An empty result means the proposal may publish
+ * without a moderator. A non-empty result means it waits for review, with the reasons recorded.
+ */
+export function assessAutoPublication(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
+  const reasons = new Set<ProposalGateReason>(assessProposalSourceGate(proposal, options));
+  const record = gateRecord(proposal);
+  if (!record) return sortedReasons(reasons);
+
+  if (Array.isArray(record.claims)) {
+    for (const raw of record.claims) {
+      const claim = gateRecord(raw);
+      if (!claim || !(AUTO_PUBLICATION_LABELS as readonly unknown[]).includes(claim.evidence_label)) {
+        reasons.add("claim_label_not_allowed");
+      }
+    }
+  }
+
+  const relationship = record.correlation_relationship;
+  if (relationship !== "primary_initial" && relationship !== "corroborating") {
+    reasons.add("correlation_unresolved");
+  }
+
+  if (record.has_discrepancy === true
+    || (Array.isArray(record.discrepancies) && record.discrepancies.length > 0)) {
+    reasons.add("discrepancy_flagged");
+  } else if (record.has_discrepancy !== false) {
+    reasons.add("discrepancy_status_unknown");
+  }
+
+  const hasLocation = isNonEmptyText(record.location_label)
+    || (Array.isArray(record.coordinates) && record.coordinates.length === 2);
+  if (!hasLocation) reasons.add("location_missing");
+
+  const eventTime = gateRecord(record.event_time);
+  if (!eventTime || !isIsoInstant(eventTime.value) || eventTime.precision === "unknown") {
+    reasons.add("time_missing");
+  }
+  return sortedReasons(reasons);
 }

@@ -70,9 +70,9 @@ test("internal proposals route: 503 without a configured key, 401 on mismatch, 2
   assert.equal((await post({})).status, 401);
   assert.equal((await post({ "x-service-key": "dev-internal-key" })).status, 401, "the old fallback key is rejected");
   assert.equal((await post({ "x-service-key": "job-runner-secret-00000000000x" })).status, 401);
+  // MERGE-REVIEW-01: without a database the L4 gate cannot run, so nothing is decided and the route says so.
   const accepted = await post({ "x-service-key": "job-runner-secret-000000000000" });
-  assert.equal(accepted.status, 200);
-  assert.deepEqual(await accepted.json(), { ok: true, proposal_id: "prop-internal-1" });
+  assert.equal(accepted.status, 503);
 });
 
 test("webhook ingest requires WEBHOOK_SERVICE_KEY: 503 when unset, 401 on mismatch", async () => {

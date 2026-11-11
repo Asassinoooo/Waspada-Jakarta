@@ -77,6 +77,8 @@ describe("Correlation Decision & Provenance Validation", () => {
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: [],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
 
     assert.doesNotThrow(() => validateCorrelationDecision(correlation, baseInput));
@@ -92,6 +94,8 @@ describe("Correlation Decision & Provenance Validation", () => {
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: [],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
 
     assert.throws(
@@ -110,6 +114,8 @@ describe("Correlation Decision & Provenance Validation", () => {
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: [],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
 
     assert.throws(
@@ -128,6 +134,8 @@ describe("Correlation Decision & Provenance Validation", () => {
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: [],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
 
     assert.throws(
@@ -152,6 +160,8 @@ describe("Correlation Decision & Provenance Validation", () => {
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: [],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
 
     assert.throws(
@@ -176,6 +186,8 @@ describe("Correlation Decision & Provenance Validation", () => {
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: [],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
 
     assert.throws(

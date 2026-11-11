@@ -1,7 +1,6 @@
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  clampMapZoom,
   coordinateToWorldPixels,
   getVisibleMapTiles,
   worldPixelsToCoordinate,
@@ -81,26 +80,7 @@ export function incidentTypeIcon(type: string): string {
   return "⚠️";
 }
 
-export function calculateAffectedRadiusMeters(severity: string, incidentType: string): number {
-  switch (severity) {
-    case "critical":
-      return incidentType === "flood" ? 1500 : 1200;
-    case "high":
-      return incidentType === "flood" ? 1000 : 800;
-    case "medium":
-      return incidentType === "flood" ? 600 : 500;
-    case "low":
-    default:
-      return incidentType === "flood" ? 300 : 250;
-  }
-}
-
-export function metersToPixels(meters: number, latitude: number, zoom: number): number {
-  const earthCircumference = 40075016;
-  const latRad = (latitude * Math.PI) / 180;
-  const metersPerPixel = (earthCircumference * Math.cos(latRad)) / (256 * 2 ** clampMapZoom(zoom));
-  return Math.max(16, Math.round(meters / metersPerPixel));
-}
+// MERGE-REVIEW-01: no severity-based danger radius. No source supplies one, so the map draws none.
 
 export function InteractiveIncidentMap({
   coordinates,
@@ -129,16 +109,6 @@ export function InteractiveIncidentMap({
     setCenter(effectiveCenter);
     setZoom(DEFAULT_ZOOM);
   }, [effectiveCenter]);
-
-  const radiusMeters = useMemo(
-    () => calculateAffectedRadiusMeters(severity, incidentType),
-    [severity, incidentType]
-  );
-
-  const radiusPixels = useMemo(() => {
-    const lat = center[1];
-    return metersToPixels(radiusMeters, lat, zoom);
-  }, [radiusMeters, center, zoom]);
 
   const nearbyFacilities = useMemo(() => {
     return findNearbyFacilities(effectiveCenter, 5000, 30);
@@ -532,47 +502,7 @@ export function InteractiveIncidentMap({
           className="map-svg-layer"
           viewBox={`0 0 ${width} ${mapHeight}`}
         >
-          {/* Affected Area Circle */}
-          {incidentCanvasPx && (
-            <g className="map-affected-area-group">
-              <circle
-                cx={incidentCanvasPx.x}
-                cy={incidentCanvasPx.y}
-                r={radiusPixels}
-                fill="var(--kali-teal)"
-                fillOpacity={0.08}
-                stroke="var(--kali-teal)"
-                strokeWidth={2}
-                strokeDasharray="4 3"
-                className="map-affected-radius"
-              />
-              <g
-                transform={`translate(${incidentCanvasPx.x}, ${incidentCanvasPx.y + radiusPixels + 6})`}
-                className="map-radius-badge"
-              >
-                <rect
-                  x="-52"
-                  y="-9"
-                  width="104"
-                  height="18"
-                  rx="9"
-                  fill="var(--tinta-kota)"
-                  stroke="var(--beton)"
-                  strokeWidth={1}
-                />
-                <text
-                  x="0"
-                  y="4"
-                  textAnchor="middle"
-                  fill="#FFFFFF"
-                  fontSize="11"
-                  fontWeight="600"
-                >
-                  Radius: {radiusMeters} m
-                </text>
-              </g>
-            </g>
-          )}
+          {/* MERGE-REVIEW-01: no affected-radius circle. A radius is not in any source, so none is drawn. */}
 
           {/* Clean Facility Pins (Icons without overlapping text clutter) */}
           <g className="map-facilities-group">

@@ -132,12 +132,13 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           readonly display_name: string | null;
           readonly source_kind: string | null;
           readonly triage_required: boolean;
+          readonly canonical_url: string | null;
         }
 
         const revResult = await options.executor.query<RevisionDbRow>(
           `SELECT
              r.report_revision_id, r.dataset_kind, r.trace_id, r.source_id,
-             r.permitted_text, r.retrieved_at, r.triage_required,
+             r.permitted_text, r.retrieved_at, r.triage_required, r.canonical_url,
              s.display_name, s.source_kind
            FROM waspada.report_revisions r
            LEFT JOIN waspada.source_registry s ON s.source_id = r.source_id
@@ -268,6 +269,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           sourceKind: rev.source_kind || "webhook",
           sourceDisplayName: rev.display_name || "Laporan Lapangan",
           sourceId: rev.source_id,
+          sourceUrl: rev.canonical_url ?? null,
           publishedAt: new Date(rev.retrieved_at).toISOString(),
           datasetKind: rev.dataset_kind,
           traceId: job.traceId || rev.trace_id || `trace-${job.jobId}`,

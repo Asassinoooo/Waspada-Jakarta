@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatInstant } from "./display.js";
 import { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
+import { listEvents } from "./api-client.js";
 import {
   type EventProposalDto,
   type StoredEvidenceChunk,
   ModerationHttpError,
-  fetchModerationProposals,
-  fetchProposalDetail,
   proposalCategoryLabel,
   severityLabel,
   isProposalMultiSource,
@@ -32,16 +32,74 @@ export function catalogLoadErrorMessage(err: unknown): string {
 export interface LaporanPublikProps {
   initialProposals?: readonly EventProposalDto[];
   initialSelectedId?: string;
-  apiBaseUrl?: string;
-  fetcher?: typeof fetch;
+}
+
+type PublicEventView = Awaited<ReturnType<typeof listEvents>>["data"][number];
+
+/**
+ * MERGE-REVIEW-01: one card per published public event. The public API carries no severity,
+ * no moderation queue and no evidence chunks, so none are invented here. A claim lists only its
+ * own source link.
+ */
+export function publicEventToCard(event: PublicEventView): EventProposalDto {
+  const detail = event as unknown as {
+    geometries?: readonly { geometry: { type: string; coordinates?: unknown } }[];
+    publication?: { mode: "agent_auto" | "moderator_reviewed"; source_count: number };
+  };
+  const point = detail.geometries?.find((geometry) => geometry.geometry.type === "Point");
+  const coordinates = point && Array.isArray(point.geometry.coordinates) && point.geometry.coordinates.length === 2
+    ? (point.geometry.coordinates as [number, number])
+    : null;
+  const claims = event.claims.map((claim) => {
+    const source = claim.sources[0];
+    return {
+      claim_id: claim.claim_id,
+      claim_text: claim.text,
+      evidence_label: claim.evidence_label,
+      support_assessment: "supported",
+      quote_text: source?.excerpt ?? "",
+      evidence_ref_id: "",
+      source_id: null,
+      outlet: source?.display_name ?? null,
+      source_url: source?.url ?? null,
+    };
+  });
+  const distinctPublishers = new Set(claims.map((claim) => claim.outlet).filter((outlet): outlet is string => Boolean(outlet)));
+  const sourceCount = detail.publication?.source_count ?? distinctPublishers.size;
+  return {
+    schema_version: "2.0",
+    proposal_id: event.event_id,
+    title: event.title,
+    incident_type: event.incident_type ?? event.category,
+    primary_category: event.category,
+    severity: "unknown",
+    event_time: { precision: event.event_time.precision, value: event.event_time.start ?? null },
+    location_label: event.scope.places[0] ?? null,
+    coordinates,
+    claims,
+    impacts: [],
+    is_multi_source: sourceCount >= 2,
+    source_count: sourceCount,
+    has_discrepancy: false,
+    discrepancies: [],
+    caveats: [],
+    proposed_at: event.published_at,
+    publication_mode: detail.publication?.mode ?? null,
+  } as unknown as EventProposalDto;
+}
+
+/** Badge text for a published version. It states who published it and how many media reported it. */
+export function publicationBadgeText(proposal: EventProposalDto): string {
+  const reach = typeof proposal.source_count === "number" ? ` · dilaporkan oleh ${proposal.source_count} media` : "";
+  return proposal.publication_mode === "moderator_reviewed"
+    ? `Ditinjau moderator${reach}`
+    : `Diringkas otomatis oleh agen AI${reach}`;
 }
 
 export function LaporanPublik({
   initialProposals,
   initialSelectedId,
-  apiBaseUrl = "/api/v1/moderation",
-  fetcher,
-}: LaporanPublikProps) {
+}: LaporanPublikProps): React.JSX.Element {
   const [proposals, setProposals] = useState<EventProposalDto[]>(() =>
     initialProposals ? [...initialProposals] : []
   );
@@ -50,7 +108,7 @@ export function LaporanPublik({
   );
   // Track which card is expanded (exclusive: at most one card expanded at a time)
   const [expandedId, setExpandedId] = useState<string | null>(() => initialSelectedId ?? null);
-  const [chunksMap, setChunksMap] = useState<Record<string, readonly StoredEvidenceChunk[]>>({});
+  const [chunksMap] = useState<Record<string, readonly StoredEvidenceChunk[]>>({});
   const [loading, setLoading] = useState<boolean>(!initialProposals);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -58,7 +116,8 @@ export function LaporanPublik({
   const [showEvidenceModal, setShowEvidenceModal] = useState<boolean>(false);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
 
-  // 1. Fetch verified proposals list from API if not provided
+  // 1. MERGE-REVIEW-01: the public page reads only published versions from the public events API.
+  // It never reads the moderation queue.
   useEffect(() => {
     if (initialProposals) {
       setProposals([...initialProposals]);
@@ -71,67 +130,28 @@ export function LaporanPublik({
 
     let cancelled = false;
     setLoading(true);
-    fetchModerationProposals({ apiBaseUrl, fetcher })
-      .then((items) => {
+    listEvents()
+      .then((page) => {
         if (cancelled) return;
-        // Strictly filter to ONLY verified, trustworthy published reports (multi-source corroborated, non-draft, non-contest)
-        const verifiedOnly = items.filter((item) => {
-          const isMultiSource =
-            isProposalMultiSource(item) ||
-            item.is_multi_source === true ||
-            (typeof item.source_count === "number" && item.source_count > 1);
-          const isNoticeOrContest = item.caveats?.some(
-            (c) =>
-              c.includes("bukan insiden darurat") ||
-              c.includes("purely informational") ||
-              c.includes("warta kegiatan") ||
-              c.includes("lomba") ||
-              c.includes("stunting")
-          );
-          return isMultiSource && !isNoticeOrContest;
-        });
-        setProposals(verifiedOnly);
-        if (verifiedOnly.length > 0 && !selectedId) {
-          setSelectedId(verifiedOnly[0]!.proposal_id);
+        const cards = page.data.map(publicEventToCard);
+        setProposals(cards);
+        if (cards.length > 0 && !selectedId) {
+          setSelectedId(cards[0]!.proposal_id);
         }
         setLoading(false);
       })
       .catch((err) => {
         if (cancelled) return;
         setLoading(false);
-        setErrorMessage(catalogLoadErrorMessage(err));
+        setErrorMessage(`Gagal memuat laporan publik: ${err instanceof Error ? err.message : String(err)}`);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [initialProposals, apiBaseUrl, fetcher, selectedId]);
+  }, [initialProposals, selectedId]);
 
-  // 2. Fetch evidence chunks for selected proposal
-  const loadProposalChunks = useCallback(
-    async (proposalId: string) => {
-      if (chunksMap[proposalId] || !proposalId) return;
-      try {
-        const detail = await fetchProposalDetail(proposalId, { apiBaseUrl, fetcher });
-        if (detail.chunks && detail.chunks.length > 0) {
-          setChunksMap((prev) => ({
-            ...prev,
-            [proposalId]: detail.chunks,
-          }));
-        }
-      } catch (err) {
-        console.warn(`[LaporanPublikDemo] Could not load evidence chunks for ${proposalId}:`, err);
-      }
-    },
-    [chunksMap, apiBaseUrl, fetcher]
-  );
-
-  // 2. Fetch evidence chunks only when user opens evidence modal
-  useEffect(() => {
-    if (showEvidenceModal && selectedId) {
-      void loadProposalChunks(selectedId);
-    }
-  }, [showEvidenceModal, selectedId, loadProposalChunks]);
+  // MERGE-REVIEW-01: evidence chunks come from the moderator endpoint only, so this public page does not load them.
 
   const selectedProposal = useMemo(() => {
     if (!selectedId) return proposals[0] ?? null;
@@ -264,9 +284,9 @@ export function LaporanPublik({
     <main id="main-content" className="main-shell">
       {/* 1. Header Halaman: Judul Berdiri Sendiri, Deskripsi Menjadi Sub-Heading di Bawahnya */}
       <section className="laporan-intro-section" aria-labelledby="discover-title">
-        <h1 id="discover-title">Laporan Publik Terverifikasi</h1>
+        <h1 id="discover-title">Laporan Publik</h1>
         <p className="laporan-intro-copy">
-          Katalog warta insiden resmi yang telah melewati verifikasi multi-sumber independen (Detik, Antara, CNN, dsb.),
+          Katalog insiden yang sudah diterbitkan. Setiap laporan menampilkan siapa yang menerbitkannya dan berapa media yang melaporkannya,
           grounding kutipan berita verbatim, dan diterbitkan untuk masyarakat. Peta di atas menampilkan geometri koordinat
           dan sebaran fasilitas darurat terdekat.
         </p>
@@ -326,7 +346,7 @@ export function LaporanPublik({
               className={`category-tag-btn ${categoryFilter === "multi_source" ? "category-tag-btn--active" : ""}`}
               onClick={() => setCategoryFilter("multi_source")}
             >
-              ✨ 2+ Sumber Terkorelasi ({multiSourceCount})
+              Dilaporkan oleh 2+ media ({multiSourceCount})
             </button>
           )}
           <button
@@ -379,7 +399,7 @@ export function LaporanPublik({
         </div>
 
         <p className="search-help" style={{ margin: "0.25rem 0 0", color: "var(--quiet-ink)", fontSize: "0.85rem" }}>
-          Pencarian dan filter berlaku pada {filteredProposals.length} record yang sudah dimuat dari katalog terverifikasi ini.
+          Pencarian dan filter berlaku pada {filteredProposals.length} record yang sudah dimuat dari katalog ini.
         </p>
       </section>
 
@@ -401,12 +421,12 @@ export function LaporanPublik({
                 <span className="fixture-chip" style={{ background: "#f0fdf4", color: "#166534", borderColor: "#bbf7d0" }}>
                   Tile OSM Interaktif
                 </span>
-                <span className="fixture-chip">Radius Dampak &amp; Faskes</span>
+                <span className="fixture-chip">Fasilitas sekitar</span>
               </div>
             </header>
 
             <p className="map-panel__intro" style={{ padding: "0.6rem 1.15rem", margin: 0, borderBottom: "1px solid var(--beton)", fontSize: "0.875rem" }}>
-              Hanya geometri yang dikembalikan API untuk laporan terverifikasi yang ditampilkan. Klik tombol fasilitas (RS, Polisi, Damkar) untuk melihat sebaran pos darurat di sekitar insiden.
+              Hanya geometri yang dikembalikan API untuk laporan terbit yang ditampilkan. Klik tombol fasilitas (RS, Polisi, Damkar) untuk melihat sebaran pos darurat di sekitar insiden.
             </p>
 
             {/* Peta Interaktif OSM Tinjau Bukti */}
@@ -459,13 +479,29 @@ export function LaporanPublik({
                     <dd style={{ margin: 0, fontWeight: 600 }}>{selectedProposal.location_label || "DKI Jakarta"}</dd>
                   </div>
                   <div>
-                    <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Status Verifikasi</dt>
-                    <dd style={{ margin: 0, fontWeight: 600, color: "#166534" }}>
-                      {isProposalMultiSource(selectedProposal)
-                        ? `✓ ${selectedProposal.source_count ?? 2} Sumber Berita Terkorelasi`
-                        : "✓ Sumber Resmi Terverifikasi"}
+                    <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Cara Penerbitan</dt>
+                    <dd style={{ margin: 0, fontWeight: 600 }}>
+                      {publicationBadgeText(selectedProposal)}
                     </dd>
                   </div>
+                  {selectedProposal.claims.some((claim) => claim.source_url) && (
+                    <div>
+                      <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Sumber laporan</dt>
+                      <dd style={{ margin: 0, fontWeight: 600 }}>
+                        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                          {selectedProposal.claims
+                            .filter((claim) => claim.source_url)
+                            .map((claim) => (
+                              <li key={`src-${claim.claim_id}`}>
+                                <a href={claim.source_url ?? undefined} target="_blank" rel="noopener noreferrer">
+                                  {claim.outlet ?? "Sumber"}
+                                </a>
+                              </li>
+                            ))}
+                        </ul>
+                      </dd>
+                    </div>
+                  )}
                   <div>
                     <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Tingkat Dampak</dt>
                     <dd style={{ margin: 0, fontWeight: 600 }}>{severityLabel(selectedProposal.severity)}</dd>
@@ -495,7 +531,7 @@ export function LaporanPublik({
           {loading && (
             <div className="state-panel state-panel--loading" role="status">
               <span className="loading-rule" aria-hidden="true" />
-              <strong>Memuat record laporan terverifikasi dari API…</strong>
+              <strong>Memuat record laporan terbit dari API…</strong>
               <span>Menyiapkan feed warta resmi masyarakat.</span>
             </div>
           )}
@@ -560,7 +596,7 @@ export function LaporanPublik({
                             gap: "0.3rem",
                           }}
                         >
-                          {isMulti ? "✓ Record dari dataset live API (Multi-sumber)" : "Record dari dataset live API"}
+                          {publicationBadgeText(proposal)}
                         </span>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                           <span className="event-card__version" style={{ fontWeight: 600 }}>v{proposal.schema_version}</span>
@@ -597,7 +633,7 @@ export function LaporanPublik({
                           }}
                         >
                           {proposal.claims[0]?.claim_text ||
-                            `Insiden kategori ${proposalCategoryLabel(proposal)} yang terdeteksi dan terverifikasi di wilayah ${proposal.location_label || "DKI Jakarta"}.`}
+                            `Insiden kategori ${proposalCategoryLabel(proposal)} yang terdeteksi di wilayah ${proposal.location_label || "DKI Jakarta"}.`}
                         </p>
                       </div>
 
@@ -626,9 +662,9 @@ export function LaporanPublik({
                               <dd>{proposal.location_label || "DKI Jakarta"}</dd>
                             </div>
                             <div>
-                              <dt>Verifikasi Sumber</dt>
+                              <dt>Sumber</dt>
                               <dd style={{ color: isMulti ? "#15803d" : undefined }}>
-                                {isMulti ? `2 Sumber (${proposal.source_count ?? 2} media)` : "1 Sumber Resmi"}
+                                {typeof proposal.source_count === "number" ? `Dilaporkan oleh ${proposal.source_count} media` : "Sumber tidak diketahui"}
                               </dd>
                             </div>
                             <div>
@@ -744,7 +780,7 @@ export function LaporanPublik({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem", borderBottom: "1px solid var(--beton)", paddingBottom: "0.75rem" }}>
               <div>
                 <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: "0.04em", display: "block" }}>
-                  ✓ Bukti Terverifikasi Multi-Sumber
+                  Sumber tiap klaim
                 </span>
                 <h2 id="modal-incident-title" style={{ margin: "0.25rem 0", fontSize: "1.25rem", color: "var(--tinta-kota)" }}>
                   {selectedProposal.title}
@@ -767,7 +803,7 @@ export function LaporanPublik({
             {/* Klaim & Grounding Kutipan Berita */}
             <section style={{ marginBottom: "1.5rem" }}>
               <h3 style={{ fontSize: "1rem", color: "var(--tinta-kota)", marginBottom: "0.6rem" }}>
-                Klaim Terverifikasi ({selectedProposal.claims.length} Fakta Terkorelasikan)
+                Klaim ({selectedProposal.claims.length})
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
                 {selectedProposal.claims.map((claim, idx) => (
@@ -785,13 +821,15 @@ export function LaporanPublik({
                       <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--kali-teal)" }}>
                         Fakta #{idx + 1}
                       </span>
-                      <span style={{ fontSize: "0.75rem", background: "#dcfce7", color: "#166534", padding: "0.1rem 0.4rem", borderRadius: "3px", fontWeight: 600 }}>
-                        ✓ Terverifikasi Independen
-                      </span>
                     </div>
                     <p style={{ margin: "0 0 0.4rem", fontWeight: 600, fontSize: "0.92rem", color: "var(--tinta-kota)" }}>
                       {claim.claim_text}
                     </p>
+                    {claim.source_url && (
+                      <p style={{ margin: "0 0 0.4rem", fontSize: "0.82rem", color: "var(--quiet-ink)" }}>
+                        Sumber: <a href={claim.source_url} target="_blank" rel="noopener noreferrer">{claim.outlet ?? "Sumber"}</a>
+                      </p>
+                    )}
                     {claim.quote_text && (
                       <blockquote style={{ margin: 0, fontSize: "0.84rem", fontStyle: "italic", color: "var(--quiet-ink)", background: "#ffffff", padding: "0.45rem 0.65rem", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
                         "{claim.quote_text}"
@@ -832,7 +870,7 @@ export function LaporanPublik({
                 </div>
               ) : (
                 <p style={{ fontSize: "0.875rem", color: "var(--quiet-ink)", fontStyle: "italic" }}>
-                  Kutipan teks berita asli telah diverifikasi oleh sistem kecerdasan buatan dan tersimpan pada arsip bukti.
+                  Kutipan teks sumber tidak tersedia pada halaman publik ini. Klik nama sumber pada klaim untuk membaca beritanya.
                 </p>
               )}
             </section>

@@ -36,6 +36,14 @@ export const IncidentCorrelationSchema = z.object({
   distinctions: z.array(z.string()),
   unresolvedQuestions: z.array(z.string()),
   uncertainty: z.array(z.string()),
+  /**
+   * MERGE-REVIEW-01: true when the reports state conflicting facts. The
+   * same model call decides it, so there is no extra RPM. The L4 gate sends any
+   * discrepancy to a moderator.
+   */
+  has_discrepancy: z.boolean(),
+  /** Bahasa Indonesia, naming the conflicting reports. Required when has_discrepancy is true. */
+  discrepancy_summary: z.string().nullable(),
 });
 
 export type IncidentCorrelation = z.infer<typeof IncidentCorrelationSchema>;
@@ -43,6 +51,13 @@ export class CorrelationValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CorrelationValidationError";
+  }
+}
+
+/** Enforces the discrepancy contract: a flagged discrepancy must be explained. */
+export function validateDiscrepancyFields(correlation: IncidentCorrelation): void {
+  if (correlation.has_discrepancy && (correlation.discrepancy_summary === null || correlation.discrepancy_summary.trim().length === 0)) {
+    throw new CorrelationValidationError("has_discrepancy requires a non-empty discrepancy_summary");
   }
 }
 
@@ -147,6 +162,11 @@ Core Evaluation Rules:
    - 'new_incident': High factual confidence that this report contains sufficient concrete facts to establish a distinct new physical event. Set candidateIncidentId to null.
    - 'unresolved': Evidence is ambiguous, fragmented, or insufficient to confirm or refute a match. Set candidateIncidentId to the most likely candidate or null.
 
+5. Discrepancies (has_discrepancy / discrepancy_summary):
+   - Set has_discrepancy to true only when the reports state facts that conflict with each other (for example a different depth, count, time, place, casualty figure or status). A missing detail is not a discrepancy.
+   - When has_discrepancy is true, discrepancy_summary is one or two sentences in Bahasa Indonesia that name the conflicting reports by their reportRevisionId and say what differs. Otherwise discrepancy_summary is null.
+   - Never resolve a discrepancy by choosing one side. Keep both in contradictoryEvidence.
+
 Return ONLY valid JSON matching the requested schema. No markdown wrapping.
 `.trim();
 
@@ -169,6 +189,8 @@ export function correlateWithoutCandidates(interpretation: ReportInterpretation)
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: [],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
   }
   return {
@@ -180,6 +202,8 @@ export function correlateWithoutCandidates(interpretation: ReportInterpretation)
     distinctions: [],
     unresolvedQuestions: ["Lokasi kejadian tidak dinyatakan dalam laporan."],
     uncertainty: [],
+    has_discrepancy: false,
+    discrepancy_summary: null,
   };
 }
 
@@ -241,7 +265,9 @@ Format your output as a single JSON object with these keys:
   "contradictoryEvidence": [{ "field": string, "claimA": string, "claimB": string }],
   "distinctions": [string],
   "unresolvedQuestions": [string],
-  "uncertainty": [string]
+  "uncertainty": [string],
+  "has_discrepancy": boolean,
+  "discrepancy_summary": string | null
 }
 `.trim();
 
@@ -249,5 +275,6 @@ Format your output as a single JSON object with these keys:
   const parsedJson = extractJsonFromText(response.text);
   const correlation = IncidentCorrelationSchema.parse(parsedJson);
   validateCorrelationDecision(correlation, input);
+  validateDiscrepancyFields(correlation);
   return correlation;
 }

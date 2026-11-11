@@ -25,7 +25,7 @@ import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application
 import worker from "../apps/worker/src/index.js";
 import { seedAdminAccount } from "../apps/worker/src/accounts/seed-admin.js";
 import { generateServiceKey } from "../apps/worker/src/security/service-key.js";
-import { PublicReadModel } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
+import { PublicReadModel, proposalToEventDetail } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
 import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
 
@@ -171,25 +171,43 @@ async function main() {
   // Clear demo synthetic fixtures so only genuine live data is shown
   PublicReadModel.clearPublishedEvents();
 
-  // TODO(MERGE-REVIEW-01): this startup republish is replaced by the merge-review flow. Keep it until then.
-  // Load and publish verified multi-source / corroborated live incidents into PublicReadModel
-  console.log("\n[Public Read Model] Publishing verified multi-source incidents into public feed...");
-  const verifiedRes = await executor.query<{ record_json: unknown }>(
-    `SELECT record_json FROM waspada.event_proposals WHERE dataset_kind = 'live'`
+  // MERGE-REVIEW-01 (ADR-061): restore only versions that have a publication decision, oldest first,
+  // so the latest decision for each event wins. Multi-source proposals are never published by
+  // startup; a proposal with no publish decision stays in the moderator queue.
+  console.log("\n[Public Read Model] Restoring published versions from publication decisions...");
+  const decidedRes = await executor.query<{
+    record_json: unknown;
+    event_version: number | null;
+    publication_mode: string | null;
+    source_count: string | null;
+  }>(
+    `SELECT ep.record_json,
+            pd.event_version,
+            pd.record_json->>'publication_mode' AS publication_mode,
+            pd.record_json->>'source_count' AS source_count
+     FROM waspada.publication_decisions pd
+     JOIN waspada.event_proposals ep
+       ON ep.dataset_kind = pd.dataset_kind AND ep.proposal_id = pd.proposal_id
+     WHERE pd.dataset_kind = 'live' AND pd.record_json->>'disposition' = 'publish'
+     ORDER BY pd.decided_at ASC, pd.decision_id ASC`
   );
   let pubCount = 0;
-  for (const row of verifiedRes.rows) {
+  for (const row of decidedRes.rows) {
     const p = typeof row.record_json === "string" ? JSON.parse(row.record_json) : row.record_json;
-    if (p && (p.is_multi_source === true || (typeof p.source_count === "number" && p.source_count > 1))) {
-      try {
-        PublicReadModel.publish(p);
-        pubCount++;
-      } catch {
-        // skip if invalid
-      }
+    if (!p || row.event_version === null) continue;
+    try {
+      const mode = row.publication_mode === "agent_auto" ? "agent_auto" : "moderator_reviewed";
+      const detail = proposalToEventDetail(p, undefined, {
+        version: row.event_version,
+        publication: { mode, source_count: Number(row.source_count ?? 0) },
+      });
+      PublicReadModel.publish(detail);
+      pubCount++;
+    } catch {
+      // skip a version that no longer projects; it stays in the database
     }
   }
-  console.log(`✓ Published ${pubCount} verified live incidents into PublicReadModel.`);
+  console.log(`✓ Restored ${pubCount} published live versions into PublicReadModel.`);
 
   // Seed the 14 news feeds into waspada.source_registry for live user testing
   console.log(`\n[Source Registry] Seeding ${DEFAULT_NEWS_FEEDS.length} RSS sources...`);

@@ -62,15 +62,23 @@ export interface EventProposalDto {
   readonly claims: readonly {
     readonly claim_id: string;
     readonly claim_text: string;
-    readonly evidence_label: "under_review";
+    readonly evidence_label: "under_review" | "attributed_report" | "issuer_notice" | "crowdsourced_observation" | "independent_corroboration";
     readonly support_assessment: "supported" | "uncertain" | "disputed";
     readonly quote_text: string;
     readonly evidence_ref_id: string;
+    /** MERGE-REVIEW-01: the claim's publisher and its article link. */
+    readonly source_id?: string | null;
+    readonly outlet?: string | null;
+    readonly source_url?: string | null;
+    /** Legacy field, never written by new code. */
     readonly is_corroborated?: boolean;
   }[];
   readonly is_multi_source?: boolean;
   readonly source_count?: number;
   readonly has_discrepancy?: boolean;
+  readonly discrepancy_summary?: string | null;
+  readonly correlation_relationship?: "primary_initial" | "corroborating" | "unresolved";
+  readonly incident_id?: string | null;
   readonly discrepancies?: readonly unknown[];
   readonly caveats?: readonly string[];
   readonly impacts?: readonly string[];
@@ -121,6 +129,15 @@ export interface ModerationApiDependencies {
   readonly proposalReader?: ModerationProposalReader;
   readonly publicationService?: ModerationPublisher;
   readonly publisher?: ModerationPublisher;
+  /**
+   * MERGE-REVIEW-01: records a moderator rejection. Rejection never publishes. Absent means
+   * rejection is unavailable (503), so nothing is silently treated as done.
+   */
+  readonly rejectProposal?: (
+    proposalId: string,
+    command: ModeratorDecisionCommand,
+    principal: ModerationPrincipal,
+  ) => Promise<{ readonly status: "rejected" | "already_decided" | "denied"; readonly code?: string }>;
   /** Account store for the cookie session. Used only when `authenticate` is not supplied. */
   readonly accountStore?: AccountStore;
   readonly authenticate?: (request: Request) => Promise<ModerationPrincipal | null>;
@@ -600,9 +617,13 @@ export function createModerationApiHandler(
       if (typeof requestedLabel !== "string" || !(ALLOWED_EVIDENCE_LABELS as readonly string[]).includes(requestedLabel)) {
         return apiError("INVALID_EVIDENCE_LABEL", "evidence_label must be attributed_report or crowdsourced_observation", 400);
       }
+      const requestedAction = body.action ?? "publish";
+      if (requestedAction !== "publish" && requestedAction !== "reject") {
+        return apiError("INVALID_ACTION", "action must be publish or reject", 400);
+      }
       const decisionCommand: ModeratorDecisionCommand = {
         proposal_id: route.proposalId,
-        action: (body.action as ModeratorDecisionCommand["action"]) ?? "publish",
+        action: requestedAction,
         evidence_label: requestedLabel as ModeratorDecisionCommand["evidence_label"],
         reason: typeof body.reason === "string" ? body.reason : undefined,
         category_resolution:
@@ -610,6 +631,30 @@ export function createModerationApiHandler(
             ? body.category_resolution
             : undefined,
       };
+      // MERGE-REVIEW-01: only "publish" and "reject" exist. Reject records a decision and never
+      // reaches the publisher. Any other action is refused, so nothing publishes by accident.
+      if (decisionCommand.action === "reject") {
+        if (!dependencies.rejectProposal) {
+          return apiError("REJECTION_UNAVAILABLE", "Rejection service is not configured", 503);
+        }
+        let outcome: Awaited<ReturnType<NonNullable<ModerationApiDependencies["rejectProposal"]>>>;
+        try {
+          outcome = await dependencies.rejectProposal(route.proposalId, decisionCommand, currentPrincipal);
+        } catch {
+          return apiError("REJECTION_FAILED", "Rejection could not be recorded", 502);
+        }
+        if (outcome.status === "rejected") {
+          return jsonResponse({ ok: true, status: "rejected", proposal_id: route.proposalId }, 200);
+        }
+        if (outcome.status === "already_decided") {
+          return apiError("ALREADY_DECIDED", `Proposal ${route.proposalId} already has a publication decision`, 409);
+        }
+        return apiError(outcome.code ?? "REJECTION_DENIED", `Proposal ${route.proposalId} could not be rejected`, 404);
+      }
+      if (decisionCommand.action !== "publish") {
+        return apiError("INVALID_ACTION", "action must be publish or reject", 400);
+      }
+
       // WJ-INT-02B: a proposal carrying an unresolved triage/interpreter
       // category mismatch (workflow caveat) cannot publish until the
       // moderator explicitly resolves it. No auto-mapping, no silent

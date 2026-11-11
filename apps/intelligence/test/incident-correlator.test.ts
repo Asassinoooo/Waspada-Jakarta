@@ -56,6 +56,8 @@ describe("Mastra Incident Correlation Agent", () => {
       distinctions: [],
       unresolvedQuestions: [],
       uncertainty: ["Perbedaan tinggi genangan antara warga dan petugas"],
+      has_discrepancy: true,
+      discrepancy_summary: "Laporan rev-002 menyebut genangan 30 cm, sedangkan laporan awal menyebut 50 cm.",
     };
 
     const parsed = IncidentCorrelationSchema.parse(raw);
@@ -75,11 +77,27 @@ describe("Mastra Incident Correlation Agent", () => {
       distinctions: ["Ketiadaan nama jalan pasti"],
       unresolvedQuestions: ["Apakah lokasi genangan berada di Jl. DI Panjaitan atau Jl. MT Haryono?"],
       uncertainty: ["Lokasi tidak presisi"],
+      has_discrepancy: false,
+      discrepancy_summary: null,
     };
 
     const parsed = IncidentCorrelationSchema.parse(raw);
     assert.equal(parsed.decision, "unresolved");
     assert.equal(parsed.unresolvedQuestions.length, 1);
+  });
+
+  it("requires discrepancy fields in the correlation output", () => {
+    const raw = {
+      decision: "new_incident",
+      candidateIncidentId: null,
+      reasoning: "Laporan baru.",
+      supportingEvidence: [],
+      contradictoryEvidence: [],
+      distinctions: [],
+      unresolvedQuestions: [],
+      uncertainty: [],
+    };
+    assert.throws(() => IncidentCorrelationSchema.parse(raw));
   });
 
   it("correlates incident using provided mock agent", async () => {

@@ -5,5 +5,5 @@
     "skipLibCheck": true, "strict": true, "noEmit": true, "verbatimModuleSyntax": true,
     "noUnusedLocals": true, "noUnusedParameters": true, "noFallthroughCasesInSwitch": true
   },
-  "include": ["*.ts", "../serve-live-pipeline.ts", "../requeue-ai-jobs.ts", "../consolidate-live-incidents.ts", "../live-db-lock.ts", "../live-db-lock.test.ts", "../live-db-restore.ts", "../live-db-restore.test.ts"]
+  "include": ["*.ts", "../serve-live-pipeline.ts", "../requeue-ai-jobs.ts", "../live-db-lock.ts", "../live-db-lock.test.ts", "../live-db-restore.ts", "../live-db-restore.test.ts"]
 }

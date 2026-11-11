@@ -19,6 +19,7 @@ import { createSourcePreviewHandler } from "./layers/l4-application-integration/
 import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
 import { handleAccountRequest, type AccountRuntimeConfig } from "./runtime/account-runtime.js";
 import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
+import { AGENT_AUTO_PUBLISHER_ID, decideProposal } from "./layers/l4-application-integration/proposal-publication.js";
 import { moderationAccountConfig, moderatorSurfaceDenial, readModeratorPrincipal } from "./runtime/moderator-session.js";
 import { checkServiceKey } from "./security/service-key.js";
 import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
@@ -30,7 +31,6 @@ import { buildLiveTriageGate } from "./runtime/news-triage-composition.js";
 import { readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
 import { runGatedRssCycle } from "./runtime/gated-rss-persistence.js";
 
-import { PublicReadModel } from "./layers/l4-application-integration/public-read-model.js";
 import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-integration/event-broadcaster.js";
 import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-data-knowledge/webhook-ingest.js";
 import { withPostgresSqlExecutor, withPostgresTransactionalSqlExecutor } from "../../db/src/postgres-sql-executor.js";
@@ -95,6 +95,57 @@ const embeddingVisualizationHandler = createEmbeddingVisualizationHandler({
   executorRunner: withSqlExecutor,
 });
 
+/**
+ * WJ-INT-02B public-display rights gate: live registry permissions for one source. Fail-closed:
+ * a missing row, an error or a denied capability denies publication. No approval overrides it.
+ */
+async function checkSourcePublicDisplay(env: WorkerEnvironment, sourceId: string): Promise<boolean> {
+  if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
+  try {
+    return await withSqlExecutor(env, async (executor) => {
+      const res = await executor.query<{
+        approval_status: string;
+        auto_acquisition_enabled: boolean;
+        registry_status: string;
+        reuse_basis: readonly string[] | string | null;
+        reuse_license_url: string | null;
+        reuse_scope: string | null;
+        reuse_reviewer: string | null;
+        reuse_reviewed_at: string | null;
+        reuse_expires_at: string | null;
+      }>(
+        `SELECT approval_status, auto_acquisition_enabled, registry_status,
+                reuse_basis, reuse_license_url, reuse_scope, reuse_reviewer,
+                reuse_reviewed_at::text AS reuse_reviewed_at,
+                reuse_expires_at::text AS reuse_expires_at
+         FROM waspada.source_registry WHERE source_id = $1 LIMIT 1`,
+        [sourceId],
+      );
+      const row = res.rows[0];
+      if (!row) return false;
+      const basis = Array.isArray(row.reuse_basis) ? row.reuse_basis : null;
+      const permissions = evaluateSourcePermissions(
+        {
+          approval_status: row.approval_status,
+          auto_acquisition_enabled: row.auto_acquisition_enabled,
+          registry_status: row.registry_status,
+          reuse_basis: basis,
+          reuse_license_url: row.reuse_license_url,
+          reuse_scope: row.reuse_scope,
+          reuse_reviewer: row.reuse_reviewer,
+          reuse_reviewed_at: row.reuse_reviewed_at,
+          reuse_expires_at: row.reuse_expires_at,
+        },
+        new Date().toISOString(),
+        sourceId,
+      );
+      return permissions.publicDisplay === true;
+    });
+  } catch {
+    return false;
+  }
+}
+
 function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConfig) {
   // The DB dataset comes from the same server-side configuration that scopes the sessions.
   const datasetKind = config.datasetKind as DatasetKind;
@@ -137,52 +188,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
     // WJ-INT-02B: live public-display rights check against current registry
     // permissions. Fail-closed: missing row, error, or denied capability
     // denies publication. Moderator approval never overrides this.
-    checkPublicDisplay: async (sourceId: string) => {
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
-      try {
-        return await withSqlExecutor(env, async (executor) => {
-          const res = await executor.query<{
-            approval_status: string;
-            auto_acquisition_enabled: boolean;
-            registry_status: string;
-            reuse_basis: readonly string[] | string | null;
-            reuse_license_url: string | null;
-            reuse_scope: string | null;
-            reuse_reviewer: string | null;
-            reuse_reviewed_at: string | null;
-            reuse_expires_at: string | null;
-          }>(
-            `SELECT approval_status, auto_acquisition_enabled, registry_status,
-                    reuse_basis, reuse_license_url, reuse_scope, reuse_reviewer,
-                    reuse_reviewed_at::text AS reuse_reviewed_at,
-                    reuse_expires_at::text AS reuse_expires_at
-             FROM waspada.source_registry WHERE source_id = $1 LIMIT 1`,
-            [sourceId],
-          );
-          const row = res.rows[0];
-          if (!row) return false;
-          const basis = Array.isArray(row.reuse_basis) ? row.reuse_basis : null;
-          const permissions = evaluateSourcePermissions(
-            {
-              approval_status: row.approval_status,
-              auto_acquisition_enabled: row.auto_acquisition_enabled,
-              registry_status: row.registry_status,
-              reuse_basis: basis,
-              reuse_license_url: row.reuse_license_url,
-              reuse_scope: row.reuse_scope,
-              reuse_reviewer: row.reuse_reviewer,
-              reuse_reviewed_at: row.reuse_reviewed_at,
-              reuse_expires_at: row.reuse_expires_at,
-            },
-            new Date().toISOString(),
-            sourceId,
-          );
-          return permissions.publicDisplay === true;
-        });
-      } catch {
-        return false;
-      }
-    },
+    checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
     getProposalDetail: async (id: string) => {
       if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
         return withSqlExecutor(env, async (executor) => {
@@ -230,91 +236,65 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
     cookieMode: config.cookieMode,
     datasetScope: config.datasetKind,
     csrfProtection: true,
+    rejectProposal: async (proposalId: string, _command, principal) => {
+      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+        return { status: "denied", code: "proposal_unavailable" };
+      }
+      const outcome = await withSqlExecutor(env, (executor) => decideProposal(
+        {
+          executor,
+          datasetKind: datasetKind as "live" | "historical" | "synthetic",
+          checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
+        },
+        {
+          proposalId,
+          action: "reject",
+          actor: { kind: "moderator", actorId: principal.actorId },
+        },
+      ));
+      if (outcome.status === "rejected") return { status: "rejected" };
+      if (outcome.status === "already_decided") return { status: "already_decided" };
+      return { status: "denied", code: outcome.status === "denied" ? outcome.code : "publication_failed" };
+    },
+    // MERGE-REVIEW-01: moderator publication uses the same writer and gate as the agent auto-publisher.
     publisher: {
       publish: async (input: unknown) => {
         const cmd = typeof input === "object" && input !== null
-          ? (input as {
-              proposal_id?: string;
-              proposalId?: string;
-              actorId?: string;
-              decision?: { proposal_id?: string };
-              eventDraft?: unknown;
-              event?: unknown;
-              proposal?: EventProposalDto;
-              title?: string;
-              incident_type?: string;
-              severity?: "low" | "medium" | "high" | "critical" | "unknown";
-              location_label?: string;
-              coordinates?: readonly [number, number];
-              claims?: EventProposalDto["claims"];
-            })
+          ? (input as { proposal_id?: string; proposalId?: string; actorId?: string; decision?: { proposal_id?: string } })
           : {};
         const id = cmd.proposal_id ?? cmd.proposalId ?? cmd.decision?.proposal_id;
-        let proposal: EventProposalDto | undefined = cmd.proposal;
-        let chunks: readonly StoredEvidenceChunk[] | undefined;
-
-        if (id && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
-          await withSqlExecutor(env, async (executor) => {
-            const writer = createEventProposalWriter(executor);
-            const found = await writer.readProposalById(id, datasetKind);
-            if (found) proposal = found;
-          });
+        const actorId = cmd.actorId;
+        if (!id || typeof actorId !== "string" || actorId.length === 0) {
+          return { status: "denied", code: "proposal_not_found" };
         }
-        if (!proposal && id) {
-          proposal = activeProposals.get(id);
-          chunks = activeChunks.get(id);
+        if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+          return { status: "denied", code: "proposal_unavailable" };
         }
-
-        let publishedDetail: unknown;
-        if (proposal) {
-          publishedDetail = PublicReadModel.publish(proposal, chunks);
-        } else if (cmd.eventDraft || cmd.event) {
-          publishedDetail = PublicReadModel.publish((cmd.eventDraft ?? cmd.event) as Record<string, unknown>);
-        } else if (id) {
-          publishedDetail = PublicReadModel.publish({
-            schema_version: "2.0",
-            proposal_id: id,
-            title: cmd.title ?? `Laporan Kejadian ${id}`,
-            incident_type: cmd.incident_type ?? "unclassified",
-            severity: cmd.severity ?? "unknown",
-            event_time: { precision: "exact", value: new Date().toISOString() },
-            location_label: cmd.location_label ?? null,
-            coordinates: cmd.coordinates ?? null,
-            claims: cmd.claims ?? [],
-            proposed_at: new Date().toISOString(),
-          });
-        }
-        if (publishedDetail) {
-          eventBroadcaster.broadcastPublic("event_published", publishedDetail);
-        }
-        if (id) {
+        const outcome = await withSqlExecutor(env, (executor) => decideProposal(
+          {
+            executor,
+            datasetKind: datasetKind as "live" | "historical" | "synthetic",
+            checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
+          },
+          {
+            proposalId: id,
+            action: "publish",
+            actor: { kind: "moderator", actorId },
+          },
+        ));
+        if (outcome.status === "published") {
+          eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });
           eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
+          return { status: "written", receipt: { decision_id: outcome.decisionId } };
         }
-        const decisionId = `dec-${Date.now()}`;
-        if (id && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
-          await withSqlExecutor(env, async (executor) => {
-            const pubTrace = `trace-pub-${id}`;
-            await executor.query(
-              `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
-               VALUES ($1, $2, now(), 'succeeded', '{}'::jsonb)
-               ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
-              [pubTrace, datasetKind],
-            );
-            const eventId = (publishedDetail as any)?.event_id || `evt-${id}`;
-            // The reviewer is the authenticated actor the handler passes in, never a constant.
-            const reviewerId = cmd.actorId ?? null;
-            await executor.query(
-              `INSERT INTO waspada.publication_decisions (
-                 dataset_kind, decision_id, trace_id, proposal_id, policy_version,
-                 event_id, event_version, reviewer_id, decided_at, record_json
-               )
-               VALUES ($1, $2, $3, $4, 'v1', $5, 1, $6, now(), '{}'::jsonb)
-               ON CONFLICT (dataset_kind, decision_id) DO NOTHING`,
-              [datasetKind, decisionId, pubTrace, id, eventId, reviewerId],
-            );
-          }).catch(() => {});
+        if (outcome.status === "already_decided") {
+          return { status: "conflict", code: "ALREADY_DECIDED" };
         }
-        return { status: "written", receipt: { decision_id: decisionId } };
+        if (outcome.status === "denied") {
+          if (outcome.code === "publication_failed") return { status: "denied", code: "writer_failed" };
+          return { status: "denied", code: outcome.code };
+        }
+        return { status: "denied", code: "publication_not_authorized" };
       },
     },
   });
@@ -452,25 +432,50 @@ export default {
       return response;
     }
 
-    // Internal endpoint for Node.js intelligence worker to notify moderation of completed proposals
+    // MERGE-REVIEW-01: the intelligence worker notifies each completed proposal here. The L4 gate
+    // decides: publish when every automatic check passes, otherwise queue it for a moderator.
     if (url.pathname === "/api/v1/internal/proposals" && request.method === "POST") {
       const denied = await serviceKeyDenial(request, env.INTERNAL_SERVICE_KEY);
       if (denied) return denied;
+      let body: { proposal_id?: unknown };
       try {
-        const body = (await request.json()) as { proposal_id?: string };
-        if (body?.proposal_id) {
-          eventBroadcaster.broadcastModeration("proposal_created", { proposal_id: body.proposal_id });
-          return new Response(JSON.stringify({ ok: true, proposal_id: body.proposal_id }), {
-            status: 200,
-            headers: { "Content-Type": "application/json; charset=utf-8" },
-          });
-        }
-      } catch {}
-      return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body = (await request.json()) as { proposal_id?: unknown };
+      } catch {
+        return new Response(JSON.stringify({ code: "INVALID_JSON", message: "Body must be JSON" }), {
+          status: 400,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+      if (typeof body?.proposal_id !== "string" || body.proposal_id.length === 0) {
+        return new Response(JSON.stringify({ code: "INVALID_PROPOSAL", message: "proposal_id is required" }), {
+          status: 400,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return unavailableJson();
+      const proposalId = body.proposal_id;
+      const config = moderationAccountConfig(env);
+      if (!config) return unavailableJson();
+      const outcome = await withSqlExecutor(env, (executor) => decideProposal(
+        {
+          executor,
+          datasetKind: config.datasetKind as "live" | "historical" | "synthetic",
+          checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
+        },
+        { proposalId, action: "auto_publish", actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID } },
+      ));
+      if (outcome.status === "published") {
+        eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });
+        eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: proposalId });
+      } else if (outcome.status === "queued") {
+        eventBroadcaster.broadcastModeration("proposal_created", { proposal_id: proposalId });
+      }
+      return new Response(JSON.stringify({ ok: true, proposal_id: proposalId, status: outcome.status, ...(outcome.status === "queued" ? { reasons: outcome.reasons } : {}), ...(outcome.status === "published" ? { event_id: outcome.eventId, version: outcome.version } : {}) }), {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
       });
     }
+
     // Realtime SSE streaming for moderation queue: moderator or admin session only.
     if (url.pathname === "/api/v1/moderation/stream" || url.pathname === "/api/v1/moderation/stream/") {
       const denied = await moderatorSurfaceDenial(request, moderationAccountConfig(env), "review_evidence");

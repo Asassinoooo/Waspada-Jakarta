@@ -28,7 +28,11 @@ import {
 } from "../agents/incident-correlation-agent.js";
 import { createSemanticRetrievalService, type CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
 import { RETRIEVAL_MAX_RESULTS } from "../../../db/src/retrieval-limits.js";
-import { deterministicStructuredInterpretation } from "../structured-interpretation.js";
+import {
+  BMKG_GEMPA_SOURCE_ID,
+  PETABENCANA_SOURCE_ID,
+  deterministicStructuredInterpretation,
+} from "../structured-interpretation.js";
 import type { NineRouterConfig } from "../providers/ninerouter-adapter.js";
 import { Agent } from "@mastra/core/agent";
 
@@ -48,6 +52,8 @@ export const IncidentWorkflowInputSchema = z.object({
   sourceDisplayName: z.string(),
   /** WJ-INT-02B: registry source id for the public-display rights gate. */
   sourceId: z.string().optional(),
+  /** MERGE-REVIEW-01: canonical article URL, the claim's source link. Absent means no link. */
+  sourceUrl: z.string().nullable().optional(),
   publishedAt: z.string().nullable().optional(),
   datasetKind: z.enum(["live", "historical", "synthetic"]),
   traceId: z.string(),
@@ -111,6 +117,54 @@ export function deriveCompatibilityCategory(
   return "unclassified";
 }
 
+
+type ProposalClaim = EventProposalDto["claims"][number];
+
+/**
+ * MERGE-REVIEW-01: the label an AI claim carries. Issuer notices (BMKG) and crowdsourced
+ * observations (PetaBencana) keep their source-type label. Every other report is an attributed
+ * report. The AI never produces independent_corroboration.
+ */
+export function claimEvidenceLabelFor(sourceId: string | undefined): ProposalClaim["evidence_label"] {
+  if (sourceId === PETABENCANA_SOURCE_ID) return "crowdsourced_observation";
+  if (sourceId === BMKG_GEMPA_SOURCE_ID) return "issuer_notice";
+  return "attributed_report";
+}
+
+/** Distinct publishers among claims: the registry source, or the outlet when there is none. */
+export function distinctPublisherCount(claims: readonly ProposalClaim[]): number {
+  const publishers = new Set<string>();
+  for (const claim of claims) {
+    const key = claim.source_id ?? claim.outlet ?? null;
+    if (key) publishers.add(key);
+  }
+  return publishers.size;
+}
+
+function joinDiscrepancySummaries(...parts: ReadonlyArray<string | null | undefined>): string | null {
+  const joined = parts.filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+  return joined.length > 0 ? joined.join(" ") : null;
+}
+
+function mapContradictions(
+  contradictions: IncidentCorrelation["contradictoryEvidence"],
+  existingSourceId: string | null,
+  input: IncidentWorkflowInput,
+): unknown[] {
+  return contradictions.map((diff) => ({
+    kind: diff.field || "general_conflict",
+    description: `Perbedaan ${diff.field}: "${diff.claimA}" vs "${diff.claimB}"`,
+    source_a: {
+      source_id: existingSourceId,
+      claim_text: diff.claimA,
+    },
+    source_b: {
+      source_id: input.sourceId ?? null,
+      outlet: input.sourceDisplayName,
+      claim_text: diff.claimB,
+    },
+  }));
+}
 
 export function createIncidentIntelligenceWorkflow(dependencies: {
   readonly executor: SqlExecutor;
@@ -419,26 +473,36 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         };
       }
 
-      // Generate grounded proposal for moderation queue
+      // MERGE-REVIEW-01: every claim keeps its own publisher, URL and label. The AI may merge
+      // reports into one event, but it never labels a claim as independent corroboration. Only a
+      // moderator can choose that label.
       const compatibilityCat = deriveCompatibilityCategory(interpretation.incidentType);
+      const claimLabel = claimEvidenceLabelFor(input.sourceId);
+      const publisher = {
+        source_id: input.sourceId ?? null,
+        outlet: input.sourceDisplayName,
+        source_url: input.sourceUrl ?? null,
+      };
 
-      const claims: Array<EventProposalDto["claims"][number]> = interpretation.evidence.map((ev, idx) => ({
+      const newClaims: ProposalClaim[] = interpretation.evidence.map((ev, idx) => ({
         claim_id: `claim-${idx + 1}`,
         claim_text: ev.supports,
-        evidence_label: "under_review",
+        evidence_label: claimLabel,
         support_assessment: "supported",
         quote_text: ev.exactQuote,
         evidence_ref_id: ev.chunkId,
+        ...publisher,
       }));
 
-      if (claims.length === 0) {
-        claims.push({
+      if (newClaims.length === 0) {
+        newClaims.push({
           claim_id: "claim-1",
           claim_text: interpretation.summary,
-          evidence_label: "under_review",
+          evidence_label: claimLabel,
           support_assessment: "uncertain",
           quote_text: "",
           evidence_ref_id: input.evidenceChunks[0]?.chunkId || "chunk-unverified",
+          ...publisher,
         });
       }
 
@@ -447,78 +511,61 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         ? correlation.candidateIncidentId
         : null;
       const proposalId = proposalIdFor(targetIncidentId, input.reportRevisionId, linkedIncidentId !== null);
-      let isMultiSource = false;
-      let sourceCount = 1;
-      let proposalClaims = claims;
-      let proposalDiscrepancies: unknown[] = [];
-      let hasDiscrepancy = false;
+      let proposalClaims: ProposalClaim[] = newClaims;
+      let proposalDiscrepancies: unknown[] = mapContradictions(correlation.contradictoryEvidence, publisher.source_id, input);
+      let hasDiscrepancy = correlation.has_discrepancy || correlation.contradictoryEvidence.length > 0;
+      let discrepancySummary: string | null = correlation.has_discrepancy ? correlation.discrepancy_summary : null;
       let proposalCaveats = triageMismatch
         ? [...interpretation.uncertaintyNotes, "category_mismatch_review"]
         : [...interpretation.uncertaintyNotes];
 
       if (correlation.decision === "same_incident" && correlation.candidateIncidentId) {
-        // INTEL-02: the proposal this report extends is read from event_proposals itself, so the lookup
-        // works on the job path and the non-job path alike (only the job path writes
-        // incident_processing_records). The chain head is the proposal with the most sources, so a
-        // later unresolved report (count 1) cannot reset the count. Ties go to the earliest proposal,
-        // which is the one that created the incident.
-        const existingProposalRow = await dependencies.executor.query<{ proposal_id: string; record_json: unknown }>(
-          `SELECT ep.proposal_id, ep.record_json
+        // The chain head is the latest proposal of this incident that is not rejected and not
+        // unresolved. Each merge is built from the previous head, so the head already carries every
+        // accepted claim. Ordering by source_count is not safe: distinct publishers can tie, and an
+        // older tie would drop claims.
+        const chainRow = await dependencies.executor.query<{ record_json: unknown }>(
+          `SELECT ep.record_json
            FROM waspada.event_proposals ep
-           WHERE ep.dataset_kind = $1 AND ep.record_json->>'incident_id' = $2
-           ORDER BY COALESCE((ep.record_json->>'source_count')::int, 1) DESC, ep.proposed_at ASC, ep.proposal_id ASC
+           WHERE ep.dataset_kind = $1
+             AND ep.record_json->>'incident_id' = $2
+             AND COALESCE(ep.record_json->>'correlation_relationship', 'corroborating') <> 'unresolved'
+             AND NOT EXISTS (
+               SELECT 1 FROM waspada.publication_decisions pd
+               WHERE pd.dataset_kind = ep.dataset_kind
+                 AND pd.proposal_id = ep.proposal_id
+                 AND pd.record_json->>'disposition' = 'reject'
+             )
+           ORDER BY ep.proposed_at DESC, ep.proposal_id DESC
            LIMIT 1`,
           [datasetKind, correlation.candidateIncidentId],
         );
 
-        if (existingProposalRow.rows.length > 0) {
-          const rawExisting = existingProposalRow.rows[0]!.record_json;
-          const existing = (typeof rawExisting === "string" ? JSON.parse(rawExisting) : rawExisting) as EventProposalDto;
-          sourceCount = Math.max(2, (existing.source_count ?? 1) + 1);
-          isMultiSource = true;
-
-          const updatedExistingClaims = (existing.claims ?? []).map((c) => ({
-            ...c,
-            is_corroborated: true,
-          }));
-
-          const newCorroboratedClaims = claims.map((c, idx) => ({
-            ...c,
-            claim_id: `claim-${updatedExistingClaims.length + idx + 1}`,
-            is_corroborated: true,
-          }));
-
-          proposalClaims = [...updatedExistingClaims, ...newCorroboratedClaims];
-
-          const mappedDiscrepancies = (correlation.contradictoryEvidence ?? []).map((diff) => ({
-            kind: diff.field || "general_conflict",
-            description: `Perbedaan ${diff.field}: "${diff.claimA}" vs "${diff.claimB}"`,
-            source_a: {
-              source_id: (existing as any).source_id ?? "sumber_sebelumnya",
-              claim_text: diff.claimA,
-            },
-            source_b: {
-              source_id: input.sourceDisplayName ?? input.sourceId ?? "sumber_baru",
-              claim_text: diff.claimB,
-            },
-          }));
-
-          proposalDiscrepancies = [
-            ...((existing.discrepancies as any[]) ?? []),
-            ...mappedDiscrepancies,
+        if (chainRow.rows.length > 0) {
+          const rawHead = chainRow.rows[0]!.record_json;
+          const head = (typeof rawHead === "string" ? JSON.parse(rawHead) : rawHead) as EventProposalDto;
+          const chainClaims: ProposalClaim[] = (head.claims ?? []).map((claim) => ({ ...claim }));
+          proposalClaims = [
+            ...chainClaims,
+            ...newClaims.map((claim, idx) => ({ ...claim, claim_id: `claim-${chainClaims.length + idx + 1}` })),
           ];
-          hasDiscrepancy = proposalDiscrepancies.length > 0;
-
+          proposalDiscrepancies = [
+            ...((head.discrepancies as unknown[] | undefined) ?? []),
+            ...mapContradictions(correlation.contradictoryEvidence, head.source_id ?? null, input),
+          ];
+          hasDiscrepancy = hasDiscrepancy || head.has_discrepancy === true || proposalDiscrepancies.length > 0;
+          discrepancySummary = joinDiscrepancySummaries(head.discrepancy_summary ?? null, discrepancySummary);
           proposalCaveats = Array.from(new Set([
-            ...((existing.caveats as string[]) ?? []),
+            ...((head.caveats as string[] | undefined) ?? []),
             ...proposalCaveats,
           ]));
-        } else {
-          isMultiSource = true;
-          sourceCount = 2;
-          proposalClaims = claims.map((c) => ({ ...c, is_corroborated: true }));
         }
       }
+
+      // source_count is the number of distinct publishers across the claims. A publisher is the
+      // registry source, or the outlet name when there is no registry source. Syndicated copies
+      // share one publisher, so they count once.
+      const sourceCount = distinctPublisherCount(proposalClaims);
 
       const proposalDto: EventProposalDto = {
         schema_version: "2.0",
@@ -541,11 +588,13 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         interpretation_category: input.triage ? interpretation.primaryCategory : null,
         // WJ-INT-02B: registry source id for the public-display rights gate.
         source_id: input.sourceId ?? null,
-        is_multi_source: isMultiSource,
+        is_multi_source: sourceCount >= 2,
         source_count: sourceCount,
         has_discrepancy: hasDiscrepancy,
+        discrepancy_summary: hasDiscrepancy ? discrepancySummary : null,
         discrepancies: proposalDiscrepancies,
         caveats: proposalCaveats,
+        correlation_relationship: relationship,
         proposed_at: now,
       };
       let resolvedIncident: IncidentRecord | Record<string, unknown>;
