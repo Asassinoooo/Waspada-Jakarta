@@ -180,14 +180,6 @@ export async function persistProposalWithTx(
     hash.readInt32BE(4),
   ]);
 
-  function mapEvidenceLabel(prop: EventProposalDto, clm: EventProposalDto["claims"][number]): string {
-    const raw = clm.evidence_label as string;
-    if (raw === 'issuer_notice' || raw === 'independent_corroboration' || raw === 'crowdsourced_observation') {
-      return raw;
-    }
-    return prop.is_multi_source || clm.is_corroborated ? 'independent_corroboration' : 'attributed_report';
-  }
-
   // Idempotency check: does the proposal already exist?
   const existing = await tx.query<{ proposal_id: string }>(
     `SELECT proposal_id FROM waspada.event_proposals
@@ -226,7 +218,15 @@ export async function persistProposalWithTx(
   if (inserted.rows.length === 0) {
     return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
   }
-  // Insert claims into waspada.proposal_claims
+  // Insert claims into waspada.proposal_claims.
+  // Owner decision: AI claims are never auto-labelled independent_corroboration
+  // (not even for multi-source proposals). Issuer notices (BMKG) and crowdsourced
+  // observations (PetaBencana) keep their source-type label; everything else is an
+  // attributed report. Only a moderator may choose independent_corroboration.
+  function mapEvidenceLabel(clm: EventProposalDto["claims"][number]): string {
+    const raw = clm.evidence_label as string;
+    return raw === 'issuer_notice' || raw === 'crowdsourced_observation' ? raw : 'attributed_report';
+  }
   for (const claim of proposal.claims) {
     await tx.query(
       `INSERT INTO waspada.proposal_claims
@@ -238,7 +238,7 @@ export async function persistProposalWithTx(
         proposal.proposal_id,
         claim.claim_id,
         claim.support_assessment,
-        mapEvidenceLabel(proposal, claim),
+        mapEvidenceLabel(claim),
         claim.claim_text,
         JSON.stringify(claim),
       ],

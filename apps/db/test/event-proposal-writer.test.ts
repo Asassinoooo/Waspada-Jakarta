@@ -114,7 +114,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
     );
     assert.equal(claimRows.rows.length, 2);
     assert.equal(claimRows.rows[0]?.claim_id, 'claim-flood-depth-001');
-    assert.equal(claimRows.rows[0]?.evidence_label, 'under_review');
+    assert.equal(claimRows.rows[0]?.evidence_label, 'attributed_report');
     assert.equal(claimRows.rows[0]?.support_assessment, 'supported');
     assert.equal(claimRows.rows[1]?.claim_id, 'claim-flood-traffic-002');
   });

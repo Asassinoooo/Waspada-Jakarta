@@ -346,7 +346,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
     assert.equal(singleProposal.source_count, 2);
     assert.equal(singleProposal.claims.length, 2);
 
-    // Verify DB claims have evidence_label upgraded to independent_corroboration
+    // AI claims are never auto-labelled independent_corroboration, even when multi-source.
     const dbClaims = await db.executor.query<{ claim_id: string; evidence_label: string }>(
       `SELECT claim_id, evidence_label FROM waspada.proposal_claims
        WHERE dataset_kind = 'synthetic' AND proposal_id = $1`,
@@ -354,7 +354,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
     );
     assert.equal(dbClaims.rows.length, 2);
     for (const c of dbClaims.rows) {
-      assert.equal(c.evidence_label, "independent_corroboration");
+      assert.equal(c.evidence_label, "attributed_report");
     }
   });
 });

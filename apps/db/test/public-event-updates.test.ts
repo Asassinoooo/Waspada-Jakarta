@@ -77,30 +77,12 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     await seedReviewBeforeMigration({ eventId: 'event-page', eventVersion: 2, status: 'approved', changeType: 'corrected', summary: 'Authored fictional page two.' });
 
     const applied = await applyMigrations(database.executor, migrations);
-    assert.deepEqual(applied.applied, [
-      '016_public_update_feed_order', '017_moderator_publication_writer_role',
-      '018_l1_extraction_result_verification', '019_l3_progress_fingerprints',
-      '020_public_event_freshness_aggregate',
-      '021_l1_scheduler_namespace_read',
-      '022_l1_embedding_verification_reads',
-      '023_l2_event_proposal_writer',
-      '024_freshness_transition_ledger',
-      '025_freshness_current_public_overlay',
-      '026_freshness_due_run_traces', '027_publication_outbox_delivery',
-      '028_report_revision_impact_reader',
-      '029_source_revision_observations',
-      '030_l2_source_revision_grounding_gate',
-      '031_source_revision_review_candidate_reader',
-      '032_source_revision_freshness_transitions',
-      '033_source_revision_freshness_run_state',
-      '034_source_revision_withdrawn_freshness',
-      '035_l3_advance_review_pending',
-      '036_accounts',
-      '037_ai_incident_intelligence_pipeline',
-      '038_ai_incident_classification_and_fallback',
-      '039_pipeline_unification_and_idempotency',
-      '040_news_triage_and_primary_category',
-    ]);
+    // Everything from 016 onward is pending; derive it from the folder so new migrations do not break this test.
+    const expectedApplied = migrations
+      .slice(migrations.indexOf(updateMigration))
+      .map(({ version }) => version);
+    assert.ok(expectedApplied.length >= 1 && expectedApplied[0] === '016_public_update_feed_order');
+    assert.deepEqual(applied.applied, expectedApplied);
   });
 
   after(async () => {
