@@ -4,41 +4,28 @@ export type AccountDatasetMode = 'live' | 'demo';
 export type AccountRole = 'user' | 'moderator' | 'admin';
 export type AccountChannel = 'web' | 'mobile';
 
-export interface VerifiedGoogleIdentity {
-  readonly issuer: string;
-  readonly subject: string;
-  readonly displayName: string;
-  readonly email: string;
-  readonly emailVerified: boolean;
+/** Server-side throttle scopes. Client and username keys are hashed before storage. */
+export type AccountThrottleScope = 'register' | 'login_client' | 'login_username';
+
+export class AccountUsernameTakenError extends Error {
+  readonly code = 'username_taken' as const;
+
+  constructor() {
+    super('The username is already registered in this dataset.');
+    this.name = 'AccountUsernameTakenError';
+  }
 }
 
 export interface StoredAccount {
   readonly id: string;
   readonly display_name: string;
-  readonly email: string;
+  /** Password accounts have no verified email, so this is null for them. */
+  readonly email: string | null;
   readonly role: AccountRole;
   readonly active: boolean;
   readonly onboarding_version: 0 | 1;
   readonly onboarding_completed_at: string | null;
   readonly version: number;
-}
-
-export interface CreateAccountLoginAttemptInput {
-  readonly stateSha256: string;
-  readonly browserCookieSha256: string;
-  readonly priorSessionTokenSha256: string | null;
-  readonly codeVerifier: string;
-  readonly nonce: string;
-  readonly returnTo: '#akun' | '#mulai' | '#admin' | '#tinjau-bukti';
-  readonly createdAt: string;
-  readonly expiresAt: string;
-}
-
-export interface ClaimedAccountLoginAttempt {
-  readonly codeVerifier: string;
-  readonly nonce: string;
-  readonly returnTo: '#akun' | '#mulai' | '#admin' | '#tinjau-bukti';
-  readonly priorSessionTokenSha256: string | null;
 }
 
 export interface CreateAccountSessionInput {
@@ -83,22 +70,37 @@ export type AccountAdminUpdateResult =
   | { readonly outcome: 'not_found' }
   | { readonly outcome: 'conflict' };
 
-export interface ProvisionAccountInput {
-  readonly identity: VerifiedGoogleIdentity;
+export interface CreatePasswordAccountInput {
+  readonly datasetMode: AccountDatasetMode;
+  readonly username: string;
+  readonly passwordHash: string;
+  readonly displayName: string;
+  /** Self-registration always passes `user`. Other roles are operator-only and audited. */
   readonly role: AccountRole;
-  readonly reason: string;
   readonly now: string;
+  /** Required for operator-provisioned roles (anything other than `user`). */
+  readonly reason?: string;
+}
+
+export interface StoredPasswordCredential {
+  readonly account: StoredAccount;
+  readonly passwordHash: string;
+}
+
+export interface SetPasswordHashInput {
+  readonly accountId: string;
+  readonly passwordHash: string;
+  readonly now: string;
+  /** The session that performed the change stays active; every other session is revoked. */
+  readonly keepTokenSha256: string;
 }
 
 export interface AccountStore {
   readonly datasetMode: AccountDatasetMode;
-  createLoginAttempt(input: CreateAccountLoginAttemptInput): Promise<void>;
-  claimLoginAttempt(
-    stateSha256: string,
-    browserCookieSha256: string,
-    now: string,
-  ): Promise<ClaimedAccountLoginAttempt | null>;
-  findOrCreateVerifiedAccount(identity: VerifiedGoogleIdentity, now: string): Promise<StoredAccount>;
+  createPasswordAccount(input: CreatePasswordAccountInput): Promise<StoredAccount>;
+  findPasswordCredentialByUsername(username: string): Promise<StoredPasswordCredential | null>;
+  findPasswordCredentialByAccountId(accountId: string): Promise<StoredPasswordCredential | null>;
+  setPasswordHash(input: SetPasswordHashInput): Promise<boolean>;
   createSession(input: CreateAccountSessionInput): Promise<StoredAccount>;
   readSession(tokenSha256: string, now: string): Promise<StoredAccountSession | null>;
   revokeSession(tokenSha256: string, now: string): Promise<boolean>;
@@ -106,21 +108,19 @@ export interface AccountStore {
   listAccounts(limit: number, after: string | undefined, actorAccountId: string): Promise<AccountUserPageResult>;
   updateAccountByAdmin(input: AccountAdminUpdateInput): Promise<AccountAdminUpdateResult>;
   consumeThrottle(
-    scope: 'web_start' | 'web_callback' | 'native_exchange',
+    scope: AccountThrottleScope,
     clientKeySha256: string,
     now: string,
     windowMilliseconds: number,
     maximumRequests: number,
   ): Promise<boolean>;
   cleanupExpired(now: string, maxRows: number): Promise<number>;
-  /** Trusted operator-only setup primitive. It is never reachable through account-v1 HTTP. */
-  provisionAccount(input: ProvisionAccountInput): Promise<StoredAccount>;
 }
 
 interface AccountRow {
   account_id: string;
   display_name: string;
-  email: string;
+  email: string | null;
   role: AccountRole;
   active: boolean;
   onboarding_version: number;
@@ -128,11 +128,8 @@ interface AccountRow {
   version: number;
 }
 
-interface LoginAttemptRow {
-  code_verifier: string;
-  nonce: string;
-  return_to: ClaimedAccountLoginAttempt['returnTo'];
-  prior_session_token_sha256: string | null;
+interface PasswordCredentialRow extends AccountRow {
+  password_hash: string;
 }
 
 interface SessionRow extends AccountRow {
@@ -143,7 +140,8 @@ interface SessionRow extends AccountRow {
   absolute_expires_at: string | Date;
 }
 
-const googleIssuer = 'https://accounts.google.com';
+const usernamePattern = /^[a-z0-9_.]{3,32}$/u;
+const passwordHashPattern = /^pbkdf2-sha256\$[1-9][0-9]{4,6}\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{43}$/u;
 const roleValues = new Set<AccountRole>(['user', 'moderator', 'admin']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const hashPattern = /^[0-9a-f]{64}$/u;
@@ -186,80 +184,101 @@ export function createAccountStore(
   return {
     datasetMode,
 
-    async createLoginAttempt(input) {
-      requireHash(input.stateSha256, 'state');
-      requireHash(input.browserCookieSha256, 'browser cookie');
-      if (input.priorSessionTokenSha256 !== null) {
-        requireHash(input.priorSessionTokenSha256, 'prior session');
+    async createPasswordAccount(input) {
+      if (input.datasetMode !== datasetMode) {
+        throw new TypeError('Account dataset must match the server-selected store.');
       }
-      await inTransaction(async (transaction) => {
-        await transaction.query(
-          `INSERT INTO waspada.account_login_attempts (
-             dataset_mode, state_sha256, browser_cookie_sha256, prior_session_token_sha256,
-             code_verifier, nonce, return_to, created_at, expires_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [datasetMode, input.stateSha256, input.browserCookieSha256, input.priorSessionTokenSha256,
-            input.codeVerifier, input.nonce, input.returnTo, input.createdAt, input.expiresAt],
-        );
-      });
-    },
-
-    async claimLoginAttempt(stateSha256, browserCookieSha256, now) {
-      requireHash(stateSha256, 'state');
-      requireHash(browserCookieSha256, 'browser cookie');
+      if (!usernamePattern.test(input.username)) throw new TypeError('Account username is invalid.');
+      if (!passwordHashPattern.test(input.passwordHash)) throw new TypeError('Password hash is invalid.');
+      if (!roleValues.has(input.role)) throw new TypeError('Account role is invalid.');
+      const displayName = normalizeDisplayName(input.displayName);
+      const operatorProvisioned = input.role !== 'user';
+      const reason = operatorProvisioned ? normalizeReason(input.reason ?? '') : null;
+      requireTimestamp(input.now);
       return inTransaction(async (transaction) => {
-        const result = await transaction.query<LoginAttemptRow>(
-          `UPDATE waspada.account_login_attempts
-           SET consumed_at = $4
-           WHERE dataset_mode = $1 AND state_sha256 = $2 AND browser_cookie_sha256 = $3
-             AND consumed_at IS NULL AND expires_at > $4
-           RETURNING code_verifier, nonce, return_to, prior_session_token_sha256`,
-          [datasetMode, stateSha256, browserCookieSha256, now],
-        );
-        const row = result.rows[0];
-        return row
-          ? {
-            codeVerifier: row.code_verifier,
-            nonce: row.nonce,
-            returnTo: row.return_to,
-            priorSessionTokenSha256: row.prior_session_token_sha256,
-          }
-          : null;
-      });
-    },
-
-    async findOrCreateVerifiedAccount(identity, now) {
-      validateIdentity(identity);
-      return inTransaction(async (transaction) => {
-        const upserted = await transaction.query<AccountRow>(
+        // Operator-provisioned roles are considered introduced at creation time.
+        const inserted = await transaction.query<AccountRow>(
           `INSERT INTO waspada.accounts (
-             dataset_mode, identity_issuer, identity_subject, display_name, email,
+             dataset_mode, username, password_hash, display_name, email,
              role, active, onboarding_version, onboarding_completed_at,
              version, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, 'user', true, 0, NULL, 1, $6, $6)
-           ON CONFLICT (dataset_mode, identity_issuer, identity_subject) DO UPDATE
-           SET display_name = EXCLUDED.display_name,
-               email = EXCLUDED.email,
-               updated_at = EXCLUDED.updated_at,
-               version = waspada.accounts.version + 1
-           WHERE waspada.accounts.display_name IS DISTINCT FROM EXCLUDED.display_name
-              OR waspada.accounts.email IS DISTINCT FROM EXCLUDED.email
+           ) VALUES ($1, $2, $3, $4, NULL, $5, true, $6, $7, 1, $8, $8)
+           ON CONFLICT (dataset_mode, username) WHERE username IS NOT NULL DO NOTHING
            RETURNING account_id::text, display_name, email, role, active,
                      onboarding_version, onboarding_completed_at, version`,
-          [datasetMode, identity.issuer, identity.subject, identity.displayName, identity.email, now],
+          [datasetMode, input.username, input.passwordHash, displayName, input.role,
+            operatorProvisioned ? 1 : 0, operatorProvisioned ? input.now : null, input.now],
         );
-        if (upserted.rows[0]) return toStoredAccount(upserted.rows[0]);
+        const row = inserted.rows[0];
+        if (!row) throw new AccountUsernameTakenError();
+        const account = toStoredAccount(row);
+        if (reason !== null) {
+          await transaction.query(
+            `INSERT INTO waspada.account_admin_audit (
+               dataset_mode, actor_kind, actor_account_id, target_account_id,
+               action, reason, actor_role_at_action, target_role_before,
+               target_role_after, target_active_before, target_active_after,
+               expected_version, target_version_after, occurred_at
+             ) VALUES ($1, 'operator', NULL, $2::uuid, 'account_provisioned', $3,
+                      NULL, NULL, $4, NULL, true, NULL, $5, $6)`,
+            [datasetMode, account.id, reason, account.role, account.version, input.now],
+          );
+        }
+        return account;
+      });
+    },
 
-        const existing = await transaction.query<AccountRow>(
+    async findPasswordCredentialByUsername(username) {
+      if (!usernamePattern.test(username)) return null;
+      return inTransaction(async (transaction) => {
+        const rows = await transaction.query<PasswordCredentialRow>(
           `SELECT account_id::text, display_name, email, role, active,
-                  onboarding_version, onboarding_completed_at, version
+                  onboarding_version, onboarding_completed_at, version, password_hash
            FROM waspada.accounts
-           WHERE dataset_mode = $1 AND identity_issuer = $2 AND identity_subject = $3
-           FOR UPDATE`,
-          [datasetMode, identity.issuer, identity.subject],
+           WHERE dataset_mode = $1 AND username = $2 AND password_hash IS NOT NULL`,
+          [datasetMode, username],
         );
-        if (!existing.rows[0]) throw new Error('Account upsert could not be read back.');
-        return toStoredAccount(existing.rows[0]);
+        return toCredential(rows.rows[0]);
+      });
+    },
+
+    async findPasswordCredentialByAccountId(accountId) {
+      requireUuid(accountId, 'account');
+      return inTransaction(async (transaction) => {
+        const rows = await transaction.query<PasswordCredentialRow>(
+          `SELECT account_id::text, display_name, email, role, active,
+                  onboarding_version, onboarding_completed_at, version, password_hash
+           FROM waspada.accounts
+           WHERE dataset_mode = $1 AND account_id = $2::uuid AND password_hash IS NOT NULL`,
+          [datasetMode, accountId],
+        );
+        return toCredential(rows.rows[0]);
+      });
+    },
+
+    async setPasswordHash(input) {
+      requireUuid(input.accountId, 'account');
+      if (!passwordHashPattern.test(input.passwordHash)) throw new TypeError('Password hash is invalid.');
+      requireHash(input.keepTokenSha256, 'session');
+      requireTimestamp(input.now);
+      return inTransaction(async (transaction) => {
+        const updated = await transaction.query<{ account_id: string }>(
+          `UPDATE waspada.accounts
+           SET password_hash = $3, updated_at = $4
+           WHERE dataset_mode = $1 AND account_id = $2::uuid AND active
+             AND password_hash IS NOT NULL
+           RETURNING account_id::text`,
+          [datasetMode, input.accountId, input.passwordHash, input.now],
+        );
+        if (!updated.rows[0]) return false;
+        // Atomic with the hash change: other sessions of this account end immediately.
+        await transaction.query(
+          `UPDATE waspada.account_sessions SET revoked_at = $3
+           WHERE dataset_mode = $1 AND account_id = $2::uuid AND revoked_at IS NULL
+             AND token_sha256 <> $4::text`,
+          [datasetMode, input.accountId, input.now, input.keepTokenSha256],
+        );
+        return true;
       });
     },
 
@@ -544,72 +563,6 @@ export function createAccountStore(
         return sessions.rows.length + attempts.rows.length + throttles.rows.length;
       });
     },
-
-    async provisionAccount(input) {
-      validateIdentity(input.identity);
-      if (!roleValues.has(input.role)) throw new TypeError('Account role is invalid.');
-      const reason = normalizeReason(input.reason);
-      return inTransaction(async (transaction) => {
-        const inserted = await transaction.query<AccountRow>(
-          `INSERT INTO waspada.accounts (
-             dataset_mode, identity_issuer, identity_subject, display_name, email,
-             role, active, onboarding_version, onboarding_completed_at,
-             version, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, true, 0, NULL, 1, $7, $7)
-           ON CONFLICT (dataset_mode, identity_issuer, identity_subject) DO NOTHING
-           RETURNING account_id::text, display_name, email, role, active,
-                     onboarding_version, onboarding_completed_at, version`,
-          [datasetMode, input.identity.issuer, input.identity.subject,
-            input.identity.displayName, input.identity.email, input.role, input.now],
-        );
-        let before: StoredAccount | null = null;
-        let provisioned: StoredAccount;
-        if (inserted.rows[0]) {
-          provisioned = toStoredAccount(inserted.rows[0]);
-        } else {
-          const existingRows = await transaction.query<AccountRow>(
-            `SELECT account_id::text, display_name, email, role, active,
-                    onboarding_version, onboarding_completed_at, version
-             FROM waspada.accounts
-             WHERE dataset_mode = $1 AND identity_issuer = $2 AND identity_subject = $3
-             FOR UPDATE`,
-            [datasetMode, input.identity.issuer, input.identity.subject],
-          );
-          if (!existingRows.rows[0]) throw new Error('Provisioned account could not be loaded.');
-          before = toStoredAccount(existingRows.rows[0]);
-          const updatedRows = await transaction.query<AccountRow>(
-            `UPDATE waspada.accounts
-             SET display_name = $3, email = $4, role = $5, active = true,
-                 version = version + 1, updated_at = $6
-             WHERE dataset_mode = $1 AND account_id = $2::uuid
-             RETURNING account_id::text, display_name, email, role, active,
-                       onboarding_version, onboarding_completed_at, version`,
-            [datasetMode, before.id, input.identity.displayName,
-              input.identity.email, input.role, input.now],
-          );
-          if (!updatedRows.rows[0]) throw new Error('Provisioned account could not be updated.');
-          provisioned = toStoredAccount(updatedRows.rows[0]);
-          await transaction.query(
-            `UPDATE waspada.account_sessions SET revoked_at = $3
-             WHERE dataset_mode = $1 AND account_id = $2::uuid AND revoked_at IS NULL`,
-            [datasetMode, before.id, input.now],
-          );
-        }
-        await transaction.query(
-          `INSERT INTO waspada.account_admin_audit (
-             dataset_mode, actor_kind, actor_account_id, target_account_id,
-             action, reason, actor_role_at_action, target_role_before,
-             target_role_after, target_active_before, target_active_after,
-             expected_version, target_version_after, occurred_at
-           ) VALUES ($1, 'operator', NULL, $2::uuid, 'account_provisioned', $3,
-                    NULL, $4, $5, $6, $7, NULL, $8, $9)`,
-          [datasetMode, provisioned.id, reason, before?.role ?? null,
-            provisioned.role, before?.active ?? null, provisioned.active,
-            provisioned.version, input.now],
-        );
-        return provisioned;
-      });
-    },
   };
 }
 
@@ -632,23 +585,24 @@ function toStoredAccount(row: AccountRow): StoredAccount {
   });
 }
 
-function validateIdentity(identity: VerifiedGoogleIdentity): void {
-  if (identity.issuer !== googleIssuer
-    || identity.emailVerified !== true
-    || typeof identity.subject !== 'string'
-    || identity.subject.length < 1
-    || identity.subject.length > 255
-    || /[\u0000-\u001f\u007f]/u.test(identity.subject)
-    || typeof identity.email !== 'string'
-    || identity.email.length < 3
-    || identity.email.length > 320
-    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(identity.email)
-    || typeof identity.displayName !== 'string'
-    || identity.displayName.trim().length < 1
-    || identity.displayName.length > 200
-    || /[\u0000-\u001f\u007f]/u.test(identity.displayName)) {
-    throw new TypeError('Verified Google identity is invalid.');
+function toCredential(row: PasswordCredentialRow | undefined): StoredPasswordCredential | null {
+  if (!row) return null;
+  if (typeof row.password_hash !== 'string' || !passwordHashPattern.test(row.password_hash)) {
+    throw new Error('Stored password credential is invalid.');
   }
+  return { account: toStoredAccount(row), passwordHash: row.password_hash };
+}
+
+function normalizeDisplayName(value: string): string {
+  const name = value.trim();
+  if (name.length < 1 || name.length > 200 || /[\u0000-\u001f\u007f]/u.test(name)) {
+    throw new TypeError('Account display name is invalid.');
+  }
+  return name;
+}
+
+function requireTimestamp(value: string): void {
+  timestamp(value);
 }
 
 function requireUuid(value: string, label: string): void {

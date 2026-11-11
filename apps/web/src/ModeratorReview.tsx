@@ -543,16 +543,14 @@ export function ModeratorReviewQueue({
 
   useEffect(() => {
     if (!propCsrfToken && typeof window !== "undefined") {
-      fetch("/api/v1/account/session", { credentials: "same-origin" })
+      // account-v1 returns the envelope at the top level; csrf_token is set only for a web session.
+      fetch("/api/v1/auth/session", { credentials: "same-origin" })
         .then((res) => (res.ok ? res.json() : null))
         .then((data: unknown) => {
-          if (data && typeof data === "object" && "session" in data) {
-            const session = data.session;
-            if (session && typeof session === "object" && "csrf_token" in session) {
-              const token = session.csrf_token;
-              if (typeof token === "string") {
-                setSessionCsrf(token);
-              }
+          if (data && typeof data === "object" && "csrf_token" in data) {
+            const token = (data as { csrf_token: unknown }).csrf_token;
+            if (typeof token === "string") {
+              setSessionCsrf(token);
             }
           }
         })

@@ -75,33 +75,33 @@ function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function GoogleLogin({
+function PasswordLogin({
   sessionState,
-  returnTo,
   onRefreshSession,
   client,
 }: {
   sessionState: AccountSessionState;
-  returnTo: AccountReturnTarget;
   onRefreshSession: () => void;
   client: AccountClient;
 }) {
+  // Placeholder form for the username/password flow. The full login experience is part B.
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const loginAvailable = sessionState.status === "anonymous" && sessionState.session.google_login_available;
-  const callbackFailed = typeof window !== "undefined" && (
-    new URLSearchParams(window.location.search).get("login") === "failed" ||
-    (window.location.hash.startsWith("#masuk?") && new URLSearchParams(window.location.hash.slice("#masuk?".length)).get("login") === "failed")
-  );
+  const loginAvailable = sessionState.status === "anonymous" && sessionState.session.password_login_available;
 
-  async function startLogin() {
+  async function submit(event: { preventDefault(): void }) {
+    event.preventDefault();
     setWorking(true);
     setError(null);
     try {
-      const url = await client.startGoogleLogin(returnTo);
-      window.location.assign(url);
+      await client.login(username, password);
+      setPassword("");
+      onRefreshSession();
     } catch {
-      setError("Google belum dapat membuka sesi masuk. Coba lagi atau lanjutkan tanpa akun.");
+      setError("Username atau kata sandi tidak sesuai, atau masuk belum tersedia. Coba lagi.");
+    } finally {
       setWorking(false);
     }
   }
@@ -121,31 +121,24 @@ function GoogleLogin({
   return (
     <div className="account-flow">
       <section className="account-card" aria-labelledby="login-title">
-        <h2 id="login-title">Masuk dengan Google</h2>
+        <h2 id="login-title">Masuk dengan username</h2>
         <p>Masuk bersifat opsional. Peta, laporan publik, riwayat, dan minat lokal tetap dapat digunakan tanpa akun.</p>
-        {callbackFailed && <p className="account-message account-message--error" role="status">Proses masuk belum selesai. Tidak ada sesi baru yang dibuat; Anda dapat mencoba lagi.</p>}
         {error && <p className="account-message account-message--error" role="alert">{error}</p>}
         {loginAvailable
-          ? <button className="button button--primary" type="button" onClick={() => void startLogin()} disabled={working}>{working ? "Membuka Google…" : "Lanjutkan dengan Google"}</button>
-          : <p className="account-message" role="status">Masuk Google belum disiapkan pada layanan ini.</p>}
-        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px dashed var(--border, #ccc)" }}>
-          <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Akses Cepat Mode Demo / Pengujian:</p>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <a className="button button--primary" href="/api/v1/auth/demo-login?role=moderator&return_to=%2F%23tinjau-bukti">
-              🛡️ Masuk sebagai Demo Moderator (#tinjau-bukti)
-            </a>
-            <a className="button button--quiet" href="/api/v1/auth/demo-login?role=admin&return_to=%2F%23admin">
-              ⚙️ Masuk sebagai Demo Administrator (#admin)
-            </a>
-          </div>
-        </div>
+          ? (
+            <form onSubmit={(event) => void submit(event)}>
+              <label>Username<input name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
+              <label>Kata sandi<input name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+              <button className="button button--primary" type="submit" disabled={working}>{working ? "Memeriksa…" : "Masuk"}</button>
+            </form>
+          )
+          : <p className="account-message" role="status">Masuk dengan username belum disiapkan pada layanan ini.</p>}
       </section>
       <section className="account-card account-card--quiet">
         <h2>Ingin melihat pengenalan singkat?</h2>
         <p>Tiga langkah berikut menjelaskan status laporan, minat lokal, dan privasi. Akun tidak diperlukan.</p>
-        <a className="text-link" href="#mulai">Baca pengenalan</a>
+        <a className="button button--quiet" href="#mulai">Lihat pengenalan</a>
       </section>
-      <p className="account-privacy-link">Baca <a className="text-link" href="#privasi">panduan privasi</a> sebelum masuk.</p>
     </div>
   );
 }
@@ -161,7 +154,7 @@ export const ACCOUNT_ONBOARDING_STEPS = [
   },
   {
     title: "Selesaikan pengenalan tanpa mengirim minat",
-    body: "Untuk akun yang dibuat melalui Google resmi, layanan menyimpan issuer dan subject sebagai identitas akun, nama dan email, peran yang ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Persetujuan pada demo lokal bersifat sintetis dan tidak menghubungi Google. Minat tetap di browser dan tidak dikirim saat masuk.",
+    body: "Untuk akun dengan username, layanan menyimpan username, nama tampilan, peran yang ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Kata sandi hanya disimpan sebagai hash. Minat tetap di browser dan tidak dikirim saat masuk.",
   },
 ] as const;
 
@@ -248,8 +241,8 @@ function Onboarding({
       {sessionState.status === "anonymous" && (
         <section className="account-card account-card--quiet">
           <h2>Pengenalan ini opsional</h2>
-          <p>Anda dapat berhenti kapan saja. Masuk dengan Google bila ingin menyimpan versi dan waktu penyelesaian pada akun.</p>
-          <a className="text-link" href="#masuk?return_to=%23mulai">Masuk dengan Google</a>
+          <p>Anda dapat berhenti kapan saja. Masuk dengan username bila ingin menyimpan versi dan waktu penyelesaian pada akun.</p>
+          <a className="text-link" href="#masuk">Masuk dengan username</a>
         </section>
       )}
     </div>
@@ -526,7 +519,7 @@ function AccountProfile({
           <span className="account-role-chip">{roleLabel(user.role)}</span>
         </div>
         <dl className="account-profile__facts">
-          <div><dt>Email Google</dt><dd>{user.email}</dd></div>
+          <div><dt>Email</dt><dd>{user.email ?? "Tidak ada (akun username)"}</dd></div>
           <div><dt>Status akun</dt><dd>{user.active ? "Aktif" : "Tidak aktif"}</dd></div>
           <div><dt>Pengenalan akun</dt><dd>{user.onboarding_version === 1 ? "Selesai" : "Belum selesai"}</dd></div>
           {user.onboarding_completed_at && <div><dt>Waktu selesai</dt><dd><time dateTime={user.onboarding_completed_at}>{new Date(user.onboarding_completed_at).toLocaleString("id-ID")}</time></dd></div>}
@@ -561,7 +554,6 @@ function AccountProfile({
 export function AccountPage({
   screen,
   sessionState,
-  returnTo = "#akun",
   isNarrowScreen,
   onRefreshSession,
   client = accountClient,
@@ -571,7 +563,7 @@ export function AccountPage({
 
   if (screen === "login") {
     return <AccountFrame title={title} kicker="Masuk · opsional">
-      <GoogleLogin sessionState={sessionState} returnTo={returnTo} onRefreshSession={onRefreshSession} client={client} />
+      <PasswordLogin sessionState={sessionState} onRefreshSession={onRefreshSession} client={client} />
     </AccountFrame>;
   }
 
@@ -589,7 +581,7 @@ export function AccountPage({
         <h2>Akun tidak diperlukan untuk membaca laporan</h2>
         <p>Masuk hanya menambahkan profil dan pengenalan akun. Minat serta preferensi tetap disimpan secara lokal.</p>
         <div className="account-actions">
-          <a className="button button--primary" href="#masuk?return_to=%23akun">Masuk dengan Google</a>
+          <a className="button button--primary" href="#masuk">Masuk dengan username</a>
           <a className="button button--quiet" href="#mulai">Lihat pengenalan</a>
         </div>
       </section>
@@ -637,23 +629,13 @@ export function AccountAccessGate({
   if (sessionState.status === "loading") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionLoading label="Memeriksa izin sesi…" /></main>;
   if (sessionState.status === "error") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionUnavailable onRetry={onRefreshSession} /></main>;
   if (sessionState.status === "anonymous") {
-    const demoReturnTo = shell === "admin" ? "%2F%23admin" : "%2F%23tinjau-bukti";
-    const googleReturnTo = shell === "admin" ? "%23admin" : "%23tinjau-bukti";
-    const demoRole = shell === "admin" ? "admin" : "moderator";
     return <main id="main-content" tabIndex={-1} className="main-shell account-page">
       <section className="account-card" role="status">
         <h1>Sesi diperlukan</h1>
         <p>{shell === "admin" ? "Ruang administrator hanya tersedia untuk akun administrator yang masuk." : "Tampilan tinjau hanya tersedia untuk akun moderator atau administrator yang masuk."}</p>
         <div className="account-actions" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-start" }}>
-          <a
-            className="button button--primary"
-            style={{ fontWeight: "bold" }}
-            href={`/api/v1/auth/demo-login?role=${demoRole}&return_to=${demoReturnTo}`}
-          >
-            🚀 Masuk Cepat Demo ({shell === "admin" ? "Administrator" : "Moderator"})
-          </a>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <a className="button button--quiet" href={`#masuk?return_to=${googleReturnTo}`}>Masuk dengan Google</a>
+            <a className="button button--quiet" href="#masuk">Masuk dengan username</a>
             <a className="button button--quiet" href="#beranda">Kembali ke layanan publik</a>
           </div>
         </div>

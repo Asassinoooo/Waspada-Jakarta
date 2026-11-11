@@ -17,8 +17,10 @@ import { handleSyntheticSourcePollProcessTrigger } from "./runtime/synthetic-sou
 import { handleFreshnessDueScheduleTrigger } from "./runtime/freshness-due-schedule-trigger.js";
 import { createSourcePreviewHandler } from "./layers/l4-application-integration/source-preview-api.js";
 import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
-import { handleAccountRequest } from "./runtime/account-runtime.js";
+import { handleAccountRequest, type AccountRuntimeConfig } from "./runtime/account-runtime.js";
 import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
+import { moderationAccountConfig, moderatorSurfaceDenial, readModeratorPrincipal } from "./runtime/moderator-session.js";
+import { checkServiceKey } from "./security/service-key.js";
 import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
@@ -93,8 +95,9 @@ const embeddingVisualizationHandler = createEmbeddingVisualizationHandler({
   executorRunner: withSqlExecutor,
 });
 
-function getModerationHandler(env: WorkerEnvironment) {
-  const datasetKind = ((env.DATASET_MODE as string) || "live") as DatasetKind;
+function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConfig) {
+  // The DB dataset comes from the same server-side configuration that scopes the sessions.
+  const datasetKind = config.datasetKind as DatasetKind;
   return createModerationApiHandler({
     listPendingProposals: async () => {
       if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
@@ -221,21 +224,19 @@ function getModerationHandler(env: WorkerEnvironment) {
       if (!prop) return null;
       return { proposal: prop, chunks: activeChunks.get(id) ?? [] };
     },
-    authenticate: async (request: Request) => {
-      return {
-        actorId: "mod-demo-01",
-        role: "moderator",
-        active: true,
-        csrfToken: request.headers.get("x-csrf-token") ?? "demo-csrf-token",
-      };
-    },
-    csrfProtection: false,
+    // Real cookie session from the account store. A database failure throws and maps to 503.
+    authenticate: (request: Request) => readModeratorPrincipal(request, config),
+    appOrigin: config.appOrigin,
+    cookieMode: config.cookieMode,
+    datasetScope: config.datasetKind,
+    csrfProtection: true,
     publisher: {
       publish: async (input: unknown) => {
         const cmd = typeof input === "object" && input !== null
           ? (input as {
               proposal_id?: string;
               proposalId?: string;
+              actorId?: string;
               decision?: { proposal_id?: string };
               eventDraft?: unknown;
               event?: unknown;
@@ -300,14 +301,16 @@ function getModerationHandler(env: WorkerEnvironment) {
               [pubTrace, datasetKind],
             );
             const eventId = (publishedDetail as any)?.event_id || `evt-${id}`;
+            // The reviewer is the authenticated actor the handler passes in, never a constant.
+            const reviewerId = cmd.actorId ?? null;
             await executor.query(
               `INSERT INTO waspada.publication_decisions (
                  dataset_kind, decision_id, trace_id, proposal_id, policy_version,
                  event_id, event_version, reviewer_id, decided_at, record_json
                )
-               VALUES ($1, $2, $3, $4, 'v1', $5, 1, 'mod-demo-01', now(), '{}'::jsonb)
+               VALUES ($1, $2, $3, $4, 'v1', $5, 1, $6, now(), '{}'::jsonb)
                ON CONFLICT (dataset_kind, decision_id) DO NOTHING`,
-              [datasetKind, decisionId, pubTrace, id, eventId],
+              [datasetKind, decisionId, pubTrace, id, eventId, reviewerId],
             );
           }).catch(() => {});
         }
@@ -316,77 +319,37 @@ function getModerationHandler(env: WorkerEnvironment) {
     },
   });
 }
+function unavailableJson(): Response {
+  return new Response(JSON.stringify({
+    code: "TEMPORARILY_UNAVAILABLE",
+    message: "This service requires an account database for this route.",
+    request_id: crypto.randomUUID(),
+  }), {
+    status: 503,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+/** Machine routes: 503 when the key is not configured, 401 on any mismatch. */
+async function serviceKeyDenial(request: Request, configuredKey: string | undefined): Promise<Response | null> {
+  const decision = await checkServiceKey(request, configuredKey);
+  if (decision === "authorized") return null;
+  const status = decision === "unconfigured" ? 503 : 401;
+  const code = decision === "unconfigured" ? "TEMPORARILY_UNAVAILABLE" : "UNAUTHORIZED";
+  return new Response(JSON.stringify({ ok: false, code, error: code }), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnvironment, ctx?: { waitUntil?: (promise: Promise<unknown>) => void }): Promise<Response> {
     const url = new URL(request.url);
 
-    // Development / demo authentication bypass
-    if (url.pathname === "/api/v1/auth/demo-login" || url.pathname === "/api/v1/auth/demo/login") {
-      let role = "moderator";
-      if (request.method === "POST") {
-        try {
-          const body = await request.json() as { role?: string };
-          if (body.role === "admin" || body.role === "moderator") role = body.role;
-        } catch {}
-      } else {
-        const queryRole = url.searchParams.get("role");
-        if (queryRole === "admin" || queryRole === "moderator") role = queryRole;
-      }
-      let returnTo = url.searchParams.get("return_to") ?? (role === "admin" ? "/#admin" : "/#tinjau-bukti");
-      if (!returnTo.startsWith("/")) {
-        returnTo = "/" + returnTo;
-      }
-      const headers = new Headers();
-      headers.set("content-type", "application/json; charset=utf-8");
-      headers.set("set-cookie", `waspada_demo_session=${role}; Path=/; SameSite=Lax; Max-Age=86400`);
-      if (request.method === "GET") {
-        headers.set("location", returnTo);
-        return new Response(null, { status: 302, headers });
-      }
-      return new Response(JSON.stringify({ ok: true, role }), { status: 200, headers });
-    }
-
-    if (url.pathname === "/api/v1/auth/session") {
-      const cookieHeader = request.headers.get("cookie") ?? "";
-      const match = /(?:^|;\s*)waspada_demo_session=([^;]+)/u.exec(cookieHeader);
-      const demoRole = match ? match[1] : null;
-      if (demoRole === "moderator" || demoRole === "admin") {
-        return new Response(JSON.stringify({
-          version: "account-v1",
-          status: "authenticated",
-          google_login_available: true,
-          native_login_available: false,
-          csrf_token: "demo-csrf-token-1234567890",
-          user: {
-            id: `user-demo-${demoRole}`,
-            display_name: demoRole === "admin" ? "Demo Administrator" : "Demo Moderator",
-            email: `demo-${demoRole}@waspada.jakarta.go.id`,
-            role: demoRole,
-            active: true,
-            onboarding_version: 1,
-            onboarding_completed_at: "2026-10-26T00:00:00.000Z",
-            version: 1,
-          },
-        }), {
-          status: 200,
-          headers: {
-            "content-type": "application/json; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        });
-      }
-    }
-
-    if (url.pathname === "/api/v1/auth/logout" && request.method === "POST") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "set-cookie": "waspada_demo_session=; Path=/; Max-Age=0",
-        },
-      });
-    }
-    // Inbound incident webhook push
+    // Inbound incident webhook push. Requires the shared webhook key; 503 when none is configured.
     if (isWebhookIngestPath(url.pathname)) {
+      const denied = await serviceKeyDenial(request, env.WEBHOOK_SERVICE_KEY);
+      if (denied) return denied;
       const response = await webhookIngest(request);
       if (response.ok && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
         try {
@@ -491,14 +454,8 @@ export default {
 
     // Internal endpoint for Node.js intelligence worker to notify moderation of completed proposals
     if (url.pathname === "/api/v1/internal/proposals" && request.method === "POST") {
-      const serviceKey = request.headers.get("x-service-key");
-      const expectedKey = env.INTERNAL_SERVICE_KEY || "dev-internal-key";
-      if (serviceKey !== expectedKey) {
-        return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json; charset=utf-8" },
-        });
-      }
+      const denied = await serviceKeyDenial(request, env.INTERNAL_SERVICE_KEY);
+      if (denied) return denied;
       try {
         const body = (await request.json()) as { proposal_id?: string };
         if (body?.proposal_id) {
@@ -514,8 +471,10 @@ export default {
         headers: { "Content-Type": "application/json; charset=utf-8" },
       });
     }
-    // Realtime SSE streaming for moderation queue
+    // Realtime SSE streaming for moderation queue: moderator or admin session only.
     if (url.pathname === "/api/v1/moderation/stream" || url.pathname === "/api/v1/moderation/stream/") {
+      const denied = await moderatorSurfaceDenial(request, moderationAccountConfig(env), "review_evidence");
+      if (denied) return denied;
       return createSSEResponse(eventBroadcaster.subscribeModeration(request.signal));
     }
 
@@ -527,8 +486,15 @@ export default {
     const accountResponse = await handleAccountRequest(request, env);
     if (accountResponse !== undefined) return accountResponse;
     if (url.pathname.startsWith("/api/v1/moderation/")) {
-      const modRes = await getModerationHandler(env)(request);
-      if (modRes !== undefined) return modRes;
+      // Moderation never falls back to open access: without accounts it is unavailable.
+      const config = moderationAccountConfig(env);
+      if (!config) return unavailableJson();
+      try {
+        const modRes = await getModerationHandler(env, config)(request);
+        if (modRes !== undefined) return modRes;
+      } catch {
+        return unavailableJson();
+      }
     }
     if (url.pathname === "/api/v1/demo/context-sources") {
       return contextSourcesHandler(request, env);
@@ -537,6 +503,9 @@ export default {
       return sourcePreviewHandler(request, env);
     }
     if (url.pathname === "/api/v1/embeddings/visualization") {
+      // Chunk-level evidence text is moderator-only; the dataset comes from server configuration.
+      const denied = await moderatorSurfaceDenial(request, moderationAccountConfig(env), "review_evidence");
+      if (denied) return denied;
       return embeddingVisualizationHandler(request, env);
     }
     const eventListPageService =

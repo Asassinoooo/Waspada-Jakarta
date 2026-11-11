@@ -39,11 +39,8 @@ import {
 import type { SqlExecutor } from "../../../../db/src/sql.js";
 
 export interface WorkerEnvironment {
+  AUTH_ENABLED?: string;
   AUTH_APP_ORIGIN?: string;
-  AUTH_GOOGLE_CLIENT_ID?: string;
-  AUTH_GOOGLE_CLIENT_SECRET?: string;
-  AUTH_GOOGLE_NATIVE_CLIENT_ID?: string;
-  AUTH_GOOGLE_ANDROID_CLIENT_ID?: string;
   AUTH_HYPERDRIVE?: { readonly connectionString?: string };
   DATASET_MODE?: string;
   SOURCE_PREVIEW_ENABLED?: string;
@@ -54,7 +51,10 @@ export interface WorkerEnvironment {
   FRESHNESS_DUE_HYPERDRIVE?: { readonly connectionString?: string };
   FRESHNESS_DUE_SCHEDULER_ENABLED?: string;
   PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
+  /** Shared secret for POST /api/v1/internal/proposals. Unset means the route answers 503. */
   INTERNAL_SERVICE_KEY?: string;
+  /** Shared secret for webhook ingest (`x-service-key`). Unset means the route answers 503. */
+  WEBHOOK_SERVICE_KEY?: string;
   SQL_EXECUTOR?: SqlExecutor;
   /** WJ-INT-02A live triage transport (Worker bindings; secrets via dashboard/wrangler secret). */
   NINEROUTER_URL?: string;

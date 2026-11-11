@@ -62,6 +62,7 @@ async function main() {
     executor,
     transactionalExecutor: executor,
     config,
+    internalServiceKey: process.env.INTERNAL_SERVICE_KEY,
     leaseDurationMs: 300_000,
     pollIntervalMs: 3_000,
   });

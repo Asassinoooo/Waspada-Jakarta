@@ -75,6 +75,7 @@ test("isModerationPath identifies moderation routes correctly", () => {
 
 test("GET /api/v1/moderation/proposals lists pending proposals under review", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -99,6 +100,7 @@ test("GET /api/v1/moderation/proposals lists pending proposals under review", as
 
 test("GET /api/v1/moderation/proposals returns empty list when none pending", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -121,6 +123,7 @@ test("GET /api/v1/moderation/proposals/:id returns proposal details and evidence
   };
 
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -152,6 +155,7 @@ test("GET /api/v1/moderation/proposals/:id returns proposal details and evidence
 
 test("GET /api/v1/moderation/proposals/:id returns 404 when proposal not found", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -172,6 +176,7 @@ test("GET /api/v1/moderation/proposals/:id returns 404 when proposal not found",
 
 test("Method not allowed returns 405", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -206,6 +211,7 @@ test("Method not allowed returns 405", async () => {
 
 test("Unknown moderation route returns 404, non-moderation route returns undefined", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -226,6 +232,7 @@ test("Unknown moderation route returns 404, non-moderation route returns undefin
 
 test("Unauthenticated request returns 401 Unauthorized", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     authenticate: async () => null,
   });
 
@@ -239,6 +246,7 @@ test("Unauthenticated request returns 401 Unauthorized", async () => {
 
 test("Inactive user returns 403 Forbidden (ACCOUNT_INACTIVE)", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-suspended",
       role: "moderator",
@@ -256,6 +264,7 @@ test("Inactive user returns 403 Forbidden (ACCOUNT_INACTIVE)", async () => {
 
 test("Active user with role 'user' returns 403 Forbidden", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "regular-user-1",
       role: "user",
@@ -273,6 +282,7 @@ test("Active user with role 'user' returns 403 Forbidden", async () => {
 
 test("Active user with role 'moderator' is authorized", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -288,6 +298,7 @@ test("Active user with role 'moderator' is authorized", async () => {
 
 test("Active user with role 'admin' is authorized", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "admin-1",
       role: "admin",
@@ -301,51 +312,133 @@ test("Active user with role 'admin' is authorized", async () => {
   assert.equal(response.status, 200);
 });
 
-test("Authentication via AccountStore with session cookie and bearer token", async () => {
+test("moderation reads only the browser cookie session, under the shared cookie name for each mode", async () => {
   const store = new MemoryAccountStore();
   const token = "a".repeat(48);
+  store.addSession(token, moderatorSession("cookie-csrf-secret"));
 
-  store.addSession(token, {
+  const hostHandler = createModerationApiHandler({
+    datasetScope: "live",
+    accountStore: store as unknown as AccountStore,
+    proposals: [sampleProposal],
+  });
+  assert.equal((await hostHandler(new Request("http://localhost/api/v1/moderation/proposals", {
+    headers: { cookie: `__Host-waspada_session=${token}` },
+  })))?.status, 200);
+  assert.equal((await hostHandler(new Request("http://localhost/api/v1/moderation/proposals", {
+    headers: { cookie: `waspada_session_dev=${token}` },
+  })))?.status, 401, "the development cookie is not accepted in host mode");
+  assert.equal((await hostHandler(new Request("http://localhost/api/v1/moderation/proposals", {
+    headers: { authorization: `Bearer ${token}` },
+  })))?.status, 401, "bearer tokens never authorize moderation");
+
+  const loopbackHandler = createModerationApiHandler({
+    datasetScope: "live",
+    accountStore: store as unknown as AccountStore,
+    cookieMode: "loopback",
+    proposals: [sampleProposal],
+  });
+  assert.equal((await loopbackHandler(new Request("http://localhost/api/v1/moderation/proposals", {
+    headers: { cookie: `waspada_session_dev=${token}` },
+  })))?.status, 200);
+  assert.equal((await hostHandler(new Request("http://localhost/api/v1/moderation/proposals", {
+    headers: { authorization: `Bearer ${"b".repeat(48)}` },
+  })))?.status, 401);
+});
+
+test("moderation writes need an active moderator, the exact Origin, and the session CSRF token", async () => {
+  const store = new MemoryAccountStore();
+  const moderatorToken = "m".repeat(48);
+  const userToken = "u".repeat(48);
+  store.addSession(moderatorToken, moderatorSession("csrf-mod-session"));
+  store.addSession(userToken, { ...moderatorSession("csrf-user-session"), account: { ...moderatorSession("x").account, id: "acc-user-1", role: "user" } });
+  const published: unknown[] = [];
+  const appOrigin = "https://waspada.example";
+  const handler = createModerationApiHandler({
+    datasetScope: "live",
+    accountStore: store as unknown as AccountStore,
+    appOrigin,
+    csrfProtection: true,
+    proposals: [sampleProposal],
+    publisher: {
+      publish: async (input: unknown) => {
+        published.push(input);
+        return { status: "written", receipt: { decision_id: "dec-test" } };
+      },
+    },
+  });
+  const publishUrl = "http://localhost/api/v1/moderation/proposals/prop-flood-001/publish";
+  const publish = (headers: Record<string, string>, body: unknown = { evidence_label: "attributed_report" }) => handler(new Request(publishUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  }));
+
+  assert.equal((await publish({ origin: appOrigin, "x-csrf-token": "csrf-mod-session" }))?.status, 401, "no session is 401");
+  assert.equal((await publish({
+    cookie: `__Host-waspada_session=${userToken}`, origin: appOrigin, "x-csrf-token": "csrf-user-session",
+  }))?.status, 403, "a user session is forbidden even with valid CSRF");
+  assert.equal((await handler(new Request("http://localhost/api/v1/moderation/proposals", {
+    headers: { cookie: `__Host-waspada_session=${userToken}` },
+  })))?.status, 403, "a user session cannot read the queue");
+  const moderatorCookie = `__Host-waspada_session=${moderatorToken}`;
+  const missingCsrf = await publish({ cookie: moderatorCookie, origin: appOrigin });
+  assert.equal(missingCsrf?.status, 403);
+  assert.equal(((await missingCsrf?.json()) as { code: string }).code, "CSRF_TOKEN_INVALID");
+  assert.equal((await publish({ cookie: moderatorCookie, origin: appOrigin, "x-csrf-token": "wrong-token" }))?.status, 403);
+  assert.equal((await publish({ cookie: moderatorCookie, origin: "https://evil.example", "x-csrf-token": "csrf-mod-session" }))?.status, 403);
+  assert.equal((await publish({ cookie: moderatorCookie, "x-csrf-token": "csrf-mod-session" }))?.status, 403, "a missing Origin is refused");
+  assert.equal(published.length, 0, "no refused request reaches the publisher");
+
+  const accepted = await publish({ cookie: moderatorCookie, origin: appOrigin, "x-csrf-token": "csrf-mod-session" });
+  assert.equal(accepted?.status, 200);
+  assert.equal(published.length, 1);
+  assert.equal((published[0] as { actorId: string }).actorId, "acc-mod-1");
+
+  const spoofed = await publish(
+    { cookie: moderatorCookie, origin: appOrigin, "x-csrf-token": "csrf-mod-session" },
+    { evidence_label: "attributed_report", actorId: "someone-else", proposal_id: "other" },
+  );
+  assert.equal(spoofed?.status, 200);
+  assert.equal((published[1] as { actorId: string; proposal_id: string }).actorId, "acc-mod-1", "the body cannot choose the reviewer");
+  assert.equal((published[1] as { proposal_id: string }).proposal_id, "prop-flood-001");
+
+  const badLabel = await publish(
+    { cookie: moderatorCookie, origin: appOrigin, "x-csrf-token": "csrf-mod-session" },
+    { evidence_label: "verified_by_government" },
+  );
+  assert.equal(badLabel?.status, 400);
+  assert.equal(((await badLabel?.json()) as { code: string }).code, "INVALID_EVIDENCE_LABEL");
+  assert.equal(published.length, 2);
+});
+
+test("a principal from another dataset is denied even when its role is moderator", async () => {
+  const handler = createModerationApiHandler({
+    datasetScope: "live",
+    principal: { actorId: "mod-synthetic", role: "moderator", active: true, datasetScope: "synthetic", csrfToken: "t" },
+    proposals: [sampleProposal],
+  });
+  const response = await handler(new Request("http://localhost/api/v1/moderation/proposals"));
+  assert.equal(response?.status, 403);
+  assert.equal(((await response?.json()) as { code: string }).code, "FORBIDDEN");
+});
+
+function moderatorSession(csrfToken: string): StoredAccountSession {
+  return {
     channel: "web",
-    csrfToken: "cookie-csrf-secret",
+    csrfToken,
     account: {
       id: "acc-mod-1",
       display_name: "Mod One",
-      email: "mod@example.com",
+      email: null,
       role: "moderator",
       active: true,
       onboarding_version: 1,
       onboarding_completed_at: "2026-10-01T00:00:00Z",
       version: 1,
     },
-  });
-
-  const handler = createModerationApiHandler({
-    accountStore: store as unknown as AccountStore,
-    proposals: [sampleProposal],
-  });
-
-  // Cookie authentication
-  const cookieReq = new Request("http://localhost/api/v1/moderation/proposals", {
-    headers: { cookie: `__Host-waspada_session=${token}` },
-  });
-  const cookieRes = await handler(cookieReq);
-  assert.equal(cookieRes?.status, 200);
-
-  // Bearer authentication
-  const bearerReq = new Request("http://localhost/api/v1/moderation/proposals", {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  const bearerRes = await handler(bearerReq);
-  assert.equal(bearerRes?.status, 200);
-
-  // Invalid token
-  const invalidReq = new Request("http://localhost/api/v1/moderation/proposals", {
-    headers: { authorization: `Bearer ${"b".repeat(48)}` },
-  });
-  const invalidRes = await handler(invalidReq);
-  assert.equal(invalidRes?.status, 401);
-});
+  };
+}
 
 // ============================================================================
 // CSRF Validation Tests
@@ -354,6 +447,7 @@ test("Authentication via AccountStore with session cookie and bearer token", asy
 test("POST publication requires valid CSRF token", async () => {
   const publisherCalls: unknown[] = [];
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -416,6 +510,7 @@ test("POST publication requires valid CSRF token", async () => {
 
 test("GET requests do not require CSRF token", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -438,6 +533,7 @@ test("GET requests do not require CSRF token", async () => {
 test("POST /api/v1/moderation/proposals/:id/publish executes publication via publisher", async () => {
   let capturedInput: unknown = null;
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-lead-1",
       role: "moderator",
@@ -502,6 +598,7 @@ test("POST /api/v1/moderation/proposals/:id/publish executes publication via pub
 
 test("POST publish handles publisher denial outcomes cleanly", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -536,6 +633,7 @@ test("POST publish handles publisher denial outcomes cleanly", async () => {
 
 test("POST publish handles publisher conflict outcome (409)", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: {
       actorId: "mod-1",
       role: "moderator",
@@ -593,17 +691,20 @@ const triageItems = [
 ];
 
 test("GET triage requires auth: anonymous 401, inactive 403, non-moderator 403", async () => {
-  const anon = createModerationApiHandler({ authenticate: async () => null, listUncertainTriage: async () => triageItems });
+  const anon = createModerationApiHandler({
+    datasetScope: "live", authenticate: async () => null, listUncertainTriage: async () => triageItems });
   const anonRes = await anon(new Request("http://localhost/api/v1/moderation/triage"));
   assert.equal(anonRes?.status, 401);
 
   const suspended = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "m", role: "moderator", active: false },
     listUncertainTriage: async () => triageItems,
   });
   assert.equal((await suspended(new Request("http://localhost/api/v1/moderation/triage")))?.status, 403);
 
   const user = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "u", role: "user", active: true },
     listUncertainTriage: async () => triageItems,
   });
@@ -612,6 +713,7 @@ test("GET triage requires auth: anonymous 401, inactive 403, non-moderator 403",
 
 test("GET triage returns safelisted metadata fields only", async () => {
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "mod-1", role: "moderator", active: true },
     listUncertainTriage: async () => triageItems,
   });
@@ -629,6 +731,7 @@ test("POST triage review enforces CSRF and sets reviewed flag idempotently", asy
   let marked = 0;
   const fullHash = "a".repeat(64);
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-triage" },
     markTriageReviewed: async () => {
       marked += 1;
@@ -682,6 +785,7 @@ test("POST publish rejects unresolved category mismatch with 409 until resolved"
     proposed_at: "2026-10-30T16:00:00.000Z",
   };
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-mismatch" },
     getProposalDetail: async () => ({ proposal: mismatched, chunks: [] }),
     publicationService: {
@@ -725,6 +829,7 @@ test("POST publish passes structured proposals without mismatch caveat", async (
     proposed_at: "2026-10-30T16:00:00.000Z",
   };
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-plain" },
     getProposalDetail: async () => ({ proposal: plain, chunks: [] }),
     publicationService: {
@@ -765,6 +870,7 @@ test("POST publish denies when current registry rights withhold public display",
     source_id: "source-restricted-001",
   };
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-gated" },
     getProposalDetail: async () => ({ proposal: gated, chunks: [] }),
     checkPublicDisplay: async (sourceId: string) => {
@@ -812,6 +918,7 @@ test("POST publish with accept_interpretation publishes the interpreter category
     proposed_at: "2026-10-30T16:00:00.000Z",
   };
   const handler = createModerationApiHandler({
+    datasetScope: "live",
     principal: { actorId: "mod-1", role: "moderator", active: true, csrfToken: "csrf-interp" },
     getProposalDetail: async () => ({ proposal: mismatched, chunks: [] }),
     publicationService: {

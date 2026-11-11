@@ -4,7 +4,7 @@ import { PGlite } from '@electric-sql/pglite';
 import type { SqlExecutor, TransactionalSqlExecutor } from '../../apps/db/src/sql.js';
 import { applyMigrations } from '../../apps/db/src/migrations.js';
 
-const PROFILE = 'local-account-synthetic-v1';
+const PROFILE = 'local-account-synthetic-v2';
 interface ProfileMarker { profile: typeof PROFILE; state: string; ready: boolean }
 export interface LocalAccountDatabase {
   readonly executor: TransactionalSqlExecutor;
@@ -48,8 +48,12 @@ export async function openLocalAccountDatabase(state: string, baseDirectory = re
     }
     database = await PGlite.create({ dataDir: resolve(directory, 'pg') });
     const executor = sqlExecutor(database);
-    const sql = await readFile(new URL('../../apps/db/migrations/036_accounts.sql', import.meta.url), 'utf8');
-    await applyMigrations(executor, [{ version: '036_accounts', sql }]);
+    const accountMigrations = ['036_accounts', '045_password_accounts'] as const;
+    const migrations = await Promise.all(accountMigrations.map(async (version) => ({
+      version,
+      sql: await readFile(new URL(`../../apps/db/migrations/${version}.sql`, import.meta.url), 'utf8'),
+    })));
+    await applyMigrations(executor, migrations);
     return {
       executor, seedRequired: !marker.ready,
       async markSeeded() {

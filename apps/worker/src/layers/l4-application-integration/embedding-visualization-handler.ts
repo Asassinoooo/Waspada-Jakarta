@@ -11,7 +11,6 @@ export interface EmbeddingVisualizationItemDto {
   readonly sourceId: string;
   readonly canonicalUrl: string | null;
   readonly title: string;
-  readonly chunkText: string;
   readonly createdAt: string;
   readonly vector: readonly number[];
 }
@@ -32,7 +31,6 @@ interface EmbeddingQueryResultRow {
   readonly span_end: number;
   readonly source_id: string;
   readonly canonical_url: string | null;
-  readonly chunk_text: string | null;
   readonly title: string | null;
   readonly vector_str: string;
 }
@@ -41,9 +39,6 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
   "x-content-type-options": "nosniff",
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
-  "access-control-allow-headers": "Content-Type",
 } as const;
 
 function parseVector(vectorStr: string): number[] {
@@ -150,7 +145,6 @@ export function generateSyntheticEmbeddingDataset(dims: number = 768): readonly 
         sourceId: cluster.sourceId,
         canonicalUrl: `https://example.com/demo/${cluster.seed}/${index}`,
         title: sample.title,
-        chunkText: sample.text,
         createdAt: new Date(Date.now() - index * 3600000).toISOString(),
         vector: generateSyntheticVector(cluster.seed, cluster.seed * 1000 + index, dims),
       });
@@ -181,7 +175,8 @@ export function createEmbeddingVisualizationHandler(options: {
     const url = new URL(request.url);
     const limitParam = Number.parseInt(url.searchParams.get("limit") || "200", 10);
     const limit = Number.isNaN(limitParam) ? 200 : Math.max(1, Math.min(500, limitParam));
-    const datasetKind = (url.searchParams.get("dataset_kind") || (env.DATASET_MODE === "live" ? "live" : "synthetic")) as DatasetKind;
+    // The dataset is server-selected from DATASET_MODE. Query parameters cannot choose it.
+    const datasetKind: DatasetKind = env.DATASET_MODE === "live" ? "live" : "synthetic";
 
     const executeQuery = async (executor: SqlExecutor) => {
       const query = `
@@ -195,7 +190,6 @@ export function createEmbeddingVisualizationHandler(options: {
           c.span_end,
           rev.source_id,
           rev.canonical_url,
-          substr(rev.permitted_text, c.span_start + 1, c.span_end - c.span_start) AS chunk_text,
           substr(rev.permitted_text, 1, 100) AS title,
           v.embedding::text AS vector_str
         FROM waspada.embedding_runs r
@@ -229,7 +223,6 @@ export function createEmbeddingVisualizationHandler(options: {
           sourceId: row.source_id,
           canonicalUrl: row.canonical_url,
           title: (row.title || "").trim(),
-          chunkText: (row.chunk_text || "").trim(),
           createdAt: typeof row.created_at === "string" ? row.created_at : new Date(row.created_at).toISOString(),
           vector: parseVector(row.vector_str),
         }));

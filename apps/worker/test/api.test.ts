@@ -1460,7 +1460,8 @@ test("dynamically published moderation proposal is included in public events and
       proposed_at: "2026-10-27T10:00:00.000Z",
     });
 
-    const publishResponse = await worker.fetch(
+    // Publication requires a moderator session. Without accounts the route is closed, not open.
+    const closedPublish = await worker.fetch(
       new Request("http://localhost/api/v1/moderation/proposals/prop-tebet-banjir-01/publish", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1468,10 +1469,9 @@ test("dynamically published moderation proposal is included in public events and
       }),
       demoEnvironment,
     );
-    assert.equal(publishResponse.status, 200);
-    const publishReceipt = await readJson<{ ok: boolean; status: string }>(publishResponse);
-    assert.equal(publishReceipt.ok, true);
-    assert.equal(publishReceipt.status, "written");
+    assert.equal(closedPublish.status, 503);
+    // The authenticated publisher's effect on the public read model is exercised directly.
+    PublicReadModel.publish(activeProposals.get("prop-tebet-banjir-01")!);
 
     const eventsResponse = await worker.fetch(
       new Request("http://localhost/api/v1/events"),

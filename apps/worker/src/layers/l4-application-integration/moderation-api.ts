@@ -10,7 +10,16 @@
 
 import type { AccountRole, AccountStore } from "../../../../db/src/accounts.js";
 import type { AccountCookieMode } from "../../accounts/types.js";
+import { readAccountAuthentication } from "../../accounts/api.js";
 import { isOfficialIncidentCategory } from "../../../../db/src/incident-categories.js";
+import {
+  authorizeModeratorAction,
+  type ModeratorAction,
+  type ModeratorDataset,
+} from "./moderator-authorization.js";
+
+/** Evidence labels a moderator may publish with. Anything else is rejected with 400. */
+export const ALLOWED_EVIDENCE_LABELS = ["attributed_report", "crowdsourced_observation"] as const;
 
 // ============================================================================
 
@@ -112,6 +121,7 @@ export interface ModerationApiDependencies {
   readonly proposalReader?: ModerationProposalReader;
   readonly publicationService?: ModerationPublisher;
   readonly publisher?: ModerationPublisher;
+  /** Account store for the cookie session. Used only when `authenticate` is not supplied. */
   readonly accountStore?: AccountStore;
   readonly authenticate?: (request: Request) => Promise<ModerationPrincipal | null>;
   readonly principal?: ModerationPrincipal | null;
@@ -138,7 +148,10 @@ export interface ModerationApiDependencies {
   readonly appOrigin?: string;
   readonly cookieMode?: AccountCookieMode;
   readonly expectedCsrfToken?: string;
+  /** false disables browser-write checks. Production composition must leave this unset or true. */
   readonly csrfProtection?: boolean;
+  /** Server-selected dataset. Principals outside this dataset are denied. Absent means deny. */
+  readonly datasetScope?: ModeratorDataset;
   readonly now?: () => number;
 }
 
@@ -170,41 +183,6 @@ const JSON_HEADERS: Readonly<Record<string, string>> = Object.freeze({
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
 });
-
-const OPAQUE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43,128}$/u;
-
-function readCookie(request: Request, name: string): string | null {
-  const cookieHeader = request.headers.get("cookie");
-  if (!cookieHeader) return null;
-  for (const part of cookieHeader.split(";")) {
-    const [rawKey, ...rawValue] = part.trim().split("=");
-    if (rawKey === name) return rawValue.join("=");
-  }
-  return null;
-}
-
-function parseBearer(request: Request): string | null {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader) return null;
-  const match = /^Bearer\s+([A-Za-z0-9._~+/-]+=*)$/iu.exec(authHeader.trim());
-  return match?.[1] ?? null;
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function constantTimeTextEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < left.length; i++) {
-    mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
 
 function jsonResponse(body: unknown, status = 200, extraHeaders?: HeadersInit): Response {
   return new Response(JSON.stringify(body), {
@@ -297,36 +275,20 @@ async function resolvePrincipal(
     return dependencies.authenticate(request);
   }
   if (dependencies.accountStore) {
-    const bearer = parseBearer(request);
-    let rawToken: string | null = null;
-    let channel: "web" | "mobile" = "mobile";
-    if (bearer !== null) {
-      if (!OPAQUE_TOKEN_PATTERN.test(bearer)) return null;
-      rawToken = bearer;
-      channel = "mobile";
-    } else {
-      const cookieName =
-        dependencies.cookieMode === "loopback"
-          ? "waspada_session"
-          : "__Host-waspada_session";
-      const cookieToken = readCookie(request, cookieName);
-      if (!cookieToken || !OPAQUE_TOKEN_PATTERN.test(cookieToken)) return null;
-      rawToken = cookieToken;
-      channel = "web";
-    }
-    const now = dependencies.now ? dependencies.now() : Date.now();
-    const tokenSha256 = await sha256(rawToken);
-    const session = await dependencies.accountStore.readSession(
-      tokenSha256,
-      new Date(now).toISOString(),
+    // Moderation accepts only the browser cookie session, never a bearer token.
+    const auth = await readAccountAuthentication(
+      request,
+      dependencies.accountStore,
+      dependencies.now ?? Date.now,
+      dependencies.cookieMode ?? "host",
     );
-    if (!session) return null;
+    if (!auth || auth.source !== "cookie" || auth.session.channel !== "web") return null;
     return {
-      actorId: session.account.id,
-      role: session.account.role,
-      active: session.account.active,
-      csrfToken: session.csrfToken,
-      channel: session.channel ?? channel,
+      actorId: auth.session.account.id,
+      role: auth.session.account.role,
+      active: auth.session.account.active,
+      csrfToken: auth.session.csrfToken,
+      channel: "web",
     };
   }
   if (dependencies.principal !== undefined) {
@@ -335,14 +297,21 @@ async function resolvePrincipal(
   return null;
 }
 
+type AuthorizationOutcome =
+  | { readonly authorized: true; readonly principal: ModerationPrincipal }
+  | {
+    readonly authorized: false;
+    readonly status: number;
+    readonly code: string;
+    readonly message: string;
+  };
+
+/** Delegates the role and dataset decision to the closed authorization vocabulary. */
 function checkAuthorization(
   principal: ModerationPrincipal | null,
-): { readonly authorized: true; readonly principal: ModerationPrincipal } | {
-  readonly authorized: false;
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-} {
+  action: ModeratorAction,
+  dependencies: ModerationApiDependencies,
+): AuthorizationOutcome {
   if (!principal) {
     return {
       authorized: false,
@@ -351,71 +320,82 @@ function checkAuthorization(
       message: "Authentication required to access moderation endpoints",
     };
   }
-  if (!principal.active) {
-    return {
-      authorized: false,
-      status: 403,
-      code: "ACCOUNT_INACTIVE",
-      message: "Account is inactive",
-    };
+  const datasetScope = dependencies.datasetScope;
+  const decision = authorizeModeratorAction({
+    principal: {
+      actorId: principal.actorId,
+      role: principal.role as "moderator" | "admin",
+      active: principal.active,
+      datasetScope: (principal.datasetScope ?? datasetScope) as ModeratorDataset,
+    },
+    action,
+    targetDataset: datasetScope as ModeratorDataset,
+    serverSelectedDataset: datasetScope as ModeratorDataset,
+  });
+  if (decision.decision === "allow") return { authorized: true, principal };
+  if (decision.reasonCode === "principal_missing") {
+    return { authorized: false, status: 401, code: "UNAUTHORIZED", message: "Authentication required to access moderation endpoints" };
   }
-  if (principal.role !== "moderator" && principal.role !== "admin") {
-    return {
-      authorized: false,
-      status: 403,
-      code: "FORBIDDEN",
-      message: "Forbidden: requires active user with moderator or admin role",
-    };
+  if (decision.reasonCode === "principal_inactive") {
+    return { authorized: false, status: 403, code: "ACCOUNT_INACTIVE", message: "Account is inactive" };
   }
-  return { authorized: true, principal };
+  return {
+    authorized: false,
+    status: 403,
+    code: "FORBIDDEN",
+    message: "Forbidden: requires active user with moderator or admin role",
+  };
 }
 
+type CsrfOutcome =
+  | { readonly valid: true }
+  | {
+    readonly valid: false;
+    readonly status: number;
+    readonly code: string;
+    readonly message: string;
+  };
+
+/**
+ * Browser writes need the exact application Origin and the session CSRF token. Principals
+ * without a session token fail closed, so an injected principal cannot skip the token check.
+ */
 function checkCsrf(
   request: Request,
   principal: ModerationPrincipal,
   dependencies: ModerationApiDependencies,
-): { readonly valid: true } | {
-  readonly valid: false;
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-} {
+): CsrfOutcome {
   if (dependencies.csrfProtection === false) {
     return { valid: true };
   }
-  if (dependencies.appOrigin && request.headers.has("origin")) {
-    const origin = request.headers.get("origin");
-    if (origin !== dependencies.appOrigin) {
-      return {
-        valid: false,
-        status: 403,
-        code: "CSRF_ORIGIN_MISMATCH",
-        message: "Origin header does not match expected application origin",
-      };
-    }
+  if (dependencies.appOrigin !== undefined && request.headers.get("origin") !== dependencies.appOrigin) {
+    return {
+      valid: false,
+      status: 403,
+      code: "CSRF_ORIGIN_MISMATCH",
+      message: "Origin header does not match expected application origin",
+    };
   }
-  const expectedCsrfToken = principal.csrfToken ?? dependencies.expectedCsrfToken;
+  const expectedCsrfToken = principal.csrfToken ?? dependencies.expectedCsrfToken ?? null;
   const csrfHeader = request.headers.get("x-csrf-token");
-  if (expectedCsrfToken) {
-    if (!csrfHeader || !constantTimeTextEqual(csrfHeader, expectedCsrfToken)) {
-      return {
-        valid: false,
-        status: 403,
-        code: "CSRF_TOKEN_INVALID",
-        message: "Invalid or missing CSRF token",
-      };
-    }
-  } else {
-    if (!csrfHeader || csrfHeader.trim().length === 0) {
-      return {
-        valid: false,
-        status: 403,
-        code: "CSRF_TOKEN_INVALID",
-        message: "Missing x-csrf-token header",
-      };
-    }
+  if (expectedCsrfToken === null || csrfHeader === null || !constantTimeEqualText(csrfHeader, expectedCsrfToken)) {
+    return {
+      valid: false,
+      status: 403,
+      code: "CSRF_TOKEN_INVALID",
+      message: "Invalid or missing CSRF token",
+    };
   }
   return { valid: true };
+}
+
+function constantTimeEqualText(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < left.length; i++) {
+    mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 // ============================================================================
@@ -497,9 +477,11 @@ export function createModerationApiHandler(
       return apiError("NOT_FOUND", `The moderation route ${url.pathname} was not found`, 404);
     }
 
-    // Authentication and role authorization required on all moderation endpoints
+    // Authentication and role authorization required on all moderation endpoints.
+    // Publication is a stronger action than evidence review, so it is decided separately.
     const principal = await resolvePrincipal(request, dependencies);
-    const authResult = checkAuthorization(principal);
+    const action: ModeratorAction = route.kind === "publish" ? "approve_publication" : "review_evidence";
+    const authResult = checkAuthorization(principal, action, dependencies);
     if (!authResult.authorized) {
       return apiError(authResult.code, authResult.message, authResult.status);
     }
@@ -614,11 +596,14 @@ export function createModerationApiHandler(
         }
       }
 
+      const requestedLabel = body.evidence_label ?? "attributed_report";
+      if (typeof requestedLabel !== "string" || !(ALLOWED_EVIDENCE_LABELS as readonly string[]).includes(requestedLabel)) {
+        return apiError("INVALID_EVIDENCE_LABEL", "evidence_label must be attributed_report or crowdsourced_observation", 400);
+      }
       const decisionCommand: ModeratorDecisionCommand = {
         proposal_id: route.proposalId,
         action: (body.action as ModeratorDecisionCommand["action"]) ?? "publish",
-        evidence_label:
-          (body.evidence_label as ModeratorDecisionCommand["evidence_label"]) ?? "attributed_report",
+        evidence_label: requestedLabel as ModeratorDecisionCommand["evidence_label"],
         reason: typeof body.reason === "string" ? body.reason : undefined,
         category_resolution:
           body.category_resolution === "accept_triage" || body.category_resolution === "accept_interpretation"
@@ -674,9 +659,11 @@ export function createModerationApiHandler(
           currentPrincipal,
         );
       } else if (body.policyInput && body.eventDraft) {
-        publishInput = { ...body, proposalId: route.proposalId };
+        publishInput = { ...body, proposalId: route.proposalId, actorId: currentPrincipal.actorId };
       } else {
+        // Authoritative fields come after the client body so a request cannot spoof the reviewer.
         publishInput = {
+          ...body,
           proposalId: route.proposalId,
           proposal_id: route.proposalId,
           actorId: currentPrincipal.actorId,
@@ -685,7 +672,6 @@ export function createModerationApiHandler(
           reason: decisionCommand.reason,
           decision: decisionCommand,
           command: decisionCommand,
-          ...body,
         };
       }
       // WJ-INT-02B resolution-aware publication: the moderator's explicit

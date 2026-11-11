@@ -9,6 +9,7 @@ import { vector } from "@electric-sql/pglite-pgvector";
 import { readMigrations, applyMigrations } from "../apps/db/src/migrations.js";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../apps/db/src/sql.js";
 import { createSqlIncidentRepository } from "../apps/db/src/incident-repository.js";
+import { createAccountStore } from "../apps/db/src/accounts.js";
 import { createJobRunner } from "../apps/intelligence/src/job-runner.js";
 import { getNineRouterConfig } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
@@ -19,6 +20,8 @@ import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowled
 import { runGatedRssCycle } from "../apps/worker/src/runtime/gated-rss-persistence.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
 import worker from "../apps/worker/src/index.js";
+import { seedAdminAccount } from "../apps/worker/src/accounts/seed-admin.js";
+import { generateServiceKey } from "../apps/worker/src/security/service-key.js";
 import { PublicReadModel } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
@@ -106,7 +109,25 @@ async function main() {
 
   const migrations = await readMigrations(new URL("../apps/db/migrations/", import.meta.url));
   await applyMigrations(executor, migrations);
-  console.log(`✓ Applied ${migrations.length} database migrations (including 039).`);
+  console.log(`✓ Applied ${migrations.length} database migrations.`);
+
+  // Operator-seeded administrator. Credentials come only from the environment and are never printed.
+  const adminUsername = process.env.WASPADA_ADMIN_USERNAME;
+  const adminPassword = process.env.WASPADA_ADMIN_PASSWORD;
+  if (adminUsername && adminPassword) {
+    try {
+      const seeded = await seedAdminAccount(createAccountStore(executor, "live"), {
+        username: adminUsername,
+        password: adminPassword,
+        now: new Date().toISOString(),
+      });
+      console.log(`✓ Administrator account '${seeded.username}': ${seeded.status === "created" ? "created" : "already exists"}.`);
+    } catch (err) {
+      console.warn(`[Accounts] Administrator seeding failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    }
+  } else {
+    console.log("[Accounts] WASPADA_ADMIN_USERNAME / WASPADA_ADMIN_PASSWORD not set; moderator sign-in needs an existing admin account.");
+  }
 
   // Clear demo synthetic fixtures so only genuine live data is shown
   PublicReadModel.clearPublishedEvents();
@@ -173,10 +194,15 @@ async function main() {
 
   const incidentRepo = createSqlIncidentRepository(executor);
 
-  // 3. Worker Environment Configuration
+  // 3. Worker Environment Configuration. The internal key is random per run and is shared
+  // with the in-process job runner below. Nothing is printed. Accounts run on the local origin.
+  const internalServiceKey = generateServiceKey();
   const env: WorkerEnvironment = {
     DATASET_MODE: "live",
-    INTERNAL_SERVICE_KEY: "dev-internal-key",
+    AUTH_ENABLED: "true",
+    AUTH_APP_ORIGIN: "http://127.0.0.1:5173",
+    INTERNAL_SERVICE_KEY: internalServiceKey,
+    WEBHOOK_SERVICE_KEY: process.env.WEBHOOK_SERVICE_KEY,
     SQL_EXECUTOR: executor,
   };
 
@@ -244,6 +270,8 @@ async function main() {
     executor,
     transactionalExecutor: executor,
     config,
+    internalServiceKey,
+    workerInternalUrl: `http://127.0.0.1:${API_PORT}`,
     leaseDurationMs: 300_000,
     pollIntervalMs: 2_000,
   });
@@ -460,7 +488,7 @@ async function main() {
   console.log("  Public Incident Map  : http://127.0.0.1:5173/#peta");
   console.log("  3D Embedding Visual  : http://127.0.0.1:5173/#visualisasi-3d");
   console.log("  Live API & Ingestion : http://127.0.0.1:8787/api/v1");
-  console.log("  Fast Demo Login      : http://127.0.0.1:8787/api/v1/auth/demo-login?role=moderator");
+  console.log("  Moderator sign-in    : http://127.0.0.1:5173/#masuk (username and password)");
   console.log("==================================================================");
   console.log("Press Ctrl+C to stop all services.\n");
 

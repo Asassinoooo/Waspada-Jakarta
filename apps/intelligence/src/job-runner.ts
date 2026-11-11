@@ -25,6 +25,14 @@ export interface JobRunnerOptions {
   readonly executor: SqlExecutor;
   readonly transactionalExecutor?: TransactionalSqlExecutor;
   readonly config?: NineRouterConfig;
+  /**
+   * Shared secret sent as `x-service-key` when notifying the Worker. Falls back to the
+   * INTERNAL_SERVICE_KEY environment variable. With no key, no notification is sent, because
+   * the Worker's internal route fails closed without one.
+   */
+  readonly internalServiceKey?: string;
+  /** Base URL of the Worker's internal route. Falls back to WORKER_INTERNAL_URL. */
+  readonly workerInternalUrl?: string;
   readonly leaseDurationMs?: number;
   readonly pollIntervalMs?: number;
   readonly agentOverrides?: {
@@ -277,22 +285,24 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         // Complete job
         await incidentRepo.completeAiJob(job.jobId, leaseToken);
 
-        // Notify moderation Worker if internal URL is configured
-        const workerUrl = process.env.WORKER_INTERNAL_URL || "http://127.0.0.1:8787";
-        const internalServiceKey = process.env.INTERNAL_SERVICE_KEY || "dev-internal-key";
+        // Notify the moderation Worker. Without a configured key the notification is skipped.
+        const workerUrl = options.workerInternalUrl || process.env.WORKER_INTERNAL_URL || "http://127.0.0.1:8787";
+        const internalServiceKey = options.internalServiceKey || process.env.INTERNAL_SERVICE_KEY || "";
         const proposalId = `prop-${rev.report_revision_id}`;
-        try {
-          await fetch(`${workerUrl}/api/v1/internal/proposals`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-service-key": internalServiceKey,
-            },
-            body: JSON.stringify({ proposal_id: proposalId }),
-            signal: AbortSignal.timeout(3000),
-          });
-        } catch {
-          // Notification failure is non-fatal: PostgreSQL transaction is already committed
+        if (internalServiceKey.length > 0) {
+          try {
+            await fetch(`${workerUrl}/api/v1/internal/proposals`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-service-key": internalServiceKey,
+              },
+              body: JSON.stringify({ proposal_id: proposalId }),
+              signal: AbortSignal.timeout(3000),
+            });
+          } catch {
+            // Notification failure is non-fatal: PostgreSQL transaction is already committed
+          }
         }
 
         return true;

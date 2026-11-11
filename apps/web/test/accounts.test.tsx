@@ -7,7 +7,6 @@ import {
   AccountHttpError,
   AccountPayloadError,
   createAccountClient,
-  isExactLoopbackDemoConsentUrl,
   parseSessionEnvelope,
 } from "../src/account-client.js";
 
@@ -35,8 +34,8 @@ const admin: AccountUser = {
 const anonymousSession: SessionEnvelope = {
   version: "account-v1",
   status: "anonymous",
-  google_login_available: true,
-  native_login_available: false,
+  password_login_available: true,
+  registration_available: true,
   csrf_token: null,
   user: null,
 };
@@ -71,7 +70,7 @@ test("session parser rejects extra fields, malformed users, and authenticated se
   assert.throws(() => parseSessionEnvelope({ ...anonymousSession, access_token: "should never be returned" }), AccountPayloadError);
   assert.throws(() => parseSessionEnvelope({ ...userSession, csrf_token: null }), AccountPayloadError);
   assert.throws(() => parseSessionEnvelope({ ...userSession, user: { ...user, email: "bad" } }), AccountPayloadError);
-  assert.equal(parseSessionEnvelope({ ...userSession, user: { ...user, email: "a".repeat(307) + "@example.test" } }).user?.email.length, 320);
+  assert.equal(parseSessionEnvelope({ ...userSession, user: { ...user, email: "a".repeat(307) + "@example.test" } }).user?.email?.length, 320);
   assert.throws(() => parseSessionEnvelope({ ...userSession, user: { ...user, email: "a".repeat(308) + "@example.test" } }), AccountPayloadError);
   assert.throws(() => parseSessionEnvelope({ ...anonymousSession, csrf_token: "not-anonymous" }), AccountPayloadError);
 });
@@ -91,74 +90,47 @@ test("session fetch uses same-origin cookies, no-store, and a bounded account DT
   assert.equal(calls[0]?.init?.redirect, "error");
 });
 
-test("Google start is a same-origin POST with its required request marker and a safe provider URL", async () => {
+test("login and registration are same-origin POSTs with the pre-session marker and no Google redirect", async () => {
   const calls: { path: string; init: RequestInit | undefined }[] = [];
   const client = createAccountClient(async (input, init) => {
     calls.push({ path: String(input), init });
-    return jsonResponse({ authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque" });
+    return jsonResponse(userSession);
   });
 
-  assert.equal(await client.startGoogleLogin("#akun"), "https://accounts.google.com/o/oauth2/v2/auth?state=opaque");
-  assert.equal(calls[0]?.path, "/api/v1/auth/google/start");
+  assert.deepEqual(await client.login("ayu.rani", "kata-sandi-2026"), userSession);
+  assert.equal(calls[0]?.path, "/api/v1/auth/login");
   assert.equal(calls[0]?.init?.method, "POST");
-  const headers = new Headers(calls[0]?.init?.headers);
-  assert.equal(headers.get("X-Waspada-Request"), "1");
-  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { return_to: "#akun" });
   assert.equal(calls[0]?.init?.credentials, "same-origin");
-  assert.equal(calls[0]?.init?.cache, "no-store");
+  assert.equal(calls[0]?.init?.redirect, "error");
+  assert.equal(new Headers(calls[0]?.init?.headers).get("X-Waspada-Request"), "1");
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { username: "ayu.rani", password: "kata-sandi-2026" });
 
-  const untrustedClient = createAccountClient(async () => jsonResponse({ authorization_url: "https://attacker.example/collect" }));
-  await assert.rejects(untrustedClient.startGoogleLogin("#admin"), AccountPayloadError);
-  await assert.rejects(client.startGoogleLogin("#external" as "#akun"), AccountPayloadError);
+  assert.deepEqual(await client.register("ayu.baru", "kata-sandi-2026", "Ayu Baru"), userSession);
+  assert.equal(calls[1]?.path, "/api/v1/auth/register");
+  assert.deepEqual(JSON.parse(String(calls[1]?.init?.body)), { username: "ayu.baru", password: "kata-sandi-2026", display_name: "Ayu Baru" });
+  assert.equal(new Headers(calls[1]?.init?.headers).get("X-Waspada-Request"), "1");
 
-  for (const authorizationUrl of [
-    "https://accounts.google.com/",
-    "https://accounts.google.com/o/oauth2/v2/auth/extra?state=opaque",
-    "https://user@accounts.google.com/o/oauth2/v2/auth?state=opaque",
-    "https://accounts.google.com:8443/o/oauth2/v2/auth?state=opaque",
-    "https://accounts.google.com/o/oauth2/v2/auth?state=opaque#external",
-  ]) {
-    const invalidGoogleTarget = createAccountClient(async () => jsonResponse({ authorization_url: authorizationUrl }));
-    await assert.rejects(invalidGoogleTarget.startGoogleLogin("#akun"), AccountPayloadError, authorizationUrl);
-  }
+  await assert.rejects(client.login("", "kata-sandi-2026"), AccountPayloadError);
+  await assert.rejects(client.login("ayu", "x".repeat(257)), AccountPayloadError);
+  assert.equal(calls.length, 2, "invalid input never reaches the network");
 });
 
-test("synthetic consent URLs are accepted only for the exact development loopback target", () => {
-  const localhostConsent = "http://localhost:5173/api/v1/auth/demo/consent?state=opaque-state_1";
-  const ipConsent = "http://127.0.0.1:5173/api/v1/auth/demo/consent?state=opaque-state_1";
-
-  assert.equal(isExactLoopbackDemoConsentUrl(localhostConsent, "http://localhost:5173"), true);
-  assert.equal(isExactLoopbackDemoConsentUrl(ipConsent, "http://127.0.0.1:5173"), true);
-
-  const rejected: [string, string | null][] = [
-    [localhostConsent, "https://waspada.example"],
-    [localhostConsent, "http://localhost:5174"],
-    [localhostConsent, "http://127.0.0.1:5173"],
-    [ipConsent, "http://localhost:5173"],
-    ["/api/v1/auth/demo/consent?state=opaque", "http://localhost:5173"],
-    ["http://localhost:5173/api/v1/auth/demo/other?state=opaque", "http://localhost:5173"],
-    ["http://localhost:5173/api/v1/auth/demo/consent/extra?state=opaque", "http://localhost:5173"],
-    ["http://localhost:5173/api/v1/auth/demo/../demo/consent?state=opaque", "http://localhost:5173"],
-    ["http://localhost:5173/api/v1/auth/demo/consent?state=opaque&next=%2F", "http://localhost:5173"],
-    ["http://localhost:5173/api/v1/auth/demo/consent?state=opaque&state=second", "http://localhost:5173"],
-    ["http://localhost:5173/api/v1/auth/demo/consent?state=", "http://localhost:5173"],
-    ["http://localhost:5173/api/v1/auth/demo/consent?state=opaque#next", "http://localhost:5173"],
-    ["http://127.0.0.1:5174/api/v1/auth/demo/consent?state=opaque", "http://127.0.0.1:5174"],
-    ["http://localhost.evil.example:5173/api/v1/auth/demo/consent?state=opaque", "http://localhost:5173"],
-    ["https://attacker.example/api/v1/auth/demo/consent?state=opaque", "http://localhost:5173"],
-    ["http://accounts.google.com/o/oauth2/v2/auth?state=opaque", null],
-  ];
-
-  for (const [target, origin] of rejected) {
-    assert.equal(isExactLoopbackDemoConsentUrl(target, origin), false, target);
-  }
+test("password change sends the session CSRF token and never returns the new password", async () => {
+  const calls: { path: string; init: RequestInit | undefined }[] = [];
+  const client = createAccountClient(async (input, init) => {
+    calls.push({ path: String(input), init });
+    return jsonResponse(userSession);
+  });
+  await client.changePassword("kata-sandi-lama", "kata-sandi-baru-2026", "csrf-token-with-enough-entropy");
+  assert.equal(calls[0]?.path, "/api/v1/auth/password");
+  assert.equal(new Headers(calls[0]?.init?.headers).get("X-CSRF-Token"), "csrf-token-with-enough-entropy");
+  await assert.rejects(client.changePassword("a", "b", "short"), AccountPayloadError);
 });
 
-test("account client still rejects demo consent outside the Vite development browser", async () => {
-  const client = createAccountClient(async () => jsonResponse({
-    authorization_url: "http://localhost:5173/api/v1/auth/demo/consent?state=opaque",
-  }));
-  await assert.rejects(client.startGoogleLogin("#akun"), AccountPayloadError);
+test("the envelope accepts password-account users with a null email and rejects Google-only fields", () => {
+  const passwordUser = { ...user, email: null };
+  assert.equal(parseSessionEnvelope({ ...userSession, user: passwordUser }).user?.email, null);
+  assert.throws(() => parseSessionEnvelope({ ...anonymousSession, google_login_available: true }), AccountPayloadError);
 });
 
 test("onboarding completion sends only version 1 and remains safe to retry with the CSRF token", async () => {
@@ -267,21 +239,22 @@ test("account loading and failure are non-blocking, and anonymous onboarding has
   assert.equal(ACCOUNT_ONBOARDING_STEPS.length, 3);
   assert.match(ACCOUNT_ONBOARDING_STEPS[1]?.body ?? "", /menyimpan kategori minat di perangkat ini/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.title ?? "", /tanpa mengirim minat/u);
-  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /issuer dan subject/u);
-  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /Persetujuan pada demo lokal bersifat sintetis/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /username/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /hanya disimpan sebagai hash/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /peran yang ditetapkan server/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /versi dan waktu penyelesaian/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /Minat tetap di browser/u);
   assert.doesNotMatch(guest, /<select|Pilih peran/u);
 
   const anonymousAccount = renderToStaticMarkup(<AccountPage screen="account" sessionState={sessionState(anonymousSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
-  assert.match(anonymousAccount, /href="#masuk\?return_to=%23akun"/u);
+  assert.match(anonymousAccount, /href="#masuk"/u);
+  assert.doesNotMatch(anonymousAccount, /accounts\.google\.com|Google/u);
 });
 
 test("profile shows the server role as read-only and keeps the local-interest destination", () => {
   const html = renderToStaticMarkup(<AccountPage screen="account" sessionState={sessionState(adminSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
   assert.match(html, /Administrator/u);
-  assert.match(html, /Email Google/u);
+  assert.match(html, /<dt>Email<\/dt>/u);
   assert.match(html, /Selesai/u);
   assert.match(html, /href="#ringkasan-saya"/u);
   assert.doesNotMatch(html, /<select/u);

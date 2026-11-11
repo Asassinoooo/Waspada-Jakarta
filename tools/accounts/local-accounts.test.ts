@@ -32,7 +32,7 @@ test('loopback adapter preserves cookies/origin, refuses bad hosts and bounds bo
     assert.equal(response.headers.getSetCookie().length, 2);
     const unknown = await fetch(base + '/api/v1/events');
     assert.equal(unknown.status, 404);
-    const large = await fetch(base + '/api/v1/auth/google/native', { method: 'POST', body: 'x'.repeat(16 * 1024 + 1) });
+    const large = await fetch(base + '/api/v1/auth/login', { method: 'POST', body: 'x'.repeat(16 * 1024 + 1) });
     assert.equal(large.status, 413);
     const failure = await fetch(base + '/api/v1/auth/fail');
     assert.equal(failure.status, 503);

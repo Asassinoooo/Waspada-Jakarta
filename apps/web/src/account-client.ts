@@ -22,7 +22,9 @@ export class AccountPayloadError extends Error {
 
 export interface AccountClient {
   getSession(signal?: AbortSignal): Promise<SessionEnvelope>;
-  startGoogleLogin(returnTo: AccountReturnTarget): Promise<string>;
+  login(username: string, password: string): Promise<SessionEnvelope>;
+  register(username: string, password: string, displayName?: string): Promise<SessionEnvelope>;
+  changePassword(currentPassword: string, newPassword: string, csrfToken: string): Promise<SessionEnvelope>;
   completeOnboarding(csrfToken: string): Promise<SessionEnvelope>;
   logout(csrfToken: string): Promise<void>;
   listUsers(options?: { limit?: number; after?: string; signal?: AbortSignal }): Promise<AccountUserPage>;
@@ -40,11 +42,8 @@ const MAX_USER_PAGE_BYTES = 128 * 1024;
 const MAX_CURSOR_LENGTH = 2_048;
 const MAX_ID_LENGTH = 200;
 const MAX_REASON_LENGTH = 500;
-const LOCAL_DEMO_ORIGINS = new Set([
-  "http://127.0.0.1:5173",
-  "http://localhost:5173",
-]);
-const LOCAL_DEMO_PATH = "/api/v1/auth/demo/consent";
+const MAX_USERNAME_LENGTH = 32;
+const MAX_PASSWORD_LENGTH = 256;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -82,7 +81,7 @@ function parseAccountUser(value: unknown): AccountUser {
   if (
     typeof value.id !== "string" || value.id.length < 1 || value.id.length > MAX_ID_LENGTH ||
     typeof value.display_name !== "string" || value.display_name.length < 1 || value.display_name.length > 200 ||
-    typeof value.email !== "string" || value.email.length < 3 || value.email.length > 320 || !value.email.includes("@") ||
+    !(value.email === null || (typeof value.email === "string" && value.email.length >= 3 && value.email.length <= 320 && value.email.includes("@"))) ||
     !isRole(value.role) ||
     typeof value.active !== "boolean" ||
     (value.onboarding_version !== 0 && value.onboarding_version !== 1) ||
@@ -101,8 +100,8 @@ export function parseSessionEnvelope(value: unknown): SessionEnvelope {
   if (!isRecord(value) || !hasExactKeys(value, [
     "version",
     "status",
-    "google_login_available",
-    "native_login_available",
+    "password_login_available",
+    "registration_available",
     "csrf_token",
     "user",
   ])) {
@@ -112,8 +111,8 @@ export function parseSessionEnvelope(value: unknown): SessionEnvelope {
   if (
     value.version !== ACCOUNT_VERSION ||
     (value.status !== "anonymous" && value.status !== "authenticated") ||
-    typeof value.google_login_available !== "boolean" ||
-    typeof value.native_login_available !== "boolean" ||
+    typeof value.password_login_available !== "boolean" ||
+    typeof value.registration_available !== "boolean" ||
     !(value.csrf_token === null || (typeof value.csrf_token === "string" && value.csrf_token.length >= 16 && value.csrf_token.length <= 512))
   ) {
     throw new AccountPayloadError();
@@ -190,67 +189,26 @@ function requireCsrfToken(token: string): void {
   if (typeof token !== "string" || token.length < 16 || token.length > 512) throw new AccountPayloadError();
 }
 
+function postHeaders(): Record<string, string> {
+  // The marker is the pre-session CSRF guard for login and registration.
+  return {
+    accept: "application/json",
+    "content-type": "application/json",
+    "X-Waspada-Request": "1",
+  };
+}
+
+function requireCredentialFields(username: string, password: string): void {
+  if (typeof username !== "string" || username.length < 1 || username.length > MAX_USERNAME_LENGTH) {
+    throw new AccountPayloadError();
+  }
+  if (typeof password !== "string" || password.length < 1 || password.length > MAX_PASSWORD_LENGTH) {
+    throw new AccountPayloadError();
+  }
+}
+
 function errorResponse(status: number): AccountHttpError {
   return new AccountHttpError(status);
-}
-
-/**
- * Validate an authorization target returned by the server. The local consent
- * endpoint exists only for the explicitly synthetic Vite development harness;
- * callers in the application pass the actual build and browser environment.
- */
-export function isExactLoopbackDemoConsentUrl(value: string, currentOrigin: string | null): boolean {
-  if (currentOrigin === null || !LOCAL_DEMO_ORIGINS.has(currentOrigin)) return false;
-
-  let target: URL;
-  try {
-    target = new URL(value);
-  } catch {
-    return false;
-  }
-
-  const exactPrefix = currentOrigin + LOCAL_DEMO_PATH + "?state=";
-  if (
-    target.origin !== currentOrigin ||
-    target.pathname !== LOCAL_DEMO_PATH ||
-    target.username !== "" ||
-    target.password !== "" ||
-    target.hash !== "" ||
-    !value.startsWith(exactPrefix) ||
-    target.search.slice(1).split("&").length !== 1
-  ) {
-    return false;
-  }
-
-  const state = target.searchParams.get("state");
-  return target.searchParams.size === 1 && state !== null && state.length > 0 && state.length <= 512 && !/[\u0000-\u001f\u007f]/u.test(state);
-}
-
-function isAllowedAuthorizationUrl(value: string): boolean {
-  let target: URL;
-  try {
-    target = new URL(value);
-  } catch {
-    return false;
-  }
-
-  if (
-    target.protocol === "https:" &&
-    target.hostname === "accounts.google.com" &&
-    target.pathname === "/o/oauth2/v2/auth" &&
-    target.username === "" &&
-    target.password === "" &&
-    target.port === "" &&
-    target.hash === ""
-  ) {
-    return true;
-  }
-
-  if (import.meta.env?.DEV === true) {
-    const currentOrigin = typeof window === "undefined" ? null : window.location.origin;
-    if (isExactLoopbackDemoConsentUrl(value, currentOrigin)) return true;
-  }
-  return false;
 }
 
 export function createAccountClient(fetcher: FetchLike = fetch): AccountClient {
@@ -275,25 +233,37 @@ export function createAccountClient(fetcher: FetchLike = fetch): AccountClient {
       return parseSessionEnvelope(body);
     },
 
-    async startGoogleLogin(returnTo) {
-      if (!["#akun", "#mulai", "#admin", "#tinjau-bukti"].includes(returnTo)) throw new AccountPayloadError();
-      const body = await requestJson("/api/v1/auth/google/start", {
+    async login(username, password) {
+      requireCredentialFields(username, password);
+      const body = await requestJson("/api/v1/auth/login", {
         method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          "X-Waspada-Request": "1",
-        },
-        body: JSON.stringify({ return_to: returnTo }),
+        headers: postHeaders(),
+        body: JSON.stringify({ username, password }),
       });
-      if (!isRecord(body) || !hasExactKeys(body, ["authorization_url"]) || typeof body.authorization_url !== "string" || body.authorization_url.length > 4_096) {
-        throw new AccountPayloadError();
-      }
+      return parseSessionEnvelope(body);
+    },
 
-      if (!isAllowedAuthorizationUrl(body.authorization_url)) {
-        throw new AccountPayloadError();
-      }
-      return new URL(body.authorization_url).toString();
+    async register(username, password, displayName) {
+      requireCredentialFields(username, password);
+      const payload: { username: string; password: string; display_name?: string } = { username, password };
+      if (displayName !== undefined) payload.display_name = displayName;
+      const body = await requestJson("/api/v1/auth/register", {
+        method: "POST",
+        headers: postHeaders(),
+        body: JSON.stringify(payload),
+      });
+      return parseSessionEnvelope(body);
+    },
+
+    async changePassword(currentPassword, newPassword, csrfToken) {
+      requireCsrfToken(csrfToken);
+      requireCredentialFields(currentPassword, newPassword);
+      const body = await requestJson("/api/v1/auth/password", {
+        method: "POST",
+        headers: { ...postHeaders(), "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+      return parseSessionEnvelope(body);
     },
 
     async completeOnboarding(csrfToken) {

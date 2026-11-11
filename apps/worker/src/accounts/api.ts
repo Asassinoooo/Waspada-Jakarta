@@ -1,67 +1,88 @@
-import type {
-  AccountAdminUpdateResult,
-  AccountDatasetMode,
-  AccountRole,
-  AccountStore,
-  StoredAccount,
-  VerifiedGoogleIdentity,
+import {
+  AccountUsernameTakenError,
+  type AccountAdminUpdateResult,
+  type AccountDatasetMode,
+  type AccountRole,
+  type AccountStore,
+  type StoredAccount,
+  type StoredAccountSession,
 } from '../../../db/src/accounts.js';
-import type {
-  AccountApiHandler,
-  AccountApiOptions,
-  AccountCookieMode,
-  AccountGoogleProvider,
-  GoogleWebAuthorization,
-} from './types.js';
+import { hashPassword, normaliseUsername, validatePasswordPolicy, verifyPassword } from './password.js';
+import type { AccountApiHandler, AccountApiOptions, AccountCookieMode } from './types.js';
 
 const accountPrefix = '/api/v1/account';
 const authPrefix = '/api/v1/auth';
-const knownReturnHashes = new Set(['#akun', '#mulai', '#admin', '#tinjau-bukti']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const opaqueTokenPattern = /^[A-Za-z0-9_-]{43,128}$/u;
-const safeIdentityIssuer = 'https://accounts.google.com';
-const loginThrottleWindowMs = 10 * 60_000;
-const maxWebLoginRequests = 12;
-const maxNativeLoginRequests = 12;
+const registrationHeader = 'x-waspada-request';
+const throttleWindowMs = 10 * 60_000;
+const maxRegisterRequests = 6;
+const maxLoginRequestsPerClient = 12;
+const maxLoginRequestsPerUsername = 12;
+const maxPasswordChangeRequests = 6;
 const sessionIdleMs = 30 * 60_000;
 const sessionAbsoluteMs = 8 * 60 * 60_000;
-const oauthAttemptMs = 5 * 60_000;
 const genericMessages: Record<string, string> = {
   INVALID_REQUEST: 'The account request is invalid.',
   UNAUTHORIZED: 'Sign in is required for this account action.',
   FORBIDDEN: 'This account cannot perform that action.',
   CONFLICT: 'The account changed before this request completed.',
   NOT_FOUND: 'The account was not found.',
-  TOO_MANY_REQUESTS: 'Too many sign-in attempts. Try again later.',
+  TOO_MANY_REQUESTS: 'Too many attempts. Try again later.',
   TEMPORARILY_UNAVAILABLE: 'Account sign-in is temporarily unavailable.',
   NOT_ALLOWED: 'This account route is not available.',
+  invalid_credentials: 'The username or password is not correct.',
+  username_taken: 'That username is already registered.',
+  invalid_username: 'Use 3 to 32 lowercase letters, digits, dots or underscores for the username.',
+  password_too_short: 'The password must be at least 10 characters.',
+  password_too_long: 'The password must be at most 256 characters.',
+  invalid_current_password: 'The current password is not correct.',
 };
 
-interface AuthenticatedRequest {
+/** Session credential resolved from the browser cookie (web) or an existing bearer (mobile). */
+export interface AccountAuthentication {
   readonly tokenSha256: string;
   readonly source: 'cookie' | 'bearer';
-  readonly session: NonNullable<Awaited<ReturnType<AccountStore['readSession']>>>;
+  readonly session: StoredAccountSession;
 }
+
+interface AccountApiContext {
+  readonly appOrigin: string;
+  readonly cookieMode: AccountCookieMode;
+  readonly store: AccountStore;
+  readonly datasetMode: AccountDatasetMode;
+  readonly now: () => number;
+  readonly randomToken: () => string;
+  readonly trustedClientKey: (request: Request) => string;
+  readonly registrationAvailable: boolean;
+}
+
+type Route =
+  | { readonly kind: 'session' }
+  | { readonly kind: 'register' }
+  | { readonly kind: 'login' }
+  | { readonly kind: 'password' }
+  | { readonly kind: 'logout' }
+  | { readonly kind: 'onboarding' }
+  | { readonly kind: 'users_list' }
+  | { readonly kind: 'user_update'; readonly accountId: string }
+  | { readonly kind: 'unknown' }
+  | { readonly kind: 'method' };
 
 /** Creates the closed account-v1 HTTP surface. Unknown account/auth paths are closed with 404. */
 export function createAccountApi(options: AccountApiOptions): AccountApiHandler {
   const datasetMode = options.datasetMode;
   const store = options.store;
-  const google = options.google;
   const enabled = options.enabled === true;
-  const webLoginAvailable = enabled && options.webLoginAvailable === true && google !== undefined;
-  const nativeLoginAvailable = enabled && options.nativeLoginAvailable === true && google !== undefined;
+  const cookieMode = options.cookieMode ?? 'host';
+  const registrationAvailable = enabled && options.registrationAvailable !== false;
   const now = options.now ?? Date.now;
   const randomToken = options.randomToken ?? secureRandomToken;
   const trustedClientKey = options.trustedClientKey ?? (() => 'unavailable-client-key');
-  const cookieMode = options.cookieMode ?? 'host';
-  const appOrigin = enabled ? requireTrustedOrigin(options.appOrigin, datasetMode, cookieMode) : undefined;
-  const loopbackAuthorizationOrigin = options.loopbackAuthorizationOrigin === undefined
-    ? undefined
-    : requireLoopbackAuthorizationOrigin(options.loopbackAuthorizationOrigin, datasetMode, cookieMode);
+  const appOrigin = enabled ? requireTrustedOrigin(options.appOrigin, cookieMode) : undefined;
 
-  if (enabled && (!store || !google || !isDatasetMode(datasetMode))) {
-    throw new TypeError('Enabled account API requires a configured store, provider, and dataset.');
+  if (enabled && (!store || !isDatasetMode(datasetMode))) {
+    throw new TypeError('Enabled account API requires a configured store and dataset.');
   }
   if (enabled && store?.datasetMode !== datasetMode) {
     throw new TypeError('Account repository and API dataset scopes must match.');
@@ -69,139 +90,132 @@ export function createAccountApi(options: AccountApiOptions): AccountApiHandler 
 
   return async (request) => {
     const url = new URL(request.url);
-    const inAccountSurface = isAccountSurface(url.pathname);
-    if (!inAccountSurface) return undefined;
+    if (!isAccountSurface(url.pathname)) return undefined;
 
     const route = routeFor(url.pathname, request.method);
     if (route.kind === 'unknown') return jsonResponse(apiError('NOT_FOUND'), 404);
     if (route.kind === 'method') return jsonResponse(apiError('NOT_ALLOWED'), 405);
-    if (!enabled || !store || !google || !appOrigin || !isDatasetMode(datasetMode)) {
+    if (!enabled || !store || !appOrigin || !isDatasetMode(datasetMode)) {
       if (route.kind === 'session') return jsonResponse(sessionEnvelope(null, null, false, false), 200);
       return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
     }
 
+    const context: AccountApiContext = {
+      appOrigin,
+      cookieMode,
+      store,
+      datasetMode,
+      now,
+      randomToken,
+      trustedClientKey,
+      registrationAvailable,
+    };
     try {
       switch (route.kind) {
         case 'session':
-          return await handleSession(request, store, {
-            webLoginAvailable,
-            nativeLoginAvailable,
-            now,
-            cookieNames: cookieNames(cookieMode),
-          });
-        case 'web_start':
-          if (!webLoginAvailable) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-          return await handleWebStart(request, store, google, {
-            appOrigin,
-            cookieMode,
-            cookieNames: cookieNames(cookieMode),
-            loopbackAuthorizationOrigin,
-            now,
-            randomToken,
-            trustedClientKey,
-          });
-        case 'web_callback':
-          if (!webLoginAvailable) return callbackFailure(appOrigin, cookieMode, cookieNames(cookieMode));
-          return await handleWebCallback(request, store, google, {
-            appOrigin,
-            cookieMode,
-            cookieNames: cookieNames(cookieMode),
-            datasetMode,
-            now,
-            randomToken,
-            trustedClientKey,
-          });
-        case 'native_exchange':
-          if (!nativeLoginAvailable) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-          return await handleNativeExchange(request, store, google, {
-            datasetMode,
-            now,
-            randomToken,
-            trustedClientKey,
-            webLoginAvailable,
-            nativeLoginAvailable,
-          });
+          return await handleSession(request, context);
+        case 'register':
+          return await handleRegister(request, context);
+        case 'login':
+          return await handleLogin(request, context);
+        case 'password':
+          return await handlePasswordChange(request, context);
         case 'logout':
-          return await handleLogout(request, store, {
-            appOrigin,
-            cookieMode,
-            cookieNames: cookieNames(cookieMode),
-            now,
-          });
+          return await handleLogout(request, context);
         case 'onboarding':
-          return await handleOnboarding(request, store, {
-            appOrigin,
-            webLoginAvailable,
-            nativeLoginAvailable,
-            cookieMode,
-            cookieNames: cookieNames(cookieMode),
-            now,
-          });
+          return await handleOnboarding(request, context);
         case 'users_list':
-          return await handleUsersList(request, store, {
-            cookieMode,
-            cookieNames: cookieNames(cookieMode),
-            now,
-          });
+          return await handleUsersList(request, context);
         case 'user_update':
-          return await handleUserUpdate(request, store, {
-            appOrigin,
-            cookieMode,
-            cookieNames: cookieNames(cookieMode),
-            now,
-          }, route.accountId);
+          return await handleUserUpdate(request, context, route.accountId);
       }
     } catch {
-      // Provider/SQL exceptions may contain authorization codes, tokens, identity claims, or SQL.
-      if (route.kind === 'web_callback') {
-        return callbackFailure(appOrigin, cookieMode, cookieNames(cookieMode));
-      }
+      // SQL and hashing errors can contain credentials or table details, so the body stays generic.
       return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
     }
   };
 }
 
-interface AccountApiContext {
-  readonly appOrigin?: string;
-  readonly datasetMode?: AccountDatasetMode;
-  readonly cookieMode: AccountCookieMode;
-  readonly cookieNames: { readonly session: string; readonly attempt: string };
-  readonly now: () => number;
-  readonly randomToken?: () => string;
-  readonly trustedClientKey?: (request: Request) => string;
-  readonly webLoginAvailable?: boolean;
-  readonly nativeLoginAvailable?: boolean;
-  readonly loopbackAuthorizationOrigin?: string;
+/** Cookie mode follows the trusted app origin: HTTPS origins get host-only Secure cookies, loopback HTTP gets dev cookies. */
+export function accountCookieMode(appOrigin: string | undefined): AccountCookieMode | null {
+  if (!appOrigin) return null;
+  try {
+    const origin = new URL(appOrigin);
+    if (origin.protocol === 'https:') return 'host';
+    if (origin.protocol === 'http:' && isLoopbackHostname(origin.hostname)) return 'loopback';
+  } catch {
+    return null;
+  }
+  return null;
 }
 
-function routeFor(
-  pathname: string,
-  method: string,
-):
-  | { readonly kind: 'session' }
-  | { readonly kind: 'web_start' }
-  | { readonly kind: 'web_callback' }
-  | { readonly kind: 'native_exchange' }
-  | { readonly kind: 'logout' }
-  | { readonly kind: 'onboarding' }
-  | { readonly kind: 'users_list' }
-  | { readonly kind: 'user_update'; readonly accountId: string }
-  | { readonly kind: 'unknown' }
-  | { readonly kind: 'method' } {
-  const routes: Record<string, { path: string; method: string }> = {
-    session: { path: `${authPrefix}/session`, method: 'GET' },
-    web_start: { path: `${authPrefix}/google/start`, method: 'POST' },
-    web_callback: { path: `${authPrefix}/google/callback`, method: 'GET' },
-    native_exchange: { path: `${authPrefix}/google/native`, method: 'POST' },
-    logout: { path: `${authPrefix}/logout`, method: 'POST' },
-    onboarding: { path: `${accountPrefix}/onboarding`, method: 'POST' },
-    users_list: { path: `${accountPrefix}/users`, method: 'GET' },
+/** The single source of session cookie names. Moderation and account routes both use it. */
+export function accountCookieNames(mode: AccountCookieMode): { readonly session: string } {
+  return mode === 'host'
+    ? { session: '__Host-waspada_session' }
+    : { session: 'waspada_session_dev' };
+}
+
+/**
+ * Resolves the current session from the browser cookie, or from an existing bearer for
+ * sessions minted before native login was removed. Returns null for anything not active.
+ */
+export async function readAccountAuthentication(
+  request: Request,
+  store: AccountStore,
+  now: () => number,
+  cookieMode: AccountCookieMode,
+): Promise<AccountAuthentication | null> {
+  const bearer = parseBearer(request);
+  let rawToken: string | null;
+  let source: 'cookie' | 'bearer';
+  if (bearer !== null) {
+    if (!isOpaqueToken(bearer)) return null;
+    rawToken = bearer;
+    source = 'bearer';
+  } else {
+    const cookieToken = readCookie(request, accountCookieNames(cookieMode).session);
+    if (!cookieToken || !isOpaqueToken(cookieToken)) return null;
+    rawToken = cookieToken;
+    source = 'cookie';
+  }
+  const clock = readClock(now);
+  if (clock === null) throw new Error('Clock is unavailable.');
+  const tokenSha256 = await sha256(rawToken);
+  const session = await store.readSession(tokenSha256, new Date(clock).toISOString());
+  return session ? { tokenSha256, source, session } : null;
+}
+
+/** Exact Origin plus the session CSRF token. Shared with other browser write surfaces. */
+export function isAuthorizedBrowserWrite(
+  request: Request,
+  csrfToken: string | null,
+  appOrigin: string | undefined,
+): boolean {
+  return csrfToken !== null
+    && appOrigin !== undefined
+    && isExactOrigin(request, appOrigin)
+    && request.headers.get('x-csrf-token') !== null
+    && constantTimeTextEqual(request.headers.get('x-csrf-token') ?? '', csrfToken);
+}
+
+export function accountUnavailableResponse(): Response {
+  return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+}
+
+function routeFor(pathname: string, method: string): Route {
+  const routes: Record<string, { path: string; method: string; kind: Route['kind'] }> = {
+    session: { path: `${authPrefix}/session`, method: 'GET', kind: 'session' },
+    register: { path: `${authPrefix}/register`, method: 'POST', kind: 'register' },
+    login: { path: `${authPrefix}/login`, method: 'POST', kind: 'login' },
+    password: { path: `${authPrefix}/password`, method: 'POST', kind: 'password' },
+    logout: { path: `${authPrefix}/logout`, method: 'POST', kind: 'logout' },
+    onboarding: { path: `${accountPrefix}/onboarding`, method: 'POST', kind: 'onboarding' },
+    users_list: { path: `${accountPrefix}/users`, method: 'GET', kind: 'users_list' },
   };
-  for (const [name, value] of Object.entries(routes)) {
+  for (const value of Object.values(routes)) {
     if (pathname === value.path) {
-      return method === value.method
-        ? { kind: name as 'session' | 'web_start' | 'web_callback' | 'native_exchange' | 'logout' | 'onboarding' | 'users_list' }
-        : { kind: 'method' };
+      return method === value.method ? { kind: value.kind } as Route : { kind: 'method' };
     }
   }
   const match = new RegExp(`^${accountPrefix}/users/([^/]+)$`, 'u').exec(pathname);
@@ -223,197 +237,162 @@ function isAccountSurface(pathname: string): boolean {
     || pathname === accountPrefix || pathname.startsWith(`${accountPrefix}/`);
 }
 
-async function handleSession(
-  request: Request,
-  store: AccountStore,
-  context: Pick<AccountApiContext, 'webLoginAvailable' | 'nativeLoginAvailable' | 'now' | 'cookieNames'>,
-): Promise<Response> {
-  const auth = await authenticate(request, store, context.now, context.cookieNames);
-  const isAvailable = auth !== null;
+async function handleSession(request: Request, context: AccountApiContext): Promise<Response> {
+  const auth = await authenticate(request, context);
   return jsonResponse(sessionEnvelope(
     auth?.session.account ?? null,
-    isAvailable && auth.session.channel === 'web' ? auth.session.csrfToken : null,
-    context.webLoginAvailable === true,
-    context.nativeLoginAvailable === true,
+    auth !== null && auth.session.channel === 'web' ? auth.session.csrfToken : null,
+    true,
+    context.registrationAvailable,
   ), 200);
 }
 
-async function handleWebStart(
-  request: Request,
-  store: AccountStore,
-  google: AccountGoogleProvider,
-  context: Required<Pick<AccountApiContext,
-    'appOrigin' | 'cookieMode' | 'cookieNames' | 'now' | 'randomToken' | 'trustedClientKey'>>
-    & Pick<AccountApiContext, 'loopbackAuthorizationOrigin'>,
-): Promise<Response> {
-  if (!context.appOrigin) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  if (!isExactOrigin(request, context.appOrigin) || request.headers.get('x-waspada-request') !== '1') {
-    return jsonResponse(apiError('FORBIDDEN'), 403);
+async function handleRegister(request: Request, context: AccountApiContext): Promise<Response> {
+  if (!hasPreSessionMarker(request, context.appOrigin)) return jsonResponse(apiError('FORBIDDEN'), 403);
+  const clock = readClock(context.now);
+  if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+  await context.store.cleanupExpired(new Date(clock).toISOString(), 50);
+  if (!context.registrationAvailable) return jsonResponse(apiError('NOT_FOUND'), 404);
+  if (!await consumeThrottle(context, 'register', 'self', request, clock, maxRegisterRequests)) {
+    return jsonResponse(apiError('TOO_MANY_REQUESTS'), 429);
   }
+  // Allow-list reading: only these fields are read. Any other field, including `role`, is ignored.
   const body = await readJson(request, 4_096);
-  if (!isPlainRecord(body) || !hasExactKeys(body, ['return_to'])
-    || typeof body.return_to !== 'string' || !knownReturnHashes.has(body.return_to)) {
+  if (!isPlainRecord(body) || !hasRequiredKeys(body, ['username', 'password'])) {
+    return jsonResponse(apiError('INVALID_REQUEST'), 400);
+  }
+  const username = normaliseUsername(body.username);
+  if (!username) return jsonResponse(apiError('invalid_username'), 400);
+  const policy = validatePasswordPolicy(body.password);
+  if (!policy.ok) return jsonResponse(apiError(policyErrorCode(policy.code)), 400);
+  const displayName = readDisplayName(body.display_name, username);
+  if (displayName === null) return jsonResponse(apiError('INVALID_REQUEST'), 400);
+
+  const passwordHash = await hashPassword(body.password as string);
+  let account: StoredAccount;
+  try {
+    // Self-registration never takes a role from the request body.
+    account = await context.store.createPasswordAccount({
+      datasetMode: context.datasetMode,
+      username,
+      passwordHash,
+      displayName,
+      role: 'user',
+      now: new Date(clock).toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof AccountUsernameTakenError) return jsonResponse(apiError('username_taken'), 409);
+    throw error;
+  }
+  return startWebSession(request, account, context, clock);
+}
+
+async function handleLogin(request: Request, context: AccountApiContext): Promise<Response> {
+  if (!hasPreSessionMarker(request, context.appOrigin)) return jsonResponse(apiError('FORBIDDEN'), 403);
+  const body = await readJson(request, 4_096);
+  if (!isPlainRecord(body) || !hasRequiredKeys(body, ['username', 'password'])
+    || typeof body.username !== 'string' || body.username.length < 1 || body.username.length > 256
+    || typeof body.password !== 'string' || body.password.length < 1 || body.password.length > 1_024) {
     return jsonResponse(apiError('INVALID_REQUEST'), 400);
   }
   const clock = readClock(context.now);
-  if (!clock) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  await store.cleanupExpired(new Date(clock).toISOString(), 50);
-  if (!await consumeLoginThrottle(store, 'web_start', request, context.trustedClientKey, clock, maxWebLoginRequests)) {
-    return jsonResponse(apiError('TOO_MANY_REQUESTS'), 429);
-  }
+  if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+  await context.store.cleanupExpired(new Date(clock).toISOString(), 50);
 
-  let priorSessionTokenSha256: string | null = null;
-  const priorSessionToken = readCookie(request, context.cookieNames.session);
-  if (priorSessionToken && isOpaqueToken(priorSessionToken)) {
-    const priorHash = await sha256(priorSessionToken);
-    const priorSession = await store.readSession(priorHash, new Date(clock).toISOString());
-    if (priorSession?.channel === 'web') priorSessionTokenSha256 = priorHash;
-  }
+  const normalized = normaliseUsername(body.username);
+  // Both throttles are consumed on every attempt, so neither a rotating client nor a rotating
+  // username can bypass the other.
+  const clientAllowed = await consumeThrottle(context, 'login_client', 'client', request, clock, maxLoginRequestsPerClient);
+  const usernameAllowed = await consumeThrottle(
+    context,
+    'login_username',
+    `username:${normalized ?? body.username.trim().toLowerCase().slice(0, 64)}`,
+    request,
+    clock,
+    maxLoginRequestsPerUsername,
+  );
+  if (!clientAllowed || !usernameAllowed) return jsonResponse(apiError('TOO_MANY_REQUESTS'), 429);
 
-  const authorization = await google.beginWeb();
-  if (!isSafeGoogleAuthorization(authorization, context.appOrigin, context.loopbackAuthorizationOrigin)) {
-    return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+  const credential = normalized ? await context.store.findPasswordCredentialByUsername(normalized) : null;
+  // Unknown users verify against a dummy hash so their response time matches a real miss.
+  const passwordMatches = await verifyPassword(body.password, credential?.passwordHash ?? await dummyPasswordHash(context));
+  if (!credential || !passwordMatches || !credential.account.active) {
+    return jsonResponse(apiError('invalid_credentials'), 401);
   }
-  const attemptCookie = context.randomToken();
-  if (!isOpaqueToken(attemptCookie)) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  await store.createLoginAttempt({
-    stateSha256: await sha256(authorization.state),
-    browserCookieSha256: await sha256(attemptCookie),
-    priorSessionTokenSha256,
-    codeVerifier: authorization.codeVerifier,
-    nonce: authorization.nonce,
-    returnTo: body.return_to as '#akun' | '#mulai' | '#admin' | '#tinjau-bukti',
-    createdAt: new Date(clock).toISOString(),
-    expiresAt: new Date(clock + oauthAttemptMs).toISOString(),
-  });
-  return new Response(JSON.stringify({ authorization_url: authorization.authorizationUrl }), {
-    status: 200,
-    headers: jsonHeaders({
-      'set-cookie': cookie(context.cookieNames.attempt, attemptCookie, context.cookieMode, 'Lax', 300),
-    }),
-  });
+  return startWebSession(request, credential.account, context, clock);
 }
 
-async function handleWebCallback(
-  request: Request,
-  store: AccountStore,
-  google: AccountGoogleProvider,
-  context: Required<Pick<AccountApiContext,
-    'appOrigin' | 'cookieMode' | 'cookieNames' | 'datasetMode' | 'now' | 'randomToken' | 'trustedClientKey'>>,
-): Promise<Response> {
-  if (!context.appOrigin || !context.datasetMode) return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
+async function handlePasswordChange(request: Request, context: AccountApiContext): Promise<Response> {
+  const auth = await authenticate(request, context);
+  if (!auth) return jsonResponse(apiError('UNAUTHORIZED'), 401);
+  if (auth.session.channel !== 'web' || auth.source !== 'cookie'
+    || !isAuthorizedBrowserWrite(request, auth.session.csrfToken, context.appOrigin)) {
+    return jsonResponse(apiError('FORBIDDEN'), 403);
+  }
+  const body = await readJson(request, 4_096);
+  if (!isPlainRecord(body) || !hasRequiredKeys(body, ['current_password', 'new_password'])
+    || typeof body.current_password !== 'string' || body.current_password.length < 1
+    || body.current_password.length > 1_024) {
+    return jsonResponse(apiError('INVALID_REQUEST'), 400);
+  }
+  const policy = validatePasswordPolicy(body.new_password);
+  if (!policy.ok) return jsonResponse(apiError(policyErrorCode(policy.code)), 400);
   const clock = readClock(context.now);
-  if (!clock) return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
-  if (!await consumeLoginThrottle(store, 'web_callback', request, context.trustedClientKey, clock, maxWebLoginRequests)) {
-    return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
+  if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+  const accountId = auth.session.account.id;
+  if (!await consumeThrottle(context, 'login_username', `account:${accountId}`, request, clock, maxPasswordChangeRequests)) {
+    return jsonResponse(apiError('TOO_MANY_REQUESTS'), 429);
   }
-  const url = new URL(request.url);
-  const state = readSingleQuery(url, 'state');
-  const attemptCookie = readCookie(request, context.cookieNames.attempt);
-  if (!state || state.length < 16 || state.length > 512 || !attemptCookie || !isOpaqueToken(attemptCookie)) {
-    return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
+  const credential = await context.store.findPasswordCredentialByAccountId(accountId);
+  if (!credential) return jsonResponse(apiError('FORBIDDEN'), 403);
+  if (!await verifyPassword(body.current_password, credential.passwordHash)) {
+    return jsonResponse(apiError('invalid_current_password'), 403);
   }
-  const attempt = await store.claimLoginAttempt(await sha256(state), await sha256(attemptCookie), new Date(clock).toISOString());
-  if (!attempt) return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
-
-  const code = readSingleQuery(url, 'code');
-  const providerError = readSingleQuery(url, 'error');
-  if (providerError !== null || !code || code.length > 4_096) {
-    return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
-  }
-  const callbackUrl = new URL('/api/v1/auth/google/callback', context.appOrigin);
-  callbackUrl.searchParams.set('code', code);
-  callbackUrl.searchParams.set('state', state);
-  const identity = await google.completeWeb({
-    callbackUrl,
-    codeVerifier: attempt.codeVerifier,
-    expectedState: state,
-    expectedNonce: attempt.nonce,
+  const changed = await context.store.setPasswordHash({
+    accountId,
+    passwordHash: await hashPassword(body.new_password as string),
+    now: new Date(clock).toISOString(),
+    keepTokenSha256: auth.tokenSha256,
   });
-  validateVerifiedIdentity(identity);
-  const account = await store.findOrCreateVerifiedAccount(identity, new Date(clock).toISOString());
-  if (!account.active) return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
+  if (!changed) return jsonResponse(apiError('CONFLICT'), 409);
+  return jsonResponse(sessionEnvelope(auth.session.account, auth.session.csrfToken, true, context.registrationAvailable), 200);
+}
 
+async function startWebSession(
+  request: Request,
+  account: StoredAccount,
+  context: AccountApiContext,
+  clock: number,
+): Promise<Response> {
+  if (!account.active) return jsonResponse(apiError('invalid_credentials'), 401);
   const rawSessionToken = context.randomToken();
   const csrfToken = context.randomToken();
   if (!isOpaqueToken(rawSessionToken) || !isOpaqueToken(csrfToken)) {
-    return callbackFailure(context.appOrigin, context.cookieMode, context.cookieNames);
+    return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
   }
-  const sessionNow = new Date(clock).toISOString();
-  await store.createSession({
+  // A session cookie presented at login is rotated out, so a stale or fixated session cannot survive.
+  const priorToken = readCookie(request, accountCookieNames(context.cookieMode).session);
+  await context.store.createSession({
     accountId: account.id,
     tokenSha256: await sha256(rawSessionToken),
     channel: 'web',
     csrfToken,
-    createdAt: sessionNow,
-    idleExpiresAt: new Date(clock + sessionIdleMs).toISOString(),
-    absoluteExpiresAt: new Date(clock + sessionAbsoluteMs).toISOString(),
-    ...(attempt.priorSessionTokenSha256
-      ? { revokeTokenSha256: attempt.priorSessionTokenSha256 }
-      : {}),
-  });
-  const returnHash = account.onboarding_version === 0 ? '#mulai' : attempt.returnTo;
-  return redirectResponse(`${context.appOrigin}/${returnHash}`, 303, [
-    cookie(context.cookieNames.session, rawSessionToken, context.cookieMode, 'Strict', 8 * 60 * 60),
-    clearCookie(context.cookieNames.attempt, context.cookieMode, 'Lax'),
-  ]);
-}
-
-async function handleNativeExchange(
-  request: Request,
-  store: AccountStore,
-  google: AccountGoogleProvider,
-  context: Required<Pick<AccountApiContext,
-    'datasetMode' | 'now' | 'randomToken' | 'trustedClientKey' | 'webLoginAvailable' | 'nativeLoginAvailable'>>,
-): Promise<Response> {
-  if (request.headers.has('origin') || request.headers.has('cookie')) {
-    return jsonResponse(apiError('FORBIDDEN'), 403);
-  }
-  const body = await readJson(request, 16 * 1024);
-  if (!isPlainRecord(body) || !hasExactKeys(body, ['id_token'])
-    || typeof body.id_token !== 'string' || body.id_token.length < 20 || body.id_token.length > 12_000) {
-    return jsonResponse(apiError('INVALID_REQUEST'), 400);
-  }
-  const clock = readClock(context.now);
-  if (!clock) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  await store.cleanupExpired(new Date(clock).toISOString(), 50);
-  if (!await consumeLoginThrottle(store, 'native_exchange', request, context.trustedClientKey, clock, maxNativeLoginRequests)) {
-    return jsonResponse(apiError('TOO_MANY_REQUESTS'), 429);
-  }
-  const identity = await google.verifyNativeIdToken(body.id_token);
-  validateVerifiedIdentity(identity);
-  const account = await store.findOrCreateVerifiedAccount(identity, new Date(clock).toISOString());
-  if (!account.active) return jsonResponse(apiError('FORBIDDEN'), 403);
-  const rawSessionToken = context.randomToken();
-  if (!isOpaqueToken(rawSessionToken)) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  const oldBearer = parseBearer(request);
-  await store.createSession({
-    accountId: account.id,
-    tokenSha256: await sha256(rawSessionToken),
-    channel: 'mobile',
-    csrfToken: null,
     createdAt: new Date(clock).toISOString(),
     idleExpiresAt: new Date(clock + sessionIdleMs).toISOString(),
     absoluteExpiresAt: new Date(clock + sessionAbsoluteMs).toISOString(),
-    ...(oldBearer && isOpaqueToken(oldBearer) ? { revokeTokenSha256: await sha256(oldBearer) } : {}),
+    ...(priorToken && isOpaqueToken(priorToken) ? { revokeTokenSha256: await sha256(priorToken) } : {}),
   });
-  return jsonResponse({
-    session_token: rawSessionToken,
-    session: sessionEnvelope(account, null, context.webLoginAvailable, context.nativeLoginAvailable),
-  }, 200);
+  return jsonResponse(sessionEnvelope(account, csrfToken, true, context.registrationAvailable), 200, {
+    'set-cookie': cookie(accountCookieNames(context.cookieMode).session, rawSessionToken, context.cookieMode, 'Strict', 8 * 60 * 60),
+  });
 }
 
-async function handleLogout(
-  request: Request,
-  store: AccountStore,
-  context: Required<Pick<AccountApiContext,
-    'appOrigin' | 'cookieMode' | 'cookieNames' | 'now'>>,
-): Promise<Response> {
-  const auth = await authenticate(request, store, context.now, context.cookieNames);
+async function handleLogout(request: Request, context: AccountApiContext): Promise<Response> {
+  const auth = await authenticate(request, context);
   if (!auth) return jsonResponse(apiError('UNAUTHORIZED'), 401);
   if (auth.session.channel === 'web') {
     if (auth.source !== 'cookie') return jsonResponse(apiError('UNAUTHORIZED'), 401);
-    if (!checkBrowserWrite(request, auth.session.csrfToken, context.appOrigin)) {
+    if (!isAuthorizedBrowserWrite(request, auth.session.csrfToken, context.appOrigin)) {
       return jsonResponse(apiError('FORBIDDEN'), 403);
     }
   } else if (auth.source !== 'bearer' || request.headers.has('origin') || request.headers.has('cookie')) {
@@ -421,24 +400,19 @@ async function handleLogout(
   }
   const clock = readClock(context.now);
   if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  await store.revokeSession(auth.tokenSha256, new Date(clock).toISOString());
+  await context.store.revokeSession(auth.tokenSha256, new Date(clock).toISOString());
   const headers = new Headers({
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
   });
   if (auth.session.channel === 'web') {
-    headers.set('set-cookie', clearCookie(context.cookieNames.session, context.cookieMode, 'Strict'));
+    headers.set('set-cookie', clearCookie(accountCookieNames(context.cookieMode).session, context.cookieMode, 'Strict'));
   }
   return new Response(null, { status: 204, headers });
 }
 
-async function handleOnboarding(
-  request: Request,
-  store: AccountStore,
-  context: Required<Pick<AccountApiContext,
-    'appOrigin' | 'webLoginAvailable' | 'nativeLoginAvailable' | 'cookieMode' | 'cookieNames' | 'now'>>,
-): Promise<Response> {
-  const auth = await authenticate(request, store, context.now, context.cookieNames);
+async function handleOnboarding(request: Request, context: AccountApiContext): Promise<Response> {
+  const auth = await authenticate(request, context);
   if (!auth) return jsonResponse(apiError('UNAUTHORIZED'), 401);
   if (!authorizedWriteChannel(request, auth, context.appOrigin)) {
     return jsonResponse(apiError('FORBIDDEN'), 403);
@@ -449,26 +423,18 @@ async function handleOnboarding(
   }
   const clock = readClock(context.now);
   if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  const updated = await store.completeOnboarding(
-    auth.session.account.id,
-    1,
-    new Date(clock).toISOString(),
-  );
+  const updated = await context.store.completeOnboarding(auth.session.account.id, 1, new Date(clock).toISOString());
   if (!updated) return jsonResponse(apiError('FORBIDDEN'), 403);
   return jsonResponse(sessionEnvelope(
     updated,
     auth.session.channel === 'web' ? auth.session.csrfToken : null,
-    context.webLoginAvailable,
-    context.nativeLoginAvailable,
+    true,
+    context.registrationAvailable,
   ), 200);
 }
 
-async function handleUsersList(
-  request: Request,
-  store: AccountStore,
-  context: Pick<AccountApiContext, 'cookieMode' | 'cookieNames' | 'now'>,
-): Promise<Response> {
-  const auth = await authenticate(request, store, context.now, context.cookieNames);
+async function handleUsersList(request: Request, context: AccountApiContext): Promise<Response> {
+  const auth = await authenticate(request, context);
   if (!auth) return jsonResponse(apiError('UNAUTHORIZED'), 401);
   if (auth.session.channel !== 'web' || auth.source !== 'cookie'
     || !isCompletedAdmin(auth.session.account)) {
@@ -476,7 +442,7 @@ async function handleUsersList(
   }
   const query = readAccountPageQuery(new URL(request.url).searchParams);
   if (!query) return jsonResponse(apiError('INVALID_REQUEST'), 400);
-  const page = await store.listAccounts(query.limit, query.after, auth.session.account.id);
+  const page = await context.store.listAccounts(query.limit, query.after, auth.session.account.id);
   if (page.outcome === 'forbidden') return jsonResponse(apiError('FORBIDDEN'), 403);
   return jsonResponse({
     data: page.page.data.map(toAccountUser),
@@ -484,20 +450,14 @@ async function handleUsersList(
   }, 200);
 }
 
-async function handleUserUpdate(
-  request: Request,
-  store: AccountStore,
-  context: Required<Pick<AccountApiContext,
-    'appOrigin' | 'cookieMode' | 'cookieNames' | 'now'>>,
-  targetAccountId: string,
-): Promise<Response> {
-  const auth = await authenticate(request, store, context.now, context.cookieNames);
+async function handleUserUpdate(request: Request, context: AccountApiContext, targetAccountId: string): Promise<Response> {
+  const auth = await authenticate(request, context);
   if (!auth) return jsonResponse(apiError('UNAUTHORIZED'), 401);
   if (auth.session.channel !== 'web' || auth.source !== 'cookie'
     || !isCompletedAdmin(auth.session.account)) {
     return jsonResponse(apiError('FORBIDDEN'), 403);
   }
-  if (!checkBrowserWrite(request, auth.session.csrfToken, context.appOrigin)) {
+  if (!isAuthorizedBrowserWrite(request, auth.session.csrfToken, context.appOrigin)) {
     return jsonResponse(apiError('FORBIDDEN'), 403);
   }
   const body = await readJson(request, 4_096);
@@ -514,7 +474,7 @@ async function handleUserUpdate(
   }
   const clock = readClock(context.now);
   if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  const result = await store.updateAccountByAdmin({
+  const result = await context.store.updateAccountByAdmin({
     actorAccountId: auth.session.account.id,
     targetAccountId,
     role: body.role,
@@ -526,133 +486,71 @@ async function handleUserUpdate(
   return adminUpdateResponse(result);
 }
 
-async function authenticate(
-  request: Request,
-  store: AccountStore,
-  now: () => number,
-  names: { readonly session: string; readonly attempt: string },
-): Promise<AuthenticatedRequest | null> {
-  const bearer = parseBearer(request);
-  let rawToken: string | null = null;
-  let source: 'cookie' | 'bearer' = 'cookie';
-  if (bearer !== null) {
-    if (!isOpaqueToken(bearer)) return null;
-    rawToken = bearer;
-    source = 'bearer';
-  } else {
-    const cookieToken = readCookie(request, names.session);
-    if (!cookieToken || !isOpaqueToken(cookieToken)) return null;
-    rawToken = cookieToken;
-  }
-  const clock = readClock(now);
-  if (clock === null) throw new Error('Clock is unavailable.');
-  const tokenSha256 = await sha256(rawToken);
-  const session = await store.readSession(tokenSha256, new Date(clock).toISOString());
-  return session ? { tokenSha256, source, session } : null;
+async function authenticate(request: Request, context: AccountApiContext): Promise<AccountAuthentication | null> {
+  return readAccountAuthentication(request, context.store, context.now, context.cookieMode);
 }
 
-async function consumeLoginThrottle(
-  store: AccountStore,
-  scope: 'web_start' | 'web_callback' | 'native_exchange',
+async function consumeThrottle(
+  context: AccountApiContext,
+  scope: 'register' | 'login_client' | 'login_username',
+  keyKind: string,
   request: Request,
-  getTrustedClientKey: (request: Request) => string,
   now: number,
   maximum: number,
 ): Promise<boolean> {
   let trustedKey = 'unavailable-client-key';
   try {
-    const candidate = getTrustedClientKey(request);
+    const candidate = context.trustedClientKey(request);
     if (typeof candidate === 'string' && candidate.length > 0 && candidate.length <= 512) {
       trustedKey = candidate;
     }
   } catch {
     // All requests share the fallback bucket if the trusted adapter is unavailable.
   }
-  return store.consumeThrottle(
+  // The key kind keeps client and username buckets separate even when their text could match.
+  const keySource = scope === 'login_username' ? keyKind : `${keyKind}:${trustedKey}`;
+  return context.store.consumeThrottle(
     scope,
-    await sha256(trustedKey),
+    await sha256(keySource),
     new Date(now).toISOString(),
-    loginThrottleWindowMs,
+    throttleWindowMs,
     maximum,
   );
 }
 
-function authorizedWriteChannel(
-  request: Request,
-  auth: AuthenticatedRequest,
-  appOrigin: string | undefined,
-): boolean {
+let dummyHashPromise: Promise<string> | undefined;
+
+/** A real PBKDF2 hash of a random value, computed once per isolate. It is never a valid credential. */
+function dummyPasswordHash(context: AccountApiContext): Promise<string> {
+  dummyHashPromise ??= hashPassword(context.randomToken());
+  return dummyHashPromise;
+}
+
+function hasPreSessionMarker(request: Request, appOrigin: string): boolean {
+  return isExactOrigin(request, appOrigin) && request.headers.get(registrationHeader) === '1';
+}
+
+function policyErrorCode(code: 'password_too_short' | 'password_too_long' | 'password_invalid'): string {
+  return code === 'password_invalid' ? 'INVALID_REQUEST' : code;
+}
+
+function readDisplayName(value: unknown, fallback: string): string | null {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string') return null;
+  const name = value.trim();
+  if (name.length < 1 || name.length > 200 || /[\u0000-\u001f\u007f]/u.test(name)) return null;
+  return name;
+}
+
+function authorizedWriteChannel(request: Request, auth: AccountAuthentication, appOrigin: string): boolean {
   if (auth.session.channel === 'web') {
-    return auth.source === 'cookie' && checkBrowserWrite(request, auth.session.csrfToken, appOrigin);
+    return auth.source === 'cookie' && isAuthorizedBrowserWrite(request, auth.session.csrfToken, appOrigin);
   }
   return auth.source === 'bearer' && !request.headers.has('origin') && !request.headers.has('cookie');
 }
 
-function checkBrowserWrite(request: Request, csrfToken: string | null, appOrigin: string | undefined): boolean {
-  return csrfToken !== null
-    && appOrigin !== undefined
-    && isExactOrigin(request, appOrigin)
-    && request.headers.get('x-csrf-token') !== null
-    && constantTimeTextEqual(request.headers.get('x-csrf-token') ?? '', csrfToken);
-}
-
 function isExactOrigin(request: Request, appOrigin: string): boolean {
   return request.headers.get('origin') === appOrigin;
-}
-
-function isSafeGoogleAuthorization(
-  value: GoogleWebAuthorization,
-  appOrigin: string,
-  loopbackAuthorizationOrigin: string | undefined,
-): boolean {
-  if (typeof value.authorizationUrl !== 'string'
-    || typeof value.state !== 'string'
-    || typeof value.nonce !== 'string'
-    || typeof value.codeVerifier !== 'string'
-    || value.state.length < 16 || value.state.length > 512
-    || value.nonce.length < 16 || value.nonce.length > 256
-    || value.codeVerifier.length < 43 || value.codeVerifier.length > 128
-    || !/^[A-Za-z0-9._~-]+$/u.test(value.codeVerifier)) return false;
-  try {
-    const url = new URL(value.authorizationUrl);
-    const callback = new URL('/api/v1/auth/google/callback', appOrigin).href;
-    const safeUrl = url.username === '' && url.password === '' && url.hash === '';
-    const loopbackAuthorization = loopbackAuthorizationOrigin !== undefined
-      && url.origin === loopbackAuthorizationOrigin
-      && url.protocol === 'http:'
-      && url.pathname === '/api/v1/auth/demo/consent'
-      && [...url.searchParams.keys()].length === 1
-      && readSingleQuery(url, 'state') === value.state;
-    if (loopbackAuthorization) return safeUrl;
-    const googleAuthorizationOrigin = url.protocol === 'https:' && url.hostname === 'accounts.google.com'
-      && url.pathname === '/o/oauth2/v2/auth';
-    return safeUrl && googleAuthorizationOrigin
-      && readSingleQuery(url, 'response_type') === 'code'
-      && readSingleQuery(url, 'state') === value.state
-      && readSingleQuery(url, 'nonce') === value.nonce
-      && readSingleQuery(url, 'redirect_uri') === callback
-      && readSingleQuery(url, 'code_challenge_method') === 'S256'
-      && Boolean(readSingleQuery(url, 'code_challenge'))
-      && (readSingleQuery(url, 'scope') ?? '').split(' ').includes('openid');
-  } catch {
-    return false;
-  }
-}
-
-function validateVerifiedIdentity(identity: VerifiedGoogleIdentity): void {
-  if (identity.issuer !== safeIdentityIssuer
-    || identity.emailVerified !== true
-    || typeof identity.subject !== 'string'
-    || identity.subject.length < 1 || identity.subject.length > 255
-    || /[\u0000-\u001f\u007f]/u.test(identity.subject)
-    || typeof identity.email !== 'string'
-    || identity.email.length < 3 || identity.email.length > 320
-    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(identity.email)
-    || typeof identity.displayName !== 'string'
-    || identity.displayName.trim().length < 1 || identity.displayName.length > 200
-    || /[\u0000-\u001f\u007f]/u.test(identity.displayName)) {
-    throw new Error('Google identity claims are not acceptable.');
-  }
 }
 
 function adminUpdateResponse(result: AccountAdminUpdateResult): Response {
@@ -703,14 +601,14 @@ function toAccountUser(account: StoredAccount) {
 function sessionEnvelope(
   account: StoredAccount | null,
   csrfToken: string | null,
-  webLoginAvailable: boolean,
-  nativeLoginAvailable: boolean,
+  passwordLoginAvailable: boolean,
+  registrationAvailable: boolean,
 ) {
   return {
     version: 'account-v1' as const,
     status: account === null ? 'anonymous' as const : 'authenticated' as const,
-    google_login_available: webLoginAvailable,
-    native_login_available: nativeLoginAvailable,
+    password_login_available: passwordLoginAvailable,
+    registration_available: registrationAvailable,
     csrf_token: account === null ? null : csrfToken,
     user: account === null ? null : toAccountUser(account),
   };
@@ -721,12 +619,7 @@ function apiError(code: string) {
 }
 
 function jsonResponse(body: unknown, status: number, extraHeaders?: HeadersInit): Response {
-  const headers = jsonHeaders(extraHeaders);
-  return new Response(JSON.stringify(body), { status, headers });
-}
-
-export function accountUnavailableResponse(): Response {
-  return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+  return new Response(JSON.stringify(body), { status, headers: jsonHeaders(extraHeaders) });
 }
 
 function jsonHeaders(extraHeaders?: HeadersInit): Headers {
@@ -736,32 +629,6 @@ function jsonHeaders(extraHeaders?: HeadersInit): Headers {
   headers.set('pragma', 'no-cache');
   headers.set('x-content-type-options', 'nosniff');
   return headers;
-}
-
-function redirectResponse(location: string, status: number, cookies: readonly string[]): Response {
-  const headers = new Headers({
-    location,
-    'cache-control': 'no-store',
-    pragma: 'no-cache',
-    'x-content-type-options': 'nosniff',
-  });
-  for (const value of cookies) headers.append('set-cookie', value);
-  return new Response(null, { status, headers });
-}
-
-function callbackFailure(
-  appOrigin: string | undefined,
-  mode: AccountCookieMode,
-  names: { readonly session: string; readonly attempt: string },
-): Response {
-  if (!appOrigin) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
-  return redirectResponse(`${appOrigin}/#masuk?login=failed`, 303, [clearCookie(names.attempt, mode, 'Lax')]);
-}
-
-function cookieNames(mode: AccountCookieMode): { session: string; attempt: string } {
-  return mode === 'host'
-    ? { session: '__Host-waspada_session', attempt: '__Host-waspada_oauth_attempt' }
-    : { session: 'waspada_session_dev', attempt: 'waspada_oauth_attempt_dev' };
 }
 
 function cookie(
@@ -797,11 +664,6 @@ function parseBearer(request: Request): string | null {
   if (value === null) return null;
   const match = /^Bearer ([A-Za-z0-9_-]{43,128})$/u.exec(value);
   return match?.[1] ?? '';
-}
-
-function readSingleQuery(url: URL, key: string): string | null {
-  const values = url.searchParams.getAll(key);
-  return values.length === 1 ? values[0] ?? null : values.length === 0 ? null : '';
 }
 
 async function readJson(request: Request, maximumBytes: number): Promise<unknown | null> {
@@ -854,10 +716,12 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return actual.length === sortedExpected.length
-    && actual.every((key, index) => key === sortedExpected[index]);
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => Object.hasOwn(value, key));
+}
+
+function hasRequiredKeys(value: Record<string, unknown>, required: readonly string[]): boolean {
+  return required.every((key) => Object.hasOwn(value, key));
 }
 
 function isAccountRole(value: unknown): value is AccountRole {
@@ -872,11 +736,7 @@ function isOpaqueToken(value: string): boolean {
   return opaqueTokenPattern.test(value);
 }
 
-function requireTrustedOrigin(
-  value: string | undefined,
-  datasetMode: AccountDatasetMode | undefined,
-  cookieMode: AccountCookieMode,
-): string {
+function requireTrustedOrigin(value: string | undefined, cookieMode: AccountCookieMode): string {
   if (!value || value.length > 512) throw new TypeError('Trusted account origin is missing.');
   const origin = new URL(value);
   if (origin.origin !== value || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
@@ -885,28 +745,8 @@ function requireTrustedOrigin(
   if (cookieMode === 'host' && origin.protocol !== 'https:') {
     throw new TypeError('Host-only account cookies require HTTPS.');
   }
-  if (cookieMode === 'loopback'
-    && (datasetMode !== 'demo' || !isLoopbackHostname(origin.hostname))) {
-    throw new TypeError('Development account cookies are restricted to loopback demo mode.');
-  }
-  return origin.origin;
-}
-
-function requireLoopbackAuthorizationOrigin(
-  value: string,
-  datasetMode: AccountDatasetMode | undefined,
-  cookieMode: AccountCookieMode,
-): string {
-  if (cookieMode !== 'loopback' || datasetMode !== 'demo' || value.length > 512) {
-    throw new TypeError('Synthetic Google authorization is restricted to the loopback demo harness.');
-  }
-  const origin = new URL(value);
-  if (origin.origin !== value || origin.username || origin.password
-    || origin.pathname !== '/' || origin.search || origin.hash
-    || origin.protocol !== 'http:'
-    || origin.port !== '5173'
-    || (origin.hostname !== 'localhost' && origin.hostname !== '127.0.0.1')) {
-    throw new TypeError('Synthetic Google authorization origin must be loopback.');
+  if (cookieMode === 'loopback' && (origin.protocol !== 'http:' && origin.protocol !== 'https:' || !isLoopbackHostname(origin.hostname))) {
+    throw new TypeError('Development account cookies are restricted to loopback origins.');
   }
   return origin.origin;
 }

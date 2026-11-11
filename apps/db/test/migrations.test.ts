@@ -172,6 +172,7 @@ describe('DATA-01 migrations', () => {
         '042_triage_required_provenance',
         '043_source_permission_evidence',
         '044_triage_required_correction',
+        '045_password_accounts',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -330,6 +331,7 @@ describe('DATA-01 migrations', () => {
       '042_triage_required_provenance',
       '043_source_permission_evidence',
       '044_triage_required_correction',
+      '045_password_accounts',
     ]);
   });
 
@@ -372,12 +374,13 @@ describe('DATA-01 migrations', () => {
       '042_triage_required_provenance',
       '043_source_permission_evidence',
       '044_triage_required_correction',
+      '045_password_accounts',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '44');
+    assert.equal(count.rows[0]?.count, '45');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -396,7 +399,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 044_triage_required_correction/,
+      /Cannot apply migration 000_late_backfill before already applied migration 045_password_accounts/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -447,6 +450,7 @@ describe('DATA-01 migrations', () => {
       { version: '042_triage_required_provenance' },
       { version: '043_source_permission_evidence' },
       { version: '044_triage_required_correction' },
+      { version: '045_password_accounts' },
     ]);
   });
 
@@ -486,6 +490,7 @@ describe('DATA-01 migrations', () => {
       '042_triage_required_provenance',
       '043_source_permission_evidence',
       '044_triage_required_correction',
+      '045_password_accounts',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",

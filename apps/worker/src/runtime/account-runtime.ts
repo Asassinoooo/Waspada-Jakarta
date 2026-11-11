@@ -1,14 +1,15 @@
-import { createAccountStore, type AccountDatasetMode } from '../../../db/src/accounts.js';
-import {
-  withPostgresTransactionalSqlExecutor,
-} from '../../../db/src/postgres-sql-executor.js';
+import { createAccountStore, type AccountDatasetMode, type AccountStore } from '../../../db/src/accounts.js';
+import { withPostgresTransactionalSqlExecutor } from '../../../db/src/postgres-sql-executor.js';
 import type { TransactionalSqlExecutor } from '../../../db/src/sql.js';
 import { isValidHyperdriveConnectionString } from './public-event-list-runtime.js';
-import { accountUnavailableResponse, createAccountApi } from '../accounts/api.js';
-import { createGoogleAccountProvider } from '../accounts/google-provider.js';
+import {
+  accountCookieMode,
+  accountUnavailableResponse,
+  createAccountApi,
+} from '../accounts/api.js';
 import type {
   AccountApiHandler,
-  AccountGoogleProvider,
+  AccountCookieMode,
   AccountRuntimeDependencies,
   AccountWorkerEnvironment,
 } from '../accounts/types.js';
@@ -16,64 +17,99 @@ import type {
 const disabledHandler = createAccountApi({ enabled: false });
 const runtimeCache = new WeakMap<object, Promise<AccountApiHandler>>();
 
+/** Account dataset plus the moderation dataset kind it corresponds to. */
+export interface AccountDatasetScope {
+  readonly accountDatasetMode: AccountDatasetMode;
+  /** Matches the L4 moderation and DB dataset vocabulary (`live` or `synthetic`). */
+  readonly datasetKind: 'live' | 'synthetic';
+}
+
+export type AccountStoreSource =
+  | { readonly kind: 'executor'; readonly executor: TransactionalSqlExecutor }
+  | { readonly kind: 'connection'; readonly connectionString: string };
+
+export interface AccountRuntimeConfig {
+  readonly datasetMode: AccountDatasetMode;
+  readonly datasetKind: 'live' | 'synthetic';
+  readonly appOrigin: string;
+  readonly cookieMode: AccountCookieMode;
+  readonly source: AccountStoreSource;
+}
+
 export type AccountTransactionalSqlExecutorRunner = <Result>(
   connectionString: string,
   operation: (executor: TransactionalSqlExecutor) => Promise<Result>,
 ) => Promise<Result>;
+
+/** `live` maps to the live dataset. `demo` and `synthetic` map to the isolated synthetic dataset. */
+export function accountDatasetScope(datasetMode: string | undefined): AccountDatasetScope | null {
+  if (datasetMode === 'live') return { accountDatasetMode: 'live', datasetKind: 'live' };
+  if (datasetMode === 'demo' || datasetMode === 'synthetic') {
+    return { accountDatasetMode: 'demo', datasetKind: 'synthetic' };
+  }
+  return null;
+}
+
+/**
+ * Returns the account configuration only when every requirement holds: AUTH_ENABLED, a known
+ * dataset, an exact trusted app origin, and a database source. Otherwise the caller fails closed.
+ */
+export function resolveAccountRuntime(
+  environment: AccountWorkerEnvironment,
+  cookieModeOverride?: AccountCookieMode,
+): AccountRuntimeConfig | null {
+  if (environment.AUTH_ENABLED !== 'true') return null;
+  const scope = accountDatasetScope(environment.DATASET_MODE);
+  const appOrigin = environment.AUTH_APP_ORIGIN;
+  if (!scope || !isExactOrigin(appOrigin)) return null;
+  const cookieMode = cookieModeOverride ?? accountCookieMode(appOrigin);
+  if (cookieMode === null || cookieMode === undefined) return null;
+  const source = accountStoreSource(environment);
+  if (!source) return null;
+  return {
+    datasetMode: scope.accountDatasetMode,
+    datasetKind: scope.datasetKind,
+    appOrigin: appOrigin as string,
+    cookieMode,
+    source,
+  };
+}
+
+/** Runs one operation with a dataset-scoped account store on the configured database source. */
+export async function withAccountStore<Result>(
+  config: AccountRuntimeConfig,
+  dependencies: { readonly withTransactionalSqlExecutor?: AccountTransactionalSqlExecutorRunner } = {},
+  operation: (store: AccountStore) => Promise<Result>,
+): Promise<Result> {
+  if (config.source.kind === 'executor') {
+    return operation(createAccountStore(config.source.executor, config.datasetMode));
+  }
+  const runner = dependencies.withTransactionalSqlExecutor ?? withPostgresTransactionalSqlExecutor;
+  return runner(config.source.connectionString, (executor) => operation(createAccountStore(executor, config.datasetMode)));
+}
 
 /** Returns a lazy, fail-closed request handler. The public Worker routes remain independent. */
 export async function createAccountRuntime(
   configuration: AccountWorkerEnvironment,
   dependencies: AccountRuntimeDependencies = {},
 ): Promise<AccountApiHandler> {
-  const datasetMode = parseDatasetMode(configuration.DATASET_MODE);
-  const cookieMode = dependencies.cookieMode ?? 'host';
-  const explicitlyInjectedLoopbackDemo = datasetMode === 'demo'
-    && cookieMode === 'loopback'
-    && dependencies.google !== undefined;
-  const enabled = configuration.AUTH_ENABLED === 'true'
-    && datasetMode !== undefined
-    && isValidHyperdriveConnectionString(configuration.AUTH_HYPERDRIVE?.connectionString)
-    && isTrustedOrigin(configuration.AUTH_APP_ORIGIN, cookieMode, datasetMode)
-    && hasGoogleConfiguration(configuration, dependencies.google, explicitlyInjectedLoopbackDemo);
-
-  if (!enabled || !datasetMode || !configuration.AUTH_HYPERDRIVE?.connectionString
-    || !configuration.AUTH_APP_ORIGIN) {
-    return disabledHandler;
-  }
-
-  const appOrigin = configuration.AUTH_APP_ORIGIN;
-  const connectionString = configuration.AUTH_HYPERDRIVE.connectionString;
-  const google = dependencies.google ?? createLazyGoogleProvider(
-    configuration,
-    appOrigin,
-    dependencies.googleProviderFactory ?? createGoogleAccountProvider,
-  );
-  const withExecutor: AccountTransactionalSqlExecutorRunner = dependencies.withTransactionalSqlExecutor
-    ?? withPostgresTransactionalSqlExecutor;
+  const config = resolveAccountRuntime(configuration, dependencies.cookieMode);
+  if (!config) return disabledHandler;
   const apiOptions = {
     enabled: true,
-    google,
-    appOrigin,
-    datasetMode,
-    webLoginAvailable: true,
-    nativeLoginAvailable: true,
-    cookieMode,
+    appOrigin: config.appOrigin,
+    datasetMode: config.datasetMode,
+    registrationAvailable: true,
+    cookieMode: config.cookieMode,
     now: dependencies.now,
     trustedClientKey: dependencies.trustedClientKey ?? trustedCloudflareClientKey,
     ...(dependencies.randomToken ? { randomToken: dependencies.randomToken } : {}),
-    ...(dependencies.loopbackAuthorizationOrigin
-      ? { loopbackAuthorizationOrigin: dependencies.loopbackAuthorizationOrigin }
-      : {}),
   };
 
   return async (request) => {
     if (!isAccountRequest(request)) return undefined;
     try {
-      return await withExecutor(connectionString, async (executor) => {
-        const store = createAccountStore(executor, datasetMode);
-        return createAccountApi({ ...apiOptions, store })(request);
-      });
+      return await withAccountStore(config, dependencies, async (store) => createAccountApi({ ...apiOptions, store })(request));
     } catch {
       return accountUnavailableResponse();
     }
@@ -96,100 +132,31 @@ export async function handleAccountRequest(
   return (await handler)(request);
 }
 
-function createLazyGoogleProvider(
-  configuration: AccountWorkerEnvironment,
-  appOrigin: string,
-  providerFactory: typeof createGoogleAccountProvider,
-): AccountGoogleProvider {
-  let provider: Promise<AccountGoogleProvider> | undefined;
-  const getProvider = (): Promise<AccountGoogleProvider> => {
-    if (!provider) {
-      const webClientId = configuration.AUTH_GOOGLE_CLIENT_ID;
-      const webClientSecret = configuration.AUTH_GOOGLE_CLIENT_SECRET;
-      const nativeAudience = configuration.AUTH_GOOGLE_NATIVE_CLIENT_ID || webClientId;
-      if (!webClientId || !webClientSecret || !nativeAudience) {
-        throw new Error('Google account provider configuration is incomplete.');
-      }
-      const initialization = providerFactory({
-        webClientId,
-        webClientSecret,
-        nativeAudience,
-        callbackUrl: new URL('/api/v1/auth/google/callback', appOrigin).href,
-        ...(configuration.AUTH_GOOGLE_ANDROID_CLIENT_ID
-          ? { nativeAuthorizedParties: [configuration.AUTH_GOOGLE_ANDROID_CLIENT_ID] }
-          : {}),
-      });
-      provider = initialization;
-      void initialization.catch(() => {
-        if (provider === initialization) provider = undefined;
-      });
-    }
-    return provider;
-  };
-  return {
-    async beginWeb() {
-      return (await getProvider()).beginWeb();
-    },
-    async completeWeb(input) {
-      return (await getProvider()).completeWeb(input);
-    },
-    async verifyNativeIdToken(idToken) {
-      return (await getProvider()).verifyNativeIdToken(idToken);
-    },
-  };
+function accountStoreSource(environment: AccountWorkerEnvironment): AccountStoreSource | null {
+  const executor = environment.SQL_EXECUTOR;
+  if (isTransactionalExecutor(executor)) return { kind: 'executor', executor };
+  const connectionString = environment.AUTH_HYPERDRIVE?.connectionString;
+  if (isValidHyperdriveConnectionString(connectionString)) return { kind: 'connection', connectionString };
+  return null;
 }
 
-function parseDatasetMode(value: string | undefined): AccountDatasetMode | undefined {
-  return value === 'live' || value === 'demo' ? value : undefined;
+function isTransactionalExecutor(value: unknown): value is TransactionalSqlExecutor {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<TransactionalSqlExecutor>;
+  return typeof candidate.query === 'function'
+    && typeof candidate.execute === 'function'
+    && typeof candidate.transaction === 'function';
 }
 
-function isTrustedOrigin(
-  value: string | undefined,
-  cookieMode: 'host' | 'loopback',
-  datasetMode: AccountDatasetMode | undefined,
-): boolean {
+function isExactOrigin(value: string | undefined): value is string {
   if (!value || value.length > 512) return false;
   try {
     const origin = new URL(value);
-    const exactOrigin = origin.origin === value
-      && !origin.username && !origin.password
+    return origin.origin === value && !origin.username && !origin.password
       && origin.pathname === '/' && !origin.search && !origin.hash;
-    if (!exactOrigin) return false;
-    if (cookieMode === 'host') return origin.protocol === 'https:';
-    return datasetMode === 'demo'
-      && (origin.protocol === 'http:' || origin.protocol === 'https:')
-      && isLoopback(origin.hostname);
   } catch {
     return false;
   }
-}
-
-function hasGoogleConfiguration(
-  environment: AccountWorkerEnvironment,
-  injectedProvider: AccountGoogleProvider | undefined,
-  injectedLoopbackDemo: boolean,
-): boolean {
-  if (injectedLoopbackDemo) return true;
-  if (injectedProvider !== undefined) return true;
-  return isGoogleClientId(environment.AUTH_GOOGLE_CLIENT_ID)
-    && isGoogleClientId(environment.AUTH_GOOGLE_NATIVE_CLIENT_ID || environment.AUTH_GOOGLE_CLIENT_ID)
-    && (environment.AUTH_GOOGLE_ANDROID_CLIENT_ID === undefined
-      || isGoogleClientId(environment.AUTH_GOOGLE_ANDROID_CLIENT_ID))
-    && typeof environment.AUTH_GOOGLE_CLIENT_SECRET === 'string'
-    && environment.AUTH_GOOGLE_CLIENT_SECRET.length > 0
-    && environment.AUTH_GOOGLE_CLIENT_SECRET.length <= 4_096;
-}
-
-function isGoogleClientId(value: unknown): value is string {
-  return typeof value === 'string'
-    && value.length >= 8
-    && value.length <= 512
-    && /^[A-Za-z0-9._:-]+$/u.test(value);
-}
-
-function isLoopback(hostname: string): boolean {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/gu, '');
-  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
 }
 
 function trustedCloudflareClientKey(request: Request): string {

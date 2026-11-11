@@ -12,8 +12,15 @@ import {
   createMockInterpreterAgent,
   createMockCorrelatorAgent,
 } from "../../apps/intelligence/test/mock-agents.js";
+import { createAccountStore } from "../../apps/db/src/accounts.js";
 import worker from "../../apps/worker/src/index.js";
 import type { WorkerEnvironment } from "../../apps/worker/src/layers/l4-application-integration/api.js";
+import { hashPassword } from "../../apps/worker/src/accounts/password.js";
+import { generateServiceKey } from "../../apps/worker/src/security/service-key.js";
+
+/** Synthetic fixture for this local journey only. It is not a real credential. */
+const e2eModeratorUsername = "e2e.moderator";
+const e2eModeratorPassword = "sandi-uji-e2e-2026";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -35,6 +42,15 @@ async function main() {
   const db = await createTestDatabase();
   const migrations = await readMigrations(new URL("../../apps/db/migrations/", import.meta.url));
   await applyMigrations(db.executor, migrations);
+  await createAccountStore(db.executor, "demo").createPasswordAccount({
+    datasetMode: "demo",
+    username: e2eModeratorUsername,
+    passwordHash: await hashPassword(e2eModeratorPassword),
+    displayName: "Moderator E2E",
+    role: "moderator",
+    now: new Date().toISOString(),
+    reason: "Synthetic end-to-end fixture",
+  });
   console.log(`  Applied ${migrations.length} migrations up to 039.`);
 
   const incidentRepo = createSqlIncidentRepository(db.executor);
@@ -42,9 +58,14 @@ async function main() {
 
   // 2. Start Local Unified HTTP Server (Web App + Worker Backend)
   console.log("\n[Step 2] Launching unified test server bridging Worker and Web UI...");
+  // Random per run. The origin is set once the port is known, and accounts use the synthetic dataset.
+  const webhookServiceKey = generateServiceKey();
   const env: WorkerEnvironment = {
     DATASET_MODE: "synthetic",
-    INTERNAL_SERVICE_KEY: "dev-internal-key",
+    AUTH_ENABLED: "true",
+    AUTH_APP_ORIGIN: "http://127.0.0.1:0",
+    INTERNAL_SERVICE_KEY: generateServiceKey(),
+    WEBHOOK_SERVICE_KEY: webhookServiceKey,
     SQL_EXECUTOR: db.executor,
   };
 
@@ -108,6 +129,7 @@ async function main() {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address() as { port: number };
   const baseUrl = `http://127.0.0.1:${address.port}`;
+  env.AUTH_APP_ORIGIN = baseUrl;
   console.log(`  Unified test server running on ${baseUrl}`);
 
   let browser: Browser | null = null;
@@ -131,7 +153,7 @@ async function main() {
 
     const ingestRes = await fetch(`${baseUrl}/api/v1/ingestion/events`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-service-key": webhookServiceKey },
       body: JSON.stringify(reportPayload),
     });
 
@@ -249,15 +271,12 @@ async function main() {
     });
 
     const context = await browser.newContext();
-    // Inject authenticated demo moderator session cookie
-    await context.addCookies([
-      {
-        name: "waspada_demo_session",
-        value: "moderator",
-        domain: "127.0.0.1",
-        path: "/",
-      },
-    ]);
+    // Sign in through the real account API. The response's Set-Cookie lands in this browser context.
+    const login = await context.request.post(`${baseUrl}/api/v1/auth/login`, {
+      headers: { Origin: baseUrl, "X-Waspada-Request": "1" },
+      data: { username: e2eModeratorUsername, password: e2eModeratorPassword },
+    });
+    assert.equal(login.status(), 200, "the seeded moderator signs in through /api/v1/auth/login");
 
     const page = await context.newPage();
 

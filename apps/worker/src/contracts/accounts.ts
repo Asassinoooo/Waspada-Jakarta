@@ -6,7 +6,8 @@ export type AccountChannel = "web" | "mobile";
 export interface AccountUser {
   readonly id: string;
   readonly display_name: string;
-  readonly email: string;
+  /** Null for username/password accounts, which have no verified email. */
+  readonly email: string | null;
   readonly role: AccountRole;
   readonly active: boolean;
   readonly onboarding_version: 0 | 1;
@@ -17,8 +18,8 @@ export interface AccountUser {
 export interface SessionEnvelope {
   readonly version: typeof ACCOUNT_CONTRACT_VERSION;
   readonly status: "anonymous" | "authenticated";
-  readonly google_login_available: boolean;
-  readonly native_login_available: boolean;
+  readonly password_login_available: boolean;
+  readonly registration_available: boolean;
   readonly csrf_token: string | null;
   readonly user: AccountUser | null;
 }
@@ -28,14 +29,25 @@ export interface AccountUserPage {
   readonly next_cursor: string | null;
 }
 
+export interface PasswordLoginRequest {
+  readonly username: string;
+  readonly password: string;
+}
+
+export interface PasswordRegistrationRequest {
+  readonly username: string;
+  readonly password: string;
+  readonly display_name?: string;
+}
+
+export interface PasswordChangeRequest {
+  readonly current_password: string;
+  readonly new_password: string;
+}
+
 export interface AccountUserUpdate {
   readonly role: AccountRole;
   readonly active: boolean;
   readonly expected_version: number;
   readonly reason: string;
-}
-
-export interface NativeSessionExchange {
-  readonly session_token: string;
-  readonly session: SessionEnvelope;
 }
