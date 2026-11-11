@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -36,6 +36,15 @@ jobs:
 
       - name: Run Intelligence Tests
         run: npm run test:intelligence
+
+      - name: Run Pipeline Tests
+        run: npm run pipeline:test
+
+      - name: Run Accounts Tests
+        run: npm run accounts:test
+
+      - name: Run Evaluation and AI Tool Tests
+        run: npx tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts
 
       - name: Build Web and Worker Bundles
         run: npm run build

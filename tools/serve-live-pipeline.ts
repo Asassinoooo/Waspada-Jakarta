@@ -167,9 +167,9 @@ async function main() {
   }
   console.log(`✓ Seeded ${DEFAULT_NEWS_FEEDS.length} RSS sources in source_registry.`);
 
-  // Clear poisoned triage attempts and decisions from prior runs
-  await executor.execute("TRUNCATE TABLE waspada.news_triage_attempts, waspada.news_triage_decisions;");
-  console.log("✓ Cleared prior triage attempts and decisions cache.");
+  // Triage attempts/decisions are an append-only audit ledger (WJ-INT-02B) and also the
+  // dedupe cache that stops every restart re-sending the 48h window to the model, so they
+  // are kept across runs. Rate-limited attempts are handled by AI-RATE-01, not by wiping.
 
   const incidentRepo = createSqlIncidentRepository(executor);
 
