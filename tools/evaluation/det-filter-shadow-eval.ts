@@ -46,9 +46,12 @@
  * | "not_actionable" }] }`, id = stable guid or link) to compute
  * precision/recall/F1; no labeled sample means no accuracy claim.
  *
- * Exit codes: 0 success; 1 fetch/permission/parse/oversize failure (with a
- * machine-readable `error_code` line on stderr, no content); 2 usage or
- * invalid operator input.
+ * Exit codes: 0 success; 1 fetch/permission/parse/oversize failure, or
+ * `all_items_stale` when no item inside the lookback window was evaluated
+ * (each with a machine-readable `error_code` JSON line on stderr, no content);
+ * 2 usage or invalid operator input. `--help` prints usage to stdout, exit 0.
+ * Synthetic mode pins `now` to `SYNTHETIC_FIXTURE_NOW` unless `--now` is
+ * given; only `--live` reads the wall clock.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -72,6 +75,22 @@ export const EVAL_MAX_ITEMS_TOTAL = 100;
 export const EVAL_MAX_LIVE_FEEDS = 5;
 export const EVAL_DEFAULT_LOOKBACK_HOURS = 48;
 export const EVAL_REVIEW_TRUNCATION_CODE_POINTS = 500;
+/** Synthetic-mode clock: checked-in fixtures are dated 2026-10-30..2026-11-02T11:00Z. */
+export const SYNTHETIC_FIXTURE_NOW = "2026-11-02T12:00:00Z";
+
+export const EVAL_USAGE = [
+  "Usage: npm run eval:det-shadow -- [options]",
+  "  (no flags)           offline synthetic fixtures; clock pinned to SYNTHETIC_FIXTURE_NOW",
+  "  --live               fetch feeds; each source must be cleared in --registry-json",
+  "  --source <id>        feed id, repeatable, live mode only (max 5)",
+  "  --lookback-hours <n> freshness window in hours (default 48)",
+  "  --now <ISO-8601>     evaluation clock override",
+  "  --review <n>         print up to n transient title/excerpt samples (needs retention evidence)",
+  "  --labels <path>      human labels JSON for precision/recall/F1",
+  "  --registry-json <p>  registry snapshot JSON mapping sourceId to permission row",
+  "  --help, -h           print this usage and exit 0",
+  "",
+].join("\n");
 
 export const EVAL_MODIFIER_KEYS = [
   "forecast_override_applied",
@@ -199,6 +218,7 @@ export interface EvalCliOptions {
   readonly labelsPath: string | null;
   readonly registryPath: string | null;
   readonly nowOverride: string | null;
+  readonly help: boolean;
 }
 
 type ArgParseResult =
@@ -214,6 +234,7 @@ export function parseEvalArgs(argv: readonly string[]): ArgParseResult {
   let labelsPath: string | null = null;
   let registryPath: string | null = null;
   let nowOverride: string | null = null;
+  let help = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -258,7 +279,8 @@ export function parseEvalArgs(argv: readonly string[]): ArgParseResult {
       }
       case "--help":
       case "-h":
-        return { ok: false, errorCode: "USAGE" };
+        help = true;
+        break;
       default:
         return { ok: false, errorCode: "USAGE" };
     }
@@ -268,7 +290,7 @@ export function parseEvalArgs(argv: readonly string[]): ArgParseResult {
   if (live && sourceIds.length > EVAL_MAX_LIVE_FEEDS) return { ok: false, errorCode: "USAGE" };
   return {
     ok: true,
-    options: { live, sourceIds, lookbackHours, reviewLimit, labelsPath, registryPath, nowOverride },
+    options: { live, sourceIds, lookbackHours, reviewLimit, labelsPath, registryPath, nowOverride, help },
   };
 }
 
@@ -777,6 +799,11 @@ export async function runShadowEval(input: ShadowEvalInput): Promise<ShadowEvalO
     ambiguous: sum((feed) => feed.ambiguous),
     low_signal: sum((feed) => feed.low_signal),
   });
+  // Fail closed: stale-only input means nothing was evaluated, so a zero-count
+  // success would read as a clean result.
+  if (total.considered === 0 && total.stale > 0) {
+    errors.push({ error_code: "all_items_stale" });
+  }
 
   const report: EvalReport = {
     mode: input.mode,
@@ -852,26 +879,38 @@ function readTextFile(path: string): { readonly ok: true; readonly text: string 
   }
 }
 
+export interface EvalCliIo {
+  readonly stdout: { write(chunk: string): unknown };
+  readonly stderr: { write(chunk: string): unknown };
+}
+
 /** CLI entrypoint: parse args, load operator inputs, run, print, exit. */
-export async function runShadowEvalCli(argv: readonly string[]): Promise<0 | 1 | 2> {
+export async function runShadowEvalCli(
+  argv: readonly string[],
+  io: EvalCliIo = { stdout: process.stdout, stderr: process.stderr },
+): Promise<0 | 1 | 2> {
   const parsedArgs = parseEvalArgs(argv);
   if (!parsedArgs.ok) {
-    process.stderr.write(`${JSON.stringify({ error_code: parsedArgs.errorCode })}\n`);
+    io.stderr.write(`${JSON.stringify({ error_code: parsedArgs.errorCode })}\n`);
     return 2;
   }
   const options = parsedArgs.options;
-  const now = options.nowOverride ?? new Date().toISOString();
+  if (options.help) {
+    io.stdout.write(EVAL_USAGE);
+    return 0;
+  }
+  const now = options.nowOverride ?? (options.live ? new Date().toISOString() : SYNTHETIC_FIXTURE_NOW);
 
   let registryRows: Record<string, RegistryPermissionRow> | null = null;
   if (options.registryPath !== null) {
     const file = readTextFile(options.registryPath);
     if (!file.ok) {
-      process.stderr.write(`${JSON.stringify({ error_code: "REGISTRY_INVALID" })}\n`);
+      io.stderr.write(`${JSON.stringify({ error_code: "REGISTRY_INVALID" })}\n`);
       return 2;
     }
     const snapshot = loadRegistrySnapshot(file.text);
     if (!snapshot.ok) {
-      process.stderr.write(`${JSON.stringify({ error_code: "REGISTRY_INVALID" })}\n`);
+      io.stderr.write(`${JSON.stringify({ error_code: "REGISTRY_INVALID" })}\n`);
       return 2;
     }
     registryRows = snapshot.rows;
@@ -881,12 +920,12 @@ export async function runShadowEvalCli(argv: readonly string[]): Promise<0 | 1 |
   if (options.labelsPath !== null) {
     const file = readTextFile(options.labelsPath);
     if (!file.ok) {
-      process.stderr.write(`${JSON.stringify({ error_code: "LABELS_INVALID" })}\n`);
+      io.stderr.write(`${JSON.stringify({ error_code: "LABELS_INVALID" })}\n`);
       return 2;
     }
     const parsedLabels = parseLabelsFile(file.text);
     if (!parsedLabels.ok) {
-      process.stderr.write(`${JSON.stringify({ error_code: "LABELS_INVALID" })}\n`);
+      io.stderr.write(`${JSON.stringify({ error_code: "LABELS_INVALID" })}\n`);
       return 2;
     }
     labels = parsedLabels.labels;
@@ -894,12 +933,12 @@ export async function runShadowEvalCli(argv: readonly string[]): Promise<0 | 1 |
   const printOutput = (output: ShadowEvalOutput): 0 | 1 | 2 => {
     const result: EvalReport | null = output.result;
     for (const error of output.errors) {
-      process.stderr.write(`${JSON.stringify({ sourceId: error.sourceId, error_code: error.error_code })}\n`);
+      io.stderr.write(`${JSON.stringify({ sourceId: error.sourceId, error_code: error.error_code })}\n`);
     }
     if (result === null) return output.exitCode;
     const stdoutPayload =
       output.reviewSample === null ? result : { ...result, review_sample: output.reviewSample };
-    process.stdout.write(`${JSON.stringify(stdoutPayload)}\n`);
+    io.stdout.write(`${JSON.stringify(stdoutPayload)}\n`);
     return output.exitCode;
   };
 

@@ -13,7 +13,7 @@
  * content, establish source rights, verify an issuer, or prove an event.
  */
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 import { readFileSync } from "node:fs";
 import {
   computeLabelMetrics,
@@ -21,6 +21,7 @@ import {
   EVAL_MAX_ITEMS_TOTAL,
   EVAL_MAX_LIVE_FEEDS,
   EVAL_MODIFIER_KEYS,
+  EVAL_USAGE,
   evaluateRssXml,
   fetchFeedBody,
   isSourceClearedForEval,
@@ -29,6 +30,8 @@ import {
   parseEvalArgs,
   parseLabelsFile,
   runShadowEval,
+  runShadowEvalCli,
+  SYNTHETIC_FIXTURE_NOW,
   type EvalFetchResponse,
   type EvalLabelEntry,
 } from "../../../tools/evaluation/det-filter-shadow-eval.js";
@@ -665,4 +668,82 @@ test("registry snapshot loader rejects non-object and malformed rows", () => {
   const snapshot = loadRegistrySnapshot(JSON.stringify({ "source-x": clearedRow() }));
   assert.equal(snapshot.ok, true);
   assert.deepEqual(Object.keys(snapshot.rows), ["source-x"]);
+});
+
+// ---------------------------------------------------------------------------
+// CLI: pinned synthetic clock, all-stale fail-closed, --help.
+// ---------------------------------------------------------------------------
+
+async function runCli(
+  argv: readonly string[],
+): Promise<{ readonly exitCode: 0 | 1 | 2; readonly stdout: string; readonly stderr: string }> {
+  let stdout = "";
+  let stderr = "";
+  const exitCode = await runShadowEvalCli(argv, {
+    stdout: {
+      write: (chunk: string) => {
+        stdout += chunk;
+        return true;
+      },
+    },
+    stderr: {
+      write: (chunk: string) => {
+        stderr += chunk;
+        return true;
+      },
+    },
+  });
+  return { exitCode, stdout, stderr };
+}
+
+test("default synthetic run pins its clock and evaluates fixtures on a later wall clock", async () => {
+  // Wall clock set well past the fixture window: an unpinned default would
+  // mark every item stale and exit 0 with zero considered items.
+  mock.timers.enable({ apis: ["Date"], now: Date.parse("2030-01-01T00:00:00Z") });
+  try {
+    assert.equal(new Date().getUTCFullYear(), 2030);
+    const run = await runCli([]);
+    assert.equal(run.exitCode, 0);
+    assert.equal(run.stderr, "");
+    const report = JSON.parse(run.stdout) as {
+      mode: string;
+      now: string;
+      total: { considered: number };
+    };
+    assert.equal(report.mode, "synthetic");
+    assert.equal(report.now, SYNTHETIC_FIXTURE_NOW);
+    assert.ok(report.total.considered > 0, "fixtures must yield evaluated items inside the lookback");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("all-stale input fails closed with all_items_stale and exit 1", async () => {
+  const run = await runCli(["--now", "2030-01-01T00:00:00Z"]);
+  assert.equal(run.exitCode, 1);
+  assert.deepEqual(
+    run.stderr.trim().split("\n").map((line) => JSON.parse(line) as unknown),
+    [{ error_code: "all_items_stale" }],
+  );
+  const report = JSON.parse(run.stdout) as { total: { considered: number; stale: number } };
+  assert.equal(report.total.considered, 0);
+  assert.ok(report.total.stale > 0);
+});
+
+test("all-stale check ignores a feed with no items at all", async () => {
+  const output = await runShadowEval({
+    mode: "synthetic",
+    lookbackHours: LOOKBACK,
+    now: NOW,
+    fixtureXmls: [{ sourceId: "synthetic-empty", xmlText: feed("") }],
+  });
+  assert.equal(output.exitCode, 0);
+  assert.deepEqual(output.errors, []);
+});
+
+test("--help prints usage to stdout and exits 0 without evaluating", async () => {
+  const run = await runCli(["--help"]);
+  assert.equal(run.exitCode, 0);
+  assert.equal(run.stdout, EVAL_USAGE);
+  assert.equal(run.stderr, "");
 });
