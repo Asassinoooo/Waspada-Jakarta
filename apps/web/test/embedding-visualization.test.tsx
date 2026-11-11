@@ -66,7 +66,7 @@ test("fetchEmbeddingVisualizationData handles valid and error responses", async 
 test("Embedding3DVisualization renders static markup cleanly without WebGL crash", () => {
   const markup = renderToStaticMarkup(createElement(Embedding3DVisualization));
 
-  assert.ok(markup.includes("Visualisasi 3D Embedding Chunk"));
+  assert.ok(markup.includes("Visualisasi 3D Embedding Potongan Teks"));
   assert.ok(markup.includes("PCA 768D → 3D"));
   assert.ok(markup.includes("Pencarian chunk teks"));
   assert.ok(markup.includes("Putar Otomatis"));

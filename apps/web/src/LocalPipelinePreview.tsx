@@ -326,7 +326,7 @@ export function LocalPipelinePreview({ enabled }: { enabled: boolean }) {
       <header className="local-pipeline__intro">
         <div>
           <p className="section-kicker">Inspeksi lokal · hanya baca</p>
-          <h1>Pipeline laporan lokal</h1>
+          <h1>Alur laporan lokal</h1>
         </div>
         <span className="local-pipeline__private-chip">Sintetis · pribadi · belum terbit</span>
       </header>
@@ -360,7 +360,7 @@ export function LocalPipelinePreview({ enabled }: { enabled: boolean }) {
               <>
                 <section className="local-pipeline__controls" aria-label="Status pratinjau pipeline">
                   <div>
-                    <strong>Snapshot terakhir dibuat</strong>
+                    <strong>Cuplikan terakhir dibuat</strong>
                     <span><time dateTime={state.data.generatedAt}>{formatTime(state.data.generatedAt)}</time></span>
                     <span>Sumber lokal · {state.data.models === "mock" ? "model mock" : "gateway opt-in"}</span>
                   </div>

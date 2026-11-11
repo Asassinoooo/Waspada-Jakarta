@@ -804,7 +804,7 @@ export function UnifiedSourceExplorerView({
     onClick={
       () => onContextRequest("local")
 }
-    >Reset cuaca &amp;
+    >Atur ulang cuaca &amp;
     gempa ke status lokal</button> </div> {
       usableSourcePayload ? ( <> <p className="unified-source-explorer__payload-stamp">{
         usableSourcePayload.sources[0]?.data_mode === "snapshot" ? "Snapshot lokal" : "Permintaan sumber"
@@ -861,7 +861,7 @@ export function UnifiedSourceExplorerView({
       !contextPayloadStatus && <p className="unified-source-explorer__empty-panel" role="status">Konteks cuaca dan gempa berstatus {
         requestGroupStatus(contextRequest, undefined).toLocaleLowerCase("id")
 }
-      . Reset lokal dan permintaan eksplisit tetap terpisah dari fasilitas/laporan.</p>
+      . Atur ulang lokal dan permintaan eksplisit tetap terpisah dari fasilitas/laporan.</p>
 }
     <p className="unified-source-explorer__note">Status penyedia bukan verifikasi Waspada. Hasil kosong atau sumber gagal tidak menunjukkan keadaan aman.</p> </div> )
 }

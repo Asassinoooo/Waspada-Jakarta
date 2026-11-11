@@ -634,7 +634,7 @@ function PublicSources({ snapshot, mode, publicContext }: {
             const isOnline = source.health === "healthy";
             return (
               <li key={source.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.2rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-1)" }}>
                   <strong>{source.name}</strong>
                   <span className={`admin-source-status-badge ${isOnline ? "admin-source-status-badge--online" : "admin-source-status-badge--offline"}`}>
                     <span className="admin-source-dot" aria-hidden="true" />

@@ -14,6 +14,7 @@ import { Landing } from "./Landing.js";
 import { HelpPage } from "./HelpPage.js";
 import { AccountAccessGate, AccountPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
 import { accountClient, type AccountReturnTarget } from "./account-client.js";
+import { ThemeToggle } from "./ThemeToggle.js";
 
 const AdminDashboard = lazy(() => import("./admin-entry.js"));
 
@@ -232,6 +233,7 @@ export function SiteHeader({ route, context = null }: { route: Route; context?: 
         </div>
         <div className="site-header__tools">
           <span className="mode-chip">{modeText}</span>
+          <ThemeToggle />
           <a className="account-nav-link" href="#akun" aria-current={onAccount ? "page" : undefined}>Akun</a>
         </div>
       </header>

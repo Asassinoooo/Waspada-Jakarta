@@ -270,25 +270,25 @@ interface MappedItem { item: AdminItem; geometries: PublicGeoJSONGeometry[]; bou
 export function categoryBadgeConfig(category: string): { icon: string; short: string; bg: string; color: string } {
   switch (category) {
     case "disasters_weather":
-      return { icon: "🌊", short: "Bencana & Cuaca", bg: "var(--kali-teal, #087B75)", color: "#FFFFFF" };
+      return { icon: "🌊", short: "Bencana & Cuaca", bg: "var(--cat-flood)", color: "var(--cat-on)" };
     case "fires_infrastructure_hazards":
-      return { icon: "🔥", short: "Kebakaran", bg: "var(--merah-tanda, #A7433B)", color: "#FFFFFF" };
+      return { icon: "🔥", short: "Kebakaran", bg: "var(--cat-fire)", color: "var(--cat-on)" };
     case "transport_road_incidents":
-      return { icon: "🚗", short: "Transportasi", bg: "#2563EB", color: "#FFFFFF" };
+      return { icon: "🚗", short: "Transportasi", bg: "var(--cat-traffic)", color: "var(--cat-on)" };
     case "crime_personal_security":
     case "violence_immediate_threats":
-      return { icon: "🚨", short: "Keamanan", bg: "#DC2626", color: "#FFFFFF" };
+      return { icon: "🚨", short: "Keamanan", bg: "var(--cat-security)", color: "var(--cat-on)" };
     case "health_environmental_advisories":
-      return { icon: "🏥", short: "Kesehatan", bg: "#16A34A", color: "#FFFFFF" };
+      return { icon: "🏥", short: "Kesehatan", bg: "var(--cat-health)", color: "var(--cat-on)" };
     case "utilities_essential_services":
-      return { icon: "⚡", short: "Utilitas", bg: "var(--kuning-perhatian, #D97706)", color: "#FFFFFF" };
+      return { icon: "⚡", short: "Utilitas", bg: "var(--cat-utility)", color: "var(--cat-on)" };
     case "demonstrations_public_gatherings":
     case "crowds_major_events":
-      return { icon: "👥", short: "Keramaian", bg: "#7C3AED", color: "#FFFFFF" };
+      return { icon: "👥", short: "Keramaian", bg: "var(--cat-crowd)", color: "var(--cat-on)" };
     case "group_specific_critical_notices":
-      return { icon: "📢", short: "Pemberitahuan", bg: "#4B5563", color: "#FFFFFF" };
+      return { icon: "📢", short: "Pemberitahuan", bg: "var(--cat-notice)", color: "var(--cat-on)" };
     default:
-      return { icon: "📍", short: "Laporan", bg: "var(--kali-teal, #087B75)", color: "#FFFFFF" };
+      return { icon: "📍", short: "Laporan", bg: "var(--cat-flood)", color: "var(--cat-on)" };
   }
 }
 
@@ -545,8 +545,7 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
             className="admin-map__pin-pulse"
             cx={x} cy={y}
             r="22"
-            fill="rgba(8, 123, 117, 0.18)"
-            stroke="var(--kali-teal, #087B75)"
+            style={{ fill: "color-mix(in srgb, var(--color-accent) 18%, transparent)", stroke: "var(--color-accent)" }}
             strokeWidth="2.5"
             strokeDasharray="4 2"
           />
@@ -555,15 +554,14 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
           className="admin-map__pin-head"
           cx={x} cy={y}
           r={selected ? 13 : 10.5}
-          fill={badge.bg}
-          stroke="#FFFFFF"
+          style={{ fill: badge.bg, stroke: "var(--color-surface)" }}
           strokeWidth={selected ? 2.5 : 2}
         />
         <text
           className="admin-map__pin-icon"
           x={x} y={y + (selected ? 4 : 3.5)}
           textAnchor="middle"
-          fill="#FFFFFF"
+          style={{ fill: "var(--cat-on)" }}
           fontSize={selected ? 10.5 : 9}
           fontWeight="bold"
           pointerEvents="none"
@@ -586,13 +584,13 @@ function ItemGeometry({ mapped, selected, mode, project, annotation, anchorVisib
         x="6" y="8"
         width="28" height="28"
         rx="6"
-        fill={badge.bg}
+        style={{ fill: badge.bg }}
       />
       <text
         className="admin-map__card-badge-icon"
         x="20" y="27"
         textAnchor="middle"
-        fill="#FFFFFF"
+        style={{ fill: "var(--cat-on)" }}
         fontSize="14"
         pointerEvents="none"
       >

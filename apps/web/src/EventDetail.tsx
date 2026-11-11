@@ -79,7 +79,7 @@ function PresentationDetail() {
             <div><dt>Kategori</dt><dd>{categoryLabel(event.category)}</dd></div>
             <div><dt>Waktu event</dt><dd><time dateTime={event.eventTime.start}>{formatInstant(event.eventTime.start)}</time> · {event.eventTime.precision}</dd></div>
             <div><dt>Validitas issuer</dt><dd><time dateTime={event.validity.validFrom}>{formatInstant(event.validity.validFrom)}</time> sampai <time dateTime={event.validity.validUntil}>{formatInstant(event.validity.validUntil)}</time></dd></div>
-            <div><dt>Event diterbitkan</dt><dd><time dateTime={event.publishedAt}>{formatInstant(event.publishedAt)}</time></dd></div>
+            <div><dt>Peristiwa diterbitkan</dt><dd><time dateTime={event.publishedAt}>{formatInstant(event.publishedAt)}</time></dd></div>
             <div><dt>Evaluasi freshness fixture</dt><dd><time dateTime={event.freshness.evaluatedAt}>{formatInstant(event.freshness.evaluatedAt)}</time></dd></div>
             <div><dt>Basis freshness</dt><dd>Validitas sumber (nilai fixture)</dd></div>
           </dl>

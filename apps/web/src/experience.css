@@ -3,8 +3,8 @@
   min-width: 0;
   min-height: 65vh;
   margin: 0 auto;
-  padding: 2rem 0 3rem;
-  color: var(--tinta-kota, #18323a);
+  padding: var(--space-8) 0 var(--space-12);
+  color: var(--tinta-kota, var(--color-text));
 }
 
 .experience-page h1,
@@ -19,27 +19,27 @@
 
 .experience-page h1 {
   max-width: 24ch;
-  margin: 0 0 0.65rem;
-  font-size: clamp(2rem, 4vw, 3rem);
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-display);
   line-height: 1.15;
   letter-spacing: -0.035em;
 }
 
 .experience-page h2 {
-  margin: 0 0 0.65rem;
-  font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-2xl);
   line-height: 1.25;
 }
 
 .experience-page h3 {
-  margin: 0 0 0.55rem;
-  font-size: 1.1rem;
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
   line-height: 1.3;
 }
 
 .experience-page p,
 .experience-page li {
-  font-size: 1rem;
+  font-size: var(--text-md);
   line-height: 1.6;
 }
 
@@ -50,40 +50,37 @@
 
 .experience-intro {
   max-width: 68ch;
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-6);
 }
 
 .experience-kicker {
-  margin: 0 0 0.35rem;
-  color: var(--quiet-ink, #52676b);
-  font-size: 0.9rem;
-  font-weight: 700;
+  margin: 0 0 var(--space-1);
+  color: var(--quiet-ink, var(--color-text-muted));
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
   letter-spacing: 0.02em;
 }
 
 .experience-page .experience-lead {
   max-width: 64ch;
-  margin: 0 0 1rem;
-  color: var(--quiet-ink, #52676b);
-  font-size: 1.1rem;
+  margin: 0 0 var(--space-4);
+  color: var(--quiet-ink, var(--color-text-muted));
+  font-size: var(--text-lg);
 }
 
 .experience-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.experience-card {
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}.experience-card{
   min-width: 0;
-  border-top: 1px solid var(--beton, #d5dedb);
-  background: transparent;
-  padding: 1rem 0;
+  border-top: 1px solid var(--beton, var(--color-border));
+  padding: var(--space-4) 0;
 }
 
 .experience-card--wide {
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--space-5);
 }
 
 .experience-card > p:not(.experience-kicker) {
@@ -91,100 +88,84 @@
 }
 
 .experience-note {
-  border-left: 3px solid var(--kali-teal, #087b75);
-  margin: 0.9rem 0 0;
-  padding: 0.35rem 0 0.35rem 0.75rem;
-  color: var(--quiet-ink, #52676b);
+  border-left: 3px solid var(--kali-teal, var(--color-accent));
+  margin: var(--space-4) 0 0;
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  color: var(--quiet-ink, var(--color-text-muted));
 }
 
 .experience-caution {
-  border-left: 4px solid var(--kuning-perhatian, #e7b448);
-  background: var(--soft-panel, #eaf0ed);
-  margin: 1rem 0 0;
-  padding: 0.75rem 0.9rem;
-  font-weight: 650;
+  border-left: 4px solid var(--kuning-perhatian, var(--color-warning));
+  background: var(--soft-panel, var(--color-surface-sunken));
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  font-weight: var(--weight-semibold);
 }
 
 .experience-list {
   display: grid;
-  gap: 0.45rem;
-  margin: 0.6rem 0 0;
-  padding-left: 1.35rem;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
 }
 
 .experience-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.65rem;
-  margin-top: 1rem;
-}
-
-.experience-action {
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}.experience-action{
   display: inline-flex;
   min-width: 44px;
   min-height: 44px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--kali-teal, #087b75);
-  border-radius: 0.25rem;
-  background: var(--surface, #fff);
-  color: var(--kali-teal, #087b75);
-  padding: 0.55rem 0.85rem;
-  font: inherit;
-  font-weight: 650;
   line-height: 1.3;
   text-align: center;
-  text-decoration: none;
   cursor: pointer;
-}
-
-.experience-action:hover {
-  border-color: var(--tinta-kota, #18323a);
-  background: var(--soft-panel, #eaf0ed);
-  color: var(--tinta-kota, #18323a);
 }
 
 .experience-action:focus-visible,
 .experience-page a:focus-visible,
 .experience-page button:focus-visible {
-  outline: 3px solid var(--kali-teal, #087b75);
+  outline: 3px solid var(--kali-teal, var(--color-accent));
   outline-offset: 3px;
 }
 
 .experience-action--primary {
-  border-color: var(--kali-teal, #087b75);
-  background: var(--kali-teal, #087b75);
-  color: var(--ink-on-teal, #fff);
+  border-color: var(--kali-teal, var(--color-accent));
+  background: var(--kali-teal, var(--color-accent));
+  color: var(--ink-on-teal, var(--color-on-accent));
 }
 
 .experience-action--primary:hover {
-  background: var(--tinta-kota, #18323a);
-  color: var(--surface, #fff);
+  background: var(--tinta-kota, var(--color-text));
+  color: var(--surface, var(--color-on-accent));
 }
 
 .experience-action--quiet {
-  border-color: var(--beton, #d5dedb);
+  border-color: var(--beton, var(--color-border));
   background: transparent;
-  color: var(--tinta-kota, #18323a);
+  color: var(--tinta-kota, var(--color-text));
 }
 
 .experience-action--danger {
-  border-color: var(--merah-tanda, #a7433b);
-  background: var(--merah-tanda, #a7433b);
-  color: var(--surface, #fff);
+  border-color: var(--merah-tanda, var(--color-danger));
+  background: var(--merah-tanda, var(--color-danger));
+  color: var(--surface, var(--color-on-accent));
 }
 
 .experience-action--danger:hover {
-  border-color: var(--tinta-kota, #18323a);
-  background: var(--tinta-kota, #18323a);
-  color: var(--surface, #fff);
+  border-color: var(--tinta-kota, var(--color-text));
+  background: var(--tinta-kota, var(--color-text));
+  color: var(--surface, var(--color-on-accent));
 }
 
 .experience-storage-list {
   display: grid;
   gap: 0;
-  margin: 1rem 0 0;
+  margin: var(--space-4) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -194,9 +175,9 @@
   min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  border-top: 1px solid var(--beton, #d5dedb);
-  padding: 0.8rem 0;
+  gap: var(--space-4);
+  border-top: 1px solid var(--beton, var(--color-border));
+  padding: var(--space-3) 0;
 }
 
 .experience-storage-item > div {
@@ -210,19 +191,19 @@
 
 .experience-storage-item p {
   margin: 0;
-  color: var(--quiet-ink, #52676b);
-  font-size: 0.95rem;
+  color: var(--quiet-ink, var(--color-text-muted));
+  font-size: var(--text-md);
 }
 
 .experience-storage-status {
   flex: 0 0 auto;
   max-width: 14rem;
-  border: 1px solid var(--beton, #d5dedb);
-  border-radius: 0.25rem;
-  background: var(--soft-panel, #eaf0ed);
-  padding: 0.3rem 0.6rem;
-  font-size: 0.9rem;
-  font-weight: 650;
+  border: 1px solid var(--beton, var(--color-border));
+  border-radius: var(--radius-xs);
+  background: var(--soft-panel, var(--color-surface-sunken));
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   line-height: 1.25;
   text-align: center;
 }
@@ -232,8 +213,8 @@
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .experience-section-heading h2 {
@@ -241,45 +222,45 @@
 }
 
 .experience-reset {
-  border-left: 4px solid var(--kuning-perhatian, #e7b448);
-  padding-left: 0.75rem;
+  border-left: 4px solid var(--kuning-perhatian, var(--color-warning));
+  padding-left: var(--space-3);
 }
 
 .experience-reset-confirm,
 .experience-reset-result {
-  margin-top: 1rem;
-  border: 1px solid var(--beton, #d5dedb);
-  border-radius: 0.25rem;
+  margin-top: var(--space-4);
+  border: 1px solid var(--beton, var(--color-border));
+  border-radius: var(--radius-xs);
   background: transparent;
-  padding: 1rem;
+  padding: var(--space-4);
 }
 
 .experience-reset-confirm {
-  border-left: 4px solid var(--kuning-perhatian, #e7b448);
+  border-left: 4px solid var(--kuning-perhatian, var(--color-warning));
 }
 
 .experience-reset-result > p {
   margin: 0;
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
 }
 
 .experience-reset-result--success {
-  border-left: 4px solid var(--kali-teal, #087b75);
+  border-left: 4px solid var(--kali-teal, var(--color-accent));
 }
 
 .experience-reset-result--problem {
-  border-left: 4px solid var(--merah-tanda, #a7433b);
+  border-left: 4px solid var(--merah-tanda, var(--color-danger));
   background: transparent;
 }
 
 .privacy-page > .experience-actions:last-child {
-  margin-top: 1.2rem;
+  margin-top: var(--space-5);
 }
 
 @media (max-width: 44rem) {
   .experience-page {
     width: min(100% - 1.5rem, 76rem);
-    padding-top: 1.35rem;
+    padding-top: var(--space-5);
   }
 
   .experience-card-grid {
