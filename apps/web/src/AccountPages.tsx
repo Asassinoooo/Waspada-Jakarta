@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { AccountRole, AccountUser, AccountUserUpdate, SessionEnvelope } from "@waspada/worker/account-contracts";
 import {
   AccountHttpError,
@@ -6,6 +6,19 @@ import {
   type AccountClient,
   type AccountReturnTarget,
 } from "./account-client.js";
+import {
+  loginFailureMessage,
+  normaliseUsernameInput,
+  passwordChangeFailureMessage,
+  registrationFailureMessage,
+  validateLogin,
+  validatePasswordChange,
+  validateRegistration,
+  type FieldErrors,
+  type LoginField,
+  type PasswordChangeField,
+  type RegistrationField,
+} from "./account-messages.js";
 
 export type AccountSessionState =
   | { status: "loading"; session: null }
@@ -75,37 +88,196 @@ function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function PasswordLogin({
-  sessionState,
-  onRefreshSession,
-  client,
+function FieldInput({
+  id,
+  name,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  type = "text",
+  error,
+  hint,
+  disabled,
 }: {
-  sessionState: AccountSessionState;
-  onRefreshSession: () => void;
-  client: AccountClient;
+  id: string;
+  name: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+  type?: "text" | "password";
+  error?: string;
+  hint?: string;
+  disabled?: boolean;
 }) {
-  // Placeholder form for the username/password flow. The full login experience is part B.
+  const hintId = id + "-hint";
+  const errorId = id + "-error";
+  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
+  const isText = type === "text";
+  return (
+    <div className="account-form__field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        name={name}
+        type={type}
+        autoComplete={autoComplete}
+        autoCapitalize={isText ? "none" : undefined}
+        spellCheck={isText ? false : undefined}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        disabled={disabled}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
+      />
+      {hint && <span id={hintId} className="account-form__hint">{hint}</span>}
+      {error && <span id={errorId} className="account-form__error">{error}</span>}
+    </div>
+  );
+}
+
+function LoginForm({ client, onSignedIn }: { client: AccountClient; onSignedIn: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<LoginField>>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const loginAvailable = sessionState.status === "anonymous" && sessionState.session.password_login_available;
 
-  async function submit(event: { preventDefault(): void }) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (working) return;
+    const errors = validateLogin({ username, password });
+    setFieldErrors(errors);
+    setFormError(null);
+    if (Object.keys(errors).length > 0) return;
     setWorking(true);
-    setError(null);
     try {
-      await client.login(username, password);
+      await client.login(normaliseUsernameInput(username), password);
       setPassword("");
-      onRefreshSession();
-    } catch {
-      setError("Username atau kata sandi tidak sesuai, atau masuk belum tersedia. Coba lagi.");
+      onSignedIn();
+    } catch (error) {
+      setFormError(loginFailureMessage(error));
     } finally {
       setWorking(false);
     }
   }
 
+  return (
+    <form className="account-form" onSubmit={(event) => void submit(event)} noValidate>
+      {formError && <p className="account-message account-message--error" role="alert">{formError}</p>}
+      <FieldInput
+        id="login-username"
+        name="username"
+        label="Username"
+        value={username}
+        onChange={setUsername}
+        autoComplete="username"
+        error={fieldErrors.username}
+        disabled={working}
+      />
+      <FieldInput
+        id="login-password"
+        name="password"
+        label="Kata sandi"
+        type="password"
+        value={password}
+        onChange={setPassword}
+        autoComplete="current-password"
+        error={fieldErrors.password}
+        disabled={working}
+      />
+      <div className="account-actions">
+        <button className="button button--primary" type="submit" disabled={working}>{working ? "Memeriksa…" : "Masuk"}</button>
+      </div>
+    </form>
+  );
+}
+
+function RegisterForm({ client, onSignedIn }: { client: AccountClient; onSignedIn: () => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<RegistrationField>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (working) return;
+    const errors = validateRegistration({ username, password, confirm });
+    setFieldErrors(errors);
+    setFormError(null);
+    if (Object.keys(errors).length > 0) return;
+    setWorking(true);
+    try {
+      // Registration also starts a web session, so a successful call signs the user in.
+      await client.register(normaliseUsernameInput(username), password);
+      setPassword("");
+      setConfirm("");
+      onSignedIn();
+    } catch (error) {
+      setFormError(registrationFailureMessage(error));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <form className="account-form" onSubmit={(event) => void submit(event)} noValidate>
+      {formError && <p className="account-message account-message--error" role="alert">{formError}</p>}
+      <FieldInput
+        id="register-username"
+        name="username"
+        label="Username"
+        value={username}
+        onChange={setUsername}
+        autoComplete="username"
+        hint="3 sampai 32 karakter: huruf kecil, angka, titik, atau garis bawah."
+        error={fieldErrors.username}
+        disabled={working}
+      />
+      <FieldInput
+        id="register-password"
+        name="password"
+        label="Kata sandi"
+        type="password"
+        value={password}
+        onChange={setPassword}
+        autoComplete="new-password"
+        hint="Minimal 10 karakter. Layanan tidak mewajibkan kombinasi huruf, angka, atau simbol tertentu."
+        error={fieldErrors.password}
+        disabled={working}
+      />
+      <FieldInput
+        id="register-confirm"
+        name="confirm_password"
+        label="Ulangi kata sandi"
+        type="password"
+        value={confirm}
+        onChange={setConfirm}
+        autoComplete="new-password"
+        error={fieldErrors.confirm}
+        disabled={working}
+      />
+      <div className="account-actions">
+        <button className="button button--primary" type="submit" disabled={working}>{working ? "Mendaftarkan…" : "Daftar dan masuk"}</button>
+      </div>
+    </form>
+  );
+}
+
+function PasswordLogin({
+  sessionState,
+  onRefreshSession,
+  client,
+  returnTo,
+}: {
+  sessionState: AccountSessionState;
+  onRefreshSession: () => void;
+  client: AccountClient;
+  returnTo?: AccountReturnTarget;
+}) {
   if (sessionState.status === "loading") return <SessionLoading />;
   if (sessionState.status === "error") return <SessionUnavailable onRetry={onRefreshSession} />;
   if (sessionState.status === "authenticated") {
@@ -118,28 +290,132 @@ function PasswordLogin({
     );
   }
 
+  const loginAvailable = sessionState.session.password_login_available;
+  const registrationAvailable = sessionState.session.registration_available;
+
+  function enterAccount() {
+    onRefreshSession();
+    window.location.hash = returnTo ?? "#akun";
+  }
+
   return (
     <div className="account-flow">
       <section className="account-card" aria-labelledby="login-title">
         <h2 id="login-title">Masuk dengan username</h2>
         <p>Masuk bersifat opsional. Peta, laporan publik, riwayat, dan minat lokal tetap dapat digunakan tanpa akun.</p>
-        {error && <p className="account-message account-message--error" role="alert">{error}</p>}
         {loginAvailable
-          ? (
-            <form onSubmit={(event) => void submit(event)}>
-              <label>Username<input name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
-              <label>Kata sandi<input name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-              <button className="button button--primary" type="submit" disabled={working}>{working ? "Memeriksa…" : "Masuk"}</button>
-            </form>
-          )
+          ? <LoginForm client={client} onSignedIn={enterAccount} />
           : <p className="account-message" role="status">Masuk dengan username belum disiapkan pada layanan ini.</p>}
       </section>
+      {registrationAvailable
+        ? (
+          <section className="account-card" aria-labelledby="register-title">
+            <h2 id="register-title">Buat akun baru</h2>
+            <p>Akun baru selalu mendapat peran Pengguna. Peran lain hanya dapat diberikan oleh administrator.</p>
+            <RegisterForm client={client} onSignedIn={enterAccount} />
+          </section>
+        )
+        : (
+          <section className="account-card account-card--quiet" role="status">
+            <h2>Pendaftaran belum tersedia</h2>
+            <p>Layanan ini belum membuka pendaftaran akun baru. Peta dan laporan publik tetap dapat dibaca.</p>
+          </section>
+        )}
       <section className="account-card account-card--quiet">
         <h2>Ingin melihat pengenalan singkat?</h2>
         <p>Tiga langkah berikut menjelaskan status laporan, minat lokal, dan privasi. Akun tidak diperlukan.</p>
         <a className="button button--quiet" href="#mulai">Lihat pengenalan</a>
       </section>
     </div>
+  );
+}
+
+function PasswordChangeForm({
+  csrfToken,
+  client,
+  onRefreshSession,
+}: {
+  csrfToken: string;
+  client: AccountClient;
+  onRefreshSession: () => void;
+}) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<PasswordChangeField>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (working) return;
+    const errors = validatePasswordChange({ current, next, confirm });
+    setFieldErrors(errors);
+    setFormError(null);
+    setNotice(null);
+    if (Object.keys(errors).length > 0) return;
+    setWorking(true);
+    try {
+      await client.changePassword(current, next, csrfToken);
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      setNotice("Kata sandi telah diubah. Sesi lain untuk akun ini telah dicabut; sesi di perangkat ini tetap aktif.");
+    } catch (error) {
+      setFormError(passwordChangeFailureMessage(error));
+      if (isHttpStatus(error, 401)) onRefreshSession();
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <section className="account-card" aria-labelledby="password-change-title">
+      <h2 id="password-change-title">Ubah kata sandi</h2>
+      <p>Mengubah kata sandi mencabut sesi lain untuk akun ini. Sesi di perangkat ini tetap aktif.</p>
+      {notice && <p className="account-message" role="status">{notice}</p>}
+      {formError && <p className="account-message account-message--error" role="alert">{formError}</p>}
+      <form className="account-form" onSubmit={(event) => void submit(event)} noValidate>
+        <FieldInput
+          id="change-current"
+          name="current_password"
+          label="Kata sandi saat ini"
+          type="password"
+          value={current}
+          onChange={setCurrent}
+          autoComplete="current-password"
+          error={fieldErrors.current}
+          disabled={working}
+        />
+        <FieldInput
+          id="change-next"
+          name="new_password"
+          label="Kata sandi baru"
+          type="password"
+          value={next}
+          onChange={setNext}
+          autoComplete="new-password"
+          hint="Minimal 10 karakter, maksimal 256 karakter."
+          error={fieldErrors.next}
+          disabled={working}
+        />
+        <FieldInput
+          id="change-confirm"
+          name="confirm_password"
+          label="Ulangi kata sandi baru"
+          type="password"
+          value={confirm}
+          onChange={setConfirm}
+          autoComplete="new-password"
+          error={fieldErrors.confirm}
+          disabled={working}
+        />
+        <div className="account-actions">
+          <button className="button button--primary" type="submit" disabled={working}>{working ? "Menyimpan…" : "Ubah kata sandi"}</button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -532,6 +808,7 @@ function AccountProfile({
           <button className="button button--primary" type="button" onClick={() => void logout()} disabled={logoutState === "working"}>{logoutState === "working" ? "Keluar…" : "Keluar"}</button>
         </div>
       </section>
+      <PasswordChangeForm csrfToken={activeCsrfToken} client={client} onRefreshSession={onRefreshSession} />
       <section className="account-card account-card--quiet">
         <h2>Peran ditetapkan oleh layanan</h2>
         <p>Peran di atas hanya dibaca dari sesi server. Peran tidak dapat dipilih saat masuk atau menyelesaikan pengenalan.</p>
@@ -554,6 +831,7 @@ function AccountProfile({
 export function AccountPage({
   screen,
   sessionState,
+  returnTo,
   isNarrowScreen,
   onRefreshSession,
   client = accountClient,
@@ -563,7 +841,7 @@ export function AccountPage({
 
   if (screen === "login") {
     return <AccountFrame title={title} kicker="Masuk · opsional">
-      <PasswordLogin sessionState={sessionState} onRefreshSession={onRefreshSession} client={client} />
+      <PasswordLogin sessionState={sessionState} onRefreshSession={onRefreshSession} client={client} returnTo={returnTo} />
     </AccountFrame>;
   }
 

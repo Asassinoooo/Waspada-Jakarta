@@ -259,3 +259,44 @@ test("profile shows the server role as read-only and keeps the local-interest de
   assert.match(html, /href="#ringkasan-saya"/u);
   assert.doesNotMatch(html, /<select/u);
 });
+
+test("login screen offers username sign-in and registration without any role field or Google copy", () => {
+  const html = renderToStaticMarkup(<AccountPage screen="login" sessionState={sessionState(anonymousSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
+  assert.match(html, /Masuk dengan username/u);
+  assert.match(html, /id="login-username"/u);
+  assert.match(html, /id="login-password"/u);
+  assert.match(html, /autoComplete="current-password"/u);
+  assert.match(html, /Buat akun baru/u);
+  assert.match(html, /id="register-confirm"/u);
+  assert.match(html, /Ulangi kata sandi/u);
+  assert.match(html, /Daftar dan masuk/u);
+  assert.match(html, /Akun baru selalu mendapat peran Pengguna/u);
+  assert.doesNotMatch(html, /Google|name="role"|<select/u);
+});
+
+test("login screen hides registration and password sign-in when the service disables them", () => {
+  const closed = renderToStaticMarkup(<AccountPage
+    screen="login"
+    sessionState={sessionState({ ...anonymousSession, password_login_available: false, registration_available: false })}
+    isNarrowScreen={false}
+    onRefreshSession={() => {}}
+  />);
+  assert.match(closed, /Pendaftaran belum tersedia/u);
+  assert.match(closed, /belum disiapkan pada layanan ini/u);
+  assert.doesNotMatch(closed, /Daftar dan masuk|id="login-username"/u);
+});
+
+test("login screen points a signed-in user to the account page instead of a second form", () => {
+  const html = renderToStaticMarkup(<AccountPage screen="login" sessionState={sessionState(userSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
+  assert.match(html, /Anda sudah masuk/u);
+  assert.doesNotMatch(html, /id="login-username"/u);
+});
+
+test("profile offers a password change form that never shows the current or new password", () => {
+  const html = renderToStaticMarkup(<AccountPage screen="account" sessionState={sessionState(userSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
+  assert.match(html, /Ubah kata sandi/u);
+  assert.match(html, /id="change-current"/u);
+  assert.match(html, /id="change-next"/u);
+  assert.match(html, /mencabut sesi lain untuk akun ini/u);
+  assert.doesNotMatch(html, /Google|value="kata-sandi/u);
+});

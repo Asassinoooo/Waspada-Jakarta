@@ -1,5 +1,7 @@
 # ADR-059 — optional Google accounts and cross-platform onboarding
 
+> Superseded in part by [ADR-060](ADR-060-password-accounts.md) on 11 November 2026: Google sign-in, the Google OIDC routes and the Android Google SDK no longer apply. The optional-account, role, onboarding and web-administration decisions remain.
+
 15 October 2026. Decision accepted; local implementation integrated under [AUTH-01](../assignments/AUTH-01-ACCOUNTS-ONBOARDING.md). User explicitly chose Google login, retained account-free public browsing, and requested Android Flutter plus responsive web parity without a mobile admin dashboard. Google clients are not prepared; user chose the synthetic local demo and configuration guide first. [Handoff](../assignments/AUTH-01-ACCOUNTS-ONBOARDING-HANDOFF.md) separates verified local behavior from external gates.
 
 ## Decision

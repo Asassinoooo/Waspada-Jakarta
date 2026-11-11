@@ -4,6 +4,7 @@ import { evidenceLabel, formatInstant, freshnessLabel, lifecycleLabel } from "./
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
 import { MapPanel } from "./MapPanel.js";
 import { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
+import { moderatorAccessMessage, SIGN_IN_HREF } from "./account-messages.js";
 export { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
 if (typeof document !== "undefined") {
   void import("./moderator-review.css");
@@ -253,6 +254,14 @@ export function advanceProposalQueue(
   };
 }
 
+/** A failed moderation read. `status` lets callers show sign-in or role copy for 401 and 403. */
+export class ModerationHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ModerationHttpError";
+  }
+}
+
 export async function fetchModerationProposals(
   options: { apiBaseUrl?: string; fetcher?: typeof fetch; signal?: AbortSignal } = {}
 ): Promise<EventProposalDto[]> {
@@ -266,7 +275,7 @@ export async function fetchModerationProposals(
     signal: options.signal,
   });
   if (!response.ok) {
-    throw new Error(`Failed to fetch moderation proposals: HTTP ${response.status}`);
+    throw new ModerationHttpError(`Failed to fetch moderation proposals: HTTP ${response.status}`, response.status);
   }
   const data = (await response.json()) as { proposals?: EventProposalDto[] };
   return data.proposals || [];
@@ -286,7 +295,7 @@ export async function fetchProposalDetail(
     signal: options.signal,
   });
   if (!response.ok) {
-    throw new Error(`Failed to fetch proposal details: HTTP ${response.status}`);
+    throw new ModerationHttpError(`Failed to fetch proposal details: HTTP ${response.status}`, response.status);
   }
   const data = (await response.json()) as {
     proposal?: EventProposalDto;
@@ -366,7 +375,7 @@ export async function fetchUncertainTriage(
     signal: options.signal,
   });
   if (!response.ok) {
-    throw new Error(`Failed to fetch uncertain triage: HTTP ${response.status}`);
+    throw new ModerationHttpError(`Failed to fetch uncertain triage: HTTP ${response.status}`, response.status);
   }
   const data = (await response.json()) as { items?: UncertainTriageItem[] };
   return data.items || [];
@@ -438,6 +447,8 @@ export function ModeratorReviewQueue({
   const [triageItems, setTriageItems] = useState<UncertainTriageItem[]>([]);
   const [triageLoading, setTriageLoading] = useState<boolean>(false);
   const [triageFeedback, setTriageFeedback] = useState<string | null>(null);
+  // Set when the server answers 401 (no session) or 403 (no active moderator role) for the queue.
+  const [accessStatus, setAccessStatus] = useState<number | null>(null);
 
   const effectiveCsrfToken = propCsrfToken || sessionCsrf;
 
@@ -447,8 +458,9 @@ export function ModeratorReviewQueue({
     try {
       const items = await fetchUncertainTriage({ apiBaseUrl, fetcher });
       setTriageItems(items);
-    } catch {
-      setTriageFeedback("Gagal memuat antrean tertahan.");
+    } catch (err) {
+      const status = err instanceof ModerationHttpError ? err.status : null;
+      setTriageFeedback(moderatorAccessMessage(status) ?? "Gagal memuat antrean tertahan.");
     } finally {
       setTriageLoading(false);
     }
@@ -477,6 +489,11 @@ export function ModeratorReviewQueue({
       .catch((err) => {
         if (cancelled) return;
         setLoading(false);
+        const status = err instanceof ModerationHttpError ? err.status : null;
+        if (status === 401 || status === 403) {
+          setAccessStatus(status);
+          return;
+        }
         setFeedback({
           type: "error",
           message: `Gagal memuat antrean proposal: ${err instanceof Error ? err.message : String(err)}`,
@@ -774,7 +791,13 @@ export function ModeratorReviewQueue({
         </div>
       )}
 
-      {reviewView === "triage" ? (
+      {accessStatus !== null ? (
+        <section className="state-panel" role="status" aria-labelledby="review-access-title">
+          <h2 id="review-access-title">Tinjauan hanya untuk moderator</h2>
+          <p>{moderatorAccessMessage(accessStatus)}</p>
+          <a className="text-link" href={`${SIGN_IN_HREF}?return_to=%23tinjau-bukti`}>Masuk dengan username</a>
+        </section>
+      ) : reviewView === "triage" ? (
         <section className="state-panel" aria-label="Antrean tertahan untuk inspeksi">
           <p className="section-kicker">Inspeksi metadata — tanpa teks artikel</p>
           <h3>Tinjauan Tertahan</h3>

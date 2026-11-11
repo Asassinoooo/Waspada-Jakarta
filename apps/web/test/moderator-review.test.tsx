@@ -7,12 +7,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 if (!("React" in globalThis)) {
   Object.defineProperty(globalThis, "React", { value: React, configurable: true, writable: true });
 }
+import { catalogLoadErrorMessage } from "../src/LaporanPublik.js";
 import {
   advanceProposalQueue,
   autoDetectEvidenceLabel,
   fetchModerationProposals,
   fetchProposalDetail,
+  fetchUncertainTriage,
   incidentTypeLabel,
+  ModerationHttpError,
   InteractiveIncidentMap,
   isProposalMultiSource,
   ModeratorReview,
@@ -576,4 +579,34 @@ test("InteractiveIncidentMap renders coordinates, affected radius, and nearby fa
   assert.match(html, /incident-beacon-pulse/);
   assert.match(html, /Radius: 1200 m/);
   assert.match(html, /facility-pin--fire/);
+});
+
+test("moderation reads expose the HTTP status of 401 and 403 so the page can show sign-in or role copy", async () => {
+  for (const status of [401, 403]) {
+    const fetcher: typeof fetch = async () => new Response(JSON.stringify({ code: "UNAUTHORIZED" }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    await assert.rejects(
+      fetchModerationProposals({ fetcher }),
+      (err: unknown) => err instanceof ModerationHttpError && err.status === status,
+    );
+    await assert.rejects(
+      fetchUncertainTriage({ fetcher }),
+      (err: unknown) => err instanceof ModerationHttpError && err.status === status,
+    );
+  }
+});
+
+test("the public catalog shows one plain moderator-only message for 401 and 403 and keeps other failures visible", () => {
+  for (const status of [401, 403]) {
+    assert.equal(
+      catalogLoadErrorMessage(new ModerationHttpError("Failed to fetch moderation proposals: HTTP " + status, status)),
+      "Katalog ini hanya tersedia untuk moderator yang sudah masuk.",
+    );
+  }
+  assert.match(
+    catalogLoadErrorMessage(new ModerationHttpError("Failed to fetch moderation proposals: HTTP 500", 500)),
+    /^Gagal memuat katalog laporan terpercaya: Failed to fetch moderation proposals: HTTP 500$/u,
+  );
 });

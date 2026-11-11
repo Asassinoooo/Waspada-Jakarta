@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:waspada_jakarta_mobile/src/account_auth.dart';
 import 'package:waspada_jakarta_mobile/src/app.dart';
 import 'package:waspada_jakarta_mobile/src/event_detail_screen.dart';
 import 'package:waspada_jakarta_mobile/src/event_list_screen.dart';
@@ -26,8 +25,7 @@ Future<void> showApp(
   await tester.pumpWidget(
       WaspadaApp(
           api: api,
-          preferences: PreferencesRepository(storage),
-          auth: AccountAuthController.guestOnly()));
+          preferences: PreferencesRepository(storage)));
   await tester.pumpAndSettle();
 }
 
@@ -145,6 +143,16 @@ class _NotFoundDetailAndDelayedHistoryApi extends SyntheticPublicApi {
 }
 
 void main() {
+  testWidgets('the public reader exposes no account entry point or sign-in', (tester) async {
+    final api = SyntheticPublicApi();
+    await showApp(tester, api, MemoryStorage());
+
+    expect(find.byTooltip('Akun'), findsNothing);
+    expect(find.textContaining('Google'), findsNothing);
+    expect(find.byTooltip('Muat ulang konteks dan ringkasan'), findsOneWidget);
+    expect(find.byTooltip('Panduan membaca'), findsOneWidget);
+  });
+
   testWidgets(
       'demo landing labels synthetic data and an empty result without implying safety',
       (tester) async {
@@ -196,8 +204,7 @@ void main() {
     });
     await tester.pumpWidget(WaspadaApp(
         api: api,
-        preferences: PreferencesRepository(MemoryStorage()),
-        auth: AccountAuthController.guestOnly()));
+        preferences: PreferencesRepository(MemoryStorage())));
     await tester.pump();
 
     await tester.tap(find.byTooltip('Muat ulang konteks dan ringkasan'));
@@ -335,10 +342,8 @@ void main() {
     final api = SyntheticPublicApi();
     final storage = MemoryStorage();
     final preferences = PreferencesRepository(storage);
-    final auth = AccountAuthController.guestOnly();
-    addTearDown(auth.dispose);
     final screens = <Widget>[
-      LandingScreen(api: api, preferences: preferences, auth: auth),
+      LandingScreen(api: api, preferences: preferences),
       EventListScreen(api: api, preferences: preferences),
       EventDetailScreen(
         api: api,

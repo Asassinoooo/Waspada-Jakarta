@@ -332,6 +332,51 @@
   flex: 0 0 auto;
 }
 
+.account-form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 28rem;
+  margin-top: 0.75rem;
+}
+
+.account-form__field {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.account-form__field label {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.account-form__field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.6rem;
+  border: 1px solid #82938E;
+  border-radius: 0.2rem;
+  background: var(--surface);
+  color: var(--tinta-kota);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+
+.account-form__field input[aria-invalid="true"] {
+  border-color: var(--merah-tanda);
+}
+
+.account-form__hint {
+  color: var(--quiet-ink);
+  font-size: 0.85rem;
+}
+
+.account-form__error {
+  color: var(--merah-tanda);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
 .account-user-row__editor label:nth-of-type(3),
 .account-user-row__editor button {
   grid-column: 1 / -1;

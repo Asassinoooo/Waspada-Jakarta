@@ -11,9 +11,11 @@ import {
   type NeighborMatch,
 } from "./embedding-pca.js";
 import {
+  EmbeddingClientError,
   fetchEmbeddingVisualizationData,
   type EmbeddingVisualizationPayload,
 } from "./embedding-client.js";
+import { moderatorAccessMessage, SIGN_IN_HREF } from "./account-messages.js";
 
 
 const SOURCE_COLORS: Readonly<Record<string, number>> = {
@@ -67,6 +69,8 @@ export function Embedding3DVisualization() {
   const [dataPayload, setDataPayload] = useState<EmbeddingVisualizationPayload | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // 401/403 from the server means the visualization is moderator-only; it is not a transport failure.
+  const [accessMessage, setAccessMessage] = useState<string | null>(null);
 
   // Filters and Interactivity State
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -102,13 +106,19 @@ export function Embedding3DVisualization() {
       try {
         setLoading(true);
         setErrorMessage(null);
+        setAccessMessage(null);
         const data = await fetchEmbeddingVisualizationData({ limit: 300, signal: abortCtrl.signal });
         if (active) {
           setDataPayload(data);
         }
       } catch (err) {
         if (active && !(err instanceof DOMException && err.name === "AbortError")) {
-          setErrorMessage(err instanceof Error ? err.message : String(err));
+          const denied = err instanceof EmbeddingClientError ? moderatorAccessMessage(err.status ?? null) : null;
+          if (denied !== null) {
+            setAccessMessage(denied);
+          } else {
+            setErrorMessage(err instanceof Error ? err.message : String(err));
+          }
         }
       } finally {
         if (active) {
@@ -519,6 +529,13 @@ export function Embedding3DVisualization() {
       {loading && (
         <section className="state-panel" aria-busy="true">
           <p>Memuat vektor embedding dari pipeline…</p>
+        </section>
+      )}
+
+      {accessMessage && (
+        <section className="state-panel" role="status">
+          <p>{accessMessage}</p>
+          <a className="text-link" href={SIGN_IN_HREF}>Masuk dengan username</a>
         </section>
       )}
 

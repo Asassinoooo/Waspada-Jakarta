@@ -16,7 +16,7 @@ Waspada Jakarta helps people understand a reported incident in Jakarta. It tries
 - **Honest freshness.** Lifecycle, evidence status, freshness and personal relevance are tracked separately. "No new reports" or an expired notice is never presented as "resolved" or "safe".
 - **Multi-source monitoring.** The local live mode polls PetaBencana flood reports, BMKG weather and earthquake alerts, and 14 Indonesian news RSS feeds. Feeds pass a deterministic relevance filter and a structured triage gate before any AI processing.
 - **Map-first web experience** in Bahasa Indonesia. It includes report lists, incident details and history, a source map with OpenStreetMap facilities, local interest preferences, and a 3D view of the evidence embedding space.
-- **Accounts and roles.** Google sign-in is optional, with server-assigned user, moderator and admin roles. Public browsing is designed to work without an account.
+- **Accounts and roles.** Optional username and password accounts (Google sign-in was removed by AUTH-PW-01, [ADR-060](docs/decisions/ADR-060-password-accounts.md)), with server-assigned user, moderator and admin roles. Self sign-up always creates a user. Public browsing works without an account, on the web and on Android.
 - **Android reader** built with Flutter.
 
 ## How it works
@@ -76,7 +76,7 @@ npm run serve:live
 ```
 
 **Optional demos**
-- **Synthetic accounts** (no Google): `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. See the [accounts guide](docs/ACCOUNTS_AND_ONBOARDING.md).
+- **Synthetic accounts** (no external sign-in): `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. See the [accounts guide](docs/ACCOUNTS_AND_ONBOARDING.md).
 - **Mocked private pipeline:** `npm run pipeline:local -- --enable --once --state demo`. See the [pipeline guide](docs/LOCAL_PRIVATE_PIPELINE.md).
 - **Android:** see [apps/mobile/README.md](apps/mobile/README.md).
 
