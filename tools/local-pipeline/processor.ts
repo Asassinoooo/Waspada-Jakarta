@@ -3,6 +3,7 @@ import { JOB_QUEUE_POLICY } from '../../apps/db/src/queue.js';
 import type { TransactionalSqlExecutor, SqlExecutor } from '../../apps/db/src/sql.js';
 import { createRepositoryPorts } from '../../apps/db/src/ports.js';
 import { createSqlExactEvidenceSpanReader } from '../../apps/db/src/evidence-retrieval.js';
+import { RETRIEVAL_MAX_ROWS_EXAMINED, RETRIEVAL_MAX_RESULTS } from '../../apps/db/src/retrieval-limits.js';
 import type { ExtractionResultRecord } from '../../apps/db/src/extraction-results.js';
 import type { EmbeddingRunRecord } from '../../apps/db/src/embedding-runs.js';
 import type { GroundingContextRecord } from '../../apps/db/src/grounding-contexts.js';
@@ -41,8 +42,6 @@ const MAX_MODEL_TIMEOUT_MS = 901_000;
 const LONG_WAIT_RENEWAL_THRESHOLD_MS = 60_000;
 const DEFAULT_LEASE_RENEW_INTERVAL_MS = 60_000;
 const MAX_LEASE_RENEW_INTERVAL_MS = 60_000;
-const RETRIEVAL_MAX_RESULTS = 8;
-const RETRIEVAL_MAX_ROWS = 16;
 const RETRIEVAL_MAX_SPAN_CODE_POINTS = 2_048;
 
 export interface LocalPipelineProcessorInput {
@@ -358,7 +357,7 @@ export function createLocalPipelineProcessor(input: LocalPipelineProcessorInput)
         approvalStatuses: ['approved'],
       },
       maxResults: RETRIEVAL_MAX_RESULTS,
-      maxRowsExamined: RETRIEVAL_MAX_ROWS,
+      maxRowsExamined: RETRIEVAL_MAX_ROWS_EXAMINED,
       maxSpanTextCodePoints: RETRIEVAL_MAX_SPAN_CODE_POINTS,
     });
     if (retrieval.scanTruncated || retrieval.resultTruncated || retrieval.invalidSpanRowsOmitted > 0) {

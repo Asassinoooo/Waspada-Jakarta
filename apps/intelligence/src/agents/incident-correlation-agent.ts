@@ -189,6 +189,7 @@ export function createIncidentCorrelationAgent(agentOverride?: Agent): Agent {
     id: "incident-correlation-agent",
     name: "Incident Correlation Agent",
     instructions: INCIDENT_CORRELATOR_INSTRUCTIONS,
+    mockRole: "correlator",
   });
 }
 

@@ -1,7 +1,7 @@
 // AI-RATE-01 manual re-drive: moves needs_review AI jobs that failed with
 // model_failed or rate_limited back to pending. serve:live does the same once
 // at start; this is for a stopped server. It opens the live PGlite data dir
-// directly, so it refuses to run while a live process still holds that dir.
+// directly, so it refuses to run while a live process still holds that dir (LIVE-SERVER-02 shared check).
 import fs from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
@@ -10,25 +10,9 @@ import { vector } from "@electric-sql/pglite-pgvector";
 import { applyMigrations, readMigrations } from "../apps/db/src/migrations.js";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../apps/db/src/sql.js";
 import { requeueStrandedAiJobs } from "../apps/db/src/incident-repository.js";
+import { assertLiveDbUnowned } from "./live-db-lock.js";
 
 const REQUEUE_CODES = ["model_failed", "rate_limited"] as const;
-const OWNER_FILES = ["serve-live.pid", "postmaster.pid"] as const;
-
-function readPid(file: string): number | null {
-  if (!fs.existsSync(file)) return null;
-  const pid = Number.parseInt(fs.readFileSync(file, "utf8").trim().split(/\s+/)[0] ?? "", 10);
-  return Number.isInteger(pid) && pid > 0 ? pid : null;
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM means the process exists but belongs to someone else.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
 
 function executorFor(database: PGlite): TransactionalSqlExecutor {
   const executor: TransactionalSqlExecutor = {
@@ -65,13 +49,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  for (const name of OWNER_FILES) {
-    const pid = readPid(path.join(dataDir, name));
-    if (pid !== null && isProcessAlive(pid)) {
-      console.error(`Refusing to run: ${name} names live process ${pid}. Stop serve:live first.`);
-      process.exitCode = 1;
-      return;
-    }
+  try {
+    // LIVE-SERVER-02: the same owner check serve:live uses (serve-live.pid, postmaster.pid).
+    assertLiveDbUnowned(dataDir);
+  } catch (error) {
+    console.error(`Refusing to run: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+    return;
   }
 
   const database = await PGlite.create({ dataDir, extensions: { postgis, vector } });

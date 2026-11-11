@@ -3,6 +3,7 @@ import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js"
 import type { DatasetKind } from "../../db/src/ports.js";
 import { createJobRunner } from "./job-runner.js";
 import { getNineRouterConfig } from "./providers/ninerouter-adapter.js";
+import { DatasetKindConfigError, parseDatasetKind } from "./dataset-kind.js";
 
 function createPgExecutor(client: Client): TransactionalSqlExecutor {
   const baseExecutor: SqlExecutor = {
@@ -34,7 +35,8 @@ function createPgExecutor(client: Client): TransactionalSqlExecutor {
 async function main() {
   console.log("Starting Waspada Jakarta Intelligence Worker...");
   const connectionString = process.env.DATABASE_URL || process.env.HYPERDRIVE_URL;
-  const datasetKind = (process.env.DATASET_KIND as DatasetKind) || "live";
+  // INTEL-02: fail closed. No dataset is assumed, so this runs before any connection.
+  const datasetKind: DatasetKind = parseDatasetKind(process.env.DATASET_KIND);
   const config = getNineRouterConfig();
 
   console.log(`Configured models: chat=${config.chatModel}, embedding=${config.embeddingModel}`);
@@ -75,7 +77,11 @@ async function main() {
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1])) {
   main().catch((err) => {
-    console.error("Fatal worker error:", err);
+    if (err instanceof DatasetKindConfigError) {
+      console.error(err.message);
+    } else {
+      console.error("Fatal worker error:", err);
+    }
     process.exit(1);
   });
 }

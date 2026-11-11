@@ -44,7 +44,7 @@ jobs:
         run: npm run accounts:test
 
       - name: Run Evaluation and AI Tool Tests
-        run: npx tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts
+        run: npx tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts tools/live-db-lock.test.ts tools/live-db-restore.test.ts
 
       - name: Build Web and Worker Bundles
         run: npm run build

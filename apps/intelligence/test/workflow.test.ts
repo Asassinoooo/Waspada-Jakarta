@@ -326,7 +326,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
     const res2 = exec2.result as any;
 
     // Verify consolidated proposal
-    assert.equal(res2.proposal.proposal_id, `prop-${initialIncidentId}-v2`, "Proposal ID must remain keyed to the incident with version");
+    assert.equal(res2.proposal.proposal_id, `prop-${initialIncidentId}-rev-multi-002`, "INTEL-02: the ID is keyed to the incident and this report revision");
     assert.equal(res2.proposal.is_multi_source, true, "Must be flagged as multi-source");
     assert.equal(res2.proposal.source_count, 2, "Source count must be incremented to 2");
     assert.equal(res2.proposal.has_discrepancy, true, "Must flag discrepancy between 3 vs 5 houses");

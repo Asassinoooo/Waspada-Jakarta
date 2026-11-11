@@ -87,6 +87,7 @@ export function createReportInterpretationAgent(agentOverride?: Agent): Agent {
     id: "report-interpreter-agent",
     name: "Report Interpretation Agent",
     instructions: REPORT_INTERPRETER_INSTRUCTIONS,
+    mockRole: "interpreter",
   });
 }
 

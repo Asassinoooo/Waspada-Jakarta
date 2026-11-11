@@ -1,6 +1,6 @@
 import type { SqlExecutor, SqlTransactionRunner } from "./sql.js";
 import type { DatasetKind } from "./ports.js";
-import { persistProposalWithTx, type EventProposalDto } from "./event-proposal-writer.js";
+import { persistProposalWithTx, ProposalIdConflictError, type EventProposalDto } from "./event-proposal-writer.js";
 
 export class StaleLeaseError extends Error {
   constructor(message: string) {
@@ -1295,7 +1295,11 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
 
         // 6. Persist Proposal and Claims
         const shouldUpsert = input.proposalAction === "upsert" || input.incidentAction.type === "update";
-        await persistProposalWithTx(tx, input.proposal, input.datasetKind, { upsert: shouldUpsert });
+        const proposalResult = await persistProposalWithTx(tx, input.proposal, input.datasetKind, { upsert: shouldUpsert });
+        // INTEL-02: a conflicting ID would commit the report without its claims. Throwing rolls back the transaction.
+        if (proposalResult.outcome === "already_exists") {
+          throw new ProposalIdConflictError(input.proposal.proposal_id, input.datasetKind);
+        }
         // 7. Record Idempotency Record
         await tx.query(
           `INSERT INTO waspada.incident_processing_records (

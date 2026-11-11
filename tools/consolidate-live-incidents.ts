@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { postgis } from "@electric-sql/pglite-postgis";
 import { vector } from "@electric-sql/pglite-pgvector";
 import type { EventProposalDto } from "../apps/db/src/event-proposal-writer.js";
+import { assertLiveDbUnowned } from "./live-db-lock.js";
 
 interface ProposalRow {
   proposal_id: string;
@@ -65,7 +66,15 @@ async function main() {
     process.exit(1);
   }
 
-  // Remove stale pid file if server was cleanly stopped
+  // LIVE-SERVER-02: this tool writes live proposals, so it refuses while serve:live owns the dir.
+  try {
+    assertLiveDbUnowned(dataDir);
+  } catch (error) {
+    console.error(`Refusing to run: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+
+  // Remove stale pid file if server was cleanly stopped (no live owner, checked above)
   const pidFile = path.join(dataDir, "postmaster.pid");
   if (fs.existsSync(pidFile)) {
     try {

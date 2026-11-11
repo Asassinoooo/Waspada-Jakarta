@@ -1,5 +1,6 @@
 import { Agent } from "@mastra/core/agent";
 import { getNineRouterRateGate } from "../../../db/src/ninerouter-rate-gate.js";
+import { createMockChatModel, type MockChatRole } from "./mock-chat-model.js";
 
 export type NineRouterExecutionMode = "live" | "mock";
 
@@ -17,6 +18,12 @@ export interface NineRouterConfig {
   readonly embeddingModel: string;
   readonly embeddingDimensions: number;
   readonly executionMode: NineRouterExecutionMode;
+  /**
+   * INTEL-02: true only when NINEROUTER_MODE=mock is set explicitly. Agents then use the
+   * deterministic local chat model and make no gateway call. A missing key does not set it,
+   * so a live run without credentials fails instead of writing mock interpretations.
+   */
+  readonly explicitMock?: boolean;
 }
 export function getNineRouterConfig(): NineRouterConfig {
   const rawUrl = process.env.NINEROUTER_URL?.trim() || "http://127.0.0.1:9090";
@@ -35,6 +42,7 @@ export function getNineRouterConfig(): NineRouterConfig {
     embeddingModel,
     embeddingDimensions: 768,
     executionMode,
+    explicitMock: rawMode === "mock",
   };
 }
 
@@ -158,11 +166,26 @@ export function createNineRouterMastraAgent(params: {
   name: string;
   instructions: string;
   modelOverride?: string;
+  /** INTEL-02: which deterministic mock model answers in NINEROUTER_MODE=mock. */
+  mockRole?: MockChatRole;
 }): Agent {
-  patchGlobalFetchForNineRouter();
   const config = getNineRouterConfig();
-  const chatModel = params.modelOverride || config.chatModel;
   const agentId = params.id || params.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  if (config.explicitMock) {
+    if (!params.mockRole) {
+      throw new NineRouterConfigError(`NINEROUTER_MODE=mock has no local model for agent ${agentId}`);
+    }
+    // Mock mode: no gateway request, so no fetch patch is needed here.
+    return new Agent({
+      id: agentId,
+      name: params.name,
+      instructions: params.instructions,
+      maxRetries: 0,
+      model: createMockChatModel(params.mockRole) as unknown as ConstructorParameters<typeof Agent>[0]["model"],
+    });
+  }
+  patchGlobalFetchForNineRouter();
+  const chatModel = params.modelOverride || config.chatModel;
 
   return new Agent({
     id: agentId,

@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "concurrently --kill-others --names web,worker --prefix-colors cyan,magenta \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\"",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json && tsc --noEmit -p tools/ai/tsconfig.json && tsc --noEmit -p tools/local-pipeline/tsconfig.json && tsc --noEmit -p tools/accounts/tsconfig.json && tsc --noEmit -p tools/e2e/tsconfig.json",
-    "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts && npm run pipeline:test && npm run accounts:test",
+    "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts tools/live-db-lock.test.ts tools/live-db-restore.test.ts && npm run pipeline:test && npm run accounts:test",
     "intelligence:dev": "tsx apps/intelligence/src/worker.ts",
     "test:intelligence": "npm run test --workspace=@waspada/intelligence",
     "ai:pipeline-smoke": "node --env-file=.env.local --import tsx apps/intelligence/test/pipeline-smoke.ts",

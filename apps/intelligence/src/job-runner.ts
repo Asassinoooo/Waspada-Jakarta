@@ -310,8 +310,11 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         // Notify the moderation Worker. Without a configured key the notification is skipped.
         const workerUrl = options.workerInternalUrl || process.env.WORKER_INTERNAL_URL || "http://127.0.0.1:8787";
         const internalServiceKey = options.internalServiceKey || process.env.INTERNAL_SERVICE_KEY || "";
-        const proposalId = `prop-${rev.report_revision_id}`;
-        if (internalServiceKey.length > 0) {
+        // INTEL-02: notify with the proposal ID the workflow persisted. The old `prop-<revisionId>`
+        // matched no proposal row, so the moderation event pointed at nothing.
+        const persistedProposalId = (execution.result as { proposal?: { proposal_id?: unknown } } | undefined)
+          ?.proposal?.proposal_id;
+        if (typeof persistedProposalId === "string" && internalServiceKey.length > 0) {
           try {
             await fetch(`${workerUrl}/api/v1/internal/proposals`, {
               method: "POST",
@@ -319,7 +322,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
                 "Content-Type": "application/json",
                 "x-service-key": internalServiceKey,
               },
-              body: JSON.stringify({ proposal_id: proposalId }),
+              body: JSON.stringify({ proposal_id: persistedProposalId }),
               signal: AbortSignal.timeout(3000),
             });
           } catch {

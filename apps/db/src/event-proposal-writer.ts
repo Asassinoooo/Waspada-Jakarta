@@ -144,6 +144,36 @@ async function ensurePrerequisites(
   );
 }
 
+/**
+ * INTEL-02: thrown by incident persistence when a proposal ID already exists, because the new
+ * claims would not be written. Callers must fail the run, not commit without them.
+ */
+export class ProposalIdConflictError extends Error {
+  readonly proposalId: string;
+  readonly datasetKind: string;
+
+  constructor(proposalId: string, datasetKind: string) {
+    super(`Proposal ${proposalId} already exists in ${datasetKind}; refusing to drop its claims`);
+    this.name = 'ProposalIdConflictError';
+    this.proposalId = proposalId;
+    this.datasetKind = datasetKind;
+  }
+}
+
+/**
+ * INTEL-02: a proposal ID that already exists means its claims were not written. The writer
+ * returns `already_exists` and logs it. Incident persistence turns it into ProposalIdConflictError.
+ */
+function conflictOutcome(
+  proposal: EventProposalDto,
+  datasetKind: string,
+): { proposalId: string; outcome: 'already_exists' } {
+  console.warn(
+    `[event-proposal-writer] proposal ${proposal.proposal_id} already exists in ${datasetKind}; its claims were not written`,
+  );
+  return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
+}
+
 export async function persistProposalWithTx(
   tx: SqlExecutor,
   proposal: EventProposalDto,
@@ -187,7 +217,7 @@ export async function persistProposalWithTx(
     [datasetKind, proposal.proposal_id],
   );
   if (existing.rows.length > 0) {
-    return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
+    return conflictOutcome(proposal, datasetKind);
   }
   // Lineage IDs
   const extra = proposal as unknown as Record<string, unknown>;
@@ -216,7 +246,7 @@ export async function persistProposalWithTx(
   );
 
   if (inserted.rows.length === 0) {
-    return { proposalId: proposal.proposal_id, outcome: 'already_exists' };
+    return conflictOutcome(proposal, datasetKind);
   }
   // Insert claims into waspada.proposal_claims.
   // Owner decision: AI claims are never auto-labelled independent_corroboration

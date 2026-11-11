@@ -15,6 +15,7 @@ import {
   getNineRouterConfig,
   type NineRouterConfig,
 } from "../providers/ninerouter-adapter.js";
+import { RETRIEVAL_MAX_ROWS_EXAMINED, RETRIEVAL_MAX_RESULTS } from "../../../db/src/retrieval-limits.js";
 
 export const NINEROUTER_EMBEDDING_IDENTITY = {
   provider: "9router",
@@ -173,7 +174,8 @@ export function createSemanticRetrievalService(dependencies: {
       const queryVector = reusable
         ? input.queryVector!
         : await generateNineRouterEmbedding(input.queryText, { config });
-      const maxResults = input.maxResults ?? 10;
+      // INTEL-02: one policy with the DB retrieval defaults. At most 16 rows are scanned and 8 candidates returned.
+      const maxResults = Math.min(input.maxResults ?? RETRIEVAL_MAX_RESULTS, RETRIEVAL_MAX_RESULTS);
       const candidateThreshold = input.candidateThreshold ?? 0.40;
       const vectorLiteral = `[${queryVector.join(",")}]`;
 
@@ -243,7 +245,8 @@ export function createSemanticRetrievalService(dependencies: {
              AND (v.embedding <=> $1::vector) < $3
            ORDER BY v.embedding <=> $1::vector ASC
            LIMIT $4`,
-          [vectorLiteral, input.datasetKind, candidateThreshold, maxResults * 2],
+          // Ordered by distance, so the scan cap keeps the nearest rows.
+          [vectorLiteral, input.datasetKind, candidateThreshold, RETRIEVAL_MAX_ROWS_EXAMINED],
         );
 
         if (directMatches.rows.length > 0) {
@@ -398,6 +401,7 @@ export function createSemanticRetrievalService(dependencies: {
           queryVector,
         },
         maxResults,
+        maxRowsExamined: RETRIEVAL_MAX_ROWS_EXAMINED,
       });
       const candidates = result.candidates;
 
@@ -431,8 +435,8 @@ export function createSemanticRetrievalService(dependencies: {
              FROM waspada.incidents i
              WHERE i.dataset_kind = $1 AND i.status IN ('active', 'investigating', 'monitoring')
              ORDER BY i.last_updated_at DESC
-             LIMIT 20`,
-            [input.datasetKind],
+             LIMIT $2`,
+            [input.datasetKind, RETRIEVAL_MAX_ROWS_EXAMINED],
           );
 
           if (activeIncidents.rows.length > 0) {

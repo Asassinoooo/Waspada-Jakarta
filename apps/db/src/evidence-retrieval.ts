@@ -1,5 +1,6 @@
 import type { DatasetKind, EvidenceRelation } from './ports.js';
 import type { SqlExecutor } from './sql.js';
+import { RETRIEVAL_MAX_ROWS_EXAMINED, RETRIEVAL_MAX_RESULTS } from './retrieval-limits.js';
 
 export type EvidenceRetrievalDistanceMetric = 'cosine' | 'dot_product' | 'euclidean';
 export type EvidenceRetrievalRevisionStatus = 'unreviewed' | 'eligible' | 'quarantined' | 'superseded' | 'retracted';
@@ -263,9 +264,10 @@ const MAX_QUERY_STRING_CODE_POINTS = 128;
 const MAX_GEOMETRY_VERTICES = 256;
 const MAX_VECTOR_DIMENSIONS = 2_048;
 const MAX_ROWS_EXAMINED = 250;
-const DEFAULT_ROWS_EXAMINED = 100;
+// INTEL-02: defaults follow the shared retrieval policy (retrieval-limits.ts): 16 rows scanned, 8 returned.
+const DEFAULT_ROWS_EXAMINED = RETRIEVAL_MAX_ROWS_EXAMINED;
 const MAX_RESULTS = 50;
-const DEFAULT_RESULTS = 20;
+const DEFAULT_RESULTS = RETRIEVAL_MAX_RESULTS;
 const MAX_SPAN_TEXT_CODE_POINTS = 2_048;
 const DEFAULT_SPAN_TEXT_CODE_POINTS = 512;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;

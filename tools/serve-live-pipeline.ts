@@ -26,6 +26,8 @@ import worker from "../apps/worker/src/index.js";
 import { seedAdminAccount } from "../apps/worker/src/accounts/seed-admin.js";
 import { generateServiceKey } from "../apps/worker/src/security/service-key.js";
 import { PublicReadModel } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
+import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
+import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -37,6 +39,12 @@ const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".ico": "image/x-icon",
 });
 
+// Releases serve-live.pid on a fatal startup error. Replaced once the claim exists.
+let releaseClaim: () => void = () => {};
+
+// INTEL-02: serve:live always works on the live dataset. It is passed explicitly, never inferred from DATASET_KIND.
+const SERVE_LIVE_DATASET_KIND = "live" as const;
+
 async function main() {
   console.log("==================================================================");
   console.log("  Waspada Jakarta: Live Incident Intelligence & Ingestion Server  ");
@@ -44,6 +52,11 @@ async function main() {
 
   // 1. Probing NineRouter Live AI Gateway
   const config = getNineRouterConfig();
+  // INTEL-02: mock mode gives deterministic chat output. The live dataset must not receive it.
+  if (config.explicitMock) {
+    console.error("Refusing to start: NINEROUTER_MODE=mock would write mock interpretations into the live dataset. Unset NINEROUTER_MODE to use the gateway.");
+    process.exit(1);
+  }
   console.log(`[NineRouter] Gateway URL : ${config.baseUrl}`);
   console.log(`[NineRouter] Chat Model  : ${config.chatModel}`);
   console.log(`[NineRouter] Embeddings  : ${config.embeddingModel} (768 dimensions)`);
@@ -60,11 +73,21 @@ async function main() {
   // 2. Persistent PGlite Database Setup
   const dataDir = path.resolve(process.cwd(), ".data/live-db");
   fs.mkdirSync(dataDir, { recursive: true });
-  const pidFile = path.join(dataDir, "postmaster.pid");
-  if (fs.existsSync(pidFile)) {
-    try {
-      fs.unlinkSync(pidFile);
-    } catch {}
+  // LIVE-SERVER-02: claim the dir before anything opens or changes it. A live serve:live owner
+  // refuses this start. Stale pid files are replaced and postmaster.pid is cleared only without a live owner.
+  let claim: LiveDbClaim;
+  try {
+    claim = claimLiveDb(dataDir);
+  } catch (err) {
+    if (err instanceof LiveDbBusyError) {
+      console.error(err.message);
+      process.exit(1);
+    }
+    throw err;
+  }
+  releaseClaim = () => claim.release();
+  if (claim.removedStale.length > 0) {
+    console.log(`[Database] Removed stale owner files: ${claim.removedStale.join(", ")}.`);
   }
   console.log(`\n[Database] Opening persistent database at: ${dataDir}`);
   let database: PGlite;
@@ -74,20 +97,29 @@ async function main() {
       extensions: { postgis, vector },
     });
   } catch (err) {
-    console.warn(`\n[Database] Warning: Could not open ${dataDir} (possibly ungraceful shutdown or corrupted WAL): ${String(err)}`);
-    const backupDir = path.resolve(process.cwd(), ".data/live-db-backup");
-    if (fs.existsSync(backupDir)) {
-      console.log(`[Database] Auto-recovering database from ${backupDir}...`);
-      fs.rmSync(dataDir, { recursive: true, force: true });
-      fs.cpSync(backupDir, dataDir, { recursive: true });
-      database = await PGlite.create({
-        dataDir,
-        extensions: { postgis, vector },
-      });
-      console.log(`[Database] Database recovered and opened successfully.`);
-    } else {
-      throw err;
+    const openError = err instanceof Error ? err.message : String(err);
+    // Restore only from a backup that exists. The data dir is kept unless a complete copy is ready.
+    // LIVE-SERVER-02: the backup is `.data/live-db-backup` or the newest `.data/live-db.bak-<epoch>`
+    // (the repo's real name), unless LIVE_DB_BACKUP_DIR names one explicitly.
+    const backup = resolveLiveDbBackupDir({ dataDir, explicitDir: process.env.LIVE_DB_BACKUP_DIR });
+    if (backup === null) {
+      console.error(`[Database] Could not open ${dataDir}: ${openError}`);
+      console.error(`[Database] No backup under .data (live-db-backup or live-db.bak-<epoch>). The data dir was not changed. Set LIVE_DB_BACKUP_DIR to restore from a backup.`);
+      claim.release();
+      process.exit(1);
     }
+    console.warn(`[Database] Could not open ${dataDir}: ${openError}`);
+    console.log(`[Database] Restoring from ${backup.dir} (${backup.source}). The broken directory is kept, not deleted.`);
+    const restored = restoreLiveDbFromBackup({ dataDir, backupDir: backup.dir });
+    console.log(`[Database] Broken directory kept at ${restored.brokenDir ?? "(none, data dir was absent)"}.`);
+    // The owner files moved with the broken dir, so the restored dir needs its own claim.
+    claim = claimLiveDb(dataDir);
+    releaseClaim = () => claim.release();
+    database = await PGlite.create({
+      dataDir,
+      extensions: { postgis, vector },
+    });
+    console.log(`[Database] Database recovered and opened successfully.`);
   }
 
   const executor: TransactionalSqlExecutor = {
@@ -136,13 +168,10 @@ async function main() {
     console.log("[Accounts] WASPADA_ADMIN_USERNAME / WASPADA_ADMIN_PASSWORD not set; moderator sign-in needs an existing admin account.");
   }
 
-  // This process owns the live DB until shutdown. ai:requeue checks this file.
-  const serveLivePidFile = path.join(dataDir, "serve-live.pid");
-  fs.writeFileSync(serveLivePidFile, String(process.pid));
-
   // Clear demo synthetic fixtures so only genuine live data is shown
   PublicReadModel.clearPublishedEvents();
 
+  // TODO(MERGE-REVIEW-01): this startup republish is replaced by the merge-review flow. Keep it until then.
   // Load and publish verified multi-source / corroborated live incidents into PublicReadModel
   console.log("\n[Public Read Model] Publishing verified multi-source incidents into public feed...");
   const verifiedRes = await executor.query<{ record_json: unknown }>(
@@ -299,7 +328,7 @@ async function main() {
   (async () => {
     while (workerActive) {
       try {
-        const processed = await jobRunner.processNextJob("live");
+        const processed = await jobRunner.processNextJob(SERVE_LIVE_DATASET_KIND);
         if (!processed) {
           await new Promise((r) => setTimeout(r, 2000));
         }
@@ -539,7 +568,7 @@ async function main() {
     clearInterval(pollInterval);
     viteProcess.kill();
     server.close();
-    fs.rmSync(serveLivePidFile, { force: true });
+    claim.release();
     void database.close().then(() => process.exit(0));
   };
 
@@ -549,5 +578,6 @@ async function main() {
 
 main().catch((err) => {
   console.error("Live server error:", err);
+  releaseClaim();
   process.exit(1);
 });

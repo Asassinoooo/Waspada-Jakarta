@@ -11,6 +11,7 @@ import {
 } from "../../../db/src/incident-repository.js";
 import {
   createEventProposalWriter,
+  ProposalIdConflictError,
   type EventProposalDto,
 } from "../../../db/src/event-proposal-writer.js";
 import {
@@ -26,6 +27,7 @@ import {
   type IncidentCorrelation,
 } from "../agents/incident-correlation-agent.js";
 import { createSemanticRetrievalService, type CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
+import { RETRIEVAL_MAX_RESULTS } from "../../../db/src/retrieval-limits.js";
 import { deterministicStructuredInterpretation } from "../structured-interpretation.js";
 import type { NineRouterConfig } from "../providers/ninerouter-adapter.js";
 import { Agent } from "@mastra/core/agent";
@@ -69,6 +71,19 @@ export interface IncidentWorkflowOutput {
   readonly correlation: IncidentCorrelation;
   readonly incident: IncidentRecord;
   readonly proposal: EventProposalDto | null;
+}
+
+/**
+ * INTEL-02: proposal IDs are unique per report revision. A new incident keeps
+ * `prop-inc-<revision>`. A report linked to an existing incident gets
+ * `prop-<incidentId>-<revision>`, so no two reports share an ID. If an ID still collides, the run
+ * fails with ProposalIdConflictError and writes nothing, so no claim is dropped silently.
+ * The old `prop-<incidentId>` (linked) and `-v<N>` forms are gone.
+ */
+export function proposalIdFor(targetIncidentId: string, reportRevisionId: string, linkedToExistingIncident: boolean): string {
+  return linkedToExistingIncident
+    ? `prop-${targetIncidentId}-${reportRevisionId}`
+    : `prop-${targetIncidentId}`;
 }
 
 export function deriveCompatibilityCategory(
@@ -226,7 +241,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         datasetKind: inputData.input.datasetKind,
         queryText,
         queryVector,
-        maxResults: 5,
+        maxResults: RETRIEVAL_MAX_RESULTS,
       });
 
       return {
@@ -427,7 +442,11 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         });
       }
 
-      let proposalId = `prop-${targetIncidentId}`;
+      // INTEL-02: the ID is fixed per report revision; the version number is only a count (source_count).
+      const linkedIncidentId = (correlation.decision === "same_incident" || correlation.decision === "unresolved")
+        ? correlation.candidateIncidentId
+        : null;
+      const proposalId = proposalIdFor(targetIncidentId, input.reportRevisionId, linkedIncidentId !== null);
       let isMultiSource = false;
       let sourceCount = 1;
       let proposalClaims = claims;
@@ -438,27 +457,24 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         : [...interpretation.uncertaintyNotes];
 
       if (correlation.decision === "same_incident" && correlation.candidateIncidentId) {
+        // INTEL-02: the proposal this report extends is read from event_proposals itself, so the lookup
+        // works on the job path and the non-job path alike (only the job path writes
+        // incident_processing_records). The chain head is the proposal with the most sources, so a
+        // later unresolved report (count 1) cannot reset the count. Ties go to the earliest proposal,
+        // which is the one that created the incident.
         const existingProposalRow = await dependencies.executor.query<{ proposal_id: string; record_json: unknown }>(
           `SELECT ep.proposal_id, ep.record_json
            FROM waspada.event_proposals ep
-           WHERE ep.dataset_kind = $1 AND (
-             ep.proposal_id = $2
-             OR ep.proposal_id IN (
-               SELECT ipr.proposal_id
-               FROM waspada.incident_processing_records ipr
-               WHERE ipr.dataset_kind = $1 AND ipr.incident_id = $3
-             )
-           )
-           ORDER BY (ep.proposal_id = $2) DESC
+           WHERE ep.dataset_kind = $1 AND ep.record_json->>'incident_id' = $2
+           ORDER BY COALESCE((ep.record_json->>'source_count')::int, 1) DESC, ep.proposed_at ASC, ep.proposal_id ASC
            LIMIT 1`,
-          [datasetKind, `prop-${correlation.candidateIncidentId}`, correlation.candidateIncidentId],
+          [datasetKind, correlation.candidateIncidentId],
         );
 
         if (existingProposalRow.rows.length > 0) {
           const rawExisting = existingProposalRow.rows[0]!.record_json;
           const existing = (typeof rawExisting === "string" ? JSON.parse(rawExisting) : rawExisting) as EventProposalDto;
           sourceCount = Math.max(2, (existing.source_count ?? 1) + 1);
-          proposalId = `prop-${correlation.candidateIncidentId}-v${sourceCount}`;
           isMultiSource = true;
 
           const updatedExistingClaims = (existing.claims ?? []).map((c) => ({
@@ -500,7 +516,6 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         } else {
           isMultiSource = true;
           sourceCount = 2;
-          proposalId = `prop-${correlation.candidateIncidentId}-v2`;
           proposalClaims = claims.map((c) => ({ ...c, is_corroborated: true }));
         }
       }
@@ -564,6 +579,14 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         const loaded = await incidentRepo.getIncidentById(datasetKind, targetIncidentId);
         resolvedIncident = (loaded?.incident ?? incidentAction.incident) as unknown as Record<string, unknown>;
       } else {
+        // INTEL-02: the proposal is written first. A conflicting ID stops the run here, before any
+        // incident, decision or link is written, so no claim is dropped and no partial state is left.
+        const written = await proposalWriter.persistProposal(proposalDto, datasetKind, {
+          upsert: correlation.decision === "same_incident",
+        });
+        if (written.outcome === "already_exists") {
+          throw new ProposalIdConflictError(proposalDto.proposal_id, datasetKind);
+        }
         if (incidentAction.type === "create") {
           resolvedIncident = await incidentRepo.createIncident(incidentAction.incident);
         } else {
@@ -588,9 +611,6 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
           relationship,
           correlationDecisionId: decisionId,
           linkedAt: now,
-        });
-        await proposalWriter.persistProposal(proposalDto, datasetKind, {
-          upsert: correlation.decision === "same_incident",
         });
       }
 
