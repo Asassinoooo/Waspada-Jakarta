@@ -19,6 +19,7 @@
     "pipeline:local": "tsx tools/local-pipeline/run-local-pipeline.ts",
     "pipeline:serve": "tsx tools/local-pipeline/run-local-server.ts",
     "serve:live": "node --env-file=.env.local --import tsx tools/serve-live-pipeline.ts",
+    "ai:requeue": "tsx tools/requeue-ai-jobs.ts",
     "pipeline:test": "tsx tools/local-pipeline/run-tests.ts",
     "accounts:local": "tsx tools/accounts/run-local-accounts.ts",
     "accounts:test": "tsx --test tools/accounts/local-accounts.test.ts && tsx --test tools/accounts/composition.test.ts",

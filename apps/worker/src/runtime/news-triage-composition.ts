@@ -18,6 +18,10 @@ import {
   readTriageDecision,
 } from "../../../db/src/news-triage-store.js";
 import {
+  getNineRouterRateGate,
+  isRateLimitedError,
+} from "../../../db/src/ninerouter-rate-gate.js";
+import {
   applyTriageGate,
   type HeldTriageDecision,
   type StoredReportRevision,
@@ -39,6 +43,12 @@ export interface LiveTriageGate {
    */
   readonly deterministicMode: 'shadow' | 'enforce';
   readonly callChat?: (system: string, user: string) => Promise<unknown>;
+  /**
+   * AI-RATE-01: milliseconds left in the NineRouter chat cooldown, or 0. While
+   * positive, the poller skips fresh Stage B calls and holds those items for a
+   * later poll instead of queueing them behind the cooldown.
+   */
+  readonly chatCooldownRemainingMs?: () => number;
   /**
    * WJ-INT-02B persistent idempotency: cached decision for an identical
    * (identity, content, policy) evaluation, or null. Never throws: lookup
@@ -194,6 +204,12 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
           latestIdentityAttempt.policy_version === key.policyVersion
             ? latestIdentityAttempt
             : null;
+        // AI-RATE-01: a rate-limited evaluation is neither a settled outcome nor
+        // a provider error. Re-evaluate it on this poll, without touching the
+        // provider_error budget below.
+        if (pinnedRevision !== null && pinnedRevision.model_status === "rate_limited") {
+          return null;
+        }
         // Bounded provider-error retry (§5): three or more provider_error
         // attempts in the last 24h for this exact version exhaust the budget;
         // reuse the cached uncertain outcome with no new model call.
@@ -272,23 +288,31 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
   if (!baseUrl || !apiKey) return gate;
 
   const endpoint = triageChatEndpoint(baseUrl);
+  // AI-RATE-01: every triage chat call goes through the shared NineRouter gate:
+  // paced, one in flight, and a 429 or rate-like 503 becomes RateLimitedError.
+  // The 60 s timeout starts only after the slot is acquired, so queueing
+  // behind another NineRouter call does not consume it.
   const callChat = async (system: string, user: string): Promise<unknown> => {
+    const rateGate = getNineRouterRateGate();
     let lastError: unknown = new Error("triage transport failed");
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
       }
+      const slot = await rateGate.acquire("chat");
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 60_000);
       try {
-        const response = await fetch(endpoint, {
+        const response = await rateGate.transport()(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({ model: chatModel, messages: [{ role: "system", content: system }, { role: "user", content: user }], stream: false }),
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error(`triage chat HTTP ${response.status}`);
-        const envelope = (await response.json()) as unknown;
+        // Throws RateLimitedError for 429 and rate-like 503. Never retried below.
+        const checked = await rateGate.inspect("chat", response);
+        if (!checked.ok) throw new Error(`triage chat HTTP ${checked.status}`);
+        const envelope = (await checked.json()) as unknown;
         if (!envelope || typeof envelope !== "object" || !("choices" in envelope)) {
           throw new Error("triage chat bad envelope");
         }
@@ -302,15 +326,19 @@ export function buildLiveTriageGate(env: WorkerEnvironment, executor: SqlExecuto
         if (start < 0 || end <= start) throw new Error("triage chat no JSON object");
         return JSON.parse(content.slice(start, end + 1)) as unknown;
       } catch (error) {
+        if (isRateLimitedError(error)) throw error;
         lastError = error;
       } finally {
         clearTimeout(timer);
+        slot.release();
       }
     }
     throw lastError;
   };
 
-  return { ...gate, callChat };
+  const chatCooldownRemainingMs = (): number => getNineRouterRateGate().cooldownRemainingMs("chat");
+
+  return { ...gate, callChat, chatCooldownRemainingMs };
 }
 
 /** Thin shared wrapper over the poller gate with live defaults. */

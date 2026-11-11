@@ -21,7 +21,8 @@ export type NewsTriageModelStatus =
   | 'provider_error'
   | 'invalid_model_output'
   | 'skipped_stage_a'
-  | 'not_cleared';
+  | 'not_cleared'
+  | 'rate_limited';
 
 export interface NewsTriageDecisionRow {
   readonly datasetKind: string;

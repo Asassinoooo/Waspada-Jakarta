@@ -58,6 +58,8 @@ export const IncidentWorkflowInputSchema = z.object({
   }).optional(),
 });
 
+type IncidentWorkflowInput = z.infer<typeof IncidentWorkflowInputSchema>;
+
 export interface IncidentWorkflowOutput {
   readonly reportRevisionId: string;
   readonly interpretation: ReportInterpretation;
@@ -110,6 +112,29 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
   const incidentRepo = createSqlIncidentRepository(dependencies.executor);
   const proposalWriter = createEventProposalWriter(dependencies.executor);
 
+  // AI-RATE-01: the interpretation checkpoint is best effort. A failed read or
+  // write only means this attempt calls the model again. Lease ownership is
+  // still enforced by the persist and complete steps.
+  async function readInterpretationCheckpoint(input: IncidentWorkflowInput): Promise<ReportInterpretation | null> {
+    if (!input.jobId || !input.leaseToken) return null;
+    try {
+      const checkpoint = await incidentRepo.readAiJobCheckpoint(input.jobId, input.leaseToken);
+      const parsed = ReportInterpretationSchema.safeParse(checkpoint?.interpretation);
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveInterpretationCheckpoint(input: IncidentWorkflowInput, interpretation: ReportInterpretation): Promise<void> {
+    if (!input.jobId || !input.leaseToken) return;
+    try {
+      await incidentRepo.saveAiJobCheckpoint(input.jobId, input.leaseToken, { interpretation });
+    } catch {
+      // Best effort: see readInterpretationCheckpoint.
+    }
+  }
+
   // Step 1: Interpret Report
   const interpretStep = createStep({
     id: "interpret-report",
@@ -119,7 +144,10 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       interpretation: ReportInterpretationSchema,
     }),
     execute: async ({ inputData }) => {
-      const interpretation = await interpretReport(
+      // A retry after a later-step failure (for example a rate limit during
+      // correlation) resumes from the saved interpretation: no second model call.
+      const checkpointed = await readInterpretationCheckpoint(inputData);
+      const interpretation = checkpointed ?? await interpretReport(
         {
           reportRevisionId: inputData.reportRevisionId,
           reportText: inputData.reportText,
@@ -132,6 +160,9 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
           agent: dependencies.agentOverrides?.interpreter,
         },
       );
+      if (!checkpointed) {
+        await saveInterpretationCheckpoint(inputData, interpretation);
+      }
 
       return {
         input: inputData,

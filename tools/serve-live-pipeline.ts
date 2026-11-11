@@ -8,10 +8,10 @@ import { postgis } from "@electric-sql/pglite-postgis";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { readMigrations, applyMigrations } from "../apps/db/src/migrations.js";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../apps/db/src/sql.js";
-import { createSqlIncidentRepository } from "../apps/db/src/incident-repository.js";
 import { createAccountStore } from "../apps/db/src/accounts.js";
+import { createSqlIncidentRepository, requeueStrandedAiJobs } from "../apps/db/src/incident-repository.js";
 import { createJobRunner } from "../apps/intelligence/src/job-runner.js";
-import { getNineRouterConfig } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
+import { getNineRouterConfig, patchGlobalFetchForNineRouter } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
@@ -49,6 +49,10 @@ async function main() {
   } else {
     console.log("✓ NineRouter provider credentials loaded.");
   }
+
+  // AI-RATE-01: pace every NineRouter call (Mastra agents, embeddings, triage)
+  // through the shared rate gate. Installed before the job runner and the first poll.
+  patchGlobalFetchForNineRouter();
 
   // 2. Persistent PGlite Database Setup
   const dataDir = path.resolve(process.cwd(), ".data/live-db");
@@ -129,6 +133,10 @@ async function main() {
     console.log("[Accounts] WASPADA_ADMIN_USERNAME / WASPADA_ADMIN_PASSWORD not set; moderator sign-in needs an existing admin account.");
   }
 
+  // This process owns the live DB until shutdown. ai:requeue checks this file.
+  const serveLivePidFile = path.join(dataDir, "serve-live.pid");
+  fs.writeFileSync(serveLivePidFile, String(process.pid));
+
   // Clear demo synthetic fixtures so only genuine live data is shown
   PublicReadModel.clearPublishedEvents();
 
@@ -197,6 +205,14 @@ async function main() {
   // 3. Worker Environment Configuration. The internal key is random per run and is shared
   // with the in-process job runner below. Nothing is printed. Accounts run on the local origin.
   const internalServiceKey = generateServiceKey();
+  // AI-RATE-01 re-drive: jobs stranded in needs_review by model or rate-limit
+  // failures go back to pending once per start.
+  const requeued = await requeueStrandedAiJobs(executor, { codes: ["model_failed", "rate_limited"] });
+  if (requeued.length > 0) {
+    console.log(`✓ Requeued ${requeued.length} stranded AI jobs (model_failed, rate_limited).`);
+  }
+
+  // 3. Worker Environment Configuration
   const env: WorkerEnvironment = {
     DATASET_MODE: "live",
     AUTH_ENABLED: "true",
@@ -498,6 +514,7 @@ async function main() {
     clearInterval(pollInterval);
     viteProcess.kill();
     server.close();
+    fs.rmSync(serveLivePidFile, { force: true });
     void database.close().then(() => process.exit(0));
   };
 

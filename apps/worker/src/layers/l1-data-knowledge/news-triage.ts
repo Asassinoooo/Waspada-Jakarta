@@ -15,6 +15,7 @@
  */
 
 import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-categories.js";
+import { isRateLimitedError } from "../../../../db/src/ninerouter-rate-gate.js";
 import type { DeterministicRelevanceResult } from "./deterministic-relevance.js";
 
 export const TRIAGE_POLICY_VERSION = 'wj-int-02-v2' as const;
@@ -38,7 +39,8 @@ export type TriageModelStatus =
   | 'provider_error'
   | 'invalid_model_output'
   | 'skipped_stage_a'
-  | 'not_cleared';
+  | 'not_cleared'
+  | 'rate_limited';
 
 export interface NewsTriageEvidence {
   readonly field: 'title' | 'description';
@@ -629,6 +631,24 @@ export function uncertainOnFailure(reasonCode: TriageReasonCode): NewsTriageDeci
 }
 
 /**
+ * AI-RATE-01: the gateway rate-limited the call. This is a distinct, retryable
+ * outcome, not a provider error: it never counts toward the provider_error
+ * budget, and findPriorDecision re-evaluates it on a later poll.
+ */
+export function rateLimitedOnFailure(): NewsTriageDecision {
+  return decision({
+    disposition: 'uncertain',
+    jakartaScope: 'unknown',
+    actionability: 'unknown',
+    primaryCategory: null,
+    incidentType: null,
+    confidence: 'low',
+    reasonCodes: ['rate_limited'],
+    modelStatus: 'rate_limited',
+  });
+}
+
+/**
  * Builds the bounded Stage B prompt. Article content is untrusted data;
  * the system text forbids following embedded instructions, forbids
  * coordinate invention, and forbids treating JAKARTA_ENVELOPE as a boundary.
@@ -688,7 +708,8 @@ export async function triageNewsItemSemantic(
   let raw: unknown;
   try {
     raw = await callChat(system, user);
-  } catch {
+  } catch (error) {
+    if (isRateLimitedError(error)) return rateLimitedOnFailure();
     return uncertainOnFailure('provider_error');
   }
   try {

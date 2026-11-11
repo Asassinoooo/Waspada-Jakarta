@@ -24,6 +24,54 @@ export const NINEROUTER_EMBEDDING_IDENTITY = {
   vectorIndexVersion: "ninerouter:gemini-embedding-2:raw-768-cosine:v1",
 };
 
+/**
+ * AI-RATE-01: a stored vector for this chunk, model identity and exact chunk
+ * text, or null. A retried job reuses it instead of calling the gateway again.
+ * Read failures are treated as a miss so the call path stays unchanged.
+ */
+async function readStoredChunkEmbedding(
+  executor: SqlExecutor,
+  datasetKind: DatasetKind,
+  chunkId: string,
+  inputTextHash: string,
+): Promise<readonly number[] | null> {
+  const dimensions = NINEROUTER_EMBEDDING_IDENTITY.dimensions;
+  try {
+    const result = await executor.query<{ embedding: unknown }>(
+      `SELECT vec.embedding::text AS embedding
+       FROM waspada.embedding_runs run
+       JOIN waspada.embedding_vectors vec
+         ON vec.dataset_kind = run.dataset_kind AND vec.embedding_run_id = run.embedding_run_id
+       WHERE run.dataset_kind = $1
+         AND run.chunk_id = $2
+         AND run.provider = $3
+         AND run.model_version = $4
+         AND run.dimensions = $5
+         AND run.input_text_hash = $6
+         AND run.status = 'available'
+         AND vec.dimensions = $5
+       ORDER BY run.created_at ASC, run.embedding_run_id ASC
+       LIMIT 1`,
+      [
+        datasetKind,
+        chunkId,
+        NINEROUTER_EMBEDDING_IDENTITY.provider,
+        NINEROUTER_EMBEDDING_IDENTITY.modelVersion,
+        dimensions,
+        inputTextHash,
+      ],
+    );
+    const raw = result.rows[0]?.embedding;
+    if (typeof raw !== "string") return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== dimensions) return null;
+    if (!parsed.every((value) => typeof value === "number" && Number.isFinite(value))) return null;
+    return parsed as number[];
+  } catch {
+    return null;
+  }
+}
+
 export interface CandidateIncidentMatch {
   readonly incident: IncidentRecord;
   readonly similarityScore: number;
@@ -70,8 +118,11 @@ export function createSemanticRetrievalService(dependencies: {
       readonly chunkText: string;
       readonly createdAt?: string;
     }): Promise<readonly number[]> {
-      const vector = await generateNineRouterEmbedding(input.chunkText, { config });
       const hash = createHash("sha256").update(input.chunkText).digest("hex");
+      // AI-RATE-01: a retried job must not re-embed a chunk it already stored.
+      const stored = await readStoredChunkEmbedding(dependencies.executor, input.datasetKind, input.chunkId, hash);
+      if (stored) return stored;
+      const vector = await generateNineRouterEmbedding(input.chunkText, { config });
       const now = input.createdAt ?? new Date().toISOString();
 
       if (dependencies.transactionalExecutor) {

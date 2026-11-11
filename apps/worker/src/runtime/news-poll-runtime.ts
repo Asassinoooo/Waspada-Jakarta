@@ -181,6 +181,10 @@ export interface NewsTriageCounts {
   readonly geoRejected: number;
   readonly nonActionable: number;
   readonly providerFailures: number;
+  /** AI-RATE-01: fresh Stage B calls the gateway rate-limited (recorded as rate_limited). */
+  readonly rateLimited: number;
+  /** AI-RATE-01: fresh Stage B items held without a call during a chat cooldown. */
+  readonly rateLimitDeferred: number;
   readonly byCategory: Readonly<Record<string, number>>;
   /** DET-FILTER-01 count-only observability (no content in logs). */
   readonly detConsidered: number;
@@ -245,6 +249,8 @@ export interface NewsPollRuntimeOptions {
     readonly checkAuthorization?: (sourceId: string) => Promise<{ cleared: boolean }> | { cleared: boolean };
     /** One structured chat completion; transport failures become uncertain. */
     readonly callChat?: (system: string, user: string) => Promise<unknown>;
+    /** AI-RATE-01: ms left in the chat cooldown; fresh Stage B calls are held while > 0. */
+    readonly chatCooldownRemainingMs?: () => number;
     /**
      * WJ-INT-02B persistent idempotency: cached decision for an identical
      * (identity, content, policy) evaluation. Defaults to a miss (null);
@@ -389,6 +395,7 @@ export async function applyTriageGate(
   const counts = {
     total: stored.length, ingested: 0, dropped: 0, uncertain: 0,
     authzRejected: 0, geoRejected: 0, nonActionable: 0, providerFailures: 0,
+    rateLimited: 0, rateLimitDeferred: 0,
     detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
     detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
     detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
@@ -574,6 +581,13 @@ export async function applyTriageGate(
       counts.detModelCallsSkipped += 1;
     }
     if (stageA.needsSemantic) {
+      // AI-RATE-01: during a chat cooldown a fresh Stage B call would only wait
+      // for the cooldown to end, blocking the poll. Hold the item instead: no
+      // call, no persisted outcome. A later poll evaluates it if it is still listed.
+      if (callChat && (triage.chatCooldownRemainingMs?.() ?? 0) > 0) {
+        counts.rateLimitDeferred += 1;
+        return;
+      }
       if (!callChat) {
         decisionResult = {
           disposition: "uncertain", jakartaScope: "unknown", actionability: "unknown",
@@ -689,6 +703,9 @@ export async function applyTriageGate(
       if (finalDecision.modelStatus === "provider_error" || finalDecision.modelStatus === "invalid_model_output") {
         counts.providerFailures += 1;
       }
+      if (finalDecision.modelStatus === "rate_limited") {
+        counts.rateLimited += 1;
+      }
       // Held decisions carry metadata only: no permitted_text, no chunks,
       // no title/description. The caller persists the audit row; nothing else.
       heldOut.push({
@@ -748,7 +765,7 @@ async function pollSingleFeed(
         held: [],
         triageCounts: {
           total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 1,
-          geoRejected: 0, nonActionable: 0, providerFailures: 0, byCategory: {},
+          geoRejected: 0, nonActionable: 0, providerFailures: 0, rateLimited: 0, rateLimitDeferred: 0, byCategory: {},
           detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
           detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
           detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
@@ -962,7 +979,7 @@ function aggregateTriageCounts(results: readonly NewsFeedPollResult[]): NewsTria
   if (!results.some((r) => r.triageCounts)) return undefined;
   const total = {
     total: 0, ingested: 0, dropped: 0, uncertain: 0, authzRejected: 0, geoRejected: 0,
-    nonActionable: 0, providerFailures: 0,
+    nonActionable: 0, providerFailures: 0, rateLimited: 0, rateLimitDeferred: 0,
     detConsidered: 0, detCandidate: 0, detAmbiguous: 0, detLowSignal: 0,
     detBroadOnly: 0, detSpecific: 0, detStrong: 0, detSupporting: 0,
     detAlertOnly: 0, detNonScene: 0, detUnknownRole: 0, detModelCallsSkipped: 0,
@@ -976,6 +993,7 @@ function aggregateTriageCounts(results: readonly NewsFeedPollResult[]): NewsTria
     total.uncertain += c.uncertain; total.authzRejected += c.authzRejected;
     total.geoRejected += c.geoRejected; total.nonActionable += c.nonActionable;
     total.providerFailures += c.providerFailures;
+    total.rateLimited += c.rateLimited; total.rateLimitDeferred += c.rateLimitDeferred;
     total.detConsidered += c.detConsidered; total.detCandidate += c.detCandidate;
     total.detAmbiguous += c.detAmbiguous; total.detLowSignal += c.detLowSignal;
     total.detBroadOnly += c.detBroadOnly; total.detSpecific += c.detSpecific;

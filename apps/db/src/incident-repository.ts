@@ -151,6 +151,19 @@ export interface ClaimAiJobInput {
   readonly datasetKind?: DatasetKind;
 }
 
+/**
+ * AI-RATE-01: a rate-limited job goes back to `retry` at `availableAt` and
+ * gives its claimed attempt back, so a rate limit never counts toward
+ * max_attempts.
+ */
+export interface DeferAiJobInput {
+  readonly jobId: string;
+  readonly leaseToken: string;
+  readonly availableAt: string;
+  readonly failureCode: "rate_limited";
+  readonly now?: string;
+}
+
 export interface PersistIncidentProcessingInput {
   readonly jobId: string;
   readonly leaseToken: string;
@@ -200,6 +213,9 @@ export interface IncidentRepository {
   completeAiJob(jobId: string, leaseToken: string, now?: string): Promise<boolean>;
   failAiJob(jobId: string, leaseToken: string, failureCode: string, retryBackoffMs?: number, now?: string): Promise<{ readonly status: "retry" | "terminal" | "needs_review"; readonly attemptCount: number }>;
   markAiJobNeedsReview(jobId: string, leaseToken: string, reasonCode: string, now?: string): Promise<boolean>;
+  deferAiJob(input: DeferAiJobInput): Promise<{ readonly status: "retry"; readonly attemptCount: number }>;
+  saveAiJobCheckpoint(jobId: string, leaseToken: string, checkpoint: Record<string, unknown>, now?: string): Promise<boolean>;
+  readAiJobCheckpoint(jobId: string, leaseToken: string): Promise<Record<string, unknown> | null>;
   retryAiJob(jobId: string, now?: string): Promise<boolean>;
   getAiJob(jobId: string): Promise<AiJobRecord | null>;
   listAiJobs(options?: { status?: AiJobStatus; datasetKind?: DatasetKind; limit?: number }): Promise<readonly AiJobRecord[]>;
@@ -830,6 +846,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
           lease_token = NULL,
           lease_started_at = NULL,
           lease_expires_at = NULL,
+          checkpoint_json = NULL,
           finished_at = $1,
           updated_at = $1
         WHERE job_id = $2 AND lease_token = $3 AND status = 'leased'
@@ -893,6 +910,62 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
       );
 
       return { status: "retry", attemptCount };
+    },
+
+    async deferAiJob(input: DeferAiJobInput): Promise<{ readonly status: "retry"; readonly attemptCount: number }> {
+      const nowStr = input.now ?? new Date().toISOString();
+      if (input.failureCode !== "rate_limited") {
+        throw new TypeError(`deferAiJob only accepts failure code rate_limited, got ${String(input.failureCode)}`);
+      }
+      // Gives the claimed attempt back (GREATEST keeps the count >= 0) and
+      // clears the lease in the same statement that checks the lease token.
+      const result = await executor.query<{ attempt_count: number | string }>(
+        `UPDATE waspada.ai_jobs
+         SET
+           status = 'retry',
+           attempt_count = GREATEST(attempt_count - 1, 0),
+           lease_token = NULL,
+           lease_started_at = NULL,
+           lease_expires_at = NULL,
+           last_failure_code = $1,
+           available_at = $2::timestamptz,
+           updated_at = $3
+         WHERE job_id = $4 AND lease_token = $5 AND status = 'leased'
+         RETURNING attempt_count`,
+        [input.failureCode, input.availableAt, nowStr, input.jobId, input.leaseToken],
+      );
+      if (result.rows.length === 0) {
+        throw new StaleLeaseError(`Worker lease invalid or preempted for job ${input.jobId}; cannot defer`);
+      }
+      return { status: "retry", attemptCount: Number(result.rows[0]!.attempt_count) };
+    },
+
+    async saveAiJobCheckpoint(jobId: string, leaseToken: string, checkpoint: Record<string, unknown>, now?: string): Promise<boolean> {
+      const nowStr = now ?? new Date().toISOString();
+      const result = await executor.query<{ job_id: string }>(
+        `UPDATE waspada.ai_jobs
+         SET checkpoint_json = $1::jsonb, updated_at = $2
+         WHERE job_id = $3 AND lease_token = $4 AND status = 'leased'
+         RETURNING job_id`,
+        [JSON.stringify(checkpoint), nowStr, jobId, leaseToken],
+      );
+      return result.rows.length > 0;
+    },
+
+    async readAiJobCheckpoint(jobId: string, leaseToken: string): Promise<Record<string, unknown> | null> {
+      // The lease token authorizes the read. The checkpoint itself survives
+      // lease release, so a later attempt (new token) can resume from it.
+      const result = await executor.query<{ checkpoint_json: unknown }>(
+        `SELECT checkpoint_json FROM waspada.ai_jobs
+         WHERE job_id = $1 AND lease_token = $2 AND status = 'leased'`,
+        [jobId, leaseToken],
+      );
+      const raw = result.rows[0]?.checkpoint_json;
+      if (raw === null || raw === undefined) return null;
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
     },
 
     async markAiJobNeedsReview(jobId: string, leaseToken: string, reasonCode: string, now?: string): Promise<boolean> {
@@ -1042,6 +1115,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
                  lease_token = NULL,
                  lease_started_at = NULL,
                  lease_expires_at = NULL,
+                 checkpoint_json = NULL,
                  updated_at = $2
              WHERE job_id = $1`,
             [input.jobId, now],
@@ -1249,6 +1323,7 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
                lease_token = NULL,
                lease_started_at = NULL,
                lease_expires_at = NULL,
+               checkpoint_json = NULL,
                updated_at = $2
            WHERE job_id = $1`,
           [input.jobId, now],
@@ -1263,4 +1338,28 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
       });
     },
   };
+}
+
+/**
+ * AI-RATE-01 re-drive: moves needs_review AI jobs whose last failure code is in
+ * `codes` back to pending through the existing retryAiJob logic. Other jobs,
+ * and other codes, are left untouched. Returns the requeued job ids.
+ */
+export async function requeueStrandedAiJobs(
+  executor: SqlExecutor,
+  options: { readonly codes: readonly string[]; readonly now?: string },
+): Promise<readonly string[]> {
+  if (options.codes.length === 0) return [];
+  const stranded = await executor.query<{ job_id: string }>(
+    `SELECT job_id FROM waspada.ai_jobs
+     WHERE status = 'needs_review' AND last_failure_code = ANY($1::text[])
+     ORDER BY available_at ASC, created_at ASC, job_id ASC`,
+    [[...options.codes]],
+  );
+  const repo = createSqlIncidentRepository(executor);
+  const requeued: string[] = [];
+  for (const row of stranded.rows) {
+    if (await repo.retryAiJob(row.job_id, options.now)) requeued.push(row.job_id);
+  }
+  return requeued;
 }

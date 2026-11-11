@@ -1,4 +1,5 @@
 import { Agent } from "@mastra/core/agent";
+import { getNineRouterRateGate } from "../../../db/src/ninerouter-rate-gate.js";
 
 export type NineRouterExecutionMode = "live" | "mock";
 
@@ -38,28 +39,30 @@ export function getNineRouterConfig(): NineRouterConfig {
 }
 
 let fetchPatched = false;
+/**
+ * Routes process-wide fetch through the NineRouter rate gate (AI-RATE-01) and
+ * forces non-streaming chat, which the job runner depends on. Mastra's
+ * provider reads globalThis.fetch at call time, so this also paces agent calls.
+ * Idempotent; serve:live and the job runner call it before any model call.
+ */
 export function patchGlobalFetchForNineRouter(): void {
   if (fetchPatched) return;
   fetchPatched = true;
 
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async function (input: string | URL | Request, init?: RequestInit): Promise<Response> {
-    const urlStr = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-
+  getNineRouterRateGate().installGlobalFetch((urlStr, init) => {
     if (urlStr.includes("/chat/completions") && init?.body && typeof init.body === "string") {
       try {
         const parsed = JSON.parse(init.body);
         if (parsed.stream === undefined || parsed.stream === true) {
           parsed.stream = false;
-          init = { ...init, body: JSON.stringify(parsed) };
+          return { ...init, body: JSON.stringify(parsed) };
         }
       } catch {
         // Leave unparsed if not JSON
       }
     }
-
-    return originalFetch(input, init);
-  };
+    return init;
+  });
 }
 
 export function extractJsonFromText(text: string): unknown {
@@ -85,7 +88,8 @@ export async function generateNineRouterEmbedding(
     );
   }
   const endpoint = `${config.baseUrl}/v1/embeddings`;
-  const response = await fetch(endpoint, {
+  // Gated: paced, and a 429 or rate-like 503 throws RateLimitedError (AI-RATE-01).
+  const response = await getNineRouterRateGate().request(endpoint, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${config.apiKey}`,
@@ -164,6 +168,9 @@ export function createNineRouterMastraAgent(params: {
     id: agentId,
     name: params.name,
     instructions: params.instructions,
+    // AI-RATE-01: no in-process retries. A rate limit must reach the job queue
+    // so the job is deferred, not hammered again inside Mastra.
+    maxRetries: 0,
     model: {
       providerId: "openai",
       modelId: chatModel,

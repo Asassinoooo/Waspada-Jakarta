@@ -18,8 +18,12 @@ import {
 } from "./workflows/incident-intelligence-workflow.js";
 import type { z } from "zod";
 type IncidentWorkflowInput = z.infer<typeof IncidentWorkflowInputSchema>;
-import type { NineRouterConfig } from "./providers/ninerouter-adapter.js";
+import { patchGlobalFetchForNineRouter, type NineRouterConfig } from "./providers/ninerouter-adapter.js";
+import { findRateLimitedError } from "../../db/src/ninerouter-rate-gate.js";
 import { Agent } from "@mastra/core/agent";
+
+/** Cooldown assumed for a rate-limit that arrives without a Retry-After. */
+const DEFAULT_RATE_LIMIT_DEFER_MS = 60_000;
 
 export interface JobRunnerOptions {
   readonly executor: SqlExecutor;
@@ -43,12 +47,18 @@ export interface JobRunnerOptions {
 
 export function classifyJobError(err: unknown): string {
   if (!err) return "unknown_error";
+  // AI-RATE-01: a rate limit is never a model failure. It defers the job and
+  // does not consume an attempt (see processNextJob).
+  if (findRateLimitedError(err) !== null) return "rate_limited";
   const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  if (/\b429\b|rate[ _-]?limit|too many requests|quota/.test(message)) {
+    return "rate_limited";
+  }
 
   if (message.includes("timeout") || message.includes("timed out") || message.includes("aborted")) {
     return "model_timeout";
   }
-  if (message.includes("ninerouter") || message.includes("500") || message.includes("502") || message.includes("503") || message.includes("429") || message.includes("quota") || message.includes("rate") || message.includes("econnrefused")) {
+  if (message.includes("ninerouter") || message.includes("500") || message.includes("502") || message.includes("503") || message.includes("econnrefused")) {
     return "model_failed";
   }
   if (message.includes("zod") || message.includes("parse") || message.includes("schema") || message.includes("json")) {
@@ -78,6 +88,8 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const incidentRepo: IncidentRepository = createSqlIncidentRepository(options.executor);
   const leaseDurationMs = options.leaseDurationMs ?? 300_000;
   const pollIntervalMs = options.pollIntervalMs ?? 2_000;
+  // Every model call from this runner is paced by the shared NineRouter gate.
+  patchGlobalFetchForNineRouter();
 
   const workflow = createIncidentIntelligenceWorkflow({
     executor: options.executor,
@@ -269,14 +281,24 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
 
         if (execution.status !== "success") {
           const stepErrors: string[] = [];
+          const rawErrors: unknown[] = [];
           if (execution.steps) {
             for (const [stepName, stepData] of Object.entries(execution.steps as Record<string, any>)) {
               if (stepData?.error) {
+                rawErrors.push(stepData.error);
                 stepErrors.push(`${stepName}: ${stepData.error instanceof Error ? stepData.error.message : String(stepData.error)}`);
               }
             }
           }
           const rootErr = (execution as any).error;
+          if (rootErr) rawErrors.push(rootErr);
+          // AI-RATE-01: keep the rate-limit error itself so its code survives the
+          // workflow boundary. Rebuilding it from messages would lose the code.
+          for (const raw of rawErrors) {
+            if (findRateLimitedError(raw) !== null) {
+              throw raw;
+            }
+          }
           const rootErrMsg = rootErr ? (rootErr instanceof Error ? rootErr.message : String(rootErr)) : "";
           const combinedMsg = [rootErrMsg, ...stepErrors].filter(Boolean).join(" | ");
           throw new Error(combinedMsg || `Mastra workflow execution failed with status: ${execution.status}`);
@@ -312,6 +334,22 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           return false;
         }
         const failureCode = classifyJobError(err);
+        if (failureCode === "rate_limited") {
+          // AI-RATE-01: defer without counting the attempt. The job never reaches needs_review.
+          const retryAfterMs = findRateLimitedError(err)?.retryAfterMs ?? DEFAULT_RATE_LIMIT_DEFER_MS;
+          try {
+            await incidentRepo.deferAiJob({
+              jobId: job.jobId,
+              leaseToken,
+              availableAt: new Date(Date.now() + Math.max(0, retryAfterMs)).toISOString(),
+              failureCode: "rate_limited",
+            });
+          } catch (deferErr) {
+            if (deferErr instanceof StaleLeaseError) return false;
+            throw deferErr;
+          }
+          return false;
+        }
         const backoffMs = calculateBackoffMs(job.attemptCount);
         await incidentRepo.failAiJob(job.jobId, leaseToken, failureCode, backoffMs);
         return false;

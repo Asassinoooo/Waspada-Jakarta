@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildLiveTriageGate, triageChatEndpoint } from "../src/runtime/news-triage-composition.js";
 import type { SqlExecutor } from "../../db/src/sql.js";
+import { createNineRouterRateGate, setNineRouterRateGate } from "../../db/src/ninerouter-rate-gate.js";
+
+// AI-RATE-01: the live chat transport is paced by the shared NineRouter gate.
+// These tests check response handling, not pacing, so use an effectively unpaced gate.
+setNineRouterRateGate(createNineRouterRateGate({ chatRpm: 6_000_000, log: () => {} }));
 const fakeExecutor = {
   async query() {
     return { rows: [{ approval_status: "approved", auto_acquisition_enabled: true, registry_status: "active", reuse_basis: ["model_triage", "model_description"], remit: "general news" }] };
