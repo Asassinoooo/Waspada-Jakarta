@@ -41,6 +41,8 @@ import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js"
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
 const contextSourcesHandler = createContextSourcesHandler();
 import { createEmbeddingVisualizationHandler } from "./layers/l4-application-integration/embedding-visualization-handler.js";
+import { createPipelineFlowHandler, PIPELINE_FLOW_ROUTE_PATH } from "./layers/l4-application-integration/pipeline-flow-api.js";
+import { demoPipelineFlowItems, demoPipelineFlowSnapshotSource } from "./layers/l4-application-integration/pipeline-flow-fixtures.js";
 
 const activeRevisions = new Map<string, StoredReportRevision>();
 const activeProposals = new Map<string, EventProposalDto>();
@@ -93,6 +95,15 @@ async function withTransactionalSqlExecutor<Result>(
 }
 const embeddingVisualizationHandler = createEmbeddingVisualizationHandler({
   executorRunner: withSqlExecutor,
+});
+// FLOW-VIS-01: moderator-only pipeline flow. Demo mode answers from the fixture; live mode reads one
+// read-only transaction under the flow reader role.
+const pipelineFlowHandler = createPipelineFlowHandler({
+  withTransactionalSqlExecutor,
+  demo: {
+    snapshot: (now) => demoPipelineFlowSnapshotSource(now),
+    items: (input) => demoPipelineFlowItems(input),
+  },
 });
 
 /**
@@ -512,6 +523,13 @@ export default {
       const denied = await moderatorSurfaceDenial(request, moderationAccountConfig(env), "review_evidence");
       if (denied) return denied;
       return embeddingVisualizationHandler(request, env);
+    }
+    // FLOW-VIS-01: the live pipeline view is closed to everyone but moderators and admins, in demo mode too.
+    if (url.pathname === PIPELINE_FLOW_ROUTE_PATH || url.pathname.startsWith(`${PIPELINE_FLOW_ROUTE_PATH}/`)) {
+      const config = moderationAccountConfig(env);
+      const denied = await moderatorSurfaceDenial(request, config, "review_evidence");
+      if (denied) return denied;
+      return pipelineFlowHandler(request, env, (config?.datasetKind ?? "live") as DatasetKind);
     }
     const eventListPageService =
       env.DATASET_MODE === "live"

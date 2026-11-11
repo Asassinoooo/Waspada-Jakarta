@@ -28,6 +28,7 @@ type Route =
   | { screen: "onboarding" }
   | { screen: "account" }
   | { screen: "review" }
+  | { screen: "pipeline-flow" }
   | { screen: "source-preview" }
   | { screen: "local-pipeline" }
   | { screen: "embedding-3d" }
@@ -38,6 +39,8 @@ type Route =
 const LocalPipelinePreview = import.meta.env?.DEV === true
   ? lazy(() => import("./LocalPipelinePreview.js").then((module) => ({ default: module.LocalPipelinePreview })))
   : null;
+// FLOW-VIS-01: the moderator flow view and React Flow load only on #alur-agen.
+const PipelineFlow = lazy(() => import("./pipeline-flow-entry.js"));
 const Embedding3DVisualization = lazy(() =>
   import("./Embedding3DVisualization.js").then((module) => ({ default: module.Embedding3DVisualization }))
 );
@@ -160,6 +163,7 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
+  if (hash === "#alur-agen") return { screen: "pipeline-flow" };
   if (hash === "#laporan-publik-demo" || hash === "#laporan-publik" || hash === "#publik-demo" || hash === "#jelajah") {
     return { screen: "discover" };
   }
@@ -275,7 +279,7 @@ export function App() {
   const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [sessionRevision, setSessionRevision] = useState(0);
   const [sessionResult, setSessionResult] = useState<{
-    scope: "login" | "onboarding" | "account" | "admin" | "review";
+    scope: "login" | "onboarding" | "account" | "admin" | "review" | "pipeline-flow";
     activation: number;
     revision: number;
     state: AccountSessionState;
@@ -303,7 +307,7 @@ export function App() {
   void geoJSONState;
   void dispatchDiscovery;
   void setMobilePanel;
-  const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review"
+  const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review" || route.screen === "pipeline-flow"
     ? route.screen
     : null;
   const sessionState: AccountSessionState = sessionScope === null || sessionResult?.scope !== sessionScope || sessionResult.activation !== routeActivation || sessionResult.revision !== sessionRevision
@@ -345,7 +349,7 @@ export function App() {
   }, [routeActivation, sessionScope, sessionRevision]);
 
   useEffect(() => {
-    if (sessionScope !== "admin" && sessionScope !== "review") return;
+    if (sessionScope !== "admin" && sessionScope !== "review" && sessionScope !== "pipeline-flow") return;
     const refreshOnFocus = () => {
       if (document.visibilityState === "visible") refreshAccountSession();
     };
@@ -611,6 +615,13 @@ export function App() {
           <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />
         </Suspense>
       )}
+      {route.screen === "pipeline-flow" && (sessionState.status === "authenticated" && hasProtectedShellAccess("review", sessionState.session)
+        ? (
+          <Suspense fallback={<main id="main-content" tabIndex={-1} className="main-shell"><section className="state-panel" role="status">Memuat alur agen…</section></main>}>
+            <PipelineFlow />
+          </Suspense>
+        )
+        : <AccountAccessGate shell="review" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
       {route.screen === "embedding-3d" && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat Visualisasi 3D…</section></main>}>
           <Embedding3DVisualization />
@@ -639,6 +650,7 @@ export function App() {
         <a href="#bantuan">Bantuan</a>
         <a href="#admin">Ruang administrator</a>
         <a href="#tinjau-bukti">Tinjau bukti (Moderator)</a>
+        <a href="#alur-agen">Alur agen (Moderator)</a>
         <a href="#visualisasi-3d">Visualisasi 3D</a>
       </footer>
     </div>

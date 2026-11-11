@@ -482,6 +482,62 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/DomainRejected' }
         default: { $ref: '#/components/responses/UnexpectedError' }
+  /pipeline/flow:
+    get:
+      tags: [Moderation]
+      operationId: getPipelineFlow
+      summary: Read counts, health and 15-minute throughput for the live agent pipeline (FLOW-VIS-01)
+      description: >
+        Moderators and admins only (`review_evidence`). Counts and metadata only: no permitted text,
+        claim text, prompts, model output, vectors, keys or endpoints. `dataset_mode` is `demo` for the
+        fixture snapshot and `live` for the database. `runtime` is null when the local live server has
+        not attached its status; runtime-only nodes then report `unavailable`. A zero count means no
+        data in the 24-hour window, never that a place is safe.
+      security: [{ AccountSessionCookie: [] }]
+      responses:
+        '200':
+          description: Pipeline flow snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PipelineFlowSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/UnexpectedError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /pipeline/flow/nodes/{node_id}/items:
+    get:
+      tags: [Moderation]
+      operationId: getPipelineFlowNodeItems
+      summary: Read up to 20 recent metadata rows for one pipeline stage (FLOW-VIS-01)
+      description: >
+        Moderators and admins only. Rows carry an opaque ref, a status, an optional failure code, a short
+        title where the source table has one, and a timestamp. Permitted text, model output and checkpoints
+        are never returned. Runtime-only stages (`dedupe`, `ninerouter`, `cycle`) answer from the attached
+        runtime status.
+      security: [{ AccountSessionCookie: [] }]
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema: { type: string, enum: [src_petabencana, src_bmkg, src_rss, dedupe, det_filter, triage, revisions, ai_queue, interpret, embed, retrieve, correlate, proposal, gate, review, published, ninerouter, cycle] }
+        - name: limit
+          in: query
+          required: false
+          description: Defaults to 20; maximum is 20.
+          schema: { type: integer, minimum: 1, maximum: 20, default: 20 }
+      responses:
+        '200':
+          description: Recent items for one stage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PipelineFlowItems' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/UnexpectedError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+
 components:
   securitySchemes:
     AccountSessionCookie:
@@ -554,6 +610,105 @@ components:
           schema: { $ref: '#/components/schemas/ApiError' }
           example: { code: TEMPORARILY_UNAVAILABLE, message: The service is temporarily unavailable., request_id: demo-trace-1 }
   schemas:
+    PipelineFlowSnapshot:
+      type: object
+      required: [schema_version, generated_at, dataset_mode, window_hours, nodes, edges, runtime]
+      properties:
+        schema_version: { type: string, enum: [pipeline-flow-v1] }
+        generated_at: { type: string, format: date-time }
+        dataset_mode: { type: string, enum: [live, demo] }
+        window_hours: { type: integer, enum: [24] }
+        nodes:
+          type: array
+          items: { $ref: '#/components/schemas/PipelineFlowNode' }
+        edges:
+          type: array
+          items: { $ref: '#/components/schemas/PipelineFlowEdge' }
+        runtime:
+          oneOf:
+            - { type: 'null' }
+            - { $ref: '#/components/schemas/PipelineFlowRuntime' }
+    PipelineFlowNode:
+      type: object
+      required: [id, lane, health, counts, throughput_15m]
+      properties:
+        id: { type: string }
+        lane: { type: string, enum: [L1, L2, L3, L4, L5] }
+        health: { type: string, enum: [idle, active, waiting, failing, unavailable] }
+        counts:
+          type: object
+          description: Stable machine keys mapped to counts. Empty when the stage needs an unavailable runtime.
+          additionalProperties: { type: integer, minimum: 0 }
+        throughput_15m: { type: integer, minimum: 0 }
+    PipelineFlowEdge:
+      type: object
+      required: [from, to, throughput_15m]
+      properties:
+        from: { type: string }
+        to: { type: string }
+        throughput_15m: { type: integer, minimum: 0, description: The downstream stage's 15-minute throughput. }
+    PipelineFlowRuntime:
+      type: object
+      required: [generated_at, ninerouter, cycle]
+      properties:
+        generated_at: { type: string, format: date-time }
+        ninerouter:
+          type: object
+          description: Rate-gate pacing, cooldown and in-flight counts per bucket, and call counts since start. No content.
+          properties:
+            chat: { $ref: '#/components/schemas/PipelineFlowBucket' }
+            embed: { $ref: '#/components/schemas/PipelineFlowBucket' }
+            call_counts:
+              type: object
+              properties:
+                chat: { type: integer, minimum: 0 }
+                embed: { type: integer, minimum: 0 }
+        cycle:
+          type: object
+          description: The last polling cycle. Timings and counts only.
+          properties:
+            running: { type: boolean }
+            sequence: { type: integer, minimum: 0 }
+            started_at: { type: [string, 'null'], format: date-time }
+            finished_at: { type: [string, 'null'], format: date-time }
+            duration_ms: { type: [integer, 'null'], minimum: 0 }
+            new_items_cap: { type: [integer, 'null'], minimum: 0 }
+            new_items_used: { type: [integer, 'null'], minimum: 0 }
+            feeds_total: { type: [integer, 'null'], minimum: 0 }
+            feeds_failed: { type: [integer, 'null'], minimum: 0 }
+            error_count: { type: integer, minimum: 0 }
+    PipelineFlowBucket:
+      type: object
+      required: [rpm, tokens_available, cooldown_remaining_ms, in_flight, queued]
+      properties:
+        rpm: { type: integer, minimum: 1 }
+        tokens_available: { type: integer, minimum: 0, description: Sends left in the trailing 60 seconds under the configured RPM. }
+        cooldown_remaining_ms: { type: integer, minimum: 0 }
+        in_flight: { type: integer, minimum: 0 }
+        queued: { type: integer, minimum: 0 }
+    PipelineFlowItems:
+      type: object
+      required: [schema_version, generated_at, dataset_mode, node_id, limit, items, unavailable_reason]
+      properties:
+        schema_version: { type: string, enum: [pipeline-flow-v1] }
+        generated_at: { type: string, format: date-time }
+        dataset_mode: { type: string, enum: [live, demo] }
+        node_id: { type: string }
+        limit: { type: integer, minimum: 1, maximum: 20 }
+        items:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/PipelineFlowItem' }
+        unavailable_reason: { type: [string, 'null'] }
+    PipelineFlowItem:
+      type: object
+      required: [ref, status, failure_code, title, at]
+      properties:
+        ref: { type: string, description: Opaque reference such as a revision id, identity-hash prefix or proposal id. Never text. }
+        status: { type: string }
+        failure_code: { type: [string, 'null'] }
+        title: { type: [string, 'null'], description: Short title where the source has one. Moderator-only. }
+        at: { type: [string, 'null'], format: date-time }
     ApiError:
       type: object
       additionalProperties: false

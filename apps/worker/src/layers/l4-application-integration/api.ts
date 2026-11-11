@@ -37,6 +37,7 @@ import {
   type PublicEventUpdatesRuntime,
 } from "../../runtime/public-event-updates-runtime.js";
 import type { SqlExecutor } from "../../../../db/src/sql.js";
+import type { PipelineRuntimeStatusProvider } from "../../runtime/pipeline-runtime-status.js";
 
 export interface WorkerEnvironment {
   AUTH_ENABLED?: string;
@@ -62,6 +63,8 @@ export interface WorkerEnvironment {
   NINEROUTER_CHAT_MODEL?: string;
   /** DET-FILTER-01 shadow/enforce switch (`enforce` = test-only opt-in; default `shadow`). */
   NEWS_DETERMINISTIC_FILTER_MODE?: string;
+  /** FLOW-VIS-01: live polling status, attached by the local live server only. Absent in the Worker and demo. */
+  PIPELINE_STATUS?: PipelineRuntimeStatusProvider;
 }
 const readModel = new PublicReadModel(noConfiguredSources);
 // MERGE-REVIEW-01: live mode reads only published versions and never falls back to demo fixtures.
