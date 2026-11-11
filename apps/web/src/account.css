@@ -410,21 +410,22 @@
     padding-top: var(--space-5);
   }
 
+  /* UI-SYSTEM-02: theme toggle and Akun share row 1 with the brand on phones (no column stacking). */
   .site-header__tools {
     width: auto;
     min-width: 0;
     max-width: 100%;
-    align-items: flex-start;
-    justify-content: flex-start;
-    flex-direction: column;
-    gap: var(--space-1);
+    align-items: center;
+    justify-content: flex-end;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: var(--space-2);
   }
 
   .site-header__tools > * {
     min-width: 0;
     max-width: 100%;
-    overflow-wrap: anywhere;
-    white-space: normal;
+    white-space: nowrap;
   }
 
   .brand {

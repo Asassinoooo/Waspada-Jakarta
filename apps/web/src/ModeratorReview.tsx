@@ -754,14 +754,14 @@ export function ModeratorReviewQueue({
           <h1 id="review-title">Tinjau Bukti & Moderasi Insiden</h1>
           <p>Verifikasi grounding bukti sumber terhadap klaim sebelum penerbitan ke publik.</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div className="review-heading-status">
           {realtimeConnected && (
             <span className="realtime-indicator" title="Terhubung langsung ke stream pembaruan server">
               <span className="realtime-indicator__dot" aria-hidden="true" />
-              <span>Live Stream Aktif</span>
+              <span>Siaran langsung aktif</span>
             </span>
           )}
-          <span className="fixture-chip">Live Moderation</span>
+          <span className="fixture-chip">Moderasi langsung</span>
         </div>
       </section>
 
@@ -962,12 +962,12 @@ export function ModeratorReviewQueue({
                       <div className="proposal-card-meta">
                         <span>📍 {item.location_label || "Lokasi belum ditentukan"}</span>
                         <span>⏱ {item.event_time.value || "Waktu belum ditentukan"}</span>
-                        <span>📄 {item.claims.length} klaim terverifikasi</span>
+                        <span>📄 {item.claims.length} klaim untuk ditinjau</span>
                       </div>
                       {item.impacts && item.impacts.length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: "0.35rem" }}>
+                        <div className="proposal-card-impacts">
                           {item.impacts.map((imp, impIdx) => (
-                            <span key={`card-imp-${impIdx}`} className="severity-chip severity-chip--medium" style={{ fontSize: "0.68rem" }}>
+                            <span key={`card-imp-${impIdx}`} className="severity-chip proposal-card-impact">
                               {imp.replace(/_/g, " ")}
                             </span>
                           ))}
@@ -995,7 +995,7 @@ export function ModeratorReviewQueue({
                         </span>
                       )}
                       {selectedProposal.has_discrepancy && (
-                        <span className="discrepancy-badge" title="Terdapat perbedaan data kuantitatif atau status antar sumber">
+                        <span className="badge badge--warning discrepancy-badge" title="Terdapat perbedaan data kuantitatif atau status antar sumber">
                           ⚠️ Perbedaan Keterangan Sumber
                         </span>
                       )}
@@ -1040,19 +1040,19 @@ export function ModeratorReviewQueue({
                   </dl>
                 </section>
                 {selectedProposal.has_discrepancy && (
-                  <aside className="discrepancy-callout" role="alert" aria-label="Ringkasan perbedaan dari agen AI">
-                    <strong>⚠️ Perbedaan terdeteksi, diringkas agen AI</strong>
+                  <aside className="notice notice--warning discrepancy-callout" role="alert" aria-label="Ringkasan perbedaan dari agen AI">
+                    <h3 className="discrepancy-callout__title">⚠️ Perbedaan terdeteksi, diringkas agen AI</h3>
                     <p>{selectedProposal.discrepancy_summary ?? "Ringkasan tidak tersedia. Bandingkan klaim berikut."}</p>
                     {selectedProposal.discrepancies && selectedProposal.discrepancies.length > 0 && (
                       <div className="discrepancy-pairs">
                         {selectedProposal.discrepancies.map((disc, dIdx) => (
                           <div className="discrepancy-pair" key={`disc-${dIdx}`}>
-                            <span className="discrepancy-kind-pill">{disc.kind.replaceAll("_", " ")}</span>
-                            <div className="discrepancy-side">
+                            <span className="badge badge--warning discrepancy-kind-pill">{disc.kind.replaceAll("_", " ")}</span>
+                            <div className="card discrepancy-side">
                               <strong>Laporan A</strong>
                               <p>{disc.source_a?.claim_text ?? "-"}</p>
                             </div>
-                            <div className="discrepancy-side">
+                            <div className="card discrepancy-side">
                               <strong>{disc.source_b?.outlet ?? "Laporan B"}</strong>
                               <p>{disc.source_b?.claim_text ?? "-"}</p>
                             </div>
@@ -1333,7 +1333,7 @@ export function ModeratorReviewQueue({
               </button>
               <button
                 type="button"
-                className="modal-btn modal-btn--confirm"
+                className="modal-btn modal-btn--primary"
                 data-action="modal-confirm"
                 disabled={submitting}
                 onClick={() =>

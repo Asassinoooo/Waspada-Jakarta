@@ -2193,6 +2193,39 @@ time,
   }
 }
 
+/* Phone header (UI-SYSTEM-02): the primary nav is one horizontally scrollable row instead of wrapping. */
+@media (max-width: 760px) {
+  .site-header {
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+
+  .primary-nav,
+  .context-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .primary-nav::-webkit-scrollbar,
+  .context-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .primary-nav a,
+  .context-nav a {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-header .brand small {
+    display: none;
+  }
+}
+
 @media (max-width: 600px) {
   .demo-banner,
   .main-shell,
@@ -2200,14 +2233,14 @@ time,
     width: min(100% - 1.25rem, 88rem);
   }
 
+  /* Phone header (UI-SYSTEM-02): row 1 = brand | theme toggle + Akun; row 2 = primary nav (see the 760px block). */
   .site-header {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
-    gap: var(--space-3);
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
   }
 
   .site-header > .brand {
-    width: 100%;
     min-width: 0;
     max-width: 100%;
   }

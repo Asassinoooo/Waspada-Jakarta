@@ -1,0 +1,247 @@
+/* ==========================================================================
+   Incident map (InteractiveIncidentMap). Moved out of the component's inline
+   <style> in UI-SYSTEM-02. Colours come from role tokens only, and SVG fills
+   and strokes are set here (not as attributes) so they follow the theme.
+   Shared pill and badge looks come from design/components.css (.filter-pill).
+   ========================================================================== */
+
+.interactive-incident-map {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  cursor: grab;
+  user-select: none;
+}
+
+.interactive-incident-map--dragging {
+  cursor: grabbing;
+}
+
+.map-tile-layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.map-tile-img {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  display: block;
+}
+
+/* Basemap tiles are light imagery. Dim them in dark mode so markers and labels keep contrast. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .map-tile-img {
+    filter: brightness(0.72) saturate(0.8);
+  }
+}
+
+:root[data-theme="dark"] .map-tile-img {
+  filter: brightness(0.72) saturate(0.8);
+}
+
+.map-svg-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.map-facilities-group {
+  pointer-events: auto;
+}
+
+.facility-pin {
+  cursor: pointer;
+}
+
+.facility-pin-circle {
+  stroke: var(--color-surface);
+}
+
+.facility-pin--hospital .facility-pin-circle {
+  fill: var(--color-danger);
+}
+
+.facility-pin--police .facility-pin-circle {
+  fill: var(--color-accent);
+}
+
+.facility-pin--fire_station .facility-pin-circle {
+  fill: var(--color-warning);
+}
+
+.incident-pin-marker {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.incident-beacon-pulse {
+  fill: none;
+  stroke: var(--color-danger);
+  animation: incident-beacon-pulse-anim 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+@keyframes incident-beacon-pulse-anim {
+  0% {
+    r: 14px;
+    opacity: 0.8;
+  }
+  70% {
+    r: 22px;
+    opacity: 0;
+  }
+  100% {
+    r: 22px;
+    opacity: 0;
+  }
+}
+
+.incident-beacon-inner {
+  fill: none;
+  stroke: var(--color-danger);
+}
+
+.incident-beacon-core {
+  fill: var(--color-danger);
+  stroke: var(--color-surface);
+  opacity: 1;
+}
+
+/* Title chip: light chip with dark text in dark mode, and the reverse in light mode. */
+.incident-title-chip rect {
+  fill: var(--color-text);
+  stroke: var(--color-border);
+}
+
+.incident-title-chip text {
+  fill: var(--color-text-inverse);
+}
+
+/* ---- Overlay controls ---- */
+
+.map-facility-filters {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  max-width: calc(100% - 1rem);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  pointer-events: auto;
+}
+
+/* Facility pills reuse .filter-pill from components.css. Only the compact size is set here. */
+.facility-filter-pill {
+  min-height: 1.75rem;
+  padding: var(--space-1) var(--space-2);
+  line-height: 1.3;
+  touch-action: manipulation;
+}
+
+.map-zoom-controls {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  pointer-events: auto;
+}
+
+.map-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.map-tool-btn:hover {
+  background: var(--color-surface-hover);
+}
+
+.map-tool-btn--recenter {
+  width: auto;
+  padding: 0 var(--space-2);
+  border-left: 1px solid var(--color-border);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+/* ---- Facility list under the map ---- */
+
+.nearby-facilities-details {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-sm);
+}
+
+.nearby-facilities-summary {
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.nearby-facilities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.nearby-facility-card {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
+}
+
+.nearby-facility-card:hover {
+  border-color: var(--color-accent);
+  background: var(--color-surface-hover);
+}
+
+.nearby-facility-title {
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+}
+
+.nearby-facility-meta {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}

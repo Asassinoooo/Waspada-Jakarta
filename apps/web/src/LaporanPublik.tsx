@@ -14,8 +14,10 @@ import {
 } from "./ModeratorReview.js";
 
 
+// Browser-only, like the other page stylesheets. The page carries its own styles and does not
+// depend on moderator-review.css (UI-SYSTEM-02).
 if (typeof document !== "undefined") {
-  void import("./moderator-review.css");
+  void import("./laporan-publik.css");
 }
 
 /**
@@ -94,6 +96,11 @@ export function publicationBadgeText(proposal: EventProposalDto): string {
   return proposal.publication_mode === "moderator_reviewed"
     ? `Ditinjau moderator${reach}`
     : `Diringkas otomatis oleh agen AI${reach}`;
+}
+
+/** Badge variant: AI summaries are informational, moderator-reviewed versions use the accent tone. */
+export function publicationBadgeClass(proposal: EventProposalDto): string {
+  return proposal.publication_mode === "moderator_reviewed" ? "badge badge--accent" : "badge badge--info";
 }
 
 export function LaporanPublik({
@@ -280,22 +287,34 @@ export function LaporanPublik({
     setExpandedId((current) => (current === proposal.proposal_id ? null : proposal.proposal_id));
   };
 
+  const filterButton = (value: string, label: string) => (
+    <button
+      type="button"
+      className="filter-pill"
+      aria-pressed={categoryFilter === value}
+      onClick={() => setCategoryFilter(value)}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <main id="main-content" className="main-shell">
-      {/* 1. Header Halaman: Judul Berdiri Sendiri, Deskripsi Menjadi Sub-Heading di Bawahnya */}
+      {/* 1. Header Halaman: judul, lalu penjelasan asal dan proses penerbitan */}
       <section className="laporan-intro-section" aria-labelledby="discover-title">
         <h1 id="discover-title">Laporan Publik</h1>
         <p className="laporan-intro-copy">
-          Katalog insiden yang sudah diterbitkan. Setiap laporan menampilkan siapa yang menerbitkannya dan berapa media yang melaporkannya,
-          grounding kutipan berita verbatim, dan diterbitkan untuk masyarakat. Peta di atas menampilkan geometri koordinat
-          dan sebaran fasilitas darurat terdekat.
+          Ringkasan insiden yang diterbitkan dari berita dan laporan sumber yang disebutkan. Setiap laporan disusun otomatis
+          oleh agen AI dari sumber-sumbernya, lalu terbit setelah lolos pemeriksaan aturan otomatis atau setelah ditinjau
+          moderator. Setiap klaim menautkan sumbernya. Jumlah media yang melaporkan menunjukkan banyaknya sumber, bukan
+          kepastian kejadian. Peta hanya menampilkan titik yang dikembalikan sumber dan fasilitas darurat terdekat.
         </p>
       </section>
 
       <hr/>
 
       {errorMessage && (
-        <div className="feedback-banner feedback-banner--error" role="alert" style={{ marginBottom: "1rem" }}>
+        <div className="feedback-banner feedback-banner--error" role="alert">
           <span>{errorMessage}</span>
           <button
             type="button"
@@ -308,86 +327,44 @@ export function LaporanPublik({
         </div>
       )}
 
-      {/* 3. Kontrol Pencarian (Melebar ke Kanan) & Tag Tombol Kategori */}
-      <section className="discovery-controls--full-width" aria-label="Pencarian dan filter daftar laporan">
-        <label htmlFor="event-search" style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--tinta-kota)" }}>
-          Cari dalam daftar API yang dimuat
-        </label>
-        <div className="search-control">
-          <span aria-hidden="true" className="search-glyph">⌕</span>
-          <input
-            autoComplete="off"
-            id="event-search"
-            name="q"
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Contoh: jambret, banjir di Jakarta, kebakaran, kecelakaan…"
-          />
-          {searchQuery.length > 0 && (
-            <button className="search-clear" type="button" onClick={() => setSearchQuery("")}>
-              Hapus
-            </button>
-          )}
+      {/* 3. Kontrol pencarian dan filter kategori */}
+      <section className="laporan-controls" aria-label="Pencarian dan filter daftar laporan">
+        <div className="field">
+          <label className="field__label" htmlFor="event-search">
+            Cari dalam daftar API yang dimuat
+          </label>
+          <div className="laporan-search">
+            <span aria-hidden="true" className="laporan-search__glyph">⌕</span>
+            <input
+              autoComplete="off"
+              id="event-search"
+              name="q"
+              type="search"
+              className="laporan-search__input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Contoh: jambret, banjir di Jakarta, kebakaran, kecelakaan…"
+            />
+            {searchQuery.length > 0 && (
+              <button className="text-link laporan-search__clear" type="button" onClick={() => setSearchQuery("")}>
+                Hapus
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filter Kategori: Pressable Button Tags */}
-        <div className="category-tags-row" role="group" aria-label="Filter kategori laporan">
-          <button
-            type="button"
-            className={`category-tag-btn ${categoryFilter === "all" ? "category-tag-btn--active" : ""}`}
-            onClick={() => setCategoryFilter("all")}
-          >
-            Semua ({proposals.length})
-          </button>
-          {multiSourceCount > 0 && (
-            <button
-              type="button"
-              className={`category-tag-btn ${categoryFilter === "multi_source" ? "category-tag-btn--active" : ""}`}
-              onClick={() => setCategoryFilter("multi_source")}
-            >
-              Dilaporkan oleh 2+ media ({multiSourceCount})
-            </button>
-          )}
-          <button
-            type="button"
-            className={`category-tag-btn ${categoryFilter === "flood" ? "category-tag-btn--active" : ""}`}
-            onClick={() => setCategoryFilter("flood")}
-          >
-            🌊 Banjir &amp; Cuaca
-          </button>
-          <button
-            type="button"
-            className={`category-tag-btn ${categoryFilter === "fire" ? "category-tag-btn--active" : ""}`}
-            onClick={() => setCategoryFilter("fire")}
-          >
-            🔥 Kebakaran &amp; Bahaya
-          </button>
-          <button
-            type="button"
-            className={`category-tag-btn ${categoryFilter === "traffic" ? "category-tag-btn--active" : ""}`}
-            onClick={() => setCategoryFilter("traffic")}
-          >
-            🚗 Transportasi &amp; Lalin
-          </button>
-          <button
-            type="button"
-            className={`category-tag-btn ${categoryFilter === "security" ? "category-tag-btn--active" : ""}`}
-            onClick={() => setCategoryFilter("security")}
-          >
-            🚨 Keamanan &amp; Kriminalitas
-          </button>
-          <button
-            type="button"
-            className={`category-tag-btn ${categoryFilter === "other" ? "category-tag-btn--active" : ""}`}
-            onClick={() => setCategoryFilter("other")}
-          >
-            📋 Kategori Lainnya
-          </button>
+        <div className="laporan-filters" role="group" aria-label="Filter kategori laporan">
+          {filterButton("all", `Semua (${proposals.length})`)}
+          {multiSourceCount > 0 && filterButton("multi_source", `Dilaporkan oleh 2+ media (${multiSourceCount})`)}
+          {filterButton("flood", "🌊 Banjir & Cuaca")}
+          {filterButton("fire", "🔥 Kebakaran & Bahaya")}
+          {filterButton("traffic", "🚗 Transportasi & Lalin")}
+          {filterButton("security", "🚨 Keamanan & Kriminalitas")}
+          {filterButton("other", "📋 Kategori Lainnya")}
           {(categoryFilter !== "all" || searchQuery.length > 0) && (
             <button
               type="button"
-              className="category-tag-btn category-tag-btn--clear"
+              className="filter-pill laporan-filter-clear"
               onClick={() => {
                 setCategoryFilter("all");
                 setSearchQuery("");
@@ -398,7 +375,7 @@ export function LaporanPublik({
           )}
         </div>
 
-        <p className="search-help" style={{ margin: "0.25rem 0 0", color: "var(--quiet-ink)", fontSize: "0.85rem" }}>
+        <p className="laporan-filter-note muted">
           Pencarian dan filter berlaku pada {filteredProposals.length} record yang sudah dimuat dari katalog ini.
         </p>
       </section>
@@ -409,28 +386,26 @@ export function LaporanPublik({
         {/* 4. PETA DI ATAS (MAP ABOVE): Menggunakan InteractiveIncidentMap */}
         {/* ============================================================== */}
         <div className="map-column" ref={mapSectionRef}>
-          <section className="map-panel" aria-labelledby="map-title" style={{ borderRadius: "8px", overflow: "hidden" }}>
-            <header className="panel-heading map-panel__heading" style={{ padding: "0.85rem 1.15rem", borderBottom: "1px solid var(--beton)" }}>
+          <section className="map-panel laporan-map-panel" aria-labelledby="map-title">
+            <header className="panel-heading map-panel__heading laporan-map-header">
               <div>
                 <p className="section-kicker">Geometri Spasial &amp; Fasilitas Sekitar dari Respons API</p>
-                <h2 id="map-title" style={{ margin: 0, fontSize: "1.25rem" }}>
+                <h2 id="map-title" className="laporan-heading">
                   Peta Koordinat Interaktif
                 </h2>
               </div>
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <span className="fixture-chip" style={{ background: "#f0fdf4", color: "#166534", borderColor: "#bbf7d0" }}>
-                  Tile OSM Interaktif
-                </span>
-                <span className="fixture-chip">Fasilitas sekitar</span>
+              <div className="laporan-map-chips">
+                <span className="badge badge--info">Tile OSM Interaktif</span>
+                <span className="badge">Fasilitas sekitar</span>
               </div>
             </header>
 
-            <p className="map-panel__intro" style={{ padding: "0.6rem 1.15rem", margin: 0, borderBottom: "1px solid var(--beton)", fontSize: "0.875rem" }}>
+            <p className="map-panel__intro laporan-map-intro">
               Hanya geometri yang dikembalikan API untuk laporan terbit yang ditampilkan. Klik tombol fasilitas (RS, Polisi, Damkar) untuk melihat sebaran pos darurat di sekitar insiden.
             </p>
 
-            {/* Peta Interaktif OSM Tinjau Bukti */}
-            <div style={{ position: "relative", width: "100%", background: "#e2e8f0" }}>
+            {/* Peta Interaktif OSM */}
+            <div className="laporan-map-stage">
               <InteractiveIncidentMap
                 coordinates={selectedProposal?.coordinates ?? [106.8456, -6.2088]}
                 incidentType={selectedProposal?.incident_type ?? "unknown"}
@@ -442,53 +417,50 @@ export function LaporanPublik({
               />
             </div>
 
-            {/* Panel Ringkasan Insiden Aktif yang Dipetakan (Sesuai Screenshot Referensi) */}
+            {/* Panel ringkasan insiden yang sedang dipetakan */}
             {selectedProposal && (
-              <div className="map-caption" style={{ padding: "1rem 1.15rem", background: "var(--surface)", borderTop: "1px solid var(--beton)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.75rem", marginBottom: "0.65rem" }}>
-                  <div style={{ flex: "1 1 300px" }}>
-                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--kali-teal)", textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: "0.2rem" }}>
-                      Insiden Terpilih di Peta
-                    </span>
-                    <strong style={{ fontSize: "1.08rem", color: "var(--tinta-kota)", lineHeight: 1.4 }}>
+              <div className="map-caption laporan-map-caption">
+                <div className="laporan-caption-row">
+                  <div className="laporan-caption-title">
+                    <span className="eyebrow laporan-caption-eyebrow">Insiden Terpilih di Peta</span>
+                    <strong className="laporan-caption-heading">
                       {selectedProposal.title}
                     </strong>
                   </div>
                   <button
                     type="button"
-                    className="button button--quiet"
+                    className="button button--quiet laporan-evidence-button"
                     onClick={() => setShowEvidenceModal(true)}
-                    style={{ fontSize: "0.85rem", padding: "0.45rem 0.85rem", borderRadius: "6px", display: "inline-flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}
                   >
-                    <span>📄</span>
+                    <span aria-hidden="true">📄</span>
                     <strong>Buka Kutipan Bukti ({selectedProposal.claims.length} Klaim)</strong>
                   </button>
                 </div>
 
-                <dl className="coordinate-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.65rem", margin: 0, fontSize: "0.85rem" }}>
+                <dl className="coordinate-row laporan-facts">
                   <div>
-                    <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Koordinat CRS84</dt>
-                    <dd style={{ margin: 0, fontWeight: 600 }}>
+                    <dt>Koordinat CRS84</dt>
+                    <dd>
                       {selectedProposal.coordinates
                         ? `${selectedProposal.coordinates[0].toFixed(4)}, ${selectedProposal.coordinates[1].toFixed(4)}`
                         : "Tidak tercatat"}
                     </dd>
                   </div>
                   <div>
-                    <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Wilayah Kejadian</dt>
-                    <dd style={{ margin: 0, fontWeight: 600 }}>{selectedProposal.location_label || "DKI Jakarta"}</dd>
+                    <dt>Wilayah Kejadian</dt>
+                    <dd>{selectedProposal.location_label || "DKI Jakarta"}</dd>
                   </div>
                   <div>
-                    <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Cara Penerbitan</dt>
-                    <dd style={{ margin: 0, fontWeight: 600 }}>
+                    <dt>Cara Penerbitan</dt>
+                    <dd>
                       {publicationBadgeText(selectedProposal)}
                     </dd>
                   </div>
                   {selectedProposal.claims.some((claim) => claim.source_url) && (
                     <div>
-                      <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Sumber laporan</dt>
-                      <dd style={{ margin: 0, fontWeight: 600 }}>
-                        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                      <dt>Sumber laporan</dt>
+                      <dd>
+                        <ul className="laporan-source-list">
                           {selectedProposal.claims
                             .filter((claim) => claim.source_url)
                             .map((claim) => (
@@ -503,8 +475,8 @@ export function LaporanPublik({
                     </div>
                   )}
                   <div>
-                    <dt style={{ color: "var(--quiet-ink)", fontSize: "0.78rem" }}>Tingkat Dampak</dt>
-                    <dd style={{ margin: 0, fontWeight: 600 }}>{severityLabel(selectedProposal.severity)}</dd>
+                    <dt>Tingkat Dampak</dt>
+                    <dd>{severityLabel(selectedProposal.severity)}</dd>
                   </div>
                 </dl>
               </div>
@@ -513,13 +485,13 @@ export function LaporanPublik({
         </div>
 
         {/* ============================================================== */}
-        {/* 5. HALAMAN DAFTAR RECORD DI BAWAH (THE RECORD LIST BELOW)       */}
+        {/* 5. DAFTAR RECORD DI BAWAH (THE RECORD LIST BELOW)               */}
         {/* ============================================================== */}
-        <section className="feed-panel" aria-labelledby="feed-title" style={{ borderRadius: "8px" }}>
+        <section className="feed-panel laporan-feed-panel" aria-labelledby="feed-title">
           <header className="panel-heading">
             <div>
               <p className="section-kicker">Halaman data dari API</p>
-              <h2 id="feed-title" style={{ margin: 0 }}>Daftar record</h2>
+              <h2 id="feed-title" className="laporan-heading">Daftar record</h2>
             </div>
             {!loading && (
               <span className="count-chip" aria-live="polite">
@@ -532,7 +504,7 @@ export function LaporanPublik({
             <div className="state-panel state-panel--loading" role="status">
               <span className="loading-rule" aria-hidden="true" />
               <strong>Memuat record laporan terbit dari API…</strong>
-              <span>Menyiapkan feed warta resmi masyarakat.</span>
+              <span>Menyiapkan daftar laporan yang diterbitkan.</span>
             </div>
           )}
 
@@ -558,17 +530,13 @@ export function LaporanPublik({
               {filteredProposals.map((proposal) => {
                 const isSelected = selectedProposal?.proposal_id === proposal.proposal_id;
                 const isExpanded = expandedId === proposal.proposal_id;
-                const isMulti = isProposalMultiSource(proposal);
 
                 return (
                   <li key={proposal.proposal_id}>
                     <article
-                      className={`event-card event-card--collapsible ${isSelected ? " event-card--selected" : ""}`}
-                      style={{
-                        borderRadius: "8px",
-                        padding: "0.85rem 1rem",
-                        borderColor: isSelected ? "var(--kali-teal)" : undefined,
-                      }}
+                      className={`card card--interactive event-card event-card--collapsible laporan-event-card${
+                        isSelected ? " event-card--selected" : ""
+                      }`}
                       onClick={() => handleCardClick(proposal)}
                       tabIndex={0}
                       role="button"
@@ -581,33 +549,16 @@ export function LaporanPublik({
                       }}
                     >
                       {/* Topline Header: Selalu Ditampilkan */}
-                      <div className="event-card__topline" style={{ marginBottom: "0.45rem" }}>
-                        <span
-                          className="event-card__dataset-label"
-                          style={{
-                            fontWeight: 600,
-                            color: isMulti ? "#15803d" : "#0284c7",
-                            background: isMulti ? "#f0fdf4" : "#f0f9ff",
-                            padding: "0.2rem 0.5rem",
-                            borderRadius: "4px",
-                            fontSize: "0.78rem",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "0.3rem",
-                          }}
-                        >
+                      <div className="event-card__topline">
+                        <span className={`event-card__dataset-label ${publicationBadgeClass(proposal)}`}>
                           {publicationBadgeText(proposal)}
                         </span>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                          <span className="event-card__version" style={{ fontWeight: 600 }}>v{proposal.schema_version}</span>
+                        <div className="laporan-card-meta">
+                          <span className="event-card__version">v{proposal.schema_version}</span>
                           <span
-                            style={{
-                              fontSize: "0.75rem",
-                              color: isSelected ? "var(--kali-teal)" : "var(--quiet-ink)",
-                              transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                              transition: "transform 0.2s ease",
-                              display: "inline-block",
-                            }}
+                            className={`laporan-chevron${isExpanded ? " laporan-chevron--open" : ""}${
+                              isSelected ? " laporan-chevron--selected" : ""
+                            }`}
                             aria-hidden="true"
                           >
                             ▼
@@ -617,20 +568,11 @@ export function LaporanPublik({
 
                       {/* Judul & Subheader (Ringkasan): Selalu Ditampilkan */}
                       <div className="event-card__heading-group">
-                        <h3 style={{ margin: "0 0 0.35rem", fontSize: "1.02rem", color: "var(--tinta-kota)", lineHeight: 1.38 }}>
+                        <h3 className="laporan-event-title">
                           {proposal.title}
                         </h3>
                         <p
-                          style={{
-                            margin: 0,
-                            fontSize: "0.875rem",
-                            color: "var(--quiet-ink)",
-                            display: isExpanded ? "block" : "-webkit-box",
-                            WebkitLineClamp: isExpanded ? undefined : 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                            lineHeight: 1.45,
-                          }}
+                          className={`laporan-event-summary${isExpanded ? "" : " laporan-event-summary--clamped"}`}
                         >
                           {proposal.claims[0]?.claim_text ||
                             `Insiden kategori ${proposalCategoryLabel(proposal)} yang terdeteksi di wilayah ${proposal.location_label || "DKI Jakarta"}.`}
@@ -648,7 +590,7 @@ export function LaporanPublik({
                       {/* Bagian Diperluas (Extended Body): Hanya Muncul Saat Kartu Ditekan */}
                       {isExpanded && (
                         <div className="event-card__collapse-body">
-                          <dl className="event-card__facts" style={{ margin: "0.75rem 0" }}>
+                          <dl className="event-card__facts laporan-event-facts">
                             <div>
                               <dt>Kategori</dt>
                               <dd>{proposalCategoryLabel(proposal)}</dd>
@@ -663,7 +605,7 @@ export function LaporanPublik({
                             </div>
                             <div>
                               <dt>Sumber</dt>
-                              <dd style={{ color: isMulti ? "#15803d" : undefined }}>
+                              <dd>
                                 {typeof proposal.source_count === "number" ? `Dilaporkan oleh ${proposal.source_count} media` : "Sumber tidak diketahui"}
                               </dd>
                             </div>
@@ -677,28 +619,12 @@ export function LaporanPublik({
                             </div>
                           </dl>
 
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginTop: "0.75rem",
-                              paddingTop: "0.6rem",
-                              borderTop: "1px dashed var(--beton)",
-                            }}
-                          >
+                          <div className="laporan-card-actions">
                             <button
                               type="button"
-                              className="text-link"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                padding: 0,
-                                cursor: "pointer",
-                                fontSize: "0.85rem",
-                                fontWeight: 700,
-                                color: isSelected ? "var(--kali-teal)" : "var(--tinta-kota)",
-                              }}
+                              className={`button button--quiet laporan-card-action${
+                                isSelected ? " laporan-card-action--current" : ""
+                              }`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleSelectProposal(proposal, true);
@@ -708,15 +634,7 @@ export function LaporanPublik({
                             </button>
                             <button
                               type="button"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                padding: 0,
-                                cursor: "pointer",
-                                color: "var(--kali-teal)",
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                              }}
+                              className="button button--quiet laporan-card-action laporan-card-action--detail"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleSelectProposal(proposal, false);
@@ -742,96 +660,59 @@ export function LaporanPublik({
       {/* ============================================================== */}
       {showEvidenceModal && selectedProposal && (
         <div
-          className="evidence-modal-backdrop"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(15, 23, 42, 0.65)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "1rem",
-            backdropFilter: "blur(2px)",
-          }}
+          className="modal-backdrop laporan-modal-backdrop"
           onClick={() => setShowEvidenceModal(false)}
         >
           <div
-            className="evidence-modal-content"
-            style={{
-              background: "var(--surface)",
-              borderRadius: "12px",
-              maxWidth: "780px",
-              width: "100%",
-              maxHeight: "88vh",
-              overflowY: "auto",
-              padding: "1.75rem",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-              border: "1px solid var(--beton)",
-            }}
+            className="modal-dialog laporan-modal"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-incident-title"
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem", borderBottom: "1px solid var(--beton)", paddingBottom: "0.75rem" }}>
+            <div className="laporan-modal-header">
               <div>
-                <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: "0.04em", display: "block" }}>
-                  Sumber tiap klaim
-                </span>
-                <h2 id="modal-incident-title" style={{ margin: "0.25rem 0", fontSize: "1.25rem", color: "var(--tinta-kota)" }}>
+                <span className="eyebrow laporan-modal-eyebrow">Sumber tiap klaim</span>
+                <h2 id="modal-incident-title" className="laporan-modal-title">
                   {selectedProposal.title}
                 </h2>
-                <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--quiet-ink)" }}>
+                <p className="laporan-modal-meta muted">
                   Lokasi: <strong>{selectedProposal.location_label || "DKI Jakarta"}</strong> · Koordinat: <strong>{selectedProposal.coordinates ? `${selectedProposal.coordinates[0].toFixed(4)}, ${selectedProposal.coordinates[1].toFixed(4)}` : "Tercatat"}</strong>
                 </p>
               </div>
               <button
                 type="button"
-                className="feedback-dismiss"
+                className="button button--quiet laporan-modal-close"
                 onClick={() => setShowEvidenceModal(false)}
                 aria-label="Tutup jendela bukti"
-                style={{ fontSize: "1.5rem", background: "transparent", border: "none", cursor: "pointer", padding: "0.25rem 0.5rem" }}
               >
                 ×
               </button>
             </div>
 
             {/* Klaim & Grounding Kutipan Berita */}
-            <section style={{ marginBottom: "1.5rem" }}>
-              <h3 style={{ fontSize: "1rem", color: "var(--tinta-kota)", marginBottom: "0.6rem" }}>
+            <section className="laporan-modal-section">
+              <h3 className="laporan-modal-heading">
                 Klaim ({selectedProposal.claims.length})
               </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+              <div className="laporan-stack">
                 {selectedProposal.claims.map((claim, idx) => (
-                  <div
-                    key={claim.claim_id || `claim-${idx}`}
-                    style={{
-                      background: "#f8fafc",
-                      border: "1px solid var(--beton)",
-                      borderLeft: "3px solid var(--kali-teal)",
-                      borderRadius: "6px",
-                      padding: "0.75rem 0.9rem",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.35rem" }}>
-                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--kali-teal)" }}>
+                  <div key={claim.claim_id || `claim-${idx}`} className="card laporan-claim">
+                    <div className="laporan-claim__top">
+                      <span className="eyebrow">
                         Fakta #{idx + 1}
                       </span>
                     </div>
-                    <p style={{ margin: "0 0 0.4rem", fontWeight: 600, fontSize: "0.92rem", color: "var(--tinta-kota)" }}>
+                    <p className="laporan-claim__text">
                       {claim.claim_text}
                     </p>
                     {claim.source_url && (
-                      <p style={{ margin: "0 0 0.4rem", fontSize: "0.82rem", color: "var(--quiet-ink)" }}>
+                      <p className="laporan-claim__source">
                         Sumber: <a href={claim.source_url} target="_blank" rel="noopener noreferrer">{claim.outlet ?? "Sumber"}</a>
                       </p>
                     )}
                     {claim.quote_text && (
-                      <blockquote style={{ margin: 0, fontSize: "0.84rem", fontStyle: "italic", color: "var(--quiet-ink)", background: "#ffffff", padding: "0.45rem 0.65rem", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
+                      <blockquote className="laporan-quote">
                         "{claim.quote_text}"
                       </blockquote>
                     )}
@@ -841,46 +722,35 @@ export function LaporanPublik({
             </section>
 
             {/* Teks Berita Sumber Asli (Verbatim Chunks) */}
-            <section>
-              <h3 style={{ fontSize: "1rem", color: "var(--tinta-kota)", marginBottom: "0.6rem" }}>
+            <section className="laporan-modal-section">
+              <h3 className="laporan-modal-heading">
                 Kutipan Berita Asli (Grounding Verbatim)
               </h3>
               {relevantChunks.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                <div className="laporan-stack">
                   {relevantChunks.map((chunk, cIdx) => (
-                    <article
-                      key={`chunk-${chunk.chunk_index ?? cIdx}`}
-                      style={{
-                        background: "#fafafa",
-                        border: "1px solid var(--beton)",
-                        borderRadius: "6px",
-                        padding: "0.85rem",
-                        fontSize: "0.875rem",
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      <span style={{ fontSize: "0.72rem", color: "var(--quiet-ink)", textTransform: "uppercase", display: "block", marginBottom: "0.4rem" }}>
+                    <article key={`chunk-${chunk.chunk_index ?? cIdx}`} className="card laporan-chunk">
+                      <span className="laporan-chunk__label">
                         Fragmen Berita #{chunk.chunk_index + 1}
                       </span>
-                      <div style={{ whiteSpace: "pre-wrap", color: "var(--tinta-kota)" }}>
+                      <div className="laporan-chunk__text">
                         {renderHighlightedText(chunk.text, currentQuotes)}
                       </div>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p style={{ fontSize: "0.875rem", color: "var(--quiet-ink)", fontStyle: "italic" }}>
+                <p className="laporan-empty-note">
                   Kutipan teks sumber tidak tersedia pada halaman publik ini. Klik nama sumber pada klaim untuk membaca beritanya.
                 </p>
               )}
             </section>
 
-            <div style={{ marginTop: "1.5rem", textAlign: "right" }}>
+            <div className="laporan-modal-footer">
               <button
                 type="button"
                 className="button button--primary"
                 onClick={() => setShowEvidenceModal(false)}
-                style={{ padding: "0.5rem 1.25rem", borderRadius: "6px" }}
               >
                 Tutup
               </button>
@@ -893,4 +763,3 @@ export function LaporanPublik({
 }
 
 export { LaporanPublik as LaporanPublikDemo };
-

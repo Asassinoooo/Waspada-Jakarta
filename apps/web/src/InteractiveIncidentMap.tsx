@@ -15,6 +15,11 @@ import {
   type NearbyFacility,
 } from "./emergency-facilities.js";
 
+// Browser-only, like the other page stylesheets: keeps the component importable under Node SSR tests.
+if (typeof document !== "undefined") {
+  void import("./incident-map.css");
+}
+
 export interface InteractiveIncidentMapProps {
   /** Incident coordinates [longitude, latitude] */
   readonly coordinates: readonly [longitude: number, latitude: number] | null;
@@ -240,225 +245,11 @@ export function InteractiveIncidentMap({
 
   return (
     <div className="incident-map-wrapper">
-      <style>{`
-        .interactive-incident-map {
-          position: relative;
-          width: 100%;
-          border-radius: 8px;
-          overflow: hidden;
-          background-color: var(--surface);
-          border: 1px solid var(--beton);
-          user-select: none;
-        }
-        .map-tile-layer {
-          position: absolute;
-          pointer-events: none;
-        }
-        .map-tile-img {
-          position: absolute;
-          width: 256px;
-          height: 256px;
-          display: block;
-        }
-        .map-svg-layer {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          pointer-events: none;
-        }
-        .map-facilities-group {
-          pointer-events: auto;
-        }
-        .facility-pin {
-          cursor: pointer;
-        }
-        .incident-pin-marker {
-          pointer-events: auto;
-          cursor: pointer;
-        }
-        .incident-beacon-pulse {
-          animation: incident-beacon-pulse-anim 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
-          stroke: var(--merah-tanda);
-        }
-        @keyframes incident-beacon-pulse-anim {
-          0% {
-            r: 14px;
-            opacity: 0.8;
-          }
-          70% {
-            r: 22px;
-            opacity: 0;
-          }
-          100% {
-            r: 22px;
-            opacity: 0;
-          }
-        }
-        .incident-beacon-inner {
-          stroke: var(--merah-tanda);
-          opacity: 0.8;
-        }
-        .incident-beacon-core {
-          fill: var(--merah-tanda);
-          opacity: 1;
-        }
-        .map-facility-filters {
-          position: absolute;
-          top: 0.5rem;
-          left: 0.5rem;
-          z-index: 5;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.25rem;
-          background: var(--surface);
-          border: 1px solid var(--beton);
-          border-radius: 6px;
-          padding: 0.25rem 0.4rem;
-          box-shadow: 0 1px 3px rgba(24, 50, 58, 0.08);
-          max-width: calc(100% - 1rem);
-          pointer-events: auto;
-        }
-        .facility-filter-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-          font-size: 0.78rem;
-          padding: 0.2rem 0.5rem;
-          border-radius: 4px;
-          border: 1px solid var(--beton);
-          background: var(--hujan-pagi);
-          color: var(--tinta-kota);
-          font-weight: 600;
-          cursor: pointer;
-          line-height: 1.3;
-          touch-action: manipulation;
-          transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-        }
-        .facility-filter-pill:hover {
-          background: var(--beton);
-          border-color: var(--quiet-ink);
-        }
-        .facility-filter-pill--active {
-          background: var(--kali-teal);
-          border-color: var(--kali-teal);
-          color: #FFFFFF;
-        }
-        .facility-filter-pill--active:hover {
-          background: var(--kali-teal);
-          border-color: var(--kali-teal);
-        }
-        .facility-filter-pill:focus-visible,
-        .map-tool-btn:focus-visible {
-          outline: 2px solid var(--kali-teal);
-          outline-offset: 1px;
-        }
-        .map-zoom-controls {
-          position: absolute;
-          bottom: 0.5rem;
-          right: 0.5rem;
-          z-index: 5;
-          display: flex;
-          align-items: center;
-          gap: 2px;
-          background: var(--surface);
-          border: 1px solid var(--beton);
-          border-radius: 6px;
-          padding: 2px;
-          box-shadow: 0 1px 3px rgba(24, 50, 58, 0.08);
-          pointer-events: auto;
-        }
-        .map-tool-btn {
-          width: 28px;
-          height: 28px;
-          border: 0;
-          border-radius: 4px;
-          background: transparent;
-          color: var(--tinta-kota);
-          font-size: 0.95rem;
-          font-weight: bold;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          touch-action: manipulation;
-          transition: background-color 0.15s ease;
-        }
-        .map-tool-btn:hover {
-          background: var(--hujan-pagi);
-        }
-        .map-tool-btn--recenter {
-          width: auto;
-          height: 28px;
-          padding: 0 0.5rem;
-          border-left: 1px solid var(--beton);
-          border-radius: 0 4px 4px 0;
-          color: var(--kali-teal);
-          font-size: 0.78rem;
-          font-weight: 600;
-        }
-        .map-tool-btn--recenter:hover {
-          background: var(--hujan-pagi);
-        }
-        .nearby-facilities-details {
-          margin-top: 0.5rem;
-          padding: 0.5rem 0.75rem;
-          background: var(--soft-panel);
-          border: 1px solid var(--beton);
-          border-radius: 6px;
-          font-size: 0.85rem;
-        }
-        .nearby-facilities-summary {
-          cursor: pointer;
-          font-weight: 600;
-          color: var(--tinta-kota);
-        }
-        .nearby-facilities-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-          gap: 0.4rem;
-          margin-top: 0.5rem;
-        }
-        .nearby-facility-card {
-          padding: 0.35rem 0.5rem;
-          background: var(--surface);
-          border: 1px solid var(--beton);
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background-color 0.15s ease, border-color 0.15s ease;
-        }
-        .nearby-facility-card:hover {
-          background: var(--hujan-pagi);
-          border-color: var(--kali-teal);
-        }
-        .nearby-facility-title {
-          font-weight: 600;
-          color: var(--tinta-kota);
-        }
-        .nearby-facility-meta {
-          color: var(--quiet-ink);
-          font-size: 0.78rem;
-        }
-        @media (max-width: 480px) {
-          .map-facility-filters {
-            gap: 0.2rem;
-            padding: 0.2rem 0.3rem;
-          }
-          .facility-filter-pill {
-            font-size: 0.72rem;
-            padding: 0.18rem 0.4rem;
-          }
-        }
-      `}</style>
       <div
-        className="interactive-incident-map"
+        className={`interactive-incident-map${isDragging ? " interactive-incident-map--dragging" : ""}`}
         data-testid="interactive-incident-map"
         ref={containerRef}
-        style={{
-          height: `${mapHeight}px`,
-          cursor: isDragging ? "grabbing" : "grab",
-        }}
+        style={{ height: `${mapHeight}px` }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -512,12 +303,6 @@ export function InteractiveIncidentMap({
                 return null;
               }
               const isSelected = activeSelectedId === facility.id;
-              const badgeBg =
-                facility.kind === "hospital"
-                  ? "var(--merah-tanda)"
-                  : facility.kind === "police"
-                  ? "var(--kali-teal)"
-                  : "var(--kuning-perhatian)";
 
               return (
                 <g
@@ -535,8 +320,6 @@ export function InteractiveIncidentMap({
                     cx="0"
                     cy="0"
                     r={isSelected ? 14 : 9}
-                    fill={badgeBg}
-                    stroke="#FFFFFF"
                     strokeWidth={isSelected ? 3 : 1.5}
                     className="facility-pin-circle"
                   />
@@ -570,8 +353,6 @@ export function InteractiveIncidentMap({
                 cy="0"
                 r="18"
                 className="incident-beacon-pulse"
-                fill="none"
-                stroke="var(--merah-tanda)"
                 strokeWidth="2"
                 opacity="0.6"
               />
@@ -580,8 +361,6 @@ export function InteractiveIncidentMap({
                 cy="0"
                 r="14"
                 className="incident-beacon-inner"
-                fill="none"
-                stroke="var(--merah-tanda)"
                 strokeWidth="1.5"
                 opacity="0.8"
               />
@@ -590,8 +369,6 @@ export function InteractiveIncidentMap({
                 cy="0"
                 r="11"
                 className="incident-beacon-core"
-                fill="var(--merah-tanda)"
-                stroke="#FFFFFF"
                 strokeWidth="2"
               />
               <text
@@ -610,15 +387,12 @@ export function InteractiveIncidentMap({
                   width="130"
                   height="20"
                   rx="4"
-                  fill="var(--tinta-kota)"
-                  stroke="var(--beton)"
                   strokeWidth="1"
                 />
                 <text
                   x="0"
                   y="2"
                   textAnchor="middle"
-                  fill="#FFFFFF"
                   fontSize="10"
                   fontWeight="600"
                 >
@@ -638,7 +412,7 @@ export function InteractiveIncidentMap({
         >
           <button
             type="button"
-            className={`facility-filter-pill ${activeFacilityFilter === "all" ? "facility-filter-pill--active" : ""}`}
+            className={`filter-pill facility-filter-pill ${activeFacilityFilter === "all" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("all")}
             aria-pressed={activeFacilityFilter === "all"}
             title="Semua Fasilitas"
@@ -648,7 +422,7 @@ export function InteractiveIncidentMap({
           </button>
           <button
             type="button"
-            className={`facility-filter-pill ${activeFacilityFilter === "hospital" ? "facility-filter-pill--active" : ""}`}
+            className={`filter-pill facility-filter-pill ${activeFacilityFilter === "hospital" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("hospital")}
             aria-pressed={activeFacilityFilter === "hospital"}
             title="Rumah Sakit"
@@ -658,7 +432,7 @@ export function InteractiveIncidentMap({
           </button>
           <button
             type="button"
-            className={`facility-filter-pill ${activeFacilityFilter === "police" ? "facility-filter-pill--active" : ""}`}
+            className={`filter-pill facility-filter-pill ${activeFacilityFilter === "police" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("police")}
             aria-pressed={activeFacilityFilter === "police"}
             title="Kepolisian"
@@ -668,7 +442,7 @@ export function InteractiveIncidentMap({
           </button>
           <button
             type="button"
-            className={`facility-filter-pill ${activeFacilityFilter === "fire_station" ? "facility-filter-pill--active" : ""}`}
+            className={`filter-pill facility-filter-pill ${activeFacilityFilter === "fire_station" ? "facility-filter-pill--active" : ""}`}
             onClick={() => setActiveFacilityFilter("fire_station")}
             aria-pressed={activeFacilityFilter === "fire_station"}
             title="Pemadam Kebakaran"

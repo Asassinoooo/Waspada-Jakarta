@@ -81,6 +81,19 @@ test("#jelajah renders the published version with the honest badge and no invent
   assert.doesNotMatch(html, /2 Sumber \(/);
   assert.doesNotMatch(html, /Laporan Publik Terverifikasi/);
   assert.doesNotMatch(html, /Laporan Terverifikasi/);
+  assert.match(html, /event-card__dataset-label badge badge--info/, "AI summaries use the informational badge variant");
+});
+
+test("#jelajah intro states the publication path and claims neither verification nor corroboration", () => {
+  const moderated = publicEventToCard(publishedEvent({ mode: "moderator_reviewed", source_count: 1 }));
+  const html = renderToStaticMarkup(createElement(LaporanPublik, { initialProposals: [moderated], initialSelectedId: moderated.proposal_id }));
+  assert.match(html, /<h1[^>]*>Laporan Publik<\/h1>/);
+  assert.match(html, /disusun otomatis oleh agen AI dari sumber-sumbernya/);
+  assert.match(html, /setelah lolos pemeriksaan aturan otomatis atau setelah ditinjau moderator/);
+  assert.match(html, /Setiap klaim menautkan sumbernya/);
+  assert.match(html, /Ditinjau moderator · dilaporkan oleh 1 media/);
+  assert.match(html, /event-card__dataset-label badge badge--accent/, "moderator-reviewed versions use the accent badge variant");
+  assert.doesNotMatch(html, /terverifikasi|verifikasi multi-sumber|independen|terkonfirmasi/iu);
 });
 
 test("the public page reads only the published events endpoint, never the moderation queue", () => {
