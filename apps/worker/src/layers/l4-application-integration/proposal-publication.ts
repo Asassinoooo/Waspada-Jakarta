@@ -9,8 +9,10 @@ import type { SqlExecutor } from "../../../../db/src/sql.js";
 import type { EventProposalDto } from "./moderation-api.js";
 import { PublicReadModel, proposalToEventDetail, publicEventIdForProposal } from "./public-read-model.js";
 import {
-  assessAutoPublication,
   assessProposalSourceGate,
+  evaluateAutoPublication,
+  type AutoPublicationWaiver,
+  type AutoPublishSourcePermission,
   type ProposalGateReason,
 } from "./publication-policy.js";
 
@@ -105,7 +107,9 @@ async function resolvePublicDisplay(
 
 /**
  * Applies one decision to one proposal.
- * - auto_publish: runs assessAutoPublication. A failing check queues the proposal for a moderator.
+ * - auto_publish: runs evaluateAutoPublication. A failing check queues the proposal for a moderator.
+ *   `sourcePermission: "local_relaxed"` (local live mode only, ADR-061 amendment) skips only the
+ *   public-display permission check, and the waiver is recorded on the decision and the public version.
  * - publish: a moderator decision. It runs the source gate (schema, links, rights) and does not
  *   require a clean discrepancy status, because the moderator has reviewed it.
  * - reject: records a rejection and never publishes.
@@ -118,6 +122,8 @@ export async function decideProposal(
     readonly action: ProposalDecisionAction;
     readonly actor: PublicationActor;
     readonly reason?: string;
+    /** Read only for auto_publish. Omitted means `required`, so the permission check applies. */
+    readonly sourcePermission?: AutoPublishSourcePermission;
   },
 ): Promise<ProposalDecisionOutcome> {
   const { executor, datasetKind } = dependencies;
@@ -169,9 +175,11 @@ export async function decideProposal(
   const publicDisplaySourceIds = await resolvePublicDisplay(dependencies, proposal);
   const gateOptions = { publicDisplaySourceIds };
 
+  let waivers: readonly AutoPublicationWaiver[] = [];
   if (input.action === "auto_publish") {
-    const reasons = assessAutoPublication(proposal, gateOptions);
-    if (reasons.length > 0) return { status: "queued", reasons };
+    const assessment = evaluateAutoPublication(proposal, { ...gateOptions, sourcePermission: input.sourcePermission });
+    if (assessment.reasons.length > 0) return { status: "queued", reasons: assessment.reasons };
+    waivers = assessment.waivers;
   } else {
     const reasons = assessProposalSourceGate(proposal, gateOptions);
     if (reasons.length > 0) return { status: "denied", code: "publication_not_authorized", reasons };
@@ -192,7 +200,7 @@ export async function decideProposal(
   try {
     detail = proposalToEventDetail(proposal, undefined, {
       version,
-      publication: { mode: publicationMode, source_count: sourceCount },
+      publication: { mode: publicationMode, source_count: sourceCount, ...(waivers.length > 0 ? { waivers } : {}) },
     });
   } catch {
     return { status: "denied", code: "publication_failed" };
@@ -224,6 +232,7 @@ export async function decideProposal(
             gate: input.action === "auto_publish" ? "agent_auto_publication" : "moderator_review",
             source_count: sourceCount,
             reason: input.reason ?? null,
+            ...(waivers.length > 0 ? { waivers } : {}),
           }),
         ],
       );

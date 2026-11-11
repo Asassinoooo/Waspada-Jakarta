@@ -4,6 +4,9 @@ import { createModerationApiHandler } from "../src/layers/l4-application-integra
 import {
   assessAutoPublication,
   assessProposalSourceGate,
+  evaluateAutoPublication,
+  parseAutoPublishSourcePermission,
+  SOURCE_PERMISSION_WAIVED_LOCAL,
 } from "../src/layers/l4-application-integration/publication-policy.js";
 
 /** MERGE-REVIEW-01 (ADR-061): deterministic gate and the moderation reject rule. No database. */
@@ -132,6 +135,57 @@ test("moderator source gate ignores a discrepancy, but still requires source lin
 
   const unlinked = withClaims([{ ...(clean().claims as Record<string, unknown>[])[0], source_url: null }]);
   assert.ok(assessProposalSourceGate(unlinked, PERMITTED).includes("claim_source_link_missing"));
+});
+
+/* ADR-061 amendment: local live mode may waive only the public-display permission check. */
+
+const UNPERMITTED = withClaims([{ ...(clean().claims as Record<string, unknown>[])[0], source_id: "source-bmkg-unlicensed" }]);
+
+test("source permission parser fails closed: only the exact value local_relaxed relaxes the check", () => {
+  for (const value of [undefined, null, "", "required", "LOCAL_RELAXED", "local-relaxed", "yes", " local_relaxed"]) {
+    assert.equal(parseAutoPublishSourcePermission(value), "required", `value ${JSON.stringify(value)} must mean required`);
+  }
+  assert.equal(parseAutoPublishSourcePermission("local_relaxed"), "local_relaxed");
+});
+
+test("auto gate without a sourcePermission keeps the permission check and records no waiver", () => {
+  const assessment = evaluateAutoPublication(UNPERMITTED, PERMITTED);
+  assert.ok(assessment.reasons.includes("source_rights_missing"));
+  assert.deepEqual(assessment.waivers, []);
+});
+
+test("local_relaxed passes an unpermitted source, and records the waiver", () => {
+  const assessment = evaluateAutoPublication(UNPERMITTED, {
+    ...PERMITTED,
+    sourcePermission: parseAutoPublishSourcePermission("local_relaxed"),
+  });
+  assert.deepEqual(assessment.reasons, []);
+  assert.deepEqual(assessment.waivers, [SOURCE_PERMISSION_WAIVED_LOCAL]);
+});
+
+test("local_relaxed records no waiver when every source already has permission", () => {
+  const assessment = evaluateAutoPublication(clean(), { ...PERMITTED, sourcePermission: "local_relaxed" });
+  assert.deepEqual(assessment.reasons, []);
+  assert.deepEqual(assessment.waivers, [], "nothing was skipped, so nothing is recorded");
+});
+
+test("local_relaxed still queues a flagged discrepancy", () => {
+  const flagged = { ...UNPERMITTED, has_discrepancy: true, discrepancy_summary: "Ada perbedaan.", discrepancies: [{ kind: "water_height" }] };
+  const assessment = evaluateAutoPublication(flagged, { ...PERMITTED, sourcePermission: "local_relaxed" });
+  assert.ok(assessment.reasons.includes("discrepancy_flagged"));
+});
+
+test("local_relaxed still queues a claim without a source link", () => {
+  const unlinked = withClaims([{
+    ...(UNPERMITTED.claims as Record<string, unknown>[])[0],
+    source_url: null,
+  }]);
+  const assessment = evaluateAutoPublication(unlinked, { ...PERMITTED, sourcePermission: "local_relaxed" });
+  assert.ok(assessment.reasons.includes("claim_source_link_missing"));
+});
+
+test("local_relaxed does not reach the moderator source gate", () => {
+  assert.ok(assessProposalSourceGate(UNPERMITTED, PERMITTED).includes("source_rights_missing"));
 });
 
 function moderationHandler(extra: Record<string, unknown> = {}) {

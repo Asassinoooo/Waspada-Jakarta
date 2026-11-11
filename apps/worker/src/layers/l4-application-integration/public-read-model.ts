@@ -574,6 +574,8 @@ export interface EventPublicationMetadata {
   readonly mode: "agent_auto" | "moderator_reviewed";
   /** Distinct publishers counted once, so syndicated copies do not add up. */
   readonly source_count: number;
+  /** ADR-061 amendment: checks waived for local live mode, e.g. `source_permission_waived_local`. Absent otherwise. */
+  readonly waivers?: readonly string[];
 }
 
 export function publicEventIdForProposal(proposal: EventProposalDto): string {

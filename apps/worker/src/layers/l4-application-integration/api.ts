@@ -55,6 +55,11 @@ export interface WorkerEnvironment {
   INTERNAL_SERVICE_KEY?: string;
   /** Shared secret for webhook ingest (`x-service-key`). Unset means the route answers 503. */
   WEBHOOK_SERVICE_KEY?: string;
+  /**
+   * ADR-061 amendment: `local_relaxed` waives only the automatic gate's public-display permission check.
+   * Set only by serve:live on 127.0.0.1. Unset or any other value means `required`.
+   */
+  AUTO_PUBLISH_SOURCE_PERMISSION?: string;
   SQL_EXECUTOR?: SqlExecutor;
   /** WJ-INT-02A live triage transport (Worker bindings; secrets via dashboard/wrangler secret). */
   NINEROUTER_URL?: string;
