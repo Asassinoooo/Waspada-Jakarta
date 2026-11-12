@@ -2,17 +2,12 @@
   padding-top: var(--space-8);
 }
 
-.help-page__intro,
 .help-page__navigation,
 .help-page__operator {
   width: min(100%, 76rem);
   min-width: 0;
   margin-right: auto;
   margin-left: auto;
-}
-
-.help-page__intro {
-  margin-bottom: var(--space-2);
 }
 
 .help-page__navigation,

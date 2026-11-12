@@ -195,8 +195,6 @@
   min-height: 2.75rem;
 }
 
-.help-page__replay { margin: var(--space-3) 0 0; }
-
 /* First-visit intro (OnboardingIntro). */
 .intro-dialog { width: min(34rem, 100%); }
 

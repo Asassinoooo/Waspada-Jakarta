@@ -172,12 +172,16 @@ export function BriefingResultsView({ context, interests, state, onRequest }: Br
       ) : responseState.status === "idle" ? (
         <div className="briefing-idle">
           <p className="briefing-status" role="status">Briefing belum diminta. Minat hanya dikirim setelah Anda memilih tombol berikut.</p>
-          <button className="button button--primary" type="button" onClick={onRequest}>Tampilkan ringkasan</button>
+          <button className="button" type="button" onClick={onRequest}>Tampilkan ringkasan</button>
         </div>
       ) : responseState.status === "loading" ? (
         <div className="briefing-loading" role="status" aria-live="polite" aria-busy="true">
           <p className="briefing-status">Memuat briefing live…</p>
-          <button className="button button--primary" type="button" disabled>Tunggu sebentar…</button>
+          <div className="skeleton-stack" aria-hidden="true">
+            <span className="skeleton" />
+            <span className="skeleton skeleton--short" />
+          </div>
+          <button className="button" type="button" disabled>Tunggu sebentar…</button>
         </div>
       ) : responseState.status === "unavailable" ? (
         <div className="briefing-error" role="alert">

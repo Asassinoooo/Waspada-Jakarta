@@ -1476,7 +1476,7 @@ function renderReadOnlyFixture(): React.JSX.Element {
         </section>
 
         <div className="review-map">
-          <MapPanel selection={{ kind: "presentation" }} onReturnToList={() => { window.location.hash = "#jelajah"; }} />
+          <MapPanel selection={{ kind: "presentation" }} onReturnToList={() => { window.location.hash = "#peta"; }} />
           <p className="map-review-note">Segmen route ini adalah geometri sintetik dokumentasi; basis ketelitian fixture: unknown.</p>
         </div>
       </div>

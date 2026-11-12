@@ -283,7 +283,7 @@ export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPag
       </section>
 
       <nav className="experience-actions" aria-label="Tautan privasi">
-        <a className="experience-action experience-action--primary" href="#jelajah">Kembali ke laporan</a>
+        <a className="experience-action experience-action--quiet" href="#peta">Kembali ke laporan</a>
         <a className="experience-action experience-action--quiet" href="#ringkasan-saya">Periksa minat tersimpan</a>
       </nav>
     </>

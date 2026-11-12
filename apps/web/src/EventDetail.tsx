@@ -97,7 +97,7 @@ function PresentationDetail() {
             </div>
           </div>
 
-          <MapPanel selection={{ kind: "presentation" }} onReturnToList={() => { window.location.hash = "#jelajah"; }} />
+          <MapPanel selection={{ kind: "presentation" }} onReturnToList={() => { window.location.hash = "#peta"; }} />
         </section>
       </div>
 
@@ -217,7 +217,7 @@ function ApiEventDetail({
         <section className="state-panel" role="status">
           <strong>Record contoh tidak ditemukan.</strong>
           <p>API demo tidak menyediakan record untuk ID ini.</p>
-          <a className="text-link" href="#jelajah">Kembali ke daftar</a>
+          <a className="text-link" href="#peta">Kembali ke daftar</a>
         </section>
       )}
       {detail.status === "unavailable" && (
@@ -319,7 +319,7 @@ function ApiEventDetail({
           <div className="detail-columns detail-columns--bottom">
             <MapPanel
               selection={{ kind: "api-event", event }}
-              onReturnToList={onBackToList ?? (() => { window.location.hash = "#jelajah"; })}
+              onReturnToList={onBackToList ?? (() => { window.location.hash = "#peta"; })}
             />
             <ApiHistory state={history} onRetry={onRetryHistory} />
           </div>
@@ -351,7 +351,7 @@ export function EventDetail({ mode, apiDetail, apiHistory, onRetryDetail, onRetr
   if (variant === "sheet") return <div className="event-detail-sheet">{body}</div>;
   return (
     <main id="main-content" className="main-shell detail-page">
-      <a className="back-link" href="#jelajah">Kembali ke daftar</a>
+      <a className="back-link" href="#peta">Kembali ke daftar</a>
       {body}
     </main>
   );

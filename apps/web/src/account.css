@@ -5,18 +5,6 @@
   padding-top: var(--space-8);
 }
 
-.account-page__intro {
-  min-width: 0;
-  max-width: 100%;
-  margin: 0 0 var(--space-4);
-}
-
-.account-page__intro h1 {
-  min-width: 0;
-  max-width: 24ch;
-  overflow-wrap: anywhere;
-}
-
 .account-page > .state-panel,
 .account-page > .state-panel > * {
   min-width: 0;
@@ -89,12 +77,6 @@
 .account-card dd {
   overflow-wrap: anywhere;
   white-space: normal;
-}
-
-.account-privacy-link {
-  margin: 0;
-  color: var(--quiet-ink);
-  font-size: var(--text-sm);
 }
 
 .account-message {
@@ -354,22 +336,6 @@
 .account-user-row__editor label:nth-of-type(3),
 .account-user-row__editor button {
   grid-column: 1 / -1;
-}
-
-.admin-shell-tools {
-  display: flex;
-  width: min(100% - 2rem, 88rem);
-  justify-content: flex-end;
-  gap: var(--space-2) var(--space-4);
-  flex-wrap: wrap;
-  margin: var(--space-3) auto;
-  font-weight: var(--weight-semibold);
-}
-
-.admin-shell-tools a {
-  min-height: 2.5rem;
-  display: inline-flex;
-  align-items: center;
 }
 
 @media (max-width: 900px) {

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel } from "./display.js";
 import { BriefingResults } from "./BriefingResults.js";
+import { PageHeader } from "./ui/PageHeader.js";
 import {
   addInterestValue,
   browserPreferencesStorage,
@@ -179,136 +180,135 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
 
   return (
     <main id="main-content" className="main-shell preferences-page">
-      <section className="page-intro" aria-labelledby="preferences-title">
-        <div>
-          <p className="section-kicker">Minat di perangkat ini</p>
-          <h1 id="preferences-title">Ringkasan saya</h1>
-        </div>
-        <p className="page-intro__copy">
-          Periksa dan ubah minat yang ingin Anda simpan untuk browser ini.
-        </p>
-      </section>
+      <div className="page-column">
+        <PageHeader
+          eyebrow="Minat di perangkat ini"
+          title="Ringkasan saya"
+          titleId="preferences-title"
+          lead="Periksa dan ubah minat yang ingin Anda simpan untuk browser ini."
+        />
 
-      <section className="preferences-privacy" aria-label="Penyimpanan minat">
-        <strong>Minat tetap di browser ini.</strong>
-        <p>
-          Minat dikirim ke layanan hanya saat Anda meminta briefing dan tidak disimpan oleh layanan. Menghapus data browser juga menghapus minat tersimpan di sini.
-        </p>
-      </section>
-
-      <BriefingResults
-        context={context}
-        interests={state.interests}
-        contextSnapshotId={contextSnapshotId}
-      />
-
-      {state.feedback && (
-        <p className="preferences-feedback" role={state.feedback.kind === "error" ? "alert" : "status"}>
-          {state.feedback.text}
-        </p>
-      )}
-
-      {unreadable ? (
-        <section className="preferences-recovery" aria-labelledby="preferences-recovery-title">
-          <div>
-            <h2 id="preferences-recovery-title">Data minat perlu dipulihkan</h2>
-            <p>
-              Isi yang tersimpan mungkin rusak atau memakai versi yang tidak dikenal. Minat lama belum diubah.
-              Hapus data minat tersimpan secara eksplisit jika Anda ingin mulai dengan formulir kosong.
-            </p>
-          </div>
-          <button className="button button--quiet" type="button" onClick={clear}>
-            Hapus data minat tersimpan dan mulai lagi
-          </button>
+        <section className="preferences-privacy" aria-label="Penyimpanan minat">
+          <strong>Minat tetap di browser ini.</strong>
+          <p>
+            Minat dikirim ke layanan hanya saat Anda meminta briefing dan tidak disimpan oleh layanan. Menghapus data browser juga menghapus minat tersimpan di sini.
+          </p>
         </section>
-      ) : (
-        <>
-          <section className="preferences-grid" aria-label="Minat tempat dan layanan">
-            {TEXT_INTEREST_FIELDS.map((field) => {
-              const copy = TEXT_FIELD_COPY[field];
-              const values = state.interests[field];
-              const inputId = "interest-" + field;
-              const helpId = inputId + "-help";
-              const errorId = inputId + "-error";
-              const fieldMessage = fieldMessages[field];
-              return (
-                <section className="preference-card" key={field} aria-labelledby={inputId + "-title"}>
-                  <h2 id={inputId + "-title"}>{copy.label}</h2>
-                  <p id={helpId} className="preference-card__help">{copy.help}</p>
-                  <form className="preference-entry" onSubmit={(event) => addValue(field, event)}>
-                    <label htmlFor={inputId}>Tambah {copy.label.toLocaleLowerCase("id-ID")}</label>
-                    <div className="preference-entry__controls">
-                      <input
-                        id={inputId}
-                        name={field}
-                        type="text"
-                        value={drafts[field]}
-                        aria-describedby={fieldMessage ? helpId + " " + errorId : helpId}
-                        aria-invalid={fieldMessage ? true : undefined}
-                        onChange={(event) => {
-                          setDrafts((current) => ({ ...current, [field]: event.target.value }));
-                          setFieldMessages((current) => ({ ...current, [field]: undefined }));
-                        }}
-                      />
-                      <button className="button button--quiet" type="submit">Tambah</button>
-                    </div>
-                    <p className="preference-limit">
-                      {values.length}/{MAX_TEXT_INTERESTS} minat · maksimal {MAX_INTEREST_CHARACTERS} karakter Unicode per nilai
-                    </p>
-                    {fieldMessage && <p className="preference-field-error" id={errorId} role="alert">{fieldMessage}</p>}
-                  </form>
-                  {values.length === 0 ? (
-                    <p className="preference-empty">Belum ada minat untuk {copy.label.toLocaleLowerCase("id-ID")}.</p>
-                  ) : (
-                    <ul className="preference-values" aria-label={"Minat " + copy.label.toLocaleLowerCase("id-ID")}>
-                      {values.map((value, index) => (
-                        <li className="preference-value" key={value + "-" + index}>
-                          <span>{value}</span>
-                          <button
-                            className="preference-value__remove"
-                            type="button"
-                            aria-label={"Hapus " + value + " dari " + copy.label}
-                            onClick={() => removeValue(field, index)}
-                          >
-                            Hapus
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              );
-            })}
-          </section>
 
-          <fieldset className="preference-card preference-categories">
-            <legend>Kategori yang diikuti</legend>
-            <p className="preference-card__help">
-              Pilih sampai {MAX_CATEGORIES} kategori yang tersedia dalam kontrak briefing.
-            </p>
-            <div className="preference-category-grid">
-              {CATEGORY_VALUES.map((category) => (
-                <label className="preference-category" key={category}>
-                  <input
-                    type="checkbox"
-                    name="categories"
-                    value={category}
-                    checked={state.interests.categories.includes(category)}
-                    onChange={(event) => toggleCategory(category, event.target.checked)}
-                  />
-                  <span>{categoryLabel(category)}</span>
-                </label>
-              ))}
+        <BriefingResults
+          context={context}
+          interests={state.interests}
+          contextSnapshotId={contextSnapshotId}
+        />
+
+        {state.feedback && (
+          <p className="preferences-feedback" role={state.feedback.kind === "error" ? "alert" : "status"}>
+            {state.feedback.text}
+          </p>
+        )}
+
+        {unreadable ? (
+          <section className="preferences-recovery" aria-labelledby="preferences-recovery-title">
+            <div>
+              <h2 id="preferences-recovery-title">Data minat perlu dipulihkan</h2>
+              <p>
+                Isi yang tersimpan mungkin rusak atau memakai versi yang tidak dikenal. Minat lama belum diubah.
+                Hapus data minat tersimpan secara eksplisit jika Anda ingin mulai dengan formulir kosong.
+              </p>
             </div>
-            <p className="preference-limit">{state.interests.categories.length}/{MAX_CATEGORIES} kategori dipilih</p>
-          </fieldset>
+            <button className="button button--quiet" type="button" onClick={clear}>
+              Hapus data minat tersimpan dan mulai lagi
+            </button>
+          </section>
+        ) : (
+          <>
+            <section className="preferences-grid" aria-label="Minat tempat dan layanan">
+              {TEXT_INTEREST_FIELDS.map((field) => {
+                const copy = TEXT_FIELD_COPY[field];
+                const values = state.interests[field];
+                const inputId = "interest-" + field;
+                const helpId = inputId + "-help";
+                const errorId = inputId + "-error";
+                const fieldMessage = fieldMessages[field];
+                return (
+                  <section className="preference-card" key={field} aria-labelledby={inputId + "-title"}>
+                    <h2 id={inputId + "-title"}>{copy.label}</h2>
+                    <p id={helpId} className="preference-card__help">{copy.help}</p>
+                    <form className="preference-entry" onSubmit={(event) => addValue(field, event)}>
+                      <label htmlFor={inputId}>Tambah {copy.label.toLocaleLowerCase("id-ID")}</label>
+                      <div className="preference-entry__controls">
+                        <input
+                          id={inputId}
+                          name={field}
+                          type="text"
+                          value={drafts[field]}
+                          aria-describedby={fieldMessage ? helpId + " " + errorId : helpId}
+                          aria-invalid={fieldMessage ? true : undefined}
+                          onChange={(event) => {
+                            setDrafts((current) => ({ ...current, [field]: event.target.value }));
+                            setFieldMessages((current) => ({ ...current, [field]: undefined }));
+                          }}
+                        />
+                        <button className="button button--quiet" type="submit">Tambah</button>
+                      </div>
+                      <p className="preference-limit">
+                        {values.length}/{MAX_TEXT_INTERESTS} minat · maksimal {MAX_INTEREST_CHARACTERS} karakter Unicode per nilai
+                      </p>
+                      {fieldMessage && <p className="preference-field-error" id={errorId} role="alert">{fieldMessage}</p>}
+                    </form>
+                    {values.length === 0 ? (
+                      <p className="preference-empty">Belum ada minat untuk {copy.label.toLocaleLowerCase("id-ID")}.</p>
+                    ) : (
+                      <ul className="preference-values" aria-label={"Minat " + copy.label.toLocaleLowerCase("id-ID")}>
+                        {values.map((value, index) => (
+                          <li className="preference-value" key={value + "-" + index}>
+                            <span>{value}</span>
+                            <button
+                              className="preference-value__remove"
+                              type="button"
+                              aria-label={"Hapus " + value + " dari " + copy.label}
+                              onClick={() => removeValue(field, index)}
+                            >
+                              Hapus
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
+            </section>
 
-          <div className="preferences-actions">
-            <button className="button button--primary" type="button" onClick={save}>Simpan di perangkat ini</button>
-            <button className="button button--quiet" type="button" onClick={clear}>Hapus semua minat</button>
-          </div>
-        </>
-      )}
+            <fieldset className="preference-card preference-categories">
+              <legend>Kategori yang diikuti</legend>
+              <p className="preference-card__help">
+                Pilih sampai {MAX_CATEGORIES} kategori yang tersedia dalam kontrak briefing.
+              </p>
+              <div className="preference-category-grid">
+                {CATEGORY_VALUES.map((category) => (
+                  <label className="preference-category" key={category}>
+                    <input
+                      type="checkbox"
+                      name="categories"
+                      value={category}
+                      checked={state.interests.categories.includes(category)}
+                      onChange={(event) => toggleCategory(category, event.target.checked)}
+                    />
+                    <span>{categoryLabel(category)}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="preference-limit">{state.interests.categories.length}/{MAX_CATEGORIES} kategori dipilih</p>
+            </fieldset>
+
+            <div className="preferences-actions">
+              <button className="button button--primary" type="button" onClick={save}>Simpan di perangkat ini</button>
+              <button className="button button--quiet" type="button" onClick={clear}>Hapus semua minat</button>
+            </div>
+          </>
+        )}
+      </div>
     </main>
   );
 }
