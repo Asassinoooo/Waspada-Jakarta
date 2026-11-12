@@ -1,0 +1,42 @@
+@startuml fig-3-6-freshness-state-machine
+' Figure 3.6: freshness state machine. Freshness is separate from lifecycle, evidence status and user relevance.
+' Transition reasons match freshness_transitions (migrations 024, 034) and freshness-transition-policy.ts.
+!pragma layout smetana
+skinparam dpi 150
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam state {
+  BackgroundColor white
+  BorderColor black
+  ArrowColor black
+}
+
+title Figure 3.6 - Freshness state machine (current, needs_update, expired)
+
+state "current" as current
+state "needs_update" as needs_update
+state "expired" as expired
+
+[*] --> current : version published\n(starts current)
+
+current --> needs_update : review_due_at passed\n(review_deadline_missed)
+current --> needs_update : source report retracted,\nsuperseded or withdrawn\n(live dataset)
+current --> expired : issuer valid_until reached\n(issuer_validity_ended)
+needs_update --> expired : issuer valid_until reached\n(issuer_validity_ended)
+needs_update --> current : new applicable evidence\nevaluated
+expired --> current : new applicable evidence\nevaluated
+
+note right of expired
+  Only the issuer's validity window
+  sets expired. Expired never means
+  resolved, safe or no longer relevant.
+end note
+
+note bottom of needs_update
+  A passed review deadline or withdrawn
+  support. It does not prove the event ended.
+end note
+
+@enduml

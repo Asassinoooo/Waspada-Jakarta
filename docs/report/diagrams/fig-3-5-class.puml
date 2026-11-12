@@ -1,0 +1,147 @@
+@startuml fig-3-5-class
+' Figure 3.5: key domain objects and the database tables that hold them (as built, migrations 001-047).
+' Names are real table and column names. Fields in record_json are marked as such.
+!pragma layout smetana
+skinparam dpi 150
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor white
+  BorderColor black
+  ArrowColor black
+}
+
+title Figure 3.5 - Class diagram: key domain objects and their tables
+
+class Source <<source_registry>> {
+  source_id
+  source_kind
+  access_method
+  approval_status
+  auto_publication_policy
+  reuse_license_url, reuse_scope (043)
+}
+
+class ReportRevision <<report_revisions>> {
+  report_revision_id
+  content_hash (sha-256, immutable)
+  permitted_text_hash
+  published_at, observed_at
+}
+
+class EvidenceChunk <<evidence_chunks>> {
+  chunk_id
+  span_start, span_end (code points)
+  chunk_text_hash
+  status: active | invalidated
+}
+
+class Embedding <<embedding_runs>> {
+  model_version
+  dimensions: 768
+  distance_metric: cosine
+}
+
+class AiJob <<ai_jobs>> {
+  job_id
+  status: pending | leased | retry | completed | terminal
+  attempt_count (max 5)
+  checkpoint_json (046)
+}
+
+class CorrelationDecision <<incident_correlation_decisions>> {
+  decision: same_incident | new_incident | unresolved
+  reasoning
+  evidence_quotes
+}
+
+class Incident <<incidents>> {
+  incident_id
+  status, severity
+  first_observed_at, last_updated_at
+  discrepancies
+}
+
+class EventProposal <<event_proposals>> {
+  proposal_id
+  correlation_relationship (record_json): primary_initial | corroborating | unresolved
+  has_discrepancy, discrepancy_summary (record_json)
+  source_count: distinct publishers (record_json)
+}
+
+class ProposalClaim <<proposal_claims>> {
+  claim_id
+  evidence_label: issuer_notice | attributed_report | crowdsourced_observation | independent_corroboration
+  support_assessment: supported | uncertain | disputed
+  claim_text
+}
+
+note right of ProposalClaim
+  AI sets issuer_notice (BMKG), crowdsourced_observation
+  (PetaBencana) or attributed_report (others). Only a
+  moderator may choose independent_corroboration.
+end note
+
+class PublicationDecision <<publication_decisions>> {
+  decision_id
+  policy_version
+  reviewer_id, decided_at
+  disposition (record_json): publish | reject | expire
+  actor_kind: agent | moderator
+  actor_id
+}
+
+class EventVersion <<event_versions>> {
+  event_id, version
+  title, summary, category
+  lifecycle, publication_status
+}
+
+class EventClaim <<event_claims>> {
+  claim_id
+  evidence_label
+  claim_text
+}
+
+class ImpactVersion <<impact_versions>> {
+  impact_id, version
+  event_id, event_version
+}
+
+class FreshnessTransition <<freshness_transitions>> {
+  previous_status, resulting_status
+  reason
+}
+
+class Account <<accounts>> {
+  account_id
+  username, password_hash (PBKDF2-SHA256)
+  role: user | moderator | admin
+  active
+}
+
+class AccountSession <<account_sessions>> {
+  token_sha256
+  csrf_token
+  channel: web | mobile
+}
+
+Source "1" -- "0..*" ReportRevision : source_id
+ReportRevision "1" -- "0..*" EvidenceChunk : chunks
+EvidenceChunk "1" -- "0..1" Embedding : vector
+AiJob "0..*" -- "1" ReportRevision : one job per revision
+ReportRevision "1" -- "0..*" CorrelationDecision
+CorrelationDecision "0..*" -- "0..1" Incident : target
+Incident "1" -- "0..*" EventProposal : incident_id
+EventProposal "1" *-- "1..*" ProposalClaim
+EventProposal "1" -- "0..1" PublicationDecision : first disposition wins
+PublicationDecision "0..1" -- "0..1" EventVersion : publish only
+EventVersion "1" *-- "0..*" EventClaim
+EventVersion "1" *-- "0..*" ImpactVersion
+EventVersion "1" -- "0..*" FreshnessTransition : event_id, version
+Account "1" -- "0..*" AccountSession
+
+@enduml

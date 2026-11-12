@@ -1,0 +1,83 @@
+@startuml fig-3-7-component
+' Figure 3.7: component diagram of the as-built modules, grouped by workspace package.
+' Dashed links are not on the live path. The L3 investigation module is tested but not wired in.
+!pragma layout smetana
+skinparam dpi 150
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam packageStyle rectangle
+skinparam component {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam ArrowColor black
+
+title Figure 3.7 - Component diagram: as-built modules and interfaces
+
+package "apps/web" as WEB {
+  component "Public map and detail\nMapHome, MapPanel, EventDetail" as C_MAP
+  component "Admin workspace (#admin/*)\nModeratorReview, PipelineFlow,\nEmbedding3DVisualization" as C_ADMIN
+  component "Account pages (#masuk, #akun)" as C_ACC
+}
+
+package "apps/worker (Cloudflare Worker, also run in-process)" as WK {
+  component "Request router\nsrc/index.ts" as W_ROUTER
+  component "Public API (L4)\napi.ts, public-read-model.ts" as W_PUB
+  component "Moderation API (L4)\nmoderation-api.ts, SSE" as W_MOD
+  component "Publication gate (L4)\nproposal-publication.ts,\npublication-policy.ts" as W_GATE
+  component "Accounts API\naccounts/api.ts, PBKDF2" as W_ACC
+  component "Pipeline flow API\npipeline-flow-api.ts" as W_FLOW
+  component "L1 pollers and triage\npetabencana, bmkg, rss-news,\nnews-triage" as W_L1
+  component "L3 investigation\ncoordinator.ts (ledger in apps/db)\nimplemented, not wired" as W_L3
+}
+
+package "apps/intelligence (Node service)" as INT {
+  component "Job runner\njob-runner.ts (lease, retry)" as I_JOB
+  component "Mastra workflow\nincident-intelligence-workflow.ts" as I_WF
+  component "Agents\nreport-interpreter-agent,\nincident-correlation-agent" as I_AG
+  component "Semantic retrieval\nsemantic-retrieval-service.ts" as I_RET
+  component "NineRouter adapter\nninerouter-adapter.ts" as I_NR
+}
+
+package "apps/db" as DBP {
+  component "Stores and migrations\n001-047 (pg, PGlite in tests)" as DB_STORE
+}
+
+package "tools" as TL {
+  component "Local live composition\nserve-live-pipeline.ts (:8787, :5173)" as TOOLS
+}
+
+component "Flutter client (apps/mobile)\npublic read only" as MOB
+node "NineRouter gateway" as NR_EXT
+node "Source feeds\nPetaBencana, BMKG, RSS, webhook" as SRC_EXT
+
+C_MAP --> W_PUB : HTTP /api/v1 (public)
+C_ADMIN --> W_MOD : HTTP, SSE
+C_ADMIN --> W_FLOW : /api/v1/pipeline/flow
+C_ACC --> W_ACC : /api/v1/auth, /api/v1/account
+MOB --> W_PUB : /api/v1/context, /events
+W_ROUTER --> W_PUB
+W_ROUTER --> W_MOD
+W_ROUTER --> W_ACC
+W_ROUTER --> W_FLOW
+W_MOD --> W_GATE : decideProposal
+W_L1 --> DB_STORE : SQL (L1 role)
+W_GATE --> DB_STORE : decisions, versions
+W_PUB --> DB_STORE : reads
+W_ACC --> DB_STORE : accounts, sessions
+W_L1 --> SRC_EXT : poll
+I_JOB --> DB_STORE : lease ai_jobs
+I_JOB --> I_WF : run
+I_WF --> I_AG
+I_WF --> I_RET
+I_AG --> I_NR
+I_RET --> I_NR : embeddings
+I_NR --> NR_EXT : HTTPS
+I_JOB --> W_ROUTER : POST /api/v1/internal/proposals
+W_L3 -[dashed]-> DB_STORE : ledger (tests only)
+TOOLS ..> W_ROUTER : composes in-process
+TOOLS ..> I_JOB : starts
+
+@enduml

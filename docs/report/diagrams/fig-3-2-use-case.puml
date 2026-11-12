@@ -1,0 +1,75 @@
+@startuml fig-3-2-use-case
+' Figure 3.2: use cases by actor, as built on 12 Nov 2026.
+' Google sign-in is removed (AUTH-PW-01, ADR-060): no sign-in use case for Google.
+!pragma layout smetana
+skinparam dpi 150
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam ArrowColor black
+
+title Figure 3.2 - Use case diagram: actors and main use cases
+
+left to right direction
+
+actor "Public visitor" as V
+actor "Registered user\n(role: user)" as U
+actor "Moderator" as M
+actor "Administrator" as A
+actor "System agents\n(auto-publisher, review-expiry,\nintelligence service)" as SYS
+actor "External sources\n(PetaBencana, BMKG, RSS)" as SRC
+actor "Model gateway\n(NineRouter)" as NR
+
+U --|> V
+M --|> U
+A --|> M
+
+rectangle "Waspada Jakarta" {
+  usecase "Browse map and report list\n(#peta)" as UC1
+  usecase "Open incident detail,\nevidence and freshness" as UC2
+  usecase "Read updates (#pembaruan)" as UC3
+  usecase "Set local interests\n(#ringkasan-saya)" as UC4
+  usecase "Read help and privacy" as UC5
+  usecase "Register and log in\n(username and password)" as UC6
+  usecase "Change password (#akun)" as UC7
+  usecase "Review evidence queue\n(#admin/tinjau)" as UC8
+  usecase "Publish or reject\na queued proposal" as UC9
+  usecase "Request more evidence" as UC10
+  usecase "View agent pipeline flow\n(#admin/alur)" as UC11
+  usecase "View 3D embedding map\n(#admin/embedding)" as UC12
+  usecase "Provision moderator or admin\naccount (operator only)" as UC13
+  usecase "View source data, demo only\n(#admin/sumber)" as UC14
+  usecase "Acquire and triage source items" as UC15
+  usecase "Interpret, embed, correlate,\nwrite proposal" as UC16
+  usecase "Auto-publish when no discrepancy\nand all checks pass" as UC17
+  usecase "Expire undecided proposal\nafter 48 h (not published)" as UC18
+}
+
+V --> UC1
+V --> UC2
+V --> UC3
+V --> UC4
+V --> UC5
+U --> UC6
+U --> UC7
+M --> UC8
+M --> UC9
+M --> UC10
+M --> UC11
+M --> UC12
+A --> UC13
+A --> UC14
+SRC --> UC15
+SYS --> UC15
+SYS --> UC16
+NR --> UC16
+SYS --> UC17
+SYS --> UC18
+
+@enduml

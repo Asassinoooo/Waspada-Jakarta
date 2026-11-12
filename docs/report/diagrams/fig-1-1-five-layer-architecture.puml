@@ -1,0 +1,66 @@
+@startuml fig-1-1-five-layer-architecture
+' Figure 1.1: five-layer architecture as built (12 Nov 2026).
+' Layer names follow CLAUDE.md. L3 is implemented in apps/worker but is not connected to the live path.
+!pragma layout smetana
+skinparam dpi 150
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam packageStyle rectangle
+skinparam rectangle {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam ArrowColor black
+
+title Figure 1.1 - Five-layer architecture (as built, 12 Nov 2026)
+
+rectangle "External sources\nPetaBencana, BMKG CAP, 14 RSS feeds, webhook senders" as EXT
+
+package "L1 Data and knowledge" as L1 {
+  rectangle "Acquisition: 60 s pollers\nand webhook ingest" as L1A
+  rectangle "Triage gate: deterministic prefilter,\nAI triage, source-permission evidence" as L1B
+  rectangle "Immutable report revisions,\nevidence chunks, gazetteer" as L1C
+}
+
+package "L2 Model and grounding" as L2 {
+  rectangle "Model adapter (NineRouter),\nsemantic retrieval (embed, pgvector)" as L2A
+  rectangle "Evidence-bound typed proposals" as L2B
+}
+
+package "L3 Investigation  [implemented, not connected]" as L3 {
+  rectangle "Bounded gap investigation: ledger,\ncheckpoints, budget 5 tool attempts,\n4 reasoning turns, 60 s, 12,000 tokens" as L3A
+}
+
+rectangle "apps/intelligence (Node, Mastra)\nlive path: interpret, embed, correlate,\nwrite proposal awaiting a decision" as INT
+
+package "L4 Application integration" as L4 {
+  rectangle "Deterministic publication gate\n(publication-policy.ts, ADR-061)" as L4A
+  rectangle "Public /api/v1, moderation API,\naccounts, pipeline flow view (#admin/alur),\nPublicReadModel" as L4B
+}
+
+package "L5 Evaluation and monitoring" as L5 {
+  rectangle "Telemetry and audit records\n(observes L1 to L4)" as L5A
+}
+
+rectangle "Public readers: #peta web map,\nAndroid client (published events only)" as PUB
+
+rectangle "Cross-cutting guardrails: source text is data, not instructions;\nonly the L4 gate publishes; reject never publishes; freshness,\nlifecycle, evidence and relevance stay separate; no invented timestamps,\nradii or safety claims; browser writes need exact Origin and CSRF token" as GR #EEEEEE
+
+EXT -down-> L1A : polled or pushed
+L1C -down-> INT : ai_jobs queue
+INT -down-> L4A : proposal (awaiting decision)
+L4A -down-> L4B : publish only through gate
+L4B -down-> PUB : published versions
+L2A -down-> L2B
+L2B -[dashed]-> L3A : evidence gaps (not wired live)
+L3A -[dashed]-> L2A : new material (not wired live)
+L5A ..> L4B : observes
+
+note right of INT
+  Live path bypasses the L2 and L3
+  modules in apps/worker. See Figure 3.3.
+end note
+
+@enduml
