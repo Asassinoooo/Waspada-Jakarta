@@ -266,27 +266,28 @@ test("the public map is the home route and every legacy public hash resolves to 
   assert.deepEqual(routeFromHash("#bantuan"), { screen: "help" });
   assert.deepEqual(routeFromHash("#panduan"), { screen: "help", section: "panduan" });
   assert.deepEqual(routeFromHash("#privasi"), { screen: "help", section: "privasi" });
-  assert.deepEqual(routeFromHash("#admin"), { screen: "admin" });
-  assert.deepEqual(routeFromHash("#admin-workspace"), { screen: "admin" });
-  assert.deepEqual(routeFromHash("#tinjau-bukti"), { screen: "review" });
-  assert.deepEqual(routeFromHash("#alur-agen"), { screen: "pipeline-flow" });
-  assert.deepEqual(routeFromHash("#visualisasi-3d"), { screen: "embedding-3d" });
-  assert.deepEqual(routeFromHash("#embedding-3d"), { screen: "embedding-3d" });
-  assert.deepEqual(routeFromHash("#demo-sumber"), { screen: "source-preview" });
+  assert.deepEqual(routeFromHash("#admin"), { screen: "admin-workspace", initialTab: "ringkasan" });
+  assert.deepEqual(routeFromHash("#admin-workspace"), { screen: "admin-workspace", initialTab: "ringkasan" });
+  assert.deepEqual(routeFromHash("#tinjau-bukti"), { screen: "admin-workspace", initialTab: "tinjau" });
+  assert.deepEqual(routeFromHash("#alur-agen"), { screen: "admin-workspace", initialTab: "alur" });
+  assert.deepEqual(routeFromHash("#visualisasi-3d"), { screen: "admin-workspace", initialTab: "embedding" });
+  assert.deepEqual(routeFromHash("#embedding-3d"), { screen: "admin-workspace", initialTab: "embedding" });
+  assert.deepEqual(routeFromHash("#demo-sumber"), { screen: "admin-workspace", initialTab: "sumber" });
   assert.deepEqual(routeFromHash("#detail/api/public%2Fid%3F"), { screen: "detail-api", eventId: "public/id?" });
   assert.deepEqual(routeFromHash("#detail/api/%ZZ"), { screen: "detail-api", eventId: "" });
   // A production/SSR import cannot open the development-only private inspector.
   assert.deepEqual(routeFromHash("#pipeline-lokal"), { screen: "discover" });
 });
 
-test("admin tab hashes map onto the existing admin screens until the workspace tabs land", () => {
-  assert.deepEqual(routeFromHash("#admin/ringkasan"), { screen: "admin" });
-  assert.deepEqual(routeFromHash("#admin/akun"), { screen: "admin" });
-  assert.deepEqual(routeFromHash("#admin/tinjau"), { screen: "review" });
-  assert.deepEqual(routeFromHash("#admin/alur"), { screen: "pipeline-flow" });
-  assert.deepEqual(routeFromHash("#admin/embedding"), { screen: "embedding-3d" });
-  assert.deepEqual(routeFromHash("#admin/sumber"), { screen: "source-preview" });
-  assert.deepEqual(routeFromHash("#admin/tidak-ada"), { screen: "admin" });
+test("admin tab hashes open the workspace on their tab, and an unknown tab opens the overview", () => {
+  assert.deepEqual(routeFromHash("#admin/ringkasan"), { screen: "admin-workspace", initialTab: "ringkasan" });
+  assert.deepEqual(routeFromHash("#admin/akun"), { screen: "admin-workspace", initialTab: "akun" });
+  assert.deepEqual(routeFromHash("#admin/tinjau"), { screen: "admin-workspace", initialTab: "tinjau" });
+  assert.deepEqual(routeFromHash("#admin/alur"), { screen: "admin-workspace", initialTab: "alur" });
+  assert.deepEqual(routeFromHash("#admin/embedding"), { screen: "admin-workspace", initialTab: "embedding" });
+  assert.deepEqual(routeFromHash("#admin/sumber"), { screen: "admin-workspace", initialTab: "sumber" });
+  assert.deepEqual(routeFromHash("#admin/tidak-ada"), { screen: "admin-workspace", initialTab: "ringkasan" });
+  assert.deepEqual(routeFromHash("#admin/tinjau?x=1"), { screen: "admin-workspace", initialTab: "tinjau" });
 });
 
 test("the public header shows one dataset badge and no admin, review or source links", () => {

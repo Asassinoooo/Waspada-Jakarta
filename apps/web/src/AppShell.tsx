@@ -19,9 +19,12 @@ export interface DatasetBadge {
   tone: "warning" | "accent" | "neutral";
 }
 
-/** One badge for the dataset mode. The wording matches the former banner so the honesty copy is unchanged. */
-export function datasetBadge(route: Route, datasetMode: string | undefined): DatasetBadge {
-  if (route.screen === "source-preview" && datasetMode === "demo") {
+/**
+ * One badge for the dataset mode. The wording matches the former banner so the honesty copy is unchanged.
+ * `sourcePreview` is true on the workspace's source tab (UI-V2-C), which keeps its own demo label.
+ */
+export function datasetBadge(datasetMode: string | undefined, sourcePreview = false): DatasetBadge {
+  if (sourcePreview && datasetMode === "demo") {
     return {
       label: "Data contoh",
       title: "DEMO SUMBER — pratinjau data publik; bukan peringatan Waspada",
@@ -151,7 +154,7 @@ export function SiteHeader({ route, context = null, sessionKey = 0 }: SiteHeader
   const compact = useMediaMatch(COMPACT_HEADER_QUERY);
   const theme = useThemePreference();
   const session = useAccountSession(sessionKey);
-  const badge = datasetBadge(route, context?.dataset_mode);
+  const badge = datasetBadge(context?.dataset_mode);
   const menuItems: MenuItem[] = accountMenuEntries(session, compact ? THEME_LABEL[theme] : null).map((entry) => ({
     id: entry.id,
     label: entry.label,

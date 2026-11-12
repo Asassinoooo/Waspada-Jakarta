@@ -74,7 +74,7 @@ test("the drawer explains the stage, lists counts and says when there are no rec
   );
   assert.match(reviewed, /prop-demo-001/u);
   assert.match(reviewed, /Contoh fiktif: genangan dekat Tebet/u);
-  assert.match(reviewed, /href="#tinjau-bukti"/u, "proposals link to the review page");
+  assert.match(reviewed, /href="#admin\/tinjau"/u, "proposals link to the review tab of the admin workspace");
 });
 
 test("the NineRouter meters show RPM use and a cooldown, and the layer legend is in Indonesian", () => {

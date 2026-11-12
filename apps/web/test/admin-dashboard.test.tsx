@@ -234,19 +234,34 @@ test("additional source geometries count as mapped while unmapped records remain
 test("default render explains the fictional example and keeps details in closed disclosures", () => {
   const html = renderToStaticMarkup(<AdminDashboard />);
 
-  assert.equal((html.match(/<main\b/g) ?? []).length, 1);
-  assert.match(html, /<main id="main-content" tabindex="-1"/);
+  // The overview is embedded in the workspace, which owns the only main landmark and the only h1 (UI-V2-C).
+  assert.equal((html.match(/<main\b/g) ?? []).length, 0);
+  assert.doesNotMatch(html, /id="main-content"/);
+  assert.doesNotMatch(html, /<h1\b/);
   assert.match(html, /Pilih laporan untuk melihat sumber, waktu, status informasi, dan lokasinya di peta\./);
   assert.match(html, /Semua laporan dan lokasi di sini adalah rekaan\./);
   assert.match(html, /Contoh tampilan/);
   assert.match(html, /Data aplikasi/);
   assert.match(html, /Ada lokasi peta/);
   assert.match(html, /Tidak ada lokasi peta/);
-  assert.match(html, /Tinjau bukti publik/);
+  assert.doesNotMatch(html, /href="#(tinjau-bukti|alur-agen|beranda)"/, "tabs in the workspace rail replace the overview's own links");
   assert.match(html, /Rincian proses, sumber, dan pembacaan/);
   assert.doesNotMatch(html, /<details[^>]*\bopen(?:="")?\s*>/);
   assert.doesNotMatch(html, /Terbitkan|Setujui|Mulai akuisisi|Mulai investigasi/u);
   assert.doesNotMatch(html, /Lima lapisan sistem|CRS84|PANTAUAN API|SIMULASI LOKAL · DEMO/u);
+});
+
+test("overview shows stat tiles and the layer list above the explorer, outside any closed disclosure", () => {
+  const html = renderToStaticMarkup(<AdminDashboard />);
+  assert.match(html, /<section class="admin-stats" aria-label="Angka ringkasan">/);
+  assert.match(html, /<dt>Di peta<\/dt><dd>\d+<\/dd>/, "the server render counts the fictional example items");
+  assert.match(html, /<dt>Laporan contoh<\/dt><dd>\d+<\/dd>/, "the first tile names what it counts");
+  assert.match(html, /<dt>Tanpa lokasi peta<\/dt>/);
+  assert.match(html, /Jumlah laporan bukan bukti kebenaran/);
+  const layers = html.indexOf("Tahap dalam proses");
+  assert.ok(layers > 0, "the layer list is rendered");
+  assert.ok(layers < html.indexOf('<details class="admin-disclosure admin-diagnostics"'), "the layer list sits above the diagnostics disclosure");
+  assert.ok(layers < html.indexOf("admin-queue"), "the layer list sits above the explorer");
 });
 
 test("admin workspace renders the 3-column layout with queue, operations map, and record inspector", () => {

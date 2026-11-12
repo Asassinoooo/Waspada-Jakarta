@@ -461,11 +461,11 @@ export function Embedding3DVisualization() {
   }, [searchQuery, selectedSource, selectedPointIndex]);
 
   return (
-    <main className="embedding-3d" aria-label="Visualisasi 3D Embedding Potongan Teks">
+    <section className="embedding-3d" aria-label="Visualisasi 3D Embedding Potongan Teks">
       {/* Header and Context Metadata */}
       <header className="embedding-3d__header">
         <div className="embedding-3d__title-group">
-          <h1>Visualisasi 3D Embedding Potongan Teks</h1>
+          <h2>Visualisasi 3D Embedding Potongan Teks</h2>
           <p className="embedding-3d__subtitle">
             Proyeksi vektor 768-dimensi (NineRouter Gemini Embedding) ke ruang 3D melalui Dual Gram-Matrix PCA.
           </p>
@@ -692,6 +692,6 @@ export function Embedding3DVisualization() {
           </tbody>
         </table>
       </section>
-    </main>
+    </section>
   );
 }

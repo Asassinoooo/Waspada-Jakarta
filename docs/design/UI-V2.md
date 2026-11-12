@@ -1,6 +1,6 @@
 # UI-V2 design principles
 
-Status: UI-V2-A (app shell, simplified navigation, UI primitives, first-visit intro). Phases B to D are planned in `docs/IMPLEMENTATION_BACKLOG.md`. Tokens and primitives extend UI-SYSTEM-01 and UI-SYSTEM-02 and keep their rules.
+Status: UI-V2-A (app shell, simplified navigation, UI primitives, first-visit intro) and UI-V2-B (map-first home) are in place. UI-V2-C (administrator workspace with tabs) is on `work/UI-V2-C-admin-workspace`. Phase D is planned in `docs/IMPLEMENTATION_BACKLOG.md`. Tokens and primitives extend UI-SYSTEM-01 and UI-SYSTEM-02 and keep their rules.
 
 ## Principles
 
@@ -20,13 +20,35 @@ Status: UI-V2-A (app shell, simplified navigation, UI primitives, first-visit in
 | `#akun`, `#masuk`, `#mulai` | account screens | Opened from the account menu. |
 | `#bantuan`, `#panduan`, `#privasi` | help and privacy | Footer and account menu. "Lihat pengenalan lagi" reopens the intro. |
 | `#detail/...` | event detail | Unchanged. |
-| `#admin/ringkasan`, `#admin/akun`, `#admin`, `#admin-workspace` | administrator workspace | Admin role. |
-| `#admin/tinjau`, `#tinjau-bukti` | review | Moderator or admin role. |
-| `#admin/alur`, `#alur-agen` | pipeline flow | Moderator or admin role. |
-| `#admin/embedding`, `#visualisasi-3d`, `#embedding-3d` | 3D embedding view | Linked from the admin menu. |
-| `#admin/sumber`, `#demo-sumber` | source preview | Admin role only. |
+| `#admin/ringkasan`, `#admin`, `#admin-workspace` | administrator workspace, Ringkasan tab | Admin role. |
+| `#admin/akun` | workspace, Akun & peran tab | Admin role. |
+| `#admin/tinjau`, `#tinjau-bukti` | workspace, Tinjau bukti tab | Moderator or admin role. |
+| `#admin/alur`, `#alur-agen` | workspace, Alur agen tab | Moderator or admin role. |
+| `#admin/embedding`, `#visualisasi-3d`, `#embedding-3d` | workspace, Embedding 3D tab | Moderator or admin role. |
+| `#admin/sumber`, `#demo-sumber` | workspace, Demo sumber tab | Admin role only. |
 
-Phase C turns `#admin/<tab>` into real tabs. Until then each tab opens its existing screen.
+Every admin hash opens the workspace on its tab. See "Administrator workspace" below.
+
+## Administrator workspace (UI-V2-C)
+
+One screen, `#admin/<tab>`, with real tabs on the Tabs primitive. Routing and roles live in `apps/web/src/admin-workspace-model.ts` (pure, unit-tested); the shell is `AdminWorkspace.tsx`.
+
+| Tab | Hash | Role | Content |
+| --- | --- | --- | --- |
+| Ringkasan | `#admin/ringkasan` | admin | Stat tiles, layer list, and the read-only report explorer with its honesty notes. |
+| Tinjau bukti | `#admin/tinjau` | moderator, admin | Moderator review (`ModeratorReview`). |
+| Alur agen | `#admin/alur` | moderator, admin | Pipeline flow (`PipelineFlow`, @xyflow/react). |
+| Embedding 3D | `#admin/embedding` | moderator, admin | 3D embedding view (three.js). |
+| Akun & peran | `#admin/akun` | admin | The user-management panel from `#akun` (`AdminAccountsPanel`). |
+| Demo sumber | `#admin/sumber` | admin | Source preview with its own demo guard (`UnifiedSourceExplorer`). |
+
+- **Layout.** The header holds the title "Ruang kerja", the active tab's subtitle, one primary link where the tab has a next step (Ringkasan to Tinjau bukti, Tinjau bukti to Alur agen), the dataset badge, and a ⋯ menu (Kembali ke peta, Akun saya, Bantuan, theme). From 901px the tabs are a 200px vertical rail with icons. At 900px and below they are a horizontal strip that scrolls. The page has one `<main>` and one `<h1>`. The public header is not shown here.
+- **Roles.** Admins see six tabs and moderators see three. Users, inactive accounts and anonymous visitors get the existing `AccountAccessGate` and no tab is mounted. Tabs only hide UI. The role check in `App.tsx`, the Worker routes and the L4 gate still decide every request.
+- **Hashes.** Clicking a tab replaces the hash, so it adds no history entry and does not re-check the session. A new hash, such as a link from elsewhere, remounts the workspace on that tab. Legacy hashes open the matching tab and are rewritten to `#admin/<tab>`. A tab the viewer may not open falls back to their first allowed tab.
+- **Narrow screens.** Ringkasan, Tinjau, Akun and Demo sumber work at phone width. Alur and Embedding show "Buka di layar yang lebih lebar untuk tampilan ini." and neither mounts its canvas nor loads its chunk. The old blanket below-900px admin block is gone.
+- **Loading.** Only the open tab mounts. Each tab is `React.lazy` with a skeleton. Chunks: `admin-entry` (workspace shell and styles), `AdminDashboard`, `ModeratorReview`, `pipeline-flow-entry` (@xyflow/react), `Embedding3DVisualization` (three.js) and `AdminSourceTab` (source map). Akun uses `AccountPages`, which the main chunk already loads.
+- **Session.** A background session refresh (every 60 s, on focus, or after an action) keeps the last known session on screen until the new one arrives. The workspace therefore stays mounted, and a moderator's unsent reason is not lost.
+- **Honesty.** Stat tiles count only what has loaded: "Jumlah laporan bukan bukti kebenaran, dan angka nol tidak menyatakan kondisi lapangan." The source tab keeps its demo badge ("DEMO SUMBER — pratinjau data publik; bukan peringatan Waspada").
 
 ## Primitives
 
@@ -36,7 +58,7 @@ Source in `apps/web/src/ui/`. Styles in `apps/web/src/design/components.css`. Ke
 | --- | --- | --- |
 | Dialog | `.modal-overlay.ui-overlay` > `.modal-dialog.ui-dialog` | `aria-modal`, named by its heading. Focus moves in, Tab cycles inside, Escape closes, focus returns to the opener. |
 | Sheet | `.sheet-overlay--left` or `--right` > `.sheet` | Rises from the bottom below 900px. Side panel from 900px. Same semantics as Dialog. |
-| Tabs | `.tabs`, `.tabs__tab`, `.tabs__panel` | Roving tabindex. ArrowLeft and ArrowRight wrap, Home and End jump. |
+| Tabs | `.tabs`, `.tabs__tab`, `.tabs__panel`, `.tabs__icon` | Roving tabindex. ArrowLeft and ArrowRight wrap for the horizontal strip; `orientation="vertical"` uses ArrowUp and ArrowDown for the rail. Home and End jump. Optional icon per tab. |
 | Menu | `.menu`, `.menu__trigger`, `.menu__list--start` or `--end`, `.menu__item` | `aria-haspopup`, `role="menu"`. Arrow keys, Escape and outside press close it. |
 | Popover | `.popover`, `.popover__trigger`, `.popover__panel` | Anchored disclosure. Content stays in the markup and is hidden until opened. |
 | Layout | `.toolbar`, `.empty-state` (+ `__title`), `.skeleton` | Wrapping row, centred empty message, loading placeholder. |
@@ -82,3 +104,9 @@ Shell classes (`apps/web/src/app-shell.css`): `.site-header`, `.brand`, `.primar
 
 - Typecheck and the changed or new web test files were run one at a time: `ui.test`, `preferences`, `geojson-map`, `ui-primitives`, `onboarding-intro`, plus the unchanged `landing`, `experience`, `accounts`, `pipeline-flow`, `embedding-visualization` and `local-pipeline-preview`.
 - Not yet checked: the phone header height and fit in a real browser at 390px, a keyboard walk-through of every primitive in both themes, and CI.
+
+## Verification status (UI-V2-C)
+
+- `npm run typecheck` (web) passes. Changed or new web test files were run one at a time: `admin-workspace` 16 (new), `admin-dashboard` 9, `pipeline-flow` 5, `ui` 23, `embedding-visualization` 4, `accounts` 16, `ui-primitives` 11, `moderator-review` 26, `unified-source-explorer` 14, `preferences` 13, `geojson-map` 9.
+- `npm run build --workspace=@waspada/web` passes (vite only). three.js appears only in the `Embedding3DVisualization` chunk and @xyflow/react only in `pipeline-flow-entry`. The main `index` chunk contains neither.
+- Not checked: the workspace in a browser at 390px and 900px, a keyboard walk-through of the rail in both themes, and CI.

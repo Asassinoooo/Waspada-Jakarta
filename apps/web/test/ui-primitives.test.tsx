@@ -136,3 +136,18 @@ test("popover keeps its explanation in the markup and links the trigger to the h
   assert.notEqual(controls, "");
   assert.match(markup, new RegExp(`<div id="${controls.replace(/[.*+?^${}()|[\]\\«»]/gu, "\\$&")}" class="popover__panel" hidden="">`, "u"));
 });
+
+test("vertical tabs announce their orientation and take ArrowUp and ArrowDown through the same roving group", () => {
+  const tabs = [
+    { id: "ringkasan", label: "Ringkasan", icon: <span className="icon-probe" /> },
+    { id: "tinjau", label: "Tinjau" },
+  ];
+  const markup = renderToStaticMarkup(<Tabs idPrefix="admin" label="Bagian" tabs={tabs} value="tinjau" onChange={() => {}} orientation="vertical" />);
+  assert.match(markup, /role="tablist" aria-label="Bagian" aria-orientation="vertical"/u);
+  assert.match(markup, /<span class="tabs__icon" aria-hidden="true"><span class="icon-probe"><\/span><\/span>Ringkasan/u, "icons are decorative and hidden from assistive tech");
+  assert.equal(nextRovingIndex("ArrowDown", 0, 2, "vertical"), 1);
+  assert.equal(nextRovingIndex("ArrowUp", 0, 2, "vertical"), 1, "wraps at the top");
+  assert.equal(nextRovingIndex("ArrowRight", 0, 2, "vertical"), null, "horizontal keys do not move a vertical rail");
+  const horizontal = renderToStaticMarkup(<Tabs idPrefix="admin" label="Bagian" tabs={tabs} value="tinjau" onChange={() => {}} />);
+  assert.match(horizontal, /aria-orientation="horizontal"/u, "horizontal stays the default");
+});

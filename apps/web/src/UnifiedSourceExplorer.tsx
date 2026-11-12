@@ -527,10 +527,10 @@ export function UnifiedSourceExplorerView({
   const quakeRecord = selectedPoint?.source === "usgs" ? selectedPoint as EarthquakeContextRecord : null;
   const visibleSourceStatus = (id: PreviewSource["id"]) => requestGroupStatus(sourceRequest, previewSourceStatus(sourcePayloadStatus, id));
   const visibleContextStatus = (id: "openmeteo" | "usgs") => requestGroupStatus(contextRequest, contextSourceStatus(contextPayloadStatus, id));
-  return ( <main id="main-content" className={`main-shell unified-source-explorer${companionOpen ? " unified-source-explorer--panel-open" : ""}`} aria-busy={
+  return ( <div className={`unified-source-explorer${companionOpen ? " unified-source-explorer--panel-open" : ""}`} aria-busy={
     sourceLoading || contextLoading
 }
-  > <header className="unified-source-explorer__intro"> <div> <p className="section-kicker">Demo sumber · pratinjau terpisah</p> <h1 id="unified-source-explorer-title">Peta sumber Jakarta</h1> <p>Titik fasilitas adalah rujukan;
+  > <header className="unified-source-explorer__intro"> <div> <p className="section-kicker">Demo sumber · pratinjau terpisah</p> <h2 id="unified-source-explorer-title">Peta sumber Jakarta</h2> <p>Titik fasilitas adalah rujukan;
   laporan dan katalog bukan penilaian keselamatan atau dampak.</p> </div> <span className="unified-source-explorer__not-published">Belum melalui publikasi Waspada</span> </header> <section className="unified-source-explorer__toolbar" aria-label="Status dan permintaan sumber"> <div className="unified-source-explorer__dataset"> <strong>{
     datasetMode === "demo" ? "DEMO · belum dipublikasi" : datasetMode === "live" ? "LIVE" : "Dataset belum diketahui"
 }
@@ -865,7 +865,7 @@ export function UnifiedSourceExplorerView({
 }
     <p className="unified-source-explorer__note">Status penyedia bukan verifikasi Waspada. Hasil kosong atau sumber gagal tidak menunjukkan keadaan aman.</p> </div> )
 }
-  </div> </section> </div> </main> );
+  </div> </section> </div> </div> );
 }
 export function UnifiedSourceExplorer({
   datasetMode, renderMap
