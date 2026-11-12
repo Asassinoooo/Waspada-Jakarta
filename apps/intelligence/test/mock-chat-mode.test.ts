@@ -1,9 +1,9 @@
 // INTEL-02 B1: NINEROUTER_MODE=mock gives the Mastra agents a deterministic local model.
 // Fake transports and a fetch spy only; the assertion is zero gateway requests for a full run.
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, describe, it } from "node:test";
-import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
-import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
+import { after, afterEach, beforeEach, describe, it } from "node:test";
+import type { TestDatabase } from "../../db/test/harness.js";
+import { closeSharedTestDatabase, sharedTestDatabase } from "./shared-test-database.js";
 import {
   createNineRouterRateGate,
   setNineRouterRateGate,
@@ -147,6 +147,11 @@ describe("INTEL-02 mock chat model (unit)", () => {
   });
 });
 
+// The file's PGlite database is shared across its tests and closed once here (see shared-test-database.ts).
+after(async () => {
+  await closeSharedTestDatabase();
+});
+
 describe("INTEL-02 mock mode full workflow (zero gateway requests)", () => {
   let db: TestDatabase;
   let savedMode: string | undefined;
@@ -154,9 +159,7 @@ describe("INTEL-02 mock mode full workflow (zero gateway requests)", () => {
   let savedFetch: typeof fetch;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
-    const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
-    await applyMigrations(db.executor, migrations);
+    db = await sharedTestDatabase();
     savedMode = process.env.NINEROUTER_MODE;
     process.env.NINEROUTER_MODE = "mock";
     gatewayRequests = [];
@@ -177,7 +180,6 @@ describe("INTEL-02 mock mode full workflow (zero gateway requests)", () => {
     setNineRouterRateGate(undefined);
     if (savedMode === undefined) delete process.env.NINEROUTER_MODE;
     else process.env.NINEROUTER_MODE = savedMode;
-    await db.close();
   });
 
   it("a full run (new incident, then a corroborating report) makes zero gateway requests", async () => {

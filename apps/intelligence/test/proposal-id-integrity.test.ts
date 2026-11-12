@@ -1,9 +1,9 @@
 // INTEL-02 B2: every persisted proposal has a unique ID, nothing is silently dropped, and the moderation
 // notification names the proposal that was persisted. Fake agents, mock embeddings, PGlite. No network.
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, describe, it } from "node:test";
-import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
-import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
+import { after, afterEach, beforeEach, describe, it } from "node:test";
+import type { TestDatabase } from "../../db/test/harness.js";
+import { closeSharedTestDatabase, sharedTestDatabase } from "./shared-test-database.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
 import { createSqlIncidentRepository } from "../../db/src/incident-repository.js";
 import {
@@ -68,14 +68,17 @@ describe("INTEL-02 proposal IDs (unit)", () => {
   });
 });
 
+// The PGlite describes below share one database per process, reset before each test, and close it once here.
+after(async () => {
+  await closeSharedTestDatabase();
+});
+
 describe("INTEL-02 proposal IDs (workflow, PGlite)", () => {
   let db: TestDatabase;
   let savedMode: string | undefined;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
-    const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
-    await applyMigrations(db.executor, migrations);
+    db = await sharedTestDatabase();
     // Embeddings are mock vectors, so no gateway call is made.
     savedMode = process.env.NINEROUTER_MODE;
     process.env.NINEROUTER_MODE = "mock";
@@ -89,7 +92,6 @@ describe("INTEL-02 proposal IDs (workflow, PGlite)", () => {
     setNineRouterRateGate(undefined);
     if (savedMode === undefined) delete process.env.NINEROUTER_MODE;
     else process.env.NINEROUTER_MODE = savedMode;
-    await db.close();
   });
 
   async function runReport(input: IncidentWorkflowInput, agents: { interpreter: ReturnType<typeof interpreter>; correlator: ReturnType<typeof createMockCorrelatorAgent> }) {
@@ -271,9 +273,7 @@ describe("INTEL-02 moderation notification (job runner, PGlite)", () => {
   let savedFetch: typeof fetch;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
-    const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
-    await applyMigrations(db.executor, migrations);
+    db = await sharedTestDatabase();
     savedMode = process.env.NINEROUTER_MODE;
     process.env.NINEROUTER_MODE = "mock";
     setNineRouterRateGate(createNineRouterRateGate({
@@ -289,7 +289,6 @@ describe("INTEL-02 moderation notification (job runner, PGlite)", () => {
     setNineRouterRateGate(undefined);
     if (savedMode === undefined) delete process.env.NINEROUTER_MODE;
     else process.env.NINEROUTER_MODE = savedMode;
-    await db.close();
   });
 
   it("notifies the worker with the persisted proposal ID, not the old prop-<revisionId>", async () => {
