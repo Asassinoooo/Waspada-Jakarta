@@ -1,15 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
-import { ApiHttpError, getEventDetail, getEventGeoJSON, getEventHistory, getPublicContext, listEvents, type ApiReadState, type PublicGeoJSONFilters } from "./api-client.js";
+import { apiReadFailure, getEventDetail, getEventHistory, getPublicContext, listEvents, type ApiReadState } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
 import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { ModeratorReview } from "./ModeratorReview.js";
-import { LaporanPublik } from "./LaporanPublik.js";
+import { MapHome } from "./MapHome.js";
+import { parseEventIdFromHash } from "./map-links.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
 import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
 import { SourcePointMap } from "./SourcePointMap.js";
-import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
+import type { MapSelection } from "./MapPanel.js";
 import { HelpPage } from "./HelpPage.js";
 import { AccountAccessGate, AccountPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
 import { accountClient, type AccountReturnTarget } from "./account-client.js";
@@ -19,7 +20,7 @@ import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
 const AdminDashboard = lazy(() => import("./admin-entry.js"));
 
 export type Route =
-  | { screen: "discover" }
+  | { screen: "discover"; eventId?: string }
   | { screen: "help"; section?: "panduan" | "privasi" }
   | { screen: "preferences" }
   | { screen: "updates" }
@@ -132,14 +133,7 @@ function initialDiscoveryState(): DiscoveryState {
   return discoveryStateFromSearch(window.location.search);
 }
 
-function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
-  return {
-    eventId,
-    status: error instanceof ApiHttpError && error.status === 404 ? "not-found" : "unavailable",
-  };
-}
-
-// Public map home. The older landing and report hashes keep working and land on the same screen.
+// Public map home (#peta). The older landing and report hashes keep working and land on the same screen.
 const DISCOVER_HASHES: ReadonlySet<string> = new Set([
   "",
   "#peta",
@@ -168,7 +162,13 @@ function adminTabRoute(tab: string): Route {
 }
 
 export function routeFromHash(hash: string): Route {
-  if (DISCOVER_HASHES.has(hash)) return { screen: "discover" };
+  // `#peta?event=<id>` keeps its query, so the map can select that event. The path decides the screen.
+  const queryStart = hash.indexOf("?");
+  const path = queryStart === -1 ? hash : hash.slice(0, queryStart);
+  if (DISCOVER_HASHES.has(path)) {
+    const eventId = parseEventIdFromHash(hash);
+    return eventId === null ? { screen: "discover" } : { screen: "discover", eventId };
+  }
   if (hash.startsWith("#admin/")) return adminTabRoute(hash.slice("#admin/".length));
   if (hash === "#masuk") return { screen: "login" };
   if (hash.startsWith("#masuk?")) {
@@ -238,11 +238,10 @@ export function App() {
   const contextRequestKey = route.screen;
   const [contextResult, setContextResult] = useState<{ requestKey: string; value: PublicContext | null } | null>(null);
   const context = contextResult?.requestKey === contextRequestKey ? contextResult.value : null;
-  const [status, setStatus] = useState<FeedStatus>("loading");
-  // Events are only written here (initial load and live SSE updates); the map reads its own GeoJSON.
+  // The map home (MapHome) reads and owns the published list and geometry. Events here are only the
+  // live SSE and refresh path for the other screens.
+  const [, setStatus] = useState<FeedStatus>("loading");
   const [, setEvents] = useState<EventView[]>([]);
-  const [geoJSONState, setGeoJSONState] = useState<GeoJSONMapState>({ status: "idle" });
-  const [mapRetryKey, setMapRetryKey] = useState(0);
   const [detailRetryKey, setDetailRetryKey] = useState(0);
   const [historyRetryKey, setHistoryRetryKey] = useState(0);
   const [detailState, setDetailState] = useState<ApiReadState<EventDetailRecord> | null>(null);
@@ -251,7 +250,6 @@ export function App() {
   const [mobilePanel, setMobilePanel] = useState<MobileDiscoveryPanel>(() =>
     new URLSearchParams(window.location.search).get("panel") === "map" ? "map" : "list",
   );
-  void geoJSONState;
   void dispatchDiscovery;
   void setMobilePanel;
   const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review" || route.screen === "pipeline-flow" || route.screen === "source-preview"
@@ -356,25 +354,6 @@ export function App() {
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
-  useEffect(() => {
-    if (route.screen !== "discover") return;
-    let cancelled = false;
-    setStatus("loading");
-
-    listEvents()
-      .then((page) => {
-        if (cancelled) return;
-        setEvents(page.data);
-        setStatus("loaded");
-      })
-      .catch(() => {
-        if (!cancelled) setStatus("unavailable");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [route.screen]);
   // Real-time Public Events SSE Stream (Zero-polling live updates)
   useEffect(() => {
     if (typeof window === "undefined" || typeof EventSource === "undefined") return;
@@ -393,7 +372,6 @@ export function App() {
               return [published, ...prev];
             });
             setStatus("loaded");
-            setMapRetryKey((k) => k + 1);
           }
         } catch {}
       });
@@ -423,34 +401,6 @@ export function App() {
     };
   }, [contextRequestKey]);
 
-  const { category, lifecycle, freshness } = discovery.filters;
-  useEffect(() => {
-    if (route.screen !== "discover" || status !== "loaded" || context === null) {
-      setGeoJSONState({ status: "idle" });
-      return;
-    }
-
-    let cancelled = false;
-    setGeoJSONState({ status: "loading" });
-    const filters: PublicGeoJSONFilters = {
-      ...(category === "all" ? {} : { category }),
-      ...(lifecycle === "all" ? {} : { lifecycle }),
-      ...(freshness === "all" ? {} : { freshness }),
-    };
-
-    getEventGeoJSON(filters)
-      .then((data) => {
-        if (!cancelled) setGeoJSONState({ status: "loaded", data });
-      })
-      .catch(() => {
-        if (!cancelled) setGeoJSONState({ status: "unavailable" });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [category, context?.dataset_mode, context, freshness, lifecycle, mapRetryKey, route.screen, status]);
-
   const detailEventId = route.screen === "detail-api" ? route.eventId : null;
 
   useEffect(() => {
@@ -462,7 +412,7 @@ export function App() {
         if (!cancelled) setDetailState({ eventId: detailEventId, status: "loaded", data });
       })
       .catch((error: unknown) => {
-        if (!cancelled) setDetailState(apiFailure(detailEventId, error));
+        if (!cancelled) setDetailState(apiReadFailure(detailEventId, error));
       });
     return () => {
       cancelled = true;
@@ -478,7 +428,7 @@ export function App() {
         if (!cancelled) setHistoryState({ eventId: detailEventId, status: "loaded", data });
       })
       .catch((error: unknown) => {
-        if (!cancelled) setHistoryState(apiFailure(detailEventId, error));
+        if (!cancelled) setHistoryState(apiReadFailure(detailEventId, error));
       });
     return () => {
       cancelled = true;
@@ -521,10 +471,10 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell${route.screen === "source-preview" ? " app-shell--source-map" : ""}`}>
+    <div className={`app-shell${route.screen === "source-preview" ? " app-shell--source-map" : ""}${route.screen === "discover" ? " app-shell--map" : ""}`}>
       <SiteHeader route={route} context={context} sessionKey={routeActivation} />
       {route.screen === "discover" && (
-        <LaporanPublik />
+        <MapHome deepLinkEventId={route.eventId ?? null} context={context} />
       )}
       {route.screen === "detail-api" && currentDetailState && currentHistoryState && (
         <EventDetail

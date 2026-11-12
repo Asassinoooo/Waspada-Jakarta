@@ -34,6 +34,14 @@ export type ApiReadState<T> =
   | { eventId: string; status: "loading" | "not-found" | "unavailable" }
   | { eventId: string; status: "loaded"; data: T };
 
+/** Read state for a failed event read: 404 is "not found", anything else is "unavailable". */
+export function apiReadFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
+  return {
+    eventId,
+    status: error instanceof ApiHttpError && error.status === 404 ? "not-found" : "unavailable",
+  };
+}
+
 export interface PublicGeoJSONFilters {
   category?: Category;
   lifecycle?: Lifecycle;

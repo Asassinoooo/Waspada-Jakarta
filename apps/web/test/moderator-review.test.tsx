@@ -7,10 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 if (!("React" in globalThis)) {
   Object.defineProperty(globalThis, "React", { value: React, configurable: true, writable: true });
 }
-import { catalogLoadErrorMessage } from "../src/LaporanPublik.js";
 import {
   advanceProposalQueue,
   autoDetectEvidenceLabel,
+  catalogLoadErrorMessage,
   fetchModerationProposals,
   fetchProposalDetail,
   fetchUncertainTriage,

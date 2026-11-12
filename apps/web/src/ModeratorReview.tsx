@@ -272,6 +272,17 @@ export class ModerationHttpError extends Error {
   }
 }
 
+/**
+ * The catalog reads the moderation endpoint, which answers 401/403 to visitors without a moderator
+ * session. Show a plain access message instead of a raw HTTP error. (Moved from LaporanPublik in UI-V2-B.)
+ */
+export function catalogLoadErrorMessage(err: unknown): string {
+  if (err instanceof ModerationHttpError && (err.status === 401 || err.status === 403)) {
+    return "Katalog ini hanya tersedia untuk moderator yang sudah masuk.";
+  }
+  return `Gagal memuat katalog laporan terpercaya: ${err instanceof Error ? err.message : String(err)}`;
+}
+
 export async function fetchModerationProposals(
   options: { apiBaseUrl?: string; fetcher?: typeof fetch; signal?: AbortSignal } = {}
 ): Promise<EventProposalDto[]> {
