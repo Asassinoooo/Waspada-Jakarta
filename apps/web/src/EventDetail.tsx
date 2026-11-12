@@ -3,6 +3,7 @@ import type { ApiReadState } from "./api-client.js";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
 import { MapPanel } from "./MapPanel.js";
+import { publicationPathText } from "./published-events.js";
 
 interface EventDetailProps {
   mode: "presentation" | "api-event";
@@ -11,6 +12,9 @@ interface EventDetailProps {
   onRetryDetail?: () => void;
   onRetryHistory?: () => void;
   context: PublicContext | null;
+  /** `sheet` renders the body inside the map home's detail sheet: no page landmark and no back link. */
+  variant?: "page" | "sheet";
+  onBackToList?: () => void;
 }
 
 function PresentationDetail() {
@@ -183,12 +187,14 @@ function ApiEventDetail({
   onRetryDetail,
   onRetryHistory,
   context,
+  onBackToList,
 }: {
   detail: ApiReadState<EventDetailRecord>;
   history: ApiReadState<HistoryPage>;
   onRetryDetail: () => void;
   onRetryHistory: () => void;
   context: PublicContext | null;
+  onBackToList?: () => void;
 }) {
   const event = detail.status === "loaded" ? detail.data : null;
 
@@ -251,6 +257,9 @@ function ApiEventDetail({
                   ? <>{event.validity.valid_from ? formatInstant(event.validity.valid_from) : "Tidak ada waktu awal"} sampai {event.validity.valid_until ? formatInstant(event.validity.valid_until) : "Tidak ada waktu akhir"}</>
                   : "Tidak tersedia pada fixture"}</dd></div>
                 <div><dt>Versi publik diterbitkan (waktu fixture)</dt><dd><time dateTime={event.published_at}>{formatInstant(event.published_at)}</time></dd></div>
+                {publicationPathText(event.publication) !== null && (
+                  <div><dt>Cara penerbitan</dt><dd>{publicationPathText(event.publication)}</dd></div>
+                )}
                 <div><dt>Respons konteks API dibuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
                 <div><dt>Waktu pengambilan sumber</dt><dd>Tidak disediakan dalam proyeksi EventDetail</dd></div>
                 <div><dt>Cakupan tempat/layanan/kelompok</dt><dd>{event.scope.places.concat(event.scope.services, event.scope.institutions, event.scope.audiences).join(", ") || "Tidak tersedia pada fixture"}</dd></div>
@@ -310,7 +319,7 @@ function ApiEventDetail({
           <div className="detail-columns detail-columns--bottom">
             <MapPanel
               selection={{ kind: "api-event", event }}
-              onReturnToList={() => { window.location.hash = "#jelajah"; }}
+              onReturnToList={onBackToList ?? (() => { window.location.hash = "#jelajah"; })}
             />
             <ApiHistory state={history} onRetry={onRetryHistory} />
           </div>
@@ -325,21 +334,25 @@ function ApiEventDetail({
   );
 }
 
-export function EventDetail({ mode, apiDetail, apiHistory, onRetryDetail, onRetryHistory, context }: EventDetailProps) {
+export function EventDetail({ mode, apiDetail, apiHistory, onRetryDetail, onRetryHistory, context, variant = "page", onBackToList }: EventDetailProps) {
+  const body = mode === "presentation"
+    ? <PresentationDetail />
+    : apiDetail && apiHistory
+      ? <ApiEventDetail
+        detail={apiDetail}
+        history={apiHistory}
+        onRetryDetail={onRetryDetail ?? (() => {})}
+        onRetryHistory={onRetryHistory ?? (() => {})}
+        context={context}
+        onBackToList={onBackToList}
+      />
+      : <div className="state-panel" role="status"><strong>Detail contoh belum dimuat.</strong><p>Kembali ke daftar contoh API.</p></div>;
+
+  if (variant === "sheet") return <div className="event-detail-sheet">{body}</div>;
   return (
     <main id="main-content" className="main-shell detail-page">
       <a className="back-link" href="#jelajah">Kembali ke daftar</a>
-      {mode === "presentation"
-        ? <PresentationDetail />
-        : apiDetail && apiHistory
-          ? <ApiEventDetail
-            detail={apiDetail}
-            history={apiHistory}
-            onRetryDetail={onRetryDetail ?? (() => {})}
-            onRetryHistory={onRetryHistory ?? (() => {})}
-            context={context}
-          />
-          : <div className="state-panel" role="status"><strong>Detail contoh belum dimuat.</strong><p>Kembali ke daftar contoh API.</p></div>}
+      {body}
     </main>
   );
 }

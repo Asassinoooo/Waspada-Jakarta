@@ -13,7 +13,6 @@ import "./experience.css";
 import "./help-page.css";
 import "./account.css";
 import "./app-shell.css";
-import "./landing.css";
 import "./embedding-3d.css";
 
 applyStoredTheme();

@@ -14,7 +14,7 @@ Status: UI-V2-A (app shell, simplified navigation, UI primitives, first-visit in
 
 | Hash | Screen | Notes |
 | --- | --- | --- |
-| `#peta`, empty hash, `#beranda`, `#jelajah`, `#laporan-publik*`, `#publik-demo`, unknown | discover (report and map page) | Home. Phase B replaces the page. Unknown hashes fall through here. |
+| `#peta`, empty hash, `#beranda`, `#jelajah`, `#laporan-publik*`, `#publik-demo`, unknown | discover (map home, UI-V2-B) | Home. The map fills the screen. `#peta?event=<id>` and `#jelajah?event=<id>` select one published event. Unknown hashes fall through here. |
 | `#pembaruan` | updates | Primary nav. |
 | `#ringkasan-saya` | preferences ("Area saya") | Primary nav. |
 | `#akun`, `#masuk`, `#mulai` | account screens | Opened from the account menu. |
@@ -69,6 +69,14 @@ Shell classes (`apps/web/src/app-shell.css`): `.site-header`, `.brand`, `.primar
 - Footer and intro state: "bukan layanan darurat" and "Darurat: 112".
 - Number of reports is not evidence: "Jumlah laporan bukan bukti kebenaran."
 - No internal terms in public copy ("cursor", "polling", "fixture" outside the presentation view).
+
+## Map home (UI-V2-B)
+
+- The map fills the viewport below the sticky header, and the page does not scroll. The toolbar floats top-left (search, Filter, Daftar). Zoom controls sit bottom-right, and Pusatkan appears only after the view moves. First-screen controls total five.
+- From 900px the list is a left panel. Below 900px it is a bottom sheet, and an event popup is a short peek sheet. Desktop popups are anchored to their marker and close with Escape.
+- Markers are buttons, labelled "<kategori>: <judul>". Only API geometry is drawn: a Point is used, and a polygon never becomes a circle. Facility pins (RS, Polisi, Damkar) are off by default, and their note says they show no readiness.
+- Times stay apart: "Waktu kejadian" is the event time and "Diterbitkan" is the publication time. A missing value reads "Tidak diketahui". "N sumber" counts distinct named outlets and never means verification.
+- Data comes from `/api/v1/events` and `/api/v1/events.geojson` through `published-events.ts`. The moderation queue is never read.
 
 ## Verification status (UI-V2-A)
 
