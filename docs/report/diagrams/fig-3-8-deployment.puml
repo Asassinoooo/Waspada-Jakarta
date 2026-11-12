@@ -1,68 +1,19 @@
 @startuml fig-3-8-deployment
-' Figure 3.8: deployment. Left is implemented (local live mode). Right is the planned hosted target.
-' Planned and gated items: hosting, Neon, source rights. Nothing on the right is deployed.
-!pragma layout smetana
-skinparam dpi 150
-skinparam monochrome true
-skinparam shadowing false
-skinparam defaultFontName Arial
-skinparam defaultFontSize 11
-skinparam packageStyle rectangle
-skinparam node {
-  BackgroundColor white
-  BorderColor black
-}
-skinparam component {
-  BackgroundColor white
-  BorderColor black
-}
-skinparam database {
-  BackgroundColor white
-  BorderColor black
-}
-skinparam ArrowColor black
+!include theme/waspada-report.theme.puml
+top to bottom direction
 
-title Figure 3.8 - Deployment: local live mode (implemented) and hosted target (planned, gated)
+node "Browser\ndesktop or phone" as BR
+rectangle "IMPLEMENTED\nWorker API in one Node process\n:8787, serves apps/web/dist" as WAPI
+rectangle "IMPLEMENTED\nPollers (60 s) and\njob runner" as POLL
+database "PGlite file\n.data/live-db" as PG
+rectangle "External providers\nPetaBencana, BMKG, 14 RSS feeds,\nNineRouter gateway" as SRC
+rectangle "PLANNED / GATED\nCloudflare Workers" as CF #F2F6F4;line.dashed
+database "PLANNED / GATED\nNeon PostgreSQL" as NEON #F2F6F4;line.dashed
 
-node "Browser (desktop or phone)" as BR
-
-package "IMPLEMENTED: local live mode (WSL Ubuntu, npm run serve:live)" as LOCAL {
-  node "One Node process (tools/serve-live-pipeline.ts)" as NODE {
-    component "Worker API in process\n:8787 (/api/v1), serves apps/web/dist" as L_API
-    component "Vite dev server\n:5173 (spawned by serve:live)" as L_VITE
-    component "Pollers every 60 s\nand intelligence job runner" as L_JOB
-  }
-  database "PGlite, persistent\n.data/live-db (migrations 001-047)" as L_DB
-}
-
-package "PLANNED / GATED: hosted target (hosting, Neon, source rights)" as HOST {
-  node "Cloudflare Workers" as CF {
-    component "Worker API\n(wrangler.toml: no cron trigger)" as H_API
-    component "Static web assets\n(no [assets] binding yet)" as H_WEB
-  }
-  database "Neon PostgreSQL Free\nPostGIS, pgvector (planned)" as H_DB
-  node "Intelligence service\n(separate Node process, planned)" as H_INT
-  node "Android client\n(Flutter, public read only)" as H_APP
-}
-
-package "External providers (HTTPS)" as EXT {
-  node "NineRouter model gateway" as NR
-  node "PetaBencana, BMKG CAP,\n14 RSS feeds, webhook senders" as FEEDS
-}
-
-BR --> L_API : HTTP :8787
-BR --> L_VITE : HTTP :5173
-L_VITE --> L_API : proxy /api/v1
-L_JOB --> L_DB : leases, writes
-L_API --> L_DB : reads, writes
-L_JOB --> FEEDS : poll
-L_JOB --> NR : chat and embedding
-
-BR -[dashed]-> H_WEB : planned
-H_APP -[dashed]-> H_API : planned
-H_API -[dashed]-> H_DB : planned
-H_INT -[dashed]-> H_DB : planned
-H_INT -[dashed]-> NR : planned
-H_INT -[dashed]-> H_API : planned
-
+BR --> WAPI : HTTP
+WAPI --> PG : reads, writes
+POLL --> PG : leases, writes
+POLL --> SRC : poll, chat, embedding
+BR ..> CF : planned
+CF ..> NEON : planned
 @enduml

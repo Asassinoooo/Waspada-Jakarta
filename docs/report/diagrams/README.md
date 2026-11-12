@@ -35,6 +35,20 @@ holds architecture labels only: no endpoints, keys or personal data.
 
 ## Status
 
-All nine sources render to PNG without errors. Each PNG was checked by eye. Known layout issue: in
-`fig-3-1-helicopter-view`, the two arrows into the storage box still cross the "Waspada services (local
-live mode)" cluster title. Its meaning is unaffected, but the title overlaps the arrow labels.
+Layout v2 (DOC-REPORT-02). All nine sources share `theme/waspada-report.theme.puml`, which uses the light
+theme colours of `apps/web` (teal accent, neutral greys). Titles were removed because the report
+captions carry the figure numbers. Each figure was redrawn with fewer nodes and checked by eye.
+
+Measured aspect ratios (width:height) of the rendered PNGs, to keep each figure within a page width:
+
+| File | Ratio |
+| --- | --- |
+| fig-1-1-five-layer-architecture | 0.80 |
+| fig-3-1-helicopter-view | 1.82 |
+| fig-3-2-use-case | 1.06 |
+| fig-3-3-activity | 1.30 |
+| fig-3-4-sequence | 1.34 |
+| fig-3-5-class | 0.74 |
+| fig-3-6-freshness-state-machine | 1.57 |
+| fig-3-7-component | 1.09 |
+| fig-3-8-deployment | 1.80 |

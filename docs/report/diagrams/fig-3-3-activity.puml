@@ -1,69 +1,39 @@
 @startuml fig-3-3-activity
-' Figure 3.3: live pipeline activity from source to public read, as built on 12 Nov 2026.
-' Swimlanes mark the component that acts. The Mastra steps are the workflow step ids.
-!pragma layout smetana
-skinparam dpi 150
-skinparam monochrome true
-skinparam shadowing false
-skinparam defaultFontName Arial
-skinparam defaultFontSize 11
-skinparam activity {
-  BackgroundColor white
-  BorderColor black
-  DiamondBackgroundColor white
-  DiamondBorderColor black
-}
-skinparam ArrowColor black
+!include theme/waspada-report.theme.puml
 
-title Figure 3.3 - Live pipeline activity: source to public read
-
-|Sources|
+|Sources and L1|
 start
-:Poll PetaBencana, BMKG CAP and\n14 RSS feeds every 60 s,\nor receive webhook push;
-
-|L1 triage gate|
-:Deterministic prefilter\nand title dedupe;
-:AI triage with\nsource-permission evidence;
+:Poll feeds every 60 s\nor receive webhook;
+:Prefilter and AI triage\nwith permission evidence;
 if (Accepted?) then (no)
   :Drop, or hold as uncertain;
   stop
 else (yes)
-  :Immutable report revision\nand evidence chunks;
-  :Enqueue waspada.ai_jobs;
+  :Store report revision\nand evidence chunks;
+  :Queue ai_jobs;
 endif
 
-|apps/intelligence|
-:Lease job, run\nincident-intelligence-workflow;
-:interpret-report;
-:embed-and-retrieve\n(768-d vectors, related evidence);
-:correlate-incident\n(same, new or unresolved);
-:persist-and-propose\nincident and proposal (awaiting decision);
-:Notify Worker (POST /api/v1/internal/proposals);
+|Intelligence service|
+:Lease job; interpret, embed,\nretrieve and correlate;
+:Write incident and proposal\n(awaiting decision);
 
 |L4 publication gate|
-:decideProposal(auto_publish)\nrun as auto-publisher agent;
+:decideProposal\n(auto-publisher agent);
 if (No discrepancy and\nall checks pass?) then (yes)
   :Publish decision, event version\nand claims in one transaction;
-  :Update PublicReadModel, then public\n/api/v1/events and #peta read published versions only;
+  :Update PublicReadModel;
   stop
 else (no)
-  :Queue for moderator\n(#admin/tinjau);
+  :Queue for moderator;
 endif
 
 |Moderator|
-if (Moderator decision?) then (publish)
-  :Publish (discrepancy does not block,\nsource rights still apply);
-  |L4 publication gate|
-  :Publish decision, event version\nand claims in one transaction;
-  :Update PublicReadModel, then public\n/api/v1/events and #peta read published versions only;
-  stop
-elseif (reject?) then (yes)
-  :Reject (reject never publishes);
-  stop
-else (no decision)
-  |L4 publication gate|
-  :Expire after review TTL\n(48 h default, agent review-expiry, ADR-062);
-  stop
-endif
-
+:Publish or reject\n(reject never publishes);
+|L4 publication gate|
+:Publish, or record rejection;
+note right
+  Undecided after 48 h:
+  expired, not published (ADR-062)
+end note
+stop
 @enduml

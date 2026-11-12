@@ -1,56 +1,24 @@
 @startuml fig-3-4-sequence
-' Figure 3.4: sequence from an accepted source item to the public read, auto-publish path.
-' Model calls go through NineRouter. Source text is data, not instructions.
-!pragma layout smetana
-skinparam dpi 150
-skinparam monochrome true
-skinparam shadowing false
-skinparam defaultFontName Arial
-skinparam defaultFontSize 11
-skinparam sequenceMessageAlign center
-skinparam ParticipantBackgroundColor white
-skinparam ParticipantBorderColor black
-skinparam ArrowColor black
-skinparam ActorBackgroundColor white
-
-title Figure 3.4 - Sequence: accepted report to public read (auto-publish path)
-
-participant "Poller\n(serve:live, L1)" as P
-participant "Triage\n(L1 news triage)" as T
-participant "NineRouter\n(chat, embedding)" as NR
-database "PostgreSQL\nwaspada.*" as DB
+!include theme/waspada-report.theme.puml
+participant "Triage (L1)" as T
 participant "Job runner\n(apps/intelligence)" as J
-participant "Mastra workflow\nincident-intelligence" as W
-participant "Worker API\n(L4 gate and public API)" as L4
-participant "PublicReadModel" as PRM
-actor "Browser\n#peta" as B
+participant "NineRouter" as NR
+database "PostgreSQL" as DB
+participant "Worker API\n(L4 gate)" as W
+actor "Browser" as B
 
-P -> T : accepted candidate item
-T -> NR : AI triage (structured output)
-NR --> T : disposition
-T -> DB : report revision, chunks,\nai_jobs row (pending)
-
-J -> DB : lease ai_jobs row
-J -> W : run workflow
-W -> NR : interpret-report
-W -> NR : embed-and-retrieve (768-d)
-W -> DB : candidate incidents (pgvector)
-W -> NR : correlate-incident
-W -> DB : persist incident and proposal\n(awaiting decision)
-J -> DB : complete ai_jobs row
-J -> L4 : POST /api/v1/internal/proposals\n(service key)
-
-L4 -> DB : read proposal
+T -> DB : revision, chunks, ai_jobs (pending)
+J -> DB : lease job
+J -> NR : interpret, embed, correlate
+J -> DB : persist incident and proposal
+J -> W : POST /api/v1/internal/proposals
+W -> DB : read proposal
 alt no discrepancy and all checks pass
-  L4 -> DB : decision, event version, claims\n(one transaction)
-  L4 -> PRM : publish version
-  L4 --> J : published
+  W -> DB : decision, version, claims (one transaction)
+  W -> W : update PublicReadModel
 else discrepancy or failed check
-  L4 --> J : queued for moderator (SSE to #admin/tinjau)
+  W --> J : queued for moderator
 end
-
-B -> L4 : GET /api/v1/events
-L4 -> PRM : read published versions
-L4 --> B : published events only
-
+B -> W : GET /api/v1/events
+W --> B : published versions only
 @enduml

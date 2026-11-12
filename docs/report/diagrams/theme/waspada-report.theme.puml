@@ -1,0 +1,95 @@
+' Shared look for every report figure (DOC-REPORT-02).
+' Colours follow the light theme of apps/web (teal accent, neutral greys).
+!pragma layout smetana
+skinparam dpi 150
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 13
+skinparam defaultTextAlignment center
+skinparam shadowing false
+skinparam roundCorner 14
+skinparam padding 6
+skinparam nodesep 40
+skinparam ranksep 46
+skinparam ArrowColor #33494F
+skinparam ArrowThickness 1.3
+skinparam ArrowFontColor #33494F
+skinparam ArrowFontSize 12
+skinparam NoteBackgroundColor #F2F6F4
+skinparam NoteBorderColor #A9BBB8
+skinparam NoteFontColor #33494F
+skinparam NoteFontSize 12
+skinparam packageTitleAlignment left
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #A9BBB8
+  FontColor #06625D
+}
+skinparam rectangle {
+  BackgroundColor #E7F3F1
+  BorderColor #087B75
+  FontColor #18323A
+}
+skinparam node {
+  BackgroundColor #F2F6F4
+  BorderColor #33494F
+  FontColor #18323A
+}
+skinparam database {
+  BackgroundColor #D5DEDB
+  BorderColor #06625D
+  FontColor #18323A
+}
+skinparam component {
+  BackgroundColor #E7F3F1
+  BorderColor #087B75
+  FontColor #18323A
+}
+skinparam usecase {
+  BackgroundColor #E7F3F1
+  BorderColor #087B75
+  FontColor #18323A
+}
+skinparam actor {
+  BorderColor #06625D
+  FontColor #18323A
+}
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #087B75
+  HeaderBackgroundColor #E7F3F1
+  FontColor #18323A
+  AttributeFontColor #33494F
+  AttributeFontSize 12
+  ArrowColor #33494F
+}
+skinparam activity {
+  BackgroundColor #E7F3F1
+  BorderColor #087B75
+  FontColor #18323A
+  DiamondBackgroundColor #FFFFFF
+  DiamondBorderColor #06625D
+  StartColor #06625D
+  EndColor #06625D
+  BarColor #06625D
+  SwimlaneBorderColor #A9BBB8
+  SwimlaneTitleFontColor #06625D
+  SwimlaneBackgroundColor #FFFFFF
+}
+skinparam sequence {
+  ParticipantBackgroundColor #E7F3F1
+  ParticipantBorderColor #087B75
+  ParticipantFontColor #18323A
+  LifeLineBorderColor #A9BBB8
+  ActorBorderColor #06625D
+  GroupBackgroundColor #F2F6F4
+  GroupBorderColor #A9BBB8
+  GroupFontColor #33494F
+}
+skinparam state {
+  BackgroundColor #E7F3F1
+  BorderColor #087B75
+  FontColor #18323A
+  StartColor #06625D
+  EndColor #06625D
+}

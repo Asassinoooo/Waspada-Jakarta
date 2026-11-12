@@ -1,66 +1,25 @@
 @startuml fig-3-1-helicopter-view
-' Figure 3.1: helicopter view of clients, providers, services and storage (as built, local live mode).
-!pragma layout smetana
-skinparam dpi 150
-skinparam monochrome true
-skinparam shadowing false
-skinparam defaultFontName Arial
-skinparam defaultFontSize 12
-skinparam packageStyle rectangle
-skinparam rectangle {
-  BackgroundColor white
-  BorderColor black
-}
-skinparam ArrowColor black
-skinparam packageTitleAlignment left
+!include theme/waspada-report.theme.puml
+top to bottom direction
 
-title Figure 3.1 - Helicopter view: clients, providers, services and storage
+rectangle "CLIENTS\nWeb app (React)\nreaders, incident detail, admin" as WEB
+rectangle "CLIENTS\nAndroid app (Flutter)\npublic read only" as APP
+rectangle "SERVICES (local live mode)\nWorker API\n/api/v1, moderation, auth" as API
+rectangle "SERVICES\nIntelligence job runner\napps/intelligence (Mastra)" as JOB
+rectangle "SERVICES\nIngestion pollers (60 s)\nL1 triage gate" as ING
+rectangle "SERVICES\nPublication gate (L4)\nauto-publish or moderator queue" as GATE
+rectangle "EXTERNAL\nPetaBencana, BMKG CAP,\n14 RSS feeds" as SRC
+rectangle "EXTERNAL\nNineRouter gateway\nchat and embedding" as NR
+database "STORAGE\nPostgreSQL / PGlite\nwaspada.* schema" as DB
 
-left to right direction
-
-package "Clients" as CL {
-  rectangle "Web app (React 19, Vite)\n#peta map, #detail, #admin workspace" as WEB
-  rectangle "Android app (Flutter)\npublic read only, no sign-in" as APP
-  rectangle "Moderator or admin browser\nsession cookie, CSRF header" as MOD
-}
-
-package "Waspada services (local live mode)" as SV {
-  rectangle "Worker API (apps/worker)\n/api/v1 public, moderation,\nauth, pipeline flow, SSE" as API
-  rectangle "Ingestion pollers (60 s)\nL1 triage gate" as ING
-  rectangle "Intelligence job runner\n(apps/intelligence, Mastra)" as JOB
-  rectangle "Publication gate (L4)\nauto-publish or moderator queue" as GATE
-}
-
-package "Storage" as ST {
-  database "PostgreSQL, PostGIS, pgvector\nwaspada.* schema\n(PGlite file in local live mode)" as DB
-  rectangle "PublicReadModel\npublished versions only\n(in memory in local live mode)" as PRM
-}
-
-package "External providers" as EXT {
-  rectangle "PetaBencana\nflood reports" as PB
-  rectangle "BMKG CAP\nwarnings" as BMKG
-  rectangle "14 RSS news feeds\nrights checked per source" as RSS
-  rectangle "Webhook senders\nshared key" as HOOK
-  rectangle "NineRouter model gateway\nchat and embedding (HTTPS)" as NR
-  rectangle "OpenStreetMap tiles" as OSM
-}
-
-WEB --> API : /api/v1
+WEB --> API
 APP --> API : public GET only
-MOD --> API : moderation, auth
-WEB --> OSM : map tiles
 API --> GATE
-GATE --> PRM : publish
-API --> PRM : read
-ING --> PB : poll
-ING --> BMKG : poll
-ING --> RSS : poll
-HOOK --> ING : push
+JOB --> GATE : POST proposal
+SRC --> ING : poll or push
 ING --> DB : reports, jobs
-JOB --> DB : lease, write
 JOB --> NR : interpret, embed
-JOB --> API : POST proposal
-API --> DB : reads
-GATE --> DB : decisions
-
+JOB --> DB : lease, write
+GATE --> DB : decisions, publish
+API --> DB : read
 @enduml
