@@ -544,13 +544,39 @@
 
 .map-filter__actions {
   position: sticky;
-  bottom: 0;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-2);
   padding-top: var(--space-2);
+  bottom: calc(-1 * (var(--space-4) + env(safe-area-inset-bottom, 0px)));
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  margin-bottom: calc(-1 * (var(--space-4) + env(safe-area-inset-bottom, 0px)));
+  border-top: 1px solid var(--color-border);
   background: var(--color-surface-raised);
+  box-shadow: 0 -8px 12px -8px var(--color-overlay);
+}
+
+/* Phone map screen: the footer collapses to one compact line so the map keeps the space. */
+@media (max-width: 600px) {
+  .app-shell--map > footer.site-footer.site-footer {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    text-align: left;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block: var(--space-1);
+    font-size: var(--text-2xs);
+    line-height: var(--leading-snug);
+  }
+
+  .app-shell--map > footer.site-footer.site-footer .site-footer__links {
+    flex: 0 0 auto;
+    margin: 0;
+    gap: var(--space-2);
+  }
 }
 
 .sheet.map-detail-sheet {
