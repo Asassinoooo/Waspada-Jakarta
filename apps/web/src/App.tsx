@@ -10,16 +10,15 @@ import { UpdatesCenter } from "./UpdatesCenter.js";
 import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
 import { SourcePointMap } from "./SourcePointMap.js";
 import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
-import { Landing } from "./Landing.js";
 import { HelpPage } from "./HelpPage.js";
 import { AccountAccessGate, AccountPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
 import { accountClient, type AccountReturnTarget } from "./account-client.js";
-import { ThemeToggle } from "./ThemeToggle.js";
+import { SiteFooter, SiteHeader } from "./AppShell.js";
+import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
 
 const AdminDashboard = lazy(() => import("./admin-entry.js"));
 
-type Route =
-  | { screen: "landing" }
+export type Route =
   | { screen: "discover" }
   | { screen: "help"; section?: "panduan" | "privasi" }
   | { screen: "preferences" }
@@ -140,8 +139,37 @@ function apiFailure<T>(eventId: string, error: unknown): ApiReadState<T> {
   };
 }
 
+// Public map home. The older landing and report hashes keep working and land on the same screen.
+const DISCOVER_HASHES: ReadonlySet<string> = new Set([
+  "",
+  "#peta",
+  "#beranda",
+  "#jelajah",
+  "#laporan-publik",
+  "#laporan-publik-demo",
+  "#publik-demo",
+]);
+
+/** Admin workspace tabs (`#admin/<tab>`). Phase C turns them into real tabs; for now each maps to an existing screen. */
+function adminTabRoute(tab: string): Route {
+  switch (tab) {
+    case "tinjau":
+      return { screen: "review" };
+    case "alur":
+      return { screen: "pipeline-flow" };
+    case "embedding":
+      return { screen: "embedding-3d" };
+    case "sumber":
+      return { screen: "source-preview" };
+    default:
+      // ringkasan, akun and unknown tabs open the administrator workspace.
+      return { screen: "admin" };
+  }
+}
+
 export function routeFromHash(hash: string): Route {
-  if (hash === "" || hash === "#beranda") return { screen: "landing" };
+  if (DISCOVER_HASHES.has(hash)) return { screen: "discover" };
+  if (hash.startsWith("#admin/")) return adminTabRoute(hash.slice("#admin/".length));
   if (hash === "#masuk") return { screen: "login" };
   if (hash.startsWith("#masuk?")) {
     const params = new URLSearchParams(hash.slice("#masuk?".length));
@@ -164,9 +192,6 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#pembaruan") return { screen: "updates" };
   if (hash === "#tinjau-bukti") return { screen: "review" };
   if (hash === "#alur-agen") return { screen: "pipeline-flow" };
-  if (hash === "#laporan-publik-demo" || hash === "#laporan-publik" || hash === "#publik-demo" || hash === "#jelajah") {
-    return { screen: "discover" };
-  }
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
     try {
@@ -176,81 +201,6 @@ export function routeFromHash(hash: string): Route {
     }
   }
   return { screen: "discover" };
-}
-
-export function SiteHeader({ route, context = null }: { route: Route; context?: PublicContext | null }) {
-  const onReportGroup = route.screen === "discover" || route.screen === "source-preview" || route.screen === "embedding-3d" || route.screen.startsWith("detail");
-  const onForYou = route.screen === "preferences" || route.screen === "updates" || route.screen === "onboarding" || route.screen === "account";
-  const onHelp = route.screen === "help";
-  const onAccount = route.screen === "login" || route.screen === "onboarding" || route.screen === "account";
-  const datasetMode = context?.dataset_mode;
-  const modeText = datasetMode === "demo"
-    ? "Mode demo"
-    : datasetMode === "live"
-      ? "Mode live"
-      : "Status dataset tidak tersedia";
-  const bannerLabel = datasetMode === "demo" ? "DEMO" : datasetMode === "live" ? "LIVE" : "—";
-  const sourcePreview = route.screen === "source-preview" && datasetMode === "demo";
-  const bannerTitle = sourcePreview
-    ? "DEMO SUMBER — pratinjau data publik; bukan peringatan Waspada"
-    : datasetMode === "demo"
-    ? "DEMO — data sintetis; bukan peringatan langsung"
-    : datasetMode === "live"
-      ? "LIVE — record berasal dari dataset live API"
-      : "Status dataset tidak tersedia.";
-  const bannerDetail = sourcePreview
-    ? "Data referensi dan laporan sumber ditampilkan terpisah dari kejadian sintetis."
-    : datasetMode === "demo"
-    ? "Fixture presentasi tetap terpisah dari record API."
-    : datasetMode === "live"
-      ? "Waktu dan kesegaran tercantum per record; cakupan mengikuti data API yang dimuat."
-      : "Jenis dataset belum dapat diverifikasi.";
-
-  return (
-    <>
-      <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
-      <header className="site-header">
-        <a className="brand" href="#beranda" aria-label="Waspada Jakarta, ke beranda">
-          <span className="brand-mark" aria-hidden="true">WJ</span>
-          <span><strong>Waspada Jakarta</strong><small>Informasi dengan jejak sumber</small></span>
-        </a>
-        <div className="site-header__navigation">
-          <nav className="primary-nav" aria-label="Navigasi utama">
-            <a href="#beranda" aria-current={route.screen === "landing" ? "page" : undefined}>Beranda</a>
-            <a href="#jelajah" aria-current={onReportGroup ? "page" : undefined}>Peta &amp; laporan</a>
-            <a href="#ringkasan-saya" aria-current={onForYou ? "page" : undefined}>Untuk Anda</a>
-            <a href="#bantuan" aria-current={onHelp ? "page" : undefined}>Bantuan</a>
-          </nav>
-          {onReportGroup && (
-            <nav className="context-nav" aria-label="Peta dan laporan">
-              <a href="#jelajah" aria-current={route.screen === "discover" || route.screen.startsWith("detail") ? "page" : undefined}>Laporan publik</a>
-              {datasetMode === "demo" && <a href="#demo-sumber" aria-current={sourcePreview ? "page" : undefined}>Peta sumber · demo</a>}
-              <a href="#visualisasi-3d" aria-current={route.screen === "embedding-3d" ? "page" : undefined}>Visualisasi 3D</a>
-            </nav>
-          )}
-          {onForYou && (
-            <nav className="context-nav" aria-label="Untuk Anda">
-              <a href="#ringkasan-saya" aria-current={route.screen === "preferences" ? "page" : undefined}>Minat tersimpan</a>
-              <a href="#pembaruan" aria-current={route.screen === "updates" ? "page" : undefined}>Pembaruan</a>
-            </nav>
-          )}
-        </div>
-        <div className="site-header__tools">
-          <span className="mode-chip">{modeText}</span>
-          <ThemeToggle />
-          <a className="account-nav-link" href="#akun" aria-current={onAccount ? "page" : undefined}>Akun</a>
-        </div>
-      </header>
-      <section
-        className={"demo-banner" + (datasetMode === "live" ? " demo-banner--live" : datasetMode === undefined ? " demo-banner--unknown" : "")}
-        aria-label="Status dataset"
-      >
-        <span className="demo-banner__mark" aria-hidden="true">{bannerLabel}</span>
-        <strong>{bannerTitle}</strong>
-        <span className="demo-banner__detail">{bannerDetail}</span>
-      </section>
-    </>
-  );
 }
 
 export function PresentationRoute({ context }: { context: PublicContext | null }) {
@@ -279,21 +229,18 @@ export function App() {
   const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [sessionRevision, setSessionRevision] = useState(0);
   const [sessionResult, setSessionResult] = useState<{
-    scope: "login" | "onboarding" | "account" | "admin" | "review" | "pipeline-flow";
+    scope: "login" | "onboarding" | "account" | "admin" | "review" | "pipeline-flow" | "source-preview";
     activation: number;
     revision: number;
     state: AccountSessionState;
   } | null>(null);
   const [localDataRevision, setLocalDataRevision] = useState(0);
-  const [retryKey, setRetryKey] = useState(0);
-  const contextRequestKey = route.screen + ":" + retryKey;
+  const contextRequestKey = route.screen;
   const [contextResult, setContextResult] = useState<{ requestKey: string; value: PublicContext | null } | null>(null);
   const context = contextResult?.requestKey === contextRequestKey ? contextResult.value : null;
-  const contextStatus = contextResult?.requestKey !== contextRequestKey
-    ? "loading"
-    : context === null ? "unavailable" : "loaded";
   const [status, setStatus] = useState<FeedStatus>("loading");
-  const [events, setEvents] = useState<EventView[]>([]);
+  // Events are only written here (initial load and live SSE updates); the map reads its own GeoJSON.
+  const [, setEvents] = useState<EventView[]>([]);
   const [geoJSONState, setGeoJSONState] = useState<GeoJSONMapState>({ status: "idle" });
   const [mapRetryKey, setMapRetryKey] = useState(0);
   const [detailRetryKey, setDetailRetryKey] = useState(0);
@@ -307,7 +254,7 @@ export function App() {
   void geoJSONState;
   void dispatchDiscovery;
   void setMobilePanel;
-  const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review" || route.screen === "pipeline-flow"
+  const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review" || route.screen === "pipeline-flow" || route.screen === "source-preview"
     ? route.screen
     : null;
   const sessionState: AccountSessionState = sessionScope === null || sessionResult?.scope !== sessionScope || sessionResult.activation !== routeActivation || sessionResult.revision !== sessionRevision
@@ -349,7 +296,7 @@ export function App() {
   }, [routeActivation, sessionScope, sessionRevision]);
 
   useEffect(() => {
-    if (sessionScope !== "admin" && sessionScope !== "review" && sessionScope !== "pipeline-flow") return;
+    if (sessionScope !== "admin" && sessionScope !== "review" && sessionScope !== "pipeline-flow" && sessionScope !== "source-preview") return;
     const refreshOnFocus = () => {
       if (document.visibilityState === "visible") refreshAccountSession();
     };
@@ -375,7 +322,7 @@ export function App() {
       setRouteActivation((current) => current + 1);
       setRoute(routeFromHash(window.location.hash));
     };
-    if (!window.location.hash) window.history.replaceState(null, "", "#beranda");
+    if (!window.location.hash) window.history.replaceState(null, "", "#peta");
     window.addEventListener("hashchange", updateRoute);
     return () => window.removeEventListener("hashchange", updateRoute);
   }, []);
@@ -410,7 +357,7 @@ export function App() {
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
   useEffect(() => {
-    if (route.screen !== "discover" && route.screen !== "landing") return;
+    if (route.screen !== "discover") return;
     let cancelled = false;
     setStatus("loading");
 
@@ -427,7 +374,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [retryKey, route.screen]);
+  }, [route.screen]);
   // Real-time Public Events SSE Stream (Zero-polling live updates)
   useEffect(() => {
     if (typeof window === "undefined" || typeof EventSource === "undefined") return;
@@ -575,10 +522,7 @@ export function App() {
 
   return (
     <div className={`app-shell${route.screen === "source-preview" ? " app-shell--source-map" : ""}`}>
-      <SiteHeader route={route} context={context} />
-      {route.screen === "landing" && (
-        <Landing context={context} contextStatus={contextStatus} events={events} status={status} onRetry={() => setRetryKey((current) => current + 1)} />
-      )}
+      <SiteHeader route={route} context={context} sessionKey={routeActivation} />
       {route.screen === "discover" && (
         <LaporanPublik />
       )}
@@ -627,32 +571,18 @@ export function App() {
           <Embedding3DVisualization />
         </Suspense>
       )}
-      {route.screen === "source-preview" && (
-        <UnifiedSourceExplorer
-          datasetMode={context?.dataset_mode ?? null}
-          renderMap={(points, selectedId, onSelect, onReturnToList) => (
-            <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} onReturnToList={onReturnToList} viewMode="unified" />
-          )}
-        />
-      )}
-      <footer className="site-footer">
-        <span>
-          {route.screen === "source-preview" && context?.dataset_mode === "demo"
-            ? "Demo sumber · cuplikan bertanggal dan laporan penyedia; belum dipublikasikan Waspada."
-            : context?.dataset_mode === "demo"
-            ? "Mode demo · record API sintetis dan fixture presentasi ditandai terpisah."
-            : context?.dataset_mode === "live"
-              ? "Mode live · data berasal dari API; cakupan sesuai halaman yang dimuat."
-              : "Status dataset tidak tersedia."}
-        </span>
-        <a href="#laporan-publik-demo">Laporan Publik Demo</a>
-        <a href="#jelajah">Kembali ke jelajah</a>
-        <a href="#bantuan">Bantuan</a>
-        <a href="#admin">Ruang administrator</a>
-        <a href="#tinjau-bukti">Tinjau bukti (Moderator)</a>
-        <a href="#alur-agen">Alur agen (Moderator)</a>
-        <a href="#visualisasi-3d">Visualisasi 3D</a>
-      </footer>
+      {route.screen === "source-preview" && (sessionState.status === "authenticated" && hasProtectedShellAccess("admin", sessionState.session)
+        ? (
+          <UnifiedSourceExplorer
+            datasetMode={context?.dataset_mode ?? null}
+            renderMap={(points, selectedId, onSelect, onReturnToList) => (
+              <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} onReturnToList={onReturnToList} viewMode="unified" />
+            )}
+          />
+        )
+        : <AccountAccessGate shell="admin" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
+      <SiteFooter />
+      <OnboardingIntro autoOpen={introAutoOpenFor(route.screen)} />
     </div>
   );
 }

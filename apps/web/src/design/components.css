@@ -573,3 +573,260 @@ button.admin-queue-card:hover {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ---------- Overlay and navigation primitives (UI-V2-A) ----------
+ * Dialog, Sheet, Tabs, Menu, Popover and the layout helpers in src/ui/.
+ * Durations come from --duration-*; reduced motion disables every animation below. */
+
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-rise-in {
+  from { opacity: 0; transform: translateY(var(--space-2)); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+
+@keyframes ui-slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+
+.ui-overlay {
+  animation: ui-fade-in var(--duration-base) var(--ease-standard) both;
+}
+
+.ui-dialog {
+  animation: ui-rise-in var(--duration-base) var(--ease-standard) both;
+}
+
+/* Sheet: bottom sheet below 900px, side panel from 900px (side prop: left or right). */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  background: var(--color-overlay);
+  animation: ui-fade-in var(--duration-base) var(--ease-standard) both;
+}
+
+.sheet {
+  width: 100%;
+  max-height: min(88dvh, 44rem);
+  overflow: auto;
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--color-border);
+  border-bottom: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+  animation: ui-rise-in var(--duration-base) var(--ease-standard) both;
+}
+
+@media (min-width: 900px) {
+  .sheet-overlay--right { justify-content: flex-end; align-items: stretch; }
+  .sheet-overlay--left { justify-content: flex-start; align-items: stretch; }
+
+  .sheet {
+    width: min(26rem, 100%);
+    max-height: none;
+    height: 100%;
+    padding: var(--space-6);
+    border: 0;
+    border-radius: 0;
+  }
+
+  .sheet-overlay--right .sheet {
+    border-left: 1px solid var(--color-border);
+    animation-name: ui-slide-in-right;
+  }
+
+  .sheet-overlay--left .sheet {
+    border-right: 1px solid var(--color-border);
+    animation-name: ui-slide-in-left;
+  }
+}
+
+/* Tabs: horizontal strip with roving focus (see src/ui/Tabs.tsx). */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-border);
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar { display: none; }
+
+.tabs__tab {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  margin-bottom: -1px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.tabs__tab:hover { color: var(--color-text); }
+
+.tabs__tab[aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.tabs__tab:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
+.tabs__panel { padding-top: var(--space-4); }
+
+/* Menu: button-triggered list of menuitems (see src/ui/Menu.tsx). */
+.menu { position: relative; display: inline-flex; }
+
+.menu__list {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  z-index: var(--z-overlay);
+  display: grid;
+  gap: 2px;
+  min-width: 12rem;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-md);
+  animation: ui-rise-in var(--duration-base) var(--ease-standard) both;
+}
+
+.menu__list--start { left: 0; }
+.menu__list--end { right: 0; }
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.menu__item:hover,
+.menu__item:focus-visible {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.menu__item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-focus);
+}
+
+/* Popover: anchored panel that stays in the markup and is hidden until opened (see src/ui/Popover.tsx). */
+.popover { position: relative; display: inline-flex; }
+
+.popover__panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: var(--z-overlay);
+  width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  animation: ui-rise-in var(--duration-base) var(--ease-standard) both;
+}
+
+.popover__panel[hidden] { display: none; }
+
+/* Layout helpers. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-5);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+  text-wrap: balance;
+}
+
+.empty-state__title {
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.skeleton {
+  display: block;
+  min-height: 1rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--color-surface-sunken) 0%, var(--color-border) 50%, var(--color-surface-sunken) 100%);
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay,
+  .ui-dialog,
+  .sheet-overlay,
+  .sheet,
+  .sheet-overlay--right .sheet,
+  .sheet-overlay--left .sheet,
+  .menu__list,
+  .popover__panel,
+  .skeleton {
+    animation: none;
+  }
+
+  .tabs__tab,
+  .menu__item {
+    transition: none;
+  }
+}

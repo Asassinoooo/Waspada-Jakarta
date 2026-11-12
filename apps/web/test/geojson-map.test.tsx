@@ -8,7 +8,7 @@ import type {
   PublicFeatureCollection,
   PublicGeoJSONGeometry,
 } from "@waspada/worker/public-contracts";
-import { SiteHeader } from "../src/App.js";
+import { SiteHeader } from "../src/AppShell.js";
 import { ApiPayloadError, getEventGeoJSON, parsePublicGeoJSON } from "../src/api-client.js";
 import { DEFAULT_FEED_FILTERS, EventFeed } from "../src/EventFeed.js";
 import { MapPanel, projectCRS84Position, type GeoJSONMapState } from "../src/MapPanel.js";

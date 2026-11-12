@@ -1,4 +1,5 @@
 import { PrivacyPage } from "./PrivacyPage.js";
+import { openOnboardingIntro } from "./OnboardingIntro.js";
 import { ReadGuide } from "./ReadGuide.js";
 import type { PreferencesStorage } from "./preferences-store.js";
 
@@ -22,6 +23,9 @@ export function HelpPage({ section, showLocalPipeline = false, storage, onCleare
           <a href="#panduan" aria-current={section === "panduan" ? "location" : undefined}>Cara membaca laporan</a>
           <a href="#privasi" aria-current={section === "privasi" ? "location" : undefined}>Data dan privasi</a>
         </nav>
+        <p className="help-page__replay">
+          <button type="button" className="button button--quiet button--sm" onClick={() => openOnboardingIntro()}>Lihat pengenalan lagi</button>
+        </p>
       </header>
 
       <ReadGuide embedded />

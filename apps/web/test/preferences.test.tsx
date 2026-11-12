@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { BriefingInterests, PublicContext } from "@waspada/worker/public-contracts";
-import { SiteHeader, routeFromHash } from "../src/App.js";
+import { SiteHeader } from "../src/AppShell.js";
+import { routeFromHash } from "../src/App.js";
 import { requestBriefingIfEligible } from "../src/BriefingResults.js";
 import { Preferences } from "../src/Preferences.js";
 import {
@@ -277,7 +278,8 @@ test("unavailable browser storage renders an explanation and keeps editing recov
 test("preferences have a direct hash route and public navigation link", () => {
   assert.deepEqual(routeFromHash("#ringkasan-saya"), { screen: "preferences" });
   const markup = renderToStaticMarkup(<SiteHeader route={{ screen: "preferences" }} />);
-  assert.match(markup, /href="#ringkasan-saya" aria-current="page">Untuk Anda/);
-  assert.match(markup, /aria-label="Untuk Anda"><a href="#ringkasan-saya" aria-current="page">Minat tersimpan<\/a>/);
+  assert.match(markup, /<a href="#ringkasan-saya" aria-current="page">/u);
+  assert.match(markup, /<span>Area saya<\/span><\/a>/u);
+  assert.doesNotMatch(markup, /Minat tersimpan|aria-label="Untuk Anda"/u);
   assert.match(markup, /Status dataset tidak tersedia/);
 });
