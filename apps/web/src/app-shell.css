@@ -1,0 +1,289 @@
+/*
+ * App shell for public routes (UI-V2-A): sticky header, public footer, first-visit intro.
+ * Colours, spacing, radii and type come from design/tokens.css; controls come from design/components.css.
+ *
+ * Breakpoints: 900px and below moves the theme choice into the account menu and hides the
+ * brand subtitle. 600px and below is the phone header: one row, at most 56px tall, with the
+ * nav as icon plus short label. The header never wraps; the nav scrolls inside itself as a fallback.
+ */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-5);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--header-height);
+  padding-block: var(--space-2);
+  padding-inline: max(var(--space-4), calc((100% - 88rem) / 2));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 2.75rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.brand:hover { color: var(--color-accent); }
+
+.brand-mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.06em;
+}
+
+.brand__text {
+  display: grid;
+  min-width: 0;
+}
+
+.brand__text strong {
+  font-size: var(--text-md);
+  letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
+}
+
+.brand__text small {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.primary-nav {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.primary-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.primary-nav a:hover { color: var(--color-text); }
+
+.primary-nav a[aria-current="page"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.primary-nav__icon {
+  display: none;
+  flex: 0 0 auto;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.site-header__tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.site-header__badge {
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.site-header__status-title {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text);
+  line-height: var(--leading-snug);
+}
+
+.site-header__status-detail {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.site-header__account {
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+}
+
+.site-header__chevron {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-left: var(--space-1);
+  flex: 0 0 auto;
+}
+
+.site-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+}
+
+.site-footer__links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+.help-page__replay { margin: var(--space-3) 0 0; }
+
+/* First-visit intro (OnboardingIntro). */
+.intro-dialog { width: min(34rem, 100%); }
+
+.intro {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.intro__title { margin: 0; }
+
+.intro__text {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.intro__steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intro__step {
+  position: relative;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+  transition: width var(--duration-base) var(--ease-standard), background-color var(--duration-base) var(--ease-standard);
+}
+
+.intro__step--active {
+  width: 1.5rem;
+  background: var(--color-accent);
+}
+
+.intro__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Tablet: subtitle hidden, theme choice moves into the account menu (see AppShell). */
+@media (max-width: 900px) {
+  .brand__text small { display: none; }
+}
+
+/* Phone: one row, at most 56px. Brand mark, icon nav, dataset badge and Akun. */
+@media (max-width: 600px) {
+  .site-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: var(--space-2);
+    min-height: 0;
+    padding-block: var(--space-1);
+    padding-inline: var(--space-3);
+  }
+
+  .brand { gap: 0; }
+  .brand__text { display: none; }
+
+  .primary-nav {
+    gap: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .primary-nav::-webkit-scrollbar { display: none; }
+
+  .primary-nav a {
+    flex: 0 0 auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 0 var(--space-2);
+    border-bottom: 0;
+    font-size: var(--text-2xs);
+    line-height: 1.1;
+  }
+
+  .primary-nav a[aria-current="page"] {
+    border-bottom-color: transparent;
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
+
+  .primary-nav__icon { display: block; }
+
+  .site-header__tools { gap: var(--space-1); }
+
+  .site-header__badge {
+    padding: 0 var(--space-2);
+    font-size: var(--text-2xs);
+  }
+
+  .site-header__account {
+    padding: 0 var(--space-2);
+  }
+
+  .site-header__chevron { display: none; }
+}

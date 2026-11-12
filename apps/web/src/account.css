@@ -1,31 +1,4 @@
-.site-header__tools {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
-}
 
-.account-nav-link {
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-  border: 1px solid var(--kali-teal);
-  border-radius: var(--radius-xs);
-  padding: var(--space-2) var(--space-3);
-  color: var(--kali-teal);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-
-.account-nav-link:hover,
-.account-nav-link[aria-current="page"] {
-  background: var(--kali-teal);
-  color: var(--ink-on-teal);
-}
 
 .account-page {
   max-width: 74rem;
@@ -408,47 +381,6 @@
 @media (max-width: 600px) {
   .account-page {
     padding-top: var(--space-5);
-  }
-
-  /* UI-SYSTEM-02: theme toggle and Akun share row 1 with the brand on phones (no column stacking). */
-  .site-header__tools {
-    width: auto;
-    min-width: 0;
-    max-width: 100%;
-    align-items: center;
-    justify-content: flex-end;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: var(--space-2);
-  }
-
-  .site-header__tools > * {
-    min-width: 0;
-    max-width: 100%;
-    white-space: nowrap;
-  }
-
-  .brand {
-    gap: var(--space-2);
-  }
-
-  .brand-mark {
-    width: 2.25rem;
-  }
-
-  .brand strong {
-    font-size: var(--text-md);
-  }
-
-  .brand small {
-    max-width: 13ch;
-    font-size: var(--text-sm);
-  }
-
-  .account-nav-link {
-    min-height: 2.5rem;
-    padding: var(--space-1) var(--space-2);
-    font-size: var(--text-sm);
   }
 
   .account-profile__facts,

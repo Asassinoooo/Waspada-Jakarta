@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { HistoryPage } from "@waspada/worker/public-contracts";
-import { SiteHeader } from "../src/App.js";
+import { SiteHeader } from "../src/AppShell.js";
 import { EventDetail } from "../src/EventDetail.js";
 import { EventFeed } from "../src/EventFeed.js";
 import { getEventDetail, getEventHistory, getPublicContext, listEvents } from "../src/api-client.js";

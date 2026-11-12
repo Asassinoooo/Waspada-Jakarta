@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { BriefingResponse, EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
-import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, routeFromHash, SiteHeader } from "../src/App.js";
+import type { SessionEnvelope } from "@waspada/worker/account-contracts";
+import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, routeFromHash } from "../src/App.js";
+import { accountMenuEntries, SiteFooter, SiteHeader } from "../src/AppShell.js";
 import { BriefingResultsView, isCurrentBriefingRequest } from "../src/BriefingResults.js";
 import { EventDetail } from "../src/EventDetail.js";
 import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from "../src/EventFeed.js";
@@ -22,6 +24,33 @@ const liveContext: PublicContext = {
   dataset_mode: "live",
   dataset_label: "live",
 };
+
+const anonymousSession: SessionEnvelope = {
+  version: "account-v1",
+  status: "anonymous",
+  password_login_available: true,
+  registration_available: true,
+  csrf_token: null,
+  user: null,
+};
+
+function sessionWithRole(role: "user" | "moderator" | "admin"): SessionEnvelope {
+  return {
+    ...anonymousSession,
+    status: "authenticated",
+    csrf_token: "csrf-token-for-menu-tests-0000",
+    user: {
+      id: "account-menu-" + role,
+      display_name: "Uji Menu",
+      email: "menu@example.test",
+      role,
+      active: true,
+      onboarding_version: 1,
+      onboarding_completed_at: "2026-10-15T04:00:00.000Z",
+      version: 1,
+    },
+  };
+}
 
 const sampleEvent: EventView = {
   event_id: "synthetic-demo-01",
@@ -190,14 +219,35 @@ test("EventFeed flows incident records naturally below map without floating popu
   assert.match(page, />Peta<\/button>/);
 });
 
-test("update centre has direct hash navigation and an accessible current navigation item", () => {
+function primaryNavLinks(markup: string) {
+  const nav = markup.match(/<nav class="primary-nav" aria-label="Navigasi utama">([\s\S]*?)<\/nav>/u)?.[1] ?? "";
+  return [...nav.matchAll(/<a href="([^"]+)"( aria-current="page")?>[\s\S]*?<span>([^<]+)<\/span><\/a>/gu)].map((match) => ({
+    href: match[1] ?? "",
+    current: match[2] !== undefined,
+    label: match[3] ?? "",
+  }));
+}
+
+test("update centre keeps direct hash navigation and marks its current nav item", () => {
   assert.deepEqual(routeFromHash("#pembaruan"), { screen: "updates" });
   const header = renderToStaticMarkup(<SiteHeader route={{ screen: "updates" }} context={liveContext} />);
-  assert.match(header, /href="#ringkasan-saya" aria-current="page">Untuk Anda<\/a>/);
-  assert.match(header, /aria-label="Untuk Anda"><a href="#ringkasan-saya">Minat tersimpan<\/a><a href="#pembaruan" aria-current="page">Pembaruan<\/a>/);
+  const links = primaryNavLinks(header);
+  assert.equal(links.find((link) => link.href === "#pembaruan")?.current, true);
+  assert.equal(links.filter((link) => link.current).length, 1);
 });
 
-test("account hashes retain four primary groups and add one utility entry", () => {
+test("the primary navigation has exactly three destinations: Peta, Pembaruan and Area saya", () => {
+  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "preferences" }} context={liveContext} />);
+  const links = primaryNavLinks(header);
+  assert.deepEqual(links.map((link) => [link.href, link.label]), [
+    ["#peta", "Peta"],
+    ["#pembaruan", "Pembaruan"],
+    ["#ringkasan-saya", "Area saya"],
+  ]);
+  assert.equal(links.find((link) => link.current)?.label, "Area saya");
+});
+
+test("account screens keep the account entry in the header menu and out of the primary nav", () => {
   assert.deepEqual(routeFromHash("#masuk"), { screen: "login" });
   assert.deepEqual(routeFromHash("#masuk?return_to=%23admin"), { screen: "login", returnTo: "#admin" });
   assert.deepEqual(routeFromHash("#masuk?return_to=https%3A%2F%2Fexample.test"), { screen: "login" });
@@ -205,36 +255,84 @@ test("account hashes retain four primary groups and add one utility entry", () =
   assert.deepEqual(routeFromHash("#akun"), { screen: "account" });
 
   const header = renderToStaticMarkup(<SiteHeader route={{ screen: "account" }} context={liveContext} />);
-  const primaryNav = header.match(/<nav class="primary-nav" aria-label="Navigasi utama">([\s\S]*?)<\/nav>/u)?.[1] ?? "";
-  assert.equal((primaryNav.match(/<a\b/gu) ?? []).length, 4);
-  assert.match(header, /href="#akun" aria-current="page">Akun<\/a>/u);
+  assert.equal(primaryNavLinks(header).length, 3);
+  assert.match(header, /aria-haspopup="menu"[^>]*>Akun</u);
 });
 
-test("integrated UX routes preserve public map and encoded detail targets", () => {
-  assert.deepEqual(routeFromHash(""), { screen: "landing" });
-  assert.deepEqual(routeFromHash("#beranda"), { screen: "landing" });
-  assert.deepEqual(routeFromHash("#jelajah"), { screen: "discover" });
-  assert.deepEqual(routeFromHash("#demo-sumber"), { screen: "source-preview" });
+test("the public map is the home route and every legacy public hash resolves to it", () => {
+  for (const hash of ["", "#peta", "#beranda", "#jelajah", "#laporan-publik", "#laporan-publik-demo", "#publik-demo", "#tidak-dikenal"]) {
+    assert.deepEqual(routeFromHash(hash), { screen: "discover" }, hash);
+  }
   assert.deepEqual(routeFromHash("#bantuan"), { screen: "help" });
   assert.deepEqual(routeFromHash("#panduan"), { screen: "help", section: "panduan" });
   assert.deepEqual(routeFromHash("#privasi"), { screen: "help", section: "privasi" });
   assert.deepEqual(routeFromHash("#admin"), { screen: "admin" });
   assert.deepEqual(routeFromHash("#admin-workspace"), { screen: "admin" });
+  assert.deepEqual(routeFromHash("#tinjau-bukti"), { screen: "review" });
+  assert.deepEqual(routeFromHash("#alur-agen"), { screen: "pipeline-flow" });
+  assert.deepEqual(routeFromHash("#visualisasi-3d"), { screen: "embedding-3d" });
+  assert.deepEqual(routeFromHash("#embedding-3d"), { screen: "embedding-3d" });
+  assert.deepEqual(routeFromHash("#demo-sumber"), { screen: "source-preview" });
   assert.deepEqual(routeFromHash("#detail/api/public%2Fid%3F"), { screen: "detail-api", eventId: "public/id?" });
   assert.deepEqual(routeFromHash("#detail/api/%ZZ"), { screen: "detail-api", eventId: "" });
   // A production/SSR import cannot open the development-only private inspector.
   assert.deepEqual(routeFromHash("#pipeline-lokal"), { screen: "discover" });
-  const header = renderToStaticMarkup(<SiteHeader route={{ screen: "landing" }} context={demoContext} />);
-  const primaryNav = header.match(/<nav class="primary-nav" aria-label="Navigasi utama">([\s\S]*?)<\/nav>/u)?.[1] ?? "";
-  assert.equal((primaryNav.match(/<a\b/gu) ?? []).length, 4);
-  assert.match(header, /href="#beranda" aria-current="page">Beranda/);
-  assert.match(header, /href="#jelajah">Peta &amp; laporan/);
-  assert.match(header, /href="#ringkasan-saya">Untuk Anda/);
-  assert.match(header, /href="#bantuan">Bantuan/);
-  assert.doesNotMatch(header, /href="#demo-sumber"|href="#admin"|href="#tinjau-bukti"/);
-  assert.doesNotMatch(header, /href="#pipeline-lokal"/);
-  const publicMapHeader = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={demoContext} />);
-  assert.match(publicMapHeader, /aria-label="Peta dan laporan"><a href="#jelajah" aria-current="page">Laporan publik<\/a><a href="#demo-sumber">Peta sumber · demo<\/a>/);
+});
+
+test("admin tab hashes map onto the existing admin screens until the workspace tabs land", () => {
+  assert.deepEqual(routeFromHash("#admin/ringkasan"), { screen: "admin" });
+  assert.deepEqual(routeFromHash("#admin/akun"), { screen: "admin" });
+  assert.deepEqual(routeFromHash("#admin/tinjau"), { screen: "review" });
+  assert.deepEqual(routeFromHash("#admin/alur"), { screen: "pipeline-flow" });
+  assert.deepEqual(routeFromHash("#admin/embedding"), { screen: "embedding-3d" });
+  assert.deepEqual(routeFromHash("#admin/sumber"), { screen: "source-preview" });
+  assert.deepEqual(routeFromHash("#admin/tidak-ada"), { screen: "admin" });
+});
+
+test("the public header shows one dataset badge and no admin, review or source links", () => {
+  const demo = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={demoContext} />);
+  assert.match(demo, /popover__trigger site-header__badge badge badge--warning[^>]*>Data contoh<\/button>/u);
+  assert.match(demo, /DEMO — data sintetis; bukan peringatan langsung/);
+  assert.match(demo, /Lewati ke konten utama/);
+  assert.doesNotMatch(demo, /href="#(admin|tinjau-bukti|demo-sumber|alur-agen|visualisasi-3d|pipeline-lokal|laporan-publik-demo)/u);
+
+  const live = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={liveContext} />);
+  assert.match(live, />Langsung<\/button>/u);
+  assert.match(live, /LIVE — record berasal dari dataset live API/);
+  assert.doesNotMatch(live, /DEMO —/);
+
+  const unknown = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={null} />);
+  assert.match(unknown, />Status data<\/button>/u);
+  assert.match(unknown, /Status dataset tidak tersedia/);
+  assert.match(unknown, /Jenis dataset belum dapat diverifikasi/);
+  assert.doesNotMatch(unknown, /Mode demo|Mode live|DEMO —|LIVE —/);
+
+  const footer = renderToStaticMarkup(<SiteFooter />);
+  assert.match(footer, /bukan layanan darurat\. Darurat: 112\./u);
+  assert.match(footer, /href="#bantuan">Bantuan<\/a>/u);
+  assert.match(footer, /href="#privasi">Privasi<\/a>/u);
+  assert.doesNotMatch(footer, /href="#(admin|tinjau-bukti|demo-sumber|alur-agen|visualisasi-3d|laporan-publik-demo|jelajah)/u);
+});
+
+test("the account menu offers the admin workspace only to moderators and administrators", () => {
+  const labels = (session: SessionEnvelope | null) => accountMenuEntries(session, null).map((entry) => entry.label);
+  const entry = (session: SessionEnvelope | null, id: string) => accountMenuEntries(session, null).find((item) => item.id === id);
+
+  assert.deepEqual(labels(null), ["Akun", "Bantuan", "Privasi", "Tentang Waspada"]);
+  assert.deepEqual(labels(anonymousSession), ["Masuk", "Bantuan", "Privasi", "Tentang Waspada"]);
+  assert.deepEqual(labels(sessionWithRole("user")), ["Akun saya", "Bantuan", "Privasi", "Tentang Waspada"]);
+  assert.equal(entry(sessionWithRole("user"), "admin"), undefined);
+
+  assert.equal(entry(sessionWithRole("moderator"), "admin")?.href, "#admin/tinjau");
+  assert.equal(entry(sessionWithRole("moderator"), "embedding"), undefined);
+
+  assert.equal(entry(sessionWithRole("admin"), "admin")?.href, "#admin/ringkasan");
+  assert.equal(entry(sessionWithRole("admin"), "embedding")?.href, "#admin/embedding");
+  assert.equal(entry(sessionWithRole("admin"), "sources")?.href, "#admin/sumber");
+
+  const inactiveAdmin = { ...sessionWithRole("admin"), user: { ...sessionWithRole("admin").user!, active: false } };
+  assert.equal(entry(inactiveAdmin, "admin"), undefined);
+  assert.equal(accountMenuEntries(null, "Gelap").at(-1)?.label, "Tema: Gelap");
 });
 
 test("briefing gates unknown, demo, and empty-interest contexts without enabling a request", () => {
