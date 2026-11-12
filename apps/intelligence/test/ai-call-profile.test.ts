@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import type { Agent } from "@mastra/core/agent";
-import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
-import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
+import type { TestDatabase } from "../../db/test/harness.js";
+import { closeSharedTestDatabase, sharedTestDatabase } from "./shared-test-database.js";
 import {
   createNineRouterRateGate,
   getNineRouterCallCounts,
@@ -105,20 +105,22 @@ function embeddingTransport(embedInputs: string[]): NineRouterFetch {
 /**
  * Every test gets the fake embedding transport, so no test can reach the network.
  * The recorded embedding inputs are passed to the test body.
+ * The database is the file's shared, baseline-reset PGlite (see shared-test-database.ts).
  */
 async function withDatabase(run: (db: TestDatabase, embedInputs: string[]) => Promise<void>): Promise<void> {
-  const db = await createTestDatabase();
+  const db = await sharedTestDatabase();
   try {
-    const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
-    await applyMigrations(db.executor, migrations);
     const embedInputs: string[] = [];
     setNineRouterRateGate(createNineRouterRateGate({ transport: embeddingTransport(embedInputs), clock: NO_SLEEP_CLOCK, log: () => {} }));
     await run(db, embedInputs);
   } finally {
     setNineRouterRateGate(undefined);
-    await db.close();
   }
 }
+
+after(async () => {
+  await closeSharedTestDatabase();
+});
 
 function baseInput(overrides: Partial<IncidentWorkflowInput>): IncidentWorkflowInput {
   return {
