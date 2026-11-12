@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { AccountRole, AccountUser, AccountUserUpdate, SessionEnvelope } from "@waspada/worker/account-contracts";
+import { PageHeader } from "./ui/PageHeader.js";
 import {
   AccountHttpError,
   accountClient,
@@ -57,11 +58,10 @@ export function adminUpdateErrorMessage(error: unknown): "conflict" | "authoriza
 function AccountFrame({ children, title, kicker = "Akun · Waspada Jakarta" }: { children: React.ReactNode; title: string; kicker?: string }) {
   return (
     <main id="main-content" tabIndex={-1} className="main-shell account-page">
-      <header className="account-page__intro">
-        <p className="experience-kicker">{kicker}</p>
-        <h1>{title}</h1>
-      </header>
-      {children}
+      <div className="page-column">
+        <PageHeader eyebrow={kicker} title={title} />
+        {children}
+      </div>
     </main>
   );
 }
@@ -71,6 +71,10 @@ function SessionLoading({ label = "Memeriksa sesi akun…" }: { label?: string }
     <section className="state-panel state-panel--loading" role="status" aria-live="polite">
       <strong>{label}</strong>
       <span>Peta dan laporan publik tetap dapat dibuka selama pemeriksaan ini.</span>
+      <div className="skeleton-stack" aria-hidden="true">
+        <span className="skeleton" />
+        <span className="skeleton skeleton--short" />
+      </div>
     </section>
   );
 }
@@ -82,7 +86,7 @@ function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
       <p>Fitur akun memerlukan layanan sesi. Peta dan laporan publik tetap tersedia.</p>
       <div className="account-actions">
         <button className="button button--quiet" type="button" onClick={onRetry}>Coba lagi</button>
-        <a className="button button--primary" href="#jelajah">Buka peta dan laporan</a>
+        <a className="button button--primary" href="#peta">Buka peta dan laporan</a>
       </div>
     </section>
   );
@@ -261,7 +265,7 @@ function RegisterForm({ client, onSignedIn }: { client: AccountClient; onSignedI
         disabled={working}
       />
       <div className="account-actions">
-        <button className="button button--primary" type="submit" disabled={working}>{working ? "Mendaftarkan…" : "Daftar dan masuk"}</button>
+        <button className="button" type="submit" disabled={working}>{working ? "Mendaftarkan…" : "Daftar dan masuk"}</button>
       </div>
     </form>
   );
@@ -511,7 +515,7 @@ function Onboarding({
             ? <button className="button button--primary" type="button" onClick={() => setStep((currentStep) => Math.min(ACCOUNT_ONBOARDING_STEPS.length - 1, currentStep + 1))}>Lanjut</button>
             : authenticatedUser
               ? <button className="button button--primary" type="button" onClick={() => void completeAccountOnboarding()} disabled={working}>{working ? "Menyimpan…" : "Selesaikan pengenalan akun"}</button>
-              : <a className="button button--primary" href="#jelajah">Selesai, buka peta</a>}
+              : <a className="button button--primary" href="#peta">Selesai, buka peta</a>}
         </div>
       </section>
       {sessionState.status === "anonymous" && (
@@ -617,7 +621,7 @@ function AdminUserRow({
           <label>Alasan perubahan
             <textarea value={reason} onChange={(event) => setReason(event.currentTarget.value)} maxLength={500} rows={2} disabled={saving} required />
           </label>
-          <button className="button button--primary" type="button" onClick={() => void save()} disabled={saving || !dirty || reason.trim().length < 1}>{saving ? "Menyimpan…" : "Simpan perubahan"}</button>
+          <button className="button" type="button" onClick={() => void save()} disabled={saving || !dirty || reason.trim().length < 1}>{saving ? "Menyimpan…" : "Simpan perubahan"}</button>
         </div>}
       {message && <p className="account-message" role="status">{message}</p>}
     </article>
@@ -790,7 +794,7 @@ function AccountProfile({
         <div className="account-actions">
           {user.onboarding_version === 0 && <a className="button button--quiet" href="#mulai">Selesaikan pengenalan</a>}
           <a className="button button--quiet" href="#ringkasan-saya">Atur minat lokal</a>
-          <button className="button button--primary" type="button" onClick={() => void logout()} disabled={logoutState === "working"}>{logoutState === "working" ? "Keluar…" : "Keluar"}</button>
+          <button className="button button--quiet" type="button" onClick={() => void logout()} disabled={logoutState === "working"}>{logoutState === "working" ? "Keluar…" : "Keluar"}</button>
         </div>
       </section>
       <PasswordChangeForm csrfToken={activeCsrfToken} client={client} onRefreshSession={onRefreshSession} />
@@ -928,7 +932,7 @@ export function AccountAccessGate({
         <div className="account-actions" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", alignItems: "flex-start" }}>
           <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
             <a className="button button--quiet" href="#masuk">Masuk dengan username</a>
-            <a className="button button--quiet" href="#beranda">Kembali ke layanan publik</a>
+            <a className="button button--quiet" href="#peta">Kembali ke layanan publik</a>
           </div>
         </div>
       </section>
@@ -939,7 +943,7 @@ export function AccountAccessGate({
       <section className="account-card" role="alert">
         <h1>Akses tidak tersedia</h1>
         <p>Sesi saat ini tidak memiliki peran yang diperlukan untuk membuka tampilan ini.</p>
-        <div className="account-actions"><a className="button button--quiet" href="#akun">Lihat akun</a><a className="button button--primary" href="#beranda">Kembali ke layanan publik</a></div>
+        <div className="account-actions"><a className="button button--quiet" href="#akun">Lihat akun</a><a className="button button--primary" href="#peta">Kembali ke layanan publik</a></div>
       </section>
     </main>;
   }

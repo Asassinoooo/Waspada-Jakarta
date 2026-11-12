@@ -141,7 +141,7 @@
   --xy-controls-button-border-color: var(--color-border);
   --xy-controls-box-shadow: var(--shadow-sm);
   --xy-minimap-background-color: var(--color-surface);
-  --xy-minimap-mask-background-color: rgb(24 50 58 / 0.12);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--color-shadow) 12%, transparent);
   --xy-minimap-mask-stroke-color: var(--color-border-strong);
   --xy-minimap-node-background-color: var(--color-accent);
   --xy-attribution-background-color: var(--color-surface-raised);

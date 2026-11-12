@@ -3,8 +3,8 @@
    UI-SYSTEM-02: colours, type, radius, elevation and spacing come from the
    design tokens. Classes that design/components.css already defines (buttons,
    badges, filter pills, modal parts, empty and error states, the feedback
-   banner) keep only their layout here. The public page (#jelajah) has its own
-   stylesheet, laporan-publik.css, and does not use this file.
+   banner) keep only their layout here. The public map (#peta) has its own
+   stylesheet, map-home.css, and does not use this file.
    ========================================================================== */
 
 /* ---- Page and queue layout ---- */

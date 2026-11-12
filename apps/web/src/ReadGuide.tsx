@@ -10,7 +10,7 @@ export function ReadGuide({ embedded = false }: { embedded?: boolean }) {
           Periksa apa yang dilaporkan, kapan informasi ditinjau, bukti yang mendukungnya,
           dan alasan laporan mungkin berkaitan dengan minat Anda.
         </p>
-        <a className="experience-action experience-action--primary" href="#jelajah">
+        <a className="experience-action experience-action--quiet" href="#peta">
           Lewati panduan, jelajahi laporan
         </a>
       </header>
@@ -94,7 +94,7 @@ export function ReadGuide({ embedded = false }: { embedded?: boolean }) {
       </section>
 
       <nav className="experience-actions" aria-label="Tindakan panduan">
-        <a className="experience-action experience-action--primary" href="#jelajah">Mulai jelajah</a>
+        <a className="experience-action experience-action--primary" href="#peta">Mulai jelajah</a>
         <a className="experience-action experience-action--quiet" href="#privasi">Lihat penggunaan data</a>
       </nav>
     </>

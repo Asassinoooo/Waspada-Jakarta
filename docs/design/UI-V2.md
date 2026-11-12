@@ -1,6 +1,6 @@
 # UI-V2 design principles
 
-Status: UI-V2-A (app shell, simplified navigation, UI primitives, first-visit intro) and UI-V2-B (map-first home) are in place. UI-V2-C (administrator workspace with tabs) is on `work/UI-V2-C-admin-workspace`. Phase D is planned in `docs/IMPLEMENTATION_BACKLOG.md`. Tokens and primitives extend UI-SYSTEM-01 and UI-SYSTEM-02 and keep their rules.
+Status: UI-V2-A (app shell, simplified navigation, UI primitives, first-visit intro) and UI-V2-B (map-first home) are in place. UI-V2-C (administrator workspace with tabs) is on `work/UI-V2-C-admin-workspace`. UI-V2-D (secondary pages and CSS cleanup) is on the UI-V2-D branch, see "Secondary pages (UI-V2-D)" below. Tokens and primitives extend UI-SYSTEM-01 and UI-SYSTEM-02 and keep their rules.
 
 ## Principles
 
@@ -100,6 +100,27 @@ Shell classes (`apps/web/src/app-shell.css`): `.site-header`, `.brand`, `.primar
 - Times stay apart: "Waktu kejadian" is the event time and "Diterbitkan" is the publication time. A missing value reads "Tidak diketahui". "N sumber" counts distinct named outlets and never means verification.
 - Data comes from `/api/v1/events` and `/api/v1/events.geojson` through `published-events.ts`. The moderation queue is never read.
 
+## Secondary pages (UI-V2-D)
+
+Pembaruan, Area saya, the account screens (Akun, Masuk, Mulai), and Bantuan and Privasi share one title block and one reading column.
+
+- **PageHeader** (`apps/web/src/ui/PageHeader.tsx`). An optional eyebrow, one `h1`, an optional lead, and an optional single action slot. Styles are `.page-header*` in `design/components.css`. It never renders a second heading.
+- **Page column.** `.page-column` is 45rem wide and centred. It sits inside `.main-shell` or `.experience-page`, which give the 16px side gutter on phones. Each screen keeps its own `<main id="main-content">`.
+- **One primary action.** Each state of a secondary page shows at most one `.button--primary` or `.experience-action--primary`. Other actions are `.button`, `.button--quiet`, or a text link.
+
+| Screen | Hash | Primary action |
+| --- | --- | --- |
+| Pembaruan | `#pembaruan` | "Periksa pembaruan sekarang" (empty and results), or "Coba lagi" (error) |
+| Area saya | `#ringkasan-saya` | "Simpan di perangkat ini" (none while unreadable interests are being recovered) |
+| Akun | `#akun` | "Ubah kata sandi" (signed in), or "Masuk dengan username" (guest) |
+| Masuk | `#masuk` | "Masuk" |
+| Mulai | `#mulai` | "Lanjut", then "Selesai, buka peta" (guest) or "Selesaikan pengenalan akun" |
+| Bantuan and Privasi | `#bantuan`, `#panduan`, `#privasi` | "Mulai jelajah", at the end of the guide |
+
+- **Links to the map.** In-app links to the public list use `#peta`. The legacy `#jelajah` hash still routes to the map in `routeFromHash`.
+- **Loading.** Pembaruan, the account loader and the Area saya briefing show `.skeleton-stack` bars inside their existing status text. The bars are hidden from assistive technology, and their shimmer stops under `prefers-reduced-motion`.
+- **Motion.** Dialogs, sheets, menus and popovers animate for `--duration-base` (180ms). Hover and colour changes use `--duration-fast` (120ms). Both are 0ms under reduced motion.
+
 ## Verification status (UI-V2-A)
 
 - Typecheck and the changed or new web test files were run one at a time: `ui.test`, `preferences`, `geojson-map`, `ui-primitives`, `onboarding-intro`, plus the unchanged `landing`, `experience`, `accounts`, `pipeline-flow`, `embedding-visualization` and `local-pipeline-preview`.
@@ -110,3 +131,14 @@ Shell classes (`apps/web/src/app-shell.css`): `.site-header`, `.brand`, `.primar
 - `npm run typecheck` (web) passes. Changed or new web test files were run one at a time: `admin-workspace` 16 (new), `admin-dashboard` 9, `pipeline-flow` 5, `ui` 23, `embedding-visualization` 4, `accounts` 16, `ui-primitives` 11, `moderator-review` 26, `unified-source-explorer` 14, `preferences` 13, `geojson-map` 9.
 - `npm run build --workspace=@waspada/web` passes (vite only). three.js appears only in the `Embedding3DVisualization` chunk and @xyflow/react only in `pipeline-flow-entry`. The main `index` chunk contains neither.
 - Not checked: the workspace in a browser at 390px and 900px, a keyboard walk-through of the rail in both themes, and CI.
+
+## Verification status (UI-V2-D)
+
+- `npm run typecheck` from the root passes, and so does the web typecheck. `npx vite build` in `apps/web` passes. Its chunk-size warning was already there before this phase.
+- Changed or new web test files were run one at a time: `page-header` 5 (new), `experience` 6, `accounts` 16, `updates-center` 16, `preferences` 13 and `ui` 23. All pass.
+- CSS under `apps/web/src` went from 12,129 to 12,087 lines (-0.3%). Very little was genuinely dead. The strict check (every class name absent from `src`) found two selectors in `unified-source-explorer.css`, which are removed. The `react-flow` selectors belong to @xyflow and stay. The other removals are the landing, header, chip and intro rules that no source file uses any more.
+- Kept on purpose:
+  - `styles.css` lines 1001 to 1026 (`.button`, `.button--primary`, `.button--quiet`) duplicate `design/components.css`, but they load later and win. Removing them changes button height (2.6rem to `--control-height` 2.5rem) and the primary hover colour (dark ink to `--color-accent-hover`), so decide that visually first.
+  - `EventFeed.tsx` is exported but no screen renders it, and `ui.test.tsx` renders it directly. About 330 lines of `styles.css` (`.feed-*`, `.search-*`, `.event-card*`, `.discovery-*`, `.dataset-status*`, `.mobile-view-switch`, `.page-intro*`, `.presentation-card*`) depend only on it. Removing it is a follow-up because it also changes that test.
+- The phone rule that sets a 44px minimum on `.button` and `.experience-action` also applies to `.button--sm` outside `.map-home` and `.map-popup`, for example in the pipeline view.
+- Not checked: 390px and 768px in a browser, a keyboard walk-through, contrast, and CI.

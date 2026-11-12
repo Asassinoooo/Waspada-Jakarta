@@ -11,6 +11,7 @@ import type {
 } from "@waspada/worker/public-contracts";
 import { ApiHttpError, ApiPayloadError, getEventDetailWithSignal, getPublicUpdates, type PublicUpdatePage } from "./api-client.js";
 import { categoryLabel } from "./display.js";
+import { PageHeader } from "./ui/PageHeader.js";
 import {
   browserPreferencesStorage,
   loadPreferences,
@@ -653,75 +654,80 @@ export function UpdateCenterContent({
 }) {
   return (
     <main id="main-content" className="main-shell updates-center-page">
-      <section className="page-intro" aria-labelledby="updates-center-title">
-        <div>
-          <p className="section-kicker">Pembaruan untuk minat lokal</p>
-          <h1 id="updates-center-title">Pembaruan</h1>
-        </div>
-        <p className="page-intro__copy">Hanya ringkasan perubahan yang cocok dengan minat tersimpan dan detail event publik terkini yang ditampilkan.</p>
-      </section>
+      <div className="page-column">
+        <PageHeader
+          eyebrow="Pembaruan untuk minat lokal"
+          title="Pembaruan"
+          titleId="updates-center-title"
+          lead="Hanya ringkasan perubahan yang cocok dengan minat tersimpan dan detail event publik terkini yang ditampilkan."
+        />
 
-      {gate === "unknown" ? (
-        <section className="state-panel" role="status"><strong>Status dataset belum dapat diverifikasi.</strong><p>Pembaruan tidak dimuat sampai API mengonfirmasi mode live.</p></section>
-      ) : gate === "demo" ? (
-        <section className="state-panel" role="status"><strong>Pembaruan live tidak tersedia pada mode demo.</strong><p>Data demo dan fixture tidak digunakan untuk mencocokkan minat Anda.</p></section>
-      ) : gate === "malformed" ? (
-        <section className="state-panel" role="alert"><strong>Minat tersimpan tidak dapat dibaca.</strong><p>Periksa atau hapus data minat secara eksplisit sebelum memakai pusat pembaruan.</p><a className="text-link" href="#ringkasan-saya">Periksa minat tersimpan</a></section>
-      ) : gate === "unavailable" ? (
-        <section className="state-panel" role="status"><strong>Penyimpanan browser tidak dapat dibaca.</strong><p>Pembaruan tidak dimuat. Aktifkan penyimpanan lokal atau periksa pengaturan browser.</p></section>
-      ) : gate === "empty" ? (
-        <section className="state-panel" role="status"><strong>Tambahkan minat sebelum memuat pembaruan.</strong><p>Pilih tempat, layanan, institusi, kelompok, atau kategori yang ingin Anda ikuti.</p><a className="text-link" href="#ringkasan-saya">Atur minat di perangkat ini</a></section>
-      ) : (
-        <>
-          <section className="updates-center-privacy" aria-label="Privasi minat">
-            <strong>Minat tetap di browser ini.</strong>
-            <p>Permintaan pembaruan tidak mengirim pilihan minat. Kecocokan dihitung di perangkat dari kategori dan nama lingkup pada detail publik yang dimuat.</p>
-            <p>Mode live tidak memastikan sumber tertentu tersambung atau seluruh cakupan tersedia.</p>
-          </section>
-
-          {state.resetNotice && (
-            <p className="updates-center-reset" role="status">Cursor diperbarui. Ringkasan pembaruan yang lebih lama tidak lagi tersedia setelah penetapan ulang.</p>
-          )}
-          {state.status === "loading" && (
-            <div className="state-panel state-panel--loading" role="status" aria-live="polite" aria-busy="true">
-              <strong>{state.phase === "baseline" ? "Menetapkan titik awal pembaruan…" : state.phase === "snapshot" ? "Memperbarui halaman event publik…" : state.phase === "details" ? "Memeriksa detail event publik…" : "Memuat pembaruan live…"}</strong>
-            </div>
-          )}
-          {state.status === "unavailable" && (
-            <div className="state-panel state-panel--error" role="alert">
-              <strong>{state.failure === "storage" ? "Cursor pembaruan tidak dapat disimpan." : "Pembaruan belum dapat dimuat."}</strong>
-              <p>{state.failure === "storage" ? "Periksa izin penyimpanan browser. Tidak ada minat atau isi pembaruan yang disimpan." : "Coba lagi saat koneksi API tersedia. Keadaan keselamatan tidak diketahui."}</p>
-              <button className="button button--quiet" type="button" onClick={onRefresh}>Coba lagi</button>
-            </div>
-          )}
-          {state.status === "retry" && (
-            <div className="state-panel state-panel--error" role="alert">
-              <strong>{state.failure === "details" ? "Sebagian detail event belum dapat diperiksa." : "Snapshot event belum dapat diperbarui."}</strong>
-              <p>Halaman pembaruan belum diterapkan dan cursor tetap di posisi sebelumnya. Coba lagi tanpa kehilangan halaman ini.</p>
-              <button className="button button--quiet" type="button" onClick={onRefresh}>Coba lagi memuat halaman</button>
-            </div>
-          )}
-          {state.status === "ready" && state.items.length === 0 && (
-            <section className="updates-center-empty" aria-live="polite">
-              <p role="status">Belum ada pembaruan yang cocok dengan minat tersimpan.</p>
-              <p>Hasil kosong bukan pernyataan bahwa area aman.</p>
-              <button className="button button--quiet" type="button" onClick={onRefresh}>Periksa pembaruan sekarang</button>
+        {gate === "unknown" ? (
+          <section className="state-panel" role="status"><strong>Status dataset belum dapat diverifikasi.</strong><p>Pembaruan tidak dimuat sampai API mengonfirmasi mode live.</p></section>
+        ) : gate === "demo" ? (
+          <section className="state-panel" role="status"><strong>Pembaruan live tidak tersedia pada mode demo.</strong><p>Data demo dan fixture tidak digunakan untuk mencocokkan minat Anda.</p></section>
+        ) : gate === "malformed" ? (
+          <section className="state-panel" role="alert"><strong>Minat tersimpan tidak dapat dibaca.</strong><p>Periksa atau hapus data minat secara eksplisit sebelum memakai pusat pembaruan.</p><a className="text-link" href="#ringkasan-saya">Periksa minat tersimpan</a></section>
+        ) : gate === "unavailable" ? (
+          <section className="state-panel" role="status"><strong>Penyimpanan browser tidak dapat dibaca.</strong><p>Pembaruan tidak dimuat. Aktifkan penyimpanan lokal atau periksa pengaturan browser.</p></section>
+        ) : gate === "empty" ? (
+          <section className="state-panel" role="status"><strong>Tambahkan minat sebelum memuat pembaruan.</strong><p>Pilih tempat, layanan, institusi, kelompok, atau kategori yang ingin Anda ikuti.</p><a className="text-link" href="#ringkasan-saya">Atur minat di perangkat ini</a></section>
+        ) : (
+          <>
+            <section className="updates-center-privacy" aria-label="Privasi minat">
+              <strong>Minat tetap di browser ini.</strong>
+              <p>Permintaan pembaruan tidak mengirim pilihan minat. Kecocokan dihitung di perangkat dari kategori dan nama lingkup pada detail publik yang dimuat.</p>
+              <p>Mode live tidak memastikan sumber tertentu tersambung atau seluruh cakupan tersedia.</p>
             </section>
-          )}
-          {state.status === "ready" && state.items.length > 0 && (
-            <section className="updates-center-results" aria-labelledby="updates-results-title">
-              <div className="updates-center-results__heading">
-                <h2 id="updates-results-title">{state.items.length} pembaruan cocok</h2>
-                <button className="button button--quiet" type="button" onClick={onRefresh}>Periksa pembaruan sekarang</button>
+
+            {state.resetNotice && (
+              <p className="updates-center-reset" role="status">Cursor diperbarui. Ringkasan pembaruan yang lebih lama tidak lagi tersedia setelah penetapan ulang.</p>
+            )}
+            {state.status === "loading" && (
+              <div className="state-panel state-panel--loading" role="status" aria-live="polite" aria-busy="true">
+                <strong>{state.phase === "baseline" ? "Menetapkan titik awal pembaruan…" : state.phase === "snapshot" ? "Memperbarui halaman event publik…" : state.phase === "details" ? "Memeriksa detail event publik…" : "Memuat pembaruan live…"}</strong>
+                <div className="skeleton-stack" aria-hidden="true">
+                  <span className="skeleton" />
+                  <span className="skeleton skeleton--short" />
+                </div>
               </div>
-              <ol className="updates-center-list" aria-label="Pembaruan publik yang cocok">
-                {state.items.map((item) => <li key={item.change.event_id + ":" + item.change.version}><UpdateCard item={item} /></li>)}
-              </ol>
-            </section>
-          )}
-          <p className="updates-center-check" aria-live="polite">Pemeriksaan sistem terakhir: <time dateTime={state.checkedAt ?? undefined}>{formatJakartaInstant(state.checkedAt)}</time>.</p>
-        </>
-      )}
+            )}
+            {state.status === "unavailable" && (
+              <div className="state-panel state-panel--error" role="alert">
+                <strong>{state.failure === "storage" ? "Cursor pembaruan tidak dapat disimpan." : "Pembaruan belum dapat dimuat."}</strong>
+                <p>{state.failure === "storage" ? "Periksa izin penyimpanan browser. Tidak ada minat atau isi pembaruan yang disimpan." : "Coba lagi saat koneksi API tersedia. Keadaan keselamatan tidak diketahui."}</p>
+                <button className="button button--primary" type="button" onClick={onRefresh}>Coba lagi</button>
+              </div>
+            )}
+            {state.status === "retry" && (
+              <div className="state-panel state-panel--error" role="alert">
+                <strong>{state.failure === "details" ? "Sebagian detail event belum dapat diperiksa." : "Snapshot event belum dapat diperbarui."}</strong>
+                <p>Halaman pembaruan belum diterapkan dan cursor tetap di posisi sebelumnya. Coba lagi tanpa kehilangan halaman ini.</p>
+                <button className="button button--primary" type="button" onClick={onRefresh}>Coba lagi memuat halaman</button>
+              </div>
+            )}
+            {state.status === "ready" && state.items.length === 0 && (
+              <section className="updates-center-empty" aria-live="polite">
+                <p role="status">Belum ada pembaruan yang cocok dengan minat tersimpan.</p>
+                <p>Hasil kosong bukan pernyataan bahwa area aman.</p>
+                <button className="button button--primary" type="button" onClick={onRefresh}>Periksa pembaruan sekarang</button>
+              </section>
+            )}
+            {state.status === "ready" && state.items.length > 0 && (
+              <section className="updates-center-results" aria-labelledby="updates-results-title">
+                <div className="updates-center-results__heading">
+                  <h2 id="updates-results-title">{state.items.length} pembaruan cocok</h2>
+                  <button className="button button--primary" type="button" onClick={onRefresh}>Periksa pembaruan sekarang</button>
+                </div>
+                <ol className="updates-center-list" aria-label="Pembaruan publik yang cocok">
+                  {state.items.map((item) => <li key={item.change.event_id + ":" + item.change.version}><UpdateCard item={item} /></li>)}
+                </ol>
+              </section>
+            )}
+            <p className="updates-center-check" aria-live="polite">Pemeriksaan sistem terakhir: <time dateTime={state.checkedAt ?? undefined}>{formatJakartaInstant(state.checkedAt)}</time>.</p>
+          </>
+        )}
+      </div>
     </main>
   );
 }

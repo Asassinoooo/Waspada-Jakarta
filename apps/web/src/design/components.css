@@ -21,12 +21,6 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
-body {
-  margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
 :where(h1, h2, h3, h4) {
   color: var(--color-text);
   line-height: var(--leading-tight);
@@ -67,7 +61,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 
 .button,
 .admin-button,
-.landing-button,
 .experience-action,
 .embedding-3d__btn,
 .source-point-map__button,
@@ -99,7 +92,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 
 .button:hover,
 .admin-button:hover,
-.landing-button:hover,
 .experience-action:hover,
 .embedding-3d__btn:hover,
 .source-point-map__button:hover,
@@ -111,7 +103,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 
 .button:focus-visible,
 .admin-button:focus-visible,
-.landing-button:focus-visible,
 .experience-action:focus-visible,
 .embedding-3d__btn:focus-visible,
 .source-point-map__button:focus-visible,
@@ -123,7 +114,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 
 .button:disabled,
 .admin-button:disabled,
-.landing-button:disabled,
 .experience-action:disabled,
 .embedding-3d__btn:disabled,
 .source-point-map__button:disabled,
@@ -136,8 +126,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 
 /* Primary: one filled accent action per view. */
 .button--primary,
-.landing-button--primary,
-.experience-action--primary,
 .admin-button--primary,
 .modal-btn--primary,
 .action-button--approve {
@@ -147,7 +135,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 }
 
 .button--primary:hover,
-.landing-button--primary:hover,
 .experience-action--primary:hover,
 .admin-button--primary:hover,
 .modal-btn--primary:hover,
@@ -159,8 +146,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 
 /* Quiet: text-weight action, no fill. */
 .button--quiet,
-.landing-button--quiet,
-.experience-action--quiet,
 .admin-button--quiet,
 .source-point-map__button--quiet {
   border-color: transparent;
@@ -169,7 +154,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 }
 
 .button--quiet:hover,
-.landing-button--quiet:hover,
 .experience-action--quiet:hover,
 .admin-button--quiet:hover,
 .source-point-map__button--quiet:hover {
@@ -179,19 +163,13 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
 }
 
 /* Danger: destructive or rejecting actions. */
-.button--danger,
-.action-button--reject,
-.modal-btn--danger,
-.experience-action--danger {
+.action-button--reject {
   border-color: var(--color-danger-border);
   background: var(--color-surface);
   color: var(--color-danger-text);
 }
 
-.button--danger:hover,
-.action-button--reject:hover,
-.modal-btn--danger:hover,
-.experience-action--danger:hover {
+.action-button--reject:hover {
   border-color: var(--color-danger);
   background: var(--color-danger-soft);
   color: var(--color-danger-text);
@@ -237,13 +215,11 @@ code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
   color: var(--color-text);
 }
 
-.card--interactive,
 a.event-card,
 button.admin-queue-card {
   transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
 }
 
-.card--interactive:hover,
 a.event-card:hover,
 button.admin-queue-card:hover {
   border-color: var(--color-accent-border);
@@ -281,14 +257,12 @@ button.admin-queue-card:hover {
 .badge,
 .count-chip,
 .fixture-chip,
-.mode-chip,
 .unified-chip,
 .severity-chip,
 .incident-badge,
 .multi-source-badge,
 .admin-read-only-chip,
-.local-pipeline__status-chip,
-.category-tag {
+.local-pipeline__status-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -306,14 +280,11 @@ button.admin-queue-card:hover {
 
 .badge--accent { border-color: var(--color-accent-border); background: var(--color-accent-soft); color: var(--color-accent-hover); }
 .badge--warning { border-color: var(--color-warning-border); background: var(--color-warning-soft); color: var(--color-warning-text); }
-.badge--danger { border-color: var(--color-danger-border); background: var(--color-danger-soft); color: var(--color-danger-text); }
-.badge--info { border-color: transparent; background: var(--color-info-soft); color: var(--color-info); }
 
 /* Filter pills (toggleable chips). */
 .filter-pill,
 .queue-filter-btn,
-.facility-filter-pill,
-.category-tag-btn {
+.facility-filter-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -332,22 +303,15 @@ button.admin-queue-card:hover {
 
 .filter-pill:hover,
 .queue-filter-btn:hover,
-.facility-filter-pill:hover,
-.category-tag-btn:hover { border-color: var(--color-accent); color: var(--color-text); }
+.facility-filter-pill:hover { border-color: var(--color-accent); color: var(--color-text); }
 
 .queue-filter-btn--active,
 .facility-filter-pill--active,
-.category-tag-btn--active,
-.unified-chip--active,
-.embedding-3d__btn--active,
 .filter-pill[aria-pressed="true"],
-.filter-pill.is-active,
 .queue-filter-btn[aria-pressed="true"],
 .queue-filter-btn.active,
 .facility-filter-pill[aria-pressed="true"],
-.facility-filter-pill.active,
-.category-tag-btn[aria-pressed="true"],
-.category-tag-btn.active {
+.facility-filter-pill.active {
   border-color: var(--color-accent);
   background: var(--color-accent);
   color: var(--color-on-accent);
@@ -357,7 +321,6 @@ button.admin-queue-card:hover {
 
 .field { display: grid; gap: var(--space-1); }
 
-.field__label,
 .account-form__field > label,
 .account-form__field > span:first-child {
   color: var(--color-text);
@@ -365,12 +328,9 @@ button.admin-queue-card:hover {
   font-weight: var(--weight-semibold);
 }
 
-.field__hint { color: var(--color-text-subtle); font-size: var(--text-xs); }
-
 .input,
 .account-form__field input,
 .modal-text-input,
-.preference-input,
 :where(input[type="search"], input[type="text"], input[type="password"], input[type="email"], input[type="number"], select, textarea) {
   min-height: var(--control-height);
   padding: 0 var(--space-3);
@@ -428,7 +388,6 @@ button.admin-queue-card:hover {
 .state-panel,
 .updates-center-empty,
 .preference-empty,
-.landing-state,
 .admin-empty,
 .moderator-empty-queue,
 .source-point-map__empty,
@@ -446,7 +405,6 @@ button.admin-queue-card:hover {
 
 .state-panel > strong { display: block; margin-bottom: var(--space-1); color: var(--color-text); font-size: var(--text-md); }
 
-.state-panel--compact,
 .admin-empty--compact { padding: var(--space-3) var(--space-4); }
 
 .state-panel--loading,
@@ -483,8 +441,7 @@ button.admin-queue-card:hover {
 }
 
 .notice,
-.notice--warning,
-.demo-banner {
+.notice--warning {
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-sm);
@@ -492,8 +449,6 @@ button.admin-queue-card:hover {
   color: var(--color-warning-text);
   font-size: var(--text-sm);
 }
-
-.notice--info { border-color: transparent; background: var(--color-info-soft); color: var(--color-info); }
 
 .feedback-banner--success { border-color: var(--color-accent-border); background: var(--color-accent-soft); color: var(--color-accent-hover); }
 .feedback-banner--info { border-color: transparent; background: var(--color-info-soft); color: var(--color-info); }
@@ -523,8 +478,6 @@ button.admin-queue-card:hover {
   background: var(--color-overlay);
 }
 
-.modal,
-.modal-content,
 .modal-dialog,
 [role="dialog"][aria-modal="true"].dialog {
   width: min(40rem, 100%);
@@ -852,6 +805,81 @@ button.admin-queue-card:hover {
   background: linear-gradient(90deg, var(--color-surface-sunken) 0%, var(--color-border) 50%, var(--color-surface-sunken) 100%);
   background-size: 200% 100%;
   animation: ui-shimmer 1.4s linear infinite;
+}
+
+/* ---------- Secondary pages (UI-V2-D) ----------
+ * PageHeader (src/ui/PageHeader.tsx) holds one h1, an optional eyebrow, lead and single action.
+ * .page-column sets the reading width. Its side gutter comes from .main-shell and .experience-page (16px on phones). */
+.page-column {
+  width: 100%;
+  max-width: 45rem;
+  margin-right: auto;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+/* Child selectors are written as `.page-header .x` so they beat `.experience-page h1` and `.experience-page p`
+ * on the help screen. Every secondary page then shows the same title size. */
+.page-header .page-header__text {
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+
+.page-header .page-header__eyebrow {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.page-header .page-header__title {
+  max-width: none;
+  margin: 0;
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+
+.page-header .page-header__lead {
+  max-width: 60ch;
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+.page-header .page-header__action {
+  flex: 0 0 auto;
+}
+
+/* Phone tap targets: at least 44px (2.75rem). Desktop keeps the 40px control height. */
+@media (max-width: 600px) {
+  .button,
+  .experience-action {
+    min-height: 2.75rem;
+  }
+}
+
+/* Loading placeholders: a stack of .skeleton bars, hidden from assistive technology. */
+.skeleton-stack {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.skeleton-stack .skeleton--short {
+  width: 60%;
 }
 
 @media (prefers-reduced-motion: reduce) {
