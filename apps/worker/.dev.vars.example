@@ -10,6 +10,8 @@ AUTH_APP_ORIGIN=https://waspada.example
 # Automatic publication source-permission check (ADR-061). Unset or any other value means `required`.
 # Only the local serve:live server sets `local_relaxed`, and it is never set for hosted deployments.
 # AUTO_PUBLISH_SOURCE_PERMISSION=required
+# Hours before an undecided proposal expires (REVIEW-EXPIRY-01, ADR-062). Integer 1..720. Unset or invalid means 48.
+# PROPOSAL_REVIEW_TTL_HOURS=48
 # WJ-INT-02A live triage transport. Secrets only via dashboard/wrangler
 # secret/.dev.vars — never in wrangler.toml. Local node tooling falls back
 # to the same names in process env (see .env.local).

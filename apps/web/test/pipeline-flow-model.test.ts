@@ -170,3 +170,14 @@ test("the demo fixture carries no permitted text and only fictional titles", () 
   assert.ok(snapshot.runtime !== null);
   assert.equal(snapshot.nodes.length, PIPELINE_FLOW_NODE_IDS.length);
 });
+
+test("the review node shows a kedaluwarsa chip, and its drawer says unreviewed proposals expire unpublished (REVIEW-EXPIRY-01)", () => {
+  const snapshot = demoSnapshot();
+  const review = nodeView(nodeById(snapshot, "review"));
+  assert.deepEqual(review.chips.find((row) => row.label === "kedaluwarsa"), { label: "kedaluwarsa", value: 2, tone: "neutral" });
+  assert.equal(countLabel("expired_24h"), "Kedaluwarsa 24 jam");
+  assert.match(review.description, /Usulan yang tidak ditinjau dalam 48 jam ditandai kedaluwarsa dan tidak diterbitkan\./u);
+
+  const older = nodeView({ ...nodeById(snapshot, "review"), counts: { waiting_discrepancy: 2, waiting_gate: 3 } });
+  assert.equal(older.chips.some((row) => row.label === "kedaluwarsa"), false, "a snapshot without the count shows no chip");
+});

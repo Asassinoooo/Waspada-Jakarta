@@ -32,7 +32,7 @@ function zeroAggregates(): PipelineFlowAggregates {
     correlation: { by_decision_24h: {}, decisions_15m: 0, incidents_open: 0 },
     proposals: { proposed_24h: 0, proposed_15m: 0, pending: 0, pending_discrepancy: 0 },
     publication: {
-      decisions_24h: {}, decisions_15m: 0, moderator_decisions_15m: 0, events_published: 0,
+      decisions_24h: {}, decisions_15m: 0, moderator_decisions_15m: 0, expired_24h: 0, events_published: 0,
       versions_24h: 0, versions_15m: 0, versions_agent_24h: 0, versions_moderator_24h: 0,
     },
   };
@@ -45,6 +45,26 @@ function nodeOf(snapshot: ReturnType<typeof buildPipelineFlowSnapshot>, id: stri
 }
 
 describe("FLOW-VIS-01 pipeline flow snapshot", () => {
+  it("the review node carries expired_24h, and an aggregate without the count still builds with zero", () => {
+    const base = zeroAggregates();
+    const withExpired = buildPipelineFlowSnapshot({
+      generatedAt: NOW.toISOString(),
+      datasetMode: "live",
+      aggregates: { ...base, publication: { ...base.publication, expired_24h: 3 } },
+      runtime: null,
+    });
+    assert.equal(nodeOf(withExpired, "review").counts.expired_24h, 3);
+    assert.equal(nodeOf(withExpired, "gate").counts.reject_24h, 0, "an expiry is not a gate rejection");
+
+    const legacy = buildPipelineFlowSnapshot({
+      generatedAt: NOW.toISOString(),
+      datasetMode: "live",
+      aggregates: { ...base, publication: { ...base.publication, expired_24h: undefined as unknown as number } },
+      runtime: null,
+    });
+    assert.equal(nodeOf(legacy, "review").counts.expired_24h, 0);
+  });
+
   it("places every stage in its layer and keeps the edges in pipeline order", () => {
     const snapshot = buildPipelineFlowSnapshot({ generatedAt: NOW.toISOString(), datasetMode: "demo", aggregates: zeroAggregates(), runtime: null });
     assert.deepEqual(snapshot.nodes.map((node) => node.id), [...PIPELINE_FLOW_NODE_IDS]);

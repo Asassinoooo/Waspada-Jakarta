@@ -61,6 +61,8 @@ export interface WorkerEnvironment {
    * Set only by serve:live on 127.0.0.1. Unset or any other value means `required`.
    */
   AUTO_PUBLISH_SOURCE_PERMISSION?: string;
+  /** REVIEW-EXPIRY-01 (ADR-062): hours before an undecided proposal expires. Unset or invalid means 48. */
+  PROPOSAL_REVIEW_TTL_HOURS?: string;
   SQL_EXECUTOR?: SqlExecutor;
   /** WJ-INT-02A live triage transport (Worker bindings; secrets via dashboard/wrangler secret). */
   NINEROUTER_URL?: string;

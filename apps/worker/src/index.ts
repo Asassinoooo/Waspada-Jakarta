@@ -44,6 +44,7 @@ const contextSourcesHandler = createContextSourcesHandler();
 import { createEmbeddingVisualizationHandler } from "./layers/l4-application-integration/embedding-visualization-handler.js";
 import { createPipelineFlowHandler, PIPELINE_FLOW_ROUTE_PATH } from "./layers/l4-application-integration/pipeline-flow-api.js";
 import { demoPipelineFlowItems, demoPipelineFlowSnapshotSource } from "./layers/l4-application-integration/pipeline-flow-fixtures.js";
+import { runScheduledReviewExpiry } from "./runtime/review-expiry-runtime.js";
 
 const activeRevisions = new Map<string, StoredReportRevision>();
 const activeProposals = new Map<string, EventProposalDto>();
@@ -621,6 +622,22 @@ export default {
       { telemetry: consoleTelemetry },
     );
     await handleFreshnessDueScheduleTrigger(controller.scheduledTime, env, undefined, consoleTelemetry);
+    // REVIEW-EXPIRY-01 (ADR-062): live only. Its own try/catch, so an ingestion failure below cannot skip it.
+    try {
+      const expiry = await runScheduledReviewExpiry({
+        env,
+        now: new Date(controller.scheduledTime),
+        withSqlExecutor: (operation) => withSqlExecutor(env, operation),
+      });
+      if (expiry.ran && (expiry.expired > 0 || expiry.skipped_already_decided > 0 || expiry.failed > 0)) {
+        console.log(
+          `[Review] expired ${expiry.expired} proposals past the ${expiry.ttl_hours}h review window ` +
+          `(skipped_already_decided=${expiry.skipped_already_decided} failed=${expiry.failed})`,
+        );
+      }
+    } catch {
+      console.warn("[Review] expiry sweep failed");
+    }
     try {
       const pbRunner = createPetaBencanaPollRuntime();
       const pbResult = await pbRunner.poll(controller.scheduledTime);

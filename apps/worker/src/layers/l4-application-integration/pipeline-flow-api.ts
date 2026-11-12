@@ -299,6 +299,8 @@ export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): Pipeli
       waiting_discrepancy: a.proposals.pending_discrepancy,
       waiting_gate: Math.max(0, a.proposals.pending - a.proposals.pending_discrepancy),
       moderator_decisions_15m: a.publication.moderator_decisions_15m,
+      // REVIEW-EXPIRY-01 (ADR-062): undecided proposals past the review TTL, 24 h.
+      expired_24h: a.publication.expired_24h ?? 0,
     },
     throughput: a.publication.moderator_decisions_15m,
     failing: false,

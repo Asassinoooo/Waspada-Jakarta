@@ -81,6 +81,8 @@ export interface PipelineFlowAggregates {
     readonly decisions_24h: Readonly<Record<string, number>>;
     readonly decisions_15m: number;
     readonly moderator_decisions_15m: number;
+    /** REVIEW-EXPIRY-01: `expire` decisions in 24 h. Kept out of decisions_24h and decisions_15m. */
+    readonly expired_24h: number;
     readonly events_published: number;
     readonly versions_24h: number;
     readonly versions_15m: number;
@@ -279,7 +281,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
           [datasetKind, since24h, since15m],
         );
 
-        const decisionRows = await tx.query<{ disposition: string; actor_kind: string; n: unknown; n_15m: unknown }>(
+        const decisionRows = await tx.query<{ disposition: string | null; actor_kind: string | null; n: unknown; n_15m: unknown }>(
           `SELECT pd.disposition AS disposition,
                   pd.actor_kind AS actor_kind,
                   count(*) AS n,
@@ -310,6 +312,9 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
         const jobs = jobRows.rows[0] ?? {};
         const proposals = proposalRows.rows[0] ?? {};
         const versions = versionRows.rows[0] ?? {};
+        // REVIEW-EXPIRY-01: expired proposals were never decided by a person or the publisher, so they
+        // do not count as publication decisions. They are counted separately as expired_24h.
+        const publicationRows = decisionRows.rows.filter((row) => row.disposition !== "expire");
         const triageAll = triageRows.rows;
         const skipped = triageAll.filter((row) => row.model_status === "skipped_stage_a");
         const modelled = triageAll.filter((row) => row.model_status !== "skipped_stage_a");
@@ -386,11 +391,14 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
             pending_discrepancy: toCount(proposals.pending_discrepancy),
           },
           publication: {
-            decisions_24h: byKey(decisionRows.rows, (row) => `${row.disposition ?? "unknown"}_${row.actor_kind ?? "unknown"}`),
-            decisions_15m: decisionRows.rows.reduce((total, row) => total + toCount(row.n_15m), 0),
-            moderator_decisions_15m: decisionRows.rows
+            decisions_24h: byKey(publicationRows, (row) => `${row.disposition ?? "unknown"}_${row.actor_kind ?? "unknown"}`),
+            decisions_15m: publicationRows.reduce((total, row) => total + toCount(row.n_15m), 0),
+            moderator_decisions_15m: publicationRows
               .filter((row) => row.actor_kind === "moderator")
               .reduce((total, row) => total + toCount(row.n_15m), 0),
+            expired_24h: decisionRows.rows
+              .filter((row) => row.disposition === "expire")
+              .reduce((total, row) => total + toCount(row.n), 0),
             events_published: toCount(versions.events_published),
             versions_24h: toCount(versions.versions_24h),
             versions_15m: toCount(versions.versions_15m),
@@ -491,10 +499,11 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
             return rows.rows.map((row) => ({ ref: row.ref, status: row.status, failure_code: null, title: null, at: toInstant(row.at) }));
           }
           case "proposal": {
-            const rows = await tx.query<{ ref: string; title: string | null; decided: boolean; at: unknown }>(
+            const rows = await tx.query<{ ref: string; title: string | null; decided: boolean; disposition: string | null; at: unknown }>(
               `SELECT ep.proposal_id AS ref,
                       ep.title AS title,
                       (pd.proposal_id IS NOT NULL) AS decided,
+                      pd.disposition AS disposition,
                       ep.proposed_at AS at
                  FROM waspada.pipeline_flow_proposals ep
                  LEFT JOIN waspada.pipeline_flow_decisions pd
@@ -506,7 +515,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
             );
             return rows.rows.map((row) => ({
               ref: row.ref,
-              status: row.decided ? "diputuskan" : "menunggu",
+              status: row.disposition === "expire" ? "kedaluwarsa" : row.decided ? "diputuskan" : "menunggu",
               failure_code: null,
               title: truncateTitle(row.title),
               at: toInstant(row.at),
@@ -518,6 +527,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                       pd.actor_kind AS actor_kind, pd.decided_at AS at
                  FROM waspada.pipeline_flow_decisions pd
                 WHERE pd.dataset_kind = $1 AND pd.decided_at >= $2::timestamptz
+                  AND pd.disposition IS DISTINCT FROM 'expire'
                 ORDER BY pd.decided_at DESC, pd.decision_id DESC
                 LIMIT $3`,
               [datasetKind, since24h, cap],
