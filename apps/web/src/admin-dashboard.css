@@ -1,5 +1,6 @@
 .admin-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   min-width: 0;
   color: var(--tinta-kota, var(--color-text));
@@ -1162,7 +1163,8 @@
   margin: var(--space-1) 0 var(--space-2);
 }
 
-@media (max-width: 1200px) {
+/* Measured against the workspace panel (beside the tab rail), not the viewport. */
+@container admin-panel (max-width: 1200px) {
   .admin-filter-grid {
     grid-template-columns: minmax(15rem, 1.5fr) minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
   }

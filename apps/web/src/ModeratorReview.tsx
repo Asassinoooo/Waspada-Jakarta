@@ -875,8 +875,8 @@ export function ModeratorReviewQueue({
           <div className="empty-queue-icon">✓</div>
           <h3>Semua proposal telah ditinjau</h3>
           <p>Tidak ada proposal insiden yang menunggu dalam antrean moderasi saat ini.</p>
-          <a className="text-link" href="#jelajah">
-            Kembali ke jelajah
+          <a className="text-link" href="#peta">
+            Kembali ke peta
           </a>
         </div>
       ) : (
@@ -1359,8 +1359,8 @@ export function ModeratorReviewQueue({
       )}
 
       <div className="review-footer">
-        <a className="text-link" href="#jelajah">
-          Kembali ke jelajah
+        <a className="text-link" href="#peta">
+          Kembali ke peta
         </a>
         <span>MOD-01 diperlukan untuk autentikasi dan tindakan review.</span>
       </div>
@@ -1482,7 +1482,7 @@ function renderReadOnlyFixture(): React.JSX.Element {
       </div>
 
       <div className="review-footer">
-        <a className="text-link" href="#jelajah">Kembali ke jelajah</a>
+        <a className="text-link" href="#peta">Kembali ke peta</a>
         <span>MOD-01 diperlukan untuk autentikasi dan tindakan review.</span>
       </div>
     </div>

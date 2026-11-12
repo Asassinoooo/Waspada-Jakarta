@@ -188,7 +188,7 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
             ? "Fixture presentasi disembunyikan sampai status dataset tersedia."
             : "Record presentasi tidak ditampilkan pada dataset live."}
         </p>
-        <a className="text-link" href="#jelajah">Kembali ke jelajah</a>
+        <a className="text-link" href="#peta">Kembali ke peta</a>
       </section>
     </main>
   );
