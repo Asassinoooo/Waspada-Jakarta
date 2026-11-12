@@ -291,18 +291,18 @@ test("admin tab hashes map onto the existing admin screens until the workspace t
 
 test("the public header shows one dataset badge and no admin, review or source links", () => {
   const demo = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={demoContext} />);
-  assert.match(demo, /popover__trigger site-header__badge badge badge--warning[^>]*>Data contoh<\/button>/u);
+  assert.match(demo, /popover__trigger site-header__badge badge badge--warning[^>]*>.*?<span class="site-header__badge-label">Data contoh<\/span><\/button>/u);
   assert.match(demo, /DEMO — data sintetis; bukan peringatan langsung/);
   assert.match(demo, /Lewati ke konten utama/);
   assert.doesNotMatch(demo, /href="#(admin|tinjau-bukti|demo-sumber|alur-agen|visualisasi-3d|pipeline-lokal|laporan-publik-demo)/u);
 
   const live = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={liveContext} />);
-  assert.match(live, />Langsung<\/button>/u);
+  assert.match(live, /<span class="site-header__badge-label">Langsung<\/span><\/button>/u);
   assert.match(live, /LIVE — record berasal dari dataset live API/);
   assert.doesNotMatch(live, /DEMO —/);
 
   const unknown = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={null} />);
-  assert.match(unknown, />Status data<\/button>/u);
+  assert.match(unknown, /<span class="site-header__badge-label">Status data<\/span><\/button>/u);
   assert.match(unknown, /Status dataset tidak tersedia/);
   assert.match(unknown, /Jenis dataset belum dapat diverifikasi/);
   assert.doesNotMatch(unknown, /Mode demo|Mode live|DEMO —|LIVE —/);
