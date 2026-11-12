@@ -100,3 +100,22 @@ Role rules (`admin-workspace-model.ts:74-79`, `AccountPages.tsx:904-908`):
 6. The 3D view is called "Embedding 3D" in the tab rail (`admin-workspace-model.ts:29`) and "Visualisasi 3D" in the account menu (`AppShell.tsx:85`). Use the name that matches the screenshot.
 7. A moderator's account menu shows "Ruang kerja admin" pointing to `#admin/tinjau` only (`AppShell.tsx:87-88`). Administrators get all five admin entries.
 8. Unknown `#admin/<tab>` opens `ringkasan` (`admin-workspace-model.ts:59`).
+
+## Capture status (12 Nov 2026)
+
+Captured on the local demo stack (`npm run dev` with the synthetic accounts server), in light theme,
+1440 x 900 unless noted. No live pipeline was run, and no model or network call was made by the capture.
+Files are in `docs/report/screenshots/`.
+
+| Figure | File | Status |
+| --- | --- | --- |
+| 3.9 | `fig-3-9-desktop-map.png` | Captured, demo dataset (badge "Data contoh"). Caption must say demo. |
+| 3.10 | `fig-3-10-phone-map-sheet.png` | Captured at 390 x 844, demo dataset. |
+| 3.11 | `fig-3-11-incident-detail.png` | Captured. The record is a synthetic fixture ("SIMULASI FIKTIF"), so the caption must say fixture. |
+| 3.12 | not captured | The moderation queue returns HTTP 503 on the demo stack. Needs the live API (`serve:live`). |
+| 4.1 | `fig-4-1-source-data.png` | Captured as administrator, demo dataset only. |
+| 4.2 | not captured | The flow view shows "Status belum dapat dimuat" on the demo stack. Needs `serve:live`. |
+| optional 3D | not captured | Returns HTTP 503 on the demo stack. Needs `serve:live`. |
+
+Figures 3.12, 4.2 and the optional 3D view need the live API, which only `npm run serve:live` serves. That
+command makes real network and model calls, so it has not been run for these captures.

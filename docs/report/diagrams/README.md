@@ -24,14 +24,17 @@ Each file sets `skinparam dpi 150` for PNG output. Each file also sets `!pragma 
 Graphviz is not needed. Needs Java plus the `plantuml` command, or `plantuml.jar` run with `java -jar`:
 
 ```sh
-plantuml -tpng docs/report/diagrams/*.puml
-# or: java -jar plantuml.jar -tpng docs/report/diagrams/*.puml
+java -jar plantuml.jar -tpng -o rendered docs/report/diagrams/*.puml
 ```
+
+Here `plantuml.jar` is PlantUML 1.2024.7 kept in the git-ignored `.codex-build/tools/` folder. Any
+PlantUML jar works. The rendered PNGs are in `docs/report/diagrams/rendered/`.
 
 Or paste one file's content into https://www.plantuml.com/plantuml and export PNG. The diagram text
 holds architecture labels only: no endpoints, keys or personal data.
 
 ## Status
 
-Not syntax-checked in this worktree: `plantuml` and a `plantuml.jar` are not installed, and nothing was
-installed for the check. Run the render command above before using the PNGs in the report.
+All nine sources render to PNG without errors. Each PNG was checked by eye. Known layout issue: in
+`fig-3-1-helicopter-view`, the two arrows into the storage box still cross the "Waspada services (local
+live mode)" cluster title. Its meaning is unaffected, but the title overlaps the arrow labels.
