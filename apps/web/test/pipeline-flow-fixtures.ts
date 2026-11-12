@@ -21,7 +21,7 @@ export function demoSnapshot(): PipelineFlowSnapshotDto {
     { id: "correlate", lane: "L3", health: "active", counts: counts({ same_incident_24h: 18, new_incident_24h: 12, unresolved_24h: 3, incidents_open: 9 }), throughput_15m: 2 },
     { id: "proposal", lane: "L3", health: "active", counts: counts({ proposed_24h: 15, pending: 5, pending_discrepancy: 2 }), throughput_15m: 1 },
     { id: "gate", lane: "L4", health: "active", counts: counts({ auto_publish_24h: 9, moderator_publish_24h: 1, reject_24h: 2 }), throughput_15m: 1 },
-    { id: "review", lane: "L4", health: "waiting", counts: counts({ waiting_discrepancy: 2, waiting_gate: 3, moderator_decisions_15m: 0 }), throughput_15m: 0 },
+    { id: "review", lane: "L4", health: "waiting", counts: counts({ waiting_discrepancy: 2, waiting_gate: 3, moderator_decisions_15m: 0, expired_24h: 2 }), throughput_15m: 0 },
     { id: "published", lane: "L4", health: "active", counts: counts({ events_published: 11, versions_24h: 10, agent_versions_24h: 9, moderator_versions_24h: 1 }), throughput_15m: 1 },
     { id: "ninerouter", lane: "L5", health: "waiting", counts: counts({ calls_total: 1522, chat_tokens_available: 6, embed_tokens_available: 21, in_flight: 1, queued: 2, cooldown_ms: 42000 }), throughput_15m: 10 },
     { id: "cycle", lane: "L5", health: "active", counts: counts({ running: 0, error_count: 0, new_items_used: 4, new_items_cap: 5, feeds_failed: 1, duration_ms: 1800 }), throughput_15m: 3 },

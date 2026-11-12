@@ -69,6 +69,7 @@ export function createDemoPipelineFlowAggregates(now: Date): PipelineFlowAggrega
       decisions_24h: { publish_agent: 9, publish_moderator: 1, reject_moderator: 2 },
       decisions_15m: 1,
       moderator_decisions_15m: 0,
+      expired_24h: 2,
       events_published: 11,
       versions_24h: 10,
       versions_15m: 1,

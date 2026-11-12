@@ -6,11 +6,13 @@
  */
 import { randomUUID } from "node:crypto";
 import type { SqlExecutor } from "../../../../db/src/sql.js";
+import type { EventProposalWriter } from "../../../../db/src/event-proposal-writer.js";
 import type { EventProposalDto } from "./moderation-api.js";
 import { PublicReadModel, proposalToEventDetail, publicEventIdForProposal } from "./public-read-model.js";
 import {
   assessProposalSourceGate,
   evaluateAutoPublication,
+  isValidProposalReviewTtlHours,
   type AutoPublicationWaiver,
   type AutoPublishSourcePermission,
   type ProposalGateReason,
@@ -18,6 +20,9 @@ import {
 
 export const AGENT_AUTO_PUBLISHER_ID = "agent:auto-publisher";
 export const PUBLICATION_POLICY_VERSION = "merge-review-v1";
+/** REVIEW-EXPIRY-01 (ADR-062): the sweep's actor. It records a decision and never publishes. */
+export const AGENT_REVIEW_EXPIRY_ID = "agent:review-expiry";
+export const REVIEW_TTL_ELAPSED_REASON = "review_ttl_elapsed";
 
 type TransactionRunner = SqlExecutor & { transaction?: <Result>(work: (tx: SqlExecutor) => Promise<Result>) => Promise<Result> };
 
@@ -74,6 +79,60 @@ export type ProposalDecisionOutcome =
 
 function parseProposal(raw: unknown): EventProposalDto {
   return (typeof raw === "string" ? JSON.parse(raw) : raw) as EventProposalDto;
+}
+
+/** The disposition of the latest decision for a proposal, or null when it is undecided. */
+async function latestDisposition(
+  executor: SqlExecutor,
+  datasetKind: string,
+  proposalId: string,
+): Promise<{ readonly disposition: string } | null> {
+  const prior = await executor.query<{ disposition: string | null }>(
+    `SELECT record_json->>'disposition' AS disposition
+     FROM waspada.publication_decisions
+     WHERE dataset_kind = $1 AND proposal_id = $2
+     ORDER BY decided_at DESC, decision_id DESC
+     LIMIT 1`,
+    [datasetKind, proposalId],
+  );
+  if (prior.rows.length === 0) return null;
+  return { disposition: prior.rows[0]!.disposition ?? "unknown" };
+}
+
+/**
+ * Writes a decision that publishes nothing: a reject or an expiry. publication_decisions is
+ * append-only, so this is the only write. event_id and event_version stay NULL.
+ * ADR-061 note: publication_decisions has no unique index on (dataset_kind, proposal_id). Two
+ * decisions racing for the same proposal can both insert. That race is accepted, as in ADR-061.
+ */
+async function insertUnpublishedDecision(
+  executor: SqlExecutor,
+  input: {
+    readonly datasetKind: string;
+    readonly decisionId: string;
+    readonly traceId: string;
+    readonly proposalId: string;
+    readonly reviewerId: string;
+    readonly decidedAt: string;
+    readonly record: Record<string, unknown>;
+  },
+): Promise<void> {
+  await executor.query(
+    `INSERT INTO waspada.publication_decisions (
+       dataset_kind, decision_id, trace_id, proposal_id, policy_version,
+       event_id, event_version, reviewer_id, decided_at, record_json)
+     VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6, $7::timestamptz, $8::jsonb)`,
+    [
+      input.datasetKind,
+      input.decisionId,
+      input.traceId,
+      input.proposalId,
+      PUBLICATION_POLICY_VERSION,
+      input.reviewerId,
+      input.decidedAt,
+      JSON.stringify(input.record),
+    ],
+  );
 }
 
 /** Distinct publishers across claims: the registry source, or the outlet when there is none. */
@@ -136,16 +195,9 @@ export async function decideProposal(
   if (!row) return { status: "denied", code: "proposal_not_found" };
   const proposal = parseProposal(row.record_json);
 
-  const prior = await executor.query<{ disposition: string | null }>(
-    `SELECT record_json->>'disposition' AS disposition
-     FROM waspada.publication_decisions
-     WHERE dataset_kind = $1 AND proposal_id = $2
-     ORDER BY decided_at DESC, decision_id DESC
-     LIMIT 1`,
-    [datasetKind, input.proposalId],
-  );
-  if (prior.rows.length > 0) {
-    return { status: "already_decided", disposition: prior.rows[0]!.disposition ?? "unknown" };
+  const prior = await latestDisposition(executor, datasetKind, input.proposalId);
+  if (prior) {
+    return { status: "already_decided", disposition: prior.disposition };
   }
 
   const decidedAt = new Date().toISOString();
@@ -153,22 +205,15 @@ export async function decideProposal(
   const actorRecord = { actor_kind: input.actor.kind, actor_id: input.actor.actorId };
 
   if (input.action === "reject") {
-    await executor.query(
-      `INSERT INTO waspada.publication_decisions (
-         dataset_kind, decision_id, trace_id, proposal_id, policy_version,
-         event_id, event_version, reviewer_id, decided_at, record_json)
-       VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6, $7::timestamptz, $8::jsonb)`,
-      [
-        datasetKind,
-        decisionId,
-        row.trace_id,
-        input.proposalId,
-        PUBLICATION_POLICY_VERSION,
-        input.actor.actorId,
-        decidedAt,
-        JSON.stringify({ disposition: "reject", ...actorRecord, reason: input.reason ?? null }),
-      ],
-    );
+    await insertUnpublishedDecision(executor, {
+      datasetKind,
+      decisionId,
+      traceId: row.trace_id,
+      proposalId: input.proposalId,
+      reviewerId: input.actor.actorId,
+      decidedAt,
+      record: { disposition: "reject", ...actorRecord, reason: input.reason ?? null },
+    });
     return { status: "rejected", decisionId };
   }
 
@@ -279,4 +324,91 @@ export async function decideProposal(
 
   PublicReadModel.publish(detail);
   return { status: "published", decisionId, eventId, version, publicationMode };
+}
+
+export interface ExpireStaleProposalsInput {
+  readonly executor: SqlExecutor;
+  readonly writer: EventProposalWriter;
+  readonly datasetKind: "live" | "historical" | "synthetic";
+  readonly now: Date | string;
+  /** Integer 1..720. Validate upstream with parseProposalReviewTtlHours. */
+  readonly ttlHours: number;
+  /** Clamped to 1..50 by the writer. Default 50. */
+  readonly limit?: number;
+}
+
+export interface ExpireStaleProposalsResult {
+  readonly expired: number;
+  readonly skipped_already_decided: number;
+  /** A candidate whose decision row could not be written. The next cycle retries it. */
+  readonly failed: number;
+}
+
+/**
+ * REVIEW-EXPIRY-01 (ADR-062): marks undecided proposals older than the review TTL as expired.
+ * Each expiry is one publication_decisions row with disposition "expire". It never publishes, never
+ * writes event versions or claims, and never touches PublicReadModel or incidents. An expired
+ * proposal is not resolution or a safety claim. A later moderator publish or reject is refused
+ * as already_decided.
+ */
+export async function expireStaleProposals(input: ExpireStaleProposalsInput): Promise<ExpireStaleProposalsResult> {
+  if (!isValidProposalReviewTtlHours(input.ttlHours)) {
+    throw new TypeError("ttlHours must be an integer from 1 to 720");
+  }
+  const nowMs = input.now instanceof Date ? input.now.getTime() : Date.parse(input.now);
+  if (!Number.isFinite(nowMs)) {
+    throw new TypeError("now must be a valid instant");
+  }
+  const expiredAt = new Date(nowMs).toISOString();
+  const cutoff = new Date(nowMs - input.ttlHours * 3_600_000).toISOString();
+
+  const candidates = await input.writer.readExpirableProposals({
+    datasetKind: input.datasetKind,
+    cutoff,
+    limit: input.limit ?? 50,
+  });
+
+  let expired = 0;
+  let skippedAlreadyDecided = 0;
+  let failed = 0;
+  for (const candidate of candidates) {
+    try {
+      if (await latestDisposition(input.executor, input.datasetKind, candidate.proposal_id)) {
+        skippedAlreadyDecided += 1;
+        continue;
+      }
+      const trace = await input.executor.query<{ trace_id: string }>(
+        `SELECT trace_id FROM waspada.event_proposals
+         WHERE dataset_kind = $1 AND proposal_id = $2`,
+        [input.datasetKind, candidate.proposal_id],
+      );
+      const traceId = trace.rows[0]?.trace_id;
+      if (!traceId) {
+        failed += 1;
+        continue;
+      }
+      await insertUnpublishedDecision(input.executor, {
+        datasetKind: input.datasetKind,
+        decisionId: `dec-${randomUUID()}`,
+        traceId,
+        proposalId: candidate.proposal_id,
+        reviewerId: AGENT_REVIEW_EXPIRY_ID,
+        decidedAt: expiredAt,
+        record: {
+          disposition: "expire",
+          actor_kind: "agent",
+          actor_id: AGENT_REVIEW_EXPIRY_ID,
+          reason: REVIEW_TTL_ELAPSED_REASON,
+          ttl_hours: input.ttlHours,
+          proposed_at: candidate.proposed_at,
+          expired_at: expiredAt,
+        },
+      });
+      expired += 1;
+    } catch {
+      // Count only. Driver errors can echo SQL parameters, so the message is not logged.
+      failed += 1;
+    }
+  }
+  return { expired, skipped_already_decided: skippedAlreadyDecided, failed };
 }

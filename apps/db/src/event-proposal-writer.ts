@@ -53,6 +53,13 @@ export interface EventProposalDto {
   readonly source_id?: string | null;
   readonly incident_id?: string | null;
 }
+/** REVIEW-EXPIRY-01: metadata only. The sweep never reads proposal text. */
+export interface ExpirableProposalRow {
+  readonly proposal_id: string;
+  readonly proposed_at: string;
+  readonly incident_id: string | null;
+}
+
 export interface EventProposalWriter {
   persistProposal(
     proposal: EventProposalDto,
@@ -61,7 +68,19 @@ export interface EventProposalWriter {
   ): Promise<{ proposalId: string; outcome: 'created' | 'updated' | 'already_exists' }>;
   readPendingProposals(datasetKind?: string): Promise<readonly EventProposalDto[]>;
   readProposalById(proposalId: string, datasetKind?: string): Promise<EventProposalDto | null>;
+  /**
+   * Undecided proposals proposed before `cutoff`, oldest first. No per-incident dedupe: every stale
+   * proposal is a candidate. `limit` is clamped to 1..50.
+   */
+  readExpirableProposals(input: {
+    readonly datasetKind: string;
+    readonly cutoff: string;
+    readonly limit: number;
+  }): Promise<readonly ExpirableProposalRow[]>;
 }
+
+/** Hard cap on one sweep, so one cycle never writes more than this many decision rows. */
+export const EXPIRABLE_PROPOSAL_BATCH_CAP = 50;
 
 const VALID_DATASETS: Record<string, true> = {
   live: true,
@@ -358,6 +377,38 @@ export function createEventProposalWriter(executor: SqlExecutor): EventProposalW
         }
       }
       return deduped;
+    },
+
+    async readExpirableProposals({ datasetKind, cutoff, limit }): Promise<readonly ExpirableProposalRow[]> {
+      if (!VALID_DATASETS[datasetKind]) {
+        throw new TypeError(`Invalid dataset_kind: ${datasetKind}`);
+      }
+      const cutoffMs = typeof cutoff === 'string' ? Date.parse(cutoff) : Number.NaN;
+      if (Number.isNaN(cutoffMs)) {
+        throw new TypeError('cutoff must be an ISO timestamp');
+      }
+      const cap = Math.max(1, Math.min(EXPIRABLE_PROPOSAL_BATCH_CAP, Math.trunc(limit)));
+
+      const result = await executor.query<{ proposal_id: string; proposed_at: unknown; incident_id: string | null }>(
+        `SELECT ep.proposal_id,
+                ep.proposed_at,
+                ep.record_json->>'incident_id' AS incident_id
+         FROM waspada.event_proposals ep
+         LEFT JOIN waspada.publication_decisions pd
+           ON pd.dataset_kind = ep.dataset_kind AND pd.proposal_id = ep.proposal_id
+         WHERE ep.dataset_kind = $1
+           AND pd.proposal_id IS NULL
+           AND ep.proposed_at < $2::timestamptz
+         ORDER BY ep.proposed_at ASC, ep.proposal_id ASC
+         LIMIT $3`,
+        [datasetKind, new Date(cutoffMs).toISOString(), cap],
+      );
+
+      return result.rows.map((row) => ({
+        proposal_id: row.proposal_id,
+        proposed_at: row.proposed_at instanceof Date ? row.proposed_at.toISOString() : String(row.proposed_at),
+        incident_id: row.incident_id ?? null,
+      }));
     },
 
     async readProposalById(proposalId: string, datasetKind?: string): Promise<EventProposalDto | null> {

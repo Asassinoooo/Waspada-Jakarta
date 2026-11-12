@@ -27,7 +27,14 @@ import worker from "../apps/worker/src/index.js";
 import { seedAdminAccount } from "../apps/worker/src/accounts/seed-admin.js";
 import { generateServiceKey } from "../apps/worker/src/security/service-key.js";
 import { PublicReadModel, proposalToEventDetail } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
-import { SOURCE_PERMISSION_WAIVED_LOCAL } from "../apps/worker/src/layers/l4-application-integration/publication-policy.js";
+import {
+  DEFAULT_PROPOSAL_REVIEW_TTL_HOURS,
+  isValidProposalReviewTtlHours,
+  parseProposalReviewTtlHours,
+  SOURCE_PERMISSION_WAIVED_LOCAL,
+} from "../apps/worker/src/layers/l4-application-integration/publication-policy.js";
+import { expireStaleProposals } from "../apps/worker/src/layers/l4-application-integration/proposal-publication.js";
+import { createEventProposalWriter } from "../apps/db/src/event-proposal-writer.js";
 import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
 
@@ -386,6 +393,12 @@ async function main() {
   // One process-scoped index: Stage A duplicates across feeds and cycles (48 h window).
   const liveRecentItems = createRecentItemIndex();
   console.log(`[Ingestion] RSS max age ${liveCycle.rssMaxAgeHours} h; up to ${liveCycle.maxNewItemsPerCycle} new triage calls per cycle.`);
+  // REVIEW-EXPIRY-01 (ADR-062): undecided proposals expire after this many hours. The raw value is never logged.
+  const reviewTtlHours = parseProposalReviewTtlHours(process.env.PROPOSAL_REVIEW_TTL_HOURS);
+  if (process.env.PROPOSAL_REVIEW_TTL_HOURS !== undefined && !isValidProposalReviewTtlHours(process.env.PROPOSAL_REVIEW_TTL_HOURS)) {
+    console.warn(`[Review] PROPOSAL_REVIEW_TTL_HOURS is not an integer from 1 to 720; using ${DEFAULT_PROPOSAL_REVIEW_TTL_HOURS}h.`);
+  }
+  console.log(`[Review] Undecided proposals expire after ${reviewTtlHours} h without a moderator decision (ADR-062).`);
   let isPolling = false;
   async function pollLiveFeeds() {
     if (isPolling) {
@@ -601,6 +614,25 @@ async function main() {
         newItemsUsed: triageBudget ? liveCycle.maxNewItemsPerCycle - triageBudget.remaining : null,
         feedsFailed: cycleFeedFailures,
       });
+      // REVIEW-EXPIRY-01 (ADR-062): mark undecided proposals past the review TTL as expired. Counts only.
+      // It runs inside the isPolling guard, so sweeps never overlap. Errors never reach proposal text.
+      try {
+        const expiry = await expireStaleProposals({
+          executor,
+          writer: createEventProposalWriter(executor),
+          datasetKind: SERVE_LIVE_DATASET_KIND,
+          now: new Date(),
+          ttlHours: reviewTtlHours,
+        });
+        if (expiry.expired > 0 || expiry.failed > 0) {
+          console.log(
+            `[Review] expired ${expiry.expired} proposals past the ${reviewTtlHours}h review window ` +
+            `(skipped_already_decided=${expiry.skipped_already_decided} failed=${expiry.failed})`,
+          );
+        }
+      } catch (err) {
+        console.warn(`[Review] expiry sweep failed (${err instanceof Error ? err.name : "unknown error"}).`);
+      }
       isPolling = false;
     }
   }

@@ -639,6 +639,29 @@ export function parseAutoPublishSourcePermission(value: unknown): AutoPublishSou
   return value === "local_relaxed" ? "local_relaxed" : "required";
 }
 
+/** REVIEW-EXPIRY-01 (ADR-062): an undecided proposal is marked expired after this many hours. */
+export const DEFAULT_PROPOSAL_REVIEW_TTL_HOURS = 48;
+export const MIN_PROPOSAL_REVIEW_TTL_HOURS = 1;
+export const MAX_PROPOSAL_REVIEW_TTL_HOURS = 720;
+
+/** True only for an integer from 1 to 720, written as a plain decimal string or a number. */
+export function isValidProposalReviewTtlHours(value: unknown): boolean {
+  const candidate = typeof value === "string" ? value.trim() : value;
+  if (typeof candidate === "string" && !/^\d{1,4}$/u.test(candidate)) return false;
+  if (typeof candidate !== "string" && typeof candidate !== "number") return false;
+  const hours = Number(candidate);
+  return Number.isInteger(hours) && hours >= MIN_PROPOSAL_REVIEW_TTL_HOURS && hours <= MAX_PROPOSAL_REVIEW_TTL_HOURS;
+}
+
+/**
+ * Parses PROPOSAL_REVIEW_TTL_HOURS. Unset, non-integer, or outside 1..720 falls back to 48.
+ * Callers may warn about a fallback, but must not log the raw value.
+ */
+export function parseProposalReviewTtlHours(raw: unknown): number {
+  if (!isValidProposalReviewTtlHours(raw)) return DEFAULT_PROPOSAL_REVIEW_TTL_HOURS;
+  return Number(typeof raw === "string" ? raw.trim() : raw);
+}
+
 export interface AutoPublicationGateOptions extends ProposalGateOptions {
   /** Defaults to `required` when omitted. */
   readonly sourcePermission?: AutoPublishSourcePermission;

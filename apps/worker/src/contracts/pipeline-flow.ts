@@ -42,7 +42,10 @@ export interface PipelineFlowNodeDto {
   readonly id: PipelineFlowNodeId;
   readonly lane: PipelineFlowLane;
   readonly health: PipelineFlowHealth;
-  /** Stable machine keys mapped to counts. Zero means "no data in the window", never "safe". */
+  /**
+   * Stable machine keys mapped to counts. Zero means "no data in the window", never "safe".
+   * REVIEW-EXPIRY-01 added `expired_24h` to the review node. Clients must treat a missing key as absent.
+   */
   readonly counts: Readonly<Record<string, number>>;
   readonly throughput_15m: number;
 }
