@@ -186,7 +186,7 @@ export function SiteHeader({ route, context = null, sessionKey = 0 }: SiteHeader
         <div className="site-header__tools">
           <Popover
             triggerClassName={`site-header__badge badge${badge.tone === "warning" ? " badge--warning" : badge.tone === "accent" ? " badge--accent" : ""}`}
-            triggerContent={badge.label}
+            triggerContent={<><span className="site-header__badge-dot" aria-hidden="true" /><span className="site-header__badge-label">{badge.label}</span></>}
             panelClassName="site-header__status"
           >
             <p className="site-header__status-title"><strong>{badge.title}</strong></p>
