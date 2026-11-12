@@ -716,6 +716,28 @@ function RecentActivity({ snapshot, mode, onSelect }: {
   );
 }
 
+interface StatTile {
+  label: string;
+  value: string;
+}
+
+/** Counts of what the page has loaded. A count is not evidence that a report is true or that an area is calm. */
+function StatTiles({ tiles }: { tiles: readonly StatTile[] }) {
+  return (
+    <section className="admin-stats" aria-label="Angka ringkasan">
+      <dl className="admin-stats__grid">
+        {tiles.map((tile) => (
+          <div className="admin-stat" key={tile.label}>
+            <dt>{tile.label}</dt>
+            <dd>{tile.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="admin-muted">Angka hanya menghitung yang sudah dimuat. Jumlah laporan bukan bukti kebenaran, dan angka nol tidak menyatakan kondisi lapangan.</p>
+    </section>
+  );
+}
+
 export interface AdminDashboardProps {
   initialMode?: AdminMode;
 }
@@ -904,19 +926,22 @@ export function AdminDashboard({
     if (filteredItems.some((item) => item.id === id)) setSelectedId(id);
   };
 
+  const loadedGeometry = countAdminGeometry(sourceItems, geometryKnown);
+  const sourceCount = mode === "simulation"
+    ? snapshot?.sources.length ?? null
+    : currentApiContext?.sources.length ?? null;
+  const statTiles: StatTile[] = [
+    { label: mode === "simulation" ? "Laporan contoh" : "Laporan publik dimuat", value: publicListKnown ? String(sourceItems.length) : "—" },
+    { label: "Di peta", value: publicListKnown && loadedGeometry.mapped !== null ? String(loadedGeometry.mapped) : "—" },
+    { label: "Tanpa lokasi peta", value: publicListKnown && loadedGeometry.unmapped !== null ? String(loadedGeometry.unmapped) : "—" },
+    { label: "Sumber dalam konteks", value: sourceCount === null ? "—" : String(sourceCount) },
+  ];
+
   return (
-    <main id="main-content" tabIndex={-1} className="admin-page">
-      <header className="admin-header">
-        <div className="admin-header__identity">
-          <a className="admin-back-link" href="#beranda">Kembali ke layanan publik</a>
-          <p className="admin-kicker">Pengelola · baca saja</p>
-          <h1>Laporan dan peta</h1>
-          <p className="admin-header__lede">Pilih laporan untuk melihat sumber, waktu, status informasi, dan lokasinya di peta.</p>
-        </div>
-        <div className="admin-header__actions">
-          <a className="admin-button admin-button--quiet" href="#tinjau-bukti">Tinjau bukti publik</a>
-          <a className="admin-button admin-button--quiet" href="#alur-agen">Alur agen</a>
-        </div>
+    <div className="admin-page">
+      <header className="admin-intro">
+        <p className="admin-kicker">Pengelola · baca saja</p>
+        <p className="admin-header__lede">Pilih laporan untuk melihat sumber, waktu, status informasi, dan lokasinya di peta.</p>
       </header>
 
       <section className="admin-mode-strip" aria-label="Pilih jenis informasi">
@@ -1020,9 +1045,13 @@ export function AdminDashboard({
         </details>
       </section>
 
+      <StatTiles tiles={statTiles} />
+
       <SnapshotNotice mode={mode} state={viewMonitorState} snapshot={snapshot} onRefresh={refresh} />
 
-      <section id="admin-workspace" tabIndex={-1} className={`admin-workspace admin-workspace--mobile-${mobileView}`} aria-label="Daftar laporan, peta, dan detail">
+      <LayerOverview snapshot={snapshot} mode={mode} monitorState={viewMonitorState} />
+
+      <section id="admin-explorer" tabIndex={-1} className={`admin-workspace admin-workspace--mobile-${mobileView}`} aria-label="Daftar laporan, peta, dan detail">
         <div className="admin-mobile-switch" role="group" aria-label="Tampilan pada layar kecil">
           <button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}>Daftar</button>
           <button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}>Peta</button>
@@ -1087,7 +1116,6 @@ export function AdminDashboard({
       <details className="admin-disclosure admin-diagnostics">
         <summary>Rincian proses, sumber, dan pembacaan</summary>
         <div className="admin-diagnostics__content">
-          <LayerOverview snapshot={snapshot} mode={mode} monitorState={viewMonitorState} />
           <section className="admin-support-grid" aria-label="Status sumber, riwayat, dan hasil pembacaan">
             <PublicSources snapshot={snapshot} mode={mode} publicContext={currentApiContext} />
             <RecentActivity snapshot={snapshot} mode={mode} onSelect={selectItem} />
@@ -1099,13 +1127,8 @@ export function AdminDashboard({
       <footer className="admin-footer">
         <strong>Halaman ini hanya membaca data.</strong>
         <p>Halaman tidak mengambil laporan dari sumber, menjalankan pemeriksaan, atau mengubah status laporan.</p>
-        <a className="admin-link" href="#tinjau-bukti">Buka tinjau bukti publik</a>
-        <span aria-hidden="true"> · </span>
-        <a className="admin-link" href="#alur-agen">Buka alur agen</a>
-        <span aria-hidden="true"> · </span>
-        <a className="admin-link" href="#beranda">Kembali ke Waspada Jakarta</a>
       </footer>
-    </main>
+    </div>
   );
 }
 

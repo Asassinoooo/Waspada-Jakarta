@@ -1,9 +1,11 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
-import { nextRovingIndex } from "./a11y.js";
+import { nextRovingIndex, type RovingAxis } from "./a11y.js";
 
 export interface TabItem {
   id: string;
   label: string;
+  /** Decorative icon shown before the label. It must not carry meaning on its own. */
+  icon?: ReactNode;
 }
 
 export interface TabsProps {
@@ -14,15 +16,20 @@ export interface TabsProps {
   tabs: readonly TabItem[];
   value: string;
   onChange: (id: string) => void;
+  /** Horizontal strip (ArrowLeft and ArrowRight) or vertical rail (ArrowUp and ArrowDown). Defaults to horizontal. */
+  orientation?: RovingAxis;
 }
 
-/** Tab strip with roving tabindex. ArrowLeft/ArrowRight wrap; Home and End jump to the ends. */
-export function Tabs({ idPrefix, label, tabs, value, onChange }: TabsProps) {
+/**
+ * Tab strip with roving tabindex. Arrow keys for the chosen orientation wrap at both ends;
+ * Home and End jump to the ends.
+ */
+export function Tabs({ idPrefix, label, tabs, value, onChange, orientation = "horizontal" }: TabsProps) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const selectedIndex = tabs.findIndex((tab) => tab.id === value);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const next = nextRovingIndex(event.key, selectedIndex, tabs.length, "horizontal");
+    const next = nextRovingIndex(event.key, selectedIndex, tabs.length, orientation);
     if (next === null) return;
     event.preventDefault();
     const tab = tabs[next];
@@ -32,7 +39,7 @@ export function Tabs({ idPrefix, label, tabs, value, onChange }: TabsProps) {
   }
 
   return (
-    <div role="tablist" aria-label={label} className="tabs" onKeyDown={onKeyDown}>
+    <div role="tablist" aria-label={label} aria-orientation={orientation} className="tabs" onKeyDown={onKeyDown}>
       {tabs.map((tab, index) => {
         const selected = tab.id === value;
         return (
@@ -50,6 +57,7 @@ export function Tabs({ idPrefix, label, tabs, value, onChange }: TabsProps) {
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(tab.id)}
           >
+            {tab.icon !== undefined && <span className="tabs__icon" aria-hidden="true">{tab.icon}</span>}
             {tab.label}
           </button>
         );

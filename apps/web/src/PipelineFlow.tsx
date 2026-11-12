@@ -257,7 +257,7 @@ export function PipelineDrawer({
       </section>
       {reviewLink && (
         <p className="pipeline-drawer__link">
-          <a className="text-link" href="#tinjau-bukti">Buka tinjau bukti</a>
+          <a className="text-link" href="#admin/tinjau">Buka tinjau bukti</a>
           <span> untuk usulan, keputusan, dan versi yang terbit.</span>
         </p>
       )}
@@ -479,10 +479,10 @@ export function PipelineFlow() {
   const runtimeAvailable = Boolean(snapshot?.runtime);
 
   return (
-    <main id="main-content" tabIndex={-1} className="main-shell pipeline-page">
+    <div className="pipeline-page">
       <header className="pipeline-page__intro">
         <p className="pipeline-kicker">Moderator · baca saja</p>
-        <h1>Alur agen</h1>
+        <h2>Alur agen</h2>
         <p className="pipeline-page__lede">
           Hitungan item dari sumber sampai terbit. Angka menunjukkan aliran kerja, bukan bukti bahwa suatu kejadian benar
           atau bahwa suatu wilayah aman.
@@ -545,6 +545,6 @@ export function PipelineFlow() {
             : `Jendela hitungan 24 jam. Tahap tanpa data menampilkan "tidak ada data dalam 24 jam".`}
         </p>
       )}
-    </main>
+    </div>
   );
 }

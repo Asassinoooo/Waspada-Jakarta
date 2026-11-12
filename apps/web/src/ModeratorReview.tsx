@@ -757,12 +757,12 @@ export function ModeratorReviewQueue({
   );
 
   return (
-    <main id="main-content" className="main-shell moderator-page moderator-page--queue">
+    <div className="moderator-page moderator-page--queue">
 
       <section className="review-heading" aria-labelledby="review-title">
         <div>
           <p className="section-kicker">Antrean Kerja Moderator L4</p>
-          <h1 id="review-title">Tinjau Bukti & Moderasi Insiden</h1>
+          <h2 id="review-title">Tinjau Bukti & Moderasi Insiden</h2>
           <p>Verifikasi grounding bukti sumber terhadap klaim sebelum penerbitan ke publik.</p>
         </div>
         <div className="review-heading-status">
@@ -875,8 +875,8 @@ export function ModeratorReviewQueue({
           <div className="empty-queue-icon">✓</div>
           <h3>Semua proposal telah ditinjau</h3>
           <p>Tidak ada proposal insiden yang menunggu dalam antrean moderasi saat ini.</p>
-          <a className="text-link" href="#jelajah">
-            Kembali ke jelajah
+          <a className="text-link" href="#peta">
+            Kembali ke peta
           </a>
         </div>
       ) : (
@@ -1359,22 +1359,22 @@ export function ModeratorReviewQueue({
       )}
 
       <div className="review-footer">
-        <a className="text-link" href="#jelajah">
-          Kembali ke jelajah
+        <a className="text-link" href="#peta">
+          Kembali ke peta
         </a>
         <span>MOD-01 diperlukan untuk autentikasi dan tindakan review.</span>
       </div>
-    </main>
+    </div>
   );
 }
 
 function renderReadOnlyFixture(): React.JSX.Element {
   return (
-    <main id="main-content" className="main-shell moderator-page">
+    <div className="moderator-page">
       <section className="review-heading" aria-labelledby="review-title">
         <div>
           <p className="section-kicker">Ruang tinjau · contoh UI</p>
-          <h1 id="review-title">Tinjau bukti</h1>
+          <h2 id="review-title">Tinjau bukti</h2>
           <p>Hubungan sumber, klaim, versi, dan geometri ditampilkan berdampingan.</p>
         </div>
         <span className="read-only-stamp">Pratinjau baca saja</span>
@@ -1482,10 +1482,10 @@ function renderReadOnlyFixture(): React.JSX.Element {
       </div>
 
       <div className="review-footer">
-        <a className="text-link" href="#jelajah">Kembali ke jelajah</a>
+        <a className="text-link" href="#peta">Kembali ke peta</a>
         <span>MOD-01 diperlukan untuk autentikasi dan tindakan review.</span>
       </div>
-    </main>
+    </div>
   );
 }
 

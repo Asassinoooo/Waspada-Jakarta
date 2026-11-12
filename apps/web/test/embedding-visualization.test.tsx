@@ -10,9 +10,9 @@ import {
 } from "../src/embedding-client.js";
 import { moderatorAccessMessage } from "../src/account-messages.js";
 
-test("routeFromHash maps #visualisasi-3d and #embedding-3d to embedding-3d screen", () => {
-  assert.deepEqual(routeFromHash("#visualisasi-3d"), { screen: "embedding-3d" });
-  assert.deepEqual(routeFromHash("#embedding-3d"), { screen: "embedding-3d" });
+test("routeFromHash maps #visualisasi-3d and #embedding-3d to the embedding tab of the admin workspace", () => {
+  assert.deepEqual(routeFromHash("#visualisasi-3d"), { screen: "admin-workspace", initialTab: "embedding" });
+  assert.deepEqual(routeFromHash("#embedding-3d"), { screen: "admin-workspace", initialTab: "embedding" });
 });
 
 test("fetchEmbeddingVisualizationData handles valid and error responses", async () => {

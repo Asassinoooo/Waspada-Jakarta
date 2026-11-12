@@ -3,13 +3,11 @@ import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessSt
 import { apiReadFailure, getEventDetail, getEventHistory, getPublicContext, listEvents, type ApiReadState } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
 import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
-import { ModeratorReview } from "./ModeratorReview.js";
 import { MapHome } from "./MapHome.js";
 import { parseEventIdFromHash } from "./map-links.js";
+import { adminGateShell, adminWorkspaceTabFromHash, type AdminTab } from "./admin-workspace-model.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
-import { UnifiedSourceExplorer } from "./UnifiedSourceExplorer.js";
-import { SourcePointMap } from "./SourcePointMap.js";
 import type { MapSelection } from "./MapPanel.js";
 import { HelpPage } from "./HelpPage.js";
 import { AccountAccessGate, AccountPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
@@ -17,7 +15,9 @@ import { accountClient, type AccountReturnTarget } from "./account-client.js";
 import { SiteFooter, SiteHeader } from "./AppShell.js";
 import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
 
-const AdminDashboard = lazy(() => import("./admin-entry.js"));
+// UI-V2-C: the administrator workspace (tabs for overview, review, flow, 3D view, accounts and source demo).
+// Its shell, styles and every heavy tab load only when an admin route opens.
+const AdminWorkspace = lazy(() => import("./admin-entry.js"));
 
 export type Route =
   | { screen: "discover"; eventId?: string }
@@ -27,23 +27,14 @@ export type Route =
   | { screen: "login"; returnTo?: AccountReturnTarget }
   | { screen: "onboarding" }
   | { screen: "account" }
-  | { screen: "review" }
-  | { screen: "pipeline-flow" }
-  | { screen: "source-preview" }
+  | { screen: "admin-workspace"; initialTab: AdminTab }
   | { screen: "local-pipeline" }
-  | { screen: "embedding-3d" }
-  | { screen: "admin" }
   | { screen: "detail-presentation" }
   | { screen: "detail-api"; eventId: string };
 
 const LocalPipelinePreview = import.meta.env?.DEV === true
   ? lazy(() => import("./LocalPipelinePreview.js").then((module) => ({ default: module.LocalPipelinePreview })))
   : null;
-// FLOW-VIS-01: the moderator flow view and React Flow load only on #alur-agen.
-const PipelineFlow = lazy(() => import("./pipeline-flow-entry.js"));
-const Embedding3DVisualization = lazy(() =>
-  import("./Embedding3DVisualization.js").then((module) => ({ default: module.Embedding3DVisualization }))
-);
 
 export interface DiscoveryState {
   query: string;
@@ -144,23 +135,6 @@ const DISCOVER_HASHES: ReadonlySet<string> = new Set([
   "#publik-demo",
 ]);
 
-/** Admin workspace tabs (`#admin/<tab>`). Phase C turns them into real tabs; for now each maps to an existing screen. */
-function adminTabRoute(tab: string): Route {
-  switch (tab) {
-    case "tinjau":
-      return { screen: "review" };
-    case "alur":
-      return { screen: "pipeline-flow" };
-    case "embedding":
-      return { screen: "embedding-3d" };
-    case "sumber":
-      return { screen: "source-preview" };
-    default:
-      // ringkasan, akun and unknown tabs open the administrator workspace.
-      return { screen: "admin" };
-  }
-}
-
 export function routeFromHash(hash: string): Route {
   // `#peta?event=<id>` keeps its query, so the map can select that event. The path decides the screen.
   const queryStart = hash.indexOf("?");
@@ -169,7 +143,9 @@ export function routeFromHash(hash: string): Route {
     const eventId = parseEventIdFromHash(hash);
     return eventId === null ? { screen: "discover" } : { screen: "discover", eventId };
   }
-  if (hash.startsWith("#admin/")) return adminTabRoute(hash.slice("#admin/".length));
+  // `#admin/<tab>` and the legacy admin hashes (#admin, #tinjau-bukti, #alur-agen, #embedding-3d, #demo-sumber).
+  const adminTab = adminWorkspaceTabFromHash(hash);
+  if (adminTab !== null) return { screen: "admin-workspace", initialTab: adminTab };
   if (hash === "#masuk") return { screen: "login" };
   if (hash.startsWith("#masuk?")) {
     const params = new URLSearchParams(hash.slice("#masuk?".length));
@@ -184,14 +160,9 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#bantuan") return { screen: "help" };
   if (hash === "#panduan") return { screen: "help", section: "panduan" };
   if (hash === "#privasi") return { screen: "help", section: "privasi" };
-  if (hash === "#admin" || hash === "#admin-workspace") return { screen: "admin" };
   if (hash === "#pipeline-lokal" && import.meta.env?.DEV === true) return { screen: "local-pipeline" };
-  if (hash === "#demo-sumber") return { screen: "source-preview" };
-  if (hash === "#visualisasi-3d" || hash === "#embedding-3d") return { screen: "embedding-3d" };
   if (hash === "#ringkasan-saya") return { screen: "preferences" };
   if (hash === "#pembaruan") return { screen: "updates" };
-  if (hash === "#tinjau-bukti") return { screen: "review" };
-  if (hash === "#alur-agen") return { screen: "pipeline-flow" };
   if (hash === "#detail/presentation") return { screen: "detail-presentation" };
   if (hash.startsWith("#detail/api/")) {
     try {
@@ -217,7 +188,7 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
             ? "Fixture presentasi disembunyikan sampai status dataset tersedia."
             : "Record presentasi tidak ditampilkan pada dataset live."}
         </p>
-        <a className="text-link" href="#jelajah">Kembali ke jelajah</a>
+        <a className="text-link" href="#peta">Kembali ke peta</a>
       </section>
     </main>
   );
@@ -229,9 +200,8 @@ export function App() {
   const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [sessionRevision, setSessionRevision] = useState(0);
   const [sessionResult, setSessionResult] = useState<{
-    scope: "login" | "onboarding" | "account" | "admin" | "review" | "pipeline-flow" | "source-preview";
+    scope: "login" | "onboarding" | "account" | "admin-workspace";
     activation: number;
-    revision: number;
     state: AccountSessionState;
   } | null>(null);
   const [localDataRevision, setLocalDataRevision] = useState(0);
@@ -252,10 +222,12 @@ export function App() {
   );
   void dispatchDiscovery;
   void setMobilePanel;
-  const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin" || route.screen === "review" || route.screen === "pipeline-flow" || route.screen === "source-preview"
+  const sessionScope = route.screen === "login" || route.screen === "onboarding" || route.screen === "account" || route.screen === "admin-workspace"
     ? route.screen
     : null;
-  const sessionState: AccountSessionState = sessionScope === null || sessionResult?.scope !== sessionScope || sessionResult.activation !== routeActivation || sessionResult.revision !== sessionRevision
+  // A background refresh (interval, focus or after an action) keeps the last known session on screen until the
+  // new one arrives. Otherwise the workspace would unmount every minute and lose a moderator's unsent reason.
+  const sessionState: AccountSessionState = sessionScope === null || sessionResult?.scope !== sessionScope || sessionResult.activation !== routeActivation
     ? { status: "loading", session: null }
     : sessionResult.state;
   const refreshAccountSession = useCallback(() => setSessionRevision((current) => current + 1), []);
@@ -278,14 +250,13 @@ export function App() {
         setSessionResult({
           scope: sessionScope,
           activation: routeActivation,
-          revision: sessionRevision,
           state: session.status === "anonymous"
             ? { status: "anonymous", session }
             : { status: "authenticated", session },
         });
       })
       .catch(() => {
-        if (!cancelled) setSessionResult({ scope: sessionScope, activation: routeActivation, revision: sessionRevision, state: { status: "error", session: null } });
+        if (!cancelled) setSessionResult({ scope: sessionScope, activation: routeActivation, state: { status: "error", session: null } });
       });
     return () => {
       cancelled = true;
@@ -294,7 +265,7 @@ export function App() {
   }, [routeActivation, sessionScope, sessionRevision]);
 
   useEffect(() => {
-    if (sessionScope !== "admin" && sessionScope !== "review" && sessionScope !== "pipeline-flow" && sessionScope !== "source-preview") return;
+    if (sessionScope !== "admin-workspace") return;
     const refreshOnFocus = () => {
       if (document.visibilityState === "visible") refreshAccountSession();
     };
@@ -316,7 +287,7 @@ export function App() {
   useEffect(() => {
     const updateRoute = () => {
       // In-page focus targets preserve the selected public/admin screen.
-      if (window.location.hash === "#main-content" || window.location.hash === "#admin-workspace") return;
+      if (window.location.hash === "#main-content") return;
       setRouteActivation((current) => current + 1);
       setRoute(routeFromHash(window.location.hash));
     };
@@ -385,7 +356,6 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (route.screen === "admin") return;
     let cancelled = false;
 
     getPublicContext()
@@ -446,32 +416,39 @@ export function App() {
       : { eventId: route.eventId, status: "loading" as const }
     : undefined;
 
-  if (route.screen === "admin") {
-    const gate = <AccountAccessGate shell="admin" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />;
-    if (narrowScreen || sessionState.status !== "authenticated" || !hasProtectedShellAccess("admin", sessionState.session)) {
-      return <div className="app-shell app-shell--admin">{gate}</div>;
+  if (route.screen === "admin-workspace") {
+    // Tabs only hide UI. The role check here, the tab rail and the server guards all apply.
+    if (sessionState.status !== "authenticated" || !hasProtectedShellAccess("review", sessionState.session)) {
+      return (
+        <div className="app-shell">
+          <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
+          <AccountAccessGate shell={adminGateShell(route.initialTab)} sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+        </div>
+      );
     }
     return (
-      <div className="app-shell app-shell--admin">
-        <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
-        <nav className="admin-shell-tools" aria-label="Akun dan layanan publik"><a href="#akun">Akun administrator</a><a href="#beranda">Kembali ke layanan publik</a></nav>
-        <Suspense fallback={
-          <main id="main-content" tabIndex={-1} className="main-shell">
-            <section className="state-panel" role="status">
-              <strong>Memuat ruang operasi web…</strong>
-              <p>Simulasi alur dan pantauan endpoint publik, hanya baca.</p>
-              <a className="text-link" href="#beranda">Kembali ke layanan publik</a>
-            </section>
+      <Suspense fallback={
+        <div className="app-shell admin-ws">
+          <main id="main-content" tabIndex={-1} className="admin-ws__body">
+            <section className="state-panel" role="status"><strong>Memuat ruang kerja…</strong></section>
           </main>
-        }>
-          <AdminDashboard />
-        </Suspense>
-      </div>
+        </div>
+      }>
+        {/* Keyed by activation: a new hash remounts the workspace with its tab; a tab click does not (it replaces the hash). */}
+        <AdminWorkspace
+          key={routeActivation}
+          initialTab={route.initialTab}
+          session={sessionState.session}
+          context={context}
+          isNarrowScreen={narrowScreen}
+          onRefreshSession={refreshAccountSession}
+        />
+      </Suspense>
     );
   }
 
   return (
-    <div className={`app-shell${route.screen === "source-preview" ? " app-shell--source-map" : ""}${route.screen === "discover" ? " app-shell--map" : ""}`}>
+    <div className={`app-shell${route.screen === "discover" ? " app-shell--map" : ""}`}>
       <SiteHeader route={route} context={context} sessionKey={routeActivation} />
       {route.screen === "discover" && (
         <MapHome deepLinkEventId={route.eventId ?? null} context={context} />
@@ -501,36 +478,11 @@ export function App() {
           onCleared={() => setLocalDataRevision((revision) => revision + 1)}
         />
       )}
-      {route.screen === "review" && (sessionState.status === "authenticated" && hasProtectedShellAccess("review", sessionState.session)
-        ? <ModeratorReview />
-        : <AccountAccessGate shell="review" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
           <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />
         </Suspense>
       )}
-      {route.screen === "pipeline-flow" && (sessionState.status === "authenticated" && hasProtectedShellAccess("review", sessionState.session)
-        ? (
-          <Suspense fallback={<main id="main-content" tabIndex={-1} className="main-shell"><section className="state-panel" role="status">Memuat alur agen…</section></main>}>
-            <PipelineFlow />
-          </Suspense>
-        )
-        : <AccountAccessGate shell="review" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
-      {route.screen === "embedding-3d" && (
-        <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat Visualisasi 3D…</section></main>}>
-          <Embedding3DVisualization />
-        </Suspense>
-      )}
-      {route.screen === "source-preview" && (sessionState.status === "authenticated" && hasProtectedShellAccess("admin", sessionState.session)
-        ? (
-          <UnifiedSourceExplorer
-            datasetMode={context?.dataset_mode ?? null}
-            renderMap={(points, selectedId, onSelect, onReturnToList) => (
-              <SourcePointMap points={points} selectedId={selectedId} onSelect={onSelect} onReturnToList={onReturnToList} viewMode="unified" />
-            )}
-          />
-        )
-        : <AccountAccessGate shell="admin" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />)}
       <SiteFooter />
       <OnboardingIntro autoOpen={introAutoOpenFor(route.screen)} />
     </div>

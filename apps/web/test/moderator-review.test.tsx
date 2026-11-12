@@ -287,7 +287,7 @@ test("empty queue state renders clear completion guidance", () => {
 
   assert.match(html, /Semua proposal telah ditinjau/);
   assert.match(html, /Tidak ada proposal insiden yang menunggu dalam antrean moderasi saat ini/);
-  assert.match(html, /Kembali ke jelajah/);
+  assert.match(html, /Kembali ke peta/);
 });
 
 test("advanceProposalQueue removes completed item and selects next available", () => {

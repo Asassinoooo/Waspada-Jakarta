@@ -627,14 +627,12 @@ function AdminUserRow({
 function AdminUsersPanel({
   user,
   csrfToken,
-  isNarrowScreen,
   client,
   confirmUpdate,
   onRefreshSession,
 }: {
   user: AccountUser;
   csrfToken: string;
-  isNarrowScreen: boolean;
   client: AccountClient;
   confirmUpdate: (user: AccountUser, update: AccountUserUpdate) => boolean;
   onRefreshSession: () => void;
@@ -647,7 +645,6 @@ function AdminUsersPanel({
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isNarrowScreen) return;
     const controller = new AbortController();
     let cancelled = false;
     setLoadState("loading");
@@ -673,7 +670,7 @@ function AdminUsersPanel({
       cancelled = true;
       controller.abort();
     };
-  }, [client, isNarrowScreen, onRefreshSession, reloadVersion]);
+  }, [client, onRefreshSession, reloadVersion]);
 
   async function loadNextPage() {
     if (!nextCursor || loadMore) return;
@@ -705,16 +702,6 @@ function AdminUsersPanel({
   function handleUpdated(updated: AccountUser) {
     setUsers((current) => current.map((item) => item.id === updated.id ? updated : item));
     setNotice(accountUpdatedMessage(updated));
-  }
-
-  if (isNarrowScreen) {
-    return (
-      <section className="account-card account-desktop-only" aria-labelledby="admin-accounts-title">
-        <h2 id="admin-accounts-title">Pengelolaan akun tersedia di layar desktop</h2>
-        <p>Daftar dan perubahan akun administrator hanya tersedia pada tampilan web desktop.</p>
-        <a className="text-link" href="#beranda">Kembali ke layanan publik</a>
-      </section>
-    );
   }
 
   return (
@@ -754,13 +741,11 @@ function AdminUsersPanel({
 
 function AccountProfile({
   session,
-  isNarrowScreen,
   client,
   confirmUpdate,
   onRefreshSession,
 }: {
   session: SessionEnvelope;
-  isNarrowScreen: boolean;
   client: AccountClient;
   confirmUpdate: (user: AccountUser, update: AccountUserUpdate) => boolean;
   onRefreshSession: () => void;
@@ -818,7 +803,6 @@ function AccountProfile({
         <AdminUsersPanel
           user={user}
           csrfToken={csrfToken}
-          isNarrowScreen={isNarrowScreen}
           client={client}
           confirmUpdate={confirmUpdate}
           onRefreshSession={onRefreshSession}
@@ -832,7 +816,6 @@ export function AccountPage({
   screen,
   sessionState,
   returnTo,
-  isNarrowScreen,
   onRefreshSession,
   client = accountClient,
   confirmUpdate = defaultConfirmUpdate,
@@ -868,11 +851,48 @@ export function AccountPage({
 
   return <AccountFrame title={title}><AccountProfile
     session={sessionState.session}
-    isNarrowScreen={isNarrowScreen}
     client={client}
     confirmUpdate={confirmUpdate}
     onRefreshSession={onRefreshSession}
   /></AccountFrame>;
+}
+
+/**
+ * Akun tab of the admin workspace. It renders the same user-management panel as #akun, with the same
+ * rule: the panel opens only for an administrator who has completed the introduction.
+ */
+export function AdminAccountsPanel({
+  session,
+  onRefreshSession,
+  client = accountClient,
+  confirmUpdate = defaultConfirmUpdate,
+}: {
+  session: SessionEnvelope;
+  onRefreshSession: () => void;
+  client?: AccountClient;
+  confirmUpdate?: (user: AccountUser, update: AccountUserUpdate) => boolean;
+}) {
+  const user = session.user;
+  const csrfToken = session.csrf_token;
+  if (!user || csrfToken === null || user.role !== "admin") return <SessionUnavailable onRetry={onRefreshSession} />;
+  if (user.onboarding_version !== 1) {
+    return (
+      <section className="account-card account-card--quiet" aria-labelledby="admin-accounts-intro-title">
+        <h2 id="admin-accounts-intro-title">Selesaikan pengenalan akun</h2>
+        <p>Pengelolaan akun pengguna terbuka setelah pengenalan akun administrator selesai.</p>
+        <a className="text-link" href="#mulai">Lihat pengenalan</a>
+      </section>
+    );
+  }
+  return (
+    <AdminUsersPanel
+      user={user}
+      csrfToken={csrfToken}
+      client={client}
+      confirmUpdate={confirmUpdate}
+      onRefreshSession={onRefreshSession}
+    />
+  );
 }
 
 export type ProtectedShell = "admin" | "review";
@@ -884,10 +904,13 @@ export function hasProtectedShellAccess(shell: ProtectedShell, session: SessionE
   return user.role === "moderator" || user.role === "admin";
 }
 
+/**
+ * Gate for protected screens. `isNarrowScreen` is accepted for callers but no longer changes the gate:
+ * the admin workspace is responsive (UI-V2-C), and the server enforces the role on every request.
+ */
 export function AccountAccessGate({
   shell,
   sessionState,
-  isNarrowScreen,
   onRefreshSession,
 }: {
   shell: ProtectedShell;
@@ -895,15 +918,6 @@ export function AccountAccessGate({
   isNarrowScreen: boolean;
   onRefreshSession: () => void;
 }) {
-  if (shell === "admin" && isNarrowScreen) {
-    return <main id="main-content" tabIndex={-1} className="main-shell account-page">
-      <section className="account-card account-desktop-only" role="status">
-        <h1>Ruang administrator tersedia di layar desktop</h1>
-        <p>Tampilan dashboard administrator hanya tersedia pada web desktop.</p>
-        <div className="account-actions"><a className="button button--primary" href="#akun">Akun</a><a className="button button--quiet" href="#beranda">Kembali ke layanan publik</a></div>
-      </section>
-    </main>;
-  }
   if (sessionState.status === "loading") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionLoading label="Memeriksa izin sesi…" /></main>;
   if (sessionState.status === "error") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionUnavailable onRetry={onRefreshSession} /></main>;
   if (sessionState.status === "anonymous") {

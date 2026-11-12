@@ -219,9 +219,12 @@ test("current server roles decide admin and review access and a changed session 
   const forbidden = renderToStaticMarkup(<AccountAccessGate shell="admin" sessionState={sessionState(userSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
   assert.match(forbidden, /Akses tidak tersedia/u);
   assert.doesNotMatch(forbidden, /Ruang operasi web/u);
+  // UI-V2-C removed the blanket narrow-screen block: an administrator passes the gate on a phone too.
   const mobile = renderToStaticMarkup(<AccountAccessGate shell="admin" sessionState={sessionState(adminSession)} isNarrowScreen={true} onRefreshSession={() => {}} />);
-  assert.match(mobile, /tersedia di layar desktop/u);
-  assert.doesNotMatch(mobile, /Ruang operasi web/u);
+  assert.equal(mobile, "", "no desktop-only message for administrators on narrow screens");
+  const mobileUser = renderToStaticMarkup(<AccountAccessGate shell="admin" sessionState={sessionState(userSession)} isNarrowScreen={true} onRefreshSession={() => {}} />);
+  assert.match(mobileUser, /Akses tidak tersedia/u, "the role check still applies on narrow screens");
+  assert.doesNotMatch(mobileUser, /tersedia di layar desktop/u);
 });
 
 test("account loading and failure are non-blocking, and anonymous onboarding has no role control", () => {
