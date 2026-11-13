@@ -1,4 +1,4 @@
-import type { EventView, PublicContext, PublicFeature, PublicFeatureCollection, PublicGeoJSONGeometry, PublicGeoJSONPosition } from "@waspada/worker/public-contracts";
+import type { EventView, PublicContext, PublicFeature, PublicFeatureCollection, PublicGeometry, PublicGeoJSONGeometry, PublicGeoJSONPosition } from "@waspada/worker/public-contracts";
 import type { ReactNode } from "react";
 import type { FeedStatus } from "./EventFeed.js";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
@@ -115,8 +115,8 @@ function renderGeometry(geometry: PublicGeoJSONGeometry): ReactNode {
   }
 }
 
-function formatCoordinates(feature: PublicFeature): string {
-  return positionsInGeometry(feature.geometry)
+function formatCoordinates(geometry: PublicGeoJSONGeometry): string {
+  return positionsInGeometry(geometry)
     .map((position) => String(position[0]) + ", " + String(position[1]))
     .join(" · ");
 }
@@ -157,6 +157,19 @@ function MapFeature({
       <title>{label}</title>
       {renderGeometry(feature.geometry)}
     </g>
+  );
+}
+
+function OsmTiles() {
+  return (
+    <div className="map-canvas__tiles" aria-hidden="true">
+      <img src="https://tile.openstreetmap.org/11/1631/1058.png" alt="" />
+      <img src="https://tile.openstreetmap.org/11/1632/1058.png" alt="" />
+      <img src="https://tile.openstreetmap.org/11/1633/1058.png" alt="" />
+      <img src="https://tile.openstreetmap.org/11/1631/1059.png" alt="" />
+      <img src="https://tile.openstreetmap.org/11/1632/1059.png" alt="" />
+      <img src="https://tile.openstreetmap.org/11/1633/1059.png" alt="" />
+    </div>
   );
 }
 
@@ -249,14 +262,6 @@ export function MapPanel(props: MapPanelProps) {
               </div>
             </dl>
           </>
-        ) : legacyScreen && selection.kind === "api-event" ? (
-          <div className="map-unavailable" role="status">
-            <span className="map-unavailable__mark" aria-hidden="true">—</span>
-            <h3>{selection.event.title}</h3>
-            <p>Tidak dipetakan. Record API ini tidak menyertakan geometri; daftar tetap tersedia sebagai alternatif lengkap.</p>
-            <p className="supporting-note">Tidak adanya geometri bukan pernyataan bahwa suatu area aman.</p>
-            <button className="button button--quiet map-return" type="button" onClick={onReturnToList}>Kembali ke daftar</button>
-          </div>
         ) : mapState.status === "idle" ? (
           <div className="map-unavailable" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">i</span>
@@ -295,14 +300,7 @@ export function MapPanel(props: MapPanelProps) {
         ) : (
           <>
             <div className="map-canvas map-canvas--osm">
-              <div className="map-canvas__tiles" aria-hidden="true">
-                <img src="https://tile.openstreetmap.org/11/1631/1058.png" alt="" />
-                <img src="https://tile.openstreetmap.org/11/1632/1058.png" alt="" />
-                <img src="https://tile.openstreetmap.org/11/1633/1058.png" alt="" />
-                <img src="https://tile.openstreetmap.org/11/1631/1059.png" alt="" />
-                <img src="https://tile.openstreetmap.org/11/1632/1059.png" alt="" />
-                <img src="https://tile.openstreetmap.org/11/1633/1059.png" alt="" />
-              </div>
+              <OsmTiles />
               <svg
                 className="geojson-map"
                 viewBox="0 0 500 500"
@@ -338,7 +336,7 @@ export function MapPanel(props: MapPanelProps) {
                 <dt>Koordinat CRS84 dari respons API</dt>
                 <dd>
                   {selectedFeature
-                    ? formatCoordinates(selectedFeature)
+                    ? formatCoordinates(selectedFeature.geometry)
                     : "Pilih geometri untuk menampilkan semua koordinatnya seperti dikembalikan API."}
                 </dd>
               </div>
@@ -368,6 +366,116 @@ export function MapPanel(props: MapPanelProps) {
           Tanpa peta dasar · hasil kosong bukan pernyataan keselamatan.
         </footer>
       )}
+    </section>
+  );
+}
+
+function insideMapArea(position: PublicGeoJSONPosition): boolean {
+  return position[0] >= CRS84_ENVELOPE.west && position[0] <= CRS84_ENVELOPE.east &&
+    position[1] >= CRS84_ENVELOPE.south && position[1] <= CRS84_ENVELOPE.north;
+}
+
+/**
+ * Record detail (page and #peta sheet): draws only the geometries the API returned for this record.
+ * Nothing is added: no point, radius or area. A geometry outside the map area is counted, not drawn.
+ * "Tidak dipetakan" appears only when the record's geometry list is empty.
+ */
+export function RecordMapPanel({
+  title,
+  geometries,
+  onReturnToList,
+}: {
+  title: string;
+  /** undefined when the response had no geometries field (unknown); an empty array means the record has none. */
+  geometries: readonly PublicGeometry[] | undefined;
+  onReturnToList: () => void;
+}) {
+  const drawable = (geometries ?? []).filter((item) => {
+    const positions = positionsInGeometry(item.geometry);
+    return positions.length > 0 && positions.every(insideMapArea);
+  });
+  const notDrawn = (geometries?.length ?? 0) - drawable.length;
+
+  return (
+    <section className="map-panel" aria-labelledby="record-map-title">
+      <header className="panel-heading map-panel__heading">
+        <div>
+          <p className="section-kicker">Geometri dari respons API</p>
+          <h2 id="record-map-title">Peta koordinat CRS84</h2>
+        </div>
+        <span className="fixture-chip">Tanpa peta dasar</span>
+      </header>
+
+      <p className="map-panel__intro">
+        Hanya geometri yang dikembalikan API untuk record ini yang digambar. Peta tidak menambahkan titik, radius, atau area sekitar.
+      </p>
+
+      <figure className="map-figure">
+        {geometries === undefined ? (
+          <div className="map-unavailable" role="status">
+            <span className="map-unavailable__mark" aria-hidden="true">i</span>
+            <h3>Geometri belum tersedia dalam respons ini</h3>
+            <p>Peta koordinat tidak dapat dibentuk dari respons ini. Keadaan dan kelengkapan data tidak dapat disimpulkan dari peta.</p>
+          </div>
+        ) : geometries.length === 0 ? (
+          <div className="map-unavailable" role="status">
+            <span className="map-unavailable__mark" aria-hidden="true">—</span>
+            <h3>{title}</h3>
+            <p>Tidak dipetakan. Record API ini tidak menyertakan geometri; daftar tetap tersedia sebagai alternatif lengkap.</p>
+            <p className="supporting-note">Tidak adanya geometri bukan pernyataan bahwa suatu area aman.</p>
+            <button className="button button--quiet map-return" type="button" onClick={onReturnToList}>Kembali ke daftar</button>
+          </div>
+        ) : drawable.length === 0 ? (
+          <div className="map-unavailable" role="status">
+            <span className="map-unavailable__mark" aria-hidden="true">—</span>
+            <h3>Geometri di luar area peta</h3>
+            <p>{`${geometries.length} geometri dari API berada di luar area peta Jakarta yang ditampilkan, sehingga tidak digambar. Ini bukan pernyataan bahwa area aman.`}</p>
+            <button className="button button--quiet map-return" type="button" onClick={onReturnToList}>Kembali ke daftar</button>
+          </div>
+        ) : (
+          <>
+            <div className="map-canvas map-canvas--osm">
+              <OsmTiles />
+              <svg
+                className="geojson-map"
+                viewBox="0 0 500 500"
+                role="group"
+                aria-label={"Geometri record " + title}
+              >
+                {drawable.map((item) => (
+                  <g key={item.geometry_id} className="geo-feature" data-geometry-id={item.geometry_id}>
+                    <title>{title + ", " + item.role.replaceAll("_", " ") + ", " + item.geometry.type}</title>
+                    {renderGeometry(item.geometry)}
+                  </g>
+                ))}
+              </svg>
+            </div>
+            <figcaption className="map-caption">
+              <strong>{`${drawable.length} geometri pada record ini`}</strong>
+              <span>
+                {notDrawn > 0 ? `${notDrawn} geometri di luar area peta tidak digambar. ` : ""}
+                Garis, titik, dan bidang digambar apa adanya dari respons API.
+              </span>
+            </figcaption>
+            <dl className="coordinate-row">
+              <div className="coordinate-row__source">
+                <dt>Koordinat CRS84 dari respons API</dt>
+                <dd>{drawable.map((item) => formatCoordinates(item.geometry)).join("; ")}</dd>
+              </div>
+              <div>
+                <dt>Proyeksi gambar</dt>
+                <dd>Equirektangular lokal; posisi sumber tidak diubah.</dd>
+              </div>
+            </dl>
+          </>
+        )}
+      </figure>
+
+      <footer className="map-legend">
+        <span className="legend-point" aria-hidden="true" />
+        <span>Geometri yang dikembalikan API untuk record ini</span>
+        <span className="map-legend__note">Bentuk dan warna tidak menilai tingkat bahaya.</span>
+      </footer>
     </section>
   );
 }

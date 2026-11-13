@@ -2,7 +2,7 @@ import type { EventDetail as EventDetailRecord, HistoryPage, PublicContext } fro
 import type { ApiReadState } from "./api-client.js";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
-import { MapPanel } from "./MapPanel.js";
+import { MapPanel, RecordMapPanel } from "./MapPanel.js";
 import { SeverityChip } from "./MapSeverity.js";
 import { publicationPathText, SEVERITY_NOTE, severityOf } from "./published-events.js";
 
@@ -325,8 +325,9 @@ function ApiEventDetail({
           </div>
 
           <div className="detail-columns detail-columns--bottom">
-            <MapPanel
-              selection={{ kind: "api-event", event }}
+            <RecordMapPanel
+              title={event.title}
+              geometries={event.geometries}
               onReturnToList={onBackToList ?? (() => { window.location.hash = "#peta"; })}
             />
             <ApiHistory state={history} onRetry={onRetryHistory} />
