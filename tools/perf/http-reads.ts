@@ -135,6 +135,12 @@ async function main(): Promise<void> {
       return `| \`${route}\` | ${r.concurrency} | ${s.n} | ${status} | ${fmt(s.mean)} | ${fmt(s.sd)} | ${fmt(s.p50)} | ${fmt(s.p95)} | ${fmt(s.p95_ci95[0])} to ${fmt(s.p95_ci95[1])} | ${fmt(s.p99)} | ${fmt(s.max)} | ${fmt(r.throughput_rps)} |`;
     }),
     "",
+    "## Figure",
+    "",
+    "![HTTP read latency of the public routes, at 1 and 25 clients](figures/perf-http-latency.png)",
+    "",
+    "Figure: p50 and p95 by route at 1 and 25 clients, from the table above. Whiskers show the 95% bootstrap interval for p95. Rendered by `tools/perf/chart.ts`.",
+    "",
     "## Not in this run",
     "",
     "- The web first load on desktop and phone (ST-P-03).",

@@ -33,6 +33,11 @@ Status: first HTTP run, 13 November 2026. This is a baseline. No target has been
 | `/api/v1/updates` | 10 | 200 | 503 x200 | 6.17 | 2.65 | 5.39 | 10.91 | 10.18 to 12.13 | 12.90 | 14.89 | 1572.33 |
 | `/api/v1/updates` | 25 | 200 | 503 x200 | 14.35 | 5.47 | 12.41 | 23.92 | 20.65 to 27.85 | 36.35 | 36.47 | 1643.41 |
 
+## Figure
+
+![HTTP read latency of the public routes, at 1 and 25 clients](figures/perf-http-latency.png)
+
+Figure: p50 and p95 by route at 1 and 25 clients, from the table above. Whiskers show the 95% bootstrap interval for p95. Rendered by `tools/perf/chart.ts`.
 ## Not in this run
 
 - The web first load on desktop and phone (ST-P-03).
