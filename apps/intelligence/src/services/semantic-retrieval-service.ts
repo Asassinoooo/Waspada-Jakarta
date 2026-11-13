@@ -9,7 +9,7 @@ import {
   createSqlEvidenceRetrievalRepository,
   type EvidenceRetrievalCandidate,
 } from "../../../db/src/evidence-retrieval.js";
-import type { IncidentRecord } from "../../../db/src/incident-repository.js";
+import { firstObservedAtIso, type IncidentRecord } from "../../../db/src/incident-repository.js";
 import {
   generateNineRouterEmbedding,
   getNineRouterConfig,
@@ -193,7 +193,7 @@ export function createSemanticRetrievalService(dependencies: {
           location_label: string | null;
           shape_geojson: string | null;
           event_time: unknown;
-          first_observed_at: string | Date;
+          first_observed_at: string | Date | null;
           last_updated_at: string | Date;
           discrepancies: unknown;
           uncertainty_notes: unknown;
@@ -288,7 +288,7 @@ export function createSemanticRetrievalService(dependencies: {
                 locationLabel: row.location_label,
                 coordinates,
                 eventTime: (typeof row.event_time === "object" && row.event_time !== null ? row.event_time : {}) as Record<string, unknown>,
-                firstObservedAt: new Date(row.first_observed_at).toISOString(),
+                firstObservedAt: firstObservedAtIso(row.first_observed_at),
                 lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
                 discrepancies: Array.isArray(row.discrepancies) ? row.discrepancies : [],
                 uncertaintyNotes: Array.isArray(row.uncertainty_notes) ? row.uncertainty_notes : [],
@@ -420,7 +420,7 @@ export function createSemanticRetrievalService(dependencies: {
             location_label: string | null;
             shape_geojson: string | null;
             event_time: unknown;
-            first_observed_at: string | Date;
+            first_observed_at: string | Date | null;
             last_updated_at: string | Date;
             discrepancies: unknown;
             uncertainty_notes: unknown;
@@ -479,7 +479,7 @@ export function createSemanticRetrievalService(dependencies: {
                     locationLabel: row.location_label,
                     coordinates,
                     eventTime: (typeof row.event_time === "object" && row.event_time !== null ? row.event_time : {}) as Record<string, unknown>,
-                    firstObservedAt: new Date(row.first_observed_at).toISOString(),
+                    firstObservedAt: firstObservedAtIso(row.first_observed_at),
                     lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
                     discrepancies: Array.isArray(row.discrepancies) ? row.discrepancies : [],
                     uncertaintyNotes: Array.isArray(row.uncertainty_notes) ? row.uncertainty_notes : [],
@@ -528,7 +528,7 @@ export function createSemanticRetrievalService(dependencies: {
         location_label: string | null;
         shape_geojson: string | null;
         event_time: unknown;
-        first_observed_at: string | Date;
+        first_observed_at: string | Date | null;
         last_updated_at: string | Date;
         discrepancies: unknown;
         uncertainty_notes: unknown;
@@ -581,7 +581,7 @@ export function createSemanticRetrievalService(dependencies: {
             locationLabel: row.location_label,
             coordinates,
             eventTime: (typeof row.event_time === "object" && row.event_time !== null ? row.event_time : {}) as Record<string, unknown>,
-            firstObservedAt: new Date(row.first_observed_at).toISOString(),
+            firstObservedAt: firstObservedAtIso(row.first_observed_at),
             lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
             discrepancies: Array.isArray(row.discrepancies) ? row.discrepancies : [],
             uncertaintyNotes: Array.isArray(row.uncertainty_notes) ? row.uncertainty_notes : [],

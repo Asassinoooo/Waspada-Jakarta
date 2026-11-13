@@ -26,7 +26,8 @@ export interface IncidentRecord {
   readonly locationLabel: string | null;
   readonly coordinates: readonly [longitude: number, latitude: number] | null;
   readonly eventTime: Record<string, unknown>;
-  readonly firstObservedAt: string;
+  /** F-14: the report's own event time. Null when no event time was known. */
+  readonly firstObservedAt: string | null;
   readonly lastUpdatedAt: string;
   readonly discrepancies: readonly unknown[];
   readonly uncertaintyNotes: readonly string[];
@@ -87,7 +88,8 @@ export interface CreateIncidentInput {
   readonly locationLabel?: string | null;
   readonly coordinates?: readonly [longitude: number, latitude: number] | null;
   readonly eventTime?: Record<string, unknown>;
-  readonly firstObservedAt: string;
+  /** F-14: null when no event time was known. Publish and processing times are never passed here. */
+  readonly firstObservedAt: string | null;
   readonly lastUpdatedAt?: string;
   readonly discrepancies?: readonly unknown[];
   readonly uncertaintyNotes?: readonly string[];
@@ -253,7 +255,7 @@ interface IncidentDbRow {
   readonly location_label: string | null;
   readonly shape_geojson: string | null;
   readonly event_time: unknown;
-  readonly first_observed_at: string | Date;
+  readonly first_observed_at: string | Date | null;
   readonly last_updated_at: string | Date;
   readonly discrepancies: unknown;
   readonly uncertainty_notes: unknown;
@@ -279,6 +281,11 @@ interface AiJobDbRow {
   readonly finished_at: string | Date | null;
 }
 
+/** F-14: NULL stays null. `new Date(null)` would invent the Unix epoch as the incident start. */
+export function firstObservedAtIso(value: string | Date | null): string | null {
+  return value === null ? null : new Date(value).toISOString();
+}
+
 function formatRowToIncident(row: IncidentDbRow): IncidentRecord {
   return {
     incidentId: row.incident_id,
@@ -292,7 +299,7 @@ function formatRowToIncident(row: IncidentDbRow): IncidentRecord {
     locationLabel: row.location_label,
     coordinates: parseGeoJsonPoint(row.shape_geojson),
     eventTime: (typeof row.event_time === "string" ? JSON.parse(row.event_time) : row.event_time ?? {}) as Record<string, unknown>,
-    firstObservedAt: new Date(row.first_observed_at).toISOString(),
+    firstObservedAt: firstObservedAtIso(row.first_observed_at),
     lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
     discrepancies: (typeof row.discrepancies === "string" ? JSON.parse(row.discrepancies) : row.discrepancies ?? []) as readonly unknown[],
     uncertaintyNotes: (typeof row.uncertainty_notes === "string" ? JSON.parse(row.uncertainty_notes) : row.uncertainty_notes ?? []) as readonly string[],

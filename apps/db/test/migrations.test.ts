@@ -175,6 +175,7 @@ describe('DATA-01 migrations', () => {
         '045_password_accounts',
         '046_ai_job_checkpoints',
         '047_pipeline_flow_read',
+        '048_incident_first_observed_nullable',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -336,6 +337,7 @@ describe('DATA-01 migrations', () => {
       '045_password_accounts',
       '046_ai_job_checkpoints',
       '047_pipeline_flow_read',
+      '048_incident_first_observed_nullable',
     ]);
   });
 
@@ -381,12 +383,13 @@ describe('DATA-01 migrations', () => {
       '045_password_accounts',
       '046_ai_job_checkpoints',
       '047_pipeline_flow_read',
+      '048_incident_first_observed_nullable',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '47');
+    assert.equal(count.rows[0]?.count, '48');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -405,7 +408,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 047_pipeline_flow_read/,
+      /Cannot apply migration 000_late_backfill before already applied migration 048_incident_first_observed_nullable/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -459,6 +462,7 @@ describe('DATA-01 migrations', () => {
       { version: '045_password_accounts' },
       { version: '046_ai_job_checkpoints' },
       { version: '047_pipeline_flow_read' },
+      { version: '048_incident_first_observed_nullable' },
     ]);
   });
 
@@ -501,6 +505,7 @@ describe('DATA-01 migrations', () => {
       '045_password_accounts',
       '046_ai_job_checkpoints',
       '047_pipeline_flow_read',
+      '048_incident_first_observed_nullable',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -2307,6 +2312,61 @@ describe('DATA-01 migrations', () => {
         ),
         /append-only/,
       );
+    } finally {
+      await migrationDatabase.close();
+    }
+  });
+
+  it('F-14: 048 makes an incident start nullable and keeps every other incident column required', async () => {
+    const migration = migrations.find(({ version }) => version === '048_incident_first_observed_nullable');
+    assert.ok(migration, 'the incident start migration is loaded');
+    const migrationDatabase = await createTestDatabase();
+    try {
+      await applyMigrations(migrationDatabase.executor, migrationsBefore(migrations, migration.version));
+      const insertIncident = (incidentId: string, firstObservedAt: string | null) => migrationDatabase.executor.query(
+        `INSERT INTO waspada.incidents
+           (incident_id, dataset_kind, title, description, incident_type, status, severity,
+            first_observed_at, last_updated_at, created_at)
+         VALUES ($1, 'synthetic', 'Pohon tumbang fixture', 'Fixture sintetis tanpa waktu kejadian.',
+           'pohon_tumbang', 'active', 'unknown', $2,
+           '2026-10-30T16:00:00Z', '2026-10-30T16:00:00Z')`,
+        [incidentId, firstObservedAt],
+      );
+      await assert.rejects(
+        insertIncident('inc-f14-before-048', null),
+        /null value in column "first_observed_at"/,
+        'before 048 an incident without a source event time is refused',
+      );
+
+      const applied = await applyMigrations(migrationDatabase.executor, migrations);
+      assert.deepEqual(applied.applied, [migration.version]);
+      await insertIncident('inc-f14-after-048', null);
+      const stored = await migrationDatabase.executor.query<{ incident_id: string; first_observed_at: string | null }>(
+        `SELECT incident_id, first_observed_at FROM waspada.incidents WHERE incident_id = 'inc-f14-after-048'`,
+      );
+      assert.deepEqual(stored.rows, [{ incident_id: 'inc-f14-after-048', first_observed_at: null }]);
+
+      const nullability = await migrationDatabase.executor.query<{ column_name: string; is_nullable: string }>(
+        `SELECT column_name, is_nullable FROM information_schema.columns
+         WHERE table_schema = 'waspada' AND table_name = 'incidents'
+           AND column_name IN ('incident_id', 'dataset_kind', 'title', 'status', 'severity',
+             'event_time', 'first_observed_at', 'last_updated_at', 'created_at')
+         ORDER BY column_name`,
+      );
+      assert.deepEqual(nullability.rows, [
+        { column_name: 'created_at', is_nullable: 'NO' },
+        { column_name: 'dataset_kind', is_nullable: 'NO' },
+        { column_name: 'event_time', is_nullable: 'NO' },
+        { column_name: 'first_observed_at', is_nullable: 'YES' },
+        { column_name: 'incident_id', is_nullable: 'NO' },
+        { column_name: 'last_updated_at', is_nullable: 'NO' },
+        { column_name: 'severity', is_nullable: 'NO' },
+        { column_name: 'status', is_nullable: 'NO' },
+        { column_name: 'title', is_nullable: 'NO' },
+      ]);
+
+      const reapplied = await applyMigrations(migrationDatabase.executor, migrations);
+      assert.deepEqual(reapplied.applied, []);
     } finally {
       await migrationDatabase.close();
     }

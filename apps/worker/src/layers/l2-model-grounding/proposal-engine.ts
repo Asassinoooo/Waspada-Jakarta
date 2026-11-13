@@ -306,32 +306,21 @@ export function mapIncidentTypeToPublicCategory(type: IncidentCategory): string 
 }
 
 /**
- * Extracts physical event time and precision from text or fallback timestamps.
+ * Extracts the physical event time and precision from the report text only. F-14: publish and
+ * retrieval times are never the event time, so a text with no event time gives precision "unknown"
+ * and no value.
  */
 function extractEventTime(
   text: string,
-  publishedAt: string | null,
-  retrievedAt: string,
-): { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string } {
+): { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string | null } {
   // 1. Time range in text: "dari jam 10.00 hingga 14.00" or "antara 08.00 - 11.00"
   const rangeMatch = text.match(/\b(?:antara|sejak|dari)\s*(?:pukul|jam)?\s*([0-2]?[0-9][.:][0-5][0-9])\s*(?:hingga|sampai|-)\s*(?:pukul|jam)?\s*([0-2]?[0-9][.:][0-5][0-9])/i);
   if (rangeMatch) {
     return { precision: "range", value: rangeMatch[0] };
   }
 
-  // 2. Exact clock time in text: "pukul 14.30 WIB" or "jam 03.15"
-  const clockMatch = text.match(/\b(?:pukul|jam)\s*([0-2]?[0-9])[.:]([0-5][0-9])(?:\s*wib)?/i);
-  if (clockMatch && clockMatch[1] && clockMatch[2]) {
-    const hours = clockMatch[1].padStart(2, "0");
-    const minutes = clockMatch[2].padStart(2, "0");
-    const baseDate = publishedAt ? publishedAt.slice(0, 10) : retrievedAt ? retrievedAt.slice(0, 10) : null;
-    if (baseDate && /^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
-      return {
-        precision: "exact",
-        value: `${baseDate}T${hours}:${minutes}:00+07:00`,
-      };
-    }
-  }
+  // 2. A clock time alone ("pukul 14.30 WIB") gives no date. The publish date is not an event date,
+  // so it is not used to complete the time (F-14).
 
   // 3. Explicit ISO timestamp in text
   const isoMatch = text.match(/\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\b/);
@@ -358,16 +347,8 @@ function extractEventTime(
     return { precision: "date", value: dateMatch[1] };
   }
 
-  // 6. Fallback to published_at or retrieved_at
-  if (publishedAt) {
-    return { precision: "exact", value: publishedAt };
-  }
-
-  if (retrievedAt) {
-    return { precision: "exact", value: retrievedAt };
-  }
-
-  return { precision: "unknown", value: "unknown" };
+  // 6. No event time in the text. Publish and retrieval times are never the event time (F-14).
+  return { precision: "unknown", value: null };
 }
 
 /**
@@ -684,7 +665,7 @@ export function generateProposalFromReport(
   const severity = detectSeverity(fullText);
 
   // 4. Extract physical event time
-  const event_time = extractEventTime(fullText, report.published_at, report.retrieved_at);
+  const event_time = extractEventTime(fullText);
 
   // 5. Generate structured claims
   const claims = createClaims(report.report_revision_id, rawChunks, incident_type, locationLabel, severity);

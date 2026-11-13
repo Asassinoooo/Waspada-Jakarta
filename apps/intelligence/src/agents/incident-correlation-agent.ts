@@ -234,7 +234,7 @@ Title: ${inc.title}
 Type: ${inc.incidentType}
 Status: ${inc.status} | Severity: ${inc.severity}
 Location: ${inc.locationLabel ?? "Unknown"} (${inc.coordinates ? inc.coordinates.join(", ") : "no coordinates"})
-First Observed: ${inc.firstObservedAt} | Last Updated: ${inc.lastUpdatedAt}
+First Observed: ${inc.firstObservedAt ?? "unknown"} | Last Updated: ${inc.lastUpdatedAt}
 Description: ${inc.description}
 ${match.matchedReportRevisionId ? `Evidence Report Revision ID: ${match.matchedReportRevisionId}` : ""}
 ${match.matchedText ? `Matched Historical Evidence: "${match.matchedText}"` : ""}

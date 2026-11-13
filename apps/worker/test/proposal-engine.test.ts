@@ -166,9 +166,8 @@ test("generates valid schema 2.0 accident proposal from report", () => {
   assert.ok(proposal.title.includes("Kecelakaan Lalu Lintas"));
   assert.ok(proposal.title.includes("Cawang"));
 
-  // Check event time extraction
-  assert.equal(proposal.event_time.precision, "exact");
-  assert.ok(proposal.event_time.value?.includes("14:30:00+07:00"));
+  // F-14: a clock time with no date in the text is not completed with the publish date (2026-10-26).
+  assert.deepEqual(proposal.event_time, { precision: "unknown", value: null });
 
   assert.ok(proposal.claims.length >= 1);
   for (const claim of proposal.claims) {
@@ -338,4 +337,29 @@ test("handles empty or malformed inputs returning null", () => {
   assert.equal(generateProposalFromReport(undefined as unknown as StoredReportRevision), null);
   assert.equal(generateProposalFromReport({} as StoredReportRevision), null);
   assert.equal(generateProposalFromReport(makeReport({ permitted_text: "   ", chunks: [] })), null);
+});
+
+test("F-14: a report with no event time has unknown precision and never its publish or retrieval time", () => {
+  const report = makeReport({
+    report_revision_id: "rev-f14-no-time-101",
+    permitted_text: "Banjir tergenang setinggi 60 cm di kawasan Rawamangun Jakarta Timur akibat hujan deras.",
+    published_at: "2026-10-26T03:30:00.000Z",
+    retrieved_at: "2026-10-26T03:35:00.000Z",
+  });
+
+  const proposal = generateProposalFromReport(report);
+  assert.ok(proposal !== null);
+  assert.deepEqual(proposal.event_time, { precision: "unknown", value: null });
+});
+
+test("F-14 control: an explicit date in the report text is still the event time", () => {
+  const report = makeReport({
+    report_revision_id: "rev-f14-date-101",
+    permitted_text: "Banjir tergenang setinggi 60 cm di kawasan Rawamangun Jakarta Timur akibat hujan deras pada 26 Oktober 2026.",
+    published_at: "2026-10-27T03:30:00.000Z",
+  });
+
+  const proposal = generateProposalFromReport(report);
+  assert.ok(proposal !== null);
+  assert.deepEqual(proposal.event_time, { precision: "date", value: "2026-10-26" });
 });

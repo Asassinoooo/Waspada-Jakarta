@@ -2,6 +2,7 @@ import type {
   Category,
   EventDetail,
   EventPage,
+  Freshness,
   HistoryEntry,
   HistoryPage,
   PublicClaim,
@@ -630,23 +631,8 @@ export function proposalToEventDetail(
     ? proposal.claims.map((c) => c.claim_text).join(". ").slice(0, 500)
     : title;
 
-  let eventStart: string | null = null;
-  let precision: TimeScope["precision"] = "unknown";
-  if (proposal.event_time) {
-    precision = proposal.event_time.precision || "exact";
-    if (proposal.event_time.value) {
-      const parsed = Date.parse(proposal.event_time.value);
-      if (!Number.isNaN(parsed)) {
-        eventStart = new Date(parsed).toISOString();
-      } else {
-        eventStart = proposal.event_time.value;
-      }
-    }
-  }
-  if (!eventStart && proposal.proposed_at) {
-    eventStart = proposal.proposed_at;
-    precision = "exact";
-  }
+  // F-14: no fallback to proposed_at, published_at or now. See publicEventStart.
+  const { start: eventStart, precision } = publicEventStart(proposal.event_time);
 
   const places: string[] = [];
   if (proposal.location_label && proposal.location_label.trim().length > 0) {
@@ -692,7 +678,7 @@ export function proposalToEventDetail(
     event_time: {
       start: eventStart,
       end: null,
-      precision: "exact",
+      precision: eventStart === null ? "unknown" : "exact",
     },
     validity: { valid_from: null, valid_until: null },
     scope: { places: [...places], services: [], institutions: [], audiences: [] },
@@ -724,19 +710,14 @@ export function proposalToEventDetail(
       { namespace: "hazard", value: proposal.severity || "general" },
     ],
     lifecycle: "ongoing",
-    freshness: {
-      status: "current",
-      evaluated_at: publishedAt,
-      review_due_at: null,
-      basis: "fast_observation_review",
-    },
+    freshness: publicFreshness(eventStart, publishedAt),
     event_time: {
       start: eventStart,
       end: null,
       precision,
     },
     validity: {
-      valid_from: eventStart || publishedAt,
+      valid_from: eventStart,
       valid_until: null,
     },
     scope: {
@@ -752,6 +733,43 @@ export function proposalToEventDetail(
     geometries,
     ...(options?.publication ? { publication: options.publication } : {}),
   };
+}
+
+const timePrecisions: ReadonlySet<string> = new Set(["exact", "date", "range", "unknown"]);
+
+/**
+ * F-14: the event start is only a time the source gave. A missing value or an unknown precision
+ * gives no start and precision "unknown". Publish, processing and "now" times are never used as
+ * the event start, so a record without an event time is not dated by its own publication.
+ */
+function publicEventStart(eventTime: unknown): {
+  readonly start: string | null;
+  readonly precision: TimeScope["precision"];
+} {
+  const record = typeof eventTime === "object" && eventTime !== null ? eventTime as Record<string, unknown> : {};
+  const raw = typeof record.value === "string" ? record.value : typeof record.start === "string" ? record.start : null;
+  if (record.precision === "unknown" || raw === null || raw.length === 0) {
+    return { start: null, precision: "unknown" };
+  }
+  const parsed = Date.parse(raw);
+  return {
+    start: Number.isNaN(parsed) ? raw : new Date(parsed).toISOString(),
+    precision: typeof record.precision === "string" && timePrecisions.has(record.precision)
+      ? record.precision as TimeScope["precision"]
+      : "exact",
+  };
+}
+
+/**
+ * F-14: freshness follows the event time and is not "current" by construction. A record without an
+ * event time cannot be dated, so it needs information ("needs_update", basis "unknown"). That claims
+ * neither expiry nor resolution.
+ */
+function publicFreshness(eventStart: string | null, evaluatedAt: string): Freshness {
+  if (eventStart === null) {
+    return { status: "needs_update", evaluated_at: evaluatedAt, review_due_at: null, basis: "unknown" };
+  }
+  return { status: "current", evaluated_at: evaluatedAt, review_due_at: null, basis: "fast_observation_review" };
 }
 
 function publicClaimLabel(label: unknown): PublicClaim["evidence_label"] {
@@ -808,6 +826,8 @@ function rawInputToEventDetail(
     : typeof input.proposed_at === "string"
       ? input.proposed_at
       : new Date().toISOString();
+  // F-14: the event start comes from the input's own event time only, never from its publish time.
+  const { start: eventStart, precision } = publicEventStart(input.event_time);
 
   const severity = publicSeverity(input.severity);
   return {
@@ -823,19 +843,14 @@ function rawInputToEventDetail(
     lifecycle: typeof input.lifecycle === "string" && lifecycles[input.lifecycle]
       ? (input.lifecycle as Lifecycle)
       : "ongoing",
-    freshness: {
-      status: "current",
-      evaluated_at: publishedAt,
-      review_due_at: null,
-      basis: "fast_observation_review",
-    },
+    freshness: publicFreshness(eventStart, publishedAt),
     event_time: {
-      start: publishedAt,
+      start: eventStart,
       end: null,
-      precision: "exact",
+      precision,
     },
     validity: {
-      valid_from: publishedAt,
+      valid_from: eventStart,
       valid_until: null,
     },
     scope: {

@@ -110,6 +110,24 @@ describe("SqlIncidentRepository", () => {
       assert.ok(active.length >= 1);
       assert.equal(active[0].incidentId, "inc-flood-cawang-01");
     });
+
+    it("F-14: keeps a null incident start when the report gave no event time", async () => {
+      await repo.createIncident({
+        incidentId: "inc-f14-no-time-01",
+        datasetKind: "synthetic",
+        title: "Pohon tumbang Kebayoran Baru",
+        description: "Laporan tanpa waktu kejadian dari sumber",
+        incidentType: "pohon_tumbang",
+        status: "investigating",
+        severity: "unknown",
+        firstObservedAt: null,
+      });
+
+      const fetched = await repo.getIncidentById("synthetic", "inc-f14-no-time-01");
+      assert.ok(fetched);
+      // new Date(null) would read back as 1970-01-01; the start must stay null.
+      assert.equal(fetched.incident.firstObservedAt, null);
+    });
   });
 
   describe("AI Job Durable Queue", () => {

@@ -392,7 +392,8 @@ export function createAiProposalService(options?: AiProposalServiceOptions): AiP
         title: parsed.title || `${incidentType.toUpperCase()} di ${locationLabel}`,
         incident_type: incidentType,
         severity,
-        event_time: parsed.event_time || { precision: "unknown", value: report.retrieved_at },
+        // F-14: no event time in the model output means unknown, never the retrieval time.
+        event_time: parsed.event_time || { precision: "unknown", value: null },
         location_label: locationLabel,
         coordinates,
         claims,

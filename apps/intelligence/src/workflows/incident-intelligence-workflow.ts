@@ -456,7 +456,9 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             severity: interpretation.severity ?? "unknown",
             locationLabel: interpretation.location.label,
             coordinates: interpretation.location.approximateCoordinates,
-            firstObservedAt: interpretation.eventTime.value ?? input.publishedAt ?? now,
+            // F-14: the incident start is the report's own event time. It stays null when the report
+            // gives none. The publish time, processing time and "now" are never stored here.
+            firstObservedAt: interpretation.eventTime.precision === "unknown" ? null : interpretation.eventTime.value,
             uncertaintyNotes: [
               ...interpretation.uncertaintyNotes,
               ...(correlation.decision === "unresolved" ? correlation.unresolvedQuestions : []),

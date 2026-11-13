@@ -446,9 +446,10 @@ export async function processInboundEvent(
         title: event.title,
         incident_type: (event.category ?? "unclassified") as IncidentCategory,
         severity: (event.severity ?? "unknown") as IncidentSeverity,
+        // F-14: a webhook without its own event timestamp has no event time. Retrieval time is not used.
         event_time: {
           precision: event.timestamp ? "exact" : "unknown",
-          value: event.timestamp ?? revision.retrieved_at,
+          value: event.timestamp ?? null,
         },
         location_label: event.location_hint ?? null,
         coordinates: normalizedCoords ?? null,

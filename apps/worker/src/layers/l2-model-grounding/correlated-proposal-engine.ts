@@ -151,11 +151,12 @@ function detectCombinedSeverity(text: string): IncidentSeverity {
 }
 
 /**
- * Extracts physical event time and precision across all report texts and metadata.
+ * Extracts the physical event time and precision from the report texts only (F-14: never from
+ * publish or retrieval metadata).
  */
 function extractCombinedEventTime(
   reports: readonly StoredReportRevision[],
-): { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string } {
+): { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string | null } {
   for (const rep of reports) {
     const text = rep.permitted_text;
     const rangeMatch = text.match(
@@ -166,30 +167,9 @@ function extractCombinedEventTime(
     }
   }
 
-  for (const rep of reports) {
-    const text = rep.permitted_text;
-    const clockMatch = text.match(/\b(?:pukul|jam|pk\.?)\s*([0-2]?[0-9][.:][0-5][0-9])(?:\s*(?:wib|wita|wit))?\b/i);
-    if (clockMatch && rep.published_at) {
-      const datePart = rep.published_at.slice(0, 10);
-      const timePart = clockMatch[1]!.replace(".", ":");
-      const normalizedClock = `${datePart} ${timePart} WIB`;
-      return { precision: "exact", value: normalizedClock };
-    }
-  }
-
-  for (const rep of reports) {
-    if (rep.published_at) {
-      return { precision: "exact", value: rep.published_at };
-    }
-  }
-
-  for (const rep of reports) {
-    if (rep.retrieved_at) {
-      return { precision: "date", value: rep.retrieved_at.slice(0, 10) };
-    }
-  }
-
-  return { precision: "unknown", value: new Date().toISOString() };
+  // F-14: a clock time alone gives no date, and publish or retrieval times are never the event time.
+  // Without a time in the text the event time is unknown, with no value.
+  return { precision: "unknown", value: null };
 }
 
 /**
