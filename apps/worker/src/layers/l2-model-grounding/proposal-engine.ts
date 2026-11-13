@@ -27,37 +27,18 @@ export interface StoredReportRevision {
 }
 
 export type IncidentCategory = "flood" | "fire" | "accident" | "tree_fall" | "crime" | "weather" | (string & {});
-export type IncidentSeverity = "low" | "medium" | "high" | "critical" | "unknown";
-
-export interface EventProposalClaimDto {
-  readonly claim_id: string;
-  readonly claim_text: string;
-  readonly evidence_label: "under_review";
-  readonly support_assessment: "supported";
-  readonly quote_text: string;
-  readonly evidence_ref_id: string;
-}
-
-export interface EventProposalDto {
-  readonly schema_version: "2.0";
-  readonly proposal_id: string;
-  readonly title: string;
-  readonly incident_type: IncidentCategory;
-  readonly public_category?: string;
-  readonly severity: IncidentSeverity;
-  readonly event_time: {
-    readonly precision: "exact" | "date" | "range" | "unknown";
-    readonly value: string | null;
-  };
-  readonly location_label: string | null;
-  readonly coordinates: readonly [longitude: number, latitude: number] | null;
-  readonly claims: readonly EventProposalClaimDto[];
-  readonly proposed_at: string;
-}
-
 export interface ProposalEngineOptions {
   readonly proposedAt?: string;
 }
+
+// Schema 2.0 proposal shapes are owned by L1 (F-03) so the ingest path does not
+// import this L2 module. Re-exported here for existing importers.
+import type {
+  EventProposalClaimDto,
+  EventProposalDto,
+  IncidentSeverity,
+} from "../l1-data-knowledge/event-proposal-types.js";
+export type { EventProposalClaimDto, EventProposalDto, IncidentSeverity };
 
 import {
   JAKARTA_ENVELOPE,

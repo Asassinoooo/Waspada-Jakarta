@@ -23,7 +23,8 @@ import { AGENT_AUTO_PUBLISHER_ID, decideProposal } from "./layers/l4-application
 import { parseAutoPublishSourcePermission } from "./layers/l4-application-integration/publication-policy.js";
 import { moderationAccountConfig, moderatorSurfaceDenial, readModeratorPrincipal } from "./runtime/moderator-session.js";
 import { checkServiceKey } from "./security/service-key.js";
-import { type StoredReportRevision } from "./layers/l2-model-grounding/proposal-engine.js";
+import { type StoredReportRevision, generateProposalFromReport } from "./layers/l2-model-grounding/proposal-engine.js";
+import { generateCorrelatedProposal } from "./layers/l2-model-grounding/correlated-proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
@@ -50,7 +51,10 @@ const activeRevisions = new Map<string, StoredReportRevision>();
 const activeProposals = new Map<string, EventProposalDto>();
 const activeChunks = new Map<string, readonly StoredEvidenceChunk[]>();
 
+// F-03: the L1 webhook path receives its L2 proposal engines and L4 broadcaster here.
 const webhookIngest = createWebhookIngestHandler({
+  directProposal: generateProposalFromReport,
+  correlatedProposal: generateCorrelatedProposal,
   broadcaster: eventBroadcaster,
   onRevisionCreated: (revision) => {
     activeRevisions.set(revision.report_revision_id, revision);

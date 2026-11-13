@@ -9,7 +9,17 @@ import {
   type InboundIncidentEvent,
 } from "../src/layers/l1-data-knowledge/webhook-ingest.js";
 import { EventBroadcaster } from "../src/layers/l4-application-integration/event-broadcaster.js";
-import type { StoredReportRevision } from "../src/layers/l2-model-grounding/proposal-engine.js";
+import { generateProposalFromReport, type StoredReportRevision } from "../src/layers/l2-model-grounding/proposal-engine.js";
+import { generateCorrelatedProposal } from "../src/layers/l2-model-grounding/correlated-proposal-engine.js";
+
+// F-03: L1 receives its L2 proposal engines and broadcaster by injection, as the
+// composition root in src/index.ts does. Validation-only calls never reach these.
+const engineWiring = {
+  directProposal: generateProposalFromReport,
+  correlatedProposal: generateCorrelatedProposal,
+} as const;
+const silentBroadcaster = { broadcastModeration: (): void => undefined };
+const validationOnlyOptions = { ...engineWiring, broadcaster: silentBroadcaster };
 
 async function readStreamChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -129,7 +139,7 @@ test("webhookIngestHandler rejects non-POST requests with 405 Method Not Allowed
   const request = new Request("http://localhost/api/v1/ingestion/events", {
     method: "GET",
   });
-  const response = await webhookIngestHandler(request);
+  const response = await webhookIngestHandler(request, validationOnlyOptions);
 
   assert.equal(response.status, 405);
   const json = (await response.json()) as { ok: boolean; error: string };
@@ -143,7 +153,7 @@ test("webhookIngestHandler rejects invalid JSON bodies with 400 Bad Request", as
     headers: { "Content-Type": "application/json" },
     body: "this is not json",
   });
-  const response = await webhookIngestHandler(request);
+  const response = await webhookIngestHandler(request, validationOnlyOptions);
 
   assert.equal(response.status, 400);
   const json = (await response.json()) as { ok: boolean; error: string };
@@ -162,7 +172,7 @@ test("webhookIngestHandler rejects events outside Jakarta envelope with 400", as
       coordinates: [106.98, -6.71], // Outside Jakarta envelope
     }),
   });
-  const response = await webhookIngestHandler(request);
+  const response = await webhookIngestHandler(request, validationOnlyOptions);
 
   assert.equal(response.status, 400);
   const json = (await response.json()) as { ok: boolean; error: string };
@@ -190,6 +200,7 @@ test("single inbound event push generates proposal and broadcasts to moderation 
   });
 
   const response = await webhookIngestHandler(request, {
+    ...engineWiring,
     broadcaster,
     onProposalCreated: (proposal) => {
       capturedProposalId = proposal.proposal_id;
@@ -260,7 +271,7 @@ test("batch inbound event push validates all events and generates proposals", as
     body: JSON.stringify(batchPayload),
   });
 
-  const response = await webhookIngestHandler(request, { broadcaster });
+  const response = await webhookIngestHandler(request, { ...engineWiring, broadcaster });
   assert.equal(response.status, 201);
 
   const result = (await response.json()) as {
@@ -298,7 +309,7 @@ test("batch push rejects entire batch if one event is invalid", async () => {
     body: JSON.stringify(batchWithOneInvalid),
   });
 
-  const response = await webhookIngestHandler(request);
+  const response = await webhookIngestHandler(request, validationOnlyOptions);
   assert.equal(response.status, 400);
 
   const json = (await response.json()) as { ok: boolean; error: string };
@@ -372,6 +383,7 @@ test("inbound event correlates with active reports when spatial and temporal ove
   });
 
   const response = await webhookIngestHandler(request, {
+    ...engineWiring,
     broadcaster,
     activeReports: [existingKemangReport],
   });

@@ -10,18 +10,35 @@
 
 import { createHash } from "node:crypto";
 import { preparePermittedText } from "./text-preparation.js";
+import { JAKARTA_ENVELOPE } from "./geographic-gazetteer.js";
 import {
-  JAKARTA_ENVELOPE,
-  generateProposalFromReport,
-  type EventProposalDto,
-  type StoredReportRevision,
-  type StoredEvidenceChunk,
+  correlateSourceReports,
+  type CorrelatedIncidentCluster,
   type IncidentCategory,
-  type IncidentSeverity,
-} from "../l2-model-grounding/proposal-engine.js";
-import { correlateSourceReports } from "./multisource-correlator.js";
-import { generateCorrelatedProposal } from "../l2-model-grounding/correlated-proposal-engine.js";
-import { eventBroadcaster, EventBroadcaster } from "../l4-application-integration/event-broadcaster.js";
+  type StoredEvidenceChunk,
+  type StoredReportRevision,
+} from "./multisource-correlator.js";
+import type { EventProposalDto, IncidentSeverity } from "./event-proposal-types.js";
+
+/**
+ * Ports for the two L2 proposal builders and the L4 moderator notification
+ * sink (F-03). L1 defines only these shapes. The composition root
+ * (`src/index.ts`) injects the concrete engines and broadcaster, so this layer
+ * never imports them.
+ */
+export type DirectProposalPort = (
+  report: StoredReportRevision,
+  options: { readonly proposedAt: string },
+) => EventProposalDto | null;
+
+export type CorrelatedProposalPort = (
+  cluster: CorrelatedIncidentCluster,
+  options: { readonly proposedAt: string },
+) => EventProposalDto;
+
+export interface ModerationNotificationPort {
+  broadcastModeration(event: string, data: unknown): void;
+}
 
 export interface InboundIncidentEvent {
   readonly source_id: string;
@@ -36,7 +53,12 @@ export interface InboundIncidentEvent {
 }
 
 export interface WebhookIngestOptions {
-  readonly broadcaster?: EventBroadcaster;
+  /** Deterministic L2 proposal builder for one revision; injected by the composition root. */
+  readonly directProposal: DirectProposalPort;
+  /** L2 proposal builder for a multi-report cluster; injected by the composition root. */
+  readonly correlatedProposal: CorrelatedProposalPort;
+  /** Moderator notification sink (the L4 SSE broadcaster in production). */
+  readonly broadcaster: ModerationNotificationPort;
   readonly activeReports?:
     | readonly StoredReportRevision[]
     | (() => readonly StoredReportRevision[] | Promise<readonly StoredReportRevision[]>);
@@ -345,18 +367,18 @@ export async function convertInboundEventToRevision(
  */
 export async function processInboundEvent(
   event: InboundIncidentEvent,
-  options?: WebhookIngestOptions,
+  options: WebhookIngestOptions,
 ): Promise<ProcessedInboundResult> {
-  const revision = await convertInboundEventToRevision(event, options?.now?.());
+  const revision = await convertInboundEventToRevision(event, options.now?.());
   const coordResult = validateEnvelopeCoordinates(event.coordinates);
   const normalizedCoords = coordResult.normalized;
-  if (options?.onRevisionCreated) {
+  if (options.onRevisionCreated) {
     await options.onRevisionCreated(revision);
   }
 
   // 1. Resolve active reports if provided
   let activeReportsList: readonly StoredReportRevision[] = [];
-  if (options?.activeReports) {
+  if (options.activeReports) {
     if (typeof options.activeReports === "function") {
       activeReportsList = await options.activeReports();
     } else {
@@ -376,7 +398,7 @@ export async function processInboundEvent(
     );
 
     if (matchingCluster && matchingCluster.reports.length > 1) {
-      proposal = generateCorrelatedProposal(matchingCluster, {
+      proposal = options.correlatedProposal(matchingCluster, {
         proposedAt: revision.retrieved_at,
       });
       isCorrelated = true;
@@ -385,7 +407,7 @@ export async function processInboundEvent(
 
   // 3. If not correlated with multi-report cluster, generate direct proposal
   if (!proposal) {
-    const rawProposal = generateProposalFromReport(revision, {
+    const rawProposal = options.directProposal(revision, {
       proposedAt: revision.retrieved_at,
     });
 
@@ -437,10 +459,9 @@ export async function processInboundEvent(
   }
 
   // 4. Notify broadcaster and callbacks
-  const broadcaster = options?.broadcaster ?? eventBroadcaster;
-  broadcaster.broadcastModeration("proposal_created", proposal!);
+  options.broadcaster.broadcastModeration("proposal_created", proposal!);
 
-  if (options?.onProposalCreated) {
+  if (options.onProposalCreated) {
     await options.onProposalCreated(proposal!, revision.chunks);
   }
 
@@ -456,7 +477,7 @@ export async function processInboundEvent(
  */
 export async function webhookIngestHandler(
   request: Request,
-  options?: WebhookIngestOptions,
+  options: WebhookIngestOptions,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return new Response(
@@ -574,7 +595,7 @@ export async function webhookIngestHandler(
  * Creates an HTTP handler bound with specified options.
  */
 export function createWebhookIngestHandler(
-  options?: WebhookIngestOptions,
+  options: WebhookIngestOptions,
 ): (request: Request) => Promise<Response> {
   return (request: Request) => webhookIngestHandler(request, options);
 }
