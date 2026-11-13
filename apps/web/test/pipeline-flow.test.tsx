@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AccountAccessGate } from "../src/AccountPages.js";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
 import { nodeView, PIPELINE_FLOW_NODE_TYPE } from "../src/pipeline-flow-model.js";
-import { NineRouterMeters, PipelineDrawer, PipelineHeaderStrip, PipelineLegend, remainingCooldownMs } from "../src/PipelineFlow.js";
+import { NineRouterMeters, PipelineDrawer, PipelineHeaderStrip, PipelineLegend, PipelineRangeControl, remainingCooldownMs } from "../src/PipelineFlow.js";
 import { demoSnapshot } from "./pipeline-flow-fixtures.js";
 
 const noop = () => {};
@@ -20,14 +20,15 @@ const anonymousSession: SessionEnvelope = {
 
 test("the header strip labels demo and live data differently and shows pause, with no layout controls because the diagram is fixed", () => {
   const demo = renderToStaticMarkup(
-    <PipelineHeaderStrip mode="demo" generatedAt="2026-11-11T09:00:00.000Z" paused={false} loadState="ready" runtimeAvailable onTogglePause={noop} onRefresh={noop} />,
+    <PipelineHeaderStrip mode="demo" generatedAt="2026-11-11T09:00:00.000Z" paused={false} loadState="ready" runtimeAvailable range="24h" onRangeChange={noop} onTogglePause={noop} onRefresh={noop} />,
   );
   assert.match(demo, /Data contoh/u);
   assert.match(demo, /Jeda pembaruan/u);
+  assert.match(demo, /aria-label="Rentang waktu"/u, "the window selector sits in the header strip");
   assert.doesNotMatch(demo, /Atur ulang tata letak/u);
 
   const live = renderToStaticMarkup(
-    <PipelineHeaderStrip mode="live" generatedAt={null} paused loadState="ready" runtimeAvailable={false} onTogglePause={noop} onRefresh={noop} />,
+    <PipelineHeaderStrip mode="live" generatedAt={null} paused loadState="ready" runtimeAvailable={false} range="24h" onRangeChange={noop} onTogglePause={noop} onRefresh={noop} />,
   );
   assert.match(live, /Langsung/u);
   assert.match(live, /Lanjutkan pembaruan/u);
@@ -51,12 +52,24 @@ test("the drawer explains the stage, lists counts and says when there are no rec
       view={nodeView(snapshot.nodes.find((node) => node.id === "src_bmkg")!)}
       nineRouter={null}
       generatedAt={null}
-      items={{ schema_version: "pipeline-flow-v1", generated_at: "2026-11-11T09:00:00.000Z", dataset_mode: "demo", node_id: "src_bmkg", limit: 20, items: [], unavailable_reason: null }}
+      items={{ schema_version: "pipeline-flow-v1", generated_at: "2026-11-11T09:00:00.000Z", dataset_mode: "demo", node_id: "src_bmkg", limit: 20, window: { range: "24h", since: "2026-11-10T09:00:00.000Z" }, items: [], unavailable_reason: null }}
       itemState="ready"
       onClose={noop}
     />,
   );
   assert.match(none, /Tidak ada rincian dalam 24 jam\./u);
+
+  const weekly = renderToStaticMarkup(
+    <PipelineDrawer
+      view={nodeView(snapshot.nodes.find((node) => node.id === "src_bmkg")!, "7d")}
+      nineRouter={null}
+      generatedAt={null}
+      items={{ schema_version: "pipeline-flow-v1", generated_at: "2026-11-11T09:00:00.000Z", dataset_mode: "demo", node_id: "src_bmkg", limit: 20, window: { range: "7d", since: "2026-11-04T09:00:00.000Z" }, items: [], unavailable_reason: null }}
+      itemState="ready"
+      onClose={noop}
+    />,
+  );
+  assert.match(weekly, /Tidak ada rincian dalam 7 hari\./u, "the drawer names the selected window, not 24 jam");
 
   const reviewed = renderToStaticMarkup(
     <PipelineDrawer
@@ -65,6 +78,7 @@ test("the drawer explains the stage, lists counts and says when there are no rec
       generatedAt={null}
       items={{
         schema_version: "pipeline-flow-v1", generated_at: "2026-11-11T09:00:00.000Z", dataset_mode: "demo", node_id: "proposal", limit: 20,
+        window: { range: "24h", since: "2026-11-10T09:00:00.000Z" },
         items: [{ ref: "prop-demo-001", status: "menunggu", failure_code: null, title: "Contoh fiktif: genangan dekat Tebet", at: "2026-11-11T08:55:00.000Z" }],
         unavailable_reason: null,
       }}
@@ -104,4 +118,15 @@ test("the review access gate refuses anonymous and non-moderator sessions with I
   );
   assert.match(anonymous, /Sesi diperlukan/u);
   assert.match(anonymous, /akun moderator atau administrator/u);
+});
+
+test("FLOW-RANGE-01: the window selector offers 1 jam to 30 hari, marks the chosen one and is named in Indonesian", () => {
+  const markup = renderToStaticMarkup(<PipelineRangeControl value="7d" onChange={noop} />);
+  assert.match(markup, /role="group"/u);
+  assert.match(markup, /aria-label="Rentang waktu"/u);
+  for (const label of ["1 jam", "6 jam", "24 jam", "7 hari", "30 hari"]) {
+    assert.match(markup, new RegExp(`>${label}</button>`, "u"), `${label} is offered`);
+  }
+  assert.match(markup, /aria-pressed="true">7 hari<\/button>/u, "only the selected window is pressed");
+  assert.equal((markup.match(/aria-pressed="true"/gu) ?? []).length, 1);
 });

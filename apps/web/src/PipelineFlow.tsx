@@ -17,11 +17,13 @@ import {
   useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
-import type {
-  PipelineFlowItemsDto,
-  PipelineFlowNineRouterDto,
-  PipelineFlowNodeId,
-  PipelineFlowSnapshotDto,
+import {
+  PIPELINE_FLOW_RANGES,
+  type PipelineFlowItemsDto,
+  type PipelineFlowNineRouterDto,
+  type PipelineFlowNodeId,
+  type PipelineFlowRange,
+  type PipelineFlowSnapshotDto,
 } from "@waspada/worker/pipeline-flow-contracts";
 import { fetchPipelineFlowItems, fetchPipelineFlowSnapshot, PipelineFlowHttpError } from "./pipeline-flow-client.js";
 import {
@@ -31,9 +33,13 @@ import {
   PIPELINE_FLOW_NODE_TYPE,
   PIPELINE_LANE_NODE_TYPE,
   PIPELINE_NODE_META,
+  PIPELINE_RANGE_LABELS,
   PIPELINE_REVIEW_LINK_NODES,
+  readStoredPipelineFlowRange,
   relativeTimeLabel,
+  snapshotRange,
   toPipelineFlowGraph,
+  writeStoredPipelineFlowRange,
   type PipelineFlowCardData,
   type PipelineFlowNodeView,
   type PipelineLaneNodeData,
@@ -252,7 +258,7 @@ export function PipelineDrawer({
         {itemState === "forbidden" && <p className="pipeline-drawer__note" role="alert">Sesi tidak memiliki izin untuk rincian ini.</p>}
         {itemState === "ready" && items?.unavailable_reason && <p className="pipeline-drawer__note">{items.unavailable_reason}</p>}
         {itemState === "ready" && rows.length === 0 && !items?.unavailable_reason && (
-          <p className="pipeline-drawer__note">Tidak ada rincian dalam 24 jam.</p>
+          <p className="pipeline-drawer__note">Tidak ada rincian dalam {view.windowLabel}.</p>
         )}
         {itemState === "ready" && rows.length > 0 && (
           <ol className="pipeline-items">
@@ -280,12 +286,33 @@ export function PipelineDrawer({
   );
 }
 
+/** FLOW-RANGE-01: one pill per window. Picking one refetches at once; the choice is remembered for this viewer. */
+export function PipelineRangeControl({ value, onChange }: { value: PipelineFlowRange; onChange: (range: PipelineFlowRange) => void }) {
+  return (
+    <div className="pipeline-range" role="group" aria-label="Rentang waktu">
+      {PIPELINE_FLOW_RANGES.map((range) => (
+        <button
+          key={range}
+          type="button"
+          className="filter-pill"
+          aria-pressed={value === range}
+          onClick={() => onChange(range)}
+        >
+          {PIPELINE_RANGE_LABELS[range]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function PipelineHeaderStrip({
   mode,
   generatedAt,
   paused,
   loadState,
   runtimeAvailable,
+  range,
+  onRangeChange,
   onTogglePause,
   onRefresh,
 }: {
@@ -294,6 +321,8 @@ export function PipelineHeaderStrip({
   paused: boolean;
   loadState: "loading" | "ready" | "error" | "forbidden";
   runtimeAvailable: boolean;
+  range: PipelineFlowRange;
+  onRangeChange: (range: PipelineFlowRange) => void;
   onTogglePause: () => void;
   onRefresh: () => void;
 }) {
@@ -318,6 +347,7 @@ export function PipelineHeaderStrip({
         <span className="pipeline-strip__warning">Status runtime tidak tersedia; bagian pemantauan ditandai tidak tersedia.</span>
       )}
       <div className="pipeline-strip__actions">
+        <PipelineRangeControl value={range} onChange={onRangeChange} />
         <button type="button" className="button button--quiet button--sm" onClick={onTogglePause} aria-pressed={paused}>
           {paused ? "Lanjutkan pembaruan" : "Jeda pembaruan"}
         </button>
@@ -363,6 +393,7 @@ export function PipelineFlow() {
   const [snapshot, setSnapshot] = useState<PipelineFlowSnapshotDto | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error" | "forbidden">("loading");
   const [paused, setPaused] = useState(false);
+  const [range, setRange] = useState<PipelineFlowRange>(() => readStoredPipelineFlowRange());
   const [selectedId, setSelectedId] = useState<PipelineFlowNodeId | null>(null);
   const [items, setItems] = useState<PipelineFlowItemsDto | null>(null);
   const [itemState, setItemState] = useState<"loading" | "ready" | "error" | "forbidden">("loading");
@@ -380,7 +411,7 @@ export function PipelineFlow() {
   const loadSnapshot = useCallback(async () => {
     const current = ++requestId.current;
     try {
-      const next = await fetchPipelineFlowSnapshot();
+      const next = await fetchPipelineFlowSnapshot(range);
       if (disposed.current || current !== requestId.current) return;
       setSnapshot(next);
       setLoadState("ready");
@@ -389,11 +420,17 @@ export function PipelineFlow() {
       const forbidden = error instanceof PipelineFlowHttpError && (error.status === 401 || error.status === 403);
       setLoadState(forbidden ? "forbidden" : "error");
     }
-  }, []);
+  }, [range]);
 
+  // A new range makes loadSnapshot a new function, so this effect refetches at once.
   useEffect(() => {
     void loadSnapshot();
   }, [loadSnapshot]);
+
+  const changeRange = useCallback((next: PipelineFlowRange) => {
+    writeStoredPipelineFlowRange(next);
+    setRange(next);
+  }, []);
 
   useEffect(() => {
     if (paused) return undefined;
@@ -442,7 +479,7 @@ export function PipelineFlow() {
     if (selectedId === null) return undefined;
     let cancelled = false;
     setItemState("loading");
-    fetchPipelineFlowItems(selectedId, 20)
+    fetchPipelineFlowItems(selectedId, 20, range)
       .then((next) => {
         if (cancelled) return;
         setItems(next);
@@ -456,7 +493,7 @@ export function PipelineFlow() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, snapshot?.generated_at]);
+  }, [selectedId, snapshot?.generated_at, range]);
 
   // Escape closes the drawer; focus returns to the page, not to a hidden control.
   useEffect(() => {
@@ -478,6 +515,8 @@ export function PipelineFlow() {
   }, []);
 
   const runtimeAvailable = Boolean(snapshot?.runtime);
+  // The footnote names the window of the data on screen, which can lag the selector while a request is in flight.
+  const dataWindowLabel = PIPELINE_RANGE_LABELS[snapshot ? snapshotRange(snapshot) : range];
 
   return (
     <div className="pipeline-page">
@@ -495,6 +534,8 @@ export function PipelineFlow() {
         paused={paused}
         loadState={loadState}
         runtimeAvailable={runtimeAvailable}
+        range={range}
+        onRangeChange={changeRange}
         onTogglePause={() => setPaused((value) => !value)}
         onRefresh={() => void loadSnapshot()}
       />
@@ -537,9 +578,9 @@ export function PipelineFlow() {
           </ReactFlow>
         </SelectContext.Provider>
       </div>
-      {selectedNode && (
+      {selectedNode && snapshot && (
         <PipelineDrawer
-          view={nodeView(selectedNode)}
+          view={nodeView(selectedNode, snapshotRange(snapshot))}
           nineRouter={selectedNode.id === "ninerouter" ? snapshot?.runtime?.ninerouter ?? null : null}
           generatedAt={snapshot?.runtime?.generated_at ?? null}
           items={items}
@@ -551,7 +592,7 @@ export function PipelineFlow() {
         <p className="pipeline-footnote">
           {snapshot.dataset_mode === "demo"
             ? "Data contoh: fixture sintetis, bukan data langsung."
-            : `Jendela hitungan 24 jam. Tahap tanpa data menampilkan "tidak ada data dalam 24 jam".`}
+            : `Jendela hitungan ${dataWindowLabel}. Tahap tanpa data menampilkan "tidak ada data dalam ${dataWindowLabel}".`}
         </p>
       )}
     </div>

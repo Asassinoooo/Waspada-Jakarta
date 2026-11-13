@@ -14,10 +14,15 @@ import {
   type PipelineFlowStoredItem,
 } from "../../../../db/src/pipeline-flow-store.js";
 import {
+  parsePipelineFlowRange,
+  PIPELINE_FLOW_DEFAULT_RANGE,
   PIPELINE_FLOW_ITEM_LIMIT_DEFAULT,
   PIPELINE_FLOW_ITEM_LIMIT_MAX,
   PIPELINE_FLOW_NODE_IDS,
+  PIPELINE_FLOW_RANGE_HOURS,
+  PIPELINE_FLOW_RANGES,
   PIPELINE_FLOW_SCHEMA_VERSION,
+  pipelineFlowWindowAt,
   type PipelineFlowDatasetMode,
   type PipelineFlowEdgeDto,
   type PipelineFlowHealth,
@@ -26,8 +31,10 @@ import {
   type PipelineFlowLane,
   type PipelineFlowNodeDto,
   type PipelineFlowNodeId,
+  type PipelineFlowRange,
   type PipelineFlowRuntimeDto,
   type PipelineFlowSnapshotDto,
+  type PipelineFlowWindowDto,
 } from "../../contracts/pipeline-flow.js";
 import type { PipelineRuntimeNineRouterBucket, PipelineRuntimeSnapshot, PipelineRuntimeStage, PipelineRuntimeStatusProvider } from "../../runtime/pipeline-runtime-status.js";
 import type { WorkerEnvironment } from "./api.js";
@@ -82,6 +89,8 @@ export interface PipelineFlowBuildInput {
   readonly aggregates: PipelineFlowAggregates;
   /** Null when the runtime status is not attached. Runtime-only nodes then report `unavailable`. */
   readonly runtime: PipelineRuntimeStatusProvider | null;
+  /** FLOW-RANGE-01: the selected window. Omitted means the default, 24 h. */
+  readonly range?: PipelineFlowRange;
 }
 
 type Counts = Record<string, number>;
@@ -109,6 +118,8 @@ function runtimeNineRouterCooldown(bucket: PipelineRuntimeNineRouterBucket | und
 
 export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): PipelineFlowSnapshotDto {
   const { aggregates: a, runtime } = input;
+  const range = input.range ?? PIPELINE_FLOW_DEFAULT_RANGE;
+  const flowWindow = pipelineFlowWindowAt(range, new Date(input.generatedAt));
   const runtimeSnapshot: PipelineRuntimeSnapshot | null = runtime ? runtime.snapshot(Date.parse(input.generatedAt)) : null;
   const throughputOfRuntime = (stage: PipelineRuntimeStage) => (runtime ? runtime.throughput(stage, undefined, Date.parse(input.generatedAt)) : 0);
   const nineRouter = runtimeSnapshot?.ninerouter ?? null;
@@ -417,7 +428,8 @@ export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): Pipeli
     schema_version: PIPELINE_FLOW_SCHEMA_VERSION,
     generated_at: input.generatedAt,
     dataset_mode: input.datasetMode,
-    window_hours: 24,
+    window: flowWindow,
+    window_hours: PIPELINE_FLOW_RANGE_HOURS[range],
     nodes,
     edges,
     runtime: runtimeDto,
@@ -489,6 +501,10 @@ function errorResponse(status: number, code: string, message: string): Response 
   return jsonResponse({ code, message, request_id: crypto.randomUUID() }, status);
 }
 
+function rangeErrorResponse(): Response {
+  return errorResponse(400, "INVALID_REQUEST", `range must be one of ${PIPELINE_FLOW_RANGES.join(", ")}`);
+}
+
 function parseLimit(raw: string | null): number | null {
   if (raw === null) return PIPELINE_FLOW_ITEM_LIMIT_DEFAULT;
   if (!/^\d{1,3}$/u.test(raw)) return null;
@@ -515,6 +531,8 @@ export function createPipelineFlowHandler(options: PipelineFlowHandlerOptions) {
     const runtime: PipelineRuntimeStatusProvider | null = env.PIPELINE_STATUS ?? null;
 
     if (url.pathname === PIPELINE_FLOW_ROUTE_PATH) {
+      const range = parsePipelineFlowRange(url.searchParams.getAll("range"));
+      if (range === null) return rangeErrorResponse();
       if (datasetMode === "demo") {
         const demo = options.demo.snapshot(now);
         return jsonResponse(buildPipelineFlowSnapshot({
@@ -522,16 +540,19 @@ export function createPipelineFlowHandler(options: PipelineFlowHandlerOptions) {
           datasetMode,
           aggregates: demo.aggregates,
           runtime: demo.runtime,
+          range,
         }));
       }
       try {
+        const windowMs = PIPELINE_FLOW_RANGE_HOURS[range] * 3_600_000;
         const aggregates = await options.withTransactionalSqlExecutor(env, (executor) =>
-          createPipelineFlowStore(executor).readAggregates({ datasetKind, now }));
+          createPipelineFlowStore(executor).readAggregates({ datasetKind, now, windowMs }));
         return jsonResponse(buildPipelineFlowSnapshot({
           generatedAt: now.toISOString(),
           datasetMode,
           aggregates,
           runtime,
+          range,
         }));
       } catch {
         return errorResponse(503, "TEMPORARILY_UNAVAILABLE", "Status pipeline tidak tersedia saat ini.");
@@ -544,29 +565,33 @@ export function createPipelineFlowHandler(options: PipelineFlowHandlerOptions) {
     if (!isPipelineFlowNodeId(nodeId)) return errorResponse(404, "NOT_FOUND", "Unknown pipeline node");
     const limit = parseLimit(url.searchParams.get("limit"));
     if (limit === null) return errorResponse(400, "INVALID_REQUEST", "limit must be an integer from 1 to 20");
+    const range = parsePipelineFlowRange(url.searchParams.getAll("range"));
+    if (range === null) return rangeErrorResponse();
+    const flowWindow = pipelineFlowWindowAt(range, now);
+    const windowMs = PIPELINE_FLOW_RANGE_HOURS[range] * 3_600_000;
 
     const generatedAt = now.toISOString();
     const isDbNode = (PIPELINE_FLOW_DB_ITEM_NODES as readonly string[]).includes(nodeId);
     if (datasetMode === "demo") {
       if (!isDbNode) {
         const fromRuntime = runtimeItemsForNode(options.demo.snapshot(now).runtime, nodeId, limit);
-        return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, items: fromRuntime.items, unavailable_reason: fromRuntime.unavailable_reason }));
+        return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, window: flowWindow, items: fromRuntime.items, unavailable_reason: fromRuntime.unavailable_reason }));
       }
       const items = options.demo.items({ nodeId, limit, now });
-      return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, items, unavailable_reason: null }));
+      return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, window: flowWindow, items, unavailable_reason: null }));
     }
 
     if (!isDbNode) {
       const fromRuntime = runtimeItemsForNode(runtime, nodeId, limit);
-      return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, items: fromRuntime.items, unavailable_reason: fromRuntime.unavailable_reason }));
+      return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, window: flowWindow, items: fromRuntime.items, unavailable_reason: fromRuntime.unavailable_reason }));
     }
     try {
       const rows = await options.withTransactionalSqlExecutor(env, (executor) =>
-        createPipelineFlowStore(executor).readItems({ datasetKind, node: nodeId as (typeof PIPELINE_FLOW_DB_ITEM_NODES)[number], now, limit }));
+        createPipelineFlowStore(executor).readItems({ datasetKind, node: nodeId as (typeof PIPELINE_FLOW_DB_ITEM_NODES)[number], now, limit, windowMs }));
       const note = nodeId === "retrieve"
         ? "Pencarian bukti tidak punya catatan sendiri. Daftar ini adalah vektor yang tersedia untuk dicari."
         : null;
-      return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, items: rows.map(toItem), unavailable_reason: note }));
+      return jsonResponse(itemsBody({ generatedAt, datasetMode, nodeId, limit, window: flowWindow, items: rows.map(toItem), unavailable_reason: note }));
     } catch {
       return errorResponse(503, "TEMPORARILY_UNAVAILABLE", "Rincian pipeline tidak tersedia saat ini.");
     }
@@ -578,6 +603,7 @@ function itemsBody(input: {
   readonly datasetMode: PipelineFlowDatasetMode;
   readonly nodeId: PipelineFlowNodeId;
   readonly limit: number;
+  readonly window: PipelineFlowWindowDto;
   readonly items: readonly PipelineFlowItemDto[];
   readonly unavailable_reason: string | null;
 }): PipelineFlowItemsDto {
@@ -587,6 +613,7 @@ function itemsBody(input: {
     dataset_mode: input.datasetMode,
     node_id: input.nodeId,
     limit: input.limit,
+    window: input.window,
     items: input.items,
     unavailable_reason: input.unavailable_reason,
   };

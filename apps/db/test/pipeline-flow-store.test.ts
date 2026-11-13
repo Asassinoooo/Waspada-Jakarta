@@ -99,6 +99,8 @@ describe('FLOW-VIS-01 pipeline flow store', () => {
     );
     await revision('rev-pb-1', 'petabencana', 'eligible', ago(5), 'a', `Banjir di Cawang ${BODY_MARKER}`);
     await revision('rev-rss-old', 'source-antara-metro', 'unreviewed', ago(120), 'b', `Lama ${BODY_MARKER}`);
+    // FLOW-RANGE-01: older than 24 h but inside 7 days, so only a 7 day window counts it.
+    await revision('rev-rss-48h', 'source-antara-metro', 'eligible', ago(48 * 60), 'e', `Dua hari lalu ${BODY_MARKER}`);
     for (let index = 0; index < 25; index++) {
       await revision(`rev-rss-${String(index).padStart(2, '0')}`, 'source-antara-metro', 'eligible', ago(2 + index), 'c', `Burst ${index} ${BODY_MARKER}`);
     }
@@ -124,6 +126,8 @@ describe('FLOW-VIS-01 pipeline flow store', () => {
     await triage(hex('1'), 'drop', 'skipped_stage_a', ago(3));
     await triage(hex('2'), 'ingest', 'ok', ago(8));
     await triage(hex('3'), 'uncertain', 'rate_limited', ago(9));
+    // FLOW-RANGE-01: a deterministic skip from two days ago, outside 24 h and inside 7 days.
+    await triage(hex('4'), 'drop', 'skipped_stage_a', ago(48 * 60));
 
     // AI jobs: one of each status. The leased job carries an interpretation checkpoint.
     const job = (id: string, status: string, revisionId: string, extra: string, checkpoint: string | null) => exec.query(
@@ -241,6 +245,30 @@ describe('FLOW-VIS-01 pipeline flow store', () => {
     assert.equal(aggregates.publication.versions_agent_24h, 1);
     assert.equal(aggregates.publication.versions_15m, 0, 'the agent publication is 16 minutes old, outside the window');
     assert.equal(aggregates.publication.moderator_decisions_15m, 1);
+  });
+
+  it('FLOW-RANGE-01: every *_24h count and drill-down follows the selected window, and the 15 minute counts do not', async () => {
+    const HOUR = 3_600_000;
+    const day = await store().readAggregates({ datasetKind: 'live', now: NOW });
+    const hour = await store().readAggregates({ datasetKind: 'live', now: NOW, windowMs: HOUR });
+    const week = await store().readAggregates({ datasetKind: 'live', now: NOW, windowMs: 7 * 24 * HOUR });
+    const rss = (aggregates: typeof day) => aggregates.sources.find((row) => row.family === 'rss')!;
+
+    assert.equal(rss(day).revisions_24h, 26, 'a revision 48 hours old is outside the default 24 hour window');
+    assert.equal(rss(hour).revisions_24h, 25, 'only the burst is inside the last hour');
+    assert.equal(rss(week).revisions_24h, 27, 'the revision 48 hours old is counted inside 7 days');
+    assert.equal(rss(hour).revisions_15m, 14, 'the 15 minute throughput is the same in every window');
+    assert.equal(rss(week).revisions_15m, 14);
+    assert.equal(week.revisions.by_status_24h.eligible, day.revisions.by_status_24h.eligible + 1);
+    assert.equal(hour.embeddings.failed_24h, 1, 'the failure 40 minutes ago is inside the hour');
+    assert.equal(day.triage.skipped_stage_a_24h, 1);
+    assert.equal(week.triage.skipped_stage_a_24h, 2, 'the deterministic skip from 48 hours ago is counted inside 7 days');
+    assert.equal(week.triage.skipped_stage_a_15m, 1, 'the 15 minute skip count is unchanged');
+
+    const dayItems = await store().readItems({ datasetKind: 'live', node: 'det_filter', now: NOW, limit: 20 });
+    const weekItems = await store().readItems({ datasetKind: 'live', node: 'det_filter', now: NOW, limit: 20, windowMs: 7 * 24 * HOUR });
+    assert.deepEqual(dayItems.map((row) => row.ref), ['111111111111']);
+    assert.deepEqual(weekItems.map((row) => row.ref), ['111111111111', '444444444444'], 'the drill-down follows the same window');
   });
 
   it('returns at most 20 metadata rows per node and never the body, output or checkpoint text', async () => {

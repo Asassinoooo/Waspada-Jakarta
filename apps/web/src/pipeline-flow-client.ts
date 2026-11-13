@@ -2,10 +2,12 @@
  * FLOW-VIS-01 read client for the moderator flow view. Same-origin only, with cookies. Responses
  * are checked for the `pipeline-flow-v1` shape before use; anything else is an error, not data.
  */
-import type {
-  PipelineFlowItemsDto,
-  PipelineFlowNodeId,
-  PipelineFlowSnapshotDto,
+import {
+  PIPELINE_FLOW_DEFAULT_RANGE,
+  type PipelineFlowItemsDto,
+  type PipelineFlowNodeId,
+  type PipelineFlowRange,
+  type PipelineFlowSnapshotDto,
 } from "@waspada/worker/pipeline-flow-contracts";
 
 export class PipelineFlowHttpError extends Error {
@@ -43,13 +45,24 @@ function isItems(value: unknown): value is PipelineFlowItemsDto {
   return candidate.schema_version === "pipeline-flow-v1" && Array.isArray(candidate.items);
 }
 
-export async function fetchPipelineFlowSnapshot(signal?: AbortSignal): Promise<PipelineFlowSnapshotDto> {
-  const response = await fetch("/api/v1/pipeline/flow", { headers: JSON_ACCEPT, credentials: "same-origin", cache: "no-store", signal });
+/** FLOW-RANGE-01: `range` is the selected window, sent on every request so the counts match the label. */
+export async function fetchPipelineFlowSnapshot(
+  range: PipelineFlowRange = PIPELINE_FLOW_DEFAULT_RANGE,
+  signal?: AbortSignal,
+): Promise<PipelineFlowSnapshotDto> {
+  const query = new URLSearchParams({ range });
+  const response = await fetch(`/api/v1/pipeline/flow?${query.toString()}`, { headers: JSON_ACCEPT, credentials: "same-origin", cache: "no-store", signal });
   return readJson(response, isSnapshot);
 }
 
-export async function fetchPipelineFlowItems(nodeId: PipelineFlowNodeId, limit = 20, signal?: AbortSignal): Promise<PipelineFlowItemsDto> {
-  const response = await fetch(`/api/v1/pipeline/flow/nodes/${encodeURIComponent(nodeId)}/items?limit=${limit}`, {
+export async function fetchPipelineFlowItems(
+  nodeId: PipelineFlowNodeId,
+  limit = 20,
+  range: PipelineFlowRange = PIPELINE_FLOW_DEFAULT_RANGE,
+  signal?: AbortSignal,
+): Promise<PipelineFlowItemsDto> {
+  const query = new URLSearchParams({ limit: String(limit), range });
+  const response = await fetch(`/api/v1/pipeline/flow/nodes/${encodeURIComponent(nodeId)}/items?${query.toString()}`, {
     headers: JSON_ACCEPT,
     credentials: "same-origin",
     cache: "no-store",
