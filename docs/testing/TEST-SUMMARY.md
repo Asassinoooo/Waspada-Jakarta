@@ -60,6 +60,7 @@ Points on this evidence:
 - **Results.** T1 passes, with the warning-boundary check skipped (F-01). T2 and T3 pass, with 3 and 2 checks skipped (F-02 and `UAT.md` section 6.6). T5 passes on desktop after a script correction (R-02), and fails one step on phone (R-01). T4 is blocked on both viewports: the demo moderation queue is empty (R-04), and the phone login was rate-limited (R-03).
 - **Acceptance rows.** AT-01 and AT-02 are Partial. AT-03 is Blocked, because it depends on T4. See `test-cases.csv`.
 - **Open decisions behind the blocks.** F-01 (warning boundary), F-02 (matched-update checks need live data), R-01 (phone demo label) and R-04 (a demo proposal for T4).
+- **Persona walkthroughs (local live app, 13 Nov 2026).** Five personas ran through the interface on the local live app, read-only: U1 resident, U1 visitor, U1 worker, U2 commuter and U2 student. Results are in `UAT.md` section 9.1. Most checks pass. Several cases are blocked because the live feed had no flood, stale, copied, group or transport-impact event at run time. Two confirmed defects are open: R-05 (live records shown with demo wording) and R-06 (stale account menu after sign-out). The moderator (U3) and administrator steps were skipped by decision and are not yet run.
 - **Human acceptance is not planned.** Decision of 13 November 2026 (`UAT.md` line 7; section 2.2 is the protocol kept for later; `TEST-PLAN.md` section 9). NFR-03 is not evidenced (ST-N-03).
 
 ## 6 Open findings
@@ -74,6 +75,12 @@ Each finding is open and needs a decision. None is a confirmed defect. Details, 
 - **F-06** No dedicated test for `freshness-aggregate-policy.ts`.
 - **F-07** SDP section 3.1 is stale about the moderator view (sign-in and authenticated moderation exist, ADR-060).
 - **F-08** The WSL distribution and the CI Node version are stated inconsistently.
+- **F-09** Copied reports are not flagged in the source count (FR-06).
+- **F-10** Expired-warning wording differs between card and detail (minor copy).
+- **F-11** "Unknown time" wording differs between card and detail (minor copy).
+- **F-12** No radius or polygon is drawn on the public map (FR-09).
+
+**Confirmed open defects** (with source evidence, in `DEFECTS.md` section D): R-05, live event detail shows demo wording; R-06, the account menu is stale after sign-out.
 
 ## 7 Limitations
 
@@ -114,7 +121,10 @@ SDP section 10 names the first five checks below. It also lists "stale/retracted
 4. **F-04.** Should the publication gate refuse proposals whose investigation is `stopped_for_review`?
 5. **F-07.** Update the SDP section 3.1 text (the root planner's document; this summary does not change the SDP).
 6. **F-08.** Confirm the WSL distribution for the recorded runs, and the CI Node version stated in `CLAUDE.md`.
-7. **Table 2.3, Week 10.** The report's Table 2.3 lists usability sessions in Week 10. SDP M6 (Weeks 11 to 12) covers usability (`TEST-PLAN.md` section 9). Align the two, or mark the sessions as not held. Table 2.3 is in the Google Docs report and is not in this repository.
+7. **R-05.** Remove the hardcoded demo wording from the live event detail, or choose it from the dataset mode.
+8. **R-06.** Refresh the account state after sign-out, so that the header updates on the same page.
+9. **F-09 to F-12.** Decide the copied-report wording (FR-06), the expired and unknown-time wording (F-10, F-11), and whether to draw boundaries (F-12).
+10. **Table 2.3, Week 10.** The report's Table 2.3 lists usability sessions in Week 10. SDP M6 (Weeks 11 to 12) covers usability (`TEST-PLAN.md` section 9). Align the two, or mark the sessions as not held. Table 2.3 is in the Google Docs report and is not in this repository.
 
 F-05 and F-06 are test gaps, not blocking decisions. Decide whether to add the tests before M6 or accept the current evidence (`DEFECTS.md`, section B).
 

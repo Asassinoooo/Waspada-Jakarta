@@ -109,8 +109,8 @@ Each row names the target user (section 3) and the state of the run so far. "Dem
 | STU-01 Group notice without geography | U2 | FR-09, FR-11 | Not run | Blocked: no group notice listed; interest steps pass |
 | ACC-01 Register, onboard, role reads Pengguna | U1, U2, U3 | FR-12, NFR-07 | Not run | Pass for commuter, student, worker and resident |
 | ACC-02 Sign out | U1, U2, U3 | FR-12 | Not run | Pass; stale header menu after sign-out (R-06) |
-| MOD-00 No moderation access before the role change | U3 | FR-12, NFR-07 | Not run | Pending: the run was stopped before any action |
-| MOD-02 History shows reviewed versions only | U3 | FR-13 | T3 pass | Pending |
+| MOD-00 No moderation access before the role change | U3 | FR-12, NFR-07 | Not run | Skipped by decision (13 Nov 2026); U3 not run yet |
+| MOD-02 History shows reviewed versions only | U3 | FR-13 | T3 pass | Skipped by decision (13 Nov 2026); U3 not run yet |
 
 **Success cases named in the report.** Section 1.3 of the report names four success cases: copied reports, ambiguous locations, expired warnings and corrections. Copied reports are covered by WRK-01, expired warnings by RES-03 and WRK-02, and ambiguous locations by VIS-02. Corrections are covered only as MOD-02 (reviewed versions only), because section 1.3 defers correction to a later release. **Decision needed:** keep correction as a success case, or remove it from section 1.3.
 
@@ -199,6 +199,8 @@ Each row names the target user (section 3) and the state of the run so far. "Dem
 - The demo moderation queue holds no proposal, so T4 is blocked (R-04). A demo proposal fixture would let T4 run. This needs a decision.
 - Repeated demo logins in one session returned HTTP 429 (R-03). Space the logins out, or split the runs.
 - T3: the note 'Riwayat sintetis ini bukan keadaan terkini' shows only while history loads (`EventDetail.tsx:147`). The check is skipped and the kicker is checked instead.
+- R-05, R-06 and R-08 were found in the persona runs (section 9.1). Their entries are in `DEFECTS.md` section D.
+- Moderator (U3) and administrator steps were skipped by decision on 13 November 2026 and are not yet run.
 - Skipped checks in the logs are listed with their reasons. They are not passes.
 
 ## 7 Viewports
@@ -238,6 +240,20 @@ Result values: pass, fail, blocked (precondition not met), pending (live data ne
 | T5 | Phone 390 × 844 | Fail, 1 step (R-01) | 18.5 | The drawer shows 'Mode demo terisolasi'. At 390 px the admin header shows only a dot for 'Data contoh', and the 'Pratinjau sumber (demo)' label is hidden. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` |
 | T1 and T2 | 320 px (manual) | Not run | — | Manual check, not scripted. | — |
 | T1 and T2 | 200% text (manual) | Not run | — | Manual check, not scripted. | — |
+
+### 9.1 Persona walkthroughs on the local live app (13 Nov 2026)
+
+Each run is an automated walkthrough by a browser agent that acts as one target user through the interface (section 3). The runs are read-only on live data. Accounts were registered through the interface and are real rows in the local live database. Passwords are not recorded here. The live feed held two or three published reports at run time, with no flood, expired, copied, group or transport-impact case among them.
+
+| Run | Target user | Account | Result | Findings |
+| --- | --- | --- | --- | --- |
+| visitor-run-01 | U1 resident (guest) | None | 43 pass, 0 hard fail, 2 skipped, 2 finding fails. VIS-01 pass. VIS-02 partly skipped (radius not checked). VIS-03 pass. | R-05 |
+| resident-run-01 | U1 resident | uat.resident01 | 40 pass, 0 fail, 3 skipped, 4 blocked. ACC-01 pass. RES-02 pass. RES-01 and RES-03 blocked. | R-05 |
+| worker-run-01 | U1 resident (worker) | uat.worker01 | ACC-01 pass on desktop (phone skipped: not applicable). ACC-02 pass. WRK-01 and WRK-02 blocked. | F-09 (no copy wording in the interface) |
+| commuter-run-01 | U2 commuter | uat.commuter01 | ACC-01, COM-01, COM-02 and ACC-02 pass on both viewports (attempt 2). | R-05; R-08 (script, attempt 1) |
+| student-run-01 | U2 commuter (student) | uat.student01 | ACC-01 pass. STU-01 blocked: no group notice, interest steps pass. ACC-02 pass, with a stale menu on desktop and phone. | R-06; R-07 |
+
+Not run: U3 (moderator) and the administrator steps, skipped by decision on 13 November 2026. The 320 px and 200% text checks were not run.
 
 ## 10 Defects
 

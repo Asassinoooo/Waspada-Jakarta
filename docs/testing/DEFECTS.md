@@ -80,6 +80,27 @@ Each finding is open. None is a confirmed defect.
 - **Evidence:** `DOKUMENTASI_UNIT_TESTING.md` line 268; `CLAUDE.md` (Environment and Commands; repository root); `docs/testing/TEST-PLAN.md` section 6; `.github/workflows/ci.yml` lines 11 and 19.
 - **Decision needed:** the owner confirms which distribution the recorded local runs used, corrects the document that is wrong, and confirms the CI Node version to state in `CLAUDE.md`.
 
+### F-09: Copied reports are not flagged in the source count
+
+- **Observation:** the card reads "N sumber" from the number of distinct outlet names (`apps/web/src/published-events.ts` lines 123 to 136). A code comment says this is "a count of outlets, not corroboration". The interface shows no copy or duplicate marker, so a syndicated copy counts as an extra source. The worker run found no copy wording in `apps/web/src`.
+- **Evidence:** `worker-run-01` (WRK-01 blocked: no copied report in the live feed); `published-events.ts`.
+- **Decision needed:** flag copies in the source count, or relabel the count so that it does not read as corroboration (FR-06).
+
+### F-10: Expired-warning wording differs between card and detail
+
+- **Observation:** the card and popup say "Lewat masa berlaku sumber" (`published-events.ts` line 216). The detail says "Lewat batas tinjau" (`display.ts` line 76). No expired event was in the live feed, so this is read from source only.
+- **Decision needed:** choose one wording for the expired state (minor copy).
+
+### F-11: "Unknown time" wording differs between card and detail
+
+- **Observation:** the card says "Tidak diketahui". The detail says "Waktu kejadian tidak diketahui" (`display.ts` line 31). Seen in `visitor-run-01` and `resident-run-01`.
+- **Decision needed:** choose one wording (minor copy).
+
+### F-12: No radius or polygon is drawn on the public map
+
+- **Observation:** the map draws OSM tiles and marker circles only (`EventMapCanvas.tsx`). An event with no point is not shown on the map, and no radius is drawn for it. The radius check in VIS-02 is skipped.
+- **Decision needed:** state in the report that the map shows points only, or add a source-defined boundary (FR-09).
+
 ## Section C: Removed from the defect list (not fixes)
 
 These commits were in an earlier draft of the defect list. The corrected unit report removes them (`DOKUMENTASI_UNIT_TESTING.md` section 2.a, around line 100).
@@ -91,7 +112,7 @@ These commits were in an earlier draft of the defect list. The corrected unit re
 
 ## Section D: Test run defects
 
-Runs on 13 November 2026, against the demo dataset, locally (`docs/testing/UAT.md` section 9). No CI failure is recorded for `cec9358`.
+Runs on 13 November 2026: T1 to T5 on the demo dataset (`docs/testing/UAT.md` section 9), and persona walkthroughs on the local live app (section 9.1). No CI failure is recorded for `cec9358`.
 
 | ID | Date | Run ID | Step | Symptom | Evidence path | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -99,6 +120,10 @@ Runs on 13 November 2026, against the demo dataset, locally (`docs/testing/UAT.m
 | R-02 | 13 Nov 2026 | run-01 | T5, steps 4 to 7, desktop and phone | The script checked source copy from `UnifiedSourceExplorer.tsx`. That copy is `display: none` on the map view by design (`unified-source-explorer.css:802-807`, commit `f0395b0`). Test-script defect, not a product defect. | `.codex-build/uat/run-01/t5-admin-sources.json` | Not a defect. Script corrected on `work/UAT-RUN-01` to check the notice the Sumber panel shows. The four source-copy checks are reported as skipped. |
 | R-03 | 13 Nov 2026 | run-02 | T4, phone, 'sign in as demo.moderator' | Login returned HTTP 429. Repeated demo logins in one session tripped the rate limit. The window length is not measured. | `.codex-build/uat/run-02/t4-moderator.json` | Not a product defect (test-run condition). Re-run after a pause, with fewer logins per run. |
 | R-04 | 13 Nov 2026 | run-02 | T4, desktop, 'at least one proposal is in the queue' | The demo moderation queue is empty, so the decision steps cannot run. | `.codex-build/uat/run-02/t4-moderator.json` | Blocked, not a defect. Needs a demo proposal fixture (decision). |
+| R-05 | 13 Nov 2026 | commuter-run-01, visitor-run-01, resident-run-01 | Event detail sheet for a live event, both viewports | The sheet for a live event shows "Detail dari API lokal · record sintetis" and "Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta." The lifecycle reads "Berlangsung (nilai fixture)" and the freshness reads "... saat evaluasi fixture". The text is hardcoded in the event-detail branch with no dataset check (`apps/web/src/EventDetail.tsx` lines 233 to 243; `display.ts` lines 58 and 70). Live records are labelled as synthetic. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-{commuter,visitor,resident}-run-01/` | Open, confirmed defect. Fix: choose the wording from the dataset mode. |
+| R-06 | 13 Nov 2026 | student-run-01 (attempts 2 and 3) | ACC-02, desktop and phone | After "Keluar" on the same page, the header menu still lists "Akun saya" until the page changes. The account state is re-read only on hash navigation (`apps/web/src/AppShell.tsx` line 149). Sign-out refreshes it only on success (`AccountPages.tsx` lines 764 to 772). | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-student-run-01/` | Open, confirmed defect. Fix: refresh the account state after sign-out. |
+| R-07 | 13 Nov 2026 | student-run-01 (attempt 3) | Sign-in on phone | "Terlalu banyak percobaan masuk. Tunggu beberapa menit..." after repeated sign-ins during the walkthroughs. A test-run condition, not a defect. The window length is not measured. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-student-run-01/` | Not a defect (run condition). Space the sign-ins. |
+| R-08 | 13 Nov 2026 | commuter-run-01 (attempt 1) | COM-02, both viewports | The script waited for `#detail/api/`, which was a wrong route assumption. Results from attempt 2 stand. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-commuter-run-01/` | Not a defect (script). Corrected in attempt 2. |
 
 Entry format for later use:
 
