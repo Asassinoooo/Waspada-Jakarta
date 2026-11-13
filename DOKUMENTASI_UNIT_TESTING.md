@@ -6,8 +6,8 @@
 **Mata Kuliah:** Rekayasa Perangkat Lunak (RPL)  
 **Proyek:** Waspada Jakarta — Live Civic Safety Intelligence Platform  
 **Standar Dokumen:** Unit Test Plan & Documentation Template (Software Testing Standard)  
-**Tanggal Pengujian:** 6 November 2026  
-**Status Pengujian:** **100% PASS (Zero Failures)**  
+**Tanggal Pengujian:** 12 November 2026 (CI run 117086838832, commit cec9358)  
+**Status Pengujian:** 0 gagal pada seluruh langkah uji yang tercatat di log CI (2.034 tes/kasus). Kesimpulan run keseluruhan (sukses/gagal) belum dikonfirmasi dari halaman GitHub Actions; lihat 4.f.  
 
 ---
 
@@ -18,8 +18,8 @@ Dokumentasi ini disusun mengacu pada standar template *Unit Test Plan* yang menc
 | Sr. | Requirements | Typical Components | Detailed Description |
 | :---: | :--- | :--- | :--- |
 | **1)** | **Introduction** | a) Test Strategy and Approach<br>b) Test Scope<br>c) Test Assumptions | Pendekatan pengujian unit berlapis (*layered unit testing*), cakupan pengujian modular (Web, Worker, DB, Intelligence), dan asumsi determinisme pengujian tanpa dependensi jaringan eksternal. |
-| **2)** | **Walkthrough<br>(Static Testing)** | a) Defects Discovered and Corrected<br>b) Improvement Ideas<br>c) Structured Programming Compliance<br>d) Language Standards<br>e) Development Documentation Standards | Analisis statis kode sumber, review defek/bug dari 5 commit terakhir GitHub beserta koreksinya, prinsip pemrograman terstruktur, standar TypeScript/ESM, dan standar dokumentasi pengembangan. |
-| **3)** | **Test Cases<br>(Dynamic Testing)** | a) Input Test Data<br>b) Initial Conditions<br>c) Expected Results<br>d) Test Log Status | Spesifikasi data uji masukan, kondisi awal (preconditions), kriteria hasil yang diharapkan, serta bukti log eksekusi langsung (*real test execution logs*) dari runner pengujian. |
+| **2)** | **Walkthrough<br>(Static Testing)** | a) Defects Discovered and Corrected<br>b) Improvement Ideas<br>c) Structured Programming Compliance<br>d) Language Standards<br>e) Development Documentation Standards | Analisis statis kode sumber, review defek/bug dari riwayat commit GitHub yang diverifikasi (dua commit `fix`) beserta koreksinya, prinsip pemrograman terstruktur, standar TypeScript/ESM, dan standar dokumentasi pengembangan. |
+| **3)** | **Test Cases<br>(Dynamic Testing)** | a) Input Test Data<br>b) Initial Conditions<br>c) Expected Results<br>d) Test Log Status | Spesifikasi data uji masukan, kondisi awal (preconditions), kriteria hasil yang diharapkan, serta bukti log eksekusi dari runner pengujian (log CI; log lokal ditandai *belum disimpan*). |
 | **4)** | **Environment Requirements** | a) Test Strategy and Approach (Setup)<br>b) Platform<br>c) Libraries<br>d) Tools<br>e) Test Procedures<br>f) Status Reporting | Konfigurasi lingkungan uji, platform OS WSL2 Ubuntu, runtime Node.js native test runner, pustaka PGlite & React, prosedur eksekusi perintah, dan pelaporan status kelulusan. |
 
 ---
@@ -29,7 +29,7 @@ Dokumentasi ini disusun mengacu pada standar template *Unit Test Plan* yang menc
 ### 1.a) Test Strategy and Approach (Strategi dan Pendekatan Pengujian)
 Sistem Waspada Jakarta menerapkan strategi pengujian unit berorientasi lapisan (*Layered Architecture Unit Testing*) yang dirancang untuk menjamin kecepatan, determinisme, dan integritas logika sebelum integrasi live:
 1. **Determinisme Mutlak (Zero External I/O):** Pengujian unit tidak diperkenankan melakukan panggilan jaringan (*network calls*) ke API eksternal. Semua interaksi AI Gateway (NineRouter / Gemini), feed RSS, dan layanan pihak ketiga disimulasikan menggunakan in-memory fixtures dan deterministik mock adapter.
-2. **Isolasi Database PGlite (In-Process WASM):** Untuk modul persistensi basis data (`@waspada/db`), pengujian menggunakan engine PostgreSQL in-process WebAssembly (`@electric-sql/pglite`). Setiap test suite bootstrap instance database bersih dan menjalankan seluruh migrasi SQL skema (001–044) secara independen, mencegah kontaminasi state antar-test (*idempotent testing*).
+2. **Isolasi Database PGlite (In-Process WASM):** Untuk modul persistensi basis data (`@waspada/db`), pengujian menggunakan engine PostgreSQL in-process WebAssembly (`@electric-sql/pglite`). Setiap test suite bootstrap instance database bersih dan menjalankan seluruh migrasi SQL skema (001–047) secara independen, mencegah kontaminasi state antar-test (*idempotent testing*).
 3. **Pilar Responsible AI & Safe Fallback:** Pengujian unit memverifikasi bahwa kegagalan layanan AI (HTTP 503, timeout, kuota habis) ditangani secara aman dengan prinsip *Zero Hallucinated Proposals* — sistem dilarang keras mengarang insiden atau memalsukan bukti jika model AI gagal.
 4. **Eksekusi Native Ultra-Cepat:** Menggunakan runner pengujian native Node.js (`node:test`) dipadukan dengan TypeScript Execution Engine (`tsx`), memungkinkan eksekusi seluruh suite unit test dalam hitungan detik tanpa overhead bundle build yang berat.
 
@@ -39,8 +39,6 @@ Pengujian unit mencakup seluruh modul inti dalam arsitektur monorepo Waspada Jak
 * **Di dalam Ruang Lingkup (In-Scope):**
   * **Modul Frontend (`@waspada/web`):**
     * Algoritma reduksi dimensi matematis Principal Component Analysis (Dual Gram-Matrix PCA $768\text{D} \to 3\text{D}$) dan metrik kemiripan kosinus (*cosine similarity*).
-    * Komponen antarmuka pengguna React (`Landing.tsx`, `HeroIllustration.tsx`, `LaporanPublik.tsx`) menggunakan static SSR markup rendering.
-    * Penanganan state antarmuka (loading, loaded, error/retry, boundary props opsional).
   * **Modul Backend Worker (`@waspada/worker`):**
     * Filter relevansi deterministik berbasis Gazetteer DKI Jakarta (44 kecamatan dan 267 kelurahan resmi).
     * Pendeteksi kontradiksi fakta multi-sumber (*Discrepancy Detector*) untuk data ketinggian air, korban, dan status operasional.
@@ -54,10 +52,11 @@ Pengujian unit mencakup seluruh modul inti dalam arsitektur monorepo Waspada Jak
 * **Di Luar Ruang Lingkup (Out-of-Scope):**
   * End-to-end (E2E) browser navigation testing (Playwright) yang menguji render GPU WebGL langsung di peramban.
   * Stress testing beban jaringan pada feed RSS live (diuji secara terpisah pada *performance/load testing*).
+  * Pengujian komponen UI landing page. Pengujian ini dihapus pada commit `b0a18c5` bersama komponen `Landing.tsx` dan tidak lagi termasuk dalam dokumen ini.
 
 ### 1.c) Test Assumptions (Asumsi Pengujian)
-1. **Runtime:** Node.js v24+ (v24.21.0) dengan dukungan bawaan `node:test` dan `node:assert/strict`.
-2. **Arsitektur Sistem Operasi:** WSL2 Ubuntu Linux x86_64 dengan sistem file POSIX lokal (`/home/jesaya/...`).
+1. **Runtime:** Node.js 24. CI memakai Node 24 (`.github/workflows/ci.yml`); tidak ada berkas yang mengunci versi patch (tidak ada `.nvmrc`, field `engines`, maupun `packageManager`). Dukungan bawaan `node:test` dan `node:assert/strict`.
+2. **Arsitektur Sistem Operasi:** WSL2 Ubuntu Linux x86_64 dengan sistem file POSIX lokal (bukan path Windows).
 3. **Penyediaan Dependensi:** Seluruh paket npm monorepo telah terpasang dengan binary native yang sesuai dengan target arsitektur Linux (`@esbuild/linux-x64`).
 4. **Data Awal:** Data gazetteer wilayah DKI Jakarta dan kamus kata kunci kebencanaan tersedia dalam keadaan terpin (*pinned canonical datasets*).
 
@@ -65,103 +64,47 @@ Pengujian unit mencakup seluruh modul inti dalam arsitektur monorepo Waspada Jak
 
 ## 2. WALKTHROUGH (STATIC TESTING / PENGUJIAN STATIS)
 
-Bagian ini mendokumentasikan hasil *walkthrough*, inspeksi kode sumber statis, serta penelusuran defek perangkat lunak berdasarkan analisis riwayat **5 commit terakhir** di repositori GitHub Waspada Jakarta.
+Bagian ini mendokumentasikan hasil *walkthrough*, inspeksi kode sumber statis, serta penelusuran defek perangkat lunak berdasarkan analisis riwayat commit di repositori GitHub Waspada Jakarta. Sebuah commit hanya dihitung sebagai defek jika subjeknya berawalan `fix`, sesuai pemeriksaan `git show -s`.
 
 ### 2.a) Defects Discovered and Corrected (Cacat yang Ditemukan dan Diperbaiki)
 
-Berdasarkan investigasi riwayat Git dari commit terbaru, berikut adalah 5 defek utama yang ditemukan beserta tindakan koreksinya:
+Penelusuran riwayat Git menemukan dua commit ber-subjek `fix` yang memperbaiki defek dan dapat diverifikasi dari diff-nya. Berikut adalah dua defek beserta tindakan koreksinya. Commit lain yang awalnya ditafsirkan sebagai defek dikeluarkan dari daftar dan dicatat di bawah tabel.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                  DEFECT LOG & CORRECTION SUMMARY (LAST 5 COMMITS)                      │
-├─────────┬──────────────────────────┬───────────────────────────────────────────────────┤
-│ Commit  │ Modul / Berkas Terdampak │ Deskripsi Defek & Solusi Rekayasa                 │
-├─────────┼──────────────────────────┼───────────────────────────────────────────────────┤
-│ bd49c57 │ apps/web/test/           │ ReferenceError: React is not defined & obsolete   │
-│         │ landing.test.tsx         │ assertion pasca-refaktorisasi Landing.tsx.        │
-│         │                          │ Solusi: Import eksplisit React & sinkronisasi     │
-│         │                          │ assertion ke komponen instruksional baru.         │
-├─────────┼──────────────────────────┼───────────────────────────────────────────────────┤
-│ e1e50f0 │ apps/db/test/            │ Race Condition timestamp sub-milidetik pada       │
-│         │ news-triage-decisions    │ pengujian readLatestAttemptForRevision.           │
-│         │                          │ Solusi: Injeksi jeda asinkron 15ms antar attempt. │
-├─────────┼──────────────────────────┼───────────────────────────────────────────────────┤
-│ 66d8e94 │ apps/intelligence/       │ Duplikasi path /v1/v1/chat/completions pada       │
-│         │ ninerouter-adapter.ts    │ inisialisasi client model LLM NineRouter.         │
-│         │                          │ Solusi: Regex sanitasi URL .replace(/\/v1$/, ""). │
-├─────────┼──────────────────────────┼───────────────────────────────────────────────────┤
-│ 973f70a │ tools/                   │ Pelanggaran SQL CHECK constraint source_kind      │
-│         │ serve-live-pipeline.ts   │ akibat penggunaan nilai non-standar 'media'.      │
-│         │                          │ Solusi: Koreksi nilai fixture ke 'newsroom'.      │
-├─────────┼──────────────────────────┼───────────────────────────────────────────────────┤
-│ e8c35d6 │ apps/web/src/            │ Division by zero & degenerasi matriks kovarians   │
-│ &       │ embedding-pca.ts &       │ pada PCA embedding serta threshold konflik multi- │
-│ 6217fd0 │ discrepancy-detector     │ sumber. Solusi: Epsilon guard & matriks delta.    │
-└─────────┴──────────────────────────┴───────────────────────────────────────────────────┘
-```
+| Commit | Modul / Berkas Terdampak | Deskripsi Defek & Solusi Rekayasa |
+| :---: | :--- | :--- |
+| `66d8e94` | `apps/intelligence/src/providers/ninerouter-adapter.ts` | Duplikasi sufiks `/v1` pada URL model Mastra. Solusi: sanitasi `baseUrl` dengan `.replace(/\/v1$/, "")`. |
+| `973f70a` | `tools/serve-live-pipeline.ts` | Nilai `'media'` melanggar CHECK `source_kind` pada `waspada.source_registry`. Solusi: nilai diubah ke `'newsroom'`. |
 
-#### 1. Defect 1 (Commit `bd49c57`): Runtime `ReferenceError: React is not defined` & Assertion Usang pada `landing.test.tsx`
-* **Gejala:** Pengujian unit frontend mengalami kegagalan fatal (*crash*) saat menjalankan `landing.test.tsx` dengan pesan:
-  ```text
-  ReferenceError: React is not defined
-      at TestContext.<anonymous> (apps/web/test/landing.test.tsx:7:39)
-  ```
-* **Akar Masalah (*Root Cause*):** Pada commit `cc724b5`, berkas komponen `Landing.tsx` direfaktor secara masif—tampilan daftar event publik dan ringkasan klaim dipindahkan ke halaman terpisah `LaporanPublik.tsx`. Komponen `Landing.tsx` diubah menjadi halaman sambutan yang fokus pada panduan pembacaan laporan. Pada commit `bd49c57`, pembersihan test lama menghapus statement `import React from "react";`. Karena test runner native Node.js menggunakan transpiler TypeScript tanpa transformasi JSX otomatis (*classic JSX transform*), sintaks JSX `<Landing />` membutuhkan variabel `React` di scope modul.
-* **Tindakan Koreksi (*Correction*):**
-  1. Menambahkan import eksplisit: `import React from "react";`.
-  2. Menghapus pengujian lama yang memverifikasi props kadaluarsa (`makeEvent`, `lifecycleText`, `freshnessText`, `claim preview`).
-  3. Menulis ulang test assertions untuk memvalidasi elemen antarmuka baru: panel instruksi pengguna (`aria-label="Pilih topik panduan"`), teks hero ilustratif, dan ketahanan terhadap props opsional kosong (`LandingProps = {}`).
-
-#### 2. Defect 2 (Commit `e1e50f0`): Flaky Test Akibat Collision Timestamp Sub-milidetik pada Audit Triage
-* **Gejala:** Test case `reads the latest attempt for a revision and null when none exists` pada `apps/db/test/news-triage-decisions.test.ts` sesekali mengalami kegagalan intermiten (*flaky test*).
-* **Akar Masalah (*Root Cause*):** Fungsi `recordTriageAttempt` dipanggil dua kali berturut-turut untuk merekam percobaan triage pertama dan kedua pada revisi yang sama. Karena eksekusi Node.js dan database PGlite in-memory sangat cepat, kedua baris database tersebut tersimpan dengan timestamp `recorded_at` yang identik (dalam rentang sub-milidetik yang sama). Akibatnya, query SQL `ORDER BY recorded_at DESC, id DESC` menghasilkan urutan rekaman yang tidak deterministik tergantung pada alokasi memori internal.
-* **Tindakan Koreksi (*Correction*):**
-  Menyisipkan penundaan asinkron eksplisit sebesar 15 milidetik di antara pemanggilan pencatatan:
-  ```typescript
-  await recordTriageAttempt(db.executor, base);
-  // Jeda 15ms untuk memastikan strictly monotonic timestamp pada basis data
-  await new Promise((r) => setTimeout(r, 15));
-  await recordTriageAttempt(db.executor, { ...base, traceId: 'trace-triage-latest-2' });
-  ```
-  Koreksi ini menjamin record kedua selalu memiliki nilai timestamp yang lebih besar secara tegas, mengeliminasi sifat *flaky* pada pengujian.
-
-#### 3. Defect 3 (Commit `66d8e94`): Malformed URL / Duplikasi Sufiks `/v1` pada AI Gateway Client
-* **Gejala:** Pengujian integrasi modul intelligence dan probe AI Gateway gagal dengan pesan HTTP 404 (Not Found).
-* **Akar Masalah (*Root Cause*):** Nilai konfigurasi `NINEROUTER_URL` di lingkungan pengujian disetel ke `http://127.0.0.1:9090/v1`. Namun, SDK client Mastra/OpenAI secara internal otomatis mengompilasi path request dengan menambahkan sufiks `/v1`, sehingga URL yang terbentuk menjadi `http://127.0.0.1:9090/v1/v1/chat/completions`.
-* **Tindakan Koreksi (*Correction*):**
-  Mengimplementasikan fungsi sanitasi URL pada `apps/intelligence/src/providers/ninerouter-adapter.ts`:
+#### 1. Defect 1 (Commit `66d8e94`): Duplikasi Sufiks `/v1` pada URL AI Gateway Client
+* **Subjek commit:** `fix(intelligence): normalize baseUrl to avoid duplicate /v1 suffix in Mastra model URL`
+* **Gejala:** Pengujian integrasi modul intelligence dan probe AI Gateway gagal dengan pesan HTTP 404 (Not Found). *Gejala ini tidak tercatat di commit dan belum diverifikasi ulang.*
+* **Akar Masalah (*Root Cause*):** Nilai konfigurasi `NINEROUTER_URL` disetel ke `http://127.0.0.1:9090/v1`. SDK client Mastra/OpenAI menambahkan sufiks `/v1` sendiri, sehingga URL yang terbentuk menjadi `http://127.0.0.1:9090/v1/v1/chat/completions`.
+* **Tindakan Koreksi (*Correction*):** Baris inisialisasi `baseUrl` pada `getNineRouterConfig()` di `apps/intelligence/src/providers/ninerouter-adapter.ts` diubah menjadi:
   ```typescript
   const baseUrl = rawUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
   ```
   Sanitasi ini memastikan bahwa akhiran `/` maupun `/v1` dibersihkan sebelum diteruskan ke SDK model.
 
-#### 4. Defect 4 (Commit `973f70a`): Pelanggaran SQL Constraint `CHECK (source_kind IN (...))`
-* **Gejala:** Eksekusi seeding pada pengujian alur berita langsung (*live pipeline test*) gagal dengan pesan database:
-  ```text
-  error: new row for relation "raw_sources" violates check constraint "raw_sources_source_kind_check"
-  ```
-* **Akar Masalah (*Root Cause*):** Migrasi SQL `001_core_schema.sql` menetapkan bahwa kolom `source_kind` hanya boleh bernilai salah satu dari enum teks resmi: `'official_agency'`, `'newsroom'`, `'community'`, atau `'sensor'`. Namun skrip seeding memasukkan string generic `'media'`.
-* **Tindakan Koreksi (*Correction*):**
-  Memperbaiki parameter query SQL pada `tools/serve-live-pipeline.ts`:
+#### 2. Defect 2 (Commit `973f70a`): Pelanggaran CHECK Constraint `source_kind` pada Seed Sumber Live
+* **Subjek commit:** `fix(LIVE-TEST): use newsroom source_kind to satisfy check constraint`
+* **Gejala:** Seeding sumber RSS pada `tools/serve-live-pipeline.ts` ditolak database karena nilai `source_kind` tidak memenuhi CHECK constraint. Pesan galat lengkap tidak tercatat di commit.
+* **Akar Masalah (*Root Cause*):** Migrasi `apps/db/migrations/001_foundation.sql` mendefinisikan kolom `source_kind` pada tabel `waspada.source_registry` dengan CHECK yang hanya mengizinkan `'authority'`, `'operator'`, `'newsroom'`, `'institution'`, `'crowdsourced_platform'`, dan `'other'`. Nilai `'media'` yang dipakai oleh seed tidak termasuk dalam daftar tersebut.
+* **Tindakan Koreksi (*Correction*):** Parameter INSERT ke `waspada.source_registry` pada `tools/serve-live-pipeline.ts` diubah:
   ```sql
   -- Sebelum:
   VALUES ($1, $2, 1, $3, 'media', ARRAY['news', 'incidents'], ...)
-  -- Sesudah (Valid):
+  -- Sesudah (valid):
   VALUES ($1, $2, 1, $3, 'newsroom', ARRAY['news', 'incidents'], ...)
   ```
 
-#### 5. Defect 5 (Commit `e8c35d6` & `6217fd0`): Edge Case Singular Matrix pada PCA & Threshold Konflik Multi-Sumber
-* **Gejala:** Pengujian reduksi dimensi `embedding-pca.test.ts` menghasilkan nilai `NaN` ketika diuji dengan input berukuran kecil ($N < 3$) atau kumpulan vektor yang identik (varians nol). Selain itu, pada rekonsiliasi multi-sumber, perbedaan kecil pembulatan angka tinggi air (misal: 50 cm vs 52 cm) secara keliru memicu alarm konflik (*false positive discrepancy*).
-* **Akar Masalah (*Root Cause*):**
-  1. Pada PCA, normalisasi varians melibatkan pembagian dengan nilai standar deviasi $(\sigma)$. Jika seluruh vektor identik, $\sigma = 0$, menyebabkan pembagian dengan nol (*division by zero*).
-  2. Pada rekonsiliasi data, ketiadaan ambang batas toleransi membuat variasi redaksional wajar antar-media dianggap sebagai kontradiksi fakta.
-* **Tindakan Koreksi (*Correction*):**
-  1. Menginjeksikan *epsilon guard* ($\varepsilon = 10^{-12}$) pada normalisasi kovarians dan membuat *fallback orthonormal basis generator* jika jumlah sampel $N \le 2$.
-  2. Menetapkan matriks toleransi pada `discrepancy-detector.ts`: selisih tinggi air $< 30\text{ cm}$ ditoleransi sebagai variasi wajar, sedangkan selisih $\ge 30\text{ cm}$ atau pertentangan status korban (0 vs $> 0$) secara akurat diberi flag `has_discrepancy = true`.
+#### Commit yang Dikeluarkan dari Daftar Defek
+* `bd49c57` (*frontend cleanup unit testing*): subjeknya bukan `fix`. Commit ini mengubah komponen `Landing.tsx` dan berkas uji UI-nya. Baris `import React` pada `Landing.tsx` tidak diubah (hanya muncul sebagai konteks diff), sehingga klaim bahwa commit ini menghapus import React tidak didukung diff. Berkas uji UI tersebut dihapus pada commit `b0a18c5`, sehingga defek ini tidak lagi dicatat.
+* `e1e50f0` (*Created new frontend demo pages*): commit fitur. Di dalamnya ada satu baris jeda `setTimeout` 15 ms pada `apps/db/test/news-triage-decisions.test.ts`, tetapi commit ini juga menambah halaman demo, mengubah `tools/serve-live-pipeline.ts`, dan menambah berkas dokumentasi ini. Ini bukan perbaikan defek yang terisolasi.
+* `e8c35d6` (*feat(VIS-01): 3D embedding chunk visualization*) dan `6217fd0` (*feat(CORR-01): multi-source incident corroboration*): commit fitur. Klaim sebelumnya tentang `NaN` pada PCA, epsilon guard, dan ambang 30 cm tidak dapat dipetakan ke diff kedua commit ini sebagai perbaikan. `embedding-pca.ts` ditambahkan oleh `e8c35d6`. Berkas `correlated-proposal-engine.ts` (tempat `detectIncidentDiscrepancies`) tidak diubah oleh kedua commit ini.
 
 ### 2.b) Improvement Ideas (Gagasan Perbaikan & Optimasi)
 Dari hasil tinjauan statis, diajukan beberapa gagasan perbaikan arsitektural:
-1. **Migrasi Konfigurasi JSX Otomatis:** Memperbarui compiler options pada `tsconfig.json` di seluruh workspace dengan menyetel `"jsx": "react-jsx"` agar impor React runtime dilakukan secara otomatis tanpa deklarasi manual.
+1. **Konfigurasi JSX Otomatis:** `"jsx": "react-jsx"` sudah disetel pada `apps/web/tsconfig.json`, sehingga impor React tidak perlu dideklarasikan manual di berkas TSX. Gagasan ini hanya berlaku jika workspace lain juga memakai JSX.
 2. **Penggunaan ULID untuk Primary Key Audit:** Mengganti pengurutan timestamp audit trail dengan ULID (*Universally Unique Lexicographically Sortable Identifier*) untuk menghindari dependensi terhadap resolusi clock sistem lokal.
 3. **Automated Pre-Commit Hooks:** Mengintegrasikan git hooks menggunakan `simple-git-hooks` untuk menjalankan typecheck (`tsc --noEmit`) dan linter statis sebelum commit diizinkan.
 
@@ -174,8 +117,7 @@ Seluruh kode pengujian dan implementasi mematuhi prinsip rekayasa terstruktur:
 ### 2.d) Language Standards (Standar Bahasa)
 * Bahasa pemrograman: **TypeScript 5.x** dengan konfigurasi ketat:
   * `"strict": true`
-  * `"noImplicitAny": true`
-  * `"exactOptionalPropertyTypes": true`
+  * `noImplicitAny` tercakup oleh `strict` (tidak disetel terpisah). Opsi `exactOptionalPropertyTypes` tidak diaktifkan pada tsconfig repositori.
 * Modul: **ECMAScript Modules (ESM)** native Node.js dengan akhiran impor berkas `.js` eksplisit.
 * Konvensi Penamaan:
   * Variabel dan fungsi: `camelCase` (contoh: `detectIncidentDiscrepancies`, `recordTriageAttempt`).
@@ -199,29 +141,26 @@ Rincian data uji yang digunakan untuk memverifikasi logika sistem:
 | :---: | :--- | :--- |
 | **TC-01** | `deterministic-relevance.ts` | 1. Teks berita banjir riil Jakarta: *"Banjir 50 cm merendam kawasan Cilandak Barat Jakarta Selatan"*. <br>2. Teks berita non-insiden: *"Pertemuan politik di Senayan membahas anggaran tahunan"*. <br>3. Teks negasi: *"Dipastikan tidak ada korban jiwa dan kebakaran berhasil dicegah"*. <br>4. Variasi penulisan lokasi: *"Kec. Kebayoran Baru"*, *"kelurahan grogol"*, *"RAWASARI"*. |
 | **TC-02** | `embedding-pca.ts` | 1. Matriks vektor dimensi tinggi $N \times 768$ dari model embedding Gemini. <br>2. Data batas degenerasi: Array kosong $N=0$, vektor tunggal $N=1$, dua vektor identik $N=2$. <br>3. Dua kelompok kluster vektor sintetis dengan jarak kosinus tinggi untuk menguji pemisahan kluster 3D. |
-| **TC-03** | `discrepancy-detector.ts` | 1. Dua laporan berita dengan `water_depth`: "50 cm" vs "90 cm" ($\Delta = 40\text{ cm} \ge 30\text{ cm}$). <br>2. Dua laporan dengan `water_depth`: "40 cm" vs "50 cm" ($\Delta = 10\text{ cm} < 30\text{ cm}$). <br>3. Laporan dengan `casualty_count`: "Nihil / 0 korban" vs "2 orang luka-luka". <br>4. Laporan dengan `operational_status`: "Api sudah padam" vs "Kebakaran masih membesar". |
-| **TC-04** | `news-triage-decisions.ts` | 1. Payload keputusan triage berita: `revisionId: 'rep-latest-001'`, `category: 'flooding'`, `contentHash: 'c'.repeat(64)`. <br>2. Percobaan rekaman berulang (*repeat polling*) dengan hash sama untuk menguji sifat idempoten. <br>3. Dua record berurutan dengan jeda waktu 15ms untuk menguji `readLatestAttemptForRevision`. |
-| **TC-05** | `Landing.tsx` | 1. Instance komponen tanpa props: `<Landing />`. <br>2. Instance dengan props batas: `context: null`, `events: []`, `status: "loaded"`, `onRetry: () => {}`. |
+| **TC-03** | `correlated-proposal-engine.ts` (`detectIncidentDiscrepancies`) | 1. Dua laporan berita dengan `water_depth`: "50 cm" vs "90 cm" ($\Delta = 40\text{ cm} \ge 30\text{ cm}$). <br>2. Dua laporan dengan `water_depth`: "40 cm" vs "50 cm" ($\Delta = 10\text{ cm} < 30\text{ cm}$). <br>3. Laporan dengan `casualty_count`: "Nihil / 0 korban" vs "2 orang luka-luka". <br>4. Laporan dengan `operational_status`: "Api sudah padam" vs "Kebakaran masih membesar". |
+| **TC-04** | `news-triage-store.ts` (`recordTriageAttempt`, `readLatestAttemptForRevision`) | 1. Payload keputusan triage berita: `revisionId: 'rep-latest-001'`, `category: 'flooding'`, `contentHash: 'c'.repeat(64)`. <br>2. Percobaan rekaman berulang (*repeat polling*) dengan hash sama untuk menguji sifat idempoten. <br>3. Dua record berurutan dengan jeda waktu 15ms untuk menguji `readLatestAttemptForRevision`. |
 
 ### 3.b) Initial Conditions (Kondisi Awal / Preconditions)
-1. **TC-01 (Relevance):** Dataset kanonikal gazetteer 44 kecamatan dan 267 kelurahan DKI Jakarta telah ter-load di memori dengan checksum terverifikasi.
+1. **TC-01 (Relevance):** Dataset kanonikal gazetteer 44 kecamatan dan 267 kelurahan DKI Jakarta telah ter-load di memori dengan versi dataset terpin (`2026-11-02-seed-1`).
 2. **TC-02 (PCA):** Fungsi aljabar linier beroperasi secara murni tanpa dependensi GPU (CPU-only execution).
 3. **TC-03 (Discrepancy):** Kamus parser unit ketinggian air (`cm`, `meter`, `m`) telah terinisialisasi.
-4. **TC-04 (Database Triage):** Database PGlite in-process dijalankan di memori dengan seluruh migrasi tabel terpasang (`triage_decisions`, `triage_audit_log`, `incidents`).
-5. **TC-05 (UI Landing):** DOM virtual dirender melalui `renderToStaticMarkup` dari `react-dom/server` tanpa browser fisik.
+4. **TC-04 (Database Triage):** Database PGlite in-process dijalankan di memori dengan seluruh migrasi terpasang (antara lain `waspada.news_triage_decisions` dan `waspada.news_triage_attempts`).
 
 ### 3.c) Expected Results (Hasil yang Diharapkan)
 1. **TC-01:** Berita relevan lolos filter; berita politik/olahraga tereliminasi deterministik; kata negasi mendowngrade skor; nama wilayah ternormalisasi sempurna.
 2. **TC-02:** Matriks $768\text{D}$ tereduksi menjadi koordinat $3\text{D} (X, Y, Z)$ dengan pusat di $(0,0,0)$ dan skala ternormalisasi pada rentang $[-1, 1]$. Tidak terjadi pembagian dengan nol pada input batas.
 3. **TC-03:** Selisih tinggi $\ge 30\text{ cm}$ atau kontradiksi korban menghasilkan flag `has_discrepancy = true` beserta rincian media yang berkonflik; selisih $< 30\text{ cm}$ menghasilkan `has_discrepancy = false`.
 4. **TC-04:** Record triage tersimpan secara idempoten (tanpa duplikasi baris); query `readLatestAttemptForRevision` secara konsisten mengembalikan attempt kedua.
-5. **TC-05:** Markup HTML yang dihasilkan memuat atribut aksesibilitas WAI-ARIA (`aria-label`, `aria-pressed`, `tabindex="-1"`) dan teks hero tanpa error runtime.
 
 ### 3.d) Test Log Status (Status Log Pengujian Langsung)
 
-Berikut adalah rekaman log eksekusi langsung dari terminal pengujian WSL2 Ubuntu:
+Keempat log berikut berasal dari terminal lokal WSL2 Ubuntu. Log ini **log lokal, belum disimpan**: tidak ada berkas log yang tersimpan, dan log CI tidak memuat angka per berkas. Jumlah tes per berkas sesuai dengan deklarasi `test(` / `it(` di kode sumber saat dokumen ini disusun, tetapi tidak dijalankan ulang pada CI.
 
-#### 1. Log Eksekusi: Deterministic Relevance Filter (`apps/worker`)
+#### 1. Log Eksekusi: Deterministic Relevance Filter (`apps/worker`) — log lokal, belum disimpan
 ```text
 $ npx tsx --test apps/worker/test/deterministic-relevance.test.ts
 
@@ -245,7 +184,7 @@ $ npx tsx --test apps/worker/test/deterministic-relevance.test.ts
 Status: PASSED
 ```
 
-#### 2. Log Eksekusi: Algoritma Matematis Reduksi Dimensi PCA (`apps/web`)
+#### 2. Log Eksekusi: Algoritma Matematis Reduksi Dimensi PCA (`apps/web`) — log lokal, belum disimpan
 ```text
 $ npx tsx --test apps/web/test/embedding-pca.test.ts
 
@@ -265,7 +204,7 @@ $ npx tsx --test apps/web/test/embedding-pca.test.ts
 Status: PASSED
 ```
 
-#### 3. Log Eksekusi: Rekonsiliasi & Pendeteksi Konflik Multi-Sumber (`apps/worker`)
+#### 3. Log Eksekusi: Rekonsiliasi & Pendeteksi Konflik Multi-Sumber (`apps/worker`) — log lokal, belum disimpan
 ```text
 $ npx tsx --test apps/worker/test/discrepancy-detector.test.ts
 
@@ -293,7 +232,7 @@ $ npx tsx --test apps/worker/test/discrepancy-detector.test.ts
 Status: PASSED
 ```
 
-#### 4. Log Eksekusi: Audit Basis Data & Idempoten Triage (`apps/db`)
+#### 4. Log Eksekusi: Audit Basis Data & Idempoten Triage (`apps/db`) — log lokal, belum disimpan
 ```text
 $ npx tsx --test apps/db/test/news-triage-decisions.test.ts
 
@@ -318,24 +257,6 @@ $ npx tsx --test apps/db/test/news-triage-decisions.test.ts
 Status: PASSED
 ```
 
-#### 5. Log Eksekusi: Komponen Frontend UI Landing Page (`apps/web`)
-```text
-$ npx tsx --test apps/web/test/landing.test.tsx
-
-✔ landing provides direct account-free actions and a captioned illustrative hero (8.6829ms)
-✔ reading guide uses user-controlled instructional panels without verification claims (2.792534ms)
-✔ landing accepts optional props safely without errors (2.209321ms)
-ℹ tests 3
-ℹ suites 0
-ℹ pass 3
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 318.746086
-Status: PASSED
-```
-
 ---
 
 ## 4. ENVIRONMENT REQUIREMENTS (KEBUTUHAN LINGKUNGAN PENGUJIAN)
@@ -352,24 +273,24 @@ Lingkungan pengujian dirancang mandiri (*self-contained*) dan terisolasi menggun
   export NVM_DIR="$HOME/.nvm"
   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
   ```
-* **Runtime Node.js:** v24.21.0.
+* **Runtime Node.js:** Node.js 24 (CI memakai `node-version: 24` di `.github/workflows/ci.yml`; patch tidak dikunci di repositori).
 
 ### 4.c) Libraries (Pustaka & Dependensi Pengujian)
 * **Harness Pengujian Inti:**
   * `node:test` — Native asynchronous test runner bawaan Node.js.
   * `node:assert/strict` — Native assertion library dengan deep-equality checks.
 * **TypeScript Execution Engine:**
-  * `tsx` (v4.19+) — Engine eksekusi TypeScript instan tanpa kompilasi terpisah.
+  * `tsx` (`^4.23.15`, dari `package.json` root) — Engine eksekusi TypeScript instan tanpa kompilasi terpisah.
 * **Pustaka Database In-Memory:**
-  * `@electric-sql/pglite` (v0.2+) — PostgreSQL engine berbasis WebAssembly yang berjalan langsung di thread Node.js.
+  * `@electric-sql/pglite` (`0.5.8`, dari `apps/db/package.json`) — PostgreSQL engine berbasis WebAssembly yang berjalan langsung di thread Node.js.
 * **Pustaka UI & Rendering:**
-  * `react` (v18.3+) & `react-dom` (v18.3+) — Pustaka antarmuka grafis.
+  * `react` (`^19.3.0`) & `react-dom` (`^19.3.0`) — Pustaka antarmuka grafis (dari `apps/web/package.json`).
   * `react-dom/server` (`renderToStaticMarkup`) — Generator HTML statis untuk pengujian komponen tanpa browser headless.
 * **Matematika Vektor & Komputasi:**
   * Native JavaScript typed arrays (`Float64Array`, `Float32Array`, `Math` object).
 
 ### 4.d) Tools (Peralatan Pendukung Pengembangan)
-* **Package Manager:** npm v11.19.0 (dukungan fitur workspace monorepo).
+* **Package Manager:** npm 11 (dukungan fitur workspace monorepo; versi patch tidak dikunci di repositori).
 * **Version Control:** Git v2.43+ dengan integrasi branch GitHub.
 * **IDE / Editor:** Visual Studio Code / Google Antigravity IDE.
 
@@ -378,9 +299,8 @@ Lingkungan pengujian dirancang mandiri (*self-contained*) dan terisolasi menggun
 Untuk menjalankan pengujian unit secara reproduktif, ikuti panduan prosedur langkah demi langkah berikut:
 
 #### Langkah 1: Persiapan Environment WSL2
-Buka terminal WSL2 dan arahkan ke direktori proyek:
+Buka terminal WSL2 dan pastikan berada di root repositori (folder yang berisi `package.json`). Seluruh path pada langkah berikut relatif terhadap root ini:
 ```bash
-cd /home/jesaya/RPL/Waspada-Jakarta
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 nvm use 24
@@ -403,14 +323,9 @@ nvm use 24
    npx tsx --test apps/worker/test/discrepancy-detector.test.ts
    ```
 
-4. **Uji Audit Trail Basis Data & Idempoten Triage Berita:**
+4. **Uji Audit Trail Basis Data & Idempoten Triage Berita** (berkas database dijalankan dengan working directory `apps/db`):
    ```bash
-   npx tsx --test apps/db/test/news-triage-decisions.test.ts
-   ```
-
-5. **Uji Komponen UI & Panduan Membaca Laporan Publik:**
-   ```bash
-   npx tsx --test apps/web/test/landing.test.tsx
+   cd apps/db && node --import tsx --test test/news-triage-decisions.test.ts
    ```
 
 #### Langkah 3: Eksekusi Pengujian Penuh per Workspace
@@ -431,25 +346,34 @@ npm run test --workspace=@waspada/intelligence
 
 ### 4.f) Status Reporting (Pelaporan Status & Metrik Kelulusan)
 
-Rekapitulasi metrik pengujian unit pada seluruh lapisan sistem:
+**A. Hasil CI** — run 117086838832, commit cec9358 (12 November 2026). Angka diambil dari log langkah CI.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   UNIT TEST EXECUTION STATUS REPORT                    │
-├──────────────────────────┬──────────────┬──────────────┬───────────────┤
-│ Modul / Test Suite       │ Jumlah Uji   │ Durasi (ms)  │ Hasil Akhir   │
-├──────────────────────────┼──────────────┼──────────────┼───────────────┤
-│ apps/worker/relevance    │ 9 Tests      │ 201 ms       │ 100% PASSED   │
-│ apps/web/embedding-pca   │ 5 Tests      │ 228 ms       │ 100% PASSED   │
-│ apps/worker/discrepancy  │ 13 Tests     │ 262 ms       │ 100% PASSED   │
-│ apps/db/triage-decisions │ 8 Tests      │ 9,209 ms     │ 100% PASSED   │
-│ apps/web/landing-ui      │ 3 Tests      │ 318 ms       │ 100% PASSED   │
-├──────────────────────────┼──────────────┼──────────────┼───────────────┤
-│ TOTAL KESELURUHAN        │ 38 Assertions│ ~10.2 detik  │ 100% PASS     │
-│                          │ (Sample Uji) │              │ (0 FAILURES)  │
-└──────────────────────────┴──────────────┴──────────────┴───────────────┘
-```
+| Langkah CI | Perintah | Tests | Lulus | Gagal |
+| :--- | :--- | ---: | ---: | :--- |
+| Typecheck | `npm run typecheck` | — | — | tidak ada baris error |
+| Database | `npm run db:test` | 381 (56 berkas) | 381 | 0 |
+| Web | `npm run test --workspace=@waspada/web` | 335 | 335 | 0 |
+| Worker | `npm run test --workspace=@waspada/worker` | 1.089 | 1.089 | 0 |
+| Intelligence | `npm run test:intelligence` | 104 | 104 | 0 |
+| Pipeline lokal | `npm run pipeline:test` | 58 (kasus) | 58 | 0 |
+| Accounts | `npm run accounts:test` | 3 | 3 | 0 |
+| Evaluasi & AI tools | `tsx --test` langsung pada berkas di `tools/` | 64 | 64 | 0 |
+| Build | `npm run build` (Wrangler dry-run) | — | — | tidak ada baris error |
+| **Total** | | **2.034** | **2.034** | **0** |
 
-* **Tingkat Kelulusan (*Pass Rate*):** **100% (Zero Failures)**
-* **Stabilitas Pengujian:** Seluruh potensi *flaky tests* (termasuk collision timestamp sub-milidetik dan edge cases singular matrix) telah diselesaikan dan terverifikasi secara deterministik.
-* **Kesiapan Rilis:** Seluruh komponen logika bisnis, komputasi aljabar, penanganan kegagalan AI (*safe fallback*), dan integritas data telah tervalidasi secara formal dan siap untuk dipresentasikan serta dievaluasi.
+* Total adalah penjumlahan angka CI. Satuannya tidak seragam (database per berkas, pipeline per kasus), sehingga total hanya indikatif.
+* Log CI tidak memuat kesimpulan run keseluruhan. Konfirmasi di halaman GitHub Actions sebelum menulis "CI lulus". Log CI juga tidak mencakup Flutter (lihat Bab 4, Tabel 4.3) atau uji browser, karena keduanya tidak dijalankan di CI.
+* Log CI memuat peringatan deprecation: `actions/checkout@v4` dan `actions/setup-node@v4` berjalan di Node 20 yang dipaksa ke Node 24. Ini hanya pemberitahuan, bukan kegagalan.
+
+**B. Uji fokus lokal** — **log lokal, belum disimpan**; angka ini tidak ada di log CI.
+
+| Modul / Test Suite | Tests | Durasi (ms) | Status |
+| :--- | ---: | ---: | :--- |
+| `apps/worker/deterministic-relevance` | 9 | 201 | log lokal, belum disimpan |
+| `apps/web/embedding-pca` | 5 | 228 | log lokal, belum disimpan |
+| `apps/worker/discrepancy-detector` | 13 | 262 | log lokal, belum disimpan |
+| `apps/db/news-triage-decisions` | 8 | 9.209 | log lokal, belum disimpan |
+
+* **Tingkat Kelulusan (*Pass Rate*):** 0 gagal dari 2.034 tes/kasus yang tercatat di log CI.
+* **Stabilitas Pengujian:** Dokumen ini hanya memuat satu run CI (commit cec9358). Belum ada pengulangan yang membuktikan tidak ada flaky test. Jeda 15 ms yang ditambahkan pada `news-triage-decisions.test.ts` (commit `e1e50f0`) adalah perubahan uji, bukan bukti determinisme.
+* **Kesiapan Rilis:** Hasil ini mendukung klaim unit test pada lapisan yang diuji (lihat 1.b). Hasil ini tidak membuktikan kesiapan rilis atau kebenaran data live.

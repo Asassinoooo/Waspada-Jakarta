@@ -6,14 +6,20 @@ import {
   countLabel,
   cooldownLabel,
   failureLabel,
+  isPipelineFlowRange,
   nodeView,
   PIPELINE_COUNT_LABELS,
   PIPELINE_HEALTH_LABELS,
   PIPELINE_NODE_META,
+  PIPELINE_RANGE_LABELS,
+  PIPELINE_RANGE_STORAGE_KEY,
   PIPELINE_REVIEW_LINK_NODES,
+  readStoredPipelineFlowRange,
   relativeTimeLabel,
+  snapshotRange,
   statusLabel,
   toPipelineFlowGraph,
+  writeStoredPipelineFlowRange,
 } from "../src/pipeline-flow-model.js";
 import {
   PIPELINE_COLUMN_WIDTH,
@@ -189,4 +195,69 @@ test("the review node shows a kedaluwarsa chip, and its drawer says unreviewed p
 
   const older = nodeView({ ...nodeById(snapshot, "review"), counts: { waiting_discrepancy: 2, waiting_gate: 3 } });
   assert.equal(older.chips.some((row) => row.label === "kedaluwarsa"), false, "a snapshot without the count shows no chip");
+});
+
+test("FLOW-RANGE-01: keys ending in _24h name the selected window, and _15m labels never change", () => {
+  assert.equal(countLabel("skipped_24h"), "Dilewati 24 jam", "the default window keeps today's wording");
+  assert.equal(countLabel("skipped_24h", "7d"), "Dilewati 7 hari");
+  assert.equal(countLabel("skipped_24h", "1h"), "Dilewati 1 jam");
+  assert.equal(countLabel("expired_24h", "30d"), "Kedaluwarsa 30 hari");
+  assert.equal(countLabel("skipped_15m", "7d"), "Dilewati 15 menit", "the 15 minute throughput is not windowed");
+  assert.equal(countLabel("moderator_decisions_15m", "6h"), "Keputusan moderator 15 menit");
+  assert.deepEqual(PIPELINE_RANGE_LABELS, { "1h": "1 jam", "6h": "6 jam", "24h": "24 jam", "7d": "7 hari", "30d": "30 hari" });
+});
+
+test("FLOW-RANGE-01: a card and its empty line follow the snapshot's window, and the default is unchanged", () => {
+  const snapshot = demoSnapshot();
+  const detFilter = nodeById(snapshot, "det_filter");
+  const dflt = nodeView(detFilter);
+  assert.equal(dflt.primaryLabel, "Dilewati 24 jam");
+  assert.equal(dflt.windowLabel, "24 jam");
+  assert.ok(dflt.countRows.some((row) => row.label === "Dilewati 15 menit"));
+
+  const weekly: PipelineFlowSnapshotDto = { ...snapshot, window: { range: "7d", since: "2026-11-04T09:00:00.000Z" } };
+  const graph = toPipelineFlowGraph(weekly, PIPELINE_DEFAULT_POSITIONS);
+  const card = graph.nodes.find((node) => node.id === "det_filter")?.data as { view: { primaryLabel: string; windowLabel: string } };
+  assert.equal(card.view.primaryLabel, "Dilewati 7 hari");
+  assert.equal(card.view.windowLabel, "7 hari");
+
+  const empty = nodeView({ ...detFilter, counts: { skipped_24h: 0, skipped_15m: 0 }, health: "idle", throughput_15m: 0 }, "1h");
+  assert.equal(empty.emptyText, "Tidak ada data dalam 1 jam.", "the empty line names the selected window");
+  assert.equal(nodeView({ ...detFilter, counts: {} }, "30d").emptyText, "Tidak ada data dalam 30 hari.");
+});
+
+test("FLOW-RANGE-01: labels follow the window of the snapshot on screen, falling back to 24 jam without one", () => {
+  const snapshot = demoSnapshot();
+  assert.equal(snapshotRange(snapshot), "24h");
+  assert.equal(snapshotRange({ ...snapshot, window: { range: "30d", since: "2026-10-12T09:00:00.000Z" } }), "30d");
+  const legacy = { ...snapshot, window: undefined } as unknown as PipelineFlowSnapshotDto;
+  assert.equal(snapshotRange(legacy), "24h", "a response without window is read as the default");
+  assert.equal(isPipelineFlowRange("7d"), true);
+  assert.equal(isPipelineFlowRange("365d"), false);
+  assert.equal(isPipelineFlowRange(null), false);
+});
+
+test("FLOW-RANGE-01: the chosen window is remembered per viewer and falls back to 24 jam when storage is blocked or unknown", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const saved = new Map<string, string>();
+  const setStorage = (value: unknown) => Object.defineProperty(globalThis, "localStorage", { configurable: true, value });
+  try {
+    setStorage({ getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) });
+    assert.equal(readStoredPipelineFlowRange(), "24h", "nothing stored means the default");
+    writeStoredPipelineFlowRange("7d");
+    assert.equal(saved.get(PIPELINE_RANGE_STORAGE_KEY), "7d");
+    assert.equal(readStoredPipelineFlowRange(), "7d");
+    saved.set(PIPELINE_RANGE_STORAGE_KEY, "365d");
+    assert.equal(readStoredPipelineFlowRange(), "24h", "an unknown stored value is ignored");
+
+    setStorage({
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+    });
+    assert.equal(readStoredPipelineFlowRange(), "24h", "blocked storage falls back to the default");
+    assert.doesNotThrow(() => writeStoredPipelineFlowRange("1h"), "a blocked write does not break the page");
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
 });
