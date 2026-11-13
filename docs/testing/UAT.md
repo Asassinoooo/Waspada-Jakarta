@@ -8,16 +8,17 @@ Basis: SDP section 10 and the requirement tables (US-01 to US-03, NFR-03, NFR-07
 
 ## 1 Purpose and scope
 
-The purpose is to show whether the user tasks in the SDP can be completed in the local demo, in a browser at desktop and phone widths. Each step gets a result, and each task gets seconds.
+The purpose is to show whether the user tasks in the SDP can be completed in the local app, in a browser at desktop and phone widths, by three target users (section 3). Each step gets a result, and each task gets seconds. The tasks run in two places: the demo dataset for T1 to T5, and the local live app for the persona cases (section 5).
 
 In scope:
-- T1 to T3 for a public visitor: discovery (US-01), following updates (US-02) and origins and history (US-03).
-- T4 for a moderator: review and decide one proposal (US-03).
-- T5 for an administrator: the demo-only source preview.
+- Three target users (section 3): U1 resident (discovery, US-01), U2 commuter (following updates, US-02) and U3 moderator (review, US-03).
+- T1 to T3 on the demo dataset, and the matching persona cases on the local live app (section 6.0).
+- T4 for U3 on the demo dataset: review and decide one proposal.
+- T5 for the administrator (operator, not a target user): the demo-only source preview.
 - Desktop 1440 × 900 and phone 390 × 844, including the phone list fallback.
 
 Out of scope:
-- The live dataset (`serve:live`), real sources and model calls. The matched-update checks in US-02 need live data, so they stay pending (T2).
+- Starting or stopping the live server, real source fetches and model calls. The persona cases read the live app and do not change its data. The matched-update checks in US-02 need live data and stay pending (T2).
 - Hosted deployment (Cloudflare Workers, Neon), source rights and password reset.
 - A full accessibility audit. Section 7 lists the only layout and text-size checks.
 
@@ -26,7 +27,7 @@ Out of scope:
 ### 2.1 Automated walkthrough (browser subagent): the current method
 
 - Playwright Chromium, headless. There is one script per task in `tools/e2e/uat/`, run one at a time with `npx tsx tools/e2e/uat/<file>.ts` from the repository root.
-- Demo dataset only, against the local dev servers in section 5. Each script first checks that the server reports `dataset_mode` as `demo`, and stops if it does not.
+- T1 to T5 run on the demo dataset. Each script checks that the server reports `dataset_mode` as `demo`, and stops if it does not. The persona cases run on the local live app, and each checks for `live` and stops if it does not (section 5).
 - Each step is recorded with its name, pass or fail, milliseconds and error message. Timings include page load and waits, so they are an upper bound on a user's own time.
 - Results are labelled "automated walkthrough (browser subagent)". They are not user acceptance and must not be reported as such.
 - A *skipped* check cannot run on the demo dataset, or its label cannot be confirmed from the source. It is neither a pass nor a fail, and it is listed in section 6.6.
@@ -35,11 +36,25 @@ Out of scope:
 
 This protocol is kept so that sessions can be run later without redesign. It is not scheduled. A session would use the tasks in section 6 on a phone and on a desktop, with think-aloud, a facilitator who does not help with the task, and an observer. The observer records the step where the participant stopped, the seconds per task and short quotes, with no personal data. Results would be labelled "human session" and reported separately from the automated walkthrough.
 
-## 3 Participants
+## 3 Target users
 
-None for now. The automated walkthrough has no participants.
+The UAT covers three target users, which is the limit for this plan. Each one corresponds to a user story in section 1.4 of the report.
 
-A human session would need 6 to 8 people from outside the team. They should speak Bahasa Indonesia and use a phone and a desktop (SDP NFR-03). Team members, course staff and anyone who knows the demo passwords do not count as participants.
+| Target user | Story | Who it represents | Account | Use cases |
+| --- | --- | --- | --- | --- |
+| U1 Resident (public reader) | US-01 Discover relevant information | Residents, visitors, workers and students who look for incidents near them | None, or a Pengguna account | T1, T3, RES-01 to RES-03, WRK-01, WRK-02, VIS-01 to VIS-03 |
+| U2 Commuter (follower) | US-02 Follow developments that affect me | Commuters and students who follow places, services and groups | Pengguna account optional; interests are saved in the browser | T2, COM-01, COM-02, STU-01 |
+| U3 Moderator (reviewer) | US-03 Maintain trustworthy information | Platform moderators | Pengguna account, then the Moderator role granted by an administrator | MOD-00, T4, MOD-02 |
+
+**Operator, not a target user.** An administrator assigns the Moderator role to the U3 account and checks the source tab (T5). These steps prepare U3 and are reported with it.
+
+**Personas folded into the three users.**
+
+- Students are covered by U2 (group interests) and by U1 (group notices in the feed).
+- Workers are covered by U1. The copied-report and expired-warning checks are reader checks.
+- Visitors are covered by U1 (reading and searching without an account).
+
+**Method.** Each target user is played by a browser agent that uses the app only through its interface, as that user would. These are automated walkthroughs. They are not user acceptance by people. The human-session protocol in section 2.2 is not run. Human sessions would need 6 to 8 people from outside the team (SDP NFR-03).
 
 ## 4 Consent and privacy protocol (for future human sessions)
 
@@ -54,19 +69,50 @@ A human session would need 6 to 8 people from outside the team. They should spea
 ## 5 Environment
 
 - Toolchain: Node 24.21.0 in WSL Ubuntu-26.04, as recorded in CLAUDE.md. Do not use Windows-host Node.
-- Start the stack, in this order:
-  1. `npm run accounts:local -- --enable --demo --state accounts-demo`
-  2. `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. Vite serves on 127.0.0.1:5173 and proxies `/api/v1` to the Worker on :8787. It proxies `/api/v1/auth` and `/api/v1/account` to the accounts runtime on :8789.
 - Browser: Chromium for Playwright (root devDependency `playwright`, ^1.64.1).
-- Dataset: demo. The Worker's `DATASET_MODE` is `demo` in `wrangler.toml`. Each script checks this before it runs.
-- Accounts: `demo.warga` (user), `demo.moderator` (moderator) and `demo.admin` (administrator), defined in `tools/accounts/demo-accounts.ts`. The password is the constant `SYNTHETIC_DEMO_PASSWORD` in that file. It is never printed in this document, in logs or in reports.
-- Not used: `serve:live`, live sources, NineRouter or any other model quota, `ai:smoke` and `test:e2e`. The UAT scripts do not read `.env.local` or `.dev.vars`.
-- Machine limit: run one script at a time, and do not run UAT alongside the heavy suites (CLAUDE.md, local test policy).
-- Browser state: light theme, locale id-ID, device scale 1. T2 saves an interest in browser storage. Each viewport run uses a new browser context, so no interest carries over. T4 changes one proposal in the local demo database. Reject is the default decision. If the moderation queue is empty on a repeat run, rebuild the demo state before repeating T4 (NFR-06).
+- Two runtimes are used, and their results are reported separately.
+  - **Demo stack (T1 to T5, runs 01 and 02).** Start `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. Vite serves on 127.0.0.1:5173 and proxies `/api/v1` to the Worker on :8787. It also proxies `/api/v1/auth` and `/api/v1/account` to the accounts runtime on :8789. The dataset is `demo`, and each script refuses to run otherwise.
+  - **Local live app (persona cases, 13 November 2026).** `npm run serve:live` runs on the same ports. The dataset is `live`, and each persona script refuses to run unless `/api/v1/context` reports `live`. Live feeds and model calls run in this app. The UAT does not start it and does not spend model quota.
+- **Accounts on the local live app.** The persona runs register their own accounts through the interface: `uat.resident01`, `uat.commuter01`, `uat.student01` and `uat.worker01`. `uat.moderator01` is planned. Passwords are kept in `.codex-build/uat/accounts/`, which is gitignored. They are never printed in this document, in logs or in reports. The accounts are real rows in the local live database and stay there.
+- **Demo accounts.** `demo.warga`, `demo.moderator` and `demo.admin` are defined in `tools/accounts/demo-accounts.ts`. The password is the constant `SYNTHETIC_DEMO_PASSWORD` in that file, and it is never printed.
+- **Operator account on the local live app.** The administrator account comes from `WASPADA_ADMIN_USERNAME` and `WASPADA_ADMIN_PASSWORD` in `.env.local`. The scripts read these through `node --env-file`, never print them, and skip the administrator steps if they are unset.
+- **Read-only on live.** Persona scripts never click a control that fetches from providers ("Ambil ...", "Reset", "Atur ulang", refresh or "Coba lagi"). They never publish, reject, correct or edit a record. Interests are saved only in the browser.
+- **Not used.** The scripts do not start the live server, do not run `ai:smoke` or `test:e2e`, and do not spend model quota. They do not read the contents of `.env.local` or `.dev.vars`.
+- **Machine and login limits.** Run one browser script at a time. Login is rate-limited, and repeated sign-ins can return "Terlalu banyak percobaan masuk" (R-07). Space the runs out.
+- **Browser state.** Light theme, locale id-ID, device scale 1. Each viewport uses a new browser context. T4 changes one proposal in the local demo database, and reject is the default decision. If the moderation queue is empty on a repeat run, rebuild the demo state before repeating T4 (NFR-06).
 
 ## 6 Tasks
 
 Every route below was checked against `routeFromHash` in `apps/web/src/App.tsx` (lines 138 to 175). The routes are `#peta` (discover), `#masuk` (login), `#ringkasan-saya` (preferences), `#pembaruan` (updates), `#detail/api/<id>` (API detail) and `#admin/<tab>`, with tabs `tinjau` and `sumber` used here. Visible labels were read from the web source. The exceptions are noted under each task.
+
+### 6.0 Use cases by target user
+
+Each row names the target user (section 3) and the state of the run so far. "Demo" runs are T1 to T5 on the demo dataset. "Live" runs are the persona scripts on the local live app. Blocked means the data was absent, so the case was not tested.
+
+| Use case | Target user | Requirement | Demo runs | Live runs (13 Nov 2026) |
+| --- | --- | --- | --- | --- |
+| T1 Find an applicable event | U1 | US-01, FR-10 | Pass; boundary check skipped (F-01) | RES-01 blocked: no flood or weather event listed |
+| T2 Follow an update | U2 | US-02, FR-11, FR-13 | Pass; three checks need live data (F-02) | COM-01 pass |
+| T3 Inspect origins and history | U1 | US-03, FR-10 | Pass; two checks skipped | VIS-03 pass; finding R-05 |
+| T4 Review one proposal | U3 | US-03, FR-12 | Blocked: empty demo queue (R-04) | Not run |
+| T5 Source preview (operator) | Operator | NFR-07 | Pass on desktop after correction (R-02); phone fails one step (R-01) | Not run |
+| RES-01 Find a flood or weather event | U1 | US-01, FR-10 | Not run | Blocked: none listed |
+| RES-02 Crime event detail, no safety claim | U1 | FR-10, NFR-01 | Not run | Pass |
+| RES-03 Expired or stale warning | U1 | FR-13 | Not run | Blocked: none listed |
+| WRK-01 Copied report not counted as corroboration | U1 | FR-06 | Not run | Blocked: no copied report; see F-09 |
+| WRK-02 Expired warning labelled, never resolved | U1 | FR-13 | Not run | Blocked: none listed |
+| VIS-01 Search without an account | U1 | US-01, FR-10 | Not run | Pass: search narrows 3 cards to 1 |
+| VIS-02 Unmapped location, no invented point | U1 | FR-09, NFR-01 | Not run | Partly skipped: radius not checked |
+| VIS-03 Freshness and time shown separately | U1 | FR-10, FR-13 | Not run | Pass; finding R-05 |
+| COM-01 Follow a transport place | U2 | US-02, FR-11 | Not run | Pass: saved, kept after reload, removed |
+| COM-02 Transport-impact event, status and timing separate | U2 | FR-10 | Not run | Pass |
+| STU-01 Group notice without geography | U2 | FR-09, FR-11 | Not run | Blocked: no group notice listed; interest steps pass |
+| ACC-01 Register, onboard, role reads Pengguna | U1, U2, U3 | FR-12, NFR-07 | Not run | Pass for commuter, student, worker and resident |
+| ACC-02 Sign out | U1, U2, U3 | FR-12 | Not run | Pass; stale header menu after sign-out (R-06) |
+| MOD-00 No moderation access before the role change | U3 | FR-12, NFR-07 | Not run | Pending: the run was stopped before any action |
+| MOD-02 History shows reviewed versions only | U3 | FR-13 | T3 pass | Pending |
+
+**Success cases named in the report.** Section 1.3 of the report names four success cases: copied reports, ambiguous locations, expired warnings and corrections. Copied reports are covered by WRK-01, expired warnings by RES-03 and WRK-02, and ambiguous locations by VIS-02. Corrections are covered only as MOD-02 (reviewed versions only), because section 1.3 defers correction to a later release. **Decision needed:** keep correction as a success case, or remove it from section 1.3.
 
 ### T1 Find an applicable event (US-01)
 
