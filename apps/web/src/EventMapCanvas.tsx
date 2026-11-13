@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import {
   coordinateToWorldPixels,
   createOsmTileUrl,
@@ -7,6 +7,12 @@ import {
   type MapCoordinate,
 } from "./SourcePointMap.js";
 import { facilityKindIcon, facilityKindLabel, type EmergencyFacility } from "./emergency-facilities.js";
+
+// Browser-only, like the other page stylesheets: keeps the module importable under Node SSR tests.
+// The tile, zoom-control and pin rules live in incident-map.css, which the old incident map used to load.
+if (typeof document !== "undefined") {
+  void import("./incident-map.css");
+}
 
 export interface MapView {
   center: MapCoordinate;
@@ -121,6 +127,31 @@ export function EventMapCanvas({
     return { x: width / 2 + (point.x - centerPixels.x), y: height / 2 + (point.y - centerPixels.y) };
   };
   const tiles = getVisibleMapTiles(width, height, view.center, view.zoom);
+
+  // After a zoom, keep the tiles that were on screen at the previous zoom (already in the browser
+  // cache), scaled into the new view, underneath the new tiles. The map no longer flashes blank
+  // while the new zoom level downloads. Only tiles that were already shown are reused, so this
+  // adds no tile requests.
+  const lastViewRef = useRef<MapView>(view);
+  const [backdropView, setBackdropView] = useState<MapView | null>(null);
+  useLayoutEffect(() => {
+    const last = lastViewRef.current;
+    if (last.zoom !== view.zoom) setBackdropView(last);
+    lastViewRef.current = view;
+  }, [view]);
+  const backdropTiles = backdropView === null || backdropView.zoom === view.zoom
+    ? []
+    : getVisibleMapTiles(width, height, backdropView.center, backdropView.zoom).map((tile) => {
+      const scale = 2 ** (view.zoom - tile.zoom);
+      const size = 256 * scale;
+      return {
+        key: `backdrop-${tile.key}`,
+        src: createOsmTileUrl(TILE_TEMPLATE, tile),
+        left: Math.round(tile.x * size - (centerPixels.x - width / 2)),
+        top: Math.round(tile.y * size - (centerPixels.y - height / 2)),
+        size: Math.round(size),
+      };
+    }).filter((tile) => tile.left < width && tile.top < height && tile.left + tile.size > 0 && tile.top + tile.size > 0);
   const insideMarginBox = (point: { x: number; y: number }, margin: number) =>
     point.x >= -margin && point.x <= width + margin && point.y >= -margin && point.y <= height + margin;
 
@@ -161,7 +192,7 @@ export function EventMapCanvas({
   return (
     <div
       ref={containerRef}
-      className={`interactive-incident-map map-canvas${dragging ? " interactive-incident-map--dragging" : ""}`}
+      className={`interactive-incident-map event-map-canvas${dragging ? " interactive-incident-map--dragging" : ""}`}
       role="region"
       aria-label={label}
       onPointerDown={onPointerDown}
@@ -170,14 +201,25 @@ export function EventMapCanvas({
       onPointerCancel={endDrag}
     >
       <div className="map-tile-layer" style={{ left: 0, top: 0, width, height }}>
+        {backdropTiles.map((tile) => (
+          <img
+            key={tile.key}
+            src={tile.src}
+            alt=""
+            draggable={false}
+            className="map-tile-img map-tile-img--backdrop"
+            style={{ left: tile.left, top: tile.top, width: tile.size, height: tile.size }}
+          />
+        ))}
         {tiles.map((tile) => (
           <img
             key={tile.key}
             src={createOsmTileUrl(TILE_TEMPLATE, tile)}
             alt=""
-            loading="lazy"
+            draggable={false}
+            decoding="async"
             className="map-tile-img"
-            style={{ left: tile.left, top: tile.top }}
+            style={{ left: Math.round(tile.left), top: Math.round(tile.top) }}
           />
         ))}
       </div>

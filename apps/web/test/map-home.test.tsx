@@ -243,3 +243,18 @@ test("the filters type stays a value type, so a default is never mutated", () =>
   filterPublishedEvents([event("x")], "", { ...DEFAULT_PUBLISHED_FILTERS, timeRange: "24h" }, NOW);
   assert.equal(JSON.stringify(DEFAULT_PUBLISHED_FILTERS), before);
 });
+
+test("the map canvas loads the tile stylesheet and places whole-pixel tiles, not the legacy grid canvas", () => {
+  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
+  assert.match(html, /class="interactive-incident-map event-map-canvas"/u);
+  assert.doesNotMatch(html, /class="(?:[^"]*\s)?map-canvas(?:\s[^"]*)?"/u, "styles.css styles .map-canvas as a gridded placeholder");
+  const tiles = html.match(/<img[^>]*class="map-tile-img"[^>]*>/gu) ?? [];
+  assert.ok(tiles.length > 0, "tiles render");
+  for (const tile of tiles) {
+    assert.doesNotMatch(tile, /loading="lazy"/u, "lazy tiles leave blank squares after a zoom");
+    assert.match(tile, /draggable="false"/u);
+    assert.match(tile, /style="left:-?\d+px;top:-?\d+px"/u, "tile offsets are rounded to whole pixels");
+  }
+  const canvas = readFileSync(new URL("../src/EventMapCanvas.tsx", import.meta.url), "utf8");
+  assert.match(canvas, /import\("\.\/incident-map\.css"\)/u, "the absolute tile layout lives in incident-map.css");
+});
