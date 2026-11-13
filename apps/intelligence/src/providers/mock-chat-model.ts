@@ -16,6 +16,17 @@ const CATEGORY_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/listrik|pdam|air bersih|telekomunikasi/i, "utilities_essential_services"],
 ];
 
+// Severity keywords, checked in order: the first matching level wins, and no match gives low.
+// These are keyword stand-ins for the rubric in REPORT_INTERPRETER_INSTRUCTIONS, not a judgement.
+const SEVERITY_RULES: ReadonlyArray<readonly [RegExp, "high" | "medium"]> = [
+  [/tewas|meninggal|korban jiwa|luka|terluka|evakuasi|kerusuhan|ricuh|ledakan|roboh|ambruk|terbakar hebat/i, "high"],
+  [/macet|ditutup|banjir|demo|unjuk rasa|gangguan|padam|terganggu|kebakaran/i, "medium"],
+];
+
+function mockSeverity(reportText: string): "low" | "medium" | "high" {
+  return SEVERITY_RULES.find(([pattern]) => pattern.test(reportText))?.[1] ?? "low";
+}
+
 interface MockChunk {
   readonly chunkId: string;
   readonly text: string;
@@ -65,7 +76,7 @@ function interpretation(prompt: string): Record<string, unknown> {
   return {
     summary,
     incidentType: isFlood ? "genangan air" : "kejadian lapangan",
-    severity: "unknown",
+    severity: mockSeverity(reportText),
     primaryCategory: category,
     location: {
       label: street ? street[0].trim() : null,
