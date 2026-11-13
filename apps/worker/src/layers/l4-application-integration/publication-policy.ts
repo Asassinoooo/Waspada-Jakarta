@@ -819,3 +819,17 @@ export function evaluateAutoPublication(proposal: unknown, options: AutoPublicat
 export function assessAutoPublication(proposal: unknown, options: AutoPublicationGateOptions): ProposalGateReason[] {
   return evaluateAutoPublication(proposal, options).reasons;
 }
+
+/**
+ * TG-FR12: the gate for a moderator correction. It is the moderator source gate plus the event-time
+ * check that the automatic gate applies. A published event keeps a real event time, so a correction
+ * cannot remove it. Labels, correlation and discrepancy checks do not apply to a moderator's own correction.
+ */
+export function assessCorrectionGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
+  const reasons = new Set<ProposalGateReason>(assessProposalSourceGate(proposal, options));
+  const eventTime = gateRecord(gateRecord(proposal)?.event_time);
+  if (!eventTime || !isIsoInstant(eventTime.value) || eventTime.precision === "unknown") {
+    reasons.add("time_missing");
+  }
+  return sortedReasons(reasons);
+}

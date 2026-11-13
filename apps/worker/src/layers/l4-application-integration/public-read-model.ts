@@ -141,6 +141,17 @@ export class PublicReadModel {
     return detail;
   }
 
+  /**
+   * TG-FR12: removes a withdrawn event from the active public read model. Called only after the withdrawal
+   * has committed. Returns whether an event was removed.
+   */
+  static withdraw(eventId: string): boolean {
+    const index = sharedPublishedEvents.findIndex((e) => e.event_id === eventId);
+    if (index < 0) return false;
+    sharedPublishedEvents.splice(index, 1);
+    return true;
+  }
+
   static addPublishedEvent(event: EventDetail | EventView): void {
     PublicReadModel.publish(event);
   }
@@ -162,6 +173,13 @@ export class PublicReadModel {
 
   addPublishedEvent(event: EventDetail | EventView): void {
     this.publish(event);
+  }
+
+  /** TG-FR12: instance counterpart of PublicReadModel.withdraw. */
+  withdraw(eventId: string): boolean {
+    const index = this.instancePublishedEvents.findIndex((e) => e.event_id === eventId);
+    if (index >= 0) this.instancePublishedEvents.splice(index, 1);
+    return PublicReadModel.withdraw(eventId) || index >= 0;
   }
 
   getPublishedEvents(): readonly EventDetail[] {
@@ -604,6 +622,11 @@ export function publicEventIdForProposal(proposal: EventProposalDto): string {
   return sanitizeEventId(proposal.incident_id || proposal.proposal_id);
 }
 
+/** TG-FR12: the public claim id of the claim at `index`, the same id proposalToEventDetail publishes. */
+export function publicClaimIdFor(claim: { readonly claim_id?: string | null }, eventId: string, index: number): string {
+  return sanitizeEventId(claim.claim_id || `${eventId}-claim-${index + 1}`);
+}
+
 export function proposalToEventDetail(
   proposal: EventProposalDto,
   _chunks?: readonly StoredEvidenceChunk[],
@@ -673,7 +696,7 @@ export function proposalToEventDetail(
   // MERGE-REVIEW-01: each claim links only to its own source. A claim without a source link lists
   // no source, and no publisher, date or URL is invented.
   const claims: PublicClaim[] = (proposal.claims || []).map((claim, index) => ({
-    claim_id: sanitizeEventId(claim.claim_id || `${eventId}-claim-${index + 1}`),
+    claim_id: publicClaimIdFor(claim, eventId, index),
     text: claim.claim_text || claim.quote_text || "Klaim laporan",
     event_time: {
       start: eventStart,

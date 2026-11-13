@@ -728,3 +728,13 @@
 .moderator-page--queue .review-footer {
   margin-top: var(--space-8);
 }
+
+/* TG-FR12: published-event moderation controls (PublishedEventModeration.tsx). */
+.pem { margin-top: 1.5rem; }
+.pem__note, .pem__summary { color: var(--muted, #555); font-size: 0.9rem; }
+.pem__list { list-style: none; padding: 0; display: grid; gap: 0.75rem; }
+.pem__item { border: 1px solid var(--border, #ccc); border-radius: 8px; padding: 0.75rem; }
+.pem__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
+.pem__form { display: grid; gap: 0.75rem; }
+.pem__form label { display: grid; gap: 0.25rem; }
+.pem__error { color: var(--danger, #b00020); }

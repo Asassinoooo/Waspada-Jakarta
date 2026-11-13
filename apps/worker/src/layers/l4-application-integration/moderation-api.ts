@@ -17,6 +17,10 @@ import {
   type ModeratorAction,
   type ModeratorDataset,
 } from "./moderator-authorization.js";
+import {
+  WITHDRAWAL_REASON_CATEGORIES,
+  type WithdrawalReasonCategory,
+} from "./proposal-publication.js";
 
 /** Evidence labels a moderator may publish with. Anything else is rejected with 400. */
 export const ALLOWED_EVIDENCE_LABELS = ["attributed_report", "crowdsourced_observation"] as const;
@@ -138,6 +142,24 @@ export interface ModerationApiDependencies {
     command: ModeratorDecisionCommand,
     principal: ModerationPrincipal,
   ) => Promise<{ readonly status: "rejected" | "already_decided" | "denied"; readonly code?: string }>;
+  /**
+   * TG-FR12: withdraws a published event. Absent means withdrawal is unavailable (503). Requires
+   * retract_information, which only a moderator or admin holds.
+   */
+  readonly withdrawEvent?: (
+    eventId: string,
+    command: EventWithdrawalCommand,
+    principal: ModerationPrincipal,
+  ) => Promise<EventWithdrawalResult>;
+  /**
+   * TG-FR12: submits a correction to a published event through the moderator gate. Absent means
+   * corrections are unavailable (503). Requires submit_correction.
+   */
+  readonly submitCorrection?: (
+    eventId: string,
+    command: EventCorrectionCommand,
+    principal: ModerationPrincipal,
+  ) => Promise<EventCorrectionResult>;
   /** Account store for the cookie session. Used only when `authenticate` is not supplied. */
   readonly accountStore?: AccountStore;
   readonly authenticate?: (request: Request) => Promise<ModerationPrincipal | null>;
@@ -192,6 +214,55 @@ export interface TriageReviewItem {
 
 export type ModerationApiHandler = (request: Request) => Promise<Response | undefined>;
 
+/** TG-FR12: a validated withdrawal request. `reason` stays internal; the public record shows only the category. */
+export interface EventWithdrawalCommand {
+  readonly reason: string;
+  readonly reason_category: WithdrawalReasonCategory;
+}
+
+/** TG-FR12: a validated correction request. Claim edits name existing public claim ids and change only claim text. */
+export interface EventCorrectionCommand {
+  readonly base_version: number;
+  readonly title?: string;
+  readonly category?: string;
+  readonly event_time?: { readonly precision: "exact" | "date" | "range"; readonly value: string };
+  readonly location_label?: string;
+  readonly claims?: readonly { readonly claim_id: string; readonly claim_text: string }[];
+  readonly reason?: string;
+}
+
+export type EventWithdrawalResult =
+  | {
+    readonly status: "withdrawn";
+    readonly event_id: string;
+    readonly version: number;
+    readonly decision_id: string;
+    readonly withdrawn_at: string;
+    readonly withdrawal_reason: string;
+  }
+  | { readonly status: "already_withdrawn"; readonly event_id: string; readonly version: number }
+  | { readonly status: "not_found" }
+  | { readonly status: "denied"; readonly code: string };
+
+export type EventCorrectionResult =
+  | {
+    readonly status: "published";
+    readonly event_id: string;
+    readonly version: number;
+    readonly proposal_id: string;
+    readonly decision_id: string;
+  }
+  | {
+    readonly status: "unchanged";
+    readonly event_id: string;
+    readonly version: number;
+    readonly proposal_id: string;
+    readonly decision_id: string;
+  }
+  | { readonly status: "refused"; readonly code: string; readonly reasons: readonly string[]; readonly proposal_id?: string }
+  | { readonly status: "invalid"; readonly code: string }
+  | { readonly status: "not_found" };
+
 // ============================================================================
 // Constants & Utilities
 // ============================================================================
@@ -236,6 +307,8 @@ type ParsedModerationRoute =
   | { readonly kind: "publish"; readonly proposalId: string }
   | { readonly kind: "triage-list" }
   | { readonly kind: "triage-review" }
+  | { readonly kind: "withdraw"; readonly eventId: string }
+  | { readonly kind: "correction"; readonly eventId: string }
   | { readonly kind: "method_not_allowed"; readonly allowed: string }
   | { readonly kind: "not_found" };
 
@@ -257,6 +330,15 @@ function parseModerationRoute(pathname: string, method: string): ParsedModeratio
   }
   if (cleanPath === "/api/v1/moderation/triage/review") {
     if (method === "POST") return { kind: "triage-review" };
+    return { kind: "method_not_allowed", allowed: "POST" };
+  }
+  // TG-FR12: withdrawal and correction of a published event.
+  const eventMatch = cleanPath.match(/^\/api\/v1\/moderation\/events\/([^/]+)\/(withdraw|corrections)$/);
+  if (eventMatch) {
+    const eventId = decodeURIComponent(eventMatch[1]!);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(eventId)) return { kind: "not_found" };
+    const kind = eventMatch[2] === "withdraw" ? "withdraw" : "correction";
+    if (method === "POST") return { kind, eventId };
     return { kind: "method_not_allowed", allowed: "POST" };
   }
   const match = cleanPath.match(/^\/api\/v1\/moderation\/proposals\/([^/]+)(?:\/([^/]+))?$/);
@@ -461,6 +543,150 @@ async function fetchProposalDetail(
 }
 
 // ============================================================================
+// TG-FR12: withdrawal and correction request checks
+// ============================================================================
+
+type BodyCheck<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly code: string; readonly message: string };
+
+function invalidBody(code: string, message: string): { readonly ok: false; readonly code: string; readonly message: string } {
+  return { ok: false, code, message };
+}
+
+function checkWithdrawalBody(body: Record<string, unknown>): BodyCheck<EventWithdrawalCommand> {
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (reason.length < 10 || reason.length > 500) {
+    return invalidBody("INVALID_REASON", "reason must be 10 to 500 characters");
+  }
+  const category = body.reason_category;
+  if (typeof category !== "string" || !(WITHDRAWAL_REASON_CATEGORIES as readonly string[]).includes(category)) {
+    return invalidBody("INVALID_REASON_CATEGORY", "reason_category must be one of the contract withdrawal reasons");
+  }
+  return { ok: true, value: { reason, reason_category: category as WithdrawalReasonCategory } };
+}
+
+function checkCorrectionBody(body: Record<string, unknown>): BodyCheck<EventCorrectionCommand> {
+  const baseVersion = body.base_version;
+  if (typeof baseVersion !== "number" || !Number.isInteger(baseVersion) || baseVersion < 1) {
+    return invalidBody("INVALID_BASE_VERSION", "base_version must be the integer version being corrected");
+  }
+
+  let title: string | undefined;
+  if (body.title !== undefined) {
+    const value = typeof body.title === "string" ? body.title.trim() : "";
+    if (value.length < 3 || value.length > 240) return invalidBody("INVALID_TITLE", "title must be 3 to 240 characters");
+    title = value;
+  }
+
+  let category: string | undefined;
+  if (body.category !== undefined) {
+    if (typeof body.category !== "string" || !isOfficialIncidentCategory(body.category)) {
+      return invalidBody("INVALID_CATEGORY", "category must be an official incident category");
+    }
+    category = body.category;
+  }
+
+  let locationLabel: string | undefined;
+  if (body.location_label !== undefined) {
+    const value = typeof body.location_label === "string" ? body.location_label.trim() : "";
+    if (value.length < 1 || value.length > 200) return invalidBody("INVALID_LOCATION", "location_label must be 1 to 200 characters");
+    locationLabel = value;
+  }
+
+  let eventTime: { readonly precision: "exact" | "date" | "range"; readonly value: string } | undefined;
+  if (body.event_time !== undefined) {
+    const raw = body.event_time as Record<string, unknown> | null;
+    const precision = raw && typeof raw === "object" ? raw.precision : undefined;
+    const value = raw && typeof raw === "object" ? raw.value : undefined;
+    if (
+      precision !== "exact" && precision !== "date" && precision !== "range"
+      || typeof value !== "string"
+      || !Number.isFinite(Date.parse(value))
+    ) {
+      return invalidBody("INVALID_EVENT_TIME", "event_time needs a precision of exact, date or range and a parseable value");
+    }
+    eventTime = { precision, value };
+  }
+
+  let claims: { readonly claim_id: string; readonly claim_text: string }[] | undefined;
+  if (body.claims !== undefined) {
+    if (!Array.isArray(body.claims) || body.claims.length > 50) {
+      return invalidBody("INVALID_CLAIMS", "claims must be a list of at most 50 claim edits");
+    }
+    const parsed: { claim_id: string; claim_text: string }[] = [];
+    for (const item of body.claims) {
+      const edit = item as Record<string, unknown> | null;
+      const text = edit && typeof edit === "object" && typeof edit.claim_text === "string" ? edit.claim_text.trim() : "";
+      if (
+        !edit || typeof edit !== "object"
+        || typeof edit.claim_id !== "string" || edit.claim_id.length === 0 || edit.claim_id.length > 128
+        || text.length === 0 || text.length > 500
+      ) {
+        return invalidBody("INVALID_CLAIMS", "each claim edit needs a claim_id and a claim_text of 1 to 500 characters");
+      }
+      parsed.push({ claim_id: edit.claim_id, claim_text: text });
+    }
+    claims = parsed;
+  }
+
+  let reason: string | undefined;
+  if (body.reason !== undefined) {
+    const value = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (value.length < 10 || value.length > 500) return invalidBody("INVALID_REASON", "reason must be 10 to 500 characters when given");
+    reason = value;
+  }
+
+  return {
+    ok: true,
+    value: {
+      base_version: baseVersion,
+      ...(title !== undefined ? { title } : {}),
+      ...(category !== undefined ? { category } : {}),
+      ...(locationLabel !== undefined ? { location_label: locationLabel } : {}),
+      ...(eventTime !== undefined ? { event_time: eventTime } : {}),
+      ...(claims !== undefined ? { claims } : {}),
+      ...(reason !== undefined ? { reason } : {}),
+    },
+  };
+}
+
+function withdrawalResponse(result: EventWithdrawalResult): Response {
+  if (result.status === "withdrawn") return jsonResponse({ ok: true, ...result }, 200);
+  if (result.status === "already_withdrawn") {
+    return apiError("ALREADY_WITHDRAWN", `Event ${result.event_id} is already withdrawn`, 409);
+  }
+  if (result.status === "not_found") return apiError("EVENT_NOT_FOUND", "The event has no published version", 404);
+  return apiError("WITHDRAWAL_FAILED", "The withdrawal could not be recorded", 502);
+}
+
+function correctionResponse(result: EventCorrectionResult): Response {
+  if (result.status === "published" || result.status === "unchanged") return jsonResponse({ ok: true, ...result }, 200);
+  if (result.status === "not_found") return apiError("EVENT_NOT_FOUND", "The event has no published version", 404);
+  if (result.status === "invalid") {
+    return apiError("CLAIM_NOT_FOUND", "A claim_id does not name a claim of this event", 400);
+  }
+  if (result.code === "stale_base_version") {
+    return apiError("STALE_BASE_VERSION", "The event changed since base_version; reload it and try again", 409);
+  }
+  if (result.code === "event_withdrawn") return apiError("EVENT_WITHDRAWN", "A withdrawn event cannot be corrected", 409);
+  if (result.code === "investigation_stopped_for_review") {
+    return apiError("INVESTIGATION_STOPPED_FOR_REVIEW", "The linked case must be resolved before the event is corrected", 409);
+  }
+  if (result.code === "publication_failed") return apiError("CORRECTION_FAILED", "The correction could not be recorded", 502);
+  return jsonResponse(
+    {
+      code: "CORRECTION_NOT_PUBLISHABLE",
+      message: "The correction did not pass the publication gate and nothing was published",
+      reasons: [...result.reasons],
+      proposal_id: result.proposal_id ?? null,
+      request_id: crypto.randomUUID(),
+    },
+    422,
+  );
+}
+
+// ============================================================================
 // Main Factory
 // ============================================================================
 
@@ -497,12 +723,58 @@ export function createModerationApiHandler(
     // Authentication and role authorization required on all moderation endpoints.
     // Publication is a stronger action than evidence review, so it is decided separately.
     const principal = await resolvePrincipal(request, dependencies);
-    const action: ModeratorAction = route.kind === "publish" ? "approve_publication" : "review_evidence";
+    const action: ModeratorAction = route.kind === "publish"
+      ? "approve_publication"
+      : route.kind === "withdraw"
+        ? "retract_information"
+        : route.kind === "correction"
+          ? "submit_correction"
+          : "review_evidence";
     const authResult = checkAuthorization(principal, action, dependencies);
     if (!authResult.authorized) {
       return apiError(authResult.code, authResult.message, authResult.status);
     }
     const currentPrincipal = authResult.principal;
+
+    // TG-FR12: withdrawal and correction of a published event. Order: CSRF, then the configured writer, then the
+    // body. Nothing is written before the request has passed each check.
+    if (route.kind === "withdraw" || route.kind === "correction") {
+      const csrfCheck = checkCsrf(request, currentPrincipal, dependencies);
+      if (!csrfCheck.valid) {
+        return apiError(csrfCheck.code, csrfCheck.message, csrfCheck.status);
+      }
+      const withdrawEvent = dependencies.withdrawEvent;
+      const submitCorrection = dependencies.submitCorrection;
+      if (route.kind === "withdraw" && !withdrawEvent) {
+        return apiError("WITHDRAWAL_UNAVAILABLE", "Event withdrawal is not configured", 503);
+      }
+      if (route.kind === "correction" && !submitCorrection) {
+        return apiError("CORRECTION_UNAVAILABLE", "Event correction is not configured", 503);
+      }
+      let body: Record<string, unknown>;
+      try {
+        const rawText = await request.text();
+        const parsed: unknown = rawText.trim().length > 0 ? JSON.parse(rawText) : {};
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          return apiError("INVALID_JSON", "Request body must be a JSON object", 400);
+        }
+        body = parsed as Record<string, unknown>;
+      } catch {
+        return apiError("INVALID_JSON", "Malformed JSON payload", 400);
+      }
+      try {
+        if (route.kind === "withdraw") {
+          const checked = checkWithdrawalBody(body);
+          if (!checked.ok) return apiError(checked.code, checked.message, 400);
+          return withdrawalResponse(await withdrawEvent!(route.eventId, checked.value, currentPrincipal));
+        }
+        const checked = checkCorrectionBody(body);
+        if (!checked.ok) return apiError(checked.code, checked.message, 400);
+        return correctionResponse(await submitCorrection!(route.eventId, checked.value, currentPrincipal));
+      } catch {
+        return apiError("EVENT_ACTION_FAILED", "The event action could not be completed", 500);
+      }
+    }
 
     // 1. GET /api/v1/moderation/proposals
     if (route.kind === "list") {

@@ -444,6 +444,74 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/DomainRejected' }
         default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/events/{event_id}/withdraw:
+    post:
+      tags: [Moderation]
+      operationId: withdrawPublishedEvent
+      summary: "Withdraw a published event (TG-FR12). Writes a withdrawn tombstone version, a withdraw decision and an audit record. Lifecycle is unchanged; withdrawal is not resolution."
+      security: [{ AccountSessionCookie: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, reason_category]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500, description: "Internal audit reason. Never shown publicly." }
+                reason_category: { type: string, enum: [source_retracted, evidence_ineligible, incorrect_event_match, privacy_removal, duplicate, other] }
+            example: { reason: "Sumber asli menarik kembali laporan ini.", reason_category: source_retracted }
+      responses:
+        '200': { description: "Withdrawn. The event leaves the public list." }
+        '400': { description: "INVALID_REASON or INVALID_REASON_CATEGORY." }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "ALREADY_WITHDRAWN." }
+        '503': { description: "WITHDRAWAL_UNAVAILABLE." }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /moderation/events/{event_id}/corrections:
+    post:
+      tags: [Moderation]
+      operationId: submitEventCorrection
+      summary: "Submit a correction to a published event (TG-FR12). The corrected payload is stored as a proposal linked to the event and passes the moderator gate. A refusal publishes nothing."
+      security: [{ AccountSessionCookie: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base_version]
+              additionalProperties: false
+              properties:
+                base_version: { type: integer, minimum: 1, description: "The public version being corrected. A stale value is refused with 409." }
+                title: { type: string, minLength: 3, maxLength: 240 }
+                category: { type: string, description: "One of the ten official incident categories." }
+                event_time: { type: object, required: [precision, value], properties: { precision: { type: string, enum: [exact, date, range] }, value: { type: string, format: date-time } } }
+                location_label: { type: string, minLength: 1, maxLength: 200 }
+                claims: { type: array, maxItems: 50, description: "Edits the text of existing claims only. Quotes, sources and evidence are unchanged.", items: { type: object, required: [claim_id, claim_text], properties: { claim_id: { type: string }, claim_text: { type: string, minLength: 1, maxLength: 500 } } } }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+            example: { base_version: 1, title: "Banjir 50 cm di Kemang Raya" }
+      responses:
+        '200': { description: "Published as a new version (status published), or identical facts (status unchanged, no new version)." }
+        '400': { description: "INVALID_* body check, or CLAIM_NOT_FOUND." }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "STALE_BASE_VERSION, EVENT_WITHDRAWN or INVESTIGATION_STOPPED_FOR_REVIEW." }
+        '422': { description: "CORRECTION_NOT_PUBLISHABLE with reasons (gate refusal; nothing published)." }
+        '503': { description: "CORRECTION_UNAVAILABLE." }
+        default: { $ref: '#/components/responses/UnexpectedError' }
   /moderation/sources/{source_id}/approval:
     put:
       tags: [Moderation]

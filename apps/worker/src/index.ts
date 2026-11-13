@@ -20,7 +20,12 @@ import { createContextSourcesHandler } from "./layers/l4-application-integration
 import { handleAccountRequest, type AccountRuntimeConfig } from "./runtime/account-runtime.js";
 import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
 import { createSourceApprovalApiHandler, isSourceApprovalPath } from "./layers/l4-application-integration/source-approval-api.js";
-import { AGENT_AUTO_PUBLISHER_ID, decideProposal } from "./layers/l4-application-integration/proposal-publication.js";
+import {
+  AGENT_AUTO_PUBLISHER_ID,
+  decideProposal,
+  submitEventCorrection,
+  withdrawPublishedEvent,
+} from "./layers/l4-application-integration/proposal-publication.js";
 import { parseAutoPublishSourcePermission } from "./layers/l4-application-integration/publication-policy.js";
 import { moderationAccountConfig, moderatorSurfaceDenial, readModeratorPrincipal } from "./runtime/moderator-session.js";
 import { checkServiceKey } from "./security/service-key.js";
@@ -288,6 +293,90 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       if (outcome.status === "rejected") return { status: "rejected" };
       if (outcome.status === "already_decided") return { status: "already_decided" };
       return { status: "denied", code: outcome.status === "denied" ? outcome.code : "publication_failed" };
+    },
+    // TG-FR12: a moderator withdraws a published event. One transaction writes the withdrawn version, its decision and
+    // its audit record. Public reads drop the event on their own, and the in-memory model drops it after COMMIT.
+    withdrawEvent: async (eventId: string, command, principal) => {
+      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+        return { status: "denied", code: "withdrawal_failed" };
+      }
+      const outcome = await withSqlExecutor(env, (executor) => withdrawPublishedEvent(
+        {
+          executor,
+          datasetKind: datasetKind as "live" | "historical" | "synthetic",
+          checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
+        },
+        {
+          eventId,
+          actorId: principal.actorId,
+          reasonCategory: command.reason_category,
+          reason: command.reason,
+        },
+      ));
+      if (outcome.status === "withdrawn") {
+        eventBroadcaster.broadcastPublic("event_withdrawn", { event_id: outcome.eventId, version: outcome.version });
+        eventBroadcaster.broadcastModeration("event_withdrawn", { event_id: outcome.eventId, version: outcome.version });
+        return {
+          status: "withdrawn",
+          event_id: outcome.eventId,
+          version: outcome.version,
+          decision_id: outcome.decisionId,
+          withdrawn_at: outcome.withdrawnAt,
+          withdrawal_reason: outcome.reasonCategory,
+        };
+      }
+      if (outcome.status === "already_withdrawn") {
+        return { status: "already_withdrawn", event_id: outcome.eventId, version: outcome.version };
+      }
+      if (outcome.code === "event_not_found") return { status: "not_found" };
+      return { status: "denied", code: outcome.code };
+    },
+    // TG-FR12: a moderator correction is a stored proposal decided through the same gate, with the moderator
+    // gate (time and source checks) applied. A refusal publishes nothing and is returned with its reasons.
+    submitCorrection: async (eventId: string, command, principal) => {
+      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+        return { status: "refused", code: "publication_failed", reasons: [] };
+      }
+      const outcome = await withSqlExecutor(env, (executor) => submitEventCorrection(
+        {
+          executor,
+          datasetKind: datasetKind as "live" | "historical" | "synthetic",
+          checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
+        },
+        {
+          eventId,
+          baseVersion: command.base_version,
+          actorId: principal.actorId,
+          edits: {
+            ...(command.title !== undefined ? { title: command.title } : {}),
+            ...(command.category !== undefined ? { category: command.category } : {}),
+            ...(command.event_time !== undefined ? { eventTime: command.event_time } : {}),
+            ...(command.location_label !== undefined ? { locationLabel: command.location_label } : {}),
+            ...(command.claims !== undefined
+              ? { claims: command.claims.map((edit) => ({ claimId: edit.claim_id, text: edit.claim_text })) }
+              : {}),
+          },
+          reason: command.reason ?? null,
+        },
+      ));
+      if (outcome.status === "published" || outcome.status === "unchanged") {
+        if (outcome.status === "published") {
+          eventBroadcaster.broadcastPublic("event_updated", { event_id: outcome.eventId, version: outcome.version });
+        }
+        return {
+          status: outcome.status,
+          event_id: outcome.eventId,
+          version: outcome.version,
+          proposal_id: outcome.proposalId,
+          decision_id: outcome.decisionId,
+        };
+      }
+      if (outcome.status === "invalid") return { status: "invalid", code: outcome.code };
+      if (outcome.status === "refused" && outcome.code === "event_not_found") return { status: "not_found" };
+      if (outcome.status === "refused") {
+        return { status: "refused", code: outcome.code, reasons: [...outcome.reasons], proposal_id: outcome.proposalId };
+      }
+      return { status: "refused", code: "publication_failed", reasons: [] };
     },
     // MERGE-REVIEW-01: moderator publication uses the same writer and gate as the agent auto-publisher.
     publisher: {

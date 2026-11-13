@@ -17,6 +17,7 @@ import { nextThemePreference, setThemePreference, THEME_LABEL, useThemePreferenc
 import { Menu, type MenuItem } from "./ui/Menu.js";
 import { Popover } from "./ui/Popover.js";
 import { TabPanel, Tabs, type TabItem } from "./ui/Tabs.js";
+import { PublishedEventModeration } from "./PublishedEventModeration.js";
 
 // Each heavy tab loads only when it opens: three.js with the embedding view, @xyflow/react with the flow,
 // and the source map with the demo source tab. Akun is already part of the main chunk through AccountPages.
@@ -113,7 +114,12 @@ export function AdminWorkspace({ initialTab, session, context, isNarrowScreen, o
       case "ringkasan":
         return <Suspense fallback={<TabLoading label="Memuat ringkasan…" />}><AdminDashboard /></Suspense>;
       case "tinjau":
-        return <Suspense fallback={<TabLoading label="Memuat tinjau bukti…" />}><ModeratorReview /></Suspense>;
+        return (
+          <>
+            <Suspense fallback={<TabLoading label="Memuat tinjau bukti…" />}><ModeratorReview /></Suspense>
+            <PublishedEventModeration />
+          </>
+        );
       case "alur":
         return <Suspense fallback={<TabLoading label="Memuat alur agen…" />}><PipelineFlow /></Suspense>;
       case "embedding":
