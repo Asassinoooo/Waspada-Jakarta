@@ -75,11 +75,11 @@ test("admin sees six tabs, moderators see three, and users, inactive accounts an
 
 test("the workspace renders the admin rail with six tabs and the moderator rail without admin-only tabs", () => {
   const admin = renderToStaticMarkup(<AdminWorkspace initialTab="ringkasan" session={adminSession} context={demoContext} isNarrowScreen={false} onRefreshSession={() => {}} />);
-  assert.deepEqual(tabLabels(admin), ["Ringkasan", "Tinjau bukti", "Alur agen", "Embedding 3D", "Akun & peran", "Demo sumber"]);
+  assert.deepEqual(tabLabels(admin), ["Ringkasan", "Tinjau bukti", "Alur agen", "Embedding 3D", "Akun & peran", "Sumber"]);
 
   const moderator = renderToStaticMarkup(<AdminWorkspace initialTab="tinjau" session={moderatorSession} context={demoContext} isNarrowScreen={false} onRefreshSession={() => {}} />);
   assert.deepEqual(tabLabels(moderator), ["Tinjau bukti", "Alur agen", "Embedding 3D"]);
-  assert.doesNotMatch(moderator, /Akun &amp; peran|Demo sumber/u, "admin-only tabs are not rendered for a moderator");
+  assert.doesNotMatch(moderator, /Akun &amp; peran|admin-tab-sumber/u, "admin-only tabs are not rendered for a moderator");
   assert.doesNotMatch(moderator, /id="admin-panel-akun"|id="admin-panel-sumber"|id="admin-panel-ringkasan"/u);
 });
 
@@ -114,7 +114,7 @@ test("a hidden tab falls back to the first tab the viewer may open", () => {
 
   const markup = renderToStaticMarkup(<AdminWorkspace initialTab="sumber" session={moderatorSession} context={null} isNarrowScreen={false} onRefreshSession={() => {}} />);
   assert.match(tabButton(markup, "tinjau"), /aria-selected="true"/u, "a moderator who lands on #admin/sumber opens Tinjau bukti");
-  assert.doesNotMatch(markup, /Demo sumber/u);
+  assert.doesNotMatch(markup, /admin-tab-sumber/u);
 });
 
 test("the workspace renders nothing for users and anonymous visitors, so no tab is ever mounted for them", () => {
@@ -134,7 +134,7 @@ test("users and anonymous visitors get the access gate, with administrator wordi
 
   const forbidden = renderToStaticMarkup(<AccountAccessGate shell={adminGateShell("ringkasan")} sessionState={signedIn} isNarrowScreen={true} onRefreshSession={() => {}} />);
   assert.match(forbidden, /Akses tidak tersedia/u);
-  assert.doesNotMatch(forbidden, /Buka di layar|Demo sumber|Alur agen/u);
+  assert.doesNotMatch(forbidden, /Buka di layar|admin-tab-sumber|Alur agen/u);
 });
 
 test("legacy and canonical admin hashes open the workspace on the matching tab", () => {

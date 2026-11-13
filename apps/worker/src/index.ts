@@ -19,6 +19,7 @@ import { createSourcePreviewHandler } from "./layers/l4-application-integration/
 import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
 import { handleAccountRequest, type AccountRuntimeConfig } from "./runtime/account-runtime.js";
 import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
+import { createSourceApprovalApiHandler, isSourceApprovalPath } from "./layers/l4-application-integration/source-approval-api.js";
 import { AGENT_AUTO_PUBLISHER_ID, decideProposal } from "./layers/l4-application-integration/proposal-publication.js";
 import { parseAutoPublishSourcePermission } from "./layers/l4-application-integration/publication-policy.js";
 import { moderationAccountConfig, moderatorSurfaceDenial, readModeratorPrincipal } from "./runtime/moderator-session.js";
@@ -38,6 +39,7 @@ import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-dat
 import { withPostgresSqlExecutor, withPostgresTransactionalSqlExecutor } from "../../db/src/postgres-sql-executor.js";
 import { createSqlIncidentRepository } from "../../db/src/incident-repository.js";
 import { createEventProposalWriter } from "../../db/src/event-proposal-writer.js";
+import { createSourceApprovalStore } from "../../db/src/source-approval-store.js";
 import type { DatasetKind } from "../../db/src/ports.js";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js";
 const sourcePreviewHandler = createSourcePreviewHandler({ incremental: true });
@@ -161,6 +163,20 @@ async function checkSourcePublicDisplay(env: WorkerEnvironment, sourceId: string
   } catch {
     return false;
   }
+}
+
+/**
+ * FR-12 admin source approval (TEST-GAP-02 / T10b): administrators only. Registry writes run on the same
+ * server-selected database path as moderator publication, in one transaction with the trace and audit row.
+ */
+function getSourceApprovalHandler(env: WorkerEnvironment, config: AccountRuntimeConfig) {
+  const datasetKind = config.datasetKind as DatasetKind;
+  return createSourceApprovalApiHandler({
+    authenticate: (request: Request) => readModeratorPrincipal(request, config),
+    withStore: (work) => withTransactionalSqlExecutor(env, (executor) => work(createSourceApprovalStore(executor, datasetKind))),
+    appOrigin: config.appOrigin,
+    datasetScope: config.datasetKind,
+  });
 }
 
 function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConfig) {
@@ -528,6 +544,17 @@ export default {
       try {
         const modRes = await getModerationHandler(env, config)(request);
         if (modRes !== undefined) return modRes;
+      } catch {
+        return unavailableJson();
+      }
+    }
+    if (isSourceApprovalPath(url.pathname)) {
+      // Source approval is administrator-only and never falls back to open access.
+      const config = moderationAccountConfig(env);
+      if (!config) return unavailableJson();
+      try {
+        const sourceRes = await getSourceApprovalHandler(env, config)(request);
+        if (sourceRes !== undefined) return sourceRes;
       } catch {
         return unavailableJson();
       }

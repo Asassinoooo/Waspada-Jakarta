@@ -28,7 +28,7 @@ export const ADMIN_TAB_DEFINITIONS: readonly AdminTabDefinition[] = [
   { id: "alur", label: "Alur agen", title: "Alur agen dari sumber sampai terbit", access: "moderator" },
   { id: "embedding", label: "Embedding 3D", title: "Peta embedding 3D", access: "moderator" },
   { id: "akun", label: "Akun & peran", title: "Akun dan peran pengguna", access: "admin" },
-  { id: "sumber", label: "Demo sumber", title: "Pratinjau sumber (demo)", access: "admin" },
+  { id: "sumber", label: "Sumber", title: "Persetujuan dan pratinjau sumber", access: "admin" },
 ];
 
 /** Tabs whose canvas needs a wide screen. Below 900px they show an empty state instead. */

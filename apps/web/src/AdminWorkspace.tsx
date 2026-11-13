@@ -121,7 +121,7 @@ export function AdminWorkspace({ initialTab, session, context, isNarrowScreen, o
       case "akun":
         return <AdminAccountsPanel session={session} onRefreshSession={onRefreshSession} />;
       case "sumber":
-        return <Suspense fallback={<TabLoading label="Memuat demo sumber…" />}><AdminSourceTab datasetMode={context?.dataset_mode ?? null} canRequestProviderFetch={providerFetchAllowed(session)} /></Suspense>;
+        return <Suspense fallback={<TabLoading label="Memuat sumber…" />}><AdminSourceTab datasetMode={context?.dataset_mode ?? null} canRequestProviderFetch={providerFetchAllowed(session)} session={session} /></Suspense>;
     }
   }
 

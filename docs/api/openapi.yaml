@@ -16,6 +16,7 @@ tags:
   - name: Public
   - name: Account session
   - name: Moderation
+  - name: Admin
 paths:
   /context:
     get:
@@ -481,6 +482,61 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/DomainRejected' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /admin/sources:
+    get:
+      tags: [Admin]
+      operationId: listAdminSources
+      summary: Read the source registry with approval and collection state (administrator only)
+      description: >
+        Registered Worker route. Only an active administrator passes; moderators receive 403. Public display
+        is reported from the existing permission model. Approval alone does not grant it.
+      security: [{ AccountSessionCookie: [] }]
+      responses:
+        '200':
+          description: Registry sources for the deployment-selected dataset
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSourceList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /admin/sources/{source_id}/approval:
+    post:
+      tags: [Admin]
+      operationId: setAdminSourceApproval
+      summary: Approve or revoke a registry source (administrator only)
+      description: >
+        Registered Worker route. Writes the registry approval status, a request trace and one audit row in one
+        transaction. Approval does not start collection and does not grant public display. Revocation also turns
+        automatic collection off and sets the auto-publication policy to never, because the existing registry
+        constraints require it. Revocation does not withdraw published events. Repeating the current status returns 409.
+        This route is the registered counterpart of the unregistered proposal at /moderation/sources/{source_id}/approval.
+      security: [{ AccountSessionCookie: [] }]
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminSourceApprovalRequest' }
+            example: { status: approved, note: Syarat penggunaan sudah diperiksa ulang. }
+      responses:
+        '200':
+          description: Updated registry state and the audit row written with it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSourceApprovalResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         default: { $ref: '#/components/responses/UnexpectedError' }
   /pipeline/flow:
     get:
@@ -1262,4 +1318,42 @@ components:
         source_id: { type: string }
         registry_version: { type: integer, minimum: 1 }
         approval_status: { type: string, enum: [approved, suspended, revoked] }
+        audit_id: { type: string }
+    AdminSourceItem:
+      type: object
+      additionalProperties: false
+      required: [source_id, display_name, source_kind, access_method, registry_status, approval_status, auto_acquisition_enabled, auto_publication_policy, public_display_granted]
+      properties:
+        source_id: { type: string, maxLength: 200 }
+        display_name: { type: string, maxLength: 200 }
+        source_kind: { type: string }
+        access_method: { type: string }
+        registry_status: { type: string, enum: [active, paused, retired] }
+        approval_status: { type: string, enum: [pending, approved, suspended, revoked] }
+        auto_acquisition_enabled: { type: boolean }
+        auto_publication_policy: { type: string, enum: [never, approved_issuer_notice] }
+        public_display_granted: { type: boolean, description: 'Result of the existing permission model. Not a stored flag.' }
+    AdminSourceList:
+      type: object
+      additionalProperties: false
+      required: [sources]
+      properties:
+        sources:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/AdminSourceItem' }
+    AdminSourceApprovalRequest:
+      type: object
+      additionalProperties: false
+      required: [status, note]
+      properties:
+        status: { type: string, enum: [approved, revoked] }
+        note: { type: string, minLength: 10, maxLength: 500, description: Trimmed by the server before the length check. }
+    AdminSourceApprovalResponse:
+      type: object
+      additionalProperties: false
+      required: [source, previous_approval_status, audit_id]
+      properties:
+        source: { $ref: '#/components/schemas/AdminSourceItem' }
+        previous_approval_status: { type: string, enum: [pending, approved, suspended, revoked] }
         audit_id: { type: string }
