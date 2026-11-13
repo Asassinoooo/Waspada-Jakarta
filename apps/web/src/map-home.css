@@ -80,7 +80,7 @@
 
 /* ---- Map canvas: full stage, not a card ---- */
 
-.map-home .map-canvas {
+.map-home .event-map-canvas {
   position: absolute;
   inset: 0;
   width: auto;
@@ -88,6 +88,14 @@
   border: 0;
   border-radius: 0;
   background: var(--color-surface-sunken);
+  touch-action: none;
+}
+
+/* Tiles sit at exact pixel positions; stop the browser treating them as images to drag or select. */
+.map-home .map-tile-img {
+  max-width: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .map-home .map-attribution {
