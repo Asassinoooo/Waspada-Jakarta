@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "concurrently --kill-others --names web,worker --prefix-colors cyan,magenta \"npm run dev --workspace=@waspada/web\" \"npm run dev --workspace=@waspada/worker\"",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json && tsc --noEmit -p tools/ai/tsconfig.json && tsc --noEmit -p tools/local-pipeline/tsconfig.json && tsc --noEmit -p tools/accounts/tsconfig.json && tsc --noEmit -p tools/e2e/tsconfig.json",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tools/evaluation/tsconfig.json && tsc --noEmit -p tools/ai/tsconfig.json && tsc --noEmit -p tools/local-pipeline/tsconfig.json && tsc --noEmit -p tools/accounts/tsconfig.json && tsc --noEmit -p tools/e2e/tsconfig.json && tsc --noEmit -p tools/perf/tsconfig.json",
     "test": "npm run test --workspaces --if-present && tsx --test tools/evaluation/casebook.test.ts tools/evaluation/casebook-cli.test.ts tools/ai/ninerouter-smoke.test.ts tools/ai/ninerouter-cli.test.ts tools/ai/extraction-probe.test.ts tools/live-db-lock.test.ts tools/live-db-restore.test.ts && npm run pipeline:test && npm run accounts:test",
     "intelligence:dev": "tsx apps/intelligence/src/worker.ts",
     "test:intelligence": "npm run test --workspace=@waspada/intelligence",
@@ -26,6 +26,7 @@
     "accounts:seed-admin": "node --env-file-if-exists=.env.local --import tsx tools/accounts/seed-admin.ts",
     "ai:smoke": "tsx tools/ai/run-ninerouter-smoke.ts",
     "ai:smoke:live": "node --env-file=.env.local --import tsx tools/ai/run-ninerouter-smoke.ts --live",
+    "perf:test": "tsx tools/perf/http-reads.ts",
     "eval:casebook": "tsx tools/evaluation/casebook-cli.ts",
     "eval:det-shadow": "tsx tools/evaluation/det-filter-shadow-eval.ts",
     "db:test": "npm run test --workspace=@waspada/db",
