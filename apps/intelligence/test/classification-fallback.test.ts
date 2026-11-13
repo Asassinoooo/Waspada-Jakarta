@@ -241,11 +241,12 @@ describe("WJ-INT-01C: AI-First Classification and Safe Fallback Architecture", (
       traceId,
     });
 
-    // AI outputs low confidence, unknown location, null coordinates, unknown event time
+    // AI outputs low confidence, unknown location, null coordinates, unknown event time.
+    // Severity is low|medium|high only: torn between levels the rubric takes the lower one.
     const uncertainInterpreter = createMockInterpreterAgent({
       summary: "Genangan air dilaporkan di lokasi yang belum spesifik",
       incidentType: "genangan_air",
-      severity: "unknown",
+      severity: "low",
       primaryCategory: "disasters_weather",
       location: {
         label: null,
@@ -279,7 +280,7 @@ describe("WJ-INT-01C: AI-First Classification and Safe Fallback Architecture", (
     const incident = await incidentRepo.getIncidentForReport("synthetic", revisionId);
     assert.ok(incident);
     assert.equal(incident.status, "investigating");
-    assert.equal(incident.severity, "unknown");
+    assert.equal(incident.severity, "low");
     assert.equal(incident.coordinates, null);
     assert.equal(incident.locationLabel, null);
     assert.ok(incident.uncertaintyNotes.length >= 2);

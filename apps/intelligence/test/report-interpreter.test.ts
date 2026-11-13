@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { Agent } from "@mastra/core/agent";
 import {
+  REPORT_INTERPRETER_INSTRUCTIONS,
   ReportInterpretationSchema,
+  ReportModelSeveritySchema,
   interpretReport,
+  normalizeReportSeverity,
   type InterpretReportInput,
+  type ReportSeverity,
 } from "../src/agents/report-interpretation-agent.js";
 import { createMockInterpreterAgent, createFailingAgent } from "./mock-agents.js";
 
@@ -122,5 +127,98 @@ describe("Mastra Report Interpretation Agent", () => {
       },
       /model timeout/,
     );
+  });
+});
+
+describe("Severity rubric: the model answers low, medium or high", () => {
+  /** Fake interpreter: records each prompt it receives and answers with the given object as JSON. */
+  function answerAgent(answer: Record<string, unknown>, prompts: string[] = []): Agent {
+    return {
+      generate: async (prompt: string) => {
+        prompts.push(prompt);
+        return { text: JSON.stringify(answer) };
+      },
+    } as unknown as Agent;
+  }
+
+  // A complete answer with no severity key. Tests add the severity they need.
+  const VALID_ANSWER = {
+    summary: "Genangan air di Jalan Kemang Raya akibat hujan deras",
+    incidentType: "genangan air luapan drainase",
+    primaryCategory: "disasters_weather",
+    location: { label: null, approximateCoordinates: null, precision: "unknown" },
+    eventTime: { value: null, precision: "unknown" },
+    entities: [],
+    impacts: [],
+    operationalStatus: "active",
+    evidence: [],
+    conflictingInfo: [],
+    uncertaintyNotes: [],
+    confidence: "medium",
+  };
+
+  const sampleInput: InterpretReportInput = {
+    reportRevisionId: "rev-severity-01",
+    reportText: "Hujan deras sejak siang menyebabkan genangan air di Jalan Kemang Raya.",
+    sourceKind: "rss",
+    sourceDisplayName: "Fixture News",
+    evidenceChunks: [],
+  };
+
+  it("the output template offers the model exactly low, medium and high for severity", async () => {
+    assert.deepEqual([...ReportModelSeveritySchema.options], ["low", "medium", "high"]);
+    const prompts: string[] = [];
+    await interpretReport(sampleInput, { agent: answerAgent({ ...VALID_ANSWER, severity: "low" }, prompts) });
+    const severityLine = prompts[0]!.split("\n").find((line) => line.trim().startsWith('"severity"'));
+    assert.equal(severityLine?.trim(), '"severity": "low"|"medium"|"high",');
+  });
+
+  it("the rubric names the reported facts for each level and rules out critical and unknown as choices", () => {
+    const rubric = REPORT_INTERPRETER_INSTRUCTIONS;
+    const levels: Record<"high" | "medium" | "low", string[]> = {
+      high: ["deaths or injuries", "evacuation", "70 cm", "riot", "collapse", "KRL/MRT/LRT", "toll road"],
+      medium: ["road partly closed", "heavy congestion", "10-70 cm", "demonstration blocking roads", "transit delays", "power or water outage", "contained fire"],
+      low: ["brief delay", "small fire already extinguished", "foiled tawuran", "light water pooling", "stalled vehicle"],
+    };
+    for (const [level, keywords] of Object.entries(levels)) {
+      assert.ok(rubric.includes(`- ${level}: `), `the rubric has a ${level} line`);
+      for (const keyword of keywords) {
+        assert.ok(rubric.includes(keyword), `the ${level} rubric names "${keyword}"`);
+      }
+    }
+    assert.ok(rubric.includes("Never infer it from the category alone"));
+    assert.ok(rubric.includes("'critical' and 'unknown' are not valid severity values"));
+  });
+
+  it("normalizeReportSeverity keeps low, medium and high, maps critical to high, and falls back to unknown", () => {
+    const cases: Array<readonly [unknown, ReportSeverity]> = [
+      ["low", "low"],
+      [" MEDIUM ", "medium"],
+      ["high", "high"],
+      ["critical", "high"],
+      ["unknown", "unknown"],
+      ["catastrophic", "unknown"],
+      ["", "unknown"],
+      [7, "unknown"],
+      [null, "unknown"],
+      [undefined, "unknown"],
+    ];
+    for (const [raw, expected] of cases) {
+      assert.equal(normalizeReportSeverity(raw), expected, `raw ${JSON.stringify(raw)}`);
+    }
+  });
+
+  it("a model answer goes through the normalizer: critical becomes high, and unknown, invalid or missing becomes unknown", async () => {
+    const cases: Array<readonly [string, unknown, ReportSeverity]> = [
+      ["critical", "critical", "high"],
+      ["unknown", "unknown", "unknown"],
+      ["invalid word", "catastrophic", "unknown"],
+      ["missing key", undefined, "unknown"],
+      ["medium", "medium", "medium"],
+    ];
+    for (const [label, raw, expected] of cases) {
+      const result = await interpretReport(sampleInput, { agent: answerAgent({ ...VALID_ANSWER, severity: raw }) });
+      assert.equal(result.severity, expected, label);
+    }
   });
 });

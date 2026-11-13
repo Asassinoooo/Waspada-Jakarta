@@ -6,10 +6,40 @@ import {
   extractJsonFromText,
 } from "../providers/ninerouter-adapter.js";
 
+/**
+ * The severity levels the model is asked to output (rubric in REPORT_INTERPRETER_INSTRUCTIONS,
+ * step 4). Only these three appear in the prompt's output template.
+ */
+export const REPORT_SEVERITY_MODEL_OPTIONS = ["low", "medium", "high"] as const;
+export const ReportModelSeveritySchema = z.enum(REPORT_SEVERITY_MODEL_OPTIONS);
+
+/**
+ * Downstream severity type. The wider set is kept for the DB CHECK (migration 037), the incident
+ * and proposal types, and the existing fallback paths. A model answer never yields critical or
+ * unknown from the rubric; see normalizeReportSeverity.
+ */
+export const ReportSeveritySchema = z.enum(["low", "medium", "high", "critical", "unknown"]);
+export type ReportSeverity = z.infer<typeof ReportSeveritySchema>;
+
+/**
+ * Maps a raw model value to the downstream severity.
+ * - low, medium or high (case and surrounding spaces ignored) pass through.
+ * - critical becomes high, because the rubric has no critical level.
+ * - anything else (unknown, missing, invalid) becomes unknown. That is the failure fallback, and the
+ *   workflow already treats unknown as "not stated" when it resolves severity.
+ */
+export function normalizeReportSeverity(raw: unknown): ReportSeverity {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : raw;
+  const modelLevel = ReportModelSeveritySchema.safeParse(value);
+  if (modelLevel.success) return modelLevel.data;
+  if (value === "critical") return "high";
+  return "unknown";
+}
+
 export const ReportInterpretationSchema = z.object({
   summary: z.string().min(1),
   incidentType: z.string().min(1),
-  severity: z.enum(["low", "medium", "high", "critical", "unknown"]).default("unknown"),
+  severity: z.preprocess(normalizeReportSeverity, ReportSeveritySchema),
   primaryCategory: z.enum(OFFICIAL_INCIDENT_CATEGORIES),
   location: z.object({
     label: z.string().nullable(),
@@ -75,7 +105,11 @@ Core Principles:
    - health_environmental_advisories: official outbreak notices, significant pollution alerts, contamination warnings.
    - group_specific_critical_notices: critical notices for an identified institution, school, occupation, or community (closures, evacuations).
 3. Event vs impacts: 'primaryCategory' names what happened; 'impacts' names what it affects (e.g. a demonstration causing road_closure/traffic_diversion stays demonstrations_public_gatherings with those impacts — never reclassify as transport merely because it affects traffic). Never create a second incident for one event's effects.
-4. Assess Severity Factual Grounding: Evaluate severity ('low', 'medium', 'high', 'critical', 'unknown') directly from reported threat to human life, severe injury, or critical infrastructure disruption. If severity is not discernible from the text, use 'unknown'. NEVER calculate severity from count of impacts.
+4. Severity Factual Grounding: set 'severity' to exactly one of 'low', 'medium' or 'high', using only facts the report states. Never infer it from the category alone or from the number of impacts.
+   - high: deaths or injuries, a threat to life, a spreading fire or several buildings burnt, evacuation, deep flood (about 70 cm or more, or houses submerged), riot or violent clash, explosion or building collapse, a main transit line (KRL/MRT/LRT) stopped, a toll road or major artery fully closed.
+   - medium: localized disruption affecting many people: road partly closed or blocked, heavy congestion from an accident, flood 10-70 cm, demonstration blocking roads, transit delays, local power or water outage, a contained fire in one building with no victims.
+   - low: minor or contained, no injuries, small area: brief delay, small fire already extinguished, prevented or foiled tawuran, light water pooling, a stalled vehicle that was cleared.
+   - When torn between two levels, choose the lower one and state why in 'uncertaintyNotes'. 'critical' and 'unknown' are not valid severity values. Severity never means an area is safe.
 5. Zero Hallucination: Every entry in the 'evidence' array MUST contain an exact verbatim quote from the text and cite the relevant chunkId. Do not paraphrase in quotes. If no clear factual quote exists, do not invent one.
 6. Spatial Grounding: If coordinates are mentioned or can be reliably identified from known Jakarta corridors (e.g. "Jl. DI Panjaitan Cawang" approx [106.871, -6.244]), provide approximateCoordinates [longitude, latitude]. If ambiguous or unknown, set 'label: null', 'approximateCoordinates: null', and 'precision: "unknown"'. NEVER default unlocated reports to "DKI Jakarta" or default coordinates.
 7. Temporal Grounding: Parse timestamps into ISO-8601 when possible. If only date or time of day is stated, note precision ('date', 'range', 'unknown'). If unstated, set 'value: null' and 'precision: "unknown"'.
@@ -117,6 +151,7 @@ Format your output as a single JSON object with these keys:
   "summary": string,
   "incidentType": string,
   "primaryCategory": ${OFFICIAL_INCIDENT_CATEGORIES.map((slug) => `"${slug}"`).join("|")},
+  "severity": ${REPORT_SEVERITY_MODEL_OPTIONS.map((level) => `"${level}"`).join("|")},
   "location": { "label": string | null, "approximateCoordinates": [number, number] | null, "precision": "exact"|"approximate"|"corridor"|"district"|"unknown" },
   "eventTime": { "value": string | null, "precision": "exact"|"date"|"range"|"unknown" },
   "entities": [{ "name": string, "kind": "person"|"organization"|"vehicle"|"infrastructure"|"other" }],

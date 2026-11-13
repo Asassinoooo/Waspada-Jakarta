@@ -70,6 +70,24 @@ describe("INTEL-02 mock chat model (unit)", () => {
     assert.equal(parsed.location.approximateCoordinates, null, "mock mode never invents coordinates");
   });
 
+  it("the mock interpreter maps report keywords to low, medium or high severity, with high checked first", () => {
+    const severityFor = (reportText: string) => {
+      const prompt = [
+        "=== REPORT TEXT ===",
+        reportText,
+        "",
+        "=== EVIDENCE CHUNKS ===",
+        "",
+        "Format your output as a single JSON object with these keys:",
+      ].join("\n");
+      return ReportInterpretationSchema.parse(JSON.parse(mockChatAnswer("interpreter", prompt))).severity;
+    };
+    assert.equal(severityFor("Satu orang tewas setelah tiang listrik roboh di Jalan Sudirman."), "high");
+    assert.equal(severityFor("Lalu lintas macet parah di Jalan Gatot Subroto."), "medium");
+    assert.equal(severityFor("Kendaraan mogok di Jalan Sudirman sudah diderek ke bengkel."), "low");
+    assert.equal(severityFor("Kebakaran di Jalan Mangga Dua, satu orang tewas."), "high", "a high keyword outranks a medium one");
+  });
+
   it("the correlator answer names the first candidate when one is listed, otherwise a new incident", () => {
     const withCandidate = "[Candidate #1] ID: inc-existing-1 (Similarity Score: 0.912)\nTitle: x";
     const same = IncidentCorrelationSchema.parse(JSON.parse(mockChatAnswer("correlator", withCandidate)));
