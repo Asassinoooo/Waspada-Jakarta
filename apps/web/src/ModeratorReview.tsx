@@ -342,7 +342,6 @@ export async function publishModerationDecision(
   };
   if (options.csrfToken) {
     headers["X-CSRF-Token"] = options.csrfToken;
-    headers["x-csrf-token"] = options.csrfToken;
   }
   const response = await fetchFn(`${base}/proposals/${encodeURIComponent(proposalId)}/publish`, {
     method: "POST",
@@ -416,7 +415,6 @@ export async function markTriageItemReviewed(
   };
   if (options.csrfToken) {
     headers["X-CSRF-Token"] = options.csrfToken;
-    headers["x-csrf-token"] = options.csrfToken;
   }
   const response = await fetchFn(`${base}/triage/review`, {
     method: "POST",
