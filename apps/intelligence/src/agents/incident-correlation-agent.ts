@@ -4,6 +4,7 @@ import {
   createNineRouterMastraAgent,
   extractJsonFromText,
 } from "../providers/ninerouter-adapter.js";
+import { generateWithinBudget } from "./generation-budget.js";
 import type { ReportInterpretation } from "./report-interpretation-agent.js";
 import type { CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
 
@@ -271,7 +272,8 @@ Format your output as a single JSON object with these keys:
 }
 `.trim();
 
-  const response = await agent.generate(prompt);
+  // NFR-02: bounded steps, active time and tokens. See generation-budget.ts.
+  const response = await generateWithinBudget(agent, prompt, INCIDENT_CORRELATOR_INSTRUCTIONS);
   const parsedJson = extractJsonFromText(response.text);
   const correlation = IncidentCorrelationSchema.parse(parsedJson);
   validateCorrelationDecision(correlation, input);

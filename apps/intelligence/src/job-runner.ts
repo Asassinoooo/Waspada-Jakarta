@@ -19,6 +19,7 @@ import {
 import type { z } from "zod";
 type IncidentWorkflowInput = z.infer<typeof IncidentWorkflowInputSchema>;
 import { patchGlobalFetchForNineRouter, type NineRouterConfig } from "./providers/ninerouter-adapter.js";
+import { GENERATION_TOKEN_BUDGET_MARKER } from "./agents/generation-budget.js";
 import { findRateLimitedError } from "../../db/src/ninerouter-rate-gate.js";
 import { Agent } from "@mastra/core/agent";
 
@@ -53,6 +54,11 @@ export function classifyJobError(err: unknown): string {
   const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
   if (/\b429\b|rate[ _-]?limit|too many requests|quota/.test(message)) {
     return "rate_limited";
+  }
+  // NFR-02: a token-budget refusal is a model failure. The job takes the bounded retry path,
+  // and the call itself is never retried.
+  if (message.includes(GENERATION_TOKEN_BUDGET_MARKER.toLowerCase())) {
+    return "model_failed";
   }
 
   if (message.includes("timeout") || message.includes("timed out") || message.includes("aborted")) {

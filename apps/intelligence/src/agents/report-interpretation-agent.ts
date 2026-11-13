@@ -5,6 +5,7 @@ import {
   createNineRouterMastraAgent,
   extractJsonFromText,
 } from "../providers/ninerouter-adapter.js";
+import { generateWithinBudget } from "./generation-budget.js";
 
 /**
  * The severity levels the model is asked to output (rubric in REPORT_INTERPRETER_INSTRUCTIONS,
@@ -164,7 +165,8 @@ Format your output as a single JSON object with these keys:
 }
 `.trim();
 
-  const response = await agent.generate(prompt);
+  // NFR-02: bounded steps, active time and tokens. See generation-budget.ts.
+  const response = await generateWithinBudget(agent, prompt, REPORT_INTERPRETER_INSTRUCTIONS);
   const parsedJson = extractJsonFromText(response.text);
   return ReportInterpretationSchema.parse(parsedJson);
 }
