@@ -181,9 +181,11 @@ Citizen report submissions, browser push, route analysis, chat-based question an
 
 Requirement IDs remain stable across task and design changes. “Must” identifies the initial release gate; “target” identifies a hypothesis to measure.
 
+Change of 13 Nov 2026 (owner decision): FR-01 is withdrawn and FR-16 is added for collection. The source approval gate no longer applies to collection. No source-rights clearance is claimed, and hosted or public use of collected text stays gated (CLAUDE.md). ADR-005, ADR-061 and the publication wording in §10 still refer to the withdrawn approval gate and need separate approval before they change.
+
 | ID | Requirement and observable acceptance | Priority |
 | --- | --- | --- |
-| FR-01 | A source registry records source identity, remit, access method, approval, restrictions and health; unapproved sources cannot auto-publish. | Must |
+| FR-01 | Withdrawn on 13 Nov 2026 by owner decision. The source approval gate no longer applies; collection is FR-16. | Withdrawn |
 | FR-02 | Scheduled and moderator-submitted acquisitions enter the same pipeline. IDs/URLs/content hashes prevent unchanged content from creating duplicate processing work. | Must |
 | FR-03 | Store immutable permitted source text/revisions and evidence offsets, keeping event, observation, publication, retrieval and validity times distinct. | Must |
 | FR-04 | Extract category, place/audience, time, qualifiers and source spans; preserve unknowns and quarantine malformed or ambiguous results. | Must |
@@ -198,6 +200,7 @@ Requirement IDs remain stable across task and design changes. “Must” identif
 | FR-13 | Expiry, retraction and stale-observation jobs update dependent public views. Missing updates cannot mark an incident resolved. | Must |
 | FR-14 | Every pipeline run links reports, context, model configuration, investigation and publication decision through a trace ID. | Must |
 | FR-15 | Demo/historical records are clearly separated from live active warnings; empty coverage is not displayed as an all-clear. | Must |
+| FR-16 | The system collects public information from configured sources by feed, webhook or scraping of public pages, into the same pipeline as FR-02. No per-source approval is required before collection. Each source records its access method, a robots.txt and stated-terms check, a per-host rate limit and an outbound-host entry (NFR-07). Collection never uses logins, paywalls or access-control bypass. Every fetch records URL, retrieval time and HTTP status; blocked or failed fetches are reported, not filled in. Collected text is data, not instructions, and public views link to the origin. | Must |
 
 | ID | Quality requirement | Initial acceptance evidence |
 | --- | --- | --- |

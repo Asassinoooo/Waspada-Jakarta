@@ -9,7 +9,7 @@ No test, build or server was run to write this summary. It compiles records that
 ## 1 Scope and status
 
 - **What was tested.** The local live mode (`npm run serve:live`, backlog LIVE-LOCAL-01, accepted 8 November 2026; `CLAUDE.md`) and the synthetic demo (`DATASET_MODE=demo`). The scope covers `apps/web`, `apps/worker`, `apps/db` and `apps/intelligence` (`TEST-PLAN.md` sections 1 and 2; `SYSTEM-TEST.md` section 1).
-- **Against which requirements.** FR-01 to FR-15 and NFR-01 to NFR-08 (`SOFTWARE_DEVELOPMENT_PLAN.md` section 4), and user stories US-01 to US-03 (SDP section 2).
+- **Against which requirements.** FR-02 to FR-16 (FR-01 withdrawn on 13 Nov 2026) and NFR-01 to NFR-08 (`SOFTWARE_DEVELOPMENT_PLAN.md` section 4), and user stories US-01 to US-03 (SDP section 2).
 - **Register.** `docs/testing/test-cases.csv` has 61 rows: 31 system and acceptance rows (ST-F, ST-N, BR, AT), 5 UAT tasks (T1 to T5), 2 TEST-INT-01 cases (TI-01, TI-02) and 23 integration build tests (IT-B1, IT-B2, IT-B3). Status counts: Evidence exists 28, Partial 21, Not evidenced 3, Blocked 3, Pending run 6.
 - **Not complete.** No UAT walkthrough has run. No human session is planned. The live path is not tested end to end in CI. Hosted Cloudflare and Neon are not tested. The release checks in SDP section 10 are not met (section 8 below).
 

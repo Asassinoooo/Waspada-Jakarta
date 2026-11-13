@@ -6,7 +6,7 @@ Basis: Braude and Bernstein, *Software Engineering: Modern Approaches*, Part VII
 
 ## 1. Purpose and scope
 
-This plan sets out how the local live mode and the synthetic demo of Waspada Jakarta are tested against the functional requirements FR-01 to FR-15 and the quality requirements NFR-01 to NFR-08 in the SDP.
+This plan sets out how the local live mode and the synthetic demo of Waspada Jakarta are tested against the functional requirements FR-02 to FR-16 (FR-01 withdrawn on 13 Nov 2026) and the quality requirements NFR-01 to NFR-08 in the SDP.
 
 Out of scope for this plan:
 
@@ -42,7 +42,7 @@ Mutation testing (Braude Chapter 25) is not used. The project does not measure c
 
 Braude advises against testing "until time expires", so the extent is set by priority:
 
-1. Must requirements first: FR-01 to FR-15, each with at least one test case in `test-cases.csv`.
+1. Must requirements first: FR-02 to FR-16, each with at least one test case in `test-cases.csv`. FR-16 (collection) has no test case yet.
 2. Within the Must set, the quality requirements that protect safety and data come first: NFR-01 (evidence integrity), NFR-02 (resource bounds), NFR-05 (reliability), and NFR-07 (privacy and security).
 3. The remaining quality requirements (NFR-03, NFR-04, NFR-06, NFR-08) follow.
 
