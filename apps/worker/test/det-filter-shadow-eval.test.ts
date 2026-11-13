@@ -454,9 +454,9 @@ test("matcher integration records breakdowns by location, group, role, modifier"
   for (const key of EVAL_MODIFIER_KEYS) {
     assert.ok(typeof report.breakdowns.byModifier[key] === "number");
   }
-  assert.equal(report.versions.detRuleVersion, "det-filter-v1");
-  assert.equal(report.versions.detGazetteerVersion, "2026-11-02-seed-1");
-  assert.equal(report.versions.detLexiconVersion, "2026-11-02-seed-1");
+  assert.equal(report.versions.detRuleVersion, "det-filter-v2");
+  assert.equal(report.versions.detGazetteerVersion, "2026-11-13-det-filter-03");
+  assert.equal(report.versions.detLexiconVersion, "2026-11-13-det-filter-03");
 });
 
 test("count arithmetic holds on multi-feed totals", async () => {

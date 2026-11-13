@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "datasetId": "waspada-jakarta-incident-lexicon",
-  "datasetVersion": "2026-11-02-seed-1",
+  "datasetVersion": "2026-11-13-det-filter-03",
   "language": "id-ID",
   "description": "Versioned seed lexicon for deterministic pre-filtering of Indonesian free-text incident/news reports relevant to Jakarta. It is not a complete Indonesian dictionary, not a legal taxonomy, and not a replacement for semantic triage or human review.",
   "sources": [
@@ -188,17 +188,19 @@
         "dilalap api",
         "api melahap",
         "api membakar",
-        "api berkobar melahap"
+        "api berkobar melahap",
+        "terbakar",
+        "hangus",
+        "si jago merah"
       ],
       "supportingTerms": [
         "damkar",
         "gulkarmat",
-        "terbakar",
-        "hangus",
-        "asap tebal",
         "petugas pemadam",
         "unit pemadam",
-        "evakuasi penghuni"
+        "evakuasi penghuni",
+        "korsleting",
+        "korsleting listrik"
       ],
       "notes": "BPBD DKI lists Kebakaran as a headline event type. Damkar/Gulkarmat, hangus, and terbakar are supporting cues, not standalone incident triggers."
     },
@@ -258,7 +260,6 @@
         "turap",
         "lereng",
         "tebing",
-        "amblas",
         "evakuasi warga"
       ],
       "notes": "BPBD DKI lists Tanah longsor. Structural words such as talud/tebing need an event phrase to become strong."
@@ -356,19 +357,29 @@
         "pengendara tertabrak",
         "mobil menabrak pembatas jalan",
         "sepeda motor bertabrakan",
-        "tabrakan maut"
+        "tabrakan maut",
+        "terguling",
+        "ditabrak",
+        "menabrak",
+        "tertabrak",
+        "terlindas",
+        "laka lalin",
+        "tabrak beruntun",
+        "tumpahan solar",
+        "tumpahan oli"
       ],
       "supportingTerms": [
         "kecelakaan",
         "tabrakan",
-        "terguling",
         "tabrak",
         "luka",
         "korban",
         "tewas",
         "meninggal",
         "jenazah",
-        "laka"
+        "laka",
+        "terbalik",
+        "jalan licin"
       ],
       "notes": "Supplemental urban incident group. Generic tabrak/terguling and casualty words are supporting-only; use strong phrases for incident admission."
     },
@@ -396,7 +407,42 @@
         "perjalanan mrt terganggu",
         "layanan transjakarta terhenti",
         "perjalanan kereta terganggu",
-        "operasional kereta dihentikan"
+        "operasional kereta dihentikan",
+        "macet total",
+        "macet parah",
+        "macet",
+        "kemacetan",
+        "lalin macet",
+        "lalu lintas macet",
+        "lalin lumpuh",
+        "lumpuh total",
+        "jalan ditutup",
+        "ditutup sementara",
+        "blokade jalan",
+        "blokir jalan",
+        "truk mogok",
+        "kendaraan mogok",
+        "bus mogok",
+        "patah as",
+        "gangguan krl",
+        "lrt anjlok",
+        "mrt anjlok",
+        "gangguan sinyal",
+        "gangguan wesel",
+        "gangguan listrik aliran atas",
+        "kereta tertahan",
+        "penumpang tertahan",
+        "penumpang dievakuasi",
+        "penumpukan penumpang",
+        "mrt berhenti",
+        "gangguan mrt",
+        "gangguan lrt",
+        "operasional dihentikan",
+        "layanan dihentikan",
+        "halte terbakar",
+        "bus transjakarta terbakar",
+        "bus transjakarta kecelakaan",
+        "rute dialihkan"
       ],
       "supportingTerms": [
         "rekayasa lalu lintas",
@@ -404,12 +450,14 @@
         "penutupan jalan",
         "pengalihan arus",
         "contraflow",
-        "macet total",
-        "macet parah",
         "antrean kendaraan",
         "krl tertahan",
         "transjakarta dialihkan",
-        "rute distop"
+        "rute distop",
+        "kepadatan lalu lintas",
+        "padat merayap",
+        "keterlambatan perjalanan",
+        "perubahan rute"
       ],
       "notes": "Transit service and road disruption terms. Planned road closures, contraflow, and traffic management are supporting-only; do not interpret them as accidents automatically."
     },
@@ -437,18 +485,29 @@
         "tembok runtuh",
         "tanggul jebol",
         "turap ambruk",
-        "konstruksi roboh"
-      ],
-      "supportingTerms": [
+        "konstruksi roboh",
         "amblas",
         "ambles",
         "ambruk",
-        "runtuh",
         "roboh",
+        "jembatan rusak",
+        "tanggul bocor",
+        "gedung roboh",
+        "crane jatuh",
+        "tiang listrik roboh",
+        "tiang roboh",
+        "papan reklame roboh",
+        "atap ambruk",
+        "plafon ambruk"
+      ],
+      "supportingTerms": [
+        "runtuh",
         "retak",
         "kerusakan bangunan",
         "tanggul",
-        "pintu air"
+        "pintu air",
+        "jalan berlubang",
+        "kabel menjuntai"
       ],
       "notes": "Structural damage group. Generic verbs amblas/ambruk/runtuh are supporting-only unless paired with a physical object/incident phrase."
     },
@@ -501,16 +560,26 @@
         "jaringan listrik putus",
         "kabel listrik putus",
         "gardu listrik terbakar",
-        "layanan listrik terhenti"
-      ],
-      "supportingTerms": [
+        "layanan listrik terhenti",
         "pemadaman listrik",
         "listrik padam",
+        "gangguan listrik",
+        "mati listrik",
+        "padam total",
+        "blackout",
+        "air mati",
+        "air pam mati",
+        "gangguan air bersih",
+        "gangguan pasokan air",
+        "krisis air",
+        "gangguan pdam"
+      ],
+      "supportingTerms": [
         "air tidak mengalir",
         "pipa bocor",
         "kabel putus",
-        "gangguan listrik",
-        "gangguan air"
+        "gangguan air",
+        "gangguan jaringan"
       ],
       "notes": "Utility/essential-service disruption. Generic words such as padam or putus need service/object context."
     },
@@ -536,16 +605,43 @@
         "penodongan",
         "pencurian dengan kekerasan",
         "pelaku begal",
-        "korban begal"
+        "korban begal",
+        "begal",
+        "jambret",
+        "pembegalan",
+        "copet",
+        "pencopetan",
+        "dirampok",
+        "penganiayaan",
+        "dianiaya",
+        "ditusuk",
+        "dibacok",
+        "dikeroyok",
+        "ditendang",
+        "dibunuh",
+        "mayat",
+        "jasad ditemukan",
+        "temuan mayat",
+        "penculikan",
+        "pelecehan",
+        "penggerebekan",
+        "digerebek"
       ],
       "supportingTerms": [
-        "begal",
         "pencurian",
         "rampok",
         "maling",
-        "jambret",
         "dirampas",
-        "dibegal"
+        "dibegal",
+        "narkoba",
+        "sabu",
+        "pengedar",
+        "bandar narkoba",
+        "perdagangan orang",
+        "tppo",
+        "penipuan",
+        "pungli",
+        "parkir liar"
       ],
       "notes": "Security incidents. Terms can refer to arrests/case follow-ups; location role must be resolved independently."
     },
@@ -571,7 +667,32 @@
         "pembacokan",
         "kerusuhan",
         "baku hantam",
-        "serangan bersenjata"
+        "serangan bersenjata",
+        "senjata tajam",
+        "ricuh",
+        "kericuhan",
+        "rusuh",
+        "bentrok",
+        "perang sarung",
+        "amuk massa",
+        "massa mengamuk",
+        "mengamuk",
+        "anarkis",
+        "anarkistis",
+        "penjarahan",
+        "dijarah",
+        "pembakaran",
+        "dibakar massa",
+        "lempar batu",
+        "gas air mata",
+        "chaos",
+        "kekacauan",
+        "celurit",
+        "bom",
+        "ancaman bom",
+        "teror",
+        "ditembak",
+        "sajam"
       ],
       "supportingTerms": [
         "tewas",
@@ -580,8 +701,8 @@
         "luka",
         "kritis",
         "jenazah",
-        "senjata tajam",
-        "senjata api"
+        "senjata api",
+        "provokator"
       ],
       "notes": "Violence event group. Casualty terms alone never trigger an incident. A police-station/arrest mention is not scene location."
     },
@@ -603,14 +724,25 @@
         "aksi massa",
         "aksi protes",
         "long march",
-        "massa berunjuk rasa"
+        "massa berunjuk rasa",
+        "demo",
+        "aksi demo",
+        "pengunjuk rasa",
+        "demonstran",
+        "massa aksi",
+        "aksi buruh",
+        "aksi mahasiswa",
+        "mogok kerja",
+        "mogok massal",
+        "menduduki"
       ],
       "supportingTerms": [
         "massa berkumpul",
         "menyampaikan aspirasi",
         "pengamanan aksi",
         "rekayasa lalu lintas",
-        "penutupan jalan"
+        "penutupan jalan",
+        "orasi"
       ],
       "notes": "Demonstrations can be scheduled/planned events; treat as actionable incident candidates only when the configured product scope includes public gatherings or disruption."
     },
@@ -632,14 +764,19 @@
         "kepadatan pengunjung",
         "kepadatan penonton",
         "crowd crush",
-        "berdesakan hingga terinjak"
+        "berdesakan hingga terinjak",
+        "kerumunan",
+        "berdesakan",
+        "penonton membeludak"
       ],
       "supportingTerms": [
-        "kerumunan",
+        "membludak",
         "keramaian",
         "antrean panjang",
         "pengunjung membludak",
-        "penonton memadati"
+        "penonton memadati",
+        "konser",
+        "pertandingan"
       ],
       "notes": "Crowd-safety group. Ordinary crowds/queues are not necessarily incidents; prefer strong crowd-danger phrases."
     },
@@ -664,11 +801,11 @@
         "kecelakaan laut",
         "terseret arus",
         "hanyut terbawa arus",
-        "ditemukan tewas tenggelam"
+        "ditemukan tewas tenggelam",
+        "tenggelam",
+        "hanyut"
       ],
       "supportingTerms": [
-        "tenggelam",
-        "hanyut",
         "evakuasi korban",
         "pencarian korban",
         "perairan",
@@ -698,15 +835,26 @@
         "polusi udara memburuk",
         "kebocoran bahan kimia",
         "paparan bahan berbahaya",
-        "kabut asap pekat"
+        "kabut asap pekat",
+        "polusi udara",
+        "wabah",
+        "keracunan",
+        "pencemaran",
+        "kualitas udara buruk",
+        "kualitas udara tidak sehat",
+        "ispa",
+        "dbd",
+        "demam berdarah",
+        "sampah menumpuk",
+        "tumpukan sampah",
+        "limbah",
+        "bau menyengat",
+        "asap tebal"
       ],
       "supportingTerms": [
-        "keracunan",
-        "wabah",
-        "pencemaran",
-        "polusi udara",
         "kabut asap",
-        "kualitas udara memburuk"
+        "kualitas udara memburuk",
+        "ispu"
       ],
       "notes": "Health/environment group. Advisory-only statements should be marked as alert/advisory rather than an occurred incident."
     }
@@ -766,16 +914,6 @@
       "notSufficientAlone": true
     },
     {
-      "term": "hangus",
-      "role": "damage_or_result",
-      "notSufficientAlone": true
-    },
-    {
-      "term": "terbakar",
-      "role": "damage_or_result",
-      "notSufficientAlone": true
-    },
-    {
       "term": "genangan",
       "role": "hazard_context",
       "notSufficientAlone": true
@@ -786,28 +924,8 @@
       "notSufficientAlone": true
     },
     {
-      "term": "tenggelam",
-      "role": "event_context",
-      "notSufficientAlone": true
-    },
-    {
-      "term": "terguling",
-      "role": "event_context",
-      "notSufficientAlone": true
-    },
-    {
       "term": "tabrak",
       "role": "event_context",
-      "notSufficientAlone": true
-    },
-    {
-      "term": "amblas",
-      "role": "damage_context",
-      "notSufficientAlone": true
-    },
-    {
-      "term": "ambruk",
-      "role": "damage_context",
       "notSufficientAlone": true
     },
     {
@@ -940,7 +1058,7 @@
     {
       "term": "tenggelam",
       "mappedTo": "water_rescue_maritime",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "kebakaran",
@@ -965,12 +1083,12 @@
     {
       "term": "terbakar",
       "mappedTo": "fire",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "hangus",
       "mappedTo": "fire",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "pohon tumbang",
@@ -990,7 +1108,7 @@
     {
       "term": "terguling",
       "mappedTo": "traffic_accident",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "tabrak",
@@ -1035,7 +1153,7 @@
     {
       "term": "amblas",
       "mappedTo": "infrastructure_failure",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "longsor",
@@ -1045,7 +1163,7 @@
     {
       "term": "ambruk",
       "mappedTo": "infrastructure_failure",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "runtuh",
@@ -1085,7 +1203,7 @@
     {
       "term": "macet total",
       "mappedTo": "transport_disruption",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "ledakan",
@@ -1180,7 +1298,7 @@
     {
       "term": "macet parah",
       "mappedTo": "transport_disruption",
-      "treatment": "supporting"
+      "treatment": "strong"
     },
     {
       "term": "antrean kendaraan",
@@ -1257,11 +1375,14 @@
     "strongTermRequirement": "Only a strong term from eventGroups can provide the incident side of a candidate. supporting/globalSupportingTerms/alertSignals never independently satisfy it.",
     "alertHandling": "Alert-only signals without an occurred-event strong term produce at most ambiguous, not candidate.",
     "negativeContext": "Forecast, planned activity, historical retrospectives, hypothetical examples, and quoted old incidents need additional context. Do not apply one global negation regex that incorrectly suppresses actual events in the same sentence.",
-    "candidateRule": "A candidate requires (a) a specific Jakarta kelurahan or kecamatan match, not merely Jakarta/province/city, and (b) at least one strong occurred-incident phrase. Scene-role must not be known non-scene; unknown scene role should downgrade to ambiguous unless other clear scene evidence exists.",
-    "ambiguousRule": "Use ambiguous when only a broad/city/province location exists, only an incident signal exists, only alert/supporting terms exist, a locality alias is context-required, or location role cannot be determined.",
-    "lowSignalRule": "Use low_signal when neither a Jakarta-specific location nor a strong incident/alert/supporting signal is present. Low signal must not be silently deleted.",
+    "candidateRule": "A candidate requires (a) at least one strong occurred-incident phrase and (b) a Jakarta place at one of these levels: a specific kelurahan or kecamatan (multi-token canonical, or a single-token name corroborated by its own kecamatan or kota), a curated jakarta_place name (named DKI road, toll road, landmark, station, terminal, halte, port area, mall or stadium; name only, no coordinates), a DKI city or regency (Jakarta Pusat/Utara/Barat/Selatan/Timur, Jakpus/Jakut/Jakbar/Jaksel/Jaktim, Kepulauan Seribu), or the province name (Jakarta, DKI, DKI Jakarta, Ibu Kota only when it refers to Jakarta). The location role must not be non_scene_or_reference. Unknown scene role no longer blocks candidacy (DET-FILTER-03). Forecast and alert-only language stays at most ambiguous.",
+    "ambiguousRule": "Use ambiguous when a strong event exists without a Jakarta place, when only supporting or alert signals exist, when the only place is an unverified or context-required locality, or when the location role is non_scene_or_reference.",
+    "lowSignalRule": "Use low_signal when neither a Jakarta-specific place nor a strong incident, alert or supporting signal is present. Low signal must not be silently deleted.",
     "primaryCategoryPolicy": "primaryCategoryHint is a non-binding suggestion only. The matcher must not set final primaryCategory or incidentType. Existing semantic triage and human review remain authoritative.",
-    "idPolicy": "eventGroups[].id is a JSON lexicon key, not a TypeScript enum, database enum, official primaryCategory, or closed incidentType list."
+    "idPolicy": "eventGroups[].id is a JSON lexicon key, not a TypeScript enum, database enum, official primaryCategory, or closed incidentType list.",
+    "datelinePolicy": "A leading agency dateline (for example 'JAKARTA, KOMPAS.com -', 'Jakarta (ANTARA) -', 'JAKARTA -') is removed before matching when its place is a province or non-DKI name. A dateline that names a DKI city, kecamatan, kelurahan or jakarta_place is kept, because it may be the incident location. A dateline never turns into an event term. Titles are only stripped when the dateline form is strict (all caps, an outlet or an agency).",
+    "agencyReferencePolicy": "Place tokens inside office or agency names do not count as a location: Polda Metro Jaya, Polres Metro Jakarta <x>, Kapolres/Kapolda/Kapolsek, Pemprov DKI or Pemprov Jakarta, Pemkot Jakarta <x>, DPRD DKI, Gubernur or Wagub DKI/Jakarta, Wali Kota Jakarta <x>, Kejari/PN Jakarta <x>, Sudin ... Jakarta <x>, BPBD DKI, Dishub DKI. They are consumed (agency_reference_consumed). A strong event elsewhere in the text, with another place, can still be a candidate.",
+    "eventVocabularyRisk": "Some strong terms are broad by design (demo, bom, teror, pembakaran, menduduki, anjlok, macet, terbakar, membludak, layanan dihentikan, tenggelam, limbah, mayat). They make a candidate only with a Jakarta place, and Stage B decides. Expect some noise from non-incident uses (product demo, political teror, anjlok prices, matahari tenggelam, sampah membludak)."
   },
   "contextualOverrides": [
     {
@@ -1356,8 +1477,131 @@
       "merendam",
       "menimpa",
       "terbakar di",
-      "kecelakaan di"
+      "kecelakaan di",
+      "di kawasan",
+      "di jalan",
+      "di jl",
+      "di ruas",
+      "di depan",
+      "di sekitar",
+      "di wilayah",
+      "di simpang",
+      "di perempatan",
+      "di persimpangan",
+      "di halte",
+      "di stasiun",
+      "di tol",
+      "di jembatan",
+      "di flyover",
+      "di underpass",
+      "di pintu",
+      "di arah"
     ],
-    "policy": "Cues are contextual clues only. Do not decide scene role from a single preposition or one keyword. When ambiguous, return unknown."
+    "policy": "Cues are contextual clues only. Scene role comes from scene phrases, event-anchored phrases (a strong event term followed by 'di') and reference cues. A scene phrase that overlaps a reference cue (for example 'di jalan' inside 'ditangkap di jalan') does not count. Scene role is documentation only since DET-FILTER-03: an unknown role no longer blocks candidacy, but a non_scene_or_reference role does. agencyReferenceExamples consume the place tokens of office names such as Polda Metro Jaya, Kapolres Jakarta Barat or Pemprov DKI, so those tokens never count as a location.",
+    "agencyReferenceExamples": [
+      {
+        "phrase": "polda metro",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "polda",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "polres metro",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "polres",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "polsek",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "kapolda",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "kapolres",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "kapolsek",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "pemprov",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "pemerintah provinsi",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "pemkot",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "pemerintah kota",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "dprd",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "gubernur",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "wakil gubernur",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "wagub",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "wali kota",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "walikota",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "kejari",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "kejaksaan negeri",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "pengadilan negeri",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "pn",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "sudin",
+        "maxGapTokens": 3
+      },
+      {
+        "phrase": "bpbd",
+        "maxGapTokens": 0
+      },
+      {
+        "phrase": "dishub",
+        "maxGapTokens": 0
+      }
+    ],
+    "eventAnchoredSceneSuffix": [
+      "di"
+    ]
   }
 }

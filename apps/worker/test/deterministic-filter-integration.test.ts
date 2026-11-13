@@ -43,8 +43,10 @@ function storedRevision(
 
 const CANDIDATE_TITLE = "Kebakaran rumah terjadi di Tebet Jakarta Selatan";
 const CANDIDATE_EXCERPT = "Petugas damkar memadamkan kebakaran rumah yang terjadi di Tebet";
-// Title-only: no scene cue -> ambiguous, never silently promoted.
-const AMBIGUOUS_TITLE = "Kebakaran hanguskan puluhan kios di kawasan Pasar Senen Jakarta Pusat";
+// Strong event with no Jakarta place -> ambiguous, never silently promoted.
+// DET-FILTER-03 flip: the former fixture (Pasar Senen, Jakarta Pusat) is now a
+// candidate because a named Jakarta place and a DKI city are present.
+const AMBIGUOUS_TITLE = "Kebakaran hanguskan puluhan kios di kawasan pasar Depok";
 const LOW_SIGNAL_TITLE = "Pemerintah luncurkan program beasiswa pelajar berprestasi";
 const LOW_SIGNAL_EXCERPT = "Program beasiswa tahap dua untuk pelajar berprestasi diumumkan hari ini";
 
@@ -64,7 +66,7 @@ function clearedTriage(overrides: Record<string, unknown> = {}) {
       },
     }),
     findPriorDecision: async () => null,
-    policyVersion: "wj-int-02-v2",
+    policyVersion: "wj-int-02-v3",
     concurrency: 4,
     deterministicMode: "shadow" as const,
     ...overrides,

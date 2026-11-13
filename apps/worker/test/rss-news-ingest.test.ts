@@ -12,9 +12,9 @@ import {
 test("deterministic datasets are versioned and canonical (44 districts, 267 kelurahan)", () => {
   const datasets = loadRssDeterministicDatasets();
   const versions = getDeterministicDatasetVersions();
-  assert.equal(versions.gazetteer, "2026-11-02-seed-1");
-  assert.equal(versions.lexicon, "2026-11-02-seed-1");
-  assert.equal(versions.rule, "det-filter-v1");
+  assert.equal(versions.gazetteer, "2026-11-13-det-filter-03");
+  assert.equal(versions.lexicon, "2026-11-13-det-filter-03");
+  assert.equal(versions.rule, "det-filter-v2");
   let districts = 0;
   let villages = 0;
   for (const area of datasets.gazetteer.hierarchy.administrativeAreas) {
@@ -39,8 +39,9 @@ test("classifyNewsItem uses the deterministic matcher (scene + specific + strong
   assert.ok(fire.matchedToponyms.some((topo) => topo.toLowerCase().includes("tebet")));
   assert.ok(fire.matchedKeywords.some((keyword) => keyword.toLowerCase().includes("kebakaran")));
 
-  // Case 2: specific location + strong event but no scene cue stays non-relevant
-  // (conservative: ambiguous, never silently promoted).
+  // Case 2 (DET-FILTER-03 flip): a named Jakarta place (Pasar Senen station area)
+  // plus a DKI city and a strong event is a candidate. The former expectation
+  // (not relevant without a scene cue) no longer holds; "di kawasan" documents scene.
   const noScene = classifyNewsItem({
     title: "Kebakaran hanguskan puluhan kios di kawasan Pasar Senen Jakarta Pusat",
     link: "https://www.antaranews.com/berita/1002/kebakaran-senen",
@@ -48,7 +49,7 @@ test("classifyNewsItem uses the deterministic matcher (scene + specific + strong
     pubDate: "Mon, 26 Oct 2026 04:00:00 +0700",
     description: null,
   });
-  assert.equal(noScene.isRelevant, false);
+  assert.equal(noScene.isRelevant, true);
   assert.ok(noScene.matchedToponyms.some((topo) => topo.toLowerCase().includes("senen")));
   assert.ok(noScene.matchedKeywords.some((keyword) => keyword.toLowerCase().includes("kebakaran")));
 
@@ -72,7 +73,9 @@ test("classifyNewsItem uses the deterministic matcher (scene + specific + strong
     description: null,
   });
   assert.equal(politicalNews.isRelevant, false);
-  assert.ok(politicalNews.matchedToponyms.some((topo) => topo.toLowerCase().includes("jakarta")));
+  // DET-FILTER-03 flip: "Pemerintah Provinsi DKI Jakarta" is an agency name, so its
+  // place tokens are consumed and no location is reported.
+  assert.equal(politicalNews.matchedToponyms.length, 0);
   assert.equal(politicalNews.matchedKeywords.length, 0);
 
   // Case 5: arrest mention is a reference role, never a candidate scene.
