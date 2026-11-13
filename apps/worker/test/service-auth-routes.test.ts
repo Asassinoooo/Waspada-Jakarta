@@ -50,7 +50,7 @@ test("demo login and the demo session shadows are gone from the Worker", async (
   assert.equal(logout.status, 503, "without accounts the real logout route is unavailable");
 });
 
-test("internal proposals route: 503 without a configured key, 401 on mismatch, 200 with the key", async () => {
+test("internal proposals route: 503 without a configured key, 401 on mismatch, 503 with a key but no database", async () => {
   const body = JSON.stringify({ proposal_id: "prop-internal-1" });
   const post = (headers: Record<string, string>) => worker.fetch(
     new Request(origin + "/api/v1/internal/proposals", {

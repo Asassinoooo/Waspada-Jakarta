@@ -92,6 +92,10 @@ Caller check. The retrieval and grounding modules (`retrieval.ts`, `direct-reaso
 | `apps/db/test/manual-publication-public-read-chain.test.ts` | L2, L4, DB | Both versions publish through the gate; the correction reads back through public handlers, history and updates; a stale evidence assessment is denied before writes. | In CI step 6 |
 | `apps/db/test/synthetic-publication-isolation-composition.test.ts` | L1, L2, L4, DB | A synthetic L1/L2 draft stays outside the manual gate and the public detail view. | In CI step 6 |
 | `apps/worker/test/pipeline-flow-route.test.ts` | L4 route, DB | FLOW-VIS-01: 401 for an anonymous caller, 403 for a registered user, 200 for a moderator and an admin; runtime status attaches only when the local server provides it. | In CI step 8 |
+| `apps/worker/test/briefing-interest-removal.test.ts` | L4 read model, DB | FR-11: the candidate store selects an event only while one of its interests is in the request; the projection gives the matched reason only for the interests still saved. | Added for FR-11 |
+| `apps/worker/test/repeated-coverage-alerts.test.ts` | L4 decision writer, DB | FR-11: a re-delivered proposal writes no second decision or version. Todo F-ALERT-01: a repeated report of the same facts from another outlet publishes version 2. Todo F-ALERT-02: a published version is not listed in the updates feed. | Added for FR-11; todo findings open |
+| `apps/worker/test/trace-id-chain.test.ts` | L1 to L4, DB | FR-14: one trace id is recorded at ingestion, candidate, embedding run (provider and model version), grounding context, investigation, proposal and publication decision on the L2/L3 path. Todo F-TRACE-01: the intelligence-workflow proposal has no report trace id. Todo F-TRACE-02: the proposal writer invents placeholder trace, source, revision and context rows. | Added for FR-14; todo findings open |
+| `apps/web/test/interest-removal.test.ts` | Web client (preferences, briefing request, updates) | FR-11: removing an interest removes it from the saved store, the next briefing request and the update matches; removing every interest closes the gate; one change delivered twice is one card. | Added for FR-11 |
 | TEST-INT-01 | L3 output into L4 gate | `apps/db/test/l3-investigation-publication-gate.test.ts` takes an L3 ledger context through the reasoning bridge and the manual gate. Case TI-02 holds on claims, not on ledger status (F-04). | Written (`71022ee` on `main`) |
 
 ## 4 Interface tests (facade)
@@ -108,7 +112,7 @@ Among the read routes dispatched in `api.ts`, every route is GET except `POST /a
 | GET `/api/v1/events.geojson` | `api.ts` | `public-event-geojson-runtime.test.ts`, `api.test.ts` | In CI step 8 |
 | GET `/api/v1/updates` | `api.ts` | `api.test.ts`, `l4-public-event-updates-service.test.ts` | In CI step 8 |
 | POST `/api/v1/briefings` | `api.ts` | `public-briefing-runtime.test.ts` | In CI step 8 |
-| POST `/api/v1/internal/proposals` (service key) | `index.ts` | `service-auth-routes.test.ts` | In CI step 8 |
+| POST `/api/v1/internal/proposals` (service key) | `index.ts` | `service-auth-routes.test.ts`, `internal-proposals-route.test.ts` | In CI step 8 |
 | `/api/v1/ingestion/events` (webhook) | `index.ts`, then `webhook-ingest.ts` | `webhook-ingest.test.ts`, `service-auth-routes.test.ts` | In CI step 8 |
 | `/api/v1/moderation/*` | `index.ts`, then `moderation-api.ts` | `moderation-api.test.ts`, `service-auth-routes.test.ts` | In CI step 8 |
 | GET `/api/v1/pipeline/flow` | `pipeline-flow-api.ts` | `pipeline-flow-route.test.ts` | In CI step 8 |
@@ -117,7 +121,7 @@ What the handler tests prove, from their titles:
 
 - **Contract allowlists.** `l4-public-projection.test.ts` projects "the exact OpenAPI EventView allowlist". `l4-public-event-updates-service.test.ts` projects change labels "through the exact HistoryEntry allowlist".
 - **Mode gating.** The live read path is selected only by exact `DATASET_MODE=live` (`api.ts`, lines 168–190). `public-event-list-runtime.test.ts` keeps unset and demo modes on the synthetic list. `api.test.ts` keeps updates unavailable in demo and unset modes "without synthetic fallback".
-- **Auth gating.** `service-auth-routes.test.ts` answers 503 without a configured key, 401 on mismatch and 200 with the key, for internal proposals. Moderation is "never open access", and the moderation stream requires a moderator session.
+- **Auth gating, internal proposals.** `service-auth-routes.test.ts` ("internal proposals route: 503 without a configured key, 401 on mismatch, 503 with a key but no database") proves 503 without a configured key, 401 on a missing or wrong key, and 503 with a correct key when no database is configured. `internal-proposals-route.test.ts` ("answers 200 with the service key and a database, and publishes a permitted proposal") proves 200 with the correct key and a PGlite database, with a `published` body and one agent decision. Its titles "answers 200 already_decided when the same proposal is delivered again, with no second version" and "answers 200 queued with reasons when a proposal carries a discrepancy, and publishes nothing" cover the other 200 outcomes. Moderation is "never open access", and the moderation stream requires a moderator session.
 - **Error envelopes.** `public-event-detail-runtime.test.ts` keeps database and projection failures generic and redacted. `api.test.ts` preserves the UpdatePage and error envelopes.
 
 Limits. These tests call handlers with injected runtimes (for example, "only the exact live GeoJSON route uses its injected runtime", `api.test.ts`). None of them does a deployed Worker call, and none runs through `serve:live` (section 7).
@@ -178,7 +182,8 @@ Acyclicity is not checked. A dependency-graph run over these four trees would be
 7. **No browser or responsive checks.** The CI log states "Browser checks. None run in CI."
 8. **Hosted behaviour untested.** Cloudflare and Neon behaviour is outside this plan (section 1).
 9. **No local run.** This document rests on CI aggregates and static checks. No local test run was made for it.
-10. **Preferences are not covered here.** M5 names preferences (section 8), but no file in sections 3 or 4 tests them. Web tests are outside this plan.
+10. **Preferences are covered by FR-11 tests in part.** M5 names preferences (section 8). The FR-11 files in section 3.3 test interest removal and client-side repeat handling. Two server-side gaps stay open as todo findings: F-ALERT-01 (repeated coverage publishes a new version) and F-ALERT-02 (a published version is not listed in the updates feed).
+11. **FR-14 holds only on the L2/L3 path.** The live intelligence workflow proposal has no report trace id (F-TRACE-01) and the proposal writer invents placeholder lineage rows (F-TRACE-02). No investigation or chat-model configuration is recorded in `apps/intelligence` (section 3.3).
 
 ## 8 Integration gate and status against M5
 
