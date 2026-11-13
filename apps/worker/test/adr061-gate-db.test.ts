@@ -21,10 +21,21 @@ import { PublicReadModel } from "../src/layers/l4-application-integration/public
 
 const PERMITTED_SOURCES = new Set(["source-detik", "source-antara"]);
 const AGENT = { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID } as const;
-const DISPOSITION_READ = "record_json->>'disposition' AS disposition";
-const PUBLISH_COUNT = "COUNT(*)::int AS count FROM waspada.publication_decisions";
+const MODERATOR = { kind: "moderator", actorId: "mod-race-fixture" } as const;
+const DECISION_INSERT = "INSERT INTO waspada.publication_decisions";
 
 type Fields = Record<string, unknown>;
+
+/** Opens once, when `open` is called. Orders two calls without depending on timing. */
+function oneShot(): { readonly wait: () => Promise<void>; readonly open: () => void } {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => { open = resolve; });
+  return { wait: () => opened, open };
+}
+
+function decisionDispositions(rows: readonly { readonly record_json: Record<string, unknown> }[]): unknown[] {
+  return rows.map((row) => row.record_json.disposition);
+}
 
 function claim(id: string, overrides: Fields = {}): Fields {
   return {
@@ -212,15 +223,12 @@ describe("ADR-061 automatic gate: database-level checks", () => {
      */
     function withHooks(hooks: {
       readonly beforeQuery?: (sql: string) => Promise<void>;
-      readonly afterQuery?: (sql: string) => void;
       readonly beforeTransaction?: () => Promise<void>;
     }): TransactionalSqlExecutor {
       return {
         async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
           await hooks.beforeQuery?.(statement);
-          const result = await db.executor.query<Row>(statement, parameters);
-          hooks.afterQuery?.(statement);
-          return result;
+          return db.executor.query<Row>(statement, parameters);
         },
         async execute(statement: string) {
           await db.executor.execute(statement);
@@ -248,37 +256,65 @@ describe("ADR-061 automatic gate: database-level checks", () => {
       assert.equal(await versionCount("inc-conc-natural"), 1, "exactly one event version");
     });
 
-    it("both calls pass the already-decided check before either writes, then the second publishes after the first commits", {
-      todo: "F-CONC-01 concurrent duplicate decisions (ADR-061:49 unlocked)",
-    }, async () => {
+    it("a publish that passed its pre-check before another publish committed publishes nothing (F-CONC-01)", async () => {
       await writer().persistProposal(validProposal("inc-conc-forced"), "live");
       const input = { proposalId: "prop-inc-conc-forced", action: "auto_publish" as const, actor: AGENT };
 
-      // The second call reads "no prior decision" before the first commits.
-      let markSecondChecked!: () => void;
-      const secondChecked = new Promise<void>((resolve) => { markSecondChecked = resolve; });
-      // The second call counts published decisions only after the first call has finished.
-      let markFirstFinished!: () => void;
-      const firstFinished = new Promise<void>((resolve) => { markFirstFinished = resolve; });
-
-      const first = withHooks({ beforeTransaction: () => secondChecked });
-      const second = withHooks({
-        afterQuery: (statement) => { if (statement.includes(DISPOSITION_READ)) markSecondChecked(); },
-        beforeQuery: async (statement) => { if (statement.includes(PUBLISH_COUNT)) await firstFinished; },
-      });
-
-      const firstRun = decideProposal({ ...deps, executor: first }, input).finally(() => markFirstFinished());
+      // The second call reads the proposal, then pauses before its transaction. The first call runs to completion.
+      const firstPublished = oneShot();
+      const second = withHooks({ beforeTransaction: firstPublished.wait });
       const secondRun = decideProposal({ ...deps, executor: second }, input);
-      const [firstOutcome, secondOutcome] = await Promise.all([firstRun, secondRun]);
+      const firstOutcome = await decideProposal(deps, input).finally(firstPublished.open);
+      const secondOutcome = await secondRun;
 
-      const decisions = await decisionsFor("prop-inc-conc-forced");
-      const versions = await versionCount("inc-conc-forced");
-      assert.equal(
-        decisions.length,
-        1,
-        `duplicate publication: first=${firstOutcome.status}, second=${secondOutcome.status}, decisions=${decisions.length}, versions=${versions}`,
+      assert.equal(firstOutcome.status, "published", "the first call publishes");
+      assert.deepEqual(
+        secondOutcome,
+        { status: "already_decided", disposition: "publish" },
+        "the second call re-checks inside its transaction and finds the committed publication",
       );
-      assert.equal(versions, 1, `duplicate event versions: ${versions}`);
+      assert.equal((await decisionsFor("prop-inc-conc-forced")).length, 1, "exactly one decision row");
+      assert.equal(await versionCount("inc-conc-forced"), 1, "exactly one event version");
+    });
+
+    it("a reject that is recorded before a publish's transaction stops the publish: one decision, no version (F-CONC-01)", async () => {
+      await writer().persistProposal(validProposal("inc-race-reject-first"), "live");
+      const proposalId = "prop-inc-race-reject-first";
+
+      // The publish reads the proposal, then pauses before its transaction. The reject runs to completion.
+      const rejectRecorded = oneShot();
+      const publish = withHooks({ beforeTransaction: rejectRecorded.wait });
+      const publishRun = decideProposal({ ...deps, executor: publish }, { proposalId, action: "auto_publish", actor: AGENT });
+      const rejectOutcome = await decideProposal(deps, { proposalId, action: "reject", actor: MODERATOR })
+        .finally(rejectRecorded.open);
+      const publishOutcome = await publishRun;
+
+      assert.equal(rejectOutcome.status, "rejected");
+      assert.deepEqual(publishOutcome, { status: "already_decided", disposition: "reject" });
+      assert.deepEqual(decisionDispositions(await decisionsFor(proposalId)), ["reject"], "exactly one decision, the reject");
+      assert.equal(await versionCount("inc-race-reject-first"), 0, "a lost publish writes no event version");
+      assert.equal(publishedEvent("inc-race-reject-first"), null, "nothing is public");
+    });
+
+    it("a publish that is recorded before a reject stops the reject: one decision, one version (F-CONC-01)", async () => {
+      await writer().persistProposal(validProposal("inc-race-publish-first"), "live");
+      const proposalId = "prop-inc-race-publish-first";
+
+      // The reject pauses after its reads: before its transaction on the locked path, and before its insert on the older path.
+      const publishRecorded = oneShot();
+      const reject = withHooks({
+        beforeTransaction: publishRecorded.wait,
+        beforeQuery: async (statement) => { if (statement.includes(DECISION_INSERT)) await publishRecorded.wait(); },
+      });
+      const rejectRun = decideProposal({ ...deps, executor: reject }, { proposalId, action: "reject", actor: MODERATOR });
+      const publishOutcome = await decideProposal(deps, { proposalId, action: "auto_publish", actor: AGENT })
+        .finally(publishRecorded.open);
+      const rejectOutcome = await rejectRun;
+
+      assert.equal(publishOutcome.status, "published");
+      assert.deepEqual(rejectOutcome, { status: "already_decided", disposition: "publish" });
+      assert.deepEqual(decisionDispositions(await decisionsFor(proposalId)), ["publish"], "exactly one decision, the publish");
+      assert.equal(await versionCount("inc-race-publish-first"), 1, "exactly one event version");
     });
   });
 });

@@ -4,7 +4,7 @@
  * projection. A decision is recorded as a publication_decisions row. event_proposals is append-only,
  * so the decision is never written onto the proposal.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { SqlExecutor } from "../../../../db/src/sql.js";
 import type { EventProposalWriter } from "../../../../db/src/event-proposal-writer.js";
 import type { EventProposalDto } from "./moderation-api.js";
@@ -15,6 +15,7 @@ import {
   isValidProposalReviewTtlHours,
   type AutoPublicationWaiver,
   type AutoPublishSourcePermission,
+  type LinkedInvestigationStatus,
   type ProposalGateReason,
 } from "./publication-policy.js";
 
@@ -72,10 +73,23 @@ export type ProposalDecisionOutcome =
   | { readonly status: "queued"; readonly reasons: readonly ProposalGateReason[] }
   | {
     readonly status: "denied";
-    readonly code: "proposal_not_found" | "publication_not_authorized" | "publication_failed";
+    readonly code:
+      | "proposal_not_found"
+      | "publication_not_authorized"
+      | "publication_failed"
+      /** F-04: a moderator must resolve a stopped_for_review investigation before the proposal can publish. */
+      | "investigation_stopped_for_review";
     readonly reasons?: readonly ProposalGateReason[];
   }
   | { readonly status: "already_decided"; readonly disposition: string };
+
+type EventDetail = ReturnType<typeof proposalToEventDetail>;
+
+/** What one publish attempt returns from its transaction. `detail` is set only when the transaction committed a publication. */
+interface PublishAttempt {
+  readonly outcome: ProposalDecisionOutcome;
+  readonly detail?: EventDetail;
+}
 
 function parseProposal(raw: unknown): EventProposalDto {
   return (typeof raw === "string" ? JSON.parse(raw) : raw) as EventProposalDto;
@@ -100,10 +114,49 @@ async function latestDisposition(
 }
 
 /**
+ * F-CONC-01: takes the decision lock for one proposal, for the rest of the enclosing transaction.
+ * The key is the one persistProposalWithTx takes, so a write and a decision on the same proposal also
+ * serialize. A row lock (SELECT ... FOR UPDATE) would need UPDATE on event_proposals, which the L4
+ * publication writer role does not hold, and that table is append-only. So the lock is on the key.
+ */
+async function lockProposalDecisions(tx: SqlExecutor, datasetKind: string, proposalId: string): Promise<void> {
+  const hash = createHash("sha256").update(datasetKind).update(":").update(proposalId).digest();
+  await tx.query("SELECT pg_advisory_xact_lock($1::integer, $2::integer)", [
+    hash.readInt32BE(0),
+    hash.readInt32BE(4),
+  ]);
+}
+
+/**
+ * F-04: the status of the investigation a proposal links to, from its latest checkpoint. Null when the
+ * proposal has no link. A link always has a checkpoint, so a missing or unknown status throws, which
+ * fails the decision closed.
+ */
+async function latestInvestigationStatus(
+  tx: SqlExecutor,
+  datasetKind: string,
+  investigationId: string | null,
+): Promise<LinkedInvestigationStatus | null> {
+  if (investigationId === null) return null;
+  const result = await tx.query<{ case_status: string }>(
+    `SELECT case_status FROM waspada.investigation_checkpoints
+     WHERE dataset_kind = $1 AND investigation_id = $2
+     ORDER BY checkpoint_version DESC LIMIT 1`,
+    [datasetKind, investigationId],
+  );
+  const status = result.rows[0]?.case_status;
+  if (status === "open" || status === "paused" || status === "completed" || status === "stopped_for_review") {
+    return status;
+  }
+  throw new Error("linked investigation has no readable status");
+}
+
+/**
  * Writes a decision that publishes nothing: a reject or an expiry. publication_decisions is
  * append-only, so this is the only write. event_id and event_version stay NULL.
- * ADR-061 note: publication_decisions has no unique index on (dataset_kind, proposal_id). Two
- * decisions racing for the same proposal can both insert. That race is accepted, as in ADR-061.
+ * F-CONC-01: decideProposal calls this inside the proposal's decision lock, after the already-decided
+ * check. publication_decisions has no unique index on (dataset_kind, proposal_id), so the lock is what
+ * stops two decisions from both inserting. The expiry sweep does not take the lock (see expireStaleProposals).
  */
 async function insertUnpublishedDecision(
   executor: SqlExecutor,
@@ -172,7 +225,10 @@ async function resolvePublicDisplay(
  * - publish: a moderator decision. It runs the source gate (schema, links, rights) and does not
  *   require a clean discrepancy status, because the moderator has reviewed it.
  * - reject: records a rejection and never publishes.
- * A proposal that already has a decision is never decided again.
+ * F-04: a proposal linked to a stopped_for_review investigation is refused by auto_publish (queued) and by
+ * publish (denied, investigation_stopped_for_review). Reject is still allowed.
+ * A proposal that already has a decision is never decided again. F-CONC-01: every decision on one proposal
+ * takes the same lock, and the already-decided check runs after the lock, inside the transaction that writes.
  */
 export async function decideProposal(
   dependencies: ProposalDecisionDependencies,
@@ -186,8 +242,8 @@ export async function decideProposal(
   },
 ): Promise<ProposalDecisionOutcome> {
   const { executor, datasetKind } = dependencies;
-  const rows = await executor.query<{ trace_id: string; record_json: unknown }>(
-    `SELECT trace_id, record_json FROM waspada.event_proposals
+  const rows = await executor.query<{ trace_id: string; record_json: unknown; investigation_id: string | null }>(
+    `SELECT trace_id, record_json, investigation_id FROM waspada.event_proposals
      WHERE dataset_kind = $1 AND proposal_id = $2`,
     [datasetKind, input.proposalId],
   );
@@ -195,66 +251,81 @@ export async function decideProposal(
   if (!row) return { status: "denied", code: "proposal_not_found" };
   const proposal = parseProposal(row.record_json);
 
-  const prior = await latestDisposition(executor, datasetKind, input.proposalId);
-  if (prior) {
-    return { status: "already_decided", disposition: prior.disposition };
-  }
-
   const decidedAt = new Date().toISOString();
   const decisionId = `dec-${randomUUID()}`;
   const actorRecord = { actor_kind: input.actor.kind, actor_id: input.actor.actorId };
 
+  // F-CONC-01: the lock is taken first, and the already-decided check and the gate both run after it, in the
+  // transaction that writes. A check made before the lock could read "undecided" while another decision on the
+  // same proposal was still committing.
   if (input.action === "reject") {
-    await insertUnpublishedDecision(executor, {
-      datasetKind,
-      decisionId,
-      traceId: row.trace_id,
-      proposalId: input.proposalId,
-      reviewerId: input.actor.actorId,
-      decidedAt,
-      record: { disposition: "reject", ...actorRecord, reason: input.reason ?? null },
+    return runInTransaction<ProposalDecisionOutcome>(executor, async (tx) => {
+      await lockProposalDecisions(tx, datasetKind, input.proposalId);
+      const prior = await latestDisposition(tx, datasetKind, input.proposalId);
+      if (prior) return { status: "already_decided", disposition: prior.disposition };
+      await insertUnpublishedDecision(tx, {
+        datasetKind,
+        decisionId,
+        traceId: row.trace_id,
+        proposalId: input.proposalId,
+        reviewerId: input.actor.actorId,
+        decidedAt,
+        record: { disposition: "reject", ...actorRecord, reason: input.reason ?? null },
+      });
+      return { status: "rejected", decisionId };
     });
-    return { status: "rejected", decisionId };
   }
 
+  // External registry checks run before the lock, so no database lock is held across them. Fail-closed.
   const publicDisplaySourceIds = await resolvePublicDisplay(dependencies, proposal);
-  const gateOptions = { publicDisplaySourceIds };
-
-  let waivers: readonly AutoPublicationWaiver[] = [];
-  if (input.action === "auto_publish") {
-    const assessment = evaluateAutoPublication(proposal, { ...gateOptions, sourcePermission: input.sourcePermission });
-    if (assessment.reasons.length > 0) return { status: "queued", reasons: assessment.reasons };
-    waivers = assessment.waivers;
-  } else {
-    const reasons = assessProposalSourceGate(proposal, gateOptions);
-    if (reasons.length > 0) return { status: "denied", code: "publication_not_authorized", reasons };
-  }
-
-  const eventId = publicEventIdForProposal(proposal);
-  const priorPublished = await executor.query<{ count: number }>(
-    `SELECT COUNT(*)::int AS count FROM waspada.publication_decisions
-     WHERE dataset_kind = $1 AND event_id = $2 AND record_json->>'disposition' = 'publish'`,
-    [datasetKind, eventId],
-  );
-  const version = (priorPublished.rows[0]?.count ?? 0) + 1;
-  const publicationMode = input.actor.kind === "agent" ? "agent_auto" : "moderator_reviewed";
-  const sourceCount = distinctPublishers(proposal);
-
-  // Build the public version first. Invalid data then fails before any decision is written.
-  let detail;
-  try {
-    detail = proposalToEventDetail(proposal, undefined, {
-      version,
-      publication: { mode: publicationMode, source_count: sourceCount, ...(waivers.length > 0 ? { waivers } : {}) },
-    });
-  } catch {
-    return { status: "denied", code: "publication_failed" };
-  }
 
   // The decision, the published version and its claims are one transaction. The decision and the
   // version reference each other through deferred foreign keys, so they commit together or not at all.
+  // Any write error rolls the whole transaction back, and the caller sees publication_failed.
+  let attempt: PublishAttempt;
   try {
-    await runInTransaction(executor, async (tx) => {
+    attempt = await runInTransaction<PublishAttempt>(executor, async (tx) => {
+      await lockProposalDecisions(tx, datasetKind, input.proposalId);
+      const prior = await latestDisposition(tx, datasetKind, input.proposalId);
+      if (prior) return { outcome: { status: "already_decided", disposition: prior.disposition } };
+
+      const linkedInvestigationStatus = await latestInvestigationStatus(tx, datasetKind, row.investigation_id);
+      const gateOptions = { publicDisplaySourceIds, linkedInvestigationStatus };
+
+      let waivers: readonly AutoPublicationWaiver[] = [];
+      if (input.action === "auto_publish") {
+        const assessment = evaluateAutoPublication(proposal, { ...gateOptions, sourcePermission: input.sourcePermission });
+        if (assessment.reasons.length > 0) return { outcome: { status: "queued", reasons: assessment.reasons } };
+        waivers = assessment.waivers;
+      } else {
+        const reasons = assessProposalSourceGate(proposal, gateOptions);
+        if (reasons.includes("investigation_stopped_for_review")) {
+          return { outcome: { status: "denied", code: "investigation_stopped_for_review" } };
+        }
+        if (reasons.length > 0) return { outcome: { status: "denied", code: "publication_not_authorized", reasons } };
+      }
+
+      const eventId = publicEventIdForProposal(proposal);
+      const priorPublished = await tx.query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM waspada.publication_decisions
+         WHERE dataset_kind = $1 AND event_id = $2 AND record_json->>'disposition' = 'publish'`,
+        [datasetKind, eventId],
+      );
+      const version = (priorPublished.rows[0]?.count ?? 0) + 1;
+      const publicationMode = input.actor.kind === "agent" ? "agent_auto" : "moderator_reviewed";
+      const sourceCount = distinctPublishers(proposal);
+
+      // Build the public version before any write. Invalid data then refuses without a decision row.
+      let detail: EventDetail;
+      try {
+        detail = proposalToEventDetail(proposal, undefined, {
+          version,
+          publication: { mode: publicationMode, source_count: sourceCount, ...(waivers.length > 0 ? { waivers } : {}) },
+        });
+      } catch {
+        return { outcome: { status: "denied", code: "publication_failed" } };
+      }
+
       await tx.query(
         `INSERT INTO waspada.publication_decisions (
            dataset_kind, decision_id, trace_id, proposal_id, policy_version,
@@ -317,13 +388,18 @@ export async function decideProposal(
           ],
         );
       }
+      return {
+        outcome: { status: "published", decisionId, eventId, version, publicationMode },
+        detail,
+      };
     });
   } catch {
     return { status: "denied", code: "publication_failed" };
   }
 
-  PublicReadModel.publish(detail);
-  return { status: "published", decisionId, eventId, version, publicationMode };
+  // Only after COMMIT: the public read model never shows a publication that rolled back.
+  if (attempt.detail) PublicReadModel.publish(attempt.detail);
+  return attempt.outcome;
 }
 
 export interface ExpireStaleProposalsInput {

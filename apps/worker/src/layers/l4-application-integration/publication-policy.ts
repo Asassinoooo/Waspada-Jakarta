@@ -616,11 +616,20 @@ export type ProposalGateReason =
   | "discrepancy_flagged"
   | "discrepancy_status_unknown"
   | "location_missing"
-  | "time_missing";
+  | "time_missing"
+  | "investigation_stopped_for_review";
+
+/** The L3 case status a proposal's linked investigation is in, read from its latest checkpoint. */
+export type LinkedInvestigationStatus = "open" | "paused" | "completed" | "stopped_for_review";
 
 export interface ProposalGateOptions {
   /** Registry source ids whose current permissions grant public display. Resolved by the caller. */
   readonly publicDisplaySourceIds: ReadonlySet<string>;
+  /**
+   * F-04 (ADR-061 amendment): the status of the investigation the proposal is linked to. Null or omitted
+   * means no linked investigation. Only `stopped_for_review` is refused. A moderator must resolve the case first.
+   */
+  readonly linkedInvestigationStatus?: LinkedInvestigationStatus | null;
 }
 
 /**
@@ -712,6 +721,8 @@ interface SourceGateResult {
 function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, waivePermission: boolean): SourceGateResult {
   const reasons = new Set<ProposalGateReason>();
   let permissionWaived = false;
+  // F-04: never waived. Only the public-display permission check can be waived.
+  if (options.linkedInvestigationStatus === "stopped_for_review") reasons.add("investigation_stopped_for_review");
   const record = gateRecord(proposal);
   if (!record
     || record.schema_version !== "2.0"
@@ -752,7 +763,8 @@ function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, 
  * Checks that every proposal is well formed, that each claim is supported and quoted, and that each
  * claim's source has a link and public-display permission. It does not check labels, discrepancies or
  * correlation. Moderator publication uses this check. It has no waiver, so ADR-061's local relaxation
- * never reaches moderator publication.
+ * never reaches moderator publication. It also refuses a proposal linked to a stopped_for_review
+ * investigation (F-04), which the automatic gate shares.
  */
 export function assessProposalSourceGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
   return runProposalSourceGate(proposal, options, false).reasons;

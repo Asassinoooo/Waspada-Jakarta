@@ -792,6 +792,8 @@ export function createModerationApiHandler(
             let status = 400;
             if (rec.code === "proposal_not_found") status = 404;
             else if (rec.code === "publication_not_authorized") status = 403;
+            // F-04: the case must be resolved first. This is a state conflict, not a permission failure.
+            else if (rec.code === "investigation_stopped_for_review") status = 409;
             else if (rec.code === "proposal_unavailable" || rec.code === "writer_failed") {
               status = 502;
             }

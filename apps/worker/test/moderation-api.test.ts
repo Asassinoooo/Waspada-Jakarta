@@ -631,6 +631,42 @@ test("POST publish handles publisher denial outcomes cleanly", async () => {
   assert.equal(body.code, "publication_not_authorized");
 });
 
+test("POST publish refuses a proposal linked to a stopped investigation with 409 and the reason code (F-04)", async () => {
+  const handler = createModerationApiHandler({
+    datasetScope: "live",
+    principal: {
+      actorId: "mod-1",
+      role: "moderator",
+      active: true,
+      csrfToken: "csrf-key",
+    },
+    publicationService: {
+      publish: async () => ({
+        status: "denied",
+        code: "investigation_stopped_for_review",
+      }),
+    },
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/v1/moderation/proposals/prop-1/publish", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-csrf-token": "csrf-key",
+      },
+      body: JSON.stringify({ action: "publish" }),
+    }),
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 409);
+  const body = (await response.json()) as { ok: boolean; code: string; status: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.status, "denied");
+  assert.equal(body.code, "investigation_stopped_for_review");
+});
+
 test("POST publish handles publisher conflict outcome (409)", async () => {
   const handler = createModerationApiHandler({
     datasetScope: "live",

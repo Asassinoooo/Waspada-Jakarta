@@ -188,6 +188,34 @@ test("local_relaxed does not reach the moderator source gate", () => {
   assert.ok(assessProposalSourceGate(UNPERMITTED, PERMITTED).includes("source_rights_missing"));
 });
 
+/* F-04 (ADR-061 amendment): a proposal linked to a stopped_for_review investigation is refused on both paths. */
+
+const STOPPED = { ...PERMITTED, linkedInvestigationStatus: "stopped_for_review" as const };
+
+test("F-04: a proposal linked to a stopped_for_review investigation is queued by the auto gate", () => {
+  assert.deepEqual(evaluateAutoPublication(clean(), STOPPED).reasons, ["investigation_stopped_for_review"]);
+});
+
+test("F-04: the moderator source gate refuses the same proposal", () => {
+  assert.deepEqual(assessProposalSourceGate(clean(), STOPPED), ["investigation_stopped_for_review"]);
+});
+
+test("F-04: local_relaxed waives the permission check only, never a stopped investigation", () => {
+  const assessment = evaluateAutoPublication(UNPERMITTED, { ...STOPPED, sourcePermission: "local_relaxed" });
+  assert.deepEqual(assessment.reasons, ["investigation_stopped_for_review"]);
+  assert.deepEqual(assessment.waivers, [SOURCE_PERMISSION_WAIVED_LOCAL]);
+});
+
+test("F-04 control: a completed, open or paused investigation, or no investigation link, leaves the gate unchanged", () => {
+  for (const status of [undefined, null, "open", "paused", "completed"] as const) {
+    assert.deepEqual(
+      evaluateAutoPublication(clean(), { ...PERMITTED, linkedInvestigationStatus: status }).reasons,
+      [],
+      `status ${String(status)} must not add a reason`,
+    );
+  }
+});
+
 function moderationHandler(extra: Record<string, unknown> = {}) {
   const published: unknown[] = [];
   const rejected: string[] = [];

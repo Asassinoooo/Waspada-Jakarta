@@ -37,6 +37,11 @@ import {
   type CurrentEvidenceState,
   type PublicationPolicyInput,
 } from '../../worker/src/layers/l4-application-integration/publication-policy.js';
+import {
+  AGENT_AUTO_PUBLISHER_ID,
+  decideProposal,
+  type ProposalDecisionDependencies,
+} from '../../worker/src/layers/l4-application-integration/proposal-publication.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 // Authored synthetic fixture only. No real source, reviewer, or incident is asserted.
@@ -223,6 +228,175 @@ test('L3 stopped case with a disputed claim is held by the publication gate befo
     await db.close();
   }
 });
+
+/*
+ * F-04 (ADR-061 amendment): the gate reads the L3 case status. The manual composition above is not wired to
+ * a route, so these tests use decideProposal, the path the worker runs for both the agent and a moderator.
+ */
+const AGENT_ACTOR = { kind: 'agent', actorId: AGENT_AUTO_PUBLISHER_ID } as const;
+const REVIEWER_ACTOR = { kind: 'moderator', actorId: MODERATOR_ACTOR } as const;
+
+test('F-04: a proposal linked to a stopped case is refused by the agent path and by the moderator publish path; reject still records', async () => {
+  const scenario = makeScenario('f04-stopped', { conflicts: [], missingFields: [] });
+  const db = await openDatabase();
+  try {
+    await seedDatabase(db, scenario);
+    const ledger = createSqlInvestigationLedgerRepository(db.executor);
+    await driveLedgerToRefreshedContext(ledger, scenario);
+    const open = await ledger.getLatest('live', scenario.investigationId);
+    assert.ok(open);
+    const stopped = await ledger.terminate({
+      datasetKind: 'live',
+      investigationId: scenario.investigationId,
+      expectedCheckpointVersion: open.checkpoint_version,
+      status: 'stopped_for_review',
+      stopReason: 'awaiting_moderator',
+      completedAt: LEDGER_STOPPED_AT,
+    });
+    assert.equal(stopped.checkpoint.case_status, 'stopped_for_review');
+
+    const agentProposal = `${scenario.proposalId}-agent`;
+    const moderatorProposal = `${scenario.proposalId}-moderator`;
+    await insertLinkedProposal(db, scenario, agentProposal);
+    await insertLinkedProposal(db, scenario, moderatorProposal);
+    const deps = gateDependencies(db);
+
+    // The record passes every other check, so the investigation link is the only reason.
+    const queued = await decideProposal(deps, { proposalId: agentProposal, action: 'auto_publish', actor: AGENT_ACTOR });
+    assert.deepEqual(queued, { status: 'queued', reasons: ['investigation_stopped_for_review'] });
+
+    const denied = await decideProposal(deps, { proposalId: moderatorProposal, action: 'publish', actor: REVIEWER_ACTOR });
+    assert.deepEqual(denied, { status: 'denied', code: 'investigation_stopped_for_review' });
+
+    assert.deepEqual(await decisionDispositions(db, agentProposal), [], 'the queued proposal has no decision and stays pending');
+    assert.deepEqual(await decisionDispositions(db, moderatorProposal), [], 'the refused proposal has no decision');
+    assert.equal(await eventVersionCount(db, `event-${agentProposal}`), 0);
+    assert.equal(await eventVersionCount(db, `event-${moderatorProposal}`), 0);
+
+    const rejected = await decideProposal(deps, {
+      proposalId: moderatorProposal,
+      action: 'reject',
+      actor: REVIEWER_ACTOR,
+      reason: 'Authored synthetic fixture rejection',
+    });
+    assert.equal(rejected.status, 'rejected');
+    assert.deepEqual(await decisionDispositions(db, moderatorProposal), ['reject']);
+    assert.equal(await eventVersionCount(db, `event-${moderatorProposal}`), 0, 'a reject never publishes');
+  } finally {
+    await db.close();
+  }
+});
+
+test('F-04 control: a proposal linked to a completed case publishes through the agent path and the moderator publish path', async () => {
+  const scenario = makeScenario('f04-completed', { conflicts: [], missingFields: [] });
+  const db = await openDatabase();
+  try {
+    await seedDatabase(db, scenario);
+    const ledger = createSqlInvestigationLedgerRepository(db.executor);
+    await driveLedgerToRefreshedContext(ledger, scenario);
+    const open = await ledger.getLatest('live', scenario.investigationId);
+    assert.ok(open);
+    const completed = await ledger.terminate({
+      datasetKind: 'live',
+      investigationId: scenario.investigationId,
+      expectedCheckpointVersion: open.checkpoint_version,
+      status: 'completed',
+      stopReason: 'completed',
+      completedAt: LEDGER_STOPPED_AT,
+    });
+    assert.equal(completed.checkpoint.case_status, 'completed');
+
+    const agentProposal = `${scenario.proposalId}-agent`;
+    const moderatorProposal = `${scenario.proposalId}-moderator`;
+    await insertLinkedProposal(db, scenario, agentProposal);
+    await insertLinkedProposal(db, scenario, moderatorProposal);
+    const deps = gateDependencies(db);
+
+    const agent = await decideProposal(deps, { proposalId: agentProposal, action: 'auto_publish', actor: AGENT_ACTOR });
+    assert.ok(agent.status === 'published', `agent path: ${JSON.stringify(agent)}`);
+    assert.equal(agent.version, 1);
+    assert.equal(agent.publicationMode, 'agent_auto');
+
+    const moderator = await decideProposal(deps, { proposalId: moderatorProposal, action: 'publish', actor: REVIEWER_ACTOR });
+    assert.ok(moderator.status === 'published', `moderator path: ${JSON.stringify(moderator)}`);
+    assert.equal(moderator.version, 1);
+    assert.equal(moderator.publicationMode, 'moderator_reviewed');
+
+    assert.equal(await eventVersionCount(db, `event-${agentProposal}`), 1);
+    assert.equal(await eventVersionCount(db, `event-${moderatorProposal}`), 1);
+  } finally {
+    await db.close();
+  }
+});
+
+function gateDependencies(db: TestDatabase): ProposalDecisionDependencies {
+  return { executor: db.executor, datasetKind: 'live', checkPublicDisplay: async () => true };
+}
+
+/**
+ * Persists an ADR-061 2.0 proposal row linked to the scenario's investigation. The bridge always writes
+ * investigation_id as NULL, so the link is inserted here. Its claims are the scenario's supported references.
+ */
+async function insertLinkedProposal(db: TestDatabase, s: Scenario, proposalId: string): Promise<void> {
+  const record = {
+    schema_version: '2.0',
+    proposal_id: proposalId,
+    incident_id: `event-${proposalId}`,
+    title: 'Authored synthetic fixture incident',
+    primary_category: 'transport_road_incidents',
+    severity: 'medium',
+    event_time: { precision: 'exact', value: NOW },
+    location_label: 'Authored synthetic fixture location',
+    coordinates: null,
+    claims: s.claims.map((claim, index) => ({
+      claim_id: `claim-${index + 1}`,
+      claim_text: claim.text,
+      evidence_label: 'attributed_report',
+      support_assessment: 'supported',
+      quote_text: claim.spanText,
+      source_id: s.sourceId,
+      outlet: 'Authored synthetic fixture only',
+      source_url: 'https://example.invalid/synthetic-fixture',
+    })),
+    impacts: [],
+    caveats: [],
+    has_discrepancy: false,
+    discrepancy_summary: null,
+    discrepancies: [],
+    correlation_relationship: 'primary_initial',
+    is_multi_source: false,
+    source_count: 1,
+    source_id: s.sourceId,
+    proposed_at: '2026-10-08T02:05:00.000Z',
+  };
+  await db.executor.query(
+    `INSERT INTO waspada.event_proposals
+       (dataset_kind, proposal_id, trace_id, candidate_id, context_id, event_id, base_event_version,
+        investigation_id, proposed_at, record_json)
+     VALUES ('live', $1, $2, $3, $4, NULL, NULL, $5, $6::timestamptz, $7::jsonb)`,
+    [proposalId, s.traceId, s.candidateId, s.refreshedContextId, s.investigationId, PROPOSED_AT, JSON.stringify(record)],
+  );
+}
+
+async function decisionDispositions(db: TestDatabase, proposalId: string): Promise<string[]> {
+  const result = await db.executor.query<{ disposition: string }>(
+    `SELECT record_json->>'disposition' AS disposition
+       FROM waspada.publication_decisions
+      WHERE dataset_kind = 'live' AND proposal_id = $1
+      ORDER BY decided_at ASC, decision_id ASC`,
+    [proposalId],
+  );
+  return result.rows.map((row) => row.disposition);
+}
+
+async function eventVersionCount(db: TestDatabase, eventId: string): Promise<number> {
+  const result = await db.executor.query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM waspada.event_versions
+      WHERE dataset_kind = 'live' AND event_id = $1`,
+    [eventId],
+  );
+  return result.rows[0]?.count ?? 0;
+}
 
 function makeScenario(
   suffix: string,
