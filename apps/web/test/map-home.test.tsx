@@ -248,13 +248,22 @@ test("the map canvas loads the tile stylesheet and places whole-pixel tiles, not
   const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
   assert.match(html, /class="interactive-incident-map event-map-canvas"/u);
   assert.doesNotMatch(html, /class="(?:[^"]*\s)?map-canvas(?:\s[^"]*)?"/u, "styles.css styles .map-canvas as a gridded placeholder");
-  const tiles = html.match(/<img[^>]*class="map-tile-img"[^>]*>/gu) ?? [];
+  const tiles = html.match(/<img[^>]*class="map-tile-img(?: map-tile-img--backdrop)?"[^>]*>/gu) ?? [];
   assert.ok(tiles.length > 0, "tiles render");
   for (const tile of tiles) {
     assert.doesNotMatch(tile, /loading="lazy"/u, "lazy tiles leave blank squares after a zoom");
     assert.match(tile, /draggable="false"/u);
-    assert.match(tile, /style="left:-?\d+px;top:-?\d+px"/u, "tile offsets are rounded to whole pixels");
+    assert.match(tile, /style="left:-?\d+px;top:-?\d+px;width:\d+px;height:\d+px"/u, "tile edges are rounded to whole pixels");
   }
   const canvas = readFileSync(new URL("../src/EventMapCanvas.tsx", import.meta.url), "utf8");
   assert.match(canvas, /import\("\.\/incident-map\.css"\)/u, "the absolute tile layout lives in incident-map.css");
+});
+
+test("the map screen has no page footer strip: the emergency notice floats over the map", () => {
+  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
+  const footer = html.match(/<footer class="map-home__footer">([\s\S]*?)<\/footer>/u)?.[1] ?? "";
+  assert.match(footer, /bukan layanan darurat\. Darurat: 112\./u);
+  assert.match(footer, /Bukan layanan darurat\. Darurat: 112\./u);
+  assert.match(footer, /href="#bantuan"/u);
+  assert.match(footer, /href="#privasi"/u);
 });
