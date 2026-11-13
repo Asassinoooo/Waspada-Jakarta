@@ -9,6 +9,10 @@ import type {
   FreshnessTransitionRecorderResult,
 } from '../../worker/src/layers/l4-application-integration/freshness-transition-recorder.js';
 import { createFreshnessDueEvaluator } from '../../worker/src/layers/l4-application-integration/freshness-due-evaluator.js';
+import {
+  createFreshnessDueScheduleRuntime,
+  runFreshnessPassInOneTransaction,
+} from '../../worker/src/runtime/freshness-due-schedule-runtime.js';
 import { createFreshnessTransitionRecorder } from '../../worker/src/layers/l4-application-integration/freshness-transition-recorder.js';
 import {
   handlePublicApiRequest,
@@ -327,6 +331,65 @@ describe('PGlite freshness due-evaluator composition', () => {
         assert.equal(updatesResponseJson.includes(privateMarker), false,
           `public updates response leaked ${privateMarker}`);
       }
+    } finally {
+      await database.close();
+    }
+  });
+
+  it('runs the live freshness runtime under the writer role with real rows and the serve:live transaction runner', async () => {
+    const database = await createTestDatabase();
+    try {
+      const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
+      await applyMigrations(database.executor, migrations);
+      await seedSyntheticPublicationFixture(database);
+
+      // The writer role must reach the due-target reader and the transition ledger with the grants that
+      // migrations 024-034 already give it. This run proves that without widening any grant.
+      const scheduledTime = Date.parse(EXPLICIT_NOW);
+      const telemetry: { readonly outcome?: unknown; readonly counts?: unknown }[] = [];
+      const runtime = createFreshnessDueScheduleRuntime({
+        datasetMode: 'live',
+        schedulerEnabled: 'true',
+        freshnessWriterConnectionString: TEST_CONNECTION_STRING,
+      }, {
+        withTransactionalSqlExecutor: runFreshnessPassInOneTransaction(database.executor),
+        clock: () => scheduledTime,
+        telemetry: { record: (record) => { telemetry.push(record as { outcome?: unknown; counts?: unknown }); } },
+      });
+      assert.ok(runtime);
+      await runtime.schedule(scheduledTime);
+
+      assert.equal(telemetry.length, 1);
+      assert.equal(telemetry[0]?.outcome, 'completed');
+      assert.deepEqual(telemetry[0]?.counts, { written: 1, replayed: 0, noChange: 0, conflicts: 0, failures: 0 });
+
+      const transitions = await database.executor.query<{
+        readonly target_kind: string;
+        readonly impact_id: string | null;
+        readonly resulting_status: string;
+        readonly reason: string;
+        readonly trace_id: string;
+      }>(
+        'SELECT target_kind, impact_id, resulting_status, reason, trace_id\n'
+        + 'FROM waspada.freshness_transitions\n'
+        + 'ORDER BY transition_sequence',
+      );
+      assert.deepEqual(transitions.rows, [{
+        target_kind: 'impact',
+        impact_id: IMPACT_ID,
+        resulting_status: 'expired',
+        reason: 'issuer_validity_ended',
+        trace_id: 'freshness-due:' + scheduledTime,
+      }]);
+
+      const runTraces = await database.executor.query<{ readonly outcome: string }>(
+        "SELECT outcome FROM waspada.traces WHERE dataset_kind = 'live' AND trace_id = $1",
+        ['freshness-due:' + scheduledTime],
+      );
+      assert.deepEqual(runTraces.rows, [{ outcome: 'succeeded' }]);
+
+      const role = await database.executor.query<{ readonly current_user: string }>('SELECT current_user');
+      assert.notEqual(role.rows[0]?.current_user, 'waspada_l4_freshness_writer');
     } finally {
       await database.close();
     }

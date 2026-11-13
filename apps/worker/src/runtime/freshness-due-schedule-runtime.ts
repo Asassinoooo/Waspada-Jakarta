@@ -61,6 +61,21 @@ export class FreshnessDueScheduleRuntimeError extends Error {
   }
 }
 
+/**
+ * Runs one freshness pass inside a single transaction on a shared connection. The runtime switches to
+ * the writer role with session-level SET ROLE, which would otherwise reach every other query on that
+ * connection (a single-connection PGlite database serves them all). Transactions opened by the ledger
+ * join this outer transaction.
+ */
+export function runFreshnessPassInOneTransaction(
+  executor: TransactionalSqlExecutor,
+): FreshnessDueScheduleTransactionalSqlExecutorRunner {
+  return (_connectionString, operation) => executor.transaction((transaction) => operation({
+    ...transaction,
+    transaction: (work) => work(transaction),
+  }));
+}
+
 /** Builds the live-only freshness scheduler without opening a client during configuration. */
 export function createFreshnessDueScheduleRuntime(
   configuration: FreshnessDueScheduleRuntimeConfiguration,

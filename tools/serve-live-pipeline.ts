@@ -37,6 +37,7 @@ import { expireStaleProposals } from "../apps/worker/src/layers/l4-application-i
 import { createEventProposalWriter } from "../apps/db/src/event-proposal-writer.js";
 import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
+import { startLiveFreshness } from "./live-freshness-job.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -643,6 +644,11 @@ async function main() {
     void pollLiveFeeds();
   }, 60_000);
 
+  // T8 / FR-13: freshness and expiry run on their own timer, once at startup and then every
+  // LIVE_FRESHNESS_INTERVAL_MS (default 5 min). A pass never resolves an incident. Public views
+  // are refreshed from the ledger after each pass.
+  const freshnessSchedule = startLiveFreshness({ executor, env: process.env });
+
   // 7. Start Vite Dev Server (Port 5173) for Live Frontend
   console.log("\n[Frontend] Starting Vite development server on http://127.0.0.1:5173...");
   const viteProcess = spawn("npm", ["run", "dev", "--workspace=@waspada/web"], {
@@ -666,6 +672,7 @@ async function main() {
     console.log("\nStopping live testing server and background services...");
     workerActive = false;
     clearInterval(pollInterval);
+    freshnessSchedule.stop();
     viteProcess.kill();
     server.close();
     claim.release();
