@@ -156,7 +156,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
   it("zero candidates: the correlator is not called and the decision is a deterministic new_incident", async () => {
     await withDatabase(async (db) => {
       const correlator = countingAgent(NEW_INCIDENT_CORRELATION);
-      const workflow = createIncidentIntelligenceWorkflow({
+      const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
         executor: db.executor,
         config: LIVE_CONFIG,
         agentOverrides: { interpreter: countingAgent(interpretationFor()).agent, correlator: correlator.agent },
@@ -179,7 +179,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
       const vague = interpretationFor({
         location: { label: null, approximateCoordinates: null, precision: "unknown" },
       });
-      const workflow = createIncidentIntelligenceWorkflow({
+      const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
         executor: db.executor,
         config: LIVE_CONFIG,
         agentOverrides: { interpreter: countingAgent(vague).agent, correlator: correlator.agent },
@@ -196,7 +196,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
 
   it("a candidate at or above the similarity threshold still reaches the correlator", async () => {
     await withDatabase(async (db) => {
-      const first = createIncidentIntelligenceWorkflow({
+      const first = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
         executor: db.executor,
         config: LIVE_CONFIG,
         agentOverrides: {
@@ -210,7 +210,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
       assert.equal(firstRun.status, "success");
 
       const correlator = countingAgent({ ...NEW_INCIDENT_CORRELATION, reasoning: "Kandidat sama." });
-      const second = createIncidentIntelligenceWorkflow({
+      const second = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
         executor: db.executor,
         config: LIVE_CONFIG,
         agentOverrides: { interpreter: countingAgent(interpretationFor()).agent, correlator: correlator.agent },
@@ -228,7 +228,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
     await withDatabase(async (db, embedInputs) => {
       const title = "Banjir rendam Jalan Mampang Prapatan Jakarta Selatan";
       const excerpt = "Air setinggi 40 cm merendam jalan dan puluhan rumah warga sejak pagi.";
-      const workflow = createIncidentIntelligenceWorkflow({
+      const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
         executor: db.executor,
         config: LIVE_CONFIG,
         agentOverrides: { interpreter: countingAgent(interpretationFor()).agent, correlator: countingAgent(NEW_INCIDENT_CORRELATION).agent },
@@ -254,7 +254,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
     await withDatabase(async (db, embedInputs) => {
       const first = "Laporan warga pertama tentang genangan air.";
       const second = "Laporan warga kedua tentang jalan yang tertutup.";
-      const workflow = createIncidentIntelligenceWorkflow({
+      const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
         executor: db.executor,
         config: LIVE_CONFIG,
         agentOverrides: { interpreter: countingAgent(interpretationFor()).agent, correlator: countingAgent(NEW_INCIDENT_CORRELATION).agent },
@@ -311,7 +311,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
 
       for (const fixture of cases) {
         const interpreter = countingAgent(interpretationFor());
-        const workflow = createIncidentIntelligenceWorkflow({
+        const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
           executor: db.executor,
           config: LIVE_CONFIG,
           agentOverrides: { interpreter: interpreter.agent, correlator: countingAgent(NEW_INCIDENT_CORRELATION).agent },

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { lineageIdsFor, seedProposalLineage } from './proposal-lineage-fixture.js';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createEventProposalWriter, type EventProposalDto } from '../src/event-proposal-writer.js';
@@ -22,6 +23,7 @@ function proposal(id: string, options: { title: string; discrepancy?: boolean; p
   const claimId = `claim-${id}`;
   return {
     schema_version: '2.0',
+    ...lineageIdsFor('pipeline-flow'),
     proposal_id: id,
     incident_id: `inc-${id}`,
     title: options.title,
@@ -65,6 +67,8 @@ describe('FLOW-VIS-01 pipeline flow store', () => {
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     await applyMigrations(db.executor, migrations);
+    // Retrieved long before every window the flow counts, so the fixture revision changes no count.
+    await seedProposalLineage(db.executor, 'pipeline-flow', 'live', '2025-01-01T00:00:00.000Z');
     await seed();
   });
 
@@ -176,13 +180,13 @@ describe('FLOW-VIS-01 pipeline flow store', () => {
     await exec.transaction(async (tx) => {
       await tx.query(
         `INSERT INTO waspada.publication_decisions (dataset_kind, decision_id, trace_id, proposal_id, policy_version, event_id, event_version, reviewer_id, decided_at, record_json)
-         VALUES ('live', 'dec-p1', 'trace-p-1', 'p-1', 'merge-review-v1', 'evt-p-1', 1, 'agent:auto-publisher', $1::timestamptz,
+         VALUES ('live', 'dec-p1', 'trace-lineage-pipeline-flow', 'p-1', 'merge-review-v1', 'evt-p-1', 1, 'agent:auto-publisher', $1::timestamptz,
                  '{"disposition":"publish","actor_kind":"agent","actor_id":"agent:auto-publisher","publication_mode":"agent_auto","gate":"agent_auto_publication"}'::jsonb)`,
         [ago(16)],
       );
       await tx.query(
         `INSERT INTO waspada.event_versions (dataset_kind, event_id, version, trace_id, supersedes_version, title, summary, category, lifecycle, publication_status, publication_decision_id, published_at, record_json)
-         VALUES ('live', 'evt-p-1', 1, 'trace-p-1', NULL, 'Genangan Cawang', 'Ringkasan', 'disasters_weather', 'ongoing', 'published', 'dec-p1', $1::timestamptz,
+         VALUES ('live', 'evt-p-1', 1, 'trace-lineage-pipeline-flow', NULL, 'Genangan Cawang', 'Ringkasan', 'disasters_weather', 'ongoing', 'published', 'dec-p1', $1::timestamptz,
                  '{"claims":[{"claim_id":"claim-p-1"}],"impact_refs":[],"publication_mode":"agent_auto"}'::jsonb)`,
         [ago(16)],
       );
@@ -192,7 +196,7 @@ describe('FLOW-VIS-01 pipeline flow store', () => {
       );
       await tx.query(
         `INSERT INTO waspada.publication_decisions (dataset_kind, decision_id, trace_id, proposal_id, policy_version, event_id, event_version, reviewer_id, decided_at, record_json)
-         VALUES ('live', 'dec-p3', 'trace-p-3', 'p-3', 'merge-review-v1', NULL, NULL, 'mod-1', $1::timestamptz,
+         VALUES ('live', 'dec-p3', 'trace-lineage-pipeline-flow', 'p-3', 'merge-review-v1', NULL, NULL, 'mod-1', $1::timestamptz,
                  '{"disposition":"reject","actor_kind":"moderator","actor_id":"mod-1","reason":"tidak relevan"}'::jsonb)`,
         [ago(2)],
       );

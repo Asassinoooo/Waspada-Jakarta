@@ -67,7 +67,7 @@ describe("F-14 incident event time", () => {
       eventTime: { value: null, precision: "unknown" },
       evidence: [{ chunkId: input.evidenceChunks[0]!.chunkId, exactQuote, supports: "Pohon tumbang menutup jalur" }],
     });
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: {
         interpreter,
@@ -106,7 +106,7 @@ describe("F-14 incident event time", () => {
     const reportRevisionId = "rev-f14-control-001";
     const input = workflowInput(reportRevisionId);
     const eventTimeValue = "2026-10-30T09:15:00.000Z";
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: {
         interpreter: interpreterWithEventTime(

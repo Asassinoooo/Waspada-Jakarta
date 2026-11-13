@@ -95,7 +95,7 @@ describe("INTEL-02 proposal IDs (workflow, PGlite)", () => {
   });
 
   async function runReport(input: IncidentWorkflowInput, agents: { interpreter: ReturnType<typeof interpreter>; correlator: ReturnType<typeof createMockCorrelatorAgent> }) {
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       config: MOCK_CONFIG,
       agentOverrides: { interpreter: agents.interpreter, correlator: agents.correlator },
@@ -211,9 +211,9 @@ describe("INTEL-02 proposal IDs (workflow, PGlite)", () => {
       coordinates: null,
       claims: [{ claim_id: "claim-1", claim_text: "lama", evidence_label: "under_review", support_assessment: "supported", quote_text: "", evidence_ref_id: "x" }],
       proposed_at: "2026-11-11T07:00:00.000Z",
-    }, "synthetic");
+    }, "synthetic", { syntheticFixtureLineage: true });
 
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       config: MOCK_CONFIG,
       agentOverrides: {
@@ -255,8 +255,8 @@ describe("INTEL-02 proposal IDs (workflow, PGlite)", () => {
     const originalWarn = console.warn;
     console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
     try {
-      assert.equal((await writer.persistProposal(base, "synthetic")).outcome, "created");
-      const again = await writer.persistProposal({ ...base, claims: [] }, "synthetic");
+      assert.equal((await writer.persistProposal(base, "synthetic", { syntheticFixtureLineage: true })).outcome, "created");
+      const again = await writer.persistProposal({ ...base, claims: [] }, "synthetic", { syntheticFixtureLineage: true });
       assert.equal(again.outcome, "already_exists");
     } finally {
       console.warn = originalWarn;
@@ -326,7 +326,8 @@ describe("INTEL-02 moderation notification (job runner, PGlite)", () => {
       internalServiceKey: "test-internal-key",
       workerInternalUrl: "http://worker.invalid",
       agentOverrides: {
-        interpreter: interpreter({ evidence: [{ chunkId: "chk-x", exactQuote: "Banjir setinggi 40 cm", supports: "tinggi air" }] }),
+        // The job's only chunk for a revision with no stored chunks is the full-text fallback chunk.
+        interpreter: interpreter({ evidence: [{ chunkId: `chk-${revisionId}-0`, exactQuote: "Banjir setinggi 40 cm", supports: "tinggi air" }] }),
         correlator: createMockCorrelatorAgent({ decision: "new_incident", candidateIncidentId: null }),
       },
     });

@@ -4,6 +4,7 @@ import worker from "../src/index.js";
 import type { WorkerEnvironment } from "../src/layers/l4-application-integration/api.js";
 import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
 import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
+import { seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
 
@@ -20,6 +21,8 @@ const serviceKey = "job-runner-secret-000000000000";
 const permittedSource = "source-internal-route-fixture";
 const traceId = "trace-internal-route-fixture";
 
+let lineage: ProposalLineage | undefined;
+
 function proposal(proposalId: string, incidentId: string, hasDiscrepancy = false): EventProposalDto {
   const claim = {
     claim_id: "claim-1",
@@ -34,6 +37,7 @@ function proposal(proposalId: string, incidentId: string, hasDiscrepancy = false
   };
   return {
     schema_version: "2.0",
+    ...(lineage ?? {}),
     proposal_id: proposalId,
     incident_id: incidentId,
     title: "Genangan di Cawang",
@@ -94,6 +98,7 @@ describe("FR-08 internal proposals route with a service key and a database", () 
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
     await applyMigrations(db.executor, migrations);
+    lineage = await seedProposalLineage(db.executor, "internal-route");
     await db.executor.query(
       `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
        VALUES ($1, 'live', now(), 'succeeded', '{"fixture":"authored-synthetic-only"}'::jsonb)`,

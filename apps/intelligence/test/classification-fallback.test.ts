@@ -329,6 +329,8 @@ describe("WJ-INT-01C: AI-First Classification and Safe Fallback Architecture", (
           severity: "medium",
       primaryCategory: "disasters_weather",
           confidence: "medium",
+          // The job's only chunk for a revision with no stored chunks is the full-text fallback chunk.
+          evidence: [{ chunkId: `chk-${revisionId}-0`, exactQuote: "Info air naik di terowongan cawang", supports: "genangan" }],
         }),
         correlator: createMockCorrelatorAgent({
           decision: "unresolved",

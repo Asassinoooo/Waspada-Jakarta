@@ -187,6 +187,8 @@ export interface PersistIncidentProcessingInput {
   };
   readonly proposal: EventProposalDto;
   readonly proposalAction?: "create" | "upsert";
+  /** Synthetic fixtures only; see ProposalWriteOptions. Ignored for live and historical data. */
+  readonly syntheticFixtureLineage?: boolean;
   readonly now?: string;
 }
 
@@ -1302,7 +1304,10 @@ export function createSqlIncidentRepository(executor: SqlExecutor): IncidentRepo
 
         // 6. Persist Proposal and Claims
         const shouldUpsert = input.proposalAction === "upsert" || input.incidentAction.type === "update";
-        const proposalResult = await persistProposalWithTx(tx, input.proposal, input.datasetKind, { upsert: shouldUpsert });
+        const proposalResult = await persistProposalWithTx(tx, input.proposal, input.datasetKind, {
+          upsert: shouldUpsert,
+          syntheticFixtureLineage: input.syntheticFixtureLineage === true,
+        });
         // INTEL-02: a conflicting ID would commit the report without its claims. Throwing rolls back the transaction.
         if (proposalResult.outcome === "already_exists") {
           throw new ProposalIdConflictError(input.proposal.proposal_id, input.datasetKind);

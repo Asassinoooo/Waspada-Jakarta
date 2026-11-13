@@ -201,7 +201,7 @@ describe("INTEL-02 mock mode full workflow (zero gateway requests)", () => {
   });
 
   it("a full run (new incident, then a corroborating report) makes zero gateway requests", async () => {
-    const workflow = createIncidentIntelligenceWorkflow({ executor: db.executor, config: MOCK_CONFIG });
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true, executor: db.executor, config: MOCK_CONFIG });
 
     const first = await (await workflow.createRun()).start({ inputData: workflowInput() });
     assert.equal(first.status, "success");

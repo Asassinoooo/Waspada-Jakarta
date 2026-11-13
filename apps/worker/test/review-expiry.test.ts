@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
+import { seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
 import {
@@ -28,6 +29,8 @@ const NOW = new Date("2026-11-12T12:00:00.000Z");
 const HOUR = 3_600_000;
 const hoursBefore = (hours: number) => new Date(NOW.getTime() - hours * HOUR).toISOString();
 
+let lineage: ProposalLineage | undefined;
+
 function proposal(proposalId: string, incidentId: string, proposedAt: string, sourceId = "source-detik"): EventProposalDto {
   const claim = {
     claim_id: `claim-${proposalId}`,
@@ -42,6 +45,7 @@ function proposal(proposalId: string, incidentId: string, proposedAt: string, so
   };
   return {
     schema_version: "2.0",
+    ...(lineage ?? {}),
     proposal_id: proposalId,
     incident_id: incidentId,
     title: "Genangan di Cawang",
@@ -96,6 +100,7 @@ describe("REVIEW-EXPIRY-01 expiry sweep", () => {
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
     await applyMigrations(db.executor, migrations);
+    lineage = await seedProposalLineage(db.executor, "review-expiry");
     deps = {
       executor: db.executor,
       datasetKind: "live",

@@ -52,6 +52,24 @@ export interface EventProposalDto {
   /** WJ-INT-02B: registry source id for the public-display rights gate. */
   readonly source_id?: string | null;
   readonly incident_id?: string | null;
+  /**
+   * FR-14 lineage: the job trace the report was processed under, the report's candidate
+   * (extraction_results) and its grounding context. The writer refuses a proposal whose lineage rows
+   * do not exist; it never invents them (F-TRACE-02).
+   */
+  readonly trace_id?: string;
+  readonly candidate_id?: string;
+  readonly context_id?: string;
+  /** The report revision(s) whose claims this proposal carries; a merged chain lists every revision. */
+  readonly report_revision_ids?: readonly string[];
+}
+export interface ProposalWriteOptions {
+  readonly upsert?: boolean;
+  /**
+   * Synthetic fixtures only. With dataset_kind 'synthetic' this lets a proposal without real lineage
+   * get placeholder trace, candidate and context rows. It is ignored for every other dataset_kind.
+   */
+  readonly syntheticFixtureLineage?: boolean;
 }
 /** REVIEW-EXPIRY-01: metadata only. The sweep never reads proposal text. */
 export interface ExpirableProposalRow {
@@ -64,7 +82,7 @@ export interface EventProposalWriter {
   persistProposal(
     proposal: EventProposalDto,
     datasetKind?: string,
-    options?: { upsert?: boolean },
+    options?: ProposalWriteOptions,
   ): Promise<{ proposalId: string; outcome: 'created' | 'updated' | 'already_exists' }>;
   readPendingProposals(datasetKind?: string): Promise<readonly EventProposalDto[]>;
   readProposalById(proposalId: string, datasetKind?: string): Promise<EventProposalDto | null>;
@@ -81,6 +99,30 @@ export interface EventProposalWriter {
 
 /** Hard cap on one sweep, so one cycle never writes more than this many decision rows. */
 export const EXPIRABLE_PROPOSAL_BATCH_CAP = 50;
+
+/**
+ * A proposal is refused, with nothing written, when the real rows it must reference are missing or
+ * do not agree. The code is stable and redacted; it carries no proposal text.
+ */
+export type ProposalLineageCode =
+  | 'proposal_lineage_missing'
+  | 'proposal_revision_missing'
+  | 'proposal_trace_missing'
+  | 'proposal_trace_mismatch'
+  | 'proposal_candidate_missing'
+  | 'proposal_candidate_conflict'
+  | 'proposal_context_missing'
+  | 'proposal_evidence_missing';
+
+export class ProposalLineageError extends Error {
+  readonly code: ProposalLineageCode;
+
+  constructor(code: ProposalLineageCode) {
+    super(code);
+    this.name = 'ProposalLineageError';
+    this.code = code;
+  }
+}
 
 const VALID_DATASETS: Record<string, true> = {
   live: true,
@@ -113,7 +155,13 @@ async function runInTransaction<Result>(
   }
 }
 
-async function ensurePrerequisites(
+/**
+ * SYNTHETIC FIXTURES ONLY (dataset_kind 'synthetic', explicit syntheticFixtureLineage). It writes
+ * placeholder trace, source, report revision, candidate and grounding context rows so that authored
+ * fixtures without a real report can persist. It is never reached for live or historical data.
+ * Callers: the intelligence workflow's synthetic fixture tests, and the synthetic-only tests in apps/db.
+ */
+async function ensureSyntheticFixturePrerequisites(
   tx: SqlExecutor,
   datasetKind: string,
   traceId: string,
@@ -179,6 +227,43 @@ async function ensurePrerequisites(
 }
 
 /**
+ * FR-14 / F-TRACE-02: a live or historical proposal references rows that were written from the
+ * report. The trace, the candidate (extraction result) and the grounding context must already exist
+ * and agree with each other. Nothing is created here.
+ */
+async function requireRealLineage(
+  tx: SqlExecutor,
+  datasetKind: string,
+  traceId: string,
+  candidateId: string,
+  contextId: string,
+): Promise<void> {
+  const trace = await tx.query<{ trace_id: string }>(
+    `SELECT trace_id FROM waspada.traces WHERE trace_id = $1 AND dataset_kind = $2`,
+    [traceId, datasetKind],
+  );
+  if (trace.rows.length === 0) throw new ProposalLineageError('proposal_trace_missing');
+
+  const candidate = await tx.query<{ trace_id: string }>(
+    `SELECT trace_id FROM waspada.extraction_results WHERE dataset_kind = $1 AND candidate_id = $2`,
+    [datasetKind, candidateId],
+  );
+  if (candidate.rows.length === 0) throw new ProposalLineageError('proposal_candidate_missing');
+  if (candidate.rows[0]!.trace_id !== traceId) throw new ProposalLineageError('proposal_trace_mismatch');
+
+  const context = await tx.query<{ context_id: string }>(
+    `SELECT context_id FROM waspada.grounding_contexts
+     WHERE dataset_kind = $1 AND context_id = $2 AND candidate_id = $3 AND trace_id = $4`,
+    [datasetKind, contextId, candidateId, traceId],
+  );
+  if (context.rows.length === 0) throw new ProposalLineageError('proposal_context_missing');
+}
+
+function nonEmptyId(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
  * INTEL-02: thrown by incident persistence when a proposal ID already exists, because the new
  * claims would not be written. Callers must fail the run, not commit without them.
  */
@@ -212,7 +297,7 @@ export async function persistProposalWithTx(
   tx: SqlExecutor,
   proposal: EventProposalDto,
   datasetKind: string = 'live',
-  _options?: { upsert?: boolean },
+  options?: ProposalWriteOptions,
 ): Promise<{ proposalId: string; outcome: 'created' | 'updated' | 'already_exists' }> {
   if (!proposal || typeof proposal !== 'object') {
     throw new TypeError('Proposal must be an object');
@@ -253,13 +338,29 @@ export async function persistProposalWithTx(
   if (existing.rows.length > 0) {
     return conflictOutcome(proposal, datasetKind);
   }
-  // Lineage IDs
+  // Lineage IDs. The proposal's trace, candidate and context must be the rows its report was written
+  // under. Only a synthetic fixture that opts in gets placeholder rows; anything else is refused.
   const extra = proposal as unknown as Record<string, unknown>;
-  const traceId = (typeof extra.trace_id === 'string' && extra.trace_id) || `trace-${proposal.proposal_id}`;
-  const candidateId = (typeof extra.candidate_id === 'string' && extra.candidate_id) || `candidate-${proposal.proposal_id}`;
-  const contextId = (typeof extra.context_id === 'string' && extra.context_id) || `context-${proposal.proposal_id}`;
-
-  await ensurePrerequisites(tx, datasetKind, traceId, candidateId, contextId);
+  const declaredTrace = nonEmptyId(extra.trace_id);
+  const declaredCandidate = nonEmptyId(extra.candidate_id);
+  const declaredContext = nonEmptyId(extra.context_id);
+  let traceId: string;
+  let candidateId: string;
+  let contextId: string;
+  if (datasetKind === 'synthetic' && options?.syntheticFixtureLineage === true) {
+    traceId = declaredTrace ?? `trace-${proposal.proposal_id}`;
+    candidateId = declaredCandidate ?? `candidate-${proposal.proposal_id}`;
+    contextId = declaredContext ?? `context-${proposal.proposal_id}`;
+    await ensureSyntheticFixturePrerequisites(tx, datasetKind, traceId, candidateId, contextId);
+  } else {
+    if (!declaredTrace || !declaredCandidate || !declaredContext) {
+      throw new ProposalLineageError('proposal_lineage_missing');
+    }
+    traceId = declaredTrace;
+    candidateId = declaredCandidate;
+    contextId = declaredContext;
+    await requireRealLineage(tx, datasetKind, traceId, candidateId, contextId);
+  }
 
   // Insert proposal into waspada.event_proposals
   const inserted = await tx.query<{ proposal_id: string }>(
@@ -339,9 +440,9 @@ export function createEventProposalWriter(executor: SqlExecutor): EventProposalW
     async persistProposal(
       proposal: EventProposalDto,
       datasetKind: string = 'live',
-      _options?: { upsert?: boolean },
+      options?: ProposalWriteOptions,
     ): Promise<{ proposalId: string; outcome: 'created' | 'updated' | 'already_exists' }> {
-      return runInTransaction(executor, (tx) => persistProposalWithTx(tx, proposal, datasetKind, _options));
+      return runInTransaction(executor, (tx) => persistProposalWithTx(tx, proposal, datasetKind, options));
     },
 
     async readPendingProposals(datasetKind: string = 'live'): Promise<readonly EventProposalDto[]> {

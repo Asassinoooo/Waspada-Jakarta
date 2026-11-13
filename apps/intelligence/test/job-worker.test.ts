@@ -85,6 +85,7 @@ describe("Durable AI Job Worker", () => {
         agentOverrides: {
           interpreter: createMockInterpreterAgent({
             summary: "Pohon tumbang menutup Jalan Sudirman dekat Halte Tosari",
+            evidence: [{ chunkId: `chk-${revisionId}-0`, exactQuote: "Pohon tumbang menutup Jalan Sudirman", supports: "pohon tumbang" }],
             incidentType: "pohon_tumbang",
             severity: "medium",
       primaryCategory: "disasters_weather",
@@ -261,6 +262,7 @@ describe("Durable AI Job Worker", () => {
         agentOverrides: {
           interpreter: createMockInterpreterAgent({
             summary: "Pohon tumbang menutup jalan",
+            evidence: [{ chunkId: `chk-${revisionId}-0`, exactQuote: "Pohon tumbang", supports: "pohon tumbang" }],
             incidentType: "pohon_tumbang",
             severity: "medium",
             primaryCategory: "disasters_weather",
@@ -338,6 +340,7 @@ describe("Durable AI Job Worker", () => {
         agentOverrides: {
           interpreter: createMockInterpreterAgent({
             summary: "Laporan struktur tanpa triase",
+            evidence: [{ chunkId: `chk-${revisionId}-0`, exactQuote: "Laporan", supports: "laporan" }],
             incidentType: "laporan_struktur",
             severity: "low",
             primaryCategory: "disasters_weather",

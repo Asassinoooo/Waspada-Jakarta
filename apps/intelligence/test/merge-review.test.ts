@@ -59,7 +59,7 @@ describe("MERGE-REVIEW-01 merge rules", () => {
       has_discrepancy: spec.hasDiscrepancy ?? false,
       discrepancy_summary: spec.discrepancySummary ?? null,
     });
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: { interpreter, correlator },
     });

@@ -9,6 +9,7 @@ import { createSqlEmbeddingRunRepository, type EmbeddingRunRecord } from "../../
 import { createSqlGroundingContextRepository, type GroundingContextRecord } from "../../db/src/grounding-contexts.js";
 import { createSqlInvestigationLedgerRepository } from "../../db/src/investigation-ledger.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
+import type { TransactionalSqlExecutor } from "../../db/src/sql.js";
 import {
   AGENT_AUTO_PUBLISHER_ID,
   decideProposal,
@@ -20,8 +21,10 @@ import {
  * configuration, grounding context, investigation, proposal and publication decision. The chain
  * is written by the production writers on PGlite. Authored synthetic data only.
  *
- * The chain holds on the L2/L3 path, whose proposal carries its lineage ids. The intelligence
- * workflow builds its proposal without them, and those two todo findings record that gap.
+ * F-TRACE-01: the live intelligence workflow now builds its proposal with the trace, candidate and
+ * context ids of the report's own rows. The writer keeps them and mints no trace of its own.
+ * F-TRACE-02: the writer refuses a proposal whose lineage rows are missing and writes no placeholder
+ * trace, source, report revision, candidate or grounding context in their place.
  */
 
 const TRACE = "trace-fr14-chain";
@@ -39,6 +42,10 @@ const WORKFLOW_PROPOSAL = "prop-fr14-workflow";
 const WORKFLOW_INCIDENT = "inc-fr14-workflow";
 const PLACEHOLDER_PROPOSAL = "prop-fr14-placeholder";
 const PLACEHOLDER_INCIDENT = "inc-fr14-placeholder";
+const WF_TRACE = "trace-fr14-live-job";
+const WF_REVISION = "rev-fr14-live-report";
+const WF_CANDIDATE = "cand-fr14-live-report";
+const WF_CONTEXT = "ctx-fr14-live-report";
 const PROVIDER = "chain-test-provider";
 const MODEL_VERSION = "chain-embedding-v1";
 const TEXT = "Genangan 50 cm di Cawang (fiktif)";
@@ -100,6 +107,8 @@ function groundingRecord(
   contextId: string,
   sufficient: boolean,
   traceId: string,
+  candidateId: string = CANDIDATE,
+  revisionId: string = REVISION,
 ): GroundingContextRecord {
   return {
     schema_version: "2.0",
@@ -107,16 +116,16 @@ function groundingRecord(
     record_type: "GroundingContext",
     dataset_kind: "live",
     context_id: contextId,
-    candidate_id: CANDIDATE,
+    candidate_id: candidateId,
     evidence: [{
-      report_revision_id: REVISION,
+      report_revision_id: revisionId,
       permitted_text_hash: TEXT_HASH,
       span_start: 0,
       span_end: SPAN_END,
       offset_unit: "unicode_code_points",
       relation: "supports",
     }],
-    revision_states: [{ report_revision_id: REVISION, revision_status: "eligible" }],
+    revision_states: [{ report_revision_id: revisionId, revision_status: "eligible" }],
     candidate_events: [],
     prior_decision_ids: [],
     missing_fields: sufficient ? [] : ["service_resume_confirmation"],
@@ -125,6 +134,75 @@ function groundingRecord(
     index_version: "synthetic-index-v1",
     sufficient,
   } as GroundingContextRecord;
+}
+
+/**
+ * The rows the live job writes before its proposal: the job trace, the source, the report revision
+ * with its evidence span, the candidate that revision was extracted into, and the grounding context
+ * built from that evidence. Authored synthetic data only.
+ */
+async function seedLiveReportChain(
+  executor: TransactionalSqlExecutor,
+  chain: { readonly trace: string; readonly revision: string; readonly candidate: string; readonly context: string },
+): Promise<void> {
+  const ports = createRepositoryPorts(executor);
+  await ports.tracesAndAudit.createTrace({
+    traceId: chain.trace,
+    datasetKind: "live",
+    startedAt: NOW,
+    endedAt: null,
+    outcome: "open",
+    metadata: { fixture: "authored-synthetic-only" },
+  });
+  await executor.query(
+    `INSERT INTO waspada.source_registry
+       (source_id, trace_id, registry_version, display_name, source_kind, remit, access_method,
+        approved_hosts, access_restrictions, reuse_basis, registry_status, approval_status,
+        health_status, auto_acquisition_enabled, auto_publication_policy)
+     VALUES ($1, $2, 1, 'Fictional chain source', 'other', ARRAY['fixture'], 'manual_fixture',
+        ARRAY[]::text[], ARRAY['fictional'], ARRAY['public_display'], 'active', 'approved',
+        'healthy', true, 'never')
+     ON CONFLICT (source_id) DO NOTHING`,
+    [SOURCE, chain.trace],
+  );
+  await ports.reportRevisions.create({
+    datasetKind: "live",
+    reportRevisionId: chain.revision,
+    traceId: chain.trace,
+    sourceId: SOURCE,
+    canonicalUrl: "https://chain.invalid/fr14-live",
+    sourceRevisionKey: null,
+    contentHash: sha256("fr14 live report payload"),
+    permittedText: TEXT,
+    permittedTextHash: TEXT_HASH,
+    normalizationVersion: "fr14-normalization-v1",
+    publishedAt: null,
+    observedAt: null,
+    retrievedAt: NOW,
+    validFrom: null,
+    validUntil: null,
+    supersedesId: null,
+    revisionStatus: "eligible",
+    recordJson: { fixture: "authored-synthetic-only" },
+  });
+  await ports.reportRevisions.createEvidenceReference({
+    datasetKind: "live",
+    traceId: chain.trace,
+    reportRevisionId: chain.revision,
+    permittedTextHash: TEXT_HASH,
+    spanStart: 0,
+    spanEnd: SPAN_END,
+    relation: "supports",
+  });
+  await executor.query(
+    `INSERT INTO waspada.extraction_results
+       (dataset_kind, candidate_id, trace_id, report_revision_id, category, record_json)
+     VALUES ('live', $1, $2, $3, 'disasters_weather', '{"fixture":"authored-synthetic-only"}'::jsonb)`,
+    [chain.candidate, chain.trace, chain.revision],
+  );
+  await createSqlGroundingContextRepository(executor).createOrVerify(
+    groundingRecord(chain.context, true, chain.trace, chain.candidate, chain.revision),
+  );
 }
 
 describe("FR-14 one trace id from report ingestion to publication decision", () => {
@@ -300,36 +378,61 @@ describe("FR-14 one trace id from report ingestion to publication decision", () 
     assert.deepEqual(await traceOf("SELECT trace_id FROM waspada.event_versions WHERE dataset_kind = 'live' AND event_id = $1 AND version = 1", [INCIDENT]), [TRACE], "published version");
   });
 
-  it("F-TRACE-01 the intelligence-workflow proposal keeps the report's trace id",
-    { todo: "F-TRACE-01 proposal stage has no trace id from the report: the workflow DTO has no trace_id, so the writer assigns trace-<proposal_id>" },
-    async () => {
-      // The DTO exactly as incident-intelligence-workflow.ts builds it: no trace_id, candidate_id or context_id.
-      await createEventProposalWriter(db.executor).persistProposal(
-        proposal(WORKFLOW_PROPOSAL, WORKFLOW_INCIDENT),
-        "live",
-      );
-      assert.deepEqual(
-        await traceOf("SELECT trace_id FROM waspada.event_proposals WHERE dataset_kind = 'live' AND proposal_id = $1", [WORKFLOW_PROPOSAL]),
-        [TRACE],
-        "the proposal carries the report's trace id",
-      );
-    });
+  it("F-TRACE-01 a live workflow proposal keeps the report's trace, candidate and context ids", async () => {
+    const chain = { trace: WF_TRACE, revision: WF_REVISION, candidate: WF_CANDIDATE, context: WF_CONTEXT };
+    await seedLiveReportChain(db.executor, chain);
+    // The DTO as incident-intelligence-workflow.ts now builds it: the job trace and the report's own ids.
+    await createEventProposalWriter(db.executor).persistProposal(
+      proposal(WORKFLOW_PROPOSAL, WORKFLOW_INCIDENT, {
+        trace_id: WF_TRACE,
+        candidate_id: WF_CANDIDATE,
+        context_id: WF_CONTEXT,
+      }),
+      "live",
+    );
+    const row = await db.executor.query<{ trace_id: string; candidate_id: string; context_id: string }>(
+      "SELECT trace_id, candidate_id, context_id FROM waspada.event_proposals WHERE dataset_kind = 'live' AND proposal_id = $1",
+      [WORKFLOW_PROPOSAL],
+    );
+    assert.deepEqual(row.rows, [{ trace_id: WF_TRACE, candidate_id: WF_CANDIDATE, context_id: WF_CONTEXT }],
+      "the proposal carries the report's trace, candidate and context");
+    assert.deepEqual(
+      await traceOf("SELECT trace_id FROM waspada.traces WHERE trace_id = $1 AND dataset_kind = 'live'", ["trace-" + WORKFLOW_PROPOSAL]),
+      [],
+      "no fresh trace is minted for the proposal",
+    );
+  });
 
-  it("F-TRACE-02 a proposal without lineage ids writes no invented placeholder provenance",
-    { todo: "F-TRACE-02 proposal writer invents placeholder trace, source, revision and context rows when lineage ids are absent" },
-    async () => {
-      await createEventProposalWriter(db.executor).persistProposal(
-        proposal(PLACEHOLDER_PROPOSAL, PLACEHOLDER_INCIDENT),
+  it("F-TRACE-02 a proposal without lineage ids writes no invented placeholder provenance", async () => {
+    const writer = createEventProposalWriter(db.executor);
+    // No lineage ids: refused, nothing written.
+    await assert.rejects(
+      writer.persistProposal(proposal(PLACEHOLDER_PROPOSAL, PLACEHOLDER_INCIDENT), "live"),
+      { code: "proposal_lineage_missing" },
+    );
+    // Lineage ids that name no real candidate: refused, nothing invented under those ids.
+    await assert.rejects(
+      writer.persistProposal(
+        proposal(PLACEHOLDER_PROPOSAL, PLACEHOLDER_INCIDENT, {
+          trace_id: TRACE,
+          candidate_id: "cand-fr14-missing",
+          context_id: "ctx-fr14-missing",
+        }),
         "live",
-      );
-      const count = async (sql: string, id: string) => (await db.executor.query<{ n: number }>(sql, [id])).rows[0]?.n ?? -1;
-      const invented = {
-        traces: await count("SELECT COUNT(*)::int AS n FROM waspada.traces WHERE trace_id = $1", "trace-" + PLACEHOLDER_PROPOSAL),
-        sources: await count("SELECT COUNT(*)::int AS n FROM waspada.source_registry WHERE source_id = $1", "source-candidate-" + PLACEHOLDER_PROPOSAL),
-        revisions: await count("SELECT COUNT(*)::int AS n FROM waspada.report_revisions WHERE report_revision_id = $1", "rev-candidate-" + PLACEHOLDER_PROPOSAL),
-        contexts: await count("SELECT COUNT(*)::int AS n FROM waspada.grounding_contexts WHERE context_id = $1", "context-" + PLACEHOLDER_PROPOSAL),
-      };
-      assert.deepEqual(invented, { traces: 0, sources: 0, revisions: 0, contexts: 0 },
-        "no trace, source, report revision or grounding context is invented for a proposal from a report");
-    });
+      ),
+      { code: "proposal_candidate_missing" },
+    );
+    const count = async (sql: string, id: string) => (await db.executor.query<{ n: number }>(sql, [id])).rows[0]?.n ?? -1;
+    const invented = {
+      traces: await count("SELECT COUNT(*)::int AS n FROM waspada.traces WHERE trace_id = $1", "trace-" + PLACEHOLDER_PROPOSAL),
+      sources: await count("SELECT COUNT(*)::int AS n FROM waspada.source_registry WHERE source_id = $1", "source-candidate-" + PLACEHOLDER_PROPOSAL),
+      revisions: await count("SELECT COUNT(*)::int AS n FROM waspada.report_revisions WHERE report_revision_id = $1", "rev-candidate-" + PLACEHOLDER_PROPOSAL),
+      contexts: await count("SELECT COUNT(*)::int AS n FROM waspada.grounding_contexts WHERE context_id = $1", "context-" + PLACEHOLDER_PROPOSAL),
+      candidates: await count("SELECT COUNT(*)::int AS n FROM waspada.extraction_results WHERE candidate_id = $1", "cand-fr14-missing"),
+      namedContexts: await count("SELECT COUNT(*)::int AS n FROM waspada.grounding_contexts WHERE context_id = $1", "ctx-fr14-missing"),
+      proposals: await count("SELECT COUNT(*)::int AS n FROM waspada.event_proposals WHERE proposal_id = $1", PLACEHOLDER_PROPOSAL),
+    };
+    assert.deepEqual(invented, { traces: 0, sources: 0, revisions: 0, contexts: 0, candidates: 0, namedContexts: 0, proposals: 0 },
+      "no trace, source, report revision, candidate or grounding context is invented for a proposal");
+  });
 });

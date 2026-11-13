@@ -48,7 +48,13 @@ describe("AI-RATE-01 job runner: rate limits defer, checkpoints resume, classifi
     await enqueue("ai-job-rl-seed", "seed");
     const seeder = createJobRunner({
       executor: db.executor,
-      agentOverrides: { interpreter: createMockInterpreterAgent(), correlator: createMockCorrelatorAgent() },
+      agentOverrides: {
+        // The seed revision has no stored chunks, so the job's only chunk is its full-text fallback.
+        interpreter: createMockInterpreterAgent({
+          evidence: [{ chunkId: "chk-rev-rl-seed-0", exactQuote: "Pohon tumbang", supports: "pohon tumbang" }],
+        }),
+        correlator: createMockCorrelatorAgent(),
+      },
     });
     assert.equal(await seeder.processNextJob("synthetic"), true, "the seed incident is created");
   });
@@ -222,7 +228,9 @@ describe("AI-RATE-01 job runner: rate limits defer, checkpoints resume, classifi
     const runner = createJobRunner({
       executor: db.executor,
       agentOverrides: {
-        interpreter: countingAgent(createMockInterpreterAgent(), interpreterCalls),
+        interpreter: countingAgent(createMockInterpreterAgent({
+          evidence: [{ chunkId: "chk-rev-rl-checkpoint-0", exactQuote: "Pohon tumbang", supports: "pohon tumbang" }],
+        }), interpreterCalls),
         correlator: limitedOnce,
       },
     });

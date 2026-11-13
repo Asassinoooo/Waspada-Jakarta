@@ -50,7 +50,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
       reasoning: "Insiden pertama untuk luapan Cawang",
     });
 
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: {
         interpreter: mockInterpreter,
@@ -106,7 +106,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
   });
 
   it("uses the accepted triage category when the interpreter agrees", async () => {
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: {
         interpreter: createMockInterpreterAgent({ primaryCategory: "transport_road_incidents" }),
@@ -145,7 +145,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
   });
 
   it("preserves both values and flags mismatch on disagreement", async () => {
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: {
         interpreter: createMockInterpreterAgent({ primaryCategory: "disasters_weather" }),
@@ -186,7 +186,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
   });
 
   it("keeps interpreter authorship for structured sources without triage", async () => {
-    const workflow = createIncidentIntelligenceWorkflow({
+    const workflow = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: {
         interpreter: createMockInterpreterAgent({ primaryCategory: "fires_infrastructure_hazards" }),
@@ -233,7 +233,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
       reasoning: "Laporan pertama ledakan gas Duri Kepa",
     });
 
-    const workflow1 = createIncidentIntelligenceWorkflow({
+    const workflow1 = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: { interpreter: interpreter1, correlator: correlator1 },
     });
@@ -296,7 +296,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
       ],
     });
 
-    const workflow2 = createIncidentIntelligenceWorkflow({
+    const workflow2 = createIncidentIntelligenceWorkflow({ syntheticFixtureLineage: true,
       executor: db.executor,
       agentOverrides: { interpreter: interpreter2, correlator: correlator2 },
     });

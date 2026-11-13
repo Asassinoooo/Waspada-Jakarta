@@ -52,6 +52,9 @@ export function classifyJobError(err: unknown): string {
   // does not consume an attempt (see processNextJob).
   if (findRateLimitedError(err) !== null) return "rate_limited";
   const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  // FR-14 / F-TRACE-02: a proposal refused for missing or disagreeing lineage keeps its stable code.
+  const lineage = /\b(proposal_(?:lineage|revision|trace|candidate|context|evidence)_[a-z]+)\b/.exec(message);
+  if (lineage) return lineage[1]!;
   if (/\b429\b|rate[ _-]?limit|too many requests|quota/.test(message)) {
     return "rate_limited";
   }

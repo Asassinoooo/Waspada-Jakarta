@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
+import { seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
 import { createPublicEventUpdatesReader } from "../../db/src/public-event-updates.js";
@@ -32,6 +33,8 @@ interface ProposalOptions {
   readonly eventTime?: string;
 }
 
+let lineage: ProposalLineage | undefined;
+
 function proposal(
   proposalId: string,
   incidentId: string,
@@ -52,6 +55,7 @@ function proposal(
   };
   return {
     schema_version: "2.0",
+    ...(lineage ?? {}),
     proposal_id: proposalId,
     incident_id: incidentId,
     title: "Genangan di Cawang",
@@ -139,6 +143,7 @@ describe("FR-11 repeated coverage and re-delivery", () => {
   before(async () => {
     db = await createTestDatabase();
     await applyMigrations(db.executor, await readMigrations(new URL("../../db/migrations/", import.meta.url)));
+    lineage = await seedProposalLineage(db.executor, "repeated");
     deps = {
       executor: db.executor,
       datasetKind: "live",

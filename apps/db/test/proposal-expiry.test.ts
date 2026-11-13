@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { lineageIdsFor, seedProposalLineage } from './proposal-lineage-fixture.js';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createEventProposalWriter, type EventProposalDto } from '../src/event-proposal-writer.js';
@@ -18,6 +19,7 @@ const TEXT_MARKER = 'EXPIRY-TEXT-MARKER-8820';
 function proposal(id: string, proposedAt: string, incidentId = `inc-${id}`): EventProposalDto {
   return {
     schema_version: '2.0',
+    ...lineageIdsFor('proposal-expiry'),
     proposal_id: id,
     incident_id: incidentId,
     title: `Judul ${id}`,
@@ -61,6 +63,7 @@ describe('REVIEW-EXPIRY-01 expiry candidates and flow reads', () => {
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     await applyMigrations(db.executor, migrations);
+    await seedProposalLineage(db.executor, 'proposal-expiry');
   });
 
   after(async () => db?.close());
@@ -87,7 +90,7 @@ describe('REVIEW-EXPIRY-01 expiry candidates and flow reads', () => {
     await writer().persistProposal(proposal('exp-decided', hoursBefore(60)), 'live');
     await db.executor.query(
       `INSERT INTO waspada.publication_decisions (dataset_kind, decision_id, trace_id, proposal_id, policy_version, event_id, event_version, reviewer_id, decided_at, record_json)
-       VALUES ('live', 'dec-exp-decided', 'trace-exp-decided', 'exp-decided', 'merge-review-v1', NULL, NULL, 'mod-1', $1::timestamptz, '{"disposition":"reject"}'::jsonb)`,
+       VALUES ('live', 'dec-exp-decided', 'trace-lineage-proposal-expiry', 'exp-decided', 'merge-review-v1', NULL, NULL, 'mod-1', $1::timestamptz, '{"disposition":"reject"}'::jsonb)`,
       [hoursBefore(59)],
     );
 
@@ -124,7 +127,7 @@ describe('REVIEW-EXPIRY-01 expiry candidates and flow reads', () => {
     await writer().persistProposal(proposal('flow-exp', hoursBefore(2), 'inc-flow-exp'), 'live');
     await db.executor.query(
       `INSERT INTO waspada.publication_decisions (dataset_kind, decision_id, trace_id, proposal_id, policy_version, event_id, event_version, reviewer_id, decided_at, record_json)
-       VALUES ('live', 'dec-flow-exp', 'trace-flow-exp', 'flow-exp', 'merge-review-v1', NULL, NULL, 'agent:review-expiry', $1::timestamptz,
+       VALUES ('live', 'dec-flow-exp', 'trace-lineage-proposal-expiry', 'flow-exp', 'merge-review-v1', NULL, NULL, 'agent:review-expiry', $1::timestamptz,
                '{"disposition":"expire","actor_kind":"agent","actor_id":"agent:review-expiry","reason":"review_ttl_elapsed","ttl_hours":1}'::jsonb)`,
       [hoursBefore(1)],
     );

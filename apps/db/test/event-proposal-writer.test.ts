@@ -6,7 +6,8 @@ import {
   type EventProposalDto,
   type EventProposalWriter,
 } from '../src/event-proposal-writer.js';
-import { createTestDatabase, type TestDatabase } from './harness.js';
+import { createTestDatabase, type TestDatabase } from './harness.js';import { lineageIdsFor, seedProposalLineage } from './proposal-lineage-fixture.js';
+
 
 describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending queries', () => {
   let db: TestDatabase;
@@ -14,6 +15,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
 
   const sampleProposal1: EventProposalDto = {
     schema_version: '2.0',
+    ...lineageIdsFor('event-writer'),
     proposal_id: 'proposal-flood-kemang-001',
     title: 'Banjir 50cm di Jalan Kemang Raya',
     incident_type: 'flood',
@@ -48,6 +50,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
 
   const sampleProposal2: EventProposalDto = {
     schema_version: '2.0',
+    ...lineageIdsFor('event-writer'),
     proposal_id: 'proposal-fire-tambora-002',
     title: 'Kebakaran Rumah Tinggal di Tambora',
     incident_type: 'fire',
@@ -76,6 +79,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL('../migrations/', import.meta.url));
     await applyMigrations(db.executor, migrations);
+    await seedProposalLineage(db.executor, 'event-writer');
     writer = createEventProposalWriter(db.executor);
   });
 
@@ -195,6 +199,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
   it('supports synthetic dataset kind persistence and queries', async () => {
     const syntheticProposal: EventProposalDto = {
       ...sampleProposal1,
+      ...lineageIdsFor('event-writer-synthetic'),
       proposal_id: 'proposal-synthetic-tree-003',
       incident_type: 'tree_fall',
       title: 'Pohon Tumbang Menimpa Tiang Listrik',
@@ -211,6 +216,7 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
       proposed_at: '2026-10-26T10:00:00.000Z',
     };
 
+    await seedProposalLineage(db.executor, 'event-writer-synthetic', 'synthetic');
     const result = await writer.persistProposal(syntheticProposal, 'synthetic');
     assert.equal(result.outcome, 'created');
 
@@ -263,9 +269,28 @@ describe('EVENT-PROPOSAL-WRITER: durable proposal persistence and pending querie
     );
     const evidenceRefId = refInsert.rows[0]!.evidence_ref_id;
 
+    // The candidate and grounding context the proposal names; the writer refuses a proposal without them.
+    await db.executor.query(
+      `INSERT INTO waspada.extraction_results
+         (dataset_kind, candidate_id, trace_id, report_revision_id, category, record_json)
+       VALUES ('live', 'cand-evidence-link-fixture', $1, $2, NULL, '{}'::jsonb)
+       ON CONFLICT DO NOTHING`,
+      [traceId, revisionId],
+    );
+    await db.executor.query(
+      `INSERT INTO waspada.grounding_contexts
+         (dataset_kind, context_id, trace_id, candidate_id, retrieval_version, index_version, sufficient, record_json)
+       VALUES ('live', 'ctx-evidence-link-fixture', $1, 'cand-evidence-link-fixture', 'v1', 'v1', true, '{}'::jsonb)
+       ON CONFLICT DO NOTHING`,
+      [traceId],
+    );
+
     const proposalWithEvidence: EventProposalDto = {
       schema_version: '2.0',
       proposal_id: 'proposal-with-linked-evidence',
+      trace_id: traceId,
+      candidate_id: 'cand-evidence-link-fixture',
+      context_id: 'ctx-evidence-link-fixture',
       title: 'Uji Penautan Bukti',
       incident_type: 'flood',
       primary_category: 'disasters_weather',

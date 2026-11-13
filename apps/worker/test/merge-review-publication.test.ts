@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
+import { seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
 import {
@@ -42,6 +43,8 @@ function claim(
   };
 }
 
+let lineage: ProposalLineage | undefined;
+
 function proposal(
   proposalId: string,
   incidentId: string,
@@ -59,6 +62,7 @@ function proposal(
   ];
   return {
     schema_version: "2.0",
+    ...(lineage ?? {}),
     proposal_id: proposalId,
     incident_id: incidentId,
     title: options.title ?? "Genangan di Cawang",
@@ -93,6 +97,7 @@ describe("MERGE-REVIEW-01 decision writer", () => {
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
     await applyMigrations(db.executor, migrations);
+    lineage = await seedProposalLineage(db.executor, "merge-pub");
     deps = {
       executor: db.executor,
       datasetKind: "live",

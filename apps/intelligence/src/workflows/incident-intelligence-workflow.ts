@@ -33,7 +33,8 @@ import {
   PETABENCANA_SOURCE_ID,
   deterministicStructuredInterpretation,
 } from "../structured-interpretation.js";
-import type { NineRouterConfig } from "../providers/ninerouter-adapter.js";
+import { getNineRouterConfig, type NineRouterConfig } from "../providers/ninerouter-adapter.js";
+import { persistReportLineage, recordModelConfiguration } from "./proposal-lineage.js";
 import { Agent } from "@mastra/core/agent";
 
 export const WorkflowChunkSchema = z.object({
@@ -174,6 +175,12 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
     readonly interpreter?: Agent;
     readonly correlator?: Agent;
   };
+  /**
+   * Synthetic fixtures only. With dataset_kind 'synthetic', a run may persist its proposal with the
+   * writer's placeholder lineage instead of the real candidate and grounding context. Live,
+   * historical and job runs never set it.
+   */
+  readonly syntheticFixtureLineage?: boolean;
 }) {
   const retrievalService = createSemanticRetrievalService({
     executor: dependencies.executor,
@@ -183,6 +190,31 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
 
   const incidentRepo = createSqlIncidentRepository(dependencies.executor);
   const proposalWriter = createEventProposalWriter(dependencies.executor);
+
+  const usesFixtureLineage = (datasetKind: string): boolean =>
+    dependencies.syntheticFixtureLineage === true && datasetKind === "synthetic";
+
+  // The grounding context repository needs a transactional executor. Without one, lineage fails closed.
+  function lineageStore(): TransactionalSqlExecutor {
+    const store = dependencies.transactionalExecutor ?? (dependencies.executor as Partial<TransactionalSqlExecutor>);
+    if (typeof (store as Partial<TransactionalSqlExecutor>).transaction !== "function") {
+      throw new TypeError("Report lineage requires a transactional SQL executor");
+    }
+    return store as TransactionalSqlExecutor;
+  }
+
+  // FR-14: the model configuration of a call that actually ran, recorded on the job trace.
+  async function recordCall(input: IncidentWorkflowInput, role: "interpretation" | "correlation", agentSource: "factory" | "override"): Promise<void> {
+    await recordModelConfiguration(dependencies.executor, {
+      datasetKind: input.datasetKind as DatasetKind,
+      traceId: input.traceId,
+      reportRevisionId: input.reportRevisionId,
+      role,
+      config: getNineRouterConfig(),
+      agentSource,
+      occurredAt: new Date().toISOString(),
+    });
+  }
 
   // AI-RATE-01: the interpretation checkpoint is best effort. A failed read or
   // write only means this attempt calls the model again. Lease ownership is
@@ -246,6 +278,9 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         },
       );
       if (!checkpointed) {
+        if (!usesFixtureLineage(inputData.datasetKind)) {
+          await recordCall(inputData, "interpretation", dependencies.agentOverrides?.interpreter ? "override" : "factory");
+        }
         await saveInterpretationCheckpoint(inputData, interpretation);
       }
 
@@ -324,9 +359,11 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       // model. With none left, the decision is deterministic and no model is called.
       const candidates = inputData.candidateIncidents as unknown as readonly CandidateIncidentMatch[];
       const relevantCandidates = candidates.filter((match) => match.similarityScore >= CORRELATION_MIN_SIMILARITY);
-      const correlation = relevantCandidates.length === 0
-        ? correlateWithoutCandidates(inputData.interpretation)
-        : await correlateIncident(
+      let correlation: IncidentCorrelation;
+      if (relevantCandidates.length === 0) {
+        correlation = correlateWithoutCandidates(inputData.interpretation);
+      } else {
+        correlation = await correlateIncident(
           {
             incomingReportRevisionId: inputData.input.reportRevisionId,
             incomingReportText: inputData.input.reportText,
@@ -337,6 +374,10 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             agent: dependencies.agentOverrides?.correlator,
           },
         );
+        if (!usesFixtureLineage(inputData.input.datasetKind)) {
+          await recordCall(inputData.input, "correlation", dependencies.agentOverrides?.correlator ? "override" : "factory");
+        }
+      }
 
       return {
         input: inputData.input,
@@ -386,6 +427,20 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       // Triage upstream guarantees a canonical slug on ingest; the interpreter
       // schema guarantees its own value. Structured path uses interpretation.
       const authoritativeCategory = (triageCategory ?? interpretation.primaryCategory) as ReportInterpretation["primaryCategory"];
+      // FR-14 / F-TRACE-02: the real candidate and grounding context for this revision, written before any
+      // incident or proposal row. A revision that is missing, or not on the job trace, stops the run here.
+      const fixtureLineage = usesFixtureLineage(input.datasetKind);
+      const reportLineage = fixtureLineage
+        ? null
+        : await persistReportLineage(dependencies.executor, lineageStore(), {
+          datasetKind,
+          traceId: input.traceId,
+          reportRevisionId: input.reportRevisionId,
+          evidenceChunks: input.evidenceChunks,
+          citedChunkIds: interpretation.evidence.map((ev) => ev.chunkId),
+          category: authoritativeCategory,
+          categorySource: input.triage ? "triage" : "interpreter",
+        });
       const interpretationLineage = input.triage
         ? {
             primaryCategory: interpretation.primaryCategory,
@@ -520,6 +575,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       let proposalCaveats = triageMismatch
         ? [...interpretation.uncertaintyNotes, "category_mismatch_review"]
         : [...interpretation.uncertaintyNotes];
+      let reportRevisionIds: string[] = [input.reportRevisionId];
 
       if (correlation.decision === "same_incident" && correlation.candidateIncidentId) {
         // The chain head is the latest proposal of this incident that is not rejected and not
@@ -561,6 +617,10 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             ...((head.caveats as string[] | undefined) ?? []),
             ...proposalCaveats,
           ]));
+          reportRevisionIds = Array.from(new Set([
+            ...(head.report_revision_ids ?? []),
+            ...reportRevisionIds,
+          ]));
         }
       }
 
@@ -598,6 +658,13 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         caveats: proposalCaveats,
         correlation_relationship: relationship,
         proposed_at: now,
+        // FR-14 lineage: the job trace, the report's own candidate and context, and every revision the
+        // proposal carries. A synthetic fixture passes only the trace; the writer supplies its placeholders.
+        trace_id: input.traceId,
+        ...(reportLineage
+          ? { candidate_id: reportLineage.candidateId, context_id: reportLineage.contextId }
+          : {}),
+        report_revision_ids: reportRevisionIds,
       };
       let resolvedIncident: IncidentRecord | Record<string, unknown>;
       if (input.jobId && input.leaseToken) {
@@ -625,6 +692,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
           },
           proposal: proposalDto,
           proposalAction: correlation.decision === "same_incident" ? "upsert" : "create",
+          syntheticFixtureLineage: fixtureLineage,
           now,
         });
         const loaded = await incidentRepo.getIncidentById(datasetKind, targetIncidentId);
@@ -634,6 +702,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         // incident, decision or link is written, so no claim is dropped and no partial state is left.
         const written = await proposalWriter.persistProposal(proposalDto, datasetKind, {
           upsert: correlation.decision === "same_incident",
+          syntheticFixtureLineage: fixtureLineage,
         });
         if (written.outcome === "already_exists") {
           throw new ProposalIdConflictError(proposalDto.proposal_id, datasetKind);

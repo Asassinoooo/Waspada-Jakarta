@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
+import { seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../../db/src/sql.js";
@@ -53,9 +54,12 @@ function claim(id: string, overrides: Fields = {}): Fields {
 }
 
 /** Passes every ADR-061 automatic check. `fields` replaces top-level fields (undefined drops a key). */
+let lineage: ProposalLineage | undefined;
+
 function validProposal(incidentId: string, fields: Fields = {}): EventProposalDto {
   return {
     schema_version: "2.0",
+    ...(lineage ?? {}),
     proposal_id: `prop-${incidentId}`,
     incident_id: incidentId,
     title: "Genangan di Cawang",
@@ -89,6 +93,7 @@ describe("ADR-061 automatic gate: database-level checks", () => {
     db = await createTestDatabase();
     const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
     await applyMigrations(db.executor, migrations);
+    lineage = await seedProposalLineage(db.executor, "adr061");
     deps = {
       executor: db.executor,
       datasetKind: "live",
