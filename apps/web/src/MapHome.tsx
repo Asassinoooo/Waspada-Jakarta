@@ -13,6 +13,7 @@ import {
 } from "./EventMapCanvas.js";
 import type { MapCoordinate } from "./SourcePointMap.js";
 import { MapEventList } from "./MapEventList.js";
+import { MapLegend } from "./MapSeverity.js";
 import { DEFAULT_MAP_FILTER_VALUE, MapFilterSheet, type MapFilterValue } from "./MapFilterSheet.js";
 import { AnchoredMapPopup, PeekMapPopup, popupAnchor, unmappedPopupAnchor } from "./MapPopup.js";
 import { EMERGENCY_FACILITIES } from "./emergency-facilities.js";
@@ -23,6 +24,7 @@ import {
   countActiveFilters,
   deepLinkTarget,
   filterPublishedEvents,
+  severityOf,
   usePublicEventDetail,
   usePublishedEvents,
   type PublishedMarker,
@@ -116,6 +118,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       label: `${categoryText(event.category)}: ${event.title}`,
       icon: categoryMarkerIcon(event.category),
       selected: event.event_id === selectedId,
+      severity: severityOf(event),
     }];
   }), [visibleEvents, data.markers, selectedId]);
   const facilities = useMemo(
@@ -343,6 +346,8 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
               Laporan dari tautan ini tidak ada di daftar yang terbit saat ini.
             </p>
           )}
+
+          <MapLegend />
 
           {/* The map screen has no page footer: the same notice floats over the map. */}
           <footer className="map-home__footer">

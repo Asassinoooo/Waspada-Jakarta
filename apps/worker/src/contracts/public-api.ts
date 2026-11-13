@@ -107,6 +107,8 @@ export interface EventView {
   claims: PublicClaim[];
   impacts: PublicImpact[];
   published_at: string;
+  /** Model-assessed estimate of impact (SEV-01). Omitted when not assessed. Never a safety claim and never a radius. */
+  severity?: "low" | "medium" | "high";
 }
 
 export type PublicGeoJSONPosition = [longitude: number, latitude: number];

@@ -45,6 +45,7 @@ export const syntheticEventFixtures: readonly EventView[] = [
     summary:
       "SIMULASI FIKTIF. Contoh kategori keamanan pribadi untuk waktu lampau; seluruh waktu dan status direka, tanpa lokasi, laporan, atau klaim bukti nyata.",
     category: "crime_personal_security",
+    severity: "low",
     tags: [...syntheticTopic],
     lifecycle: "resolved",
     freshness: syntheticFreshness("needs_update", "2026-09-24T00:00:00.000Z", null, "unknown"),
@@ -59,6 +60,7 @@ export const syntheticEventFixtures: readonly EventView[] = [
     summary:
       "SIMULASI FIKTIF. Contoh acara terencana beserta dampak transportasi rekaan untuk antarmuka; bukan jadwal, pengalihan, penutupan, atau gangguan nyata. Tidak ada sumber atau klaim bukti.",
     category: "demonstrations_public_gatherings",
+    severity: "medium",
     tags: [...syntheticTopic],
     lifecycle: "planned",
     freshness: syntheticFreshness("needs_update", "2026-09-24T00:00:00.000Z", null, "unknown"),
@@ -101,6 +103,7 @@ export const syntheticEventFixtures: readonly EventView[] = [
     summary:
       "SIMULASI FIKTIF. Skenario cuaca dan genangan yang seluruhnya direka untuk tampilan; bukan peringatan cuaca atau pengamatan banjir nyata. Tidak ada lokasi, sumber, atau klaim bukti.",
     category: "disasters_weather",
+    severity: "high",
     tags: [...syntheticTopic],
     lifecycle: "ongoing",
     freshness: syntheticFreshness("needs_update", "2026-10-09T00:00:00.000Z", null, "unknown"),
@@ -138,6 +141,7 @@ export const syntheticEventFixtures: readonly EventView[] = [
     summary:
       "SIMULASI FIKTIF. Contoh pemberitahuan rekaan yang hanya ditujukan ke kelompok simulasi; tidak memuat lokasi, layanan, instansi, sumber, atau klaim bukti dan tidak mewakili kondisi nyata.",
     category: "group_specific_critical_notices",
+    severity: "low",
     tags: [...syntheticTopic],
     lifecycle: "unknown",
     freshness: syntheticFreshness("current", "2026-09-24T00:00:00.000Z", null, "unknown"),

@@ -949,15 +949,17 @@ test("event detail returns the exact synthetic fixture projection without added 
     impacts: unknown[];
     published_at: string;
     geometries: unknown[];
+    severity?: string;
   }>(response);
 
   assert.equal(response.status, 200);
   assertKeys(body, [
     "event_id", "version", "title", "summary", "category", "tags", "lifecycle",
     "freshness", "event_time", "validity", "scope", "claims", "impacts", "published_at",
-    "geometries",
+    "geometries", "severity",
   ]);
   assert.equal(body.event_id, "synthetic-demo-01");
+  assert.equal(body.severity, "low");
   assert.match(body.title, /^SIMULASI FIKTIF/);
   assert.match(body.summary, /^SIMULASI FIKTIF/);
   assertKeys(body.freshness, ["status", "evaluated_at", "review_due_at", "basis"]);

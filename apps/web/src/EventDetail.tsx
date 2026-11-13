@@ -3,7 +3,8 @@ import type { ApiReadState } from "./api-client.js";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
 import { MapPanel } from "./MapPanel.js";
-import { publicationPathText } from "./published-events.js";
+import { SeverityChip } from "./MapSeverity.js";
+import { publicationPathText, SEVERITY_NOTE, severityOf } from "./published-events.js";
 
 interface EventDetailProps {
   mode: "presentation" | "api-event";
@@ -197,6 +198,7 @@ function ApiEventDetail({
   onBackToList?: () => void;
 }) {
   const event = detail.status === "loaded" ? detail.data : null;
+  const severity = event === null ? null : severityOf(event);
 
   return (
     <>
@@ -233,6 +235,12 @@ function ApiEventDetail({
             <p className="section-kicker">Detail dari API lokal · record sintetis</p>
             <h1 id="detail-title">{event.title}</h1>
             <p>{event.summary}</p>
+            {severity !== null && (
+              <p className="map-severity-note">
+                <SeverityChip level={severity} />
+                <small>{SEVERITY_NOTE}</small>
+              </p>
+            )}
             <div className="fixture-notice" role="note">
               Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta.
             </div>

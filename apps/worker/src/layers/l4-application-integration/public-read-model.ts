@@ -55,6 +55,23 @@ export class PublicEventDetailProjectionServiceError extends Error {
   }
 }
 
+/**
+ * SEV-01: maps an internal severity to the public estimate. `critical` is shown as `high`; `unknown`
+ * and any other value are not assessed, so they return undefined and the public key is omitted.
+ */
+export function publicSeverity(value: unknown): "low" | "medium" | "high" | undefined {
+  switch (value) {
+    case "low":
+    case "medium":
+    case "high":
+      return value;
+    case "critical":
+      return "high";
+    default:
+      return undefined;
+  }
+}
+
 function toEventView(event: EventDetail | EventView): EventView {
   return {
     event_id: event.event_id,
@@ -72,6 +89,7 @@ function toEventView(event: EventDetail | EventView): EventView {
     claims: event.claims,
     impacts: event.impacts,
     published_at: event.published_at,
+    ...(event.severity !== undefined ? { severity: event.severity } : {}),
   };
 }
 
@@ -238,6 +256,7 @@ export class PublicReadModel {
         claims: event.claims,
         impacts: event.impacts,
         published_at: event.published_at,
+        ...(event.severity !== undefined ? { severity: event.severity } : {}),
         geometries: [...(event.geometries || [])],
       };
     }
@@ -260,6 +279,7 @@ export class PublicReadModel {
       claims: event.claims,
       impacts: event.impacts,
       published_at: event.published_at,
+      ...(event.severity !== undefined ? { severity: event.severity } : {}),
       geometries: [],
     };
   }
@@ -351,6 +371,7 @@ export class PublicReadModel {
       claims: withFreshness.claims,
       impacts: withFreshness.impacts,
       published_at: withFreshness.published_at,
+      ...(withFreshness.severity !== undefined ? { severity: withFreshness.severity } : {}),
       geometries,
       ...(publication ? { publication } : {}),
     };
@@ -690,6 +711,7 @@ export function proposalToEventDetail(
       : [],
   }));
 
+  const severity = publicSeverity(proposal.severity);
   return {
     event_id: eventId,
     version: options?.version ?? 1,
@@ -726,6 +748,7 @@ export function proposalToEventDetail(
     claims,
     impacts: [],
     published_at: publishedAt,
+    ...(severity !== undefined ? { severity } : {}),
     geometries,
     ...(options?.publication ? { publication: options.publication } : {}),
   };
@@ -786,6 +809,7 @@ function rawInputToEventDetail(
       ? input.proposed_at
       : new Date().toISOString();
 
+  const severity = publicSeverity(input.severity);
   return {
     event_id: eventId,
     version: typeof input.version === "number" ? input.version : 1,
@@ -823,6 +847,7 @@ function rawInputToEventDetail(
     claims: Array.isArray(input.claims) ? (input.claims as PublicClaim[]) : [],
     impacts: Array.isArray(input.impacts) ? (input.impacts as PublicImpact[]) : [],
     published_at: publishedAt,
+    ...(severity !== undefined ? { severity } : {}),
     geometries,
   };
 }

@@ -142,6 +142,27 @@ test("projects a candidate page in order and preserves its exact continuation cu
   }
 });
 
+test("SEV-01: an optional severity from the projection is kept, and an absent severity adds no key", async () => {
+  const withSeverity = await createService(
+    makePage([makeCandidate(eventA, firstTime)], null),
+    (eventId) => ({ kind: "found", event: { ...makeEventView(String(eventId)), severity: "high" } }),
+  ).read();
+  assert.equal(withSeverity.events[0]?.severity, "high");
+
+  const withoutSeverity = await createService(makePage([makeCandidate(eventA, firstTime)], null)).read();
+  assert.equal(Object.hasOwn(withoutSeverity.events[0]!, "severity"), false);
+});
+
+test("SEV-01: a projection with a severity outside low, medium and high is rejected before the list", async () => {
+  await assertServiceError(
+    createService(
+      makePage([makeCandidate(eventA, firstTime)], null),
+      (eventId) => ({ kind: "found", event: { ...makeEventView(String(eventId)), severity: "critical" } }),
+    ).read(),
+    "PROJECTION_RESULT_INVALID",
+  );
+});
+
 test("defaults to 20, accepts the maximum page size, and returns empty end pages", async () => {
   let defaultOptions: PublicEventListCandidateReadOptions | undefined;
   const defaultResult = await createService(

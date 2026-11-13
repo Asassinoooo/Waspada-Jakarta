@@ -125,7 +125,10 @@ const freshnessStatuses = new Set<PublicEventListFreshness>(["current", "needs_u
 const eventViewKeys = [
   "event_id", "version", "title", "summary", "category", "tags", "lifecycle",
   "freshness", "event_time", "validity", "scope", "claims", "impacts", "published_at",
+  "severity",
 ] as const;
+/** SEV-01: severity is optional. A projection without it is valid, and an absent key is never added. */
+const optionalEventViewKeys: readonly string[] = ["severity"];
 
 /**
  * Composes current-public event candidates through the strict Layer 4 projector.
@@ -355,11 +358,12 @@ function validateProjectionResult(
 
   const event = snapshotPlainRecord(result.event);
   if (event === null
-    || !hasExactKeys(event, eventViewKeys)
+    || !hasEventViewKeys(event)
     || !isIdentifier(event.event_id)
     || event.event_id !== candidate.eventId
     || !isSafeInteger(event.version, 1, maxDatabaseInteger)
-    || event.version < candidate.eventVersion) {
+    || event.version < candidate.eventVersion
+    || (event.severity !== undefined && !isPublicSeverity(event.severity))) {
     fail("PROJECTION_RESULT_INVALID");
   }
   if (hasFilters && event.version > candidate.eventVersion) fail("FILTERED_RESULT_CHANGED");
@@ -367,7 +371,9 @@ function validateProjectionResult(
   // Reconstruct the contract-shaped object so extra fields from an injected
   // projector cannot become part of the public list response.
   const projected: Record<string, unknown> = {};
-  for (const key of eventViewKeys) projected[key] = event[key];
+  for (const key of eventViewKeys) {
+    if (!optionalEventViewKeys.includes(key) || event[key] !== undefined) projected[key] = event[key];
+  }
   return projected as unknown as EventView;
 }
 
@@ -507,6 +513,17 @@ function hasExactKeys(value: Record<string, unknown>, expected: readonly string[
   const actual = Reflect.ownKeys(value);
   return actual.length === expected.length
     && actual.every((key) => typeof key === "string" && expected.includes(key));
+}
+
+/** Every required EventView key is present, and only EventView keys appear. Optional keys may be absent. */
+function hasEventViewKeys(value: Record<string, unknown>): boolean {
+  const actual = Reflect.ownKeys(value);
+  return actual.every((key) => typeof key === "string" && (eventViewKeys as readonly string[]).includes(key))
+    && eventViewKeys.every((key) => optionalEventViewKeys.includes(key) || actual.includes(key));
+}
+
+function isPublicSeverity(value: unknown): boolean {
+  return value === "low" || value === "medium" || value === "high";
 }
 
 function compareStrings(left: string, right: string): number {
