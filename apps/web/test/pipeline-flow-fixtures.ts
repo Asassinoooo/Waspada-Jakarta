@@ -37,6 +37,7 @@ export function demoSnapshot(): PipelineFlowSnapshotDto {
     schema_version: "pipeline-flow-v1",
     generated_at: "2026-11-11T09:00:00.000Z",
     dataset_mode: "demo",
+    window: { range: "24h", since: "2026-11-10T09:00:00.000Z" },
     window_hours: 24,
     nodes,
     edges: edgeTargets.map(([from, to]) => ({ from, to, throughput_15m: throughput.get(to) ?? 0 })) as PipelineFlowSnapshotDto["edges"],

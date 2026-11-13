@@ -11,6 +11,8 @@ import type { DatasetKind } from "./ports.js";
 
 export const PIPELINE_FLOW_READ_ROLE = "waspada_l4_pipeline_flow_reader" as const;
 export const PIPELINE_FLOW_ITEM_CAP = 20;
+/** FLOW-RANGE-01: the window used when a caller gives none. The Worker passes the selected range. */
+export const PIPELINE_FLOW_DEFAULT_WINDOW_MS = 24 * 3_600_000;
 
 export type PipelineFlowSourceFamily = "petabencana" | "bmkg" | "rss";
 
@@ -27,6 +29,10 @@ export interface PipelineFlowSourceAggregate {
   readonly acquisition_failed_24h: number;
 }
 
+/**
+ * FLOW-RANGE-01: fields named `*_24h` cover the selected window (the Worker's `range`, default 24 h).
+ * The name is kept so existing clients and keys keep working. `*_15m` fields always cover 15 minutes.
+ */
 export interface PipelineFlowAggregates {
   readonly dataset_kind: DatasetKind;
   readonly generated_at: string;
@@ -135,13 +141,26 @@ async function beginReadOnly(tx: Queryable): Promise<void> {
 }
 
 export interface PipelineFlowStore {
-  readAggregates(input: { readonly datasetKind: DatasetKind; readonly now: Date }): Promise<PipelineFlowAggregates>;
+  readAggregates(input: {
+    readonly datasetKind: DatasetKind;
+    readonly now: Date;
+    /** Length of the `*_24h` window in milliseconds. Defaults to PIPELINE_FLOW_DEFAULT_WINDOW_MS. */
+    readonly windowMs?: number;
+  }): Promise<PipelineFlowAggregates>;
   readItems(input: {
     readonly datasetKind: DatasetKind;
     readonly node: PipelineFlowDbItemNode;
     readonly now: Date;
     readonly limit: number;
+    /** Length of the window in milliseconds for the nodes that have one. Defaults to PIPELINE_FLOW_DEFAULT_WINDOW_MS. */
+    readonly windowMs?: number;
   }): Promise<readonly PipelineFlowStoredItem[]>;
+}
+
+function windowStart(now: Date, windowMs: number | undefined): string {
+  const length = windowMs ?? PIPELINE_FLOW_DEFAULT_WINDOW_MS;
+  if (!Number.isFinite(length) || length <= 0) throw new RangeError("The pipeline flow window must be a positive length.");
+  return new Date(now.getTime() - length).toISOString();
 }
 
 export function createPipelineFlowStore(executor: TransactionalSqlExecutor): PipelineFlowStore {
@@ -157,8 +176,8 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
   }
 
   return {
-    async readAggregates({ datasetKind, now }) {
-      const since24h = new Date(now.getTime() - 24 * 3_600_000).toISOString();
+    async readAggregates({ datasetKind, now, windowMs }) {
+      const sinceWindow = windowStart(now, windowMs);
       const since15m = new Date(now.getTime() - 15 * 60_000).toISOString();
       return inReadTransaction(async (tx) => {
         const sourceRows = await tx.query<{
@@ -184,7 +203,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              JOIN waspada.source_registry sr ON sr.source_id = rr.source_id
             WHERE rr.dataset_kind = $1 AND rr.retrieved_at >= $2::timestamptz
             GROUP BY 1`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const acquisitionRows = await tx.query<{
@@ -203,7 +222,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              JOIN waspada.source_registry sr ON sr.source_id = aj.source_id
             WHERE aj.dataset_kind = $1 AND aj.job_kind = 'source_poll'
             GROUP BY 1`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const revisionStatusRows = await tx.query<{ revision_status: string; n: unknown }>(
@@ -211,7 +230,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              FROM waspada.report_revisions rr
             WHERE rr.dataset_kind = $1 AND rr.retrieved_at >= $2::timestamptz
             GROUP BY 1`,
-          [datasetKind, since24h],
+          [datasetKind, sinceWindow],
         );
         const activeChunks = await tx.query<{ n: unknown }>(
           `SELECT count(*) AS n FROM waspada.evidence_chunks ec WHERE ec.dataset_kind = $1 AND ec.status = 'active'`,
@@ -225,7 +244,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              FROM waspada.news_triage_decisions ntd
             WHERE ntd.dataset_kind = $1 AND ntd.evaluated_at >= $2::timestamptz
             GROUP BY 1, 2`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const jobRows = await tx.query<Record<string, unknown>>(
@@ -242,7 +261,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              count(*) FILTER (WHERE aj.has_interpretation AND aj.updated_at >= $3::timestamptz) AS checkpointed_15m
            FROM waspada.pipeline_flow_ai_jobs aj
            WHERE aj.dataset_kind = $1`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const embeddingRows = await tx.query<{ status: string; n: unknown; n_15m: unknown }>(
@@ -252,7 +271,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              FROM waspada.embedding_runs er
             WHERE er.dataset_kind = $1 AND er.created_at >= $2::timestamptz
             GROUP BY 1`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const correlationRows = await tx.query<{ decision: string; n: unknown; n_15m: unknown }>(
@@ -260,7 +279,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              FROM waspada.incident_correlation_decisions icd
             WHERE icd.dataset_kind = $1 AND icd.created_at >= $2::timestamptz
             GROUP BY 1`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
         const incidentRows = await tx.query<{ n: unknown }>(
           `SELECT count(*) AS n FROM waspada.incidents i
@@ -278,7 +297,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
            LEFT JOIN waspada.pipeline_flow_decisions pd
              ON pd.dataset_kind = ep.dataset_kind AND pd.proposal_id = ep.proposal_id
           WHERE ep.dataset_kind = $1`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const decisionRows = await tx.query<{ disposition: string | null; actor_kind: string | null; n: unknown; n_15m: unknown }>(
@@ -289,7 +308,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              FROM waspada.pipeline_flow_decisions pd
             WHERE pd.dataset_kind = $1 AND pd.decided_at >= $2::timestamptz
             GROUP BY 1, 2`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const versionRows = await tx.query<Record<string, unknown>>(
@@ -301,7 +320,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
              count(*) FILTER (WHERE ev.published_at >= $2::timestamptz AND ev.publication_mode = 'moderator_reviewed') AS versions_moderator_24h
            FROM waspada.pipeline_flow_versions ev
           WHERE ev.dataset_kind = $1 AND ev.publication_status = 'published'`,
-          [datasetKind, since24h, since15m],
+          [datasetKind, sinceWindow, since15m],
         );
 
         const byKey = <T extends { n: unknown }>(rows: readonly T[], key: (row: T) => string) => {
@@ -409,9 +428,9 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
       });
     },
 
-    async readItems({ datasetKind, node, now, limit }) {
+    async readItems({ datasetKind, node, now, limit, windowMs }) {
       const cap = Math.max(1, Math.min(PIPELINE_FLOW_ITEM_CAP, Math.trunc(limit)));
-      const since24h = new Date(now.getTime() - 24 * 3_600_000).toISOString();
+      const sinceWindow = windowStart(now, windowMs);
       return inReadTransaction(async (tx) => {
         switch (node) {
           case "src_petabencana":
@@ -427,7 +446,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                   AND ($3::text IS NULL OR ${FAMILY_SQL} = $3::text)
                 ORDER BY rr.retrieved_at DESC, rr.report_revision_id DESC
                 LIMIT $4`,
-              [datasetKind, since24h, family, cap],
+              [datasetKind, sinceWindow, family, cap],
             );
             return rows.rows.map((row) => ({ ref: row.ref, status: row.status, failure_code: null, title: null, at: toInstant(row.at) }));
           }
@@ -441,7 +460,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                   AND ((ntd.model_status = 'skipped_stage_a') = $3::boolean)
                 ORDER BY ntd.evaluated_at DESC, ntd.item_identity_hash DESC
                 LIMIT $4`,
-              [datasetKind, since24h, skipped, cap],
+              [datasetKind, sinceWindow, skipped, cap],
             );
             return rows.rows.map((row) => ({
               ref: row.ref,
@@ -459,7 +478,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                   AND (aj.status IN ('pending', 'leased', 'retry', 'needs_review') OR aj.updated_at >= $2::timestamptz)
                 ORDER BY aj.updated_at DESC, aj.job_id DESC
                 LIMIT $3`,
-              [datasetKind, since24h, cap],
+              [datasetKind, sinceWindow, cap],
             );
             return rows.rows.map((row) => ({ ref: row.ref, status: row.status, failure_code: row.failure_code, title: null, at: toInstant(row.at) }));
           }
@@ -483,7 +502,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                   AND ($3::text = 'embed' OR er.status = 'available')
                 ORDER BY er.created_at DESC, er.embedding_run_id DESC
                 LIMIT $4`,
-              [datasetKind, since24h, node, cap],
+              [datasetKind, sinceWindow, node, cap],
             );
             return rows.rows.map((row) => ({ ref: row.ref, status: row.status, failure_code: null, title: null, at: toInstant(row.at) }));
           }
@@ -494,7 +513,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                 WHERE icd.dataset_kind = $1 AND icd.created_at >= $2::timestamptz
                 ORDER BY icd.created_at DESC, icd.decision_id DESC
                 LIMIT $3`,
-              [datasetKind, since24h, cap],
+              [datasetKind, sinceWindow, cap],
             );
             return rows.rows.map((row) => ({ ref: row.ref, status: row.status, failure_code: null, title: null, at: toInstant(row.at) }));
           }
@@ -511,7 +530,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                 WHERE ep.dataset_kind = $1 AND ep.proposed_at >= $2::timestamptz
                 ORDER BY ep.proposed_at DESC, ep.proposal_id DESC
                 LIMIT $3`,
-              [datasetKind, since24h, cap],
+              [datasetKind, sinceWindow, cap],
             );
             return rows.rows.map((row) => ({
               ref: row.ref,
@@ -530,7 +549,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                   AND pd.disposition IS DISTINCT FROM 'expire'
                 ORDER BY pd.decided_at DESC, pd.decision_id DESC
                 LIMIT $3`,
-              [datasetKind, since24h, cap],
+              [datasetKind, sinceWindow, cap],
             );
             return rows.rows.map((row) => ({
               ref: row.ref,

@@ -98,6 +98,17 @@ describe("FLOW-VIS-01 /api/v1/pipeline/flow with real sessions", () => {
     assert.equal((await get("/api/v1/pipeline/flow/nodes/unknown/items", cookies.moderator)).status, 404);
   });
 
+  it("FLOW-RANGE-01: a moderator gets the selected window, and a bad range is refused after the role check", async () => {
+    const weekly = await get("/api/v1/pipeline/flow?range=7d", cookies.moderator);
+    assert.equal(weekly.status, 200);
+    const body = await weekly.json() as { window: { range: string; since: string } };
+    assert.equal(body.window.range, "7d");
+    assert.match(body.window.since, /^\d{4}-\d{2}-\d{2}T/u);
+    assert.equal((await get("/api/v1/pipeline/flow/nodes/proposal/items?range=1h", cookies.moderator)).status, 200);
+    assert.equal((await get("/api/v1/pipeline/flow?range=bogus", cookies.moderator)).status, 400);
+    assert.equal((await get("/api/v1/pipeline/flow?range=bogus", cookies.user)).status, 403, "the role check comes before the range check");
+  });
+
   it("attaches the runtime status only when the local server provides it", async () => {
     const status = createPipelineRuntimeStatus({
       ninerouter: () => ({

@@ -12,7 +12,7 @@ import {
   demoPipelineFlowItems,
   demoPipelineFlowSnapshotSource,
 } from "../src/layers/l4-application-integration/pipeline-flow-fixtures.js";
-import { PIPELINE_FLOW_NODE_IDS } from "../src/contracts/pipeline-flow.js";
+import { parsePipelineFlowRange, PIPELINE_FLOW_NODE_IDS } from "../src/contracts/pipeline-flow.js";
 import { createPipelineRuntimeStatus } from "../src/runtime/pipeline-runtime-status.js";
 import type { PipelineFlowAggregates } from "../../db/src/pipeline-flow-store.js";
 import type { WorkerEnvironment } from "../src/layers/l4-application-integration/api.js";
@@ -132,6 +132,93 @@ describe("FLOW-VIS-01 pipeline flow snapshot", () => {
     assert.equal(nodeOf(snapshot, "ninerouter").health, "waiting", "a chat cooldown is amber");
     assert.notEqual(nodeOf(snapshot, "cycle").health, "unavailable");
     assert.equal(snapshot.runtime?.cycle.sequence, 3);
+  });
+});
+
+describe("FLOW-RANGE-01 pipeline flow window", () => {
+  it("accepts only the five windows, defaults when the parameter is missing, and refuses repeats", () => {
+    assert.equal(parsePipelineFlowRange([]), "24h");
+    for (const range of ["1h", "6h", "24h", "7d", "30d"]) assert.equal(parsePipelineFlowRange([range]), range);
+    for (const bad of ["", "24H", "2d", "365d", "7d ", "all", "1h,6h"]) {
+      assert.equal(parsePipelineFlowRange([bad]), null, `${JSON.stringify(bad)} is refused`);
+    }
+    assert.equal(parsePipelineFlowRange(["1h", "6h"]), null, "a repeated parameter is refused");
+  });
+
+  it("names its window in the snapshot: 24 h by default and the selected length otherwise", () => {
+    const base = { generatedAt: NOW.toISOString(), datasetMode: "live" as const, aggregates: zeroAggregates(), runtime: null };
+    const defaulted = buildPipelineFlowSnapshot(base);
+    assert.deepEqual(defaulted.window, { range: "24h", since: "2026-11-10T09:00:00.000Z" });
+    assert.equal(defaulted.window_hours, 24);
+
+    const weekly = buildPipelineFlowSnapshot({ ...base, range: "7d" });
+    assert.deepEqual(weekly.window, { range: "7d", since: "2026-11-04T09:00:00.000Z" });
+    assert.equal(weekly.window_hours, 168);
+    assert.equal(weekly.schema_version, "pipeline-flow-v1", "the contract version does not change");
+  });
+
+  it("answers the demo snapshot and items with the requested window and refuses other ranges with 400", async () => {
+    const handler = createPipelineFlowHandler({
+      withTransactionalSqlExecutor: async () => { throw new Error("no database in this test"); },
+      demo: { snapshot: (now) => demoPipelineFlowSnapshotSource(now), items: (input) => demoPipelineFlowItems(input) },
+      now: () => NOW,
+    });
+    const defaulted = await handler(new Request(`${origin}/api/v1/pipeline/flow`), { DATASET_MODE: "demo" }, "synthetic");
+    assert.deepEqual((await defaulted.json() as { window: unknown }).window, { range: "24h", since: "2026-11-10T09:00:00.000Z" });
+
+    const weekly = await handler(new Request(`${origin}/api/v1/pipeline/flow?range=7d`), { DATASET_MODE: "demo" }, "synthetic");
+    assert.equal(weekly.status, 200);
+    assert.equal((await weekly.json() as { window: { range: string } }).window.range, "7d");
+
+    const items = await handler(new Request(`${origin}/api/v1/pipeline/flow/nodes/proposal/items?limit=2&range=1h`), { DATASET_MODE: "demo" }, "synthetic");
+    const itemBody = await items.json() as { window: unknown; items: unknown[] };
+    assert.deepEqual(itemBody.window, { range: "1h", since: "2026-11-11T08:00:00.000Z" });
+    assert.equal(itemBody.items.length, 2);
+
+    for (const path of ["/api/v1/pipeline/flow?range=bogus", "/api/v1/pipeline/flow?range=7d&range=1h", "/api/v1/pipeline/flow/nodes/proposal/items?range=bogus"]) {
+      const res = await handler(new Request(`${origin}${path}`), { DATASET_MODE: "demo" }, "synthetic");
+      assert.equal(res.status, 400, `${path} is refused`);
+      assert.equal((await res.json() as { code: string }).code, "INVALID_REQUEST");
+    }
+  });
+
+  it("passes the selected window to the store on the live path and keeps the 15 minute bound fixed", async () => {
+    const DAY_START = "2026-11-10T09:00:00.000Z";
+    const WEEK_START = "2026-11-04T09:00:00.000Z";
+    const FIFTEEN_MINUTES = "2026-11-11T08:45:00.000Z";
+    const paramsFor = async (path: string): Promise<string[]> => {
+      const seen: string[] = [];
+      const executor = {
+        query: async (_statement: string, parameters: readonly unknown[] = []) => {
+          for (const value of parameters) seen.push(String(value));
+          return { rows: [] };
+        },
+        execute: async () => {},
+        transaction: async (work: (tx: unknown) => Promise<unknown>) => work(executor),
+      };
+      const live = createPipelineFlowHandler({
+        withTransactionalSqlExecutor: async (_env, operation) => operation(executor as never),
+        demo: { snapshot: (now) => demoPipelineFlowSnapshotSource(now), items: () => [] },
+        now: () => NOW,
+      });
+      const res = await live(new Request(`${origin}${path}`), { DATASET_MODE: "live" }, "live");
+      assert.equal(res.status, 200, `${path} answers`);
+      return seen;
+    };
+
+    const defaulted = await paramsFor("/api/v1/pipeline/flow");
+    assert.ok(defaulted.includes(DAY_START), "the default snapshot reads the last 24 hours");
+    assert.ok(defaulted.includes(FIFTEEN_MINUTES), "the 15 minute throughput is still read");
+    assert.equal(defaulted.includes(WEEK_START), false);
+
+    const weekly = await paramsFor("/api/v1/pipeline/flow?range=7d");
+    assert.ok(weekly.includes(WEEK_START), "the 7 day snapshot reads the last 7 days");
+    assert.ok(weekly.includes(FIFTEEN_MINUTES), "the 15 minute bound does not follow the range");
+    assert.equal(weekly.includes(DAY_START), false);
+
+    const drillDown = await paramsFor("/api/v1/pipeline/flow/nodes/proposal/items?range=1h");
+    assert.ok(drillDown.includes("2026-11-11T08:00:00.000Z"), "the drill-down reads the last hour");
+    assert.equal(drillDown.includes(DAY_START), false);
   });
 });
 

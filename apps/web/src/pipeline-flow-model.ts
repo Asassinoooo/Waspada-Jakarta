@@ -1,7 +1,8 @@
 /**
  * FLOW-VIS-01 pure mapping from a `pipeline-flow-v1` snapshot to React Flow nodes and edges, plus
  * the Indonesian labels. No DOM, so it is unit-tested directly. Health is shown as a state of the
- * stage, never as a safety claim; an empty stage says "tidak ada data dalam 24 jam".
+ * stage, never as a safety claim; an empty stage says "tidak ada data dalam" and the selected range
+ * (FLOW-RANGE-01, default 24 jam).
  */
 import type { Edge, MarkerType, Node } from "@xyflow/react";
 import type {
@@ -13,6 +14,11 @@ import type {
   PipelineFlowNodeDto,
   PipelineFlowNodeId,
   PipelineFlowSnapshotDto,
+} from "@waspada/worker/pipeline-flow-contracts";
+import {
+  PIPELINE_FLOW_DEFAULT_RANGE,
+  PIPELINE_FLOW_RANGES,
+  type PipelineFlowRange,
 } from "@waspada/worker/pipeline-flow-contracts";
 import { PIPELINE_LAYER_NAMES, type PipelineLayerId } from "./pipeline-layers.js";
 import { PIPELINE_LANE_BANDS, pipelineEdgeHandles, type NodePosition, type PipelineLaneBand } from "./pipeline-flow-layout.js";
@@ -54,6 +60,46 @@ export const PIPELINE_HEALTH_LABELS: Readonly<Record<PipelineFlowHealth, string>
   failing: "Gagal, perlu dicek",
   unavailable: "Tidak tersedia",
 };
+
+/** FLOW-RANGE-01: Indonesian names for the selectable windows. The selector, the card text and the footnote share them. */
+export const PIPELINE_RANGE_LABELS: Readonly<Record<PipelineFlowRange, string>> = {
+  "1h": "1 jam",
+  "6h": "6 jam",
+  "24h": "24 jam",
+  "7d": "7 hari",
+  "30d": "30 hari",
+};
+
+/** Per-viewer convenience only. The server still answers 24 h for anything missing or unknown here. */
+export const PIPELINE_RANGE_STORAGE_KEY = "waspada.pipelineFlow.range";
+
+export function isPipelineFlowRange(value: unknown): value is PipelineFlowRange {
+  return typeof value === "string" && (PIPELINE_FLOW_RANGES as readonly string[]).includes(value);
+}
+
+/** The range this viewer picked last time. Blocked or missing storage, or any other value, gives the 24 h default. */
+export function readStoredPipelineFlowRange(): PipelineFlowRange {
+  try {
+    const stored = globalThis.localStorage?.getItem(PIPELINE_RANGE_STORAGE_KEY);
+    return isPipelineFlowRange(stored) ? stored : PIPELINE_FLOW_DEFAULT_RANGE;
+  } catch {
+    return PIPELINE_FLOW_DEFAULT_RANGE;
+  }
+}
+
+export function writeStoredPipelineFlowRange(range: PipelineFlowRange): void {
+  try {
+    globalThis.localStorage?.setItem(PIPELINE_RANGE_STORAGE_KEY, range);
+  } catch {
+    // Storage can be blocked or full. The choice still applies to this page view.
+  }
+}
+
+/** The range a snapshot was built for. Labels follow the data on screen, not the selector while a request is in flight. */
+export function snapshotRange(snapshot: PipelineFlowSnapshotDto): PipelineFlowRange {
+  const range = snapshot.window?.range;
+  return isPipelineFlowRange(range) ? range : PIPELINE_FLOW_DEFAULT_RANGE;
+}
 
 export const PIPELINE_COUNT_LABELS: Readonly<Record<string, string>> = {
   sources: "Sumber terdaftar",
@@ -186,8 +232,13 @@ export function failureLabel(code: string | null): string | null {
   return PIPELINE_FAILURE_LABELS[code] ?? code.replace(/_/gu, " ");
 }
 
-export function countLabel(key: string): string {
-  return PIPELINE_COUNT_LABELS[key] ?? key.replace(/_/gu, " ");
+/**
+ * FLOW-RANGE-01: keys ending in `_24h` cover the selected window, so their label names that window
+ * ("Dilewati 24 jam" becomes "Dilewati 7 hari"). `_15m` labels are never changed.
+ */
+export function countLabel(key: string, range: PipelineFlowRange = PIPELINE_FLOW_DEFAULT_RANGE): string {
+  const label = PIPELINE_COUNT_LABELS[key] ?? key.replace(/_/gu, " ");
+  return key.endsWith("_24h") ? label.replace(/24 jam$/u, PIPELINE_RANGE_LABELS[range]) : label;
 }
 
 export interface PipelineChip {
@@ -269,15 +320,18 @@ export interface PipelineFlowNodeView {
   readonly chips: readonly PipelineChip[];
   readonly throughput15m: number;
   readonly countRows: readonly { readonly key: string; readonly label: string; readonly value: number }[];
-  /** Null when the stage has counts; otherwise the Indonesian "no data in 24 h" line. */
+  /** Null when the stage has counts; otherwise the Indonesian "no data in the selected range" line. */
   readonly emptyText: string | null;
+  /** The selected window in words, such as "24 jam" or "7 hari". */
+  readonly windowLabel: string;
   readonly runtimeUnavailable: boolean;
 }
 
-export function nodeView(node: PipelineFlowNodeDto): PipelineFlowNodeView {
+export function nodeView(node: PipelineFlowNodeDto, range: PipelineFlowRange = PIPELINE_FLOW_DEFAULT_RANGE): PipelineFlowNodeView {
   const meta = PIPELINE_NODE_META[node.id];
   const counts = node.counts;
-  const countRows = Object.entries(counts).map(([key, value]) => ({ key, label: countLabel(key), value }));
+  const windowLabel = PIPELINE_RANGE_LABELS[range];
+  const countRows = Object.entries(counts).map(([key, value]) => ({ key, label: countLabel(key, range), value }));
   const hasCounts = countRows.some((row) => row.value !== 0);
   const primaryKey = PRIMARY_KEY[node.id];
   const primaryValue = primaryKey !== undefined && primaryKey in counts ? counts[primaryKey]! : null;
@@ -293,7 +347,7 @@ export function nodeView(node: PipelineFlowNodeDto): PipelineFlowNodeView {
   if (node.health === "unavailable") {
     emptyText = "Status runtime tidak terpasang pada layanan ini.";
   } else if (!hasCounts) {
-    emptyText = "Tidak ada data dalam 24 jam.";
+    emptyText = `Tidak ada data dalam ${windowLabel}.`;
   }
   return {
     id: node.id,
@@ -303,11 +357,12 @@ export function nodeView(node: PipelineFlowNodeDto): PipelineFlowNodeView {
     health: node.health,
     healthLabel: PIPELINE_HEALTH_LABELS[node.health],
     primaryValue,
-    primaryLabel: primaryKey !== undefined ? countLabel(primaryKey) : "",
+    primaryLabel: primaryKey !== undefined ? countLabel(primaryKey, range) : "",
     chips,
     throughput15m: node.throughput_15m,
     countRows,
     emptyText,
+    windowLabel,
     runtimeUnavailable: node.health === "unavailable",
   };
 }
@@ -348,12 +403,13 @@ export function toPipelineFlowGraph(
     focusable: false,
     zIndex: -1,
   }));
+  const range = snapshotRange(snapshot);
   const cardNodes: Node[] = snapshot.nodes.map((node) => ({
     id: node.id,
     type: PIPELINE_FLOW_NODE_TYPE,
     position: { x: positions[node.id].x, y: positions[node.id].y },
     data: {
-      view: nodeView(node),
+      view: nodeView(node, range),
       nineRouter: node.id === "ninerouter" ? snapshot.runtime?.ninerouter ?? null : null,
       nineRouterGeneratedAt: node.id === "ninerouter" ? snapshot.runtime?.generated_at ?? null : null,
     } satisfies PipelineFlowCardData,

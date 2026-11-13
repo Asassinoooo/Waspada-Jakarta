@@ -38,6 +38,40 @@ export type PipelineFlowHealth = (typeof PIPELINE_FLOW_HEALTH)[number];
 
 export type PipelineFlowDatasetMode = "live" | "demo";
 
+/**
+ * FLOW-RANGE-01: the time range for windowed counts, sent as `?range=` on the snapshot and item
+ * routes. Only these values are accepted. Every count whose key ends in `_24h` (and every `*_24h`
+ * drill-down) covers the selected window; the key name is kept for compatibility, and the default
+ * window is still 24 h, so a request without `range` returns the same counts as before. The `*_15m`
+ * counts and `throughput_15m` always cover the last 15 minutes, whatever the range.
+ */
+export const PIPELINE_FLOW_RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
+export type PipelineFlowRange = (typeof PIPELINE_FLOW_RANGES)[number];
+export const PIPELINE_FLOW_DEFAULT_RANGE: PipelineFlowRange = "24h";
+export const PIPELINE_FLOW_RANGE_HOURS = { "1h": 1, "6h": 6, "24h": 24, "7d": 168, "30d": 720 } as const;
+export type PipelineFlowWindowHours = (typeof PIPELINE_FLOW_RANGE_HOURS)[PipelineFlowRange];
+
+export interface PipelineFlowWindowDto {
+  readonly range: PipelineFlowRange;
+  /** Start of the selected window, an ISO instant computed from the response's own clock. */
+  readonly since: string;
+}
+
+/**
+ * Reads the `range` query values. No value means the default. More than one value, or any value that
+ * is not one of PIPELINE_FLOW_RANGES, is null, which the route answers with 400.
+ */
+export function parsePipelineFlowRange(values: readonly string[]): PipelineFlowRange | null {
+  if (values.length === 0) return PIPELINE_FLOW_DEFAULT_RANGE;
+  if (values.length > 1) return null;
+  const value = values[0] ?? "";
+  return (PIPELINE_FLOW_RANGES as readonly string[]).includes(value) ? (value as PipelineFlowRange) : null;
+}
+
+export function pipelineFlowWindowAt(range: PipelineFlowRange, now: Date): PipelineFlowWindowDto {
+  return { range, since: new Date(now.getTime() - PIPELINE_FLOW_RANGE_HOURS[range] * 3_600_000).toISOString() };
+}
+
 export interface PipelineFlowNodeDto {
   readonly id: PipelineFlowNodeId;
   readonly lane: PipelineFlowLane;
@@ -86,7 +120,9 @@ export interface PipelineFlowSnapshotDto {
   readonly schema_version: typeof PIPELINE_FLOW_SCHEMA_VERSION;
   readonly generated_at: string;
   readonly dataset_mode: PipelineFlowDatasetMode;
-  readonly window_hours: 24;
+  /** FLOW-RANGE-01: the selected window. Defaults to 24 h when the request has no `range`. */
+  readonly window: PipelineFlowWindowDto;
+  readonly window_hours: PipelineFlowWindowHours;
   readonly nodes: readonly PipelineFlowNodeDto[];
   readonly edges: readonly PipelineFlowEdgeDto[];
   /** Null when the runtime status is not attached (the Worker, demo, or a stopped server). */
@@ -109,6 +145,8 @@ export interface PipelineFlowItemsDto {
   readonly dataset_mode: PipelineFlowDatasetMode;
   readonly node_id: PipelineFlowNodeId;
   readonly limit: number;
+  /** FLOW-RANGE-01: the window the request asked for. Runtime-only nodes ignore it (their items are not windowed). */
+  readonly window: PipelineFlowWindowDto;
   readonly items: readonly PipelineFlowItemDto[];
   /** Null when the node reads only the runtime and the runtime is not attached. */
   readonly unavailable_reason: string | null;

@@ -58,6 +58,14 @@
   margin-left: auto;
 }
 
+/* FLOW-RANGE-01: the window selector reuses the shared .filter-pill; this only groups the pills. */
+.pipeline-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .pipeline-badge {
   display: inline-flex;
   align-items: center;
