@@ -362,8 +362,10 @@ test("publishModerationDecision sends POST with CSRF header and command payload"
   assert.equal(calls[0]?.url, "/api/v1/moderation/proposals/proposal-flood-001/publish");
   assert.equal(calls[0]?.init?.method, "POST");
 
-  const headers = calls[0]?.init?.headers as Record<string, string>;
-  assert.equal(headers["X-CSRF-Token"], "mock-csrf-token-12345678");
+  // FIX-CSRF-01: read the header the way the Worker does. Setting it under two spellings made
+  // fetch merge them into "token, token", which the server rejects with 403.
+  const headers = new Headers(calls[0]?.init?.headers);
+  assert.equal(headers.get("x-csrf-token"), "mock-csrf-token-12345678");
 
   const body = JSON.parse(String(calls[0]?.init?.body)) as ModeratorDecisionCommand;
   assert.equal(body.proposal_id, "proposal-flood-001");
