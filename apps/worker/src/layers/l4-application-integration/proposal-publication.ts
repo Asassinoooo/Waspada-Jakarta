@@ -70,6 +70,11 @@ export type ProposalDecisionOutcome =
     readonly publicationMode: "agent_auto" | "moderator_reviewed";
   }
   | { readonly status: "rejected"; readonly decisionId: string }
+  /**
+   * F-ALERT-01: the proposal's public facts already appear in the current published version. The decision is
+   * recorded as no_material_change. No version, claim, outbox row or update is written.
+   */
+  | { readonly status: "unchanged"; readonly decisionId: string; readonly eventId: string; readonly version: number }
   | { readonly status: "queued"; readonly reasons: readonly ProposalGateReason[] }
   | {
     readonly status: "denied";
@@ -121,6 +126,19 @@ async function latestDisposition(
  */
 async function lockProposalDecisions(tx: SqlExecutor, datasetKind: string, proposalId: string): Promise<void> {
   const hash = createHash("sha256").update(datasetKind).update(":").update(proposalId).digest();
+  await tx.query("SELECT pg_advisory_xact_lock($1::integer, $2::integer)", [
+    hash.readInt32BE(0),
+    hash.readInt32BE(4),
+  ]);
+}
+
+/**
+ * F-ALERT-01: serializes publication of one public event. The next version number and the "same facts as the
+ * current version" check both read the event's latest publication, so decisions on different proposals of one
+ * event must not interleave. It is taken after the proposal lock, so every decision takes the locks in one order.
+ */
+async function lockEventPublication(tx: SqlExecutor, datasetKind: string, eventId: string): Promise<void> {
+  const hash = createHash("sha256").update("event").update(":").update(datasetKind).update(":").update(eventId).digest();
   await tx.query("SELECT pg_advisory_xact_lock($1::integer, $2::integer)", [
     hash.readInt32BE(0),
     hash.readInt32BE(4),
@@ -198,6 +216,91 @@ export function distinctPublishers(proposal: EventProposalDto): number {
   return publishers.size;
 }
 
+/** Stable JSON with sorted keys, so two equal values always serialize to the same text. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const members = Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+    return `{${members.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/** Text compared for the same fact: Unicode-normalized, whitespace collapsed, case folded. */
+function foldText(value: string): string {
+  return value.normalize("NFC").replace(/\s+/gu, " ").trim().toLowerCase();
+}
+
+/**
+ * F-ALERT-01: the public facts of one projected version, in canonical form. Equal keys mean a reader sees the
+ * same facts. The key leaves out what changes without a new fact: the version number, publication and evaluation
+ * times, the publication mode and source count, claim identifiers, and claim provenance (outlet, link, excerpt),
+ * because a second outlet reporting the same facts is corroboration, not an update. Times, places, category,
+ * lifecycle, severity, geometry and claim wording are compared, so a changed fact is always material.
+ */
+function publicContentKey(detail: EventDetail): string {
+  return canonicalJson({
+    title: foldText(detail.title),
+    summary: foldText(detail.summary),
+    category: detail.category,
+    incident_type: detail.incident_type,
+    tags: detail.tags,
+    lifecycle: detail.lifecycle,
+    event_time: detail.event_time,
+    validity: detail.validity,
+    scope: detail.scope,
+    severity: detail.severity ?? null,
+    impacts: detail.impacts,
+    geometries: detail.geometries.map((geometry) => ({
+      role: geometry.role,
+      geometry: geometry.geometry,
+      precision_m: geometry.precision_m,
+      label: geometry.label,
+    })),
+    claims: detail.claims
+      .map((claim) => canonicalJson({
+        text: foldText(claim.text),
+        evidence_label: claim.evidence_label,
+        event_time: claim.event_time,
+        validity: claim.validity,
+        scope: claim.scope,
+        qualifiers: claim.qualifiers,
+      }))
+      .sort(),
+  });
+}
+
+/**
+ * F-ALERT-01: the newest publication of an event, as the decision that wrote it, with the proposal it published.
+ * The decision's version and proposal are read directly, so the event's version rows are not read here. Null
+ * when the event has never been published. Nothing writes a withdrawn version on this path yet; a withdrawal
+ * writer must make this lookup skip withdrawn versions.
+ */
+async function currentPublication(
+  tx: SqlExecutor,
+  datasetKind: string,
+  eventId: string,
+): Promise<{ readonly version: number; readonly decisionId: string; readonly proposal: EventProposalDto } | null> {
+  const latest = await tx.query<{ decision_id: string; event_version: number; record_json: unknown }>(
+    `SELECT decision.decision_id, decision.event_version, proposal.record_json
+     FROM waspada.publication_decisions AS decision
+     JOIN waspada.event_proposals AS proposal
+       ON proposal.dataset_kind = decision.dataset_kind AND proposal.proposal_id = decision.proposal_id
+     WHERE decision.dataset_kind = $1 AND decision.event_id = $2
+       AND decision.record_json->>'disposition' = 'publish'
+     ORDER BY decision.event_version DESC
+     LIMIT 1`,
+    [datasetKind, eventId],
+  );
+  const row = latest.rows[0];
+  if (!row) return null;
+  return { version: row.event_version, decisionId: row.decision_id, proposal: parseProposal(row.record_json) };
+}
+
 async function resolvePublicDisplay(
   dependencies: ProposalDecisionDependencies,
   proposal: EventProposalDto,
@@ -229,6 +332,8 @@ async function resolvePublicDisplay(
  * publish (denied, investigation_stopped_for_review). Reject is still allowed.
  * A proposal that already has a decision is never decided again. F-CONC-01: every decision on one proposal
  * takes the same lock, and the already-decided check runs after the lock, inside the transaction that writes.
+ * F-ALERT-01: a publish that passes the gate but carries the same public facts as the event's current version is
+ * recorded as no_material_change and returns "unchanged". It writes no version, claim or outbox row.
  */
 export async function decideProposal(
   dependencies: ProposalDecisionDependencies,
@@ -306,6 +411,7 @@ export async function decideProposal(
       }
 
       const eventId = publicEventIdForProposal(proposal);
+      await lockEventPublication(tx, datasetKind, eventId);
       const priorPublished = await tx.query<{ count: number }>(
         `SELECT COUNT(*)::int AS count FROM waspada.publication_decisions
          WHERE dataset_kind = $1 AND event_id = $2 AND record_json->>'disposition' = 'publish'`,
@@ -324,6 +430,39 @@ export async function decideProposal(
         });
       } catch {
         return { outcome: { status: "denied", code: "publication_failed" } };
+      }
+
+      // F-ALERT-01: a repeated report of facts that are already public adds no version and no update. It is recorded
+      // as no_material_change, and the new source is kept on that decision for audit only. A current version whose
+      // proposal can no longer be projected is not compared, so this proposal publishes as before.
+      const current = await currentPublication(tx, datasetKind, eventId);
+      if (current) {
+        let currentKey: string | null = null;
+        try {
+          currentKey = publicContentKey(proposalToEventDetail(current.proposal, undefined, { version: current.version }));
+        } catch {
+          currentKey = null;
+        }
+        if (currentKey !== null && currentKey === publicContentKey(detail)) {
+          await insertUnpublishedDecision(tx, {
+            datasetKind,
+            decisionId,
+            traceId: row.trace_id,
+            proposalId: input.proposalId,
+            reviewerId: input.actor.actorId,
+            decidedAt,
+            record: {
+              disposition: "no_material_change",
+              ...actorRecord,
+              reason: input.reason ?? null,
+              matched_event_id: eventId,
+              matched_event_version: current.version,
+              matched_decision_id: current.decisionId,
+              source_count: sourceCount,
+            },
+          });
+          return { outcome: { status: "unchanged", decisionId, eventId, version: current.version } };
+        }
       }
 
       await tx.query(

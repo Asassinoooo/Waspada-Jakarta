@@ -304,6 +304,15 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
           eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
           return { status: "written", receipt: { decision_id: outcome.decisionId } };
         }
+        // F-ALERT-01: the facts are already public at this version. Nothing new is published and no alert is sent.
+        if (outcome.status === "unchanged") {
+          return {
+            status: "unchanged",
+            receipt: { decision_id: outcome.decisionId },
+            event_id: outcome.eventId,
+            version: outcome.version,
+          };
+        }
         if (outcome.status === "already_decided") {
           return { status: "conflict", code: "ALREADY_DECIDED" };
         }
@@ -492,7 +501,7 @@ export default {
       } else if (outcome.status === "queued") {
         eventBroadcaster.broadcastModeration("proposal_created", { proposal_id: proposalId });
       }
-      return new Response(JSON.stringify({ ok: true, proposal_id: proposalId, status: outcome.status, ...(outcome.status === "queued" ? { reasons: outcome.reasons } : {}), ...(outcome.status === "published" ? { event_id: outcome.eventId, version: outcome.version } : {}) }), {
+      return new Response(JSON.stringify({ ok: true, proposal_id: proposalId, status: outcome.status, ...(outcome.status === "queued" ? { reasons: outcome.reasons } : {}), ...(outcome.status === "published" || outcome.status === "unchanged" ? { event_id: outcome.eventId, version: outcome.version } : {}) }), {
         status: 200,
         headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
       });
