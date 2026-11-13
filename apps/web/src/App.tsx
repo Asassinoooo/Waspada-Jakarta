@@ -483,7 +483,8 @@ export function App() {
           <LocalPipelinePreview enabled={import.meta.env?.DEV === true && context?.dataset_mode === "demo"} />
         </Suspense>
       )}
-      <SiteFooter />
+      {/* The map home carries its own floating footer, so the map runs to the bottom edge. */}
+      {route.screen !== "discover" && <SiteFooter />}
       <OnboardingIntro autoOpen={introAutoOpenFor(route.screen)} />
     </div>
   );

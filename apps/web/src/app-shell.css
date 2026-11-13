@@ -7,21 +7,32 @@
  * nav as icon plus short label. The header never wraps; the nav scrolls inside itself as a fallback.
  */
 
+:root {
+  /* Space around floating islands (header, map panels). */
+  --shell-gap: var(--space-3);
+  --shell-header-height: var(--header-height);
+}
+
+/* The header is a floating island: inset from the edges, rounded and translucent over the page. */
 .site-header {
   position: sticky;
-  top: 0;
+  top: var(--shell-gap);
   z-index: var(--z-header);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--space-5);
   box-sizing: border-box;
-  width: 100%;
-  min-height: var(--header-height);
-  padding-block: var(--space-2);
-  padding-inline: max(var(--space-4), calc((100% - 88rem) / 2));
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  width: min(calc(100% - 2 * var(--shell-gap)), 88rem);
+  height: var(--shell-header-height);
+  margin: var(--shell-gap) auto 0;
+  padding-inline: var(--space-4) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .brand {
@@ -248,12 +259,15 @@
 
 /* Phone: one row, at most 56px. Brand mark, icon nav, dataset badge and Akun. */
 @media (max-width: 600px) {
+  :root {
+    --shell-gap: var(--space-2);
+    --shell-header-height: 3.25rem;
+  }
+
   .site-header {
     grid-template-columns: auto minmax(0, 1fr) auto;
     column-gap: var(--space-2);
-    min-height: 0;
-    padding-block: var(--space-1);
-    padding-inline: var(--space-3);
+    padding-inline: var(--space-2) var(--space-1);
   }
 
   .brand { gap: 0; }

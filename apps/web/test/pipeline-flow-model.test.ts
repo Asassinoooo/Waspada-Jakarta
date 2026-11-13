@@ -16,12 +16,12 @@ import {
   toPipelineFlowGraph,
 } from "../src/pipeline-flow-model.js";
 import {
-  clearStoredPositions,
-  loadStoredPositions,
+  PIPELINE_COLUMN_WIDTH,
   PIPELINE_DEFAULT_POSITIONS,
-  PIPELINE_LAYOUT_STORAGE_KEY,
-  resolvePipelinePositions,
-  saveStoredPositions,
+  PIPELINE_LANE_BANDS,
+  PIPELINE_NODE_HEIGHT,
+  PIPELINE_NODE_WIDTH,
+  PIPELINE_ROW_HEIGHT,
 } from "../src/pipeline-flow-layout.js";
 import { PIPELINE_LAYER_NAMES, PIPELINE_LAYER_SHORT_NAMES } from "../src/pipeline-layers.js";
 import { demoSnapshot } from "./pipeline-flow-fixtures.js";
@@ -34,12 +34,14 @@ function nodeById(snapshot: PipelineFlowSnapshotDto, id: string): PipelineFlowNo
   return node;
 }
 
-test("the snapshot maps to five swimlane bands and eighteen stage cards with pipeline edges", () => {
+test("the snapshot maps to five titled swimlanes and eighteen stage cards with pipeline edges", () => {
   const snapshot = demoSnapshot();
   const graph = toPipelineFlowGraph(snapshot, PIPELINE_DEFAULT_POSITIONS);
   const lanes = graph.nodes.filter((node) => node.type === "lane");
   const cards = graph.nodes.filter((node) => node.type === "flow");
-  assert.equal(lanes.length, 5);
+  const titled = lanes.filter((lane) => (lane.data as { title: string }).title !== "");
+  assert.equal(titled.length, 5);
+  assert.equal(new Set(lanes.map((lane) => lane.id)).size, lanes.length, "band ids are unique");
   assert.equal(cards.length, PIPELINE_FLOW_NODE_IDS.length);
   for (const lane of lanes) {
     assert.equal(lane.selectable, false, "lane bands are not selectable");
@@ -145,23 +147,30 @@ test("relative times and cooldowns are plain Indonesian and never invent a time"
   assert.equal(cooldownLabel(125_000), "2:05");
 });
 
-test("saved layout is validated, and broken or blocked storage falls back to defaults without throwing", () => {
-  const good = { getItem: () => JSON.stringify({ gate: { x: 100, y: 200 }, embed: { x: "bad", y: 1 }, nope: { x: 1, y: 1 } }) };
-  assert.deepEqual(loadStoredPositions(good), { gate: { x: 100, y: 200 } });
-  assert.equal(resolvePipelinePositions({ gate: { x: 100, y: 200 } }).gate.x, 100);
-  assert.deepEqual(resolvePipelinePositions({}).gate, PIPELINE_DEFAULT_POSITIONS.gate);
+test("the fixed layout is a compact grid with no overlapping cards and every card inside its lane band", () => {
+  const positions = Object.entries(PIPELINE_DEFAULT_POSITIONS);
+  const cells = new Set(positions.map(([, p]) => `${p.x / PIPELINE_COLUMN_WIDTH},${p.y / PIPELINE_ROW_HEIGHT}`));
+  assert.equal(cells.size, positions.length, "each card has its own grid cell");
+  const columns = Math.max(...positions.map(([, p]) => p.x)) / PIPELINE_COLUMN_WIDTH + 1;
+  const rows = Math.max(...positions.map(([, p]) => p.y)) / PIPELINE_ROW_HEIGHT + 1;
+  assert.ok(columns <= 6 && rows <= 4, `fits a 6 by 4 grid, got ${columns} by ${rows}`);
+  const width = (columns - 1) * PIPELINE_COLUMN_WIDTH + PIPELINE_NODE_WIDTH;
+  const height = (rows - 1) * PIPELINE_ROW_HEIGHT + PIPELINE_NODE_HEIGHT;
+  assert.ok(width / height < 2.2, "wide but not a long horizontal strip");
 
-  const malformed = { getItem: () => "{not json" };
-  assert.deepEqual(loadStoredPositions(malformed), {});
-  const blocked = { getItem: () => { throw new Error("SecurityError"); } };
-  assert.deepEqual(loadStoredPositions(blocked), {});
-  assert.deepEqual(loadStoredPositions(null), {});
-
-  const writes: Array<[string, string]> = [];
-  assert.equal(saveStoredPositions({ gate: { x: 1, y: 2 } }, { setItem: (key, value) => { writes.push([key, value]); } }), true);
-  assert.equal(writes[0]?.[0], PIPELINE_LAYOUT_STORAGE_KEY);
-  assert.equal(saveStoredPositions({}, { setItem: () => { throw new Error("QuotaExceededError"); } }), false);
-  assert.doesNotThrow(() => clearStoredPositions({ removeItem: () => { throw new Error("blocked"); } }));
+  const graph = toPipelineFlowGraph(demoSnapshot(), PIPELINE_DEFAULT_POSITIONS);
+  for (const card of graph.nodes.filter((node) => node.type === "flow")) {
+    assert.equal(card.draggable, false, `${card.id} cannot be dragged`);
+    const lane = (card.data as { view: { lane: string } }).view.lane;
+    const inside = PIPELINE_LANE_BANDS.some((band) => band.lane === lane
+      && card.position.x >= band.x && card.position.x + PIPELINE_NODE_WIDTH <= band.x + band.width
+      && card.position.y >= band.y && card.position.y + PIPELINE_NODE_HEIGHT <= band.y + band.height);
+    assert.ok(inside, `${card.id} sits inside a ${lane} band`);
+  }
+  for (const edge of graph.edges) {
+    assert.match(String(edge.sourceHandle), /^source-(left|right|top|bottom)$/u);
+    assert.match(String(edge.targetHandle), /^target-(left|right|top|bottom)$/u);
+  }
 });
 
 test("the demo fixture carries no permitted text and only fictional titles", () => {

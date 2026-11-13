@@ -27,9 +27,10 @@ export interface PopupAnchor {
 }
 
 /** Where the anchored popup sits for a marker at point (x, y) in a map of the given size. Pure. */
-export function popupAnchor(point: { x: number; y: number }, width: number, height: number): PopupAnchor {
+/** `insetLeft` is the strip covered by the floating list, which the popup keeps clear of. */
+export function popupAnchor(point: { x: number; y: number }, width: number, height: number, insetLeft = 0): PopupAnchor {
   const half = POPUP_WIDTH_PX / 2;
-  const minLeft = Math.min(half + POPUP_EDGE_PX, width / 2);
+  const minLeft = Math.min(insetLeft + half + POPUP_EDGE_PX, width / 2 + insetLeft / 2);
   const maxLeft = Math.max(width - half - POPUP_EDGE_PX, width / 2);
   const left = Math.min(maxLeft, Math.max(minLeft, point.x));
   const top = Math.min(height - POPUP_EDGE_PX, Math.max(POPUP_EDGE_PX, point.y));

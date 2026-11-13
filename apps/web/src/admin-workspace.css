@@ -10,15 +10,26 @@
   color: var(--color-text);
 }
 
+/* Floating header island, matching the public site header (app-shell.css). */
 .admin-ws__header {
+  position: sticky;
+  top: var(--shell-gap, var(--space-3));
+  z-index: var(--z-header);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  box-sizing: border-box;
+  width: min(calc(100% - 2 * var(--shell-gap, var(--space-3))), 96rem);
   min-height: 3.5rem;
-  padding: var(--space-1) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  margin: var(--shell-gap, var(--space-3)) auto 0;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 /* One line: brand link, workspace title and (on wide screens) the active tab's title. */

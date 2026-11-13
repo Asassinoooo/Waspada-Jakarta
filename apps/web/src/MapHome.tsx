@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EventView, PublicContext } from "@waspada/worker/public-contracts";
 import { EventDetail } from "./EventDetail.js";
-import { EventMapCanvas, MAP_DEFAULT_VIEW, MAP_DETAIL_ZOOM, isDefaultMapView, type CanvasMarker, type MapProjection, type MapView } from "./EventMapCanvas.js";
+import {
+  EventMapCanvas,
+  MAP_DEFAULT_VIEW,
+  MAP_DETAIL_ZOOM,
+  isDefaultMapView,
+  type CanvasMarker,
+  type MapFlyRequest,
+  type MapProjection,
+  type MapView,
+} from "./EventMapCanvas.js";
+import type { MapCoordinate } from "./SourcePointMap.js";
 import { MapEventList } from "./MapEventList.js";
 import { DEFAULT_MAP_FILTER_VALUE, MapFilterSheet, type MapFilterValue } from "./MapFilterSheet.js";
 import { AnchoredMapPopup, PeekMapPopup, popupAnchor, unmappedPopupAnchor } from "./MapPopup.js";
@@ -30,6 +40,8 @@ const LIST_HEADING_ID = "map-list-title";
 const POPUP_TITLE_ID = "map-popup-title";
 const DETAIL_TITLE_ID = "map-detail-title";
 const MAP_LABEL = "Peta laporan terbit di Jakarta";
+/** After a flight on desktop the event sits this share of the map height below the centre, so its popup fits above it. */
+const POPUP_ROOM_RATIO = 0.24;
 const NO_MARKERS: ReadonlyMap<string, PublishedMarker> = new Map();
 
 export interface MapHomeProps {
@@ -76,6 +88,9 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<MapView>(MAP_DEFAULT_VIEW);
+  const [flyRequest, setFlyRequest] = useState<MapFlyRequest | null>(null);
+  const flyCounter = useRef(0);
+  const islandRef = useRef<HTMLElement | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [deepLinkMissing, setDeepLinkMissing] = useState(false);
   const [detailEventId, setDetailEventId] = useState<string | null>(null);
@@ -135,7 +150,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     setApplied(DEFAULT_MAP_FILTER_VALUE);
     setSelectedId(target.event.event_id);
     setCopyMessage(null);
-    if (target.marker) setView({ center: target.marker.coordinate, zoom: MAP_DETAIL_ZOOM });
+    if (target.marker) flyTo(target.marker.coordinate, MAP_DETAIL_ZOOM);
     if (!wide) setListOpen(false);
   }, [deepLinkEventId, data.status, data.events, data.markers, wide]);
 
@@ -146,17 +161,35 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     if (wide) popupRef.current?.focus({ preventScroll: true });
   }, [selectedEvent, wide]);
 
-  function selectEvent(eventId: string, origin: { focus: boolean; center: boolean; opener: HTMLElement | null }) {
+  /**
+   * Glide the map to a place. For an event it lands right of the floating list and low enough that
+   * the popup above the marker fits under the toolbar.
+   */
+  function flyTo(center: MapCoordinate, zoom: number, forEvent = true) {
+    flyCounter.current += 1;
+    const stage = stageRef.current;
+    const offsetX = forEvent ? islandInset() / 2 : 0;
+    const offsetY = forEvent && wide && stage ? Math.round(stage.getBoundingClientRect().height * POPUP_ROOM_RATIO) : 0;
+    setFlyRequest({ id: flyCounter.current, center, zoom, offsetX, offsetY });
+  }
+
+  /** Width of the map strip covered by the floating list, measured from the map's left edge. */
+  function islandInset(): number {
+    const island = islandRef.current;
+    const stage = stageRef.current;
+    if (!island || !stage) return 0;
+    return Math.max(0, island.getBoundingClientRect().right - stage.getBoundingClientRect().left);
+  }
+
+  function selectEvent(eventId: string, origin: { focus: boolean; opener: HTMLElement | null }) {
     setSelectedId(eventId);
     setCopyMessage(null);
     setDeepLinkMissing(false);
     focusPopupOnOpen.current = origin.focus;
     openerRef.current = origin.opener;
     const marker = data.markers.get(eventId);
-    if (origin.center && marker) {
-      const { coordinate } = marker;
-      setView((current) => ({ center: coordinate, zoom: Math.max(current.zoom, MAP_DETAIL_ZOOM) }));
-    }
+    // Every selection glides to its event: zoom out, travel, zoom in, so moving between events stays smooth.
+    if (marker) flyTo(marker.coordinate, Math.max(view.zoom, MAP_DETAIL_ZOOM));
     // replaceState does not fire hashchange, so the route does not reload when the selection changes.
     window.history.replaceState(window.history.state, "", buildEventHash(eventId));
   }
@@ -173,7 +206,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
 
   function openFromList(eventId: string) {
     if (!wide) setListOpen(false);
-    selectEvent(eventId, { focus: true, center: true, opener: null });
+    selectEvent(eventId, { focus: true, opener: null });
   }
 
   async function copyLink(eventId: string) {
@@ -200,7 +233,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   const renderOverlay = (projection: MapProjection) => {
     if (selectedEvent === null || !wide) return null;
     const anchor = marker
-      ? popupAnchor(projection.project(marker.coordinate), projection.width, projection.height)
+      ? popupAnchor(projection.project(marker.coordinate), projection.width, projection.height, listOpen ? islandInset() : 0)
       : unmappedPopupAnchor(projection.width, projection.height);
     const eventId = selectedEvent.event_id;
     return (
@@ -234,11 +267,11 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   );
 
   return (
-    <main id="main-content" tabIndex={-1} className="map-home">
+    <main id="main-content" tabIndex={-1} className={`map-home${wide && listOpen ? " map-home--island" : ""}`}>
       <h1 className="visually-hidden">Peta laporan terbit</h1>
       <div className="map-home__body">
         {wide && listOpen && (
-          <aside className="map-home__panel" aria-labelledby={LIST_HEADING_ID}>
+          <aside ref={islandRef} className="map-home__panel" aria-labelledby={LIST_HEADING_ID}>
             {listContent}
           </aside>
         )}
@@ -249,10 +282,11 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
             view={view}
             onViewChange={setView}
             markers={canvasMarkers}
-            onSelectMarker={(eventId, element) => selectEvent(eventId, { focus: true, center: false, opener: element })}
+            onSelectMarker={(eventId, element) => selectEvent(eventId, { focus: true, opener: element })}
             facilities={facilities}
             showRecenter={!isDefaultMapView(view)}
-            onRecenter={() => setView(MAP_DEFAULT_VIEW)}
+            onRecenter={() => flyTo(MAP_DEFAULT_VIEW.center, MAP_DEFAULT_VIEW.zoom, false)}
+            flyRequest={flyRequest}
             renderOverlay={renderOverlay}
           />
 
@@ -309,6 +343,18 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
               Laporan dari tautan ini tidak ada di daftar yang terbit saat ini.
             </p>
           )}
+
+          {/* The map screen has no page footer: the same notice floats over the map. */}
+          <footer className="map-home__footer">
+            <span className="map-home__footer-text map-home__footer-text--long">
+              Data dari sumber publik dan laporan warga; bukan layanan darurat. Darurat: 112.
+            </span>
+            <span className="map-home__footer-text map-home__footer-text--short">Bukan layanan darurat. Darurat: 112.</span>
+            <nav className="map-home__footer-links" aria-label="Tautan bawah">
+              <a href="#bantuan">Bantuan</a>
+              <a href="#privasi">Privasi</a>
+            </nav>
+          </footer>
         </div>
       </div>
 

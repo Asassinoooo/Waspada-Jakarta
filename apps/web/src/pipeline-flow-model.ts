@@ -3,7 +3,7 @@
  * the Indonesian labels. No DOM, so it is unit-tested directly. Health is shown as a state of the
  * stage, never as a safety claim; an empty stage says "tidak ada data dalam 24 jam".
  */
-import type { Edge, Node } from "@xyflow/react";
+import type { Edge, MarkerType, Node } from "@xyflow/react";
 import type {
   PipelineFlowEdgeDto,
   PipelineFlowHealth,
@@ -15,7 +15,7 @@ import type {
   PipelineFlowSnapshotDto,
 } from "@waspada/worker/pipeline-flow-contracts";
 import { PIPELINE_LAYER_NAMES, type PipelineLayerId } from "./pipeline-layers.js";
-import { PIPELINE_LANE_BANDS, type NodePosition, type PipelineLaneBand } from "./pipeline-flow-layout.js";
+import { PIPELINE_LANE_BANDS, pipelineEdgeHandles, type NodePosition, type PipelineLaneBand } from "./pipeline-flow-layout.js";
 
 export const PIPELINE_FLOW_NODE_TYPE = "flow" as const;
 export const PIPELINE_LANE_NODE_TYPE = "lane" as const;
@@ -337,11 +337,11 @@ export function toPipelineFlowGraph(
   snapshot: PipelineFlowSnapshotDto,
   positions: Readonly<Record<PipelineFlowNodeId, NodePosition>>,
 ): PipelineFlowGraph {
-  const laneNodes: Node[] = PIPELINE_LANE_BANDS.map((band: PipelineLaneBand) => ({
-    id: `lane-${band.lane}`,
+  const laneNodes: Node[] = PIPELINE_LANE_BANDS.map((band: PipelineLaneBand, index: number) => ({
+    id: band.titled ? `lane-${band.lane}` : `lane-${band.lane}-${index}`,
     type: PIPELINE_LANE_NODE_TYPE,
     position: { x: band.x, y: band.y },
-    data: { lane: band.lane, title: `${band.lane} · ${PIPELINE_LAYER_NAMES[band.lane]}` } satisfies PipelineLaneNodeData,
+    data: { lane: band.lane, title: band.titled ? `${band.lane} · ${PIPELINE_LAYER_NAMES[band.lane]}` : "" } satisfies PipelineLaneNodeData,
     style: { width: band.width, height: band.height },
     selectable: false,
     draggable: false,
@@ -357,7 +357,7 @@ export function toPipelineFlowGraph(
       nineRouter: node.id === "ninerouter" ? snapshot.runtime?.ninerouter ?? null : null,
       nineRouterGeneratedAt: node.id === "ninerouter" ? snapshot.runtime?.generated_at ?? null : null,
     } satisfies PipelineFlowCardData,
-    draggable: true,
+    draggable: false,
     selectable: true,
   }));
   const edges: Edge[] = snapshot.edges.map((edge: PipelineFlowEdgeDto) => edgeFor(edge));
@@ -365,10 +365,15 @@ export function toPipelineFlowGraph(
 }
 
 function edgeFor(edge: PipelineFlowEdgeDto): Edge {
+  const handles = pipelineEdgeHandles(edge.from, edge.to);
   return {
     id: `${edge.from}->${edge.to}`,
     source: edge.from,
     target: edge.to,
+    sourceHandle: `source-${handles.source}`,
+    targetHandle: `target-${handles.target}`,
+    // The rows alternate direction, so arrowheads keep the reading order clear.
+    markerEnd: { type: "arrowclosed" as MarkerType, width: 16, height: 16 },
     type: "smoothstep",
     animated: edge.throughput_15m > 0,
     className: edge.throughput_15m > 0 ? "pipeline-edge pipeline-edge--active" : "pipeline-edge",
