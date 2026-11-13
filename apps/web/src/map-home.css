@@ -17,6 +17,7 @@
 /* ---- Shell on the map screen ---- */
 
 .app-shell--map {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -24,8 +25,16 @@
   overflow: hidden;
 }
 
+/* The header island floats over the map too; the map runs under it to the top edge. */
 .app-shell--map > .site-header {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.app-shell--map .map-home {
+  --map-top-inset: calc(var(--shell-header-height) + var(--shell-gap));
 }
 
 /* ---- Screen and body ---- */
@@ -33,6 +42,7 @@
 .map-home {
   --map-island-gap: var(--space-3);
   --map-inset-left: 0px;
+  --map-top-inset: 0px;
   position: relative;
   display: flex;
   flex: 1 1 0;
@@ -57,7 +67,7 @@
 
 .map-home__panel {
   position: absolute;
-  top: var(--map-island-gap);
+  top: calc(var(--map-top-inset) + var(--map-island-gap));
   bottom: var(--map-island-gap);
   left: var(--map-island-gap);
   z-index: 8;
@@ -210,7 +220,7 @@
 
 .map-home__toolbar {
   position: absolute;
-  top: var(--map-island-gap);
+  top: calc(var(--map-top-inset) + var(--map-island-gap));
   left: calc(var(--map-inset-left) + var(--map-island-gap));
   z-index: 5;
   flex-wrap: nowrap;
@@ -344,7 +354,7 @@
   position: absolute;
   width: min(20rem, calc(100% - 1rem));
   /* Short screens: the popup scrolls inside itself instead of running off the map. */
-  max-height: calc(100% - 7rem);
+  max-height: calc(100% - 7rem - var(--map-top-inset));
   overflow-y: auto;
   overscroll-behavior: contain;
   pointer-events: auto;
@@ -688,7 +698,7 @@
 /* Phone: one toolbar row, 44px targets, icon buttons with their labels in aria-label. */
 @media (max-width: 600px) {
   .map-home__toolbar {
-    top: var(--space-2);
+    top: calc(var(--map-top-inset) + var(--space-2));
     right: var(--space-2);
     left: var(--space-2);
     max-width: none;

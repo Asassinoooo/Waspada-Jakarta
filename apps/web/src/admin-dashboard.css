@@ -698,8 +698,9 @@
   display: grid;
   gap: 0.1rem;
   position: sticky;
-  top: 1rem;
-  max-height: calc(100vh - 2rem);
+  /* Clears the floating workspace header (admin-workspace.css). */
+  top: calc(3.5rem + 2 * var(--shell-gap, var(--space-3)));
+  max-height: calc(100vh - 3.5rem - 3 * var(--shell-gap, var(--space-3)));
   overflow-y: auto;
 }
 

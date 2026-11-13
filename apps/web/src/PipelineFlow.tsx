@@ -3,20 +3,19 @@
  * Moderators and admins only; the route wraps it in AccountAccessGate (shell "review"). Counts are
  * not corroboration and never prove that an area is safe.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { createContext, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   Background,
-  Controls,
   Handle,
-  MiniMap,
   Position,
   ReactFlow,
-  useEdgesState,
-  useNodesState,
   type Edge,
+  type FitViewOptions,
   type Node,
   type NodeProps,
   type NodeTypes,
+  useNodesInitialized,
+  useReactFlow,
 } from "@xyflow/react";
 import type {
   PipelineFlowItemsDto,
@@ -24,7 +23,6 @@ import type {
   PipelineFlowNodeId,
   PipelineFlowSnapshotDto,
 } from "@waspada/worker/pipeline-flow-contracts";
-import { PIPELINE_FLOW_NODE_IDS } from "@waspada/worker/pipeline-flow-contracts";
 import { fetchPipelineFlowItems, fetchPipelineFlowSnapshot, PipelineFlowHttpError } from "./pipeline-flow-client.js";
 import {
   cooldownLabel,
@@ -40,15 +38,7 @@ import {
   type PipelineFlowNodeView,
   type PipelineLaneNodeData,
 } from "./pipeline-flow-model.js";
-import {
-  clearStoredPositions,
-  PIPELINE_DEFAULT_POSITIONS,
-  loadStoredPositions,
-  resolvePipelinePositions,
-  saveStoredPositions,
-  type NodePosition,
-  type StoredPositions,
-} from "./pipeline-flow-layout.js";
+import { PIPELINE_DEFAULT_POSITIONS, type PipelineHandleSide } from "./pipeline-flow-layout.js";
 import { PIPELINE_LAYER_IDS, PIPELINE_LAYER_NAMES } from "./pipeline-layers.js";
 import { formatInstant } from "./display.js";
 
@@ -136,7 +126,7 @@ function FlowNodeCard({ data }: NodeProps<Node<PipelineFlowCardData>>) {
       onClick={() => select(view.id)}
       onKeyDown={onKey}
     >
-      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <CardHandles type="target" />
       <div className="pipeline-card__head">
         <span className="pipeline-card__lane">{view.lane}</span>
         <span className={`pipeline-card__dot pipeline-card__dot--${view.health}`} aria-hidden="true" />
@@ -167,15 +157,40 @@ function FlowNodeCard({ data }: NodeProps<Node<PipelineFlowCardData>>) {
         <span>{view.healthLabel}</span>
         <span>15 mnt: {countText(view.throughput15m)}</span>
       </div>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
+      <CardHandles type="source" />
     </div>
+  );
+}
+
+const HANDLE_POSITIONS: Readonly<Record<PipelineHandleSide, Position>> = {
+  left: Position.Left,
+  right: Position.Right,
+  top: Position.Top,
+  bottom: Position.Bottom,
+};
+
+/** One handle per side; the layout table picks which side each edge uses (see pipeline-flow-layout). */
+function CardHandles({ type }: { type: "source" | "target" }) {
+  return (
+    <>
+      {(Object.keys(HANDLE_POSITIONS) as PipelineHandleSide[]).map((side) => (
+        <Handle
+          key={side}
+          id={`${type}-${side}`}
+          type={type}
+          position={HANDLE_POSITIONS[side]}
+          isConnectable={false}
+          className="pipeline-card__handle"
+        />
+      ))}
+    </>
   );
 }
 
 function LaneCard({ data }: NodeProps<Node<PipelineLaneNodeData>>) {
   return (
     <div className={`pipeline-lane pipeline-lane--${data.lane.toLowerCase()}`} aria-hidden="true">
-      <span className="pipeline-lane__title">{data.title}</span>
+      {data.title && <span className="pipeline-lane__title">{data.title}</span>}
     </div>
   );
 }
@@ -273,7 +288,6 @@ export function PipelineHeaderStrip({
   runtimeAvailable,
   onTogglePause,
   onRefresh,
-  onResetLayout,
 }: {
   mode: "live" | "demo" | null;
   generatedAt: string | null;
@@ -282,7 +296,6 @@ export function PipelineHeaderStrip({
   runtimeAvailable: boolean;
   onTogglePause: () => void;
   onRefresh: () => void;
-  onResetLayout: () => void;
 }) {
   const badge = mode === "demo" ? "Data contoh" : mode === "live" ? "Langsung" : "Status belum diketahui";
   const badgeClass = mode === "demo" ? "pipeline-badge--demo" : mode === "live" ? "pipeline-badge--live" : "pipeline-badge--unknown";
@@ -309,7 +322,6 @@ export function PipelineHeaderStrip({
           {paused ? "Lanjutkan pembaruan" : "Jeda pembaruan"}
         </button>
         <button type="button" className="button button--quiet button--sm" onClick={onRefresh}>Muat ulang</button>
-        <button type="button" className="button button--quiet button--sm" onClick={onResetLayout}>Atur ulang tata letak</button>
       </div>
     </div>
   );
@@ -328,27 +340,34 @@ export function PipelineLegend() {
   );
 }
 
-function diffFromDefaults(positions: Readonly<Record<PipelineFlowNodeId, NodePosition>>): StoredPositions {
-  const out: StoredPositions = {};
-  for (const id of PIPELINE_FLOW_NODE_IDS) {
-    const current = positions[id];
-    const base = PIPELINE_DEFAULT_POSITIONS[id];
-    if (current.x !== base.x || current.y !== base.y) out[id] = { x: current.x, y: current.y };
-  }
-  return out;
+/** The whole diagram is fitted into the canvas once and then stays put. */
+const FIT_VIEW: FitViewOptions = { padding: 0.04, minZoom: 0.3, maxZoom: 1 };
+
+/** Refits the fixed diagram when the canvas changes size, since users cannot pan or zoom it. */
+function FitOnResize({ target }: { target: RefObject<HTMLDivElement | null> }) {
+  const { fitView } = useReactFlow();
+  const ready = useNodesInitialized();
+  useEffect(() => {
+    if (!ready) return undefined;
+    void fitView(FIT_VIEW);
+    const element = target.current;
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => void fitView(FIT_VIEW));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ready, fitView, target]);
+  return null;
 }
 
 export function PipelineFlow() {
   const [snapshot, setSnapshot] = useState<PipelineFlowSnapshotDto | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error" | "forbidden">("loading");
   const [paused, setPaused] = useState(false);
-  const [positions, setPositions] = useState(() => resolvePipelinePositions(loadStoredPositions()));
   const [selectedId, setSelectedId] = useState<PipelineFlowNodeId | null>(null);
   const [items, setItems] = useState<PipelineFlowItemsDto | null>(null);
   const [itemState, setItemState] = useState<"loading" | "ready" | "error" | "forbidden">("loading");
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const disposed = useRef(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -415,13 +434,9 @@ export function PipelineFlow() {
     };
   }, [paused, loadSnapshot]);
 
-  const graph = useMemo(() => (snapshot ? toPipelineFlowGraph(snapshot, positions) : null), [snapshot, positions]);
-  useEffect(() => {
-    if (graph) {
-      setNodes(graph.nodes);
-      setEdges(graph.edges);
-    }
-  }, [graph, setNodes, setEdges]);
+  const graph = useMemo(() => (snapshot ? toPipelineFlowGraph(snapshot, PIPELINE_DEFAULT_POSITIONS) : null), [snapshot]);
+  const nodes: Node[] = graph?.nodes ?? [];
+  const edges: Edge[] = graph?.edges ?? [];
 
   useEffect(() => {
     if (selectedId === null) return undefined;
@@ -458,20 +473,6 @@ export function PipelineFlow() {
     [snapshot, selectedId],
   );
 
-  const onNodeDragStop = useCallback((_: unknown, node: Node) => {
-    if (node.type !== PIPELINE_FLOW_NODE_TYPE) return;
-    setPositions((current) => {
-      const next = { ...current, [node.id]: { x: node.position.x, y: node.position.y } } as Record<PipelineFlowNodeId, NodePosition>;
-      saveStoredPositions(diffFromDefaults(next));
-      return next;
-    });
-  }, []);
-
-  const onResetLayout = useCallback(() => {
-    clearStoredPositions();
-    setPositions({ ...PIPELINE_DEFAULT_POSITIONS });
-  }, []);
-
   const onNodeClick = useCallback((_: unknown, node: Node) => {
     if (node.type === PIPELINE_FLOW_NODE_TYPE) setSelectedId(node.id as PipelineFlowNodeId);
   }, []);
@@ -496,7 +497,6 @@ export function PipelineFlow() {
         runtimeAvailable={runtimeAvailable}
         onTogglePause={() => setPaused((value) => !value)}
         onRefresh={() => void loadSnapshot()}
-        onResetLayout={onResetLayout}
       />
       <PipelineLegend />
       {loadState === "forbidden" && (
@@ -505,26 +505,35 @@ export function PipelineFlow() {
           <p>Tampilan ini hanya untuk moderator atau administrator yang masuk.</p>
         </section>
       )}
-      <div className="pipeline-canvas" aria-label="Diagram alur agen, dapat digeser dan diperbesar">
+      <div ref={canvasRef} className="pipeline-canvas" aria-label="Diagram alur agen. Pilih tahap untuk melihat rinciannya.">
         <SelectContext.Provider value={setSelectedId}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeDragStop={onNodeDragStop}
             onNodeClick={onNodeClick}
             nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={FIT_VIEW}
+            nodesDraggable={false}
             nodesConnectable={false}
+            elementsSelectable
+            edgesFocusable={false}
+            panOnDrag={false}
+            panOnScroll={false}
+            zoomOnScroll={false}
+            zoomOnPinch={false}
+            zoomOnDoubleClick={false}
+            preventScrolling={false}
+            autoPanOnNodeFocus={false}
             deleteKeyCode={null}
-            defaultViewport={{ x: 24, y: 80, zoom: 0.9 }}
-            minZoom={0.2}
-            maxZoom={1.6}
+            selectionKeyCode={null}
+            multiSelectionKeyCode={null}
+            minZoom={0.3}
+            maxZoom={1}
             proOptions={{ hideAttribution: false }}
           >
             <Background gap={24} size={1} />
-            <Controls position="top-right" showInteractive={false} />
-            <MiniMap pannable zoomable className="pipeline-minimap" nodeClassName={(node) => (node.type === PIPELINE_LANE_NODE_TYPE ? "pipeline-minimap__lane" : "pipeline-minimap__node")} />
+            <FitOnResize target={canvasRef} />
           </ReactFlow>
         </SelectContext.Provider>
       </div>

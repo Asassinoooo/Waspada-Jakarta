@@ -18,16 +18,16 @@ const anonymousSession: SessionEnvelope = {
   user: null,
 };
 
-test("the header strip labels demo and live data differently and shows pause and layout reset", () => {
+test("the header strip labels demo and live data differently and shows pause, with no layout controls because the diagram is fixed", () => {
   const demo = renderToStaticMarkup(
-    <PipelineHeaderStrip mode="demo" generatedAt="2026-11-11T09:00:00.000Z" paused={false} loadState="ready" runtimeAvailable onTogglePause={noop} onRefresh={noop} onResetLayout={noop} />,
+    <PipelineHeaderStrip mode="demo" generatedAt="2026-11-11T09:00:00.000Z" paused={false} loadState="ready" runtimeAvailable onTogglePause={noop} onRefresh={noop} />,
   );
   assert.match(demo, /Data contoh/u);
   assert.match(demo, /Jeda pembaruan/u);
-  assert.match(demo, /Atur ulang tata letak/u);
+  assert.doesNotMatch(demo, /Atur ulang tata letak/u);
 
   const live = renderToStaticMarkup(
-    <PipelineHeaderStrip mode="live" generatedAt={null} paused loadState="ready" runtimeAvailable={false} onTogglePause={noop} onRefresh={noop} onResetLayout={noop} />,
+    <PipelineHeaderStrip mode="live" generatedAt={null} paused loadState="ready" runtimeAvailable={false} onTogglePause={noop} onRefresh={noop} />,
   );
   assert.match(live, /Langsung/u);
   assert.match(live, /Lanjutkan pembaruan/u);

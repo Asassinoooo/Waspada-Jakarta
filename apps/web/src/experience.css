@@ -73,10 +73,12 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-4);
-}.experience-card{
+}
+
+/* Cards are floating islands (border, radius and shadow from design/components.css). */
+.experience-card {
   min-width: 0;
-  border-top: 1px solid var(--beton, var(--color-border));
-  padding: var(--space-4) 0;
+  padding: var(--space-5);
 }
 
 .experience-card--wide {
@@ -115,7 +117,9 @@
   align-items: center;
   gap: var(--space-3);
   margin-top: var(--space-4);
-}.experience-action{
+}
+
+.experience-action {
   display: inline-flex;
   min-width: 44px;
   min-height: 44px;
@@ -261,6 +265,10 @@
   .experience-page {
     width: min(100% - 1.5rem, 76rem);
     padding-top: var(--space-5);
+  }
+
+  .experience-card {
+    padding: var(--space-4);
   }
 
   .experience-card-grid {

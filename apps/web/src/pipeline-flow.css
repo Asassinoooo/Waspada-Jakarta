@@ -115,10 +115,10 @@
 
 /* ---- Canvas. The only horizontal scroll on the page is inside this box. ---- */
 
+/* Fills the screen height once scrolled to, so the fitted diagram stays as large as it can be. */
 .pipeline-canvas {
   position: relative;
-  height: calc(100vh - 14rem);
-  min-height: 36rem;
+  height: clamp(28rem, calc(100dvh - 6rem), 56rem);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface-sunken);
@@ -158,12 +158,19 @@
   stroke: var(--color-accent);
 }
 
-.pipeline-minimap__lane {
-  display: none;
+/* The diagram is fixed: no pan or zoom, so the pane shows a plain cursor and handles stay hidden. */
+.pipeline-canvas .react-flow__pane {
+  cursor: default;
 }
 
-.pipeline-minimap__node {
-  fill: var(--color-accent);
+.pipeline-canvas .react-flow__handle.pipeline-card__handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
 }
 
 /* ---- Swimlane bands (non-interactive). ---- */
@@ -197,7 +204,7 @@
 .pipeline-card {
   box-sizing: border-box;
   width: 200px;
-  min-height: 150px;
+  min-height: 180px;
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
