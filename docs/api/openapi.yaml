@@ -859,6 +859,10 @@ components:
         claims: { type: array, items: { $ref: '#/components/schemas/PublicClaim' } }
         impacts: { type: array, items: { $ref: '#/components/schemas/PublicImpact' } }
         published_at: { type: string, format: date-time }
+        severity:
+          type: string
+          enum: [low, medium, high]
+          description: Model-assessed estimate of impact (SEV-01). Omitted when not assessed. Never a safety claim and never a radius.
     PublicGeometry:
       type: object
       additionalProperties: false
@@ -948,6 +952,10 @@ components:
         claims: { type: array, items: { $ref: '#/components/schemas/PublicClaim' } }
         impacts: { type: array, items: { $ref: '#/components/schemas/PublicImpact' } }
         published_at: { type: string, format: date-time }
+        severity:
+          type: string
+          enum: [low, medium, high]
+          description: Model-assessed estimate of impact (SEV-01). Omitted when not assessed. Never a safety claim and never a radius.
         geometries: { type: array, items: { $ref: '#/components/schemas/PublicGeometry' } }
     EventPage:
       type: object

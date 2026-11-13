@@ -208,6 +208,30 @@ export function categoryMarkerIcon(category: string): string {
   }
 }
 
+/** SEV-01: the public estimate of impact. Only the three API values count; anything else is not assessed. */
+export type PublicSeverity = "low" | "medium" | "high";
+export const SEVERITY_LEVELS: readonly PublicSeverity[] = ["low", "medium", "high"];
+/** Shown with every severity, so the estimate is never read as a safety claim. */
+export const SEVERITY_NOTE = "Perkiraan otomatis dari laporan; bukan jaminan keamanan.";
+
+export function severityOf(event: Pick<EventView, "severity">): PublicSeverity | null {
+  const value: unknown = event.severity;
+  return value === "low" || value === "medium" || value === "high" ? value : null;
+}
+
+export function severityLabel(level: PublicSeverity): string {
+  switch (level) {
+    case "low": return "Rendah";
+    case "medium": return "Sedang";
+    case "high": return "Tinggi";
+  }
+}
+
+/** Screen-reader suffix for a marker, so the size is also said in words. Empty when not assessed. */
+export function severityAriaSuffix(level: PublicSeverity | null): string {
+  return level === null ? "" : `, tingkat dampak ${severityLabel(level)}`;
+}
+
 /** Freshness chip text. "Lewat masa berlaku" is set only by the issuer's validity window. */
 export function freshnessText(status: FreshnessStatus): string {
   switch (status) {

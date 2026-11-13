@@ -1,9 +1,11 @@
 import type { EventView } from "@waspada/worker/public-contracts";
+import { SeverityChip } from "./MapSeverity.js";
 import {
   areaText,
   categoryText,
   eventTimeText,
   freshnessText,
+  severityOf,
   sourceCountText,
   sourceNamesOf,
   type PublishedEventsStatus,
@@ -92,6 +94,7 @@ export function MapEventList({
           {events.map((event) => {
             const selected = event.event_id === selectedId;
             const hasMarker = markers.has(event.event_id);
+            const severity = severityOf(event);
             return (
               <li key={event.event_id}>
                 <button
@@ -108,6 +111,7 @@ export function MapEventList({
                   <span className="map-card__meta">{areaText(event)}</span>
                   <span className="map-card__meta">Waktu kejadian: {eventTimeText(event)}</span>
                   <span className="map-card__foot">
+                    {severity !== null && <SeverityChip level={severity} />}
                     <span className="map-card__sources">{sourceCountText(sourceNamesOf(event).length)}</span>
                     {!hasMarker && <span className="map-card__unmapped">Belum dipetakan</span>}
                   </span>

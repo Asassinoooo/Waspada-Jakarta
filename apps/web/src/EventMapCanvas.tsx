@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createOsmTileUrl, getVisibleMapTiles, type MapCoordinate } from "./SourcePointMap.js";
 import { facilityKindIcon, facilityKindLabel, type EmergencyFacility } from "./emergency-facilities.js";
+import { severityAriaSuffix, type PublicSeverity } from "./published-events.js";
 import {
   coordinateAt,
   easeInOutCubic,
@@ -58,6 +59,41 @@ export interface CanvasMarker {
   label: string;
   icon: string;
   selected: boolean;
+  /** SEV-01: sets the icon size. Null or absent means not assessed, which keeps the base size. */
+  severity?: PublicSeverity | null;
+}
+
+const BASE_CORE_RADIUS = 10;
+const CORE_RADIUS_BY_SEVERITY: Readonly<Record<PublicSeverity, number>> = { low: 9, medium: 12, high: 15 };
+
+export interface SeverityMarkerStyle {
+  /** Class on the marker button, or null when severity is not assessed. */
+  readonly className: string | null;
+  readonly coreRadius: number;
+  /** The selected ring always sits outside the core, so selection stays visible at every size. */
+  readonly selectedRingRadius: number;
+  /** High only: the pulsing ring drawn outside the core. Null for every other level. */
+  readonly pulseRadius: number | null;
+  readonly iconFontSize: number;
+  readonly iconY: number;
+}
+
+/**
+ * SEV-01: the marker icon scales with the public estimate of impact, and nothing else. No area and no
+ * radius on the map is drawn from it. The icon itself is never a safety signal.
+ */
+export function severityMarkerStyle(severity: PublicSeverity | null | undefined): SeverityMarkerStyle {
+  const level = severity ?? null;
+  const coreRadius = level === null ? BASE_CORE_RADIUS : CORE_RADIUS_BY_SEVERITY[level];
+  const iconFontSize = Math.round(coreRadius * 0.9 * 10) / 10;
+  return {
+    className: level === null ? null : `map-marker--sev-${level}`,
+    coreRadius,
+    selectedRingRadius: coreRadius + 10,
+    pulseRadius: level === "high" ? coreRadius + 5 : null,
+    iconFontSize,
+    iconY: Math.round(iconFontSize * 0.4 * 10) / 10,
+  };
 }
 
 /**
@@ -510,20 +546,25 @@ export function EventMapCanvas({
         {markers.map((marker) => {
           const point = project(marker.coordinate);
           if (!insideMarginBox(point, width, height)) return null;
+          const style = severityMarkerStyle(marker.severity);
+          const className = ["map-marker", style.className, marker.selected ? "map-marker--selected" : null]
+            .filter((part): part is string => part !== null)
+            .join(" ");
           return (
             <button
               key={marker.id}
               type="button"
-              className={`map-marker${marker.selected ? " map-marker--selected" : ""}`}
+              className={className}
               style={{ left: point.x, top: point.y }}
-              aria-label={marker.label}
+              aria-label={`${marker.label}${severityAriaSuffix(marker.severity ?? null)}`}
               aria-pressed={marker.selected}
               onClick={(event) => onSelectMarker(marker.id, event.currentTarget)}
             >
               <svg className="map-marker__svg" viewBox="-22 -22 44 44" aria-hidden="true" focusable="false">
-                {marker.selected && <circle className="map-marker__ring" r="20" />}
-                <circle className="incident-beacon-core" r="11" strokeWidth="2" />
-                <text className="map-marker__icon" textAnchor="middle" y="4" fontSize="10">{marker.icon}</text>
+                {marker.selected && <circle className="map-marker__ring" r={style.selectedRingRadius} />}
+                {style.pulseRadius !== null && <circle className="map-marker__pulse" r={style.pulseRadius} />}
+                <circle className="incident-beacon-core" r={style.coreRadius} strokeWidth="2" />
+                <text className="map-marker__icon" textAnchor="middle" y={style.iconY} fontSize={style.iconFontSize}>{marker.icon}</text>
               </svg>
             </button>
           );
