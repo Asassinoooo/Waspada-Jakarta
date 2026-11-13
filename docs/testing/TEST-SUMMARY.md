@@ -32,6 +32,7 @@ Source: CI log for run 117086838832 (commit cec9358), kept locally at `.codex-bu
 **Total: 2,034 tests and cases** (381 + 335 + 1,089 + 104 + 58 + 3 + 64; re-added on 13 November 2026).
 
 Points on this evidence:
+- **Where each test appears in the run.** `CI-VISIBILITY.md` lists every test file, its step in the GitHub Actions run, and whether its names appear in that run. `test-cases.csv` gives the same per test (column `ci_visibility`). Six files are not in the run: one is not run by CI, one was merged after it, and four were added after it.
 
 - **Overall run conclusion is not in the log.** The log shows step results only. Confirm the conclusion of run 117086838832 on the GitHub Actions page before stating that "CI passed".
 - **Commit range.** The log is for `cec9358`. `main` is 13 commits ahead (`git rev-list --count cec9358..main`), including `71022ee` (TEST-INT-01) and `d6b6e4a` (FLOW-RANGE-01). This CI evidence does not cover them. `SYSTEM-TEST.md` section 7, item 5 says "ten commits ahead". Ten is the count from `cec9358` to `ae75527`, the worktree base, so that line is stale.
