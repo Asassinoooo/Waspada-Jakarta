@@ -188,22 +188,35 @@ async function runViewport(browser: Browser, viewport: Viewport, run: UatRun): P
       await page.locator(".unified-source-explorer").waitFor({ state: "visible", timeout: 20_000 });
     });
 
-    // Demo-only notice: confirmed in UnifiedSourceExplorer.tsx (kicker, badge, not-published label, provider note).
-    await run.step(page, vp, "demo-only notice: kicker 'Demo sumber · pratinjau terpisah'", async () => {
-      await page.getByText("Demo sumber · pratinjau terpisah", { exact: true }).waitFor({ state: "visible" });
+    // Run-01 failed because the source-copy strings from UnifiedSourceExplorer.tsx are hidden on the map view by design
+    // (unified-source-explorer.css, commit f0395b0). Provenance and the demo isolation notice sit in the companion
+    // "Sumber" panel, so the check opens that panel first (phone: via "Buka panel sumber") and reads what it shows.
+    await run.step(page, vp, "open the companion 'Sumber' panel (phone: via 'Buka panel sumber')", async () => {
+      const drawer = page.getByRole("button", { name: /^Buka panel sumber/u });
+      if ((await drawer.count()) > 0 && (await drawer.first().isVisible())) {
+        await drawer.first().click();
+        await page.waitForTimeout(400);
+      }
+      await page.getByRole("button", { name: "Sumber", exact: true }).first().click();
+      await page.waitForTimeout(400);
     });
 
-    await run.step(page, vp, "demo-only notice: badge 'DEMO · belum dipublikasi'", async () => {
-      await page.getByText("DEMO · belum dipublikasi", { exact: true }).first().waitFor({ state: "visible" });
+    await run.step(page, vp, "demo isolation notice: 'Mode demo terisolasi' is visible in the Sumber panel", async () => {
+      await page.getByText("Mode demo terisolasi", { exact: false }).first().waitFor({ state: "visible" });
     });
 
-    await run.step(page, vp, "demo-only notice: 'Belum melalui publikasi Waspada'", async () => {
-      await page.getByText("Belum melalui publikasi Waspada", { exact: true }).waitFor({ state: "visible" });
+    await run.step(page, vp, "demo snapshot notice: 'penyedia tidak dihubungi untuk data ini' is visible", async () => {
+      await page.getByText("penyedia tidak dihubungi untuk data ini", { exact: false }).first().waitFor({ state: "visible" });
     });
 
-    await run.step(page, vp, "provider note: 'Default lokal; permintaan penyedia hanya setelah tindakan Anda.'", async () => {
-      await page.getByText("Default lokal; permintaan penyedia hanya setelah tindakan Anda.", { exact: true }).waitFor({ state: "visible" });
+    await run.step(page, vp, "workspace header marks the page as demo: 'Pratinjau sumber (demo)' and 'Data contoh'", async () => {
+      await page.getByText("Pratinjau sumber (demo)", { exact: false }).first().waitFor({ state: "visible" });
+      await page.getByText("Data contoh", { exact: false }).first().waitFor({ state: "visible" });
     });
+
+    // Not a pass: these strings are in the DOM but hidden on the map view, so no user sees them there.
+    run.skip(vp, "source copy: 'Demo sumber · pratinjau terpisah', 'DEMO · belum dipublikasi', 'Belum melalui publikasi Waspada', 'Default lokal; ...'",
+      "display:none on the map view (unified-source-explorer.css:802-807, commit f0395b0); run-01 failed on these checks");
 
     await run.step(page, vp, "the live guard ('hanya tersedia pada mode demo') is not shown on the demo dataset", async () => {
       if ((await page.getByText(/Pratinjau sumber ini hanya tersedia pada mode demo/u).count()) > 0) {
