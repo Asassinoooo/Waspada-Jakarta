@@ -183,6 +183,8 @@ Requirement IDs remain stable across task and design changes. “Must” identif
 
 Change of 13 Nov 2026 (owner decision): FR-01 is withdrawn and FR-16 is added for collection. The source approval gate no longer applies to collection. No source-rights clearance is claimed, and hosted or public use of collected text stays gated (CLAUDE.md). ADR-005, ADR-061 and the publication wording in §10 still refer to the withdrawn approval gate and need separate approval before they change.
 
+Change of 13 Nov 2026 (owner decision): FR-09 is narrowed to points. The map and record page draw point geometry supplied by the API. Source-defined polygons and road or service segments are not drawn in this release. That is a documented limitation (F-01), not a gap to close, and no boundary display is claimed. Non-geographic notices stay accessible. US-01 and the release-scope wording in §3.1 still mention a warning boundary; this note does not change them, and they need separate approval.
+
 | ID | Requirement and observable acceptance | Priority |
 | --- | --- | --- |
 | FR-01 | Withdrawn on 13 Nov 2026 by owner decision. The source approval gate no longer applies; collection is FR-16. | Withdrawn |
@@ -193,7 +195,7 @@ Change of 13 Nov 2026 (owner decision): FR-01 is withdrawn and FR-16 is added fo
 | FR-06 | Match reports to candidate events and track independent origins per claim. Copied reports do not inflate corroboration; uncertain matches are reviewed. | Must |
 | FR-07 | Sufficient evidence bypasses investigation. Missing evidence creates a persisted bounded case with tools, counters, stop reasons and escalation. | Must |
 | FR-08 | Both paths and moderator corrections use one publication gate with evidence, scope, source, freshness and concurrency checks; models cannot publish. | Must |
-| FR-09 | Display only supported geometry: points, source-defined polygons or road/service segments. Non-geographic notices remain accessible. | Must |
+| FR-09 | Display only supported geometry: points. Source-defined polygons and road/service segments are not drawn in this release (documented limitation, 13 Nov 2026). Non-geographic notices remain accessible. | Must |
 | FR-10 | Map/feed/details expose source links, evidence labels, event time, freshness and supported effects; public queries exclude private drafts. | Must |
 | FR-11 | Preferences produce explainable relevant briefings and material updates; removing an interest removes its personalization. Repeated coverage does not repeat alerts. | Must |
 | FR-12 | Moderator authentication and authorization protect review, source approval, corrections, merges and withdrawals; all actions have an audit record. | Must |
@@ -201,6 +203,8 @@ Change of 13 Nov 2026 (owner decision): FR-01 is withdrawn and FR-16 is added fo
 | FR-14 | Every pipeline run links reports, context, model configuration, investigation and publication decision through a trace ID. | Must |
 | FR-15 | Demo/historical records are clearly separated from live active warnings; empty coverage is not displayed as an all-clear. | Must |
 | FR-16 | The system collects public information from configured sources by feed, webhook or scraping of public pages, into the same pipeline as FR-02. No per-source approval is required before collection. Each source records its access method, a robots.txt and stated-terms check, a per-host rate limit and an outbound-host entry (NFR-07). Collection never uses logins, paywalls or access-control bypass. Every fetch records URL, retrieval time and HTTP status; blocked or failed fetches are reported, not filled in. Collected text is data, not instructions, and public views link to the origin. | Must |
+
+Status notes, 14 Nov 2026 (status only; the requirement text above is unchanged). FR-12 is partly met: moderator-only source approval is built (`GET /api/v1/admin/sources` and `POST /api/v1/admin/sources/:sourceId/approval`, administrator only, with a trace and audit row; 9c0bb13). Moderator withdrawal and correction are built (`POST /api/v1/moderation/events/:eventId/withdraw` and `/corrections`, with a moderator or administrator session, an audit record and a decision in one transaction; abe7bf6). Merge routes are not part of this note. A withdrawn event cannot be reinstated, and its public view is not a tombstone. FR-13 is partly met: serve:live runs the freshness and expiry pass at start and every `LIVE_FRESHNESS_INTERVAL_MS` (default five minutes; 3df81e9). A passed review date gives `needs_update`, and only the issuer validity window gives `expired`. The deployed Worker still defines no cron trigger, so the scheduled-run clause is not met for deployment. FR-14 is partly met: one trace id is tested across the L2/L3 path, and the live intelligence path keeps its job trace (74c4616). The live path writes no investigation row. For FR-16, `serve:live` keeps `AUTO_PUBLISH_SOURCE_PERMISSION=local_relaxed` (ADR-061 amendment), which waives only the public-display permission check for automatic publication. No source-rights clearance is claimed, and hosted or public use of collected text is not permitted.
 
 | ID | Quality requirement | Initial acceptance evidence |
 | --- | --- | --- |
@@ -385,6 +389,17 @@ Use at least 40 reports across at least 12 cases, at least three documents per c
 Report quality counts and rates separately by category/source/model role; track review workload, latency, tokens and cost. Set model accuracy thresholds during M1/M3 with the labelled cases and workload; do not invent benchmark results. Release-blocking defects include known unsupported publication, exposed personal data, wrong active warning geometry, budget bypass, unauthorized moderation, and stale/retracted evidence reinstated as current.
 
 Definition of done for each implementation task: intended behavior complete, relevant checks executed and reported, interface/migration/docs updated, no unresolved blocking review finding, and root acceptance recorded. Release completion additionally requires all Must requirements, four integrated scenarios, actual held-out/usability evidence, a reproducible Free-tier deployment and tested restoration or deterministic rebuild. No live-source launch is accepted without a free off-provider backup and deletion-replay test. A model or source outage may reduce coverage but must not silently fabricate freshness or safety.
+
+Recorded limitations, owner decisions of 13 Nov 2026 (noted 14 Nov 2026). The target is the local university prototype. The items below are limitations to record, not gaps to close in this release, and they are not claimed as met:
+
+- Phase 3 limitations (the owner's label for these items): a hosted free-tier deployment run; an off-provider encrypted backup with a deletion-replay test (the live-source rule above applies); a Neon restore rehearsal; model accuracy thresholds (ADR-009 is missing); human usability sessions for NFR-03; a labelled casebook with two reviewers and a frozen held-out split; and hosted Neon role grants.
+- Rights (FR-16): local live mode waives the public-display permission check for every source. No source-rights clearance is claimed. BMKG and ANTARA still need permission in [SOURCE_CLEARANCE_PLAN.md](docs/SOURCE_CLEARANCE_PLAN.md), and the other live outlets are not covered. Hosted or public use is not permitted.
+- Open finding F-ALERT-02: a published version never reaches `/api/v1/updates`. Fixing it needs moderator-selected change summaries (ADR-020), an INSERT grant on `public_event_history_review_decisions` (none exists in migrations 014 or 016), and a decision record with the v2.0 event shape (tracked as FIX-PUBVER-01). `serve:live` answers 503 for updates.
+- Open finding F-03-1: `synthetic-fixture-runner` takes L5 telemetry values. It is allowlisted in the layer-import test, not fixed.
+- Hosted grants: the L4 publication role cannot read `investigation_id` or `case_status`, so the F-04 check fails closed on hosted. The intelligence worker writes lineage tables through its own connection, and its Neon role mapping is unverified.
+- Source approval and FR-16: revoking a source also turns off its collection, which conflicts with FR-16 (collection needs no per-source approval). Owner decision pending. In `local_relaxed` mode approval does not change automatic publication.
+- Withdrawal (FR-12): a withdrawn event is final and cannot be reinstated. Corrections change only title, category, event time, location label and claim text. Whether a withdrawn event gets a public tombstone needs a contract change, so the public detail route answers 404 for it.
+- Timing (FR-03 and FR-08): a news item without an explicit event time goes to the moderator queue as `time_missing`, so fewer items publish automatically. Previously published rows keep the processing time as their start until they are republished.
 
 ## 11. Risks, cost and open decisions
 

@@ -1,5 +1,46 @@
 # Test evaluation: integration and system
 
+## Update 14 Nov 2026 (TEST-GAP-02)
+
+Basis: main at abe7bf6. The analysis below (basis ab862c3) is kept as it was written. This update records what changed since then. It used file reads, grep, git show stats, ancestry checks and the UAT run JSON counts. No test, typecheck, build, browser run, CI run, serve:live run or model call was made for it. The local pass statuses in test-cases.csv for the new files are the implementing runs' reports and were not re-run. Three files added by abe7bf6 have no reported local pass.
+
+Closed locally (commit; test file):
+
+- Top finding 1 and register error 1 (joined test paths): fixed. 85b8d57 and ab862c3 are ancestors of main, and both package.json lists have the space (checked).
+- Top finding 2 and V3 (record page and #peta sheet say "no geometry" for mapped records): de0b77f; `apps/web/test/event-detail-geometry.test.tsx`. Component level, not in a browser.
+- Top finding 3 and V5 (processing time used as event time): 588e375 with migration 048. A missing event time stays null with precision unknown in the public read model, both proposal engines, webhook ingest and the intelligence workflow; freshness is needs_update with basis unknown. Tests: `apps/worker/test/l4-event-time-unknown.test.ts`, `apps/web/test/event-time-unknown.test.tsx`, `apps/intelligence/test/event-time-unknown.test.ts`. FR-03 clauses 14 and 15 were not re-checked.
+- Top finding 4 and V6 (`?mode=fetch` with no session): db8893c. Fetch mode needs a moderator or admin session (401 or 403; 503 fails closed). Tests: `apps/worker/test/fetch-mode-moderator-gate.test.ts`, `apps/web/test/provider-fetch-access.test.ts`, `apps/web/test/fetch-mode-controls.test.tsx`.
+- Top finding 5 and register error 2 (internal proposals route): `apps/worker/test/internal-proposals-route.test.ts` (c15383c) now asserts 200 with the key and a database. The 503 without a database stays in `service-auth-routes.test.ts`.
+- Register errors 3 to 6 and 16 to 19 (CSV and SYSTEM-TEST): IT-B1-05 step corrected; IT-B1-03, IT-B1-06, IT-B2-03, IT-B2-06, BR-03, BR-04, COM-01 and ACC-01 read Partial; TI-01 and TI-02 no longer say "not in this branch"; ST-F-02 reads Partial; SYSTEM-TEST §8 gives FR-11 Partial; the "not named by any file" notes for ST-F-03, ST-F-04, ST-F-05, ST-F-07, ST-F-13, ST-N-05 and ST-N-07 are corrected; the ST-N-04 p50 and p95 statement is corrected.
+- Register error 22 (UAT §9): per-viewport and run-total counts corrected against the run JSON; the T4 fatal failures, the T5 desktop skips and the student attempt-2 failing step are recorded. UAT §6.0 is not changed (see below).
+- Register error 24: the SYSTEM-TEST line 5 statement about UAT.md is corrected. The UAT §10 statement that DEFECTS.md "is not created in this phase" is not changed.
+- Register error 25 (AT-01, AT-03 and MOD-02 notes): corrected in test-cases.csv.
+- Integration "covered, unregistered" items 3, 4, 9, 12, 13, 14, 17 and 23: registered as IT-REG-01 to IT-REG-08 in test-cases.csv. NFR-06 selection-logic test (`tools/live-db-restore.test.ts`) registered as IT-REG-09.
+- Row 16 and TI-02 caveat (gate does not read the investigation status): 593f849. The proposal gate refuses `investigation_stopped_for_review` on the agent and moderator paths (API 409 on publish).
+- Row 20 (concurrency, decisions on one proposal): 593f849. Decisions take a per-proposal advisory lock and re-check inside the transaction (F-CONC-01). The expiry sweep is not locked (see new findings).
+- Row 21 (ADR-061 checks, 4 of 9 at database level): e8aa73d adds database tests for the five checks that had none (correlation, supported and quoted claims, schema, location and time). The rest of the count was not recounted.
+- Row 27 and FR-11 (preferences): interest removal (c15383c; `apps/web/test/interest-removal.test.ts`, `apps/worker/test/briefing-interest-removal.test.ts`); repeated coverage (9d107b6, F-ALERT-01; `apps/worker/test/repeated-coverage-alerts.test.ts`). F-ALERT-02 stays open.
+- F-03 layer rule (NFR-08, V11): cffc865. The webhook path uses ports; `apps/worker/test/layer-import-boundary.test.ts`. One allowlisted exception (F-03-1).
+- NFR-02 call budget for the live intelligence agents: bf3cb4e (4 steps, 60 s, 4,000 output tokens, 12,000 input-plus-output estimate; `apps/intelligence/test/nfr02-generation-budget.test.ts`). The agents register no tools, so the 5-attempt tool cap is n/a.
+- NFR-07 redirects in the live pollers (V7): db8893c; `apps/worker/test/poller-redirect-guard.test.ts`.
+- Live lineage (F-TRACE-01 and F-TRACE-02): 74c4616; `apps/worker/test/trace-id-chain.test.ts`, `apps/intelligence/test/live-lineage.test.ts`.
+- Scheduled freshness (row 31 and ST-F-14, serve:live only): 3df81e9; `tools/live-freshness-job.test.ts`. The deployed Worker still has no cron trigger (V13 unchanged).
+- Source approval route with audit (FR-12 C3): 9c0bb13. Withdrawal and correction routes (FR-12 C4, C6): abe7bf6 (main). Both have database and handler tests; approval has client tests too.
+
+Still open from the original analysis (not closed here): integration rows 5 (recall@k), 6 (merge and split precision and recall), 7 (non-geographic notices through retrieval and publication), 8 (negative correlation case), 10 and 11 (sufficient-context bypass and typed tools; the L3 coordinator still has no runtime caller), 15 (escalation reaching a moderator), 18 (no publication-level invented-geometry test), 24 (browser and responsive flows), 25, 28, 29, 30 (connection and disk limits), 32 (apply-and-read rehearsal) and 33 (restore rehearsal). System and acceptance: ST-F-06 (password reset), ST-F-07 (reject audit), ST-F-08, ST-F-15, ST-N-01 (no adjudication), ST-N-03 (no human sessions), ST-N-06 (no rebuild or restore rehearsal), ST-N-08 (no hosted deployment), BR-01 and BR-02 (13 Oct record; no current evidence), RES, WRK, STU, MOD-00 and MOD-02 (not run), and the T4 label (the owner decides between Blocked and Fail). UAT §6.0 still gives ACC-02 Pass and maps MOD-02 to T3, and this update did not change it. DEFECTS.md was not touched.
+
+New findings (evidence checked in this update; not entered in DEFECTS.md):
+
+- F-ALERT-02: a published version never reaches `/api/v1/updates`. The todo is `apps/worker/test/repeated-coverage-alerts.test.ts` line 267. No INSERT grant on `public_event_history_review_decisions` exists in migrations 014 or 016. The decision record lacks the v2.0 event shape (FIX-PUBVER-01, as named in the owner brief; no backlog row exists yet). `serve:live` answers 503 for updates.
+- F-03-1: `synthetic-fixture-runner` takes L5 telemetry values. It is allowlisted at `apps/worker/test/layer-import-boundary.test.ts` line 69 and is not fixed.
+- Hosted grants (owner brief; the grant check was not re-run): the L4 publication role cannot read `investigation_id` or `case_status`, so the F-04 check fails closed on hosted. The intelligence worker writes lineage tables through its own connection, and the Neon role mapping is unverified.
+- The live path writes no investigation row, so the FR-14 investigation link is absent for live. `assessAutoPublication` reads the investigation's latest status only, not grounding sufficiency (`proposal-publication.ts`, gate options around line 398).
+- The expiry sweep (`expireStaleProposals`, `proposal-publication.ts` around line 1086) does not take the decision lock (line 248). It never publishes, but it can write a second decision row for an overlapping publish (code reading; not reproduced).
+- Source approval conflicts with FR-16: revoking a source also turns off its collection (`source-approval-store.ts` revoke path and the DB CHECK). In `local_relaxed` mode approval does not change automatic publication. Owner decision pending.
+- F-14 side effect: a news item without an explicit event time goes to the moderator queue as `time_missing` (`publication-policy.ts` lines 813 and 832). Rows published earlier keep the processing time as their start until they are republished.
+- Withdrawal: the public detail route answers 404 for a withdrawn event (read model removal, `public-read-model.ts` line 147). That 404 is not asserted at HTTP. The public view has no tombstone.
+- `docs/api/openapi.yaml` line 417 still lists `/moderation/events/{event_id}/retraction`, which no route registers.
+
 ## Basis and status key
 
 Basis: branch work/TEST-GAP-01-evaluation at ab862c3. That is main (4f1c344) plus the TEST-LIST-01 fixes in 85b8d57 and ab862c3, which are not merged. The evaluation is static reading and grep only. No tests, typechecks, builds, browser runs, CI runs, serve:live runs, smoke or e2e runs, model calls or network calls were run.

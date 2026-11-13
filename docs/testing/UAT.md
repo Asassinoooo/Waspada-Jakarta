@@ -224,20 +224,20 @@ For the manual checks, use browser zoom or the system text size. Record any step
 
 ## 9 Result table
 
-Result values: pass, fail, blocked (precondition not met), pending (live data needed) or not run. Task and viewport are filled in. The other columns are left for the run. Automated rows are labelled "automated walkthrough (browser subagent)". No human-session rows exist, because none are planned.
+Result values: pass, fail, blocked (precondition not met), pending (live data needed) or not run. Task and viewport are filled in. The other columns are left for the run. Automated rows are labelled "automated walkthrough (browser subagent)". No human-session rows exist, because none are planned. Step counts are per viewport unless the note says "in total"; a run total includes one setup step and both viewports. The counts below were checked against the run JSON files on 14 Nov 2026 (TEST-GAP-02).
 
 | Task | Viewport | Result | Seconds | Notes | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| T1 | Desktop 1440 × 900 | Pass, 1 check skipped (F-01) | 8.3 | 20 steps passed. The warning-boundary check cannot run on the public map. The 60 s limit was met. | `.codex-build/uat/run-01/t1-discover.json` |
-| T1 | Phone 390 × 844 | Pass, 1 check skipped (F-01) | 4.7 | 20 steps passed. List fallback used. | `.codex-build/uat/run-01/t1-discover.json` |
-| T2 | Desktop 1440 × 900 | Pass, 3 checks skipped (F-02) | 3.5 | 17 steps passed. The matched-update checks need live data. | `.codex-build/uat/run-01/t2-updates.json` |
-| T2 | Phone 390 × 844 | Pass, 3 checks skipped (F-02) | 2.7 | 17 steps passed. | `.codex-build/uat/run-01/t2-updates.json` |
-| T3 | Desktop 1440 × 900 | Pass, 2 checks skipped | 6.3 | 16 steps passed. The 'bukan keadaan terkini' note shows only while history loads (`EventDetail.tsx:147`). The claim-source label needs a screenshot judgement. | `.codex-build/uat/run-01/t3-history.json` |
-| T3 | Phone 390 × 844 | Pass, 2 checks skipped | 4.2 | 16 steps passed. The same two skips. | `.codex-build/uat/run-01/t3-history.json` |
-| T4 | Desktop 1440 × 900 | Blocked (precondition not met, R-04) | 61.9 | The demo moderation queue is empty. The decision steps were not reached. | `.codex-build/uat/run-02/t4-moderator.json` |
-| T4 | Phone 390 × 844 | Blocked, login rate-limited (R-03) | 75.9 | Login returned HTTP 429 after repeated demo logins in this session. The queue is also empty. | `.codex-build/uat/run-02/t4-moderator.json` |
-| T5 | Desktop 1440 × 900 | Pass, after a script correction (R-02) | 4.6 | Run 02: 22 steps passed. Run 01 failed 8 steps on source-copy wording that is hidden on the map view by design. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-01/t5-admin-sources.json` |
-| T5 | Phone 390 × 844 | Fail, 1 step (R-01) | 18.5 | The drawer shows 'Mode demo terisolasi'. At 390 px the admin header shows only a dot for 'Data contoh', and the 'Pratinjau sumber (demo)' label is hidden. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` |
+| T1 | Desktop 1440 × 900 | Pass, 1 check skipped (F-01) | 8.3 | 9 steps passed on desktop (20 in total across both viewports, including 1 setup step). The warning-boundary check cannot run on the public map. The 60 s limit was met. | `.codex-build/uat/run-01/t1-discover.json` |
+| T1 | Phone 390 × 844 | Pass, 1 check skipped (F-01) | 4.7 | 10 steps passed on phone (run total 20, including setup). List fallback used. | `.codex-build/uat/run-01/t1-discover.json` |
+| T2 | Desktop 1440 × 900 | Pass, 3 checks skipped (F-02) | 3.5 | 8 steps passed on desktop (run total 17, including setup). The matched-update checks need live data. | `.codex-build/uat/run-01/t2-updates.json` |
+| T2 | Phone 390 × 844 | Pass, 3 checks skipped (F-02) | 2.7 | 8 steps passed on phone (run total 17, including setup). | `.codex-build/uat/run-01/t2-updates.json` |
+| T3 | Desktop 1440 × 900 | Pass, 2 checks skipped | 6.3 | 7 steps passed on desktop (run total 16, including setup). The 'bukan keadaan terkini' note shows only while history loads (`EventDetail.tsx:147`). The claim-source label needs a screenshot judgement. | `.codex-build/uat/run-01/t3-history.json` |
+| T3 | Phone 390 × 844 | Pass, 2 checks skipped | 4.2 | 8 steps passed on phone (run total 16, including setup). The same two skips. | `.codex-build/uat/run-01/t3-history.json` |
+| T4 | Desktop 1440 × 900 | Blocked (precondition not met, R-04) | 61.9 | The demo moderation queue is empty. The precondition step failed (step 6), and the select and decision steps timed out (steps 7 to 9). The run JSON records four fatal failures on desktop and six on phone, ten in total. The label Blocked is the register's, while the JSON status is fail; the owner decides the label. | `.codex-build/uat/run-02/t4-moderator.json` |
+| T4 | Phone 390 × 844 | Blocked, login rate-limited (R-03) | 75.9 | Login returned HTTP 429 after repeated demo logins in this session. The queue is also empty. Six fatal failures on phone: the login, then the empty queue and timeouts. | `.codex-build/uat/run-02/t4-moderator.json` |
+| T5 | Desktop 1440 × 900 | Pass, after a script correction (R-02) | 4.6 | Run 02: 11 steps passed on desktop (22 in total across both viewports, including setup). Two source-copy checks are skipped because that copy is display:none on the map view. Run 01 failed 8 steps (4 desktop, 4 phone); the register attributes this to source-copy wording (R-02). | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-01/t5-admin-sources.json` |
+| T5 | Phone 390 × 844 | Fail, 1 step (R-01) | 18.5 | Run 02: 10 steps passed on phone; 1 fatal failure. The drawer shows 'Mode demo terisolasi'. At 390 px the admin header shows only a dot for 'Data contoh', and the 'Pratinjau sumber (demo)' label is hidden. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` |
 | T1 and T2 | 320 px (manual) | Not run | — | Manual check, not scripted. | — |
 | T1 and T2 | 200% text (manual) | Not run | — | Manual check, not scripted. | — |
 
@@ -251,7 +251,9 @@ Each run is an automated walkthrough by a browser agent that acts as one target 
 | resident-run-01 | U1 resident | uat.resident01 | 40 pass, 0 fail, 3 skipped, 4 blocked. ACC-01 pass. RES-02 pass. RES-01 and RES-03 blocked. | R-05 |
 | worker-run-01 | U1 resident (worker) | uat.worker01 | ACC-01 pass on desktop (phone skipped: not applicable). ACC-02 pass. WRK-01 and WRK-02 blocked. | F-09 (no copy wording in the interface) |
 | commuter-run-01 | U2 commuter | uat.commuter01 | ACC-01, COM-01, COM-02 and ACC-02 pass on both viewports (attempt 2). | R-05; R-08 (script, attempt 1) |
-| student-run-01 | U2 commuter (student) | uat.student01 | ACC-01 pass. STU-01 blocked: no group notice, interest steps pass. ACC-02 pass, with a stale menu on desktop and phone. | R-06; R-07 |
+| student-run-01 | U2 commuter (student) | uat.student01 | ACC-01 pass. STU-01 blocked: no group notice, interest steps pass. ACC-02 recorded as pass, with a stale menu on desktop and phone. Attempt 2 has a non-fatal failing step ('Masuk' still offered after sign-out) on both viewports, so it is not a clean pass; attempt 1 has fatal failures on both viewports (persona JSON in the uat-personas worktree). | R-06; R-07 |
+
+The commuter JSON labels its run a real-user GUI walkthrough, while this table treats every persona run as automated (TEST-EVALUATION item 23). That label is not resolved here.
 
 Not run: U3 (moderator) and the administrator steps, skipped by decision on 13 November 2026. The 320 px and 200% text checks were not run.
 

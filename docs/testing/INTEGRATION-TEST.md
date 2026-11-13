@@ -7,6 +7,7 @@
 | Baseline | Branch `work/TEST-DOC-01-chapter5`, based on `main` at ae75527 |
 | Method | Static check of file existence, test titles and import lines. No test, build or server was run to write this document. |
 | Structure | IEEE 829 test-plan sections, with the integration approach of Braude, Ch 27 (build order, facades, state tests, acyclic dependencies) |
+| Update | 14 Nov 2026 (TEST-GAP-02). Rows changed by commits 588e375 to abe7bf6 are marked in sections 3.3, 3.4, 4 and 7. No test was run to write this update; the CI log in section 9 is still cec9358 |
 
 ## 1 Scope and levels
 
@@ -93,10 +94,26 @@ Caller check. The retrieval and grounding modules (`retrieval.ts`, `direct-reaso
 | `apps/db/test/synthetic-publication-isolation-composition.test.ts` | L1, L2, L4, DB | A synthetic L1/L2 draft stays outside the manual gate and the public detail view. | In CI step 6 |
 | `apps/worker/test/pipeline-flow-route.test.ts` | L4 route, DB | FLOW-VIS-01: 401 for an anonymous caller, 403 for a registered user, 200 for a moderator and an admin; runtime status attaches only when the local server provides it. | In CI step 8 |
 | `apps/worker/test/briefing-interest-removal.test.ts` | L4 read model, DB | FR-11: the candidate store selects an event only while one of its interests is in the request; the projection gives the matched reason only for the interests still saved. | Added for FR-11 |
-| `apps/worker/test/repeated-coverage-alerts.test.ts` | L4 decision writer, DB | FR-11: a re-delivered proposal writes no second decision or version. Todo F-ALERT-01: a repeated report of the same facts from another outlet publishes version 2. Todo F-ALERT-02: a published version is not listed in the updates feed. | Added for FR-11; todo findings open |
-| `apps/worker/test/trace-id-chain.test.ts` | L1 to L4, DB | FR-14: one trace id is recorded at ingestion, candidate, embedding run (provider and model version), grounding context, investigation, proposal and publication decision on the L2/L3 path. Todo F-TRACE-01: the intelligence-workflow proposal has no report trace id. Todo F-TRACE-02: the proposal writer invents placeholder trace, source, revision and context rows. | Added for FR-14; todo findings open |
+| `apps/worker/test/repeated-coverage-alerts.test.ts` | L4 decision writer, DB | FR-11: a re-delivered proposal writes no second decision or version. F-ALERT-01 (closed by 9d107b6): a repeated report of the same facts from another outlet adds no version (`no_material_change`), and a material change publishes the next version. Todo F-ALERT-02: a published version is not listed in the updates feed. | Added for FR-11 (c15383c); F-ALERT-01 closed; F-ALERT-02 todo open |
+| `apps/worker/test/trace-id-chain.test.ts` | L1 to L4, DB | FR-14: one trace id is recorded at ingestion, candidate, embedding run (provider and model version), grounding context, investigation, proposal and publication decision on the L2/L3 path. F-TRACE-01 (74c4616): a live workflow proposal keeps the report's trace, candidate and context ids. F-TRACE-02 (74c4616): a proposal without lineage ids writes no placeholder provenance. | Added for FR-14 (c15383c); F-TRACE-01 and F-TRACE-02 closed locally |
 | `apps/web/test/interest-removal.test.ts` | Web client (preferences, briefing request, updates) | FR-11: removing an interest removes it from the saved store, the next briefing request and the update matches; removing every interest closes the gate; one change delivered twice is one card. | Added for FR-11 |
-| TEST-INT-01 | L3 output into L4 gate | `apps/db/test/l3-investigation-publication-gate.test.ts` takes an L3 ledger context through the reasoning bridge and the manual gate. Case TI-02 holds on claims, not on ledger status (F-04). | Written (`71022ee` on `main`) |
+| TEST-INT-01 | L3 output into L4 gate | `apps/db/test/l3-investigation-publication-gate.test.ts` takes an L3 ledger context through the reasoning bridge and the manual gate. Case TI-02 holds on claims. Since 593f849 the gate also refuses a proposal whose investigation is `stopped_for_review` (F-04, closed locally). | Written (`71022ee` on `main`); F-04 refusal added 593f849 |
+
+### 3.4 Files added since 364f3fd (TEST-GAP-02, 14 Nov 2026)
+
+These files are not in the cec9358 CI log. Each row is in `docs/testing/test-cases.csv` (IT-TG-01 to IT-TG-11). Status is not re-run in this update.
+
+| File | Layers | What it proves (from test titles) | Status |
+| --- | --- | --- | --- |
+| `apps/db/test/source-approval-store.test.ts` | L4 approval store, DB | FR-12: approval writes only the approval status plus a trace and an audit row; revoke turns collection and issuer-notice auto-publication off; re-approval does not restart them; no-op and unknown-source requests write nothing. | Added 9c0bb13 |
+| `apps/intelligence/test/event-time-unknown.test.ts` | Intelligence, DB | F-14: no incident start and no proposal event time when the report gives no event time; the control keeps a source event time. | Added 588e375 |
+| `apps/intelligence/test/live-lineage.test.ts` | Intelligence, DB | FR-14: job trace, candidate and context kept on the live path; factory model configuration recorded; a live report without a revision writes no placeholder lineage. | Added 74c4616 |
+| `apps/worker/test/adr061-gate-db.test.ts` | L4 gate and writer, DB | ADR-061 checks 1 to 4, 8 and 9 at database level; the control publishes as `agent_auto`; overlapping decisions on one proposal leave one decision and one version (F-CONC-01). | Added e8aa73d; extended 593f849 and 74c4616 |
+| `apps/worker/test/source-approval-api.test.ts` | L4 route, DB | FR-12: 401, 403, Origin and CSRF refusals; approval and revocation with trace and audit; 409 for a repeated status; 404 for an unknown source; 400 for a malformed body; 503 on a storage failure. | Added 9c0bb13 |
+| `apps/worker/test/event-withdrawal-correction-db.test.ts` | L4 writer, DB | FR-12: withdrawal writes a tombstone version, a decision and an audit record, and the event leaves public reads; a withdrawn event is final; a correction passes the gate and is refused as `time_missing` when it removes the event time. | Added abe7bf6; CI pending |
+| `tools/live-freshness-job.test.ts` | serve:live composition, DB | FR-13: a passed review date gives `needs_update`; a missed timer runs once at the current time; an overlapping tick is skipped; each pass runs in one transaction; the read model is refreshed after each pass. | Added 3df81e9 |
+
+Files added by the same commits that already have rows in section 3.3 (`briefing-interest-removal.test.ts`, added by c15383c) or section 4 (`internal-proposals-route.test.ts`, c15383c) keep those rows. The `repeated-coverage-alerts.test.ts` and `trace-id-chain.test.ts` rows in section 3.3 are updated in place.
 
 ## 4 Interface tests (facade)
 
@@ -116,6 +133,9 @@ Among the read routes dispatched in `api.ts`, every route is GET except `POST /a
 | `/api/v1/ingestion/events` (webhook) | `index.ts`, then `webhook-ingest.ts` | `webhook-ingest.test.ts`, `service-auth-routes.test.ts` | In CI step 8 |
 | `/api/v1/moderation/*` | `index.ts`, then `moderation-api.ts` | `moderation-api.test.ts`, `service-auth-routes.test.ts` | In CI step 8 |
 | GET `/api/v1/pipeline/flow` | `pipeline-flow-api.ts` | `pipeline-flow-route.test.ts` | In CI step 8 |
+| GET `/api/v1/admin/sources`; POST `/api/v1/admin/sources/:sourceId/approval` | `source-approval-api.ts`, then `source-approval-store.ts` | `source-approval-api.test.ts`, `source-approval-store.test.ts` (9c0bb13) | Added 14 Nov 2026; not in cec9358 log |
+| POST `/api/v1/moderation/events/:eventId/withdraw`; POST `/api/v1/moderation/events/:eventId/corrections` | `moderation-api.ts`, then `proposal-publication.ts` | `moderation-event-actions.test.ts`, `event-withdrawal-correction-db.test.ts` (abe7bf6) | Added abe7bf6; CI pending |
+| `?mode=fetch` on `/api/v1/context-sources` and the source-preview route | `context-sources-api.ts`, `source-preview-api.ts` | `fetch-mode-moderator-gate.test.ts`, `poller-redirect-guard.test.ts` (db8893c) | Moderator or admin session only (NFR-04); added db8893c |
 
 What the handler tests prove, from their titles:
 
@@ -176,14 +196,15 @@ Acyclicity is not checked. A dependency-graph run over these four trees would be
 1. **No PGlite test for the webhook path.** `apps/worker/test/webhook-ingest.test.ts` does not import PGlite or `createTestDatabase`.
 2. **No PGlite test for BMKG CAP.** `apps/worker/test/bmkg-cap.test.ts` is parser-level and does not import PGlite.
 3. **No dedicated test for `freshness-aggregate-policy.ts`** (section 5).
-4. **TEST-INT-01 on `main`.** `apps/db/test/l3-investigation-publication-gate.test.ts` covers the L3 to L4 path, but the gate does not read the ledger status (F-04). `apps/db/test/investigation-ledger.test.ts` imports no L4 publication module.
+4. **TEST-INT-01 on `main`.** `apps/db/test/l3-investigation-publication-gate.test.ts` covers the L3 to L4 path. Since 593f849 the gate refuses a `stopped_for_review` investigation (F-04, closed locally; the claim-level hold is unchanged). `apps/db/test/investigation-ledger.test.ts` imports no L4 publication module.
 5. **No runtime caller for retrieval-before-reasoning.** Its evidence is database-level and local tooling only (section 3.2).
 6. **No live-path test.** No step in the CI log (section 9) runs `serve:live` (LIVE-LOCAL-01) or the live Worker with `apps/intelligence`.
 7. **No browser or responsive checks.** The CI log states "Browser checks. None run in CI."
 8. **Hosted behaviour untested.** Cloudflare and Neon behaviour is outside this plan (section 1).
 9. **No local run.** This document rests on CI aggregates and static checks. No local test run was made for it.
-10. **Preferences are covered by FR-11 tests in part.** M5 names preferences (section 8). The FR-11 files in section 3.3 test interest removal and client-side repeat handling. Two server-side gaps stay open as todo findings: F-ALERT-01 (repeated coverage publishes a new version) and F-ALERT-02 (a published version is not listed in the updates feed).
-11. **FR-14 holds only on the L2/L3 path.** The live intelligence workflow proposal has no report trace id (F-TRACE-01) and the proposal writer invents placeholder lineage rows (F-TRACE-02). No investigation or chat-model configuration is recorded in `apps/intelligence` (section 3.3).
+10. **Preferences are covered by FR-11 tests in part.** M5 names preferences (section 8). The FR-11 files in section 3.3 test interest removal and client-side repeat handling. F-ALERT-01 (repeated coverage publishing a new version) is closed locally by 9d107b6. F-ALERT-02 (a published version is not listed in the updates feed) stays a todo finding: it needs owner-approved change summaries (ADR-020) and a grant decision.
+11. **FR-14 holds on the L2/L3 path and, since 74c4616, on the live intelligence path for the job trace, report lineage and model configuration** (`live-lineage.test.ts`; F-TRACE-01 and F-TRACE-02 are closed locally). The live path still writes no investigation row, so the investigation link is absent for live.
+12. **Withdrawal and correction** (abe7bf6) have database and handler tests. The public detail route's 404 for a withdrawn event is not asserted at HTTP, and no public tombstone exists (SDP section 10, recorded limitations).
 
 ## 8 Integration gate and status against M5
 

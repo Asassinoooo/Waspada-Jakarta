@@ -1,5 +1,64 @@
 # Requirements gap report
 
+## Update 14 Nov 2026 (TEST-GAP-02)
+
+Basis: main at abe7bf6. The clause tables below keep the ab862c3 verdicts. This update lists only the clauses whose status changed, with the commit and test file, and the release items and owner decisions that changed. Clauses not named here were not re-assessed. No test was run for this update; the local pass status of each new file is in test-cases.csv (IT-TG-*, UT-TG-*). Three abe7bf6 files have no reported local pass.
+
+Clause changes (ab862c3 verdict to abe7bf6 verdict):
+
+| Requirement and clause | Before | Now | Commit; test file |
+| --- | --- | --- | --- |
+| FR-03 clauses 13 and 18 (event time not invented) | Contradicted | Covered for the event start: no fallback to publish, retrieval or processing time. Clauses 14 and 15 not re-checked | 588e375 (migration 048); `l4-event-time-unknown.test.ts`, `event-time-unknown.test.ts` (worker, intelligence, web) |
+| FR-08 clause 53 (one gate) | Contradicted | Unchanged. Both paths refuse `investigation_stopped_for_review`, but the two check sets still differ | 593f849 |
+| FR-08 clause 58 (concurrency) | Not covered | Partly: decisions on one proposal and on one event are serialized; the expiry sweep is not locked | 593f849; 9d107b6; `adr061-gate-db.test.ts` |
+| FR-08 clause 64 (conflict response) | Not covered | Unchanged. `decideProposal` returns no conflict | none |
+| FR-08 clause 53b (corrections use the gate) | Not covered | Partly: a correction is stored as a proposal and passes the moderator gate and the `time_missing` check | abe7bf6; `event-withdrawal-correction-db.test.ts` |
+| FR-09 C2b (record page and sheet say "no geometry") | Contradicted | Covered for mapped records at component level (not in a browser) | de0b77f; `event-detail-geometry.test.tsx` |
+| FR-09 C3 and C4 (polygons, segments) | Not covered | Out of scope by owner decision (13 Nov 2026): documented limitation | SDP §4 FR-09 note |
+| FR-11 C3 (removing an interest) | Partly | Covered at client and worker level; the browser walkthrough still needs a run | c15383c; `interest-removal.test.ts`, `briefing-interest-removal.test.ts` |
+| FR-11 C4 (repeated coverage) | Partly | Covered for proposals and publication (`no_material_change`); updates feed still open (F-ALERT-02) | 9d107b6; `repeated-coverage-alerts.test.ts` |
+| FR-12 C3 (source approval) | Not covered | Partly: route, trace and audit, and an admin panel. Revocation also stops collection (see limitations) | 9c0bb13; `source-approval-api.test.ts`, `source-approval-store.test.ts`, `source-approval.test.tsx` |
+| FR-12 C4 (corrections) | Not covered | Partly: route, gate and audit. Edits are limited to title, category, event time, location label and claim text | abe7bf6; `moderation-event-actions.test.ts`, `event-withdrawal-correction-db.test.ts` |
+| FR-12 C6 (withdrawals) | Not covered | Partly: route, tombstone version, decision and audit. Withdrawn is final; no public tombstone | abe7bf6 |
+| FR-12 C7 (audit) | Partly | Partly: withdraw, correct and approve audit rows are read back. The reject audit row is still not read by its test | abe7bf6; 9c0bb13 |
+| FR-13 C5 (jobs triggered in a running runtime) | Not covered | Partly: `serve:live` runs the job at start and on a timer. No cron trigger in the Worker | 3df81e9; `tools/live-freshness-job.test.ts` |
+| FR-14 C4 (model configuration) | Not covered | Partly: the live path records the factory model configuration in the trace audit | 74c4616; `live-lineage.test.ts` |
+| FR-14 C5 (trace links investigation) | Contradicted | Unchanged for live: no investigation row. The L2/L3 path has one trace across seven stages (ingestion to publication decision) | 74c4616; `trace-id-chain.test.ts` |
+| FR-14 C7 (one trace across the five links) | Not covered | Partly: one trace id across seven stages on the L2/L3 path; the live path keeps the job trace | `trace-id-chain.test.ts`; `live-lineage.test.ts` |
+| NFR-02 live clause (no budget counter) | Not covered | Covered at call level for the live agents (4 steps, 60 s, 4,000 output tokens, 12,000 input-plus-output estimate). No tool loop, so the 5-attempt cap is n/a | bf3cb4e; `nfr02-generation-budget.test.ts` |
+| NFR-04 public routes wait for acquisition | Contradicted (demo routes) | Covered for the opt-in routes: `mode=fetch` needs a moderator or admin session (503 fails closed). Public reads never fetch | db8893c; `fetch-mode-moderator-gate.test.ts`, `provider-fetch-access.test.ts` |
+| NFR-07 redirects followed by live pollers | Partly | Covered for the three live pollers: a redirect is refused and recorded as a blocked fetch | db8893c; `poller-redirect-guard.test.ts` |
+| NFR-08 layer responsibilities (F-03) | Contradicted | Covered: the L1 webhook ingest uses ports. One allowlisted exception (F-03-1) | cffc865; `layer-import-boundary.test.ts` |
+| TI-02 (gate ignores `stopped_for_review`) | Partly | Partly: the proposal gate now refuses `stopped_for_review`; the claim-level hold is unchanged | 593f849; `apps/db/test/l3-investigation-publication-gate.test.ts` |
+| ADR-061 duplicate-decision check (ADR line 49, unlocked) | Accepted race | Locked (ADR-061 amendment, 13 Nov 2026) | 593f849 |
+
+Release-blocking items (the release-blocking table of this report) whose status changed:
+
+- Class 1, proposal processing time as event time (F-14): closed locally (588e375, migration 048).
+- Class 1, gate checks (FR-08 clauses 53 to 55 and 57): still Contradicted. The stopped-for-review refusal is added (593f849).
+- Class 3, record page says "no geometry" (F-13): closed locally (de0b77f).
+- Class 3, no boundary drawn (FR-09 C3 and C4): narrowed by owner decision. A documented limitation, not closed.
+- Class 4, budget bypass on the live path: closed at call level (bf3cb4e). The L3 coordinator still has no runtime caller.
+- Class 5, source approval, corrections and withdrawals have no route: routes now exist (9c0bb13; abe7bf6). Merges and the public tombstone are still open.
+- Class 6, no scheduled trigger: serve:live timer added (3df81e9). Deployment still has no trigger.
+- Other, `?mode=fetch` without a session (NFR-04): closed for the demo routes (db8893c).
+- Other, live pollers follow redirects (NFR-07): closed (db8893c).
+- Other, layer rule breach (F-03, NFR-08): closed (cffc865), with F-03-1 open.
+- Other, ADR-009 missing (model thresholds): unchanged.
+
+SDP section 10 release conditions: no condition changes status. The outage row improves (unknown event times are no longer fabricated, 588e375) and stays Partly. Hosted, backup, rehearsal, thresholds, usability and casebook conditions are the owner's Phase 3 limitations, recorded in SDP section 10.
+
+Owner decisions (13 Nov 2026) recorded in code or docs:
+
+- (b) FR-09 narrowed to points: SDP section 4 note, 13 Nov 2026.
+- (c) The L4 gate refuses `stopped_for_review`: 593f849.
+- (d) `mode=fetch` requires a moderator or admin session: db8893c.
+- (f) Missing event time stays null or unknown: 588e375.
+- (e) The V1 test-list fix is an ancestor of main (85b8d57, ab862c3; checked). The owner's acceptance is not recorded separately here.
+- (a) and (g) are unchanged.
+
+New findings (not in DEFECTS.md): F-ALERT-02 (updates feed, open); F-03-1 (allowlisted L5 import, open); hosted grants for the L4 publication role and the intelligence lineage writes (owner brief; not re-run); no investigation row on the live path; the auto gate does not read grounding sufficiency; the expiry sweep does not take the decision lock; source revocation conflicts with FR-16; the F-14 `time_missing` queueing effect; the withdrawn public 404 is not asserted at HTTP; `docs/api/openapi.yaml` line 417 lists an unregistered retraction route.
+
 ## Basis and how to read the counts
 
 Basis: the same state as TEST-EVALUATION.md, branch work/TEST-GAP-01-evaluation at ab862c3 (main 4f1c344 plus the unmerged TEST-LIST-01 fixes). Static reading and grep only. No tests, builds, model calls, network calls or live runs were made.
