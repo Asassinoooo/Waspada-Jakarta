@@ -575,7 +575,7 @@ export async function applyTriageGate(
       (match) => match.strength === 'strong' || match.strength === 'supporting',
     );
     const hasSpecificOrBroad = deterministic !== undefined && deterministic.locationMatches.some(
-      (match) => match.matchStrength === 'specific' || match.matchStrength === 'broad_only',
+      (match) => match.matchStrength === 'specific' || match.matchStrength === 'broad_only' || match.matchStrength === 'named_place',
     );
     const prepared: TriageNewsItem = {
       sourceId: rev.source_id,

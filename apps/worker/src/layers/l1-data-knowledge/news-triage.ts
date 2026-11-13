@@ -18,7 +18,14 @@ import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-catego
 import { isRateLimitedError } from "../../../../db/src/ninerouter-rate-gate.js";
 import type { DeterministicRelevanceResult } from "./deterministic-relevance.js";
 
-export const TRIAGE_POLICY_VERSION = 'wj-int-02-v2' as const;
+/**
+ * Replay key for persisted Stage A/B decisions (findPriorDecision matches it
+ * exactly). Bumped to v3 with DET-FILTER-03: the attempt rows store no
+ * deterministic rule version, so a v2 skip (ambiguous/low_signal from the old
+ * narrow rules) would otherwise replay forever after a rule change. Items that
+ * reappear are re-evaluated once under the new rules.
+ */
+export const TRIAGE_POLICY_VERSION = 'wj-int-02-v3' as const;
 
 
 export type TriageDisposition = 'ingest' | 'drop' | 'uncertain';

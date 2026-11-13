@@ -97,6 +97,9 @@ export const EVAL_MODIFIER_KEYS = [
   "weather_forecast_override_applied",
   "planned_traffic_override_applied",
   "negation_downgrade_applied",
+  "dateline_stripped",
+  "agency_reference_consumed",
+  "homonym_guard_applied",
 ] as const;
 
 export type EvalModifierKey = (typeof EVAL_MODIFIER_KEYS)[number];

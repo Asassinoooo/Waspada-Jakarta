@@ -6,9 +6,15 @@
  * `title + descriptionExcerpt` text to a bounded, serializable verdict
  * (`candidate` | `ambiguous` | `low_signal`) using two checked-in datasets:
  *
- * - `data/jakarta-gazetteer.json` (44 districts, 267 canonical kelurahan)
+ * - `data/jakarta-gazetteer.json` (44 districts, 267 canonical kelurahan,
+ *   curated name-only `jakartaPlaces`, single-token alias blocklist)
  * - `data/incident-lexicon.json` (event groups, alert/supporting terms,
- *   3 contextual overrides, location role cues)
+ *   3 contextual overrides, location role cues, agency reference cues)
+ *
+ * DET-FILTER-03 (rule v2) broadens candidacy: a strong event plus ANY Jakarta
+ * place (kelurahan/kecamatan, named DKI place, DKI city, or the province) is a
+ * candidate unless the location role is non-scene/reference. Stage B remains
+ * the precision layer. No match here yields coordinates, a point or a radius.
  *
  * Semantic triage stays authoritative for nuance and L4 human approval stays
  * required; this prefilter only lets the poller skip the model call (and the
@@ -25,13 +31,24 @@ import { isOfficialIncidentCategory } from "../../../../db/src/incident-categori
 import gazetteerJson from "./data/jakarta-gazetteer.json" with { type: "json" };
 import lexiconJson from "./data/incident-lexicon.json" with { type: "json" };
 
-export const DETERMINISTIC_FILTER_RULE_VERSION = 'det-filter-v1' as const;
+export const DETERMINISTIC_FILTER_RULE_VERSION = 'det-filter-v2' as const;
 
 export interface DeterministicLocationMatch {
   readonly id: string;
   readonly name: string;
-  readonly level: 'village' | 'district' | 'city' | 'regency' | 'province' | 'locality_or_area_unverified';
-  readonly matchStrength: 'specific' | 'broad_only' | 'context_required';
+  readonly level:
+    | 'village'
+    | 'district'
+    | 'city'
+    | 'regency'
+    | 'province'
+    | 'jakarta_place'
+    | 'locality_or_area_unverified';
+  /**
+   * `named_place` is a curated jakarta_place (road, landmark, station...). It
+   * satisfies the place gate but never the administrative `specific` gate.
+   */
+  readonly matchStrength: 'specific' | 'broad_only' | 'named_place' | 'context_required';
   readonly matchedAlias: string;
   readonly parentDistrictId?: string;
   readonly parentRegionId?: string;
@@ -64,8 +81,40 @@ export interface GazetteerDataset {
     readonly administrativeAreas: readonly AdministrativeArea[];
   };
   readonly unverifiedLocalities: readonly UnverifiedLocality[];
+  /** DET-FILTER-03 curated named Jakarta places (name only, never coordinates). */
+  readonly jakartaPlaces: readonly JakartaPlaceRecord[];
+  /** Single-token aliases that are ordinary words or out-of-DKI homonyms. */
+  readonly singleTokenAliasBlocklist: readonly SingleTokenBlocklistEntry[];
+  readonly contextualAliasGuards: readonly ContextualAliasGuard[];
+  /** Out-of-DKI cities: a road or toll name next to one (and no DKI anchor) is a homonym. */
+  readonly outOfDkiHomonymCueTerms: readonly string[];
+  readonly jakartaPlaceHomonymGuards: readonly PlaceHomonymGuard[];
   readonly supplementalLegacyLocalities: readonly SupplementalLocality[];
   readonly legacyToponymCoverage: readonly unknown[];
+}
+
+export interface PlaceHomonymGuard {
+  readonly recordId: string;
+  readonly cues: readonly string[];
+}
+
+export interface JakartaPlaceRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly placeClass: string | null;
+  readonly aliases: readonly string[];
+}
+
+export interface SingleTokenBlocklistEntry {
+  readonly term: string;
+  readonly reason: string;
+}
+
+export interface ContextualAliasGuard {
+  readonly alias: string;
+  readonly recordId: string;
+  readonly allowedNextTokens: readonly string[];
+  readonly allowAtEnd: boolean;
 }
 
 export interface CanonicalAdminRecord {
@@ -120,7 +169,16 @@ export interface LexiconDataset {
   readonly locationRoleCues: {
     readonly sceneExamples: readonly string[];
     readonly nonSceneOrReferenceExamples: readonly string[];
+    /** Office/agency names whose place tokens are not a location (DET-FILTER-03). */
+    readonly agencyReferenceExamples: readonly LexiconAgencyCue[];
+    /** Suffix words that make a strong event term a scene cue, e.g. "di". */
+    readonly eventAnchoredSceneSuffix: readonly string[];
   };
+}
+
+export interface LexiconAgencyCue {
+  readonly phrase: string;
+  readonly maxGapTokens: number;
 }
 
 export interface LexiconEventGroup {
@@ -371,6 +429,70 @@ function parseGazetteer(value: unknown): GazetteerDataset {
     fail("Rawa Badak must not appear as a canonical gazetteer record");
   }
 
+  // DET-FILTER-03: curated named Jakarta places. Name only: they can satisfy the
+  // place gate, never the administrative gate, and never carry coordinates.
+  const rawPlaces = value["jakartaPlaces"];
+  if (!Array.isArray(rawPlaces)) fail("gazetteer.jakartaPlaces must be an array");
+  const places: JakartaPlaceRecord[] = [];
+  for (const raw of rawPlaces as readonly unknown[]) {
+    if (!isRecord(raw)) fail("gazetteer jakarta place must be an object");
+    const id = requiredString(raw, "id", "gazetteer.jakartaPlace");
+    claimId(id, "jakarta place");
+    if (raw["canSatisfyPlaceGate"] !== true) fail(`gazetteer.jakartaPlace ${id} must satisfy the place gate`);
+    if (raw["canSatisfySpecificAdministrativeLocationGate"] !== false) {
+      fail(`gazetteer.jakartaPlace ${id} must not satisfy the administrative gate`);
+    }
+    if (raw["coordinates"] !== undefined && raw["coordinates"] !== null) {
+      fail(`gazetteer.jakartaPlace ${id} must not carry coordinates`);
+    }
+    places.push({
+      id,
+      name: requiredString(raw, "name", "gazetteer.jakartaPlace"),
+      placeClass: optionalString(raw, "placeClass", "gazetteer.jakartaPlace"),
+      aliases: requiredStringArray(raw, "aliases", `gazetteer.jakartaPlace ${id}`),
+    });
+  }
+
+  const rawBlocklist = value["singleTokenAliasBlocklist"];
+  if (!Array.isArray(rawBlocklist)) fail("gazetteer.singleTokenAliasBlocklist must be an array");
+  const blocklist: SingleTokenBlocklistEntry[] = [];
+  for (const raw of rawBlocklist as readonly unknown[]) {
+    if (!isRecord(raw)) fail("gazetteer blocklist entry must be an object");
+    blocklist.push({
+      term: requiredString(raw, "term", "gazetteer.blocklist"),
+      reason: requiredString(raw, "reason", "gazetteer.blocklist"),
+    });
+  }
+
+  const rawGuards = value["contextualAliasGuards"];
+  if (!Array.isArray(rawGuards)) fail("gazetteer.contextualAliasGuards must be an array");
+  const guards: ContextualAliasGuard[] = [];
+  for (const raw of rawGuards as readonly unknown[]) {
+    if (!isRecord(raw)) fail("gazetteer alias guard must be an object");
+    const recordId = requiredString(raw, "recordId", "gazetteer.aliasGuard");
+    if (!seenIds.has(recordId)) fail(`gazetteer.aliasGuard references unknown record ${recordId}`);
+    guards.push({
+      alias: requiredString(raw, "alias", "gazetteer.aliasGuard"),
+      recordId,
+      allowedNextTokens: requiredStringArray(raw, "allowedNextTokens", "gazetteer.aliasGuard"),
+      allowAtEnd: raw["allowAtEnd"] === true,
+    });
+  }
+
+  const outOfDkiCues = requiredStringArray(value, "outOfDkiHomonymCueTerms", "gazetteer");
+  const rawHomonymGuards = value["jakartaPlaceHomonymGuards"];
+  if (!Array.isArray(rawHomonymGuards)) fail("gazetteer.jakartaPlaceHomonymGuards must be an array");
+  const homonymGuards: PlaceHomonymGuard[] = [];
+  for (const raw of rawHomonymGuards as readonly unknown[]) {
+    if (!isRecord(raw)) fail("gazetteer homonym guard must be an object");
+    const recordId = requiredString(raw, "recordId", "gazetteer.homonymGuard");
+    if (!seenIds.has(recordId)) fail(`gazetteer.homonymGuard references unknown record ${recordId}`);
+    homonymGuards.push({
+      recordId,
+      cues: requiredStringArray(raw, "cues", "gazetteer.homonymGuard"),
+    });
+  }
+
   const rawSupplemental = value["supplementalLegacyLocalities"];
   if (!Array.isArray(rawSupplemental)) fail("gazetteer.supplementalLegacyLocalities must be an array");
   const seenTerms = new Set<string>();
@@ -401,6 +523,11 @@ function parseGazetteer(value: unknown): GazetteerDataset {
     datasetVersion,
     hierarchy: { province, administrativeAreas: areas },
     unverifiedLocalities: unverified,
+    jakartaPlaces: places,
+    singleTokenAliasBlocklist: blocklist,
+    contextualAliasGuards: guards,
+    outOfDkiHomonymCueTerms: outOfDkiCues,
+    jakartaPlaceHomonymGuards: homonymGuards,
     supplementalLegacyLocalities: supplemental,
     legacyToponymCoverage: rawCoverage as readonly unknown[],
   };
@@ -523,6 +650,18 @@ function parseLexicon(value: unknown): LexiconDataset {
   if (sceneExamples.length === 0 || nonSceneExamples.length === 0) {
     fail("lexicon.locationRoleCues must carry both cue lists");
   }
+  const rawAgency = cues["agencyReferenceExamples"];
+  if (!Array.isArray(rawAgency)) fail("lexicon.locationRoleCues.agencyReferenceExamples must be an array");
+  const agencyCues: LexiconAgencyCue[] = [];
+  for (const raw of rawAgency as readonly unknown[]) {
+    if (!isRecord(raw)) fail("lexicon agency cue must be an object");
+    const gap = raw["maxGapTokens"];
+    if (typeof gap !== "number" || !Number.isInteger(gap) || gap < 0 || gap > 3) {
+      fail("lexicon agency cue maxGapTokens must be an integer from 0 to 3");
+    }
+    agencyCues.push({ phrase: requiredString(raw, "phrase", "lexicon.agencyCue"), maxGapTokens: gap });
+  }
+  const sceneSuffixes = requiredStringArray(cues, "eventAnchoredSceneSuffix", "lexicon.roleCues");
 
   return {
     schemaVersion,
@@ -536,7 +675,12 @@ function parseLexicon(value: unknown): LexiconDataset {
     globalSupportingTerms: globalTerms,
     legacyKeywordCoverage: legacy,
     contextualOverrides: overrides,
-    locationRoleCues: { sceneExamples, nonSceneOrReferenceExamples: nonSceneExamples },
+    locationRoleCues: {
+      sceneExamples,
+      nonSceneOrReferenceExamples: nonSceneExamples,
+      agencyReferenceExamples: agencyCues,
+      eventAnchoredSceneSuffix: sceneSuffixes,
+    },
   };
 }
 
@@ -574,6 +718,16 @@ interface EventIndexEntry {
   readonly tokens: readonly string[];
 }
 
+interface AliasGuardIndex {
+  readonly allowedNext: ReadonlySet<string>;
+  readonly allowAtEnd: boolean;
+}
+
+interface AgencyCueIndex {
+  readonly tokens: readonly string[];
+  readonly maxGapTokens: number;
+}
+
 interface BuiltIndex {
   readonly gazetteer: GazetteerDataset;
   readonly lexicon: LexiconDataset;
@@ -583,8 +737,15 @@ interface BuiltIndex {
   readonly eventFirst: ReadonlyMap<string, readonly EventIndexEntry[]>;
   /** Exact legacy term treatment override (normalized term -> treatment). */
   readonly legacyTreatment: ReadonlyMap<string, EventStrength>;
-  readonly sceneCues: readonly (readonly string[])[];
-  readonly referenceCues: readonly (readonly string[])[];
+  /** Scene cues (phrases, incl. event-anchored "<strong term> di") by first token. */
+  readonly sceneBuckets: ReadonlyMap<string, readonly (readonly string[])[]>;
+  /** Non-scene/reference cues by first token. */
+  readonly referenceBuckets: ReadonlyMap<string, readonly (readonly string[])[]>;
+  readonly agencyCues: readonly AgencyCueIndex[];
+  /** Homonym cues per jakarta_place record id (token phrases). */
+  readonly placeHomonymCues: ReadonlyMap<string, readonly (readonly string[])[]>;
+  /** Key: `${recordId}|${alias tokens}`. */
+  readonly aliasGuards: ReadonlyMap<string, AliasGuardIndex>;
   readonly negationCues: ReadonlySet<string>;
   readonly floodOverride: { readonly triggers: readonly (readonly string[])[]; readonly impacts: readonly (readonly string[])[]; readonly groups: ReadonlySet<string> };
   readonly plannedTrafficPatterns: ReadonlySet<string>;
@@ -626,6 +787,22 @@ function buildIndex(gazetteer: GazetteerDataset, lexicon: LexiconDataset): Built
     }
   };
 
+  // DET-FILTER-03 alias policy. A single-token alias on the blocklist (an
+  // ordinary word or an out-of-DKI homonym) is indexed only in its prefixed
+  // multi-token form (for example "Kelurahan Baru"); the bare word never matches.
+  const blocklist = new Map<string, string>(
+    gazetteer.singleTokenAliasBlocklist.map((entry) => [normalizeText(entry.term), entry.reason]),
+  );
+  const aliasTokens = (alias: string): { readonly tokens: readonly string[]; readonly explicitMulti: boolean } | null => {
+    const raw = phraseTokens(alias);
+    const stripped = stripLocationPrefix(raw);
+    if (stripped.length === 0) return null;
+    if (stripped.length === 1 && blocklist.has(stripped[0]!)) {
+      if (raw.length <= 1) return null;
+      return { tokens: raw, explicitMulti: true };
+    }
+    return { tokens: stripped, explicitMulti: false };
+  };
 
   const indexCanonical = (
     record: CanonicalAdminRecord,
@@ -635,19 +812,19 @@ function buildIndex(gazetteer: GazetteerDataset, lexicon: LexiconDataset): Built
   ): void => {
     const normalConfidence = record.matchConfidence === "normal";
     for (const alias of record.aliases) {
-      const tokens = stripLocationPrefix(phraseTokens(alias));
-      if (tokens.length === 0) continue;
+      const resolved = aliasTokens(alias);
+      if (resolved === null) continue;
       addLocation({
         kind: "location",
         recordId: record.id,
         name: record.name,
         level,
         canonical: true,
-        normalConfidence,
+        normalConfidence: normalConfidence || resolved.explicitMulti,
         parentDistrictId,
         parentRegionId,
         aliasText: alias,
-        tokens,
+        tokens: resolved.tokens,
       });
     }
   };
@@ -671,8 +848,8 @@ function buildIndex(gazetteer: GazetteerDataset, lexicon: LexiconDataset): Built
 
   for (const unverified of gazetteer.unverifiedLocalities) {
     for (const alias of unverified.aliases) {
-      const tokens = stripLocationPrefix(phraseTokens(alias));
-      if (tokens.length === 0) continue;
+      const resolved = aliasTokens(alias);
+      if (resolved === null) continue;
       addLocation({
         kind: "location",
         recordId: unverified.id,
@@ -683,14 +860,33 @@ function buildIndex(gazetteer: GazetteerDataset, lexicon: LexiconDataset): Built
         parentDistrictId: unverified.parentDistrictId,
         parentRegionId: undefined,
         aliasText: alias,
-        tokens,
+        tokens: resolved.tokens,
+      });
+    }
+  }
+
+  for (const place of gazetteer.jakartaPlaces) {
+    for (const alias of place.aliases) {
+      const resolved = aliasTokens(alias);
+      if (resolved === null) continue;
+      addLocation({
+        kind: "location",
+        recordId: place.id,
+        name: place.name,
+        level: "jakarta_place",
+        canonical: false,
+        normalConfidence: false,
+        parentDistrictId: undefined,
+        parentRegionId: undefined,
+        aliasText: alias,
+        tokens: resolved.tokens,
       });
     }
   }
 
   for (const supplemental of gazetteer.supplementalLegacyLocalities) {
-    const tokens = stripLocationPrefix(phraseTokens(supplemental.term));
-    if (tokens.length === 0) continue;
+    const resolved = aliasTokens(supplemental.term);
+    if (resolved === null) continue;
     addLocation({
       kind: "location",
       recordId: `supplemental:${normalizeText(supplemental.term)}`,
@@ -701,7 +897,7 @@ function buildIndex(gazetteer: GazetteerDataset, lexicon: LexiconDataset): Built
       parentDistrictId: undefined,
       parentRegionId: undefined,
       aliasText: supplemental.term,
-      tokens,
+      tokens: resolved.tokens,
     });
   }
 
@@ -766,6 +962,59 @@ function buildIndex(gazetteer: GazetteerDataset, lexicon: LexiconDataset): Built
   const weather = overrideById.get("weather-forecast-is-not-an-observed-damage-event");
   if (!flood || !traffic || !weather) fail("lexicon must carry all three contextual overrides");
 
+  const bucketPhrases = (phrases: readonly (readonly string[])[]): Map<string, (readonly string[])[]> => {
+    const map = new Map<string, (readonly string[])[]>();
+    for (const phrase of phrases) {
+      const first = phrase[0];
+      if (first === undefined) continue;
+      const bucket = map.get(first);
+      if (bucket === undefined) map.set(first, [phrase]);
+      else bucket.push(phrase);
+    }
+    return map;
+  };
+
+  // Scene cues: explicit scene phrases plus event-anchored "<strong term> <suffix>".
+  const sceneTokenPhrases: (readonly string[])[] = lexicon.locationRoleCues.sceneExamples.map(phraseTokens);
+  for (const suffix of lexicon.locationRoleCues.eventAnchoredSceneSuffix) {
+    const suffixTokens = phraseTokens(suffix);
+    if (suffixTokens.length === 0) continue;
+    for (const group of lexicon.eventGroups) {
+      for (const term of group.strongTerms) {
+        const termTokens = phraseTokens(term);
+        if (termTokens.length > 0) sceneTokenPhrases.push([...termTokens, ...suffixTokens]);
+      }
+    }
+  }
+  const referenceTokenPhrases: (readonly string[])[] = lexicon.locationRoleCues.nonSceneOrReferenceExamples.map(phraseTokens);
+
+  const agencyCues: AgencyCueIndex[] = lexicon.locationRoleCues.agencyReferenceExamples
+    .map((cue) => ({ tokens: phraseTokens(cue.phrase), maxGapTokens: cue.maxGapTokens }))
+    .filter((cue) => cue.tokens.length > 0);
+
+  // Homonym cues: road and toll names get the out-of-DKI city list; named
+  // records add their own explicit cues (Kota Tua/Manila, Casablanca/Morocco...).
+  const roadClasses: ReadonlySet<string> = new Set(["road_corridor", "elevated_road", "toll_road"]);
+  const outOfDkiPhrases = gazetteer.outOfDkiHomonymCueTerms.map(phraseTokens);
+  const placeHomonymCues = new Map<string, (readonly string[])[]>();
+  for (const place of gazetteer.jakartaPlaces) {
+    if (place.placeClass !== null && roadClasses.has(place.placeClass)) {
+      placeHomonymCues.set(place.id, [...outOfDkiPhrases]);
+    }
+  }
+  for (const guard of gazetteer.jakartaPlaceHomonymGuards) {
+    const existing = placeHomonymCues.get(guard.recordId) ?? [];
+    placeHomonymCues.set(guard.recordId, [...existing, ...guard.cues.map(phraseTokens)]);
+  }
+
+  const aliasGuards = new Map<string, AliasGuardIndex>();
+  for (const guard of gazetteer.contextualAliasGuards) {
+    aliasGuards.set(`${guard.recordId}|${phraseTokens(guard.alias).join(" ")}`, {
+      allowedNext: new Set(guard.allowedNextTokens.map((token) => normalizeText(token))),
+      allowAtEnd: guard.allowAtEnd,
+    });
+  }
+
   return {
     gazetteer,
     lexicon,
@@ -774,8 +1023,11 @@ function buildIndex(gazetteer: GazetteerDataset, lexicon: LexiconDataset): Built
     locationFirst: locationBuckets,
     eventFirst: eventBuckets,
     legacyTreatment,
-    sceneCues: lexicon.locationRoleCues.sceneExamples.map(phraseTokens),
-    referenceCues: lexicon.locationRoleCues.nonSceneOrReferenceExamples.map(phraseTokens),
+    sceneBuckets: bucketPhrases(sceneTokenPhrases),
+    referenceBuckets: bucketPhrases(referenceTokenPhrases),
+    agencyCues,
+    placeHomonymCues,
+    aliasGuards,
     negationCues: new Set(
       ["tidak", "bukan", "tanpa", "hoaks", "hoax", "simulasi", "latihan", "direncanakan", "rencana"].map(
         (cue) => normalizeText(cue),
@@ -829,14 +1081,8 @@ export function getDeterministicDatasetVersions(): {
 // Matching.
 // ---------------------------------------------------------------------------
 
-interface RawLocationHit {
-  readonly entry: LocationIndexEntry;
-  readonly start: number;
-  readonly end: number;
-}
-
-interface RawEventHit {
-  readonly entry: EventIndexEntry;
+interface ScanHit<E> {
+  readonly entry: E;
   readonly start: number;
   readonly end: number;
 }
@@ -858,7 +1104,56 @@ function anyPhraseMatches(tokens: readonly string[], phrases: readonly (readonly
   return false;
 }
 
+/** Longest-match-first scan per start position, with token boundaries. */
+function scanLongest<E extends { readonly tokens: readonly string[] }>(
+  tokens: readonly string[],
+  buckets: ReadonlyMap<string, readonly E[]>,
+): ScanHit<E>[] {
+  const hits: ScanHit<E>[] = [];
+  for (let start = 0; start < tokens.length; start++) {
+    const bucket = buckets.get(tokens[start]!);
+    if (bucket === undefined) continue;
+    let longest = 0;
+    for (const entry of bucket) {
+      if (entry.tokens.length > longest && tokensEqualAt(tokens, start, entry.tokens)) {
+        longest = entry.tokens.length;
+      }
+    }
+    if (longest === 0) continue;
+    for (const entry of bucket) {
+      if (entry.tokens.length === longest && tokensEqualAt(tokens, start, entry.tokens)) {
+        hits.push({ entry, start, end: start + longest });
+      }
+    }
+  }
+  return hits;
+}
+
+/** Every occurrence of a cue phrase as a [start, end) token span. */
+function findCueSpans(
+  tokens: readonly string[],
+  buckets: ReadonlyMap<string, readonly (readonly string[])[]>,
+): Array<readonly [number, number]> {
+  const spans: Array<readonly [number, number]> = [];
+  for (let start = 0; start < tokens.length; start++) {
+    const bucket = buckets.get(tokens[start]!);
+    if (bucket === undefined) continue;
+    for (const phrase of bucket) {
+      if (tokensEqualAt(tokens, start, phrase)) spans.push([start, start + phrase.length] as const);
+    }
+  }
+  return spans;
+}
+
+function spansOverlap(a: readonly [number, number], b: readonly [number, number]): boolean {
+  return a[0] < b[1] && b[0] < a[1];
+}
+
 const LOCATION_SPECIFICITY: Record<AdminMatchLevel, number> = {
+  // A named place is preferred over an admin record that shares its exact span
+  // (for example "Cawang" the place versus "Cawang" the village), so the place
+  // gate is not lost to a context-required single-token admin match.
+  jakarta_place: -1,
   village: 0,
   district: 1,
   city: 2,
@@ -867,15 +1162,92 @@ const LOCATION_SPECIFICITY: Record<AdminMatchLevel, number> = {
   locality_or_area_unverified: 4,
 };
 
+function initialLocationStrength(entry: LocationIndexEntry): LocationStrength {
+  if (entry.level === "jakarta_place") return "named_place";
+  if (entry.level === "province" || entry.level === "city" || entry.level === "regency") return "broad_only";
+  if (entry.canonical && entry.normalConfidence && entry.tokens.length > 1) return "specific";
+  return "context_required";
+}
+
+/**
+ * DET-FILTER-03 corroboration for a single-token canonical name.
+ * - A kecamatan name in the text is itself its matching kecamatan, so a
+ *   single-token kecamatan (for example Cakung) corroborates itself.
+ * - A kelurahan needs its own parent kecamatan (a same-name kecamatan mention
+ *   counts) or its own kota in the text.
+ * A province or other-city hit never corroborates.
+ */
+function isCorroborated(entry: LocationIndexEntry, present: ReadonlySet<string>): boolean {
+  if (entry.level === "district") return true;
+  if (
+    entry.parentDistrictId !== undefined &&
+    entry.parentDistrictId !== entry.recordId &&
+    present.has(entry.parentDistrictId)
+  ) {
+    return true;
+  }
+  return entry.parentRegionId !== undefined && present.has(entry.parentRegionId);
+}
+
+// DET-FILTER-03 dateline. A leading "<place>[, <outlet>][ (<agency>)] -" within
+// the first 60 characters. Stripped only when the place is a province or
+// non-DKI name; a DKI city, kecamatan, kelurahan or named place is kept.
+const DATELINE_HEAD = /^\s*([^\n]{1,60}?)\s*[-–—]{1,2}\s+/u;
+const DATELINE_PARTS = /^([^,(]+?)\s*(?:,\s*([^(]+?))?\s*(?:\(([^)]*)\))?$/u;
+const DATELINE_MAX_PREFIX = 60;
+
+function stripLeadingDateline(
+  raw: string,
+  strict: boolean,
+  index: BuiltIndex,
+): { readonly text: string; readonly stripped: boolean } {
+  const keep = { text: raw, stripped: false } as const;
+  const head = DATELINE_HEAD.exec(raw);
+  if (head === null) return keep;
+  const prefix = (head[1] ?? "").trim();
+  if (prefix.length === 0 || prefix.length > DATELINE_MAX_PREFIX) return keep;
+  const parts = DATELINE_PARTS.exec(prefix);
+  if (parts === null) return keep;
+  const place = (parts[1] ?? "").trim();
+  const hasOutlet = (parts[2] ?? "").trim().length > 0;
+  const hasAgency = (parts[3] ?? "").trim().length > 0;
+  const letters = place.replace(/[^\p{L}]/gu, "");
+  const allCaps = letters.length >= 2 && /\p{Lu}/u.test(letters) && !/\p{Ll}/u.test(letters);
+  const words = place.split(/\s+/u).filter((word) => word.length > 0);
+  const titleCase = words.length >= 1 && words.length <= 3 && words.every((word) => /^\p{Lu}/u.test(word));
+  const accepted = strict
+    ? allCaps || hasOutlet || hasAgency
+    : allCaps || (words.length === 1 && titleCase) || ((hasOutlet || hasAgency) && titleCase);
+  if (!accepted) return keep;
+  const placeTokens = tokenize(normalizeText(place));
+  if (placeTokens.length === 0) return keep;
+  // An event term inside the lead is headline text, never a dateline.
+  if (scanLongest(placeTokens, index.eventFirst).length > 0) return keep;
+  // A DKI city, kecamatan, kelurahan or named place may be the incident location.
+  const namesDkiPlace = scanLongest(placeTokens, index.locationFirst).some(
+    (hit) => hit.entry.level !== "province" && hit.entry.level !== "locality_or_area_unverified",
+  );
+  if (namesDkiPlace) return keep;
+  return { text: raw.slice(head[0].length), stripped: true };
+}
+
 export function matchDeterministicRelevance(
   title: string,
   descriptionExcerpt: string | null,
 ): DeterministicRelevanceResult {
   const index = built();
-  const combined = `${title}\n${descriptionExcerpt ?? ""}`;
-  const tokens = tokenize(normalizeText(combined));
+  const modifiers: string[] = [];
 
-  const firedModifiers: string[] = [];
+  // DET-FILTER-03: a leading agency dateline is removed on the raw text, before
+  // normalization, when it names only the province or a non-DKI place.
+  const titleLead = stripLeadingDateline(title, true, index);
+  const excerptLead = descriptionExcerpt === null
+    ? { text: "", stripped: false }
+    : stripLeadingDateline(descriptionExcerpt, false, index);
+  if (titleLead.stripped || excerptLead.stripped) modifiers.push("dateline_stripped");
+
+  const combined = `${titleLead.text}\n${excerptLead.text}`;
+  const tokens = tokenize(normalizeText(combined));
 
   if (tokens.length === 0) {
     return {
@@ -889,35 +1261,80 @@ export function matchDeterministicRelevance(
   }
 
   // --- location scan: longest-match-first per start position ----------------
-  const rawLocationHits: RawLocationHit[] = [];
-  for (let start = 0; start < tokens.length; start++) {
-    const bucket = index.locationFirst.get(tokens[start]!);
-    if (bucket === undefined) continue;
-    let longest = 0;
-    for (const entry of bucket) {
-      if (entry.tokens.length > longest && tokensEqualAt(tokens, start, entry.tokens)) {
-        longest = entry.tokens.length;
+  const scanned = scanLongest(tokens, index.locationFirst).filter((hit) => {
+    // "Ibu Kota" is Jakarta only when the following token keeps that reading.
+    const guard = index.aliasGuards.get(`${hit.entry.recordId}|${hit.entry.tokens.join(" ")}`);
+    if (guard === undefined) return true;
+    const next = tokens[hit.end];
+    return next === undefined ? guard.allowAtEnd : guard.allowedNext.has(next);
+  });
+
+  // --- agency reference cues consume the place tokens of office names -------
+  // "Polda Metro Jaya", "Kapolres Jakarta Barat", "Pemprov DKI Jakarta",
+  // "Sudin ... Jakarta Timur": the place that follows the agency is not a location.
+  const consumed: Array<readonly [number, number]> = [];
+  for (const cue of index.agencyCues) {
+    for (let s = 0; s < tokens.length; s++) {
+      if (!tokensEqualAt(tokens, s, cue.tokens)) continue;
+      const phraseEnd = s + cue.tokens.length;
+      let chosen: ScanHit<LocationIndexEntry> | undefined;
+      for (const hit of scanned) {
+        if (hit.start < phraseEnd || hit.start > phraseEnd + cue.maxGapTokens) continue;
+        if (chosen === undefined || hit.start < chosen.start || (hit.start === chosen.start && hit.end > chosen.end)) {
+          chosen = hit;
+        }
       }
-    }
-    if (longest === 0) continue;
-    for (const entry of bucket) {
-      if (entry.tokens.length === longest && tokensEqualAt(tokens, start, entry.tokens)) {
-        rawLocationHits.push({ entry, start, end: start + longest });
-      }
+      consumed.push([s, chosen === undefined ? phraseEnd : chosen.end] as const);
     }
   }
+  let agencyConsumed = false;
+  const afterAgency = scanned.filter((hit) => {
+    const inside = consumed.some(([from, to]) => from <= hit.start && hit.end <= to);
+    if (inside) agencyConsumed = true;
+    return !inside;
+  });
+
+  // --- homonym guard: a named place next to an out-of-DKI or foreign cue is ---
+  // dropped unless the text also names a DKI anchor (kelurahan, kecamatan, city, province).
+  const dkiAnchor = afterAgency.some(
+    (hit) => hit.entry.level !== "jakarta_place" && hit.entry.level !== "locality_or_area_unverified",
+  );
+  let homonymDropped = false;
+  const afterHomonym = dkiAnchor
+    ? afterAgency
+    : afterAgency.filter((hit) => {
+      if (hit.entry.level !== "jakarta_place") return true;
+      const cues = index.placeHomonymCues.get(hit.entry.recordId);
+      if (cues === undefined || cues.length === 0 || !anyPhraseMatches(tokens, cues)) return true;
+      homonymDropped = true;
+      return false;
+    });
+
+  // --- containment: a span strictly inside a longer location span is dropped ---
+  // ("Gunung" inside "Jalan Gunung Sahari", "Baru" inside "Kebayoran Baru").
+  const afterContainment = afterHomonym.filter(
+    (hit) =>
+      !afterHomonym.some(
+        (other) =>
+          other !== hit &&
+          other.start <= hit.start &&
+          hit.end <= other.end &&
+          other.end - other.start > hit.end - hit.start,
+      ),
+  );
+  const presentRecordIds: ReadonlySet<string> = new Set(afterContainment.map((hit) => hit.entry.recordId));
 
   // Overlap: same token span keeps the most specific record only (a matched
   // kelurahan carries its district/city parents as hierarchy context via the
   // parent id fields, never as independent additional hits).
-  const spanGroups = new Map<string, RawLocationHit[]>();
-  for (const hit of rawLocationHits) {
+  const spanGroups = new Map<string, ScanHit<LocationIndexEntry>[]>();
+  for (const hit of afterContainment) {
     const key = `${hit.start}:${hit.end}`;
     const group = spanGroups.get(key);
     if (group === undefined) spanGroups.set(key, [hit]);
     else group.push(hit);
   }
-  const locationHits: RawLocationHit[] = [];
+  const locationHits: ScanHit<LocationIndexEntry>[] = [];
   for (const group of spanGroups.values()) {
     let best = Number.POSITIVE_INFINITY;
     for (const hit of group) best = Math.min(best, LOCATION_SPECIFICITY[hit.entry.level]);
@@ -927,23 +1344,7 @@ export function matchDeterministicRelevance(
   }
 
   // --- event scan: longest-match-first per start position -------------------
-  const rawEventHits: RawEventHit[] = [];
-  for (let start = 0; start < tokens.length; start++) {
-    const bucket = index.eventFirst.get(tokens[start]!);
-    if (bucket === undefined) continue;
-    let longest = 0;
-    for (const entry of bucket) {
-      if (entry.tokens.length > longest && tokensEqualAt(tokens, start, entry.tokens)) {
-        longest = entry.tokens.length;
-      }
-    }
-    if (longest === 0) continue;
-    for (const entry of bucket) {
-      if (entry.tokens.length === longest && tokensEqualAt(tokens, start, entry.tokens)) {
-        rawEventHits.push({ entry, start, end: start + longest });
-      }
-    }
-  }
+  const rawEventHits = scanLongest(tokens, index.eventFirst);
 
   // --- strength resolution --------------------------------------------------
   // Base strength, then exact legacy-term treatment override, then
@@ -954,8 +1355,8 @@ export function matchDeterministicRelevance(
   const weatherTrigger = anyPhraseMatches(tokens, index.weatherOverride.triggers);
   const weatherImpact = anyPhraseMatches(tokens, index.weatherOverride.impacts);
 
-  if (floodTrigger && !floodImpact) firedModifiers.push("forecast_override_applied");
-  if (weatherTrigger && !weatherImpact) firedModifiers.push("weather_forecast_override_applied");
+  if (floodTrigger && !floodImpact) modifiers.push("forecast_override_applied");
+  if (weatherTrigger && !weatherImpact) modifiers.push("weather_forecast_override_applied");
 
   interface ScoredEvent {
     readonly groupId: string;
@@ -994,7 +1395,7 @@ export function matchDeterministicRelevance(
       // Planned-traffic patterns stay supporting; belt-and-suspenders guard
       // (the lexicon already lists them as supporting only).
       strength = "supporting";
-      firedModifiers.push("planned_traffic_override_applied");
+      modifiers.push("planned_traffic_override_applied");
     }
     if (strength === "strong") {
       const windowStart = Math.max(0, hit.start - 4);
@@ -1003,7 +1404,7 @@ export function matchDeterministicRelevance(
         if (i >= hit.start && i < hit.end) continue;
         if (index.negationCues.has(tokens[i]!)) {
           strength = "supporting";
-          firedModifiers.push("negation_downgrade_applied");
+          modifiers.push("negation_downgrade_applied");
           break;
         }
       }
@@ -1040,50 +1441,28 @@ export function matchDeterministicRelevance(
 
   // --- location strengths ---------------------------------------------------
   // Canonical village/district records with normal confidence match as
-  // `specific`, except single-token aliases (indistinguishable from common
-  // words without corroboration). Everything else starts as
-  // `context_required` or `broad_only`; context-required canonical records
-  // promote to `specific` only with corroboration: another specific cue, or
-  // incident co-context plus a second distinct admin cue.
+  // `specific`. Single-token canonical names start `context_required` and become
+  // `specific` only with incident co-context AND a corroborating kecamatan/kota
+  // of the same record (isCorroborated). Named places stay `named_place`.
   const hasIncidentCoContext = scoredEvents.some(
     (event) => event.strength === "strong" || event.strength === "supporting",
   );
-  const canonicalIds = new Set<string>();
-  for (const hit of locationHits) {
-    if (hit.entry.canonical) canonicalIds.add(hit.entry.recordId);
-  }
 
   interface ScoredLocation {
     readonly entry: LocationIndexEntry;
     strength: LocationStrength;
   }
 
-  const scoredLocations: ScoredLocation[] = locationHits.map((hit) => {
-    let strength: LocationStrength;
-    if (hit.entry.level === "province" || hit.entry.level === "city" || hit.entry.level === "regency") {
-      strength = "broad_only";
-    } else if (
-      hit.entry.canonical &&
-      hit.entry.normalConfidence &&
-      hit.entry.tokens.length > 1
-    ) {
-      strength = "specific";
-    } else {
-      strength = "context_required";
-    }
-    return { entry: hit.entry, strength };
-  });
+  const scoredLocations: ScoredLocation[] = locationHits.map((hit) => ({
+    entry: hit.entry,
+    strength: initialLocationStrength(hit.entry),
+  }));
 
   for (const loc of scoredLocations) {
     if (loc.strength !== "context_required" || !loc.entry.canonical) continue;
     if (loc.entry.level !== "village" && loc.entry.level !== "district") continue;
-    const otherSpecific = scoredLocations.some(
-      (other) => other !== loc && other.strength === "specific" && other.entry.recordId !== loc.entry.recordId,
-    );
-    const secondAdminCue = [...canonicalIds].some((id) => id !== loc.entry.recordId);
-    if (otherSpecific || (hasIncidentCoContext && secondAdminCue)) {
-      loc.strength = "specific";
-    }
+    if (!hasIncidentCoContext) continue;
+    if (isCorroborated(loc.entry, presentRecordIds)) loc.strength = "specific";
   }
 
   const seenLocations = new Set<string>();
@@ -1107,15 +1486,26 @@ export function matchDeterministicRelevance(
   );
 
   // --- location role --------------------------------------------------------
-  // Scene cues win over reference cues; no global `di <place>` rule: a bare
-  // preposition never establishes scene role.
-  const sceneCue = anyPhraseMatches(tokens, index.sceneCues);
-  const referenceCue = anyPhraseMatches(tokens, index.referenceCues);
-  const locationRole = sceneCue ? "scene" : referenceCue ? "non_scene_or_reference" : "unknown";
+  // Scene wins over reference, but only for a scene span that does not overlap
+  // a reference span: "ditangkap di jalan" stays a reference, not a scene.
+  // Unknown role no longer blocks candidacy (DET-FILTER-03); non-scene does.
+  const sceneSpans = findCueSpans(tokens, index.sceneBuckets);
+  const referenceSpans = findCueSpans(tokens, index.referenceBuckets);
+  const clearScene = sceneSpans.some((span) => !referenceSpans.some((ref) => spansOverlap(span, ref)));
+  const locationRole: DeterministicRelevanceResult["locationRole"] = clearScene
+    ? "scene"
+    : referenceSpans.length > 0
+      ? "non_scene_or_reference"
+      : "unknown";
 
   // --- status decision (conservative) ---------------------------------------
+  if (agencyConsumed) modifiers.push("agency_reference_consumed");
+  if (homonymDropped) modifiers.push("homonym_guard_applied");
   const hasSpecific = locationMatches.some((match) => match.matchStrength === "specific");
+  const hasNamed = locationMatches.some((match) => match.matchStrength === "named_place");
   const hasBroad = locationMatches.some((match) => match.matchStrength === "broad_only");
+  const hasDkiCity = locationMatches.some((match) => match.level === "city" || match.level === "regency");
+  const hasPlaceGate = hasSpecific || hasNamed || hasBroad;
   const hasWeakLocation = locationMatches.some(
     (match) => match.matchStrength === "context_required",
   );
@@ -1126,21 +1516,32 @@ export function matchDeterministicRelevance(
   const hasSupport = eventMatches.some((match) => match.strength === "supporting");
   const hasAlert = eventMatches.some((match) => match.strength === "alert_only");
 
-  const modifiers = [...new Set(firedModifiers)].sort();
+  const modifierList = [...new Set(modifiers)].sort();
 
-  if (hasSpecific && hasStrong && locationRole === "scene") {
+  if (hasStrong && hasPlaceGate && locationRole !== "non_scene_or_reference") {
+    const placeKind = hasSpecific
+      ? "specific_location"
+      : hasNamed
+        ? "named_place"
+        : hasDkiCity
+          ? "city_location"
+          : "province_location";
     return {
       status: "candidate",
       ruleVersion: DETERMINISTIC_FILTER_RULE_VERSION,
       locationMatches,
       eventMatches,
       locationRole,
-      reasons: ["specific_location+strong_event+scene", ...modifiers],
+      reasons: [
+        `${placeKind}+strong_event+${locationRole === "scene" ? "scene" : "role_unknown"}`,
+        ...modifierList,
+      ],
     };
   }
 
   if (
     !hasSpecific &&
+    !hasNamed &&
     !hasBroad &&
     !hasWeakLocation &&
     !hasStrong &&
@@ -1153,21 +1554,22 @@ export function matchDeterministicRelevance(
       locationMatches,
       eventMatches,
       locationRole,
-      reasons: ["no_location_no_event", ...modifiers],
+      reasons: ["no_location_no_event", ...modifierList],
     };
   }
 
   const reasons: string[] = [];
+  if (hasStrong && !hasPlaceGate) reasons.push("strong_event_only");
   if (hasSpecific && !hasStrong) reasons.push("specific_location_only");
-  if (hasStrong && !hasSpecific) reasons.push("strong_event_only");
-  if (!hasSpecific && hasBroad) reasons.push("broad_location_only");
-  if (!hasSpecific && !hasBroad && hasWeakLocation) {
+  if (hasNamed && !hasSpecific && !hasStrong) reasons.push("named_place_only");
+  if (hasBroad && !hasSpecific && !hasNamed && !hasStrong) reasons.push("broad_location_only");
+  if (!hasSpecific && !hasNamed && !hasBroad && hasWeakLocation) {
     reasons.push(hasCanonicalWeak ? "context_required_location" : "unverified_location_only");
   }
   if (!hasStrong && (hasSupport || hasAlert)) reasons.push("supporting_or_alert_only");
   if (locationRole === "unknown") reasons.push("role_unknown");
   else if (locationRole === "non_scene_or_reference") reasons.push("role_non_scene");
-  reasons.push(...modifiers);
+  reasons.push(...modifierList);
 
   return {
     status: "ambiguous",

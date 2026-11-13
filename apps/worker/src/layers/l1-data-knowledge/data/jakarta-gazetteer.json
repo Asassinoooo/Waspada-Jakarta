@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "datasetId": "waspada-jakarta-administrative-gazetteer",
-  "datasetVersion": "2026-11-02-seed-1",
+  "datasetVersion": "2026-11-13-det-filter-03",
   "language": "id-ID",
   "description": "Seed gazetteer for deterministic Jakarta administrative-location matching in Waspada Jakarta. Contains province, six administrative city/regency areas, 44 districts, and 267 kelurahan records from the user-supplied table after one ambiguous Koja locality is excluded from the administrative kelurahan list.",
   "sources": [
@@ -49,6 +49,12 @@
       "url": "https://github.com/Asassinoooo/Waspada-Jakarta/blob/main/apps/worker/src/layers/l1-data-knowledge/rss-news-ingest.ts",
       "usedFor": "Preserves the current hardcoded JAKARTA_TOPONYMS entries; 77 terms are already covered by administrative aliases and 26 non-administrative names are carried as context-only supplemental localities.",
       "limitations": "These legacy terms are code provenance, not verified official locality data. Supplementary terms must not satisfy the specific administrative-location gate."
+    },
+    {
+      "id": "curated-jakarta-place-names",
+      "kind": "curated_name_only",
+      "usedFor": "DET-FILTER-03 named Jakarta places (roads, toll roads, landmarks, stations, terminals, malls, port areas). Names only, no coordinates.",
+      "limitations": "Not reconciled against an official road, station or landmark register. Several names (JORR, Sedyatmo, Sudirman, Gatot Subroto, Kemang, Antasari) also name places outside DKI; Stage B decides location scope."
     }
   ],
   "dataQuality": {
@@ -172,7 +178,8 @@
       "The supplied list contains 268 rows, while one Koja row named Rawa Badak appears to be a locality label rather than a separate kelurahan. It is preserved under unverifiedLocalities and is not silently assigned to Rawa Badak Utara or Rawa Badak Selatan.",
       "The source snapshot date and underlying publisher were not included. Reconcile the complete list against the current DKI ArcGIS administrative boundary layer and Perda No. 2 Tahun 2026 before treating it as canonical production data.",
       "No administrative codes or coordinates were supplied. IDs in this file are deterministic application IDs, not official government codes.",
-      "Legacy non-administrative terms from the existing RSS JAKARTA_TOPONYMS array are preserved separately under supplementalLegacyLocalities. They are context-only/ambiguous and cannot satisfy the specific administrative location gate."
+      "Legacy non-administrative terms from the existing RSS JAKARTA_TOPONYMS array are preserved separately under supplementalLegacyLocalities. They are context-only/ambiguous and cannot satisfy the specific administrative location gate.",
+      "DET-FILTER-03: jakartaPlaces are name-only curated entries (no coordinates, source curated_name_only). They satisfy the place gate but never the administrative gate. singleTokenAliasBlocklist removes ordinary-word and out-of-DKI homonym bare aliases."
     ]
   },
   "matchingPolicy": {
@@ -201,16 +208,20 @@
       "regency": "broad_only",
       "province": "broad_only"
     },
-    "singleTokenPolicy": "Single-token names marked context_required must not independently establish a high-confidence Jakarta location. Require incident co-context and/or a second unambiguous administrative or geographic cue.",
+    "singleTokenPolicy": "Single-token canonical names (context_required) become specific only with incident co-context AND corroboration of the same record. A single-token kecamatan corroborates itself (its own name is its matching kecamatan). A single-token kelurahan needs its own parent kecamatan (a same-name kecamatan mention counts) or its own kota in the text. A province or other-city hit never corroborates. Single-token aliases listed in singleTokenAliasBlocklist (ordinary words and out-of-DKI homonyms) are indexed only in their prefixed multi-token form (for example Kelurahan Baru), which is then an explicit multi-token form.",
     "broadAliases": [
       "Jakarta",
       "DKI",
       "DKI Jakarta",
       "Daerah Khusus Jakarta",
-      "Daerah Khusus Ibukota Jakarta"
+      "Daerah Khusus Ibukota Jakarta",
+      "Ibu Kota (only when it refers to Jakarta, see contextualAliasGuards)"
     ],
     "negativePolicy": "A location mention in an arrest location, police station, hospital, place of treatment, origin/destination, or article attribution must not automatically be interpreted as incident scene. Return unknown/non-scene role unless clear scene language supports it.",
-    "supplementalLegacyLocalityPolicy": "Supplemental legacy corridors, landmarks, neighborhoods, and transport-area names are weak contextual signals only. They must not be treated as official kelurahan/kecamatan records or independently satisfy candidate location requirements."
+    "supplementalLegacyLocalityPolicy": "Only csw remains supplemental (unverified acronym). Every other former supplemental term is now a jakartaPlaces entry: a named DKI road, toll road, landmark, station, terminal or area. Such entries satisfy the Jakarta place gate for candidacy but never the specific administrative location gate and never carry coordinates.",
+    "jakartaPlacePolicy": "jakartaPlaces are named places inside DKI (roads, toll roads, landmarks, stations, terminals, malls, port areas, a few areas). A match is level jakarta_place and strength named_place. It is never a point: no coordinates, no radius and no geometry are derived from it.",
+    "contextualAliasGuardPolicy": "contextualAliasGuards list phrases that are only a Jakarta reference in some contexts (Ibu Kota). The guard checks the following token; a non-listed following token means no province match.",
+    "homonymGuardPolicy": "A jakarta_place match is dropped when an out-of-DKI or foreign cue (outOfDkiHomonymCueTerms for road and toll names; jakartaPlaceHomonymGuards for named records) appears in the text and the text names no DKI kelurahan, kecamatan, city or the province. Road and toll names (Sudirman, Gatot Subroto, Antasari, JORR...) also exist in other cities."
   },
   "hierarchy": {
     "province": {
@@ -223,7 +234,8 @@
         "Daerah Khusus Ibukota Jakarta",
         "DKI Jakarta",
         "DKI",
-        "Jakarta"
+        "Jakarta",
+        "Ibu Kota"
       ],
       "matchConfidence": "broad_only",
       "notes": "Province-wide names are broad scope signals only. The token \"Jakarta\" by itself must not satisfy the specific-location side of the deterministic gate."
@@ -5007,232 +5019,1289 @@
       "reason": "The supplied table lists this as a Koja kelurahan, but the current official Koja listing has Rawa Badak Utara and Rawa Badak Selatan rather than a separate Rawa Badak kelurahan. Preserve as an unverified locality alias; do not count as an administrative kelurahan or map it to North/South automatically."
     }
   ],
-  "supplementalLegacyLocalities": [
+  "jakartaPlaces": [
     {
-      "term": "pulau pramuka",
-      "locationClass": "island_or_settlement",
-      "context": "Kepulauan Seribu Utara",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
+      "id": "jakarta-place-monas",
+      "name": "Monas",
+      "placeClass": "landmark",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Monas",
+        "Monumen Nasional"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
       "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "coordinates": null
     },
     {
-      "term": "sudirman",
-      "locationClass": "road_corridor",
+      "id": "jakarta-place-bundaran-hi",
+      "name": "Bundaran HI",
+      "placeClass": "junction_or_landmark",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Bundaran HI",
+        "Bundaran Hotel Indonesia"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-patung-kuda",
+      "name": "Patung Kuda",
+      "placeClass": "landmark",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Patung Kuda",
+        "Patung Kuda Arjuna Wijaya"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-gbk",
+      "name": "Gelora Bung Karno (GBK)",
+      "placeClass": "stadium_or_sports_complex",
+      "context": "Jakarta Pusat (Senayan)",
+      "aliases": [
+        "GBK",
+        "Gelora Bung Karno",
+        "Stadion Gelora Bung Karno"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-senayan-city",
+      "name": "Senayan City",
+      "placeClass": "mall",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Senayan City"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-plaza-senayan",
+      "name": "Plaza Senayan",
+      "placeClass": "mall",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Plaza Senayan"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-muara-baru",
+      "name": "Muara Baru",
+      "placeClass": "port_area",
+      "context": "Jakarta Utara",
+      "aliases": [
+        "Muara Baru",
+        "Pelabuhan Muara Baru"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-pelabuhan-tanjung-priok",
+      "name": "Pelabuhan Tanjung Priok",
+      "placeClass": "port_area",
+      "context": "Jakarta Utara",
+      "aliases": [
+        "Pelabuhan Tanjung Priok",
+        "Pelabuhan Priok"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-landmark-pluit",
+      "name": "Landmark Pluit",
+      "placeClass": "mall",
+      "context": "Jakarta Utara",
+      "aliases": [
+        "Landmark Pluit"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-kota-tua",
+      "name": "Kota Tua",
+      "placeClass": "landmark_area",
+      "context": "Jakarta Barat",
+      "aliases": [
+        "Kota Tua",
+        "Kawasan Kota Tua"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-ancol",
+      "name": "Ancol",
+      "placeClass": "recreation_area",
+      "context": "Jakarta Utara",
+      "aliases": [
+        "Ancol",
+        "Taman Impian Jaya Ancol"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-semanggi",
+      "name": "Semanggi",
+      "placeClass": "interchange",
       "context": "Jakarta Pusat/Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
+      "aliases": [
+        "Semanggi",
+        "Simpang Semanggi",
+        "Simpang Susun Semanggi"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
       "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "coordinates": null
     },
     {
-      "term": "thamrin",
-      "locationClass": "road_corridor",
+      "id": "jakarta-place-kuningan",
+      "name": "Kuningan",
+      "placeClass": "area",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Kuningan",
+        "Kawasan Kuningan"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-casablanca",
+      "name": "Casablanca",
+      "placeClass": "road_corridor",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Casablanca",
+        "Jalan Casablanca",
+        "Jl Casablanca"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-jlnt-antasari",
+      "name": "JLNT Antasari",
+      "placeClass": "elevated_road",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "JLNT Antasari",
+        "Jalan Layang Non Tol Antasari",
+        "Jl Layang Non Tol Antasari",
+        "Antasari"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-tol-dalam-kota",
+      "name": "Tol Dalam Kota",
+      "placeClass": "toll_road",
+      "context": "Jakarta Pusat/Selatan/Barat/Timur",
+      "aliases": [
+        "Tol Dalam Kota",
+        "Jalan Tol Dalam Kota"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-jorr",
+      "name": "JORR",
+      "placeClass": "toll_road",
+      "context": "Jakarta (sebagian di luar DKI)",
+      "aliases": [
+        "JORR",
+        "Jalan Tol JORR"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null,
+      "notes": "Partly outside DKI (Bodetabek segments). Kept because it is a seed name; Stage B decides location scope."
+    },
+    {
+      "id": "jakarta-place-tol-wiyoto-wiyono",
+      "name": "Tol Wiyoto Wiyono",
+      "placeClass": "toll_road",
+      "context": "Jakarta Pusat/Jakarta Utara",
+      "aliases": [
+        "Tol Wiyoto Wiyono",
+        "Jalan Tol Wiyoto Wiyono"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-tol-sedyatmo",
+      "name": "Tol Sedyatmo",
+      "placeClass": "toll_road",
+      "context": "Jakarta Utara/Jakarta Barat (sebagian di Tangerang)",
+      "aliases": [
+        "Tol Sedyatmo",
+        "Jalan Tol Sedyatmo"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null,
+      "notes": "Partly outside DKI (airport segment). Kept because it is a seed name; Stage B decides location scope."
+    },
+    {
+      "id": "jakarta-place-tol-pelabuhan",
+      "name": "Tol Pelabuhan",
+      "placeClass": "toll_road",
+      "context": "Jakarta Utara",
+      "aliases": [
+        "Tol Pelabuhan",
+        "Jalan Tol Pelabuhan"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-tol-cawang",
+      "name": "Tol Cawang",
+      "placeClass": "toll_road",
+      "context": "Jakarta Timur/Jakarta Selatan",
+      "aliases": [
+        "Tol Cawang",
+        "Jalan Tol Cawang"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-sudirman",
+      "name": "Jalan Sudirman",
+      "placeClass": "road_corridor",
+      "context": "Jakarta Pusat/Jakarta Selatan",
+      "aliases": [
+        "Jalan Sudirman",
+        "Jl Sudirman",
+        "Jalan Jenderal Sudirman",
+        "Jl Jenderal Sudirman",
+        "Jenderal Sudirman",
+        "Sudirman"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null,
+      "notes": "Sudirman roads exist in other cities; the bare name is a homonym risk."
+    },
+    {
+      "id": "jakarta-place-thamrin",
+      "name": "Jalan MH Thamrin",
+      "placeClass": "road_corridor",
       "context": "Jakarta Pusat",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
+      "aliases": [
+        "Jalan MH Thamrin",
+        "Jl MH Thamrin",
+        "MH Thamrin",
+        "Jalan Thamrin",
+        "Jl Thamrin",
+        "Thamrin"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
       "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "coordinates": null
     },
     {
-      "term": "gatot subroto",
-      "locationClass": "road_corridor",
+      "id": "jakarta-place-gatot-subroto",
+      "name": "Jalan Gatot Subroto",
+      "placeClass": "road_corridor",
       "context": "Jakarta Selatan/Jakarta Timur",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
+      "aliases": [
+        "Jalan Gatot Subroto",
+        "Jl Gatot Subroto",
+        "Gatot Subroto",
+        "Gatsu"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
       "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "coordinates": null,
+      "notes": "Gatot Subroto roads exist in other cities; homonym risk."
     },
     {
-      "term": "rasuna said",
-      "locationClass": "road_corridor",
+      "id": "jakarta-place-rasuna-said",
+      "name": "Jalan HR Rasuna Said",
+      "placeClass": "road_corridor",
       "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
+      "aliases": [
+        "Jalan HR Rasuna Said",
+        "Jl HR Rasuna Said",
+        "HR Rasuna Said",
+        "Jalan Rasuna Said",
+        "Rasuna Said"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
       "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "coordinates": null
     },
     {
-      "term": "kuningan",
-      "locationClass": "neighborhood_or_business_area",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
-    },
-    {
-      "term": "monas",
-      "locationClass": "landmark",
+      "id": "jakarta-place-gunung-sahari",
+      "name": "Jalan Gunung Sahari",
+      "placeClass": "road_corridor",
       "context": "Jakarta Pusat",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
+      "aliases": [
+        "Jalan Gunung Sahari",
+        "Jl Gunung Sahari",
+        "Gunung Sahari"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
       "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-daan-mogot",
+      "name": "Jalan Daan Mogot",
+      "placeClass": "road_corridor",
+      "context": "Jakarta Barat",
+      "aliases": [
+        "Jalan Daan Mogot",
+        "Jl Daan Mogot",
+        "Daan Mogot"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-mampang",
+      "name": "Mampang",
+      "placeClass": "area_or_road",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Mampang"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-matraman",
+      "name": "Matraman",
+      "placeClass": "area_or_road",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Matraman",
+        "Jalan Matraman",
+        "Jl Matraman"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-salemba",
+      "name": "Salemba",
+      "placeClass": "area_or_road",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Salemba",
+        "Jalan Salemba",
+        "Jl Salemba"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-cawang",
+      "name": "Cawang",
+      "placeClass": "junction_or_area",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Cawang"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-cililitan",
+      "name": "Cililitan",
+      "placeClass": "area",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Cililitan"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-kampung-melayu",
+      "name": "Kampung Melayu",
+      "placeClass": "area_or_transport_node",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Kampung Melayu"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-pancoran",
+      "name": "Pancoran",
+      "placeClass": "junction_or_area",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Pancoran",
+        "Simpang Pancoran"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-tugu-tani",
+      "name": "Tugu Tani",
+      "placeClass": "junction",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Tugu Tani"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-harmoni",
+      "name": "Harmoni",
+      "placeClass": "junction",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Harmoni",
+        "Simpang Harmoni",
+        "Halte Harmoni"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null,
+      "notes": "Bare Harmoni is an ordinary word (blocklisted); only the multi-token forms match."
+    },
+    {
+      "id": "jakarta-place-glodok",
+      "name": "Glodok",
+      "placeClass": "area",
+      "context": "Jakarta Barat",
+      "aliases": [
+        "Glodok",
+        "Pasar Glodok"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-mangga-dua",
+      "name": "Mangga Dua",
+      "placeClass": "commercial_area",
+      "context": "Jakarta Utara/Jakarta Pusat",
+      "aliases": [
+        "Mangga Dua"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-blok-m",
+      "name": "Blok M",
+      "placeClass": "transport_and_commercial_area",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Blok M",
+        "Terminal Blok M"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-lebak-bulus",
+      "name": "Lebak Bulus",
+      "placeClass": "terminal_or_rapid_transit",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Lebak Bulus",
+        "Terminal Lebak Bulus"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-kampung-rambutan",
+      "name": "Kampung Rambutan",
+      "placeClass": "terminal",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Kampung Rambutan",
+        "Terminal Kampung Rambutan"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-pulo-gebang",
+      "name": "Pulo Gebang",
+      "placeClass": "terminal",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Pulo Gebang",
+        "Terminal Pulo Gebang",
+        "Pulogebang"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-terminal-kalideres",
+      "name": "Terminal Kalideres",
+      "placeClass": "terminal",
+      "context": "Jakarta Barat",
+      "aliases": [
+        "Terminal Kalideres"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-manggarai",
+      "name": "Stasiun Manggarai",
+      "placeClass": "station",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Stasiun Manggarai"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-tanah-abang",
+      "name": "Stasiun Tanah Abang",
+      "placeClass": "station",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Stasiun Tanah Abang"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-sudirman",
+      "name": "Stasiun Sudirman",
+      "placeClass": "station",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Stasiun Sudirman"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-juanda",
+      "name": "Stasiun Juanda",
+      "placeClass": "station",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Stasiun Juanda"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-jakarta-kota",
+      "name": "Stasiun Jakarta Kota",
+      "placeClass": "station",
+      "context": "Jakarta Barat",
+      "aliases": [
+        "Stasiun Jakarta Kota"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-jatinegara",
+      "name": "Stasiun Jatinegara",
+      "placeClass": "station",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Stasiun Jatinegara"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-pasar-senen",
+      "name": "Stasiun Pasar Senen",
+      "placeClass": "station",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Stasiun Pasar Senen",
+        "Pasar Senen"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-gambir",
+      "name": "Stasiun Gambir",
+      "placeClass": "station",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Stasiun Gambir"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-duri",
+      "name": "Stasiun Duri",
+      "placeClass": "station",
+      "context": "Jakarta Barat",
+      "aliases": [
+        "Stasiun Duri"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-kampung-bandan",
+      "name": "Stasiun Kampung Bandan",
+      "placeClass": "station",
+      "context": "Jakarta Utara",
+      "aliases": [
+        "Stasiun Kampung Bandan"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-palmerah",
+      "name": "Stasiun Palmerah",
+      "placeClass": "station",
+      "context": "Jakarta Barat",
+      "aliases": [
+        "Stasiun Palmerah"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-stasiun-tebet",
+      "name": "Stasiun Tebet",
+      "placeClass": "station",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Stasiun Tebet"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-mrt-jakarta",
+      "name": "MRT Jakarta",
+      "placeClass": "rapid_transit",
+      "context": "DKI Jakarta",
+      "aliases": [
+        "MRT Jakarta"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-lrt-jakarta",
+      "name": "LRT Jakarta",
+      "placeClass": "rapid_transit",
+      "context": "DKI Jakarta",
+      "aliases": [
+        "LRT Jakarta"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-transjakarta",
+      "name": "Transjakarta",
+      "placeClass": "bus_rapid_transit",
+      "context": "DKI Jakarta",
+      "aliases": [
+        "Transjakarta",
+        "TransJakarta",
+        "TJ"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null,
+      "notes": "Halte <name> is not generalised; only the operator name and named seed haltes match."
+    },
+    {
+      "id": "jakarta-place-pulau-pramuka",
+      "name": "Pulau Pramuka",
+      "placeClass": "island_or_settlement",
+      "context": "Kepulauan Seribu Utara",
+      "aliases": [
+        "Pulau Pramuka"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-petojo",
+      "name": "Petojo",
+      "placeClass": "area",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Petojo"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-pejompongan",
+      "name": "Pejompongan",
+      "placeClass": "area",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Pejompongan"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-benhil",
+      "name": "Benhil",
+      "placeClass": "area",
+      "context": "Jakarta Pusat",
+      "aliases": [
+        "Benhil"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-kemang",
+      "name": "Kemang",
+      "placeClass": "area",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Kemang"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null,
+      "notes": "A Kemang district also exists in Bogor Regency (homonym risk)."
+    },
+    {
+      "id": "jakarta-place-roxy",
+      "name": "Roxy",
+      "placeClass": "area",
+      "context": "Jakarta Pusat/Jakarta Barat",
+      "aliases": [
+        "Roxy"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-gandaria",
+      "name": "Gandaria",
+      "placeClass": "area",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Gandaria"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-pondok-indah",
+      "name": "Pondok Indah",
+      "placeClass": "area",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Pondok Indah"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-fatmawati",
+      "name": "Fatmawati",
+      "placeClass": "road_corridor",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Fatmawati",
+        "Jalan Fatmawati",
+        "Jl Fatmawati"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-cipete",
+      "name": "Cipete",
+      "placeClass": "area",
+      "context": "Jakarta Selatan",
+      "aliases": [
+        "Cipete"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-pulomas",
+      "name": "Pulomas",
+      "placeClass": "area",
+      "context": "Jakarta Timur",
+      "aliases": [
+        "Pulomas"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    },
+    {
+      "id": "jakarta-place-dukuh-atas",
+      "name": "Dukuh Atas",
+      "placeClass": "transport_node_or_area",
+      "context": "Jakarta Pusat/Jakarta Selatan",
+      "aliases": [
+        "Dukuh Atas"
+      ],
+      "matchConfidence": "curated_name_only",
+      "source": "curated_name_only",
+      "canSatisfyPlaceGate": true,
+      "canSatisfySpecificAdministrativeLocationGate": false,
+      "coordinates": null
+    }
+  ],
+  "singleTokenAliasBlocklist": [
+    {
+      "term": "baru",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "gunung",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "pulo",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "jati",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "kenari",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "setu",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "karet",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "tangki",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "gelora",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "rambutan",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "guntur",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "kapuk",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "dukuh",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "gedong",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "penggilingan",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "bungur",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "joglo",
+      "reason": "ordinary_word"
+    },
+    {
+      "term": "palmerah",
+      "reason": "ordinary_word"
     },
     {
       "term": "harmoni",
-      "locationClass": "area_or_transport_node",
-      "context": "Jakarta Pusat",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "reason": "ordinary_word"
     },
     {
-      "term": "pejompongan",
-      "locationClass": "neighborhood_or_area",
-      "context": "Jakarta Pusat",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "bintaro",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "benhil",
-      "locationClass": "neighborhood_alias",
-      "context": "Bendungan Hilir, Jakarta Pusat",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "cibubur",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "kemang",
-      "locationClass": "neighborhood_or_area",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "bangka",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "blok m",
-      "locationClass": "commercial_area_or_transport_node",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "makasar",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "petojo",
-      "locationClass": "legacy_place_name_or_area",
-      "context": "Jakarta; exact administrative footprint not established",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "selong",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "roxy",
-      "locationClass": "commercial_area_or_area",
-      "context": "Jakarta Pusat/Jakarta Barat",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "kamal",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "gandaria",
-      "locationClass": "neighborhood_or_area",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "setiabudi",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "pondok indah",
-      "locationClass": "commercial_or_residential_area",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "cipayung",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "fatmawati",
-      "locationClass": "road_corridor_or_area",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "tambora",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "cipete",
-      "locationClass": "legacy_place_name_or_area",
-      "context": "Jakarta; exact administrative footprint not established",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "serdang",
+      "reason": "out_of_dki_homonym"
     },
     {
-      "term": "pulomas",
-      "locationClass": "legacy_place_name_or_area",
-      "context": "Jakarta; exact administrative footprint not established",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "term": "susukan",
+      "reason": "out_of_dki_homonym"
+    }
+  ],
+  "outOfDkiHomonymCueTerms": [
+    "bandung",
+    "semarang",
+    "surabaya",
+    "kota medan",
+    "makassar",
+    "palembang",
+    "yogyakarta",
+    "kota malang",
+    "bogor",
+    "bekasi",
+    "depok",
+    "tangerang",
+    "tangerang selatan",
+    "bintaro",
+    "pekanbaru",
+    "pontianak",
+    "banjarmasin",
+    "samarinda",
+    "balikpapan",
+    "denpasar",
+    "mataram",
+    "kupang",
+    "jayapura",
+    "manado",
+    "kota padang",
+    "batam",
+    "kota serang",
+    "cirebon",
+    "kota solo",
+    "surakarta",
+    "lampung"
+  ],
+  "jakartaPlaceHomonymGuards": [
+    {
+      "recordId": "jakarta-place-kota-tua",
+      "cues": [
+        "manila",
+        "filipina",
+        "philippines",
+        "intramuros"
+      ],
+      "note": "Kota Tua also names old towns in Manila and elsewhere."
     },
     {
-      "term": "salemba",
-      "locationClass": "legacy_place_name_or_area",
-      "context": "Jakarta; exact administrative footprint not established",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "recordId": "jakarta-place-casablanca",
+      "cues": [
+        "maroko",
+        "morocco",
+        "maroc"
+      ],
+      "note": "Casablanca is a city in Morocco."
     },
     {
-      "term": "semanggi",
-      "locationClass": "interchange_or_area",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "recordId": "jakarta-place-kemang",
+      "cues": [
+        "bogor",
+        "kabupaten bogor"
+      ],
+      "note": "A Kemang district exists in Bogor Regency."
     },
     {
-      "term": "dukuh atas",
-      "locationClass": "transport_node_or_area",
-      "context": "Jakarta Pusat/Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
+      "recordId": "jakarta-place-kuningan",
+      "cues": [
+        "kabupaten kuningan",
+        "kuningan jawa barat",
+        "jawa barat"
+      ],
+      "note": "Kuningan is also a regency in West Java."
     },
     {
-      "term": "casablanca",
-      "locationClass": "road_corridor_or_area",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
-    },
+      "recordId": "jakarta-place-muara-baru",
+      "cues": [
+        "kota padang",
+        "sumatera barat",
+        "padang"
+      ],
+      "note": "Muara Baru is also a port area in Padang."
+    }
+  ],
+  "contextualAliasGuards": [
     {
-      "term": "antasari",
-      "locationClass": "road_corridor",
-      "context": "Jakarta Selatan",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
-    },
-    {
-      "term": "kampung rambutan",
-      "locationClass": "legacy_place_name_or_area",
-      "context": "Jakarta; exact administrative footprint not established",
-      "matchConfidence": "context_required",
-      "source": "legacy_repository_toponyms",
-      "canSatisfySpecificAdministrativeLocationGate": false,
-      "notes": "Preserved for compatibility with the repository legacy list. This is not an official administrative record; use only as a weak/ambiguous location signal until independently curated."
-    },
+      "alias": "Ibu Kota",
+      "recordId": "daerah-khusus-jakarta",
+      "meaning": "Counts as the Jakarta province only when the phrase is not followed by a non-Jakarta name or by Nusantara/IKN/provinsi/kabupaten wording.",
+      "allowedNextTokens": [
+        "dan",
+        "yang",
+        "ini",
+        "itu",
+        "di",
+        "dari",
+        "pada",
+        "saat",
+        "hari",
+        "malam",
+        "pagi",
+        "siang",
+        "sore",
+        "kembali",
+        "kini",
+        "sejak",
+        "akan",
+        "telah",
+        "sudah"
+      ],
+      "allowAtEnd": true
+    }
+  ],
+  "supplementalLegacyLocalities": [
     {
       "term": "csw",
       "locationClass": "transport_node_acronym",
@@ -5344,8 +6413,8 @@
     },
     {
       "term": "pulau pramuka",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5658,44 +6727,44 @@
     },
     {
       "term": "sudirman",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "thamrin",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "gatot subroto",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "rasuna said",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "kuningan",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "monas",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "harmoni",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5735,32 +6804,32 @@
     },
     {
       "term": "pejompongan",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "benhil",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "kemang",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "blok m",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "petojo",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5779,8 +6848,8 @@
     },
     {
       "term": "roxy",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5813,8 +6882,8 @@
     },
     {
       "term": "gandaria",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5826,14 +6895,14 @@
     },
     {
       "term": "pondok indah",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "fatmawati",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5852,8 +6921,8 @@
     },
     {
       "term": "cipete",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5865,8 +6934,8 @@
     },
     {
       "term": "pulomas",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5885,8 +6954,8 @@
     },
     {
       "term": "salemba",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
@@ -5898,32 +6967,32 @@
     },
     {
       "term": "semanggi",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "dukuh atas",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "casablanca",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "antasari",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
       "term": "kampung rambutan",
-      "coverage": "supplemental_legacy_locality",
-      "matchConfidence": "context_required",
+      "coverage": "jakarta_place_curated_name_only",
+      "matchConfidence": "curated_name_only",
       "specificAdminGate": false
     },
     {
