@@ -212,3 +212,21 @@ Points on the evidence:
 - The counts are aggregate. Section 3 does not claim a pass for any single file.
 - The 56 database files in the log match the 56 `*.test.ts` files in `apps/db/test` at ae75527.
 - No test, build or server was run to write this document.
+
+## 10 Detail for the report
+
+Each build below states what its tests check, using the test titles in the repository. The statuses follow section 3 and the gaps in section 7.
+
+### 10.1 Build 1: data and storage
+
+Build 1 covers ingestion from the sources into the database. The PetaBencana test runs ingestion against PGlite and checks that reports, chunks, evidence and geometries are persisted (`petabencana-ingest-pglite.test.ts`). The RSS test checks the identity of revisions through triage and ingest, and the synthetic runtime test runs one poll cycle with a synthetic source (`gated-rss-revision-identity.test.ts` and `synthetic-source-poll-process-runtime.test.ts`). The news triage tests check that a rate-limited model call is a separate outcome from a provider error, and that a 429 response becomes one rate-limited error with no retry inside the call (`news-triage-rate-limit.test.ts`). Two gaps remain: the webhook route (`webhook-ingest.test.ts`) and the BMKG CAP parser are unit-tested, but neither has a database-level test.
+
+### 10.2 Build 2: grounding and retrieval
+
+Build 2 covers evidence retrieval and grounded proposals. The retrieval tests (`evidence-retrieval.test.ts`, 19 tests) check that contrary evidence, revision states and source times are kept, that audience matching is bounded and dataset-scoped, and that malformed audience scope fails closed. The grounding round trip (`rag-grounded-proposal-roundtrip.test.ts`) grounds persisted evidence before reasoning and writes one private draft that replays exactly. When the context is insufficient, it stops before reasoning and writes no proposal. Two further composition tests cover context resumption and embedding generation against the database (`l2-context-resumption-composition.test.ts` and `embedding-generation-composition.test.ts`). The retrieval and grounding modules have no runtime caller outside the tests and the local tools, so these tests are the only integration evidence for Build 2.
+
+### 10.3 Build 3: investigation and the publication gate
+
+Build 3 covers the bounded investigation and the publication gate. The investigation ledger tests (`investigation-ledger.test.ts`, 21 tests) check the progress baseline and its replay, an append-only review marker that blocks progress, and the exact reconciliation that a started action needs. The gate composition test (`manual-publication-gate-composition.test.ts`) runs the gate with the real SQL writer. It checks approval and replay, a conflict when a label changes, and the refusal of a stale evidence assessment before any write. The merge-review test (`merge-review-publication.test.ts`) checks that a proposal without a discrepancy is published by the agent, and that a proposal with a discrepancy waits for a moderator while the earlier public version stays. The expiry test (`review-expiry.test.ts`) checks that an undecided proposal expires after 48 hours.
+
+The composition test TEST-INT-01 (`l3-investigation-publication-gate.test.ts`) runs two cases: a supported claim is published and read publicly, and a stopped investigation with a disputed claim is held before any write. It passed locally, and its result in CI is not yet recorded. The gate does not read the investigation status, so a stopped case is not refused on that basis alone (F-04).
