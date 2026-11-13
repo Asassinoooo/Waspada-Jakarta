@@ -149,6 +149,10 @@ Every route below was checked against `routeFromHash` in `apps/web/src/App.tsx` 
 - The public map has no warning-boundary wording or shape (T1, step 6).
 - The US-02 matched-update checks need live data (T2, step 7).
 - `tools/e2e/tsconfig.json` includes only `tools/e2e/*.ts`. The root `npm run typecheck` therefore does not cover `tools/e2e/uat/` until a config is added there. This phase did not add one.
+- T5 script correction (run 01 to run 02). The first T5 run failed 8 steps. The source-copy wording in `UnifiedSourceExplorer.tsx` is hidden on the map view by design (`unified-source-explorer.css:802-807`, commit `f0395b0`). T5 now opens the companion Sumber panel and checks the wording that panel shows: "Mode demo terisolasi" and "penyedia tidak dihubungi untuk data ini". The four original source-copy checks are reported as skipped, not passed. The run 01 log stays as evidence (R-02).
+- The demo moderation queue holds no proposal, so T4 is blocked (R-04). A demo proposal fixture would let T4 run. This needs a decision.
+- Repeated demo logins in one session returned HTTP 429 (R-03). Space the logins out, or split the runs.
+- T3: the note 'Riwayat sintetis ini bukan keadaan terkini' shows only while history loads (`EventDetail.tsx:147`). The check is skipped and the kicker is checked instead.
 - Skipped checks in the logs are listed with their reasons. They are not passes.
 
 ## 7 Viewports
@@ -176,18 +180,18 @@ Result values: pass, fail, blocked (precondition not met), pending (live data ne
 
 | Task | Viewport | Result | Seconds | Notes | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| T1 | Desktop 1440 × 900 | | | | |
-| T1 | Phone 390 × 844 | | | | |
-| T2 | Desktop 1440 × 900 | | | | |
-| T2 | Phone 390 × 844 | | | | |
-| T3 | Desktop 1440 × 900 | | | | |
-| T3 | Phone 390 × 844 | | | | |
-| T4 | Desktop 1440 × 900 | | | | |
-| T4 | Phone 390 × 844 | | | | |
-| T5 | Desktop 1440 × 900 | | | | |
-| T5 | Phone 390 × 844 | | | | |
-| T1 and T2 | 320 px (manual) | | | | |
-| T1 and T2 | 200% text (manual) | | | | |
+| T1 | Desktop 1440 × 900 | Pass, 1 check skipped (F-01) | 8.3 | 20 steps passed. The warning-boundary check cannot run on the public map. The 60 s limit was met. | `.codex-build/uat/run-01/t1-discover.json` |
+| T1 | Phone 390 × 844 | Pass, 1 check skipped (F-01) | 4.7 | 20 steps passed. List fallback used. | `.codex-build/uat/run-01/t1-discover.json` |
+| T2 | Desktop 1440 × 900 | Pass, 3 checks skipped (F-02) | 3.5 | 17 steps passed. The matched-update checks need live data. | `.codex-build/uat/run-01/t2-updates.json` |
+| T2 | Phone 390 × 844 | Pass, 3 checks skipped (F-02) | 2.7 | 17 steps passed. | `.codex-build/uat/run-01/t2-updates.json` |
+| T3 | Desktop 1440 × 900 | Pass, 2 checks skipped | 6.3 | 16 steps passed. The 'bukan keadaan terkini' note shows only while history loads (`EventDetail.tsx:147`). The claim-source label needs a screenshot judgement. | `.codex-build/uat/run-01/t3-history.json` |
+| T3 | Phone 390 × 844 | Pass, 2 checks skipped | 4.2 | 16 steps passed. The same two skips. | `.codex-build/uat/run-01/t3-history.json` |
+| T4 | Desktop 1440 × 900 | Blocked (precondition not met, R-04) | 61.9 | The demo moderation queue is empty. The decision steps were not reached. | `.codex-build/uat/run-02/t4-moderator.json` |
+| T4 | Phone 390 × 844 | Blocked, login rate-limited (R-03) | 75.9 | Login returned HTTP 429 after repeated demo logins in this session. The queue is also empty. | `.codex-build/uat/run-02/t4-moderator.json` |
+| T5 | Desktop 1440 × 900 | Pass, after a script correction (R-02) | 4.6 | Run 02: 22 steps passed. Run 01 failed 8 steps on source-copy wording that is hidden on the map view by design. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-01/t5-admin-sources.json` |
+| T5 | Phone 390 × 844 | Fail, 1 step (R-01) | 18.5 | The drawer shows 'Mode demo terisolasi'. At 390 px the admin header shows only a dot for 'Data contoh', and the 'Pratinjau sumber (demo)' label is hidden. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` |
+| T1 and T2 | 320 px (manual) | Not run | — | Manual check, not scripted. | — |
+| T1 and T2 | 200% text (manual) | Not run | — | Manual check, not scripted. | — |
 
 ## 10 Defects
 

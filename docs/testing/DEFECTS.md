@@ -91,7 +91,16 @@ These commits were in an earlier draft of the defect list. The corrected unit re
 
 ## Section D: Test run defects
 
-None recorded yet. UAT walkthrough runs are pending (`docs/testing/UAT.md` section 9). No CI failure is recorded for `cec9358`.
+Runs on 13 November 2026, against the demo dataset, locally (`docs/testing/UAT.md` section 9). No CI failure is recorded for `cec9358`.
+
+| ID | Date | Run ID | Step | Symptom | Evidence path | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| R-01 | 13 Nov 2026 | run-02 | T5, phone, 'workspace header marks the page as demo' | At 390 px the admin header shows no demo label. 'Pratinjau sumber (demo)' is hidden (`admin-workspace.css:77-80`), and 'Data contoh' shrinks to a dot. The drawer note 'Mode demo terisolasi' still shows. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` | Open. Needs a decision: label the phone header, or accept the drawer note as the phone demo marker (FR-15). |
+| R-02 | 13 Nov 2026 | run-01 | T5, steps 4 to 7, desktop and phone | The script checked source copy from `UnifiedSourceExplorer.tsx`. That copy is `display: none` on the map view by design (`unified-source-explorer.css:802-807`, commit `f0395b0`). Test-script defect, not a product defect. | `.codex-build/uat/run-01/t5-admin-sources.json` | Not a defect. Script corrected on `work/UAT-RUN-01` to check the notice the Sumber panel shows. The four source-copy checks are reported as skipped. |
+| R-03 | 13 Nov 2026 | run-02 | T4, phone, 'sign in as demo.moderator' | Login returned HTTP 429. Repeated demo logins in one session tripped the rate limit. The window length is not measured. | `.codex-build/uat/run-02/t4-moderator.json` | Not a product defect (test-run condition). Re-run after a pause, with fewer logins per run. |
+| R-04 | 13 Nov 2026 | run-02 | T4, desktop, 'at least one proposal is in the queue' | The demo moderation queue is empty, so the decision steps cannot run. | `.codex-build/uat/run-02/t4-moderator.json` | Blocked, not a defect. Needs a demo proposal fixture (decision). |
+
+Entry format for later use:
 
 Entry format for later use. Run defects use `R-nn`, so they stay separate from `D-nn` (fixed) and `F-nn` (open):
 

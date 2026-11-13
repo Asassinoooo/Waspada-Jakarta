@@ -56,9 +56,10 @@ Points on this evidence:
 
 ## 5 UAT (acceptance)
 
-- **Scripts exist, nothing has run.** `tools/e2e/uat/` holds one script per task: `t1-discover.ts`, `t2-updates.ts`, `t3-history.ts`, `t4-moderator.ts` and `t5-admin-sources.ts`. The result table in `UAT.md` section 9 is empty. Acceptance rows AT-01 to AT-03 and tasks T3 to T5 are "Pending run".
-- **Blocked tasks.** T1 needs the owner's decision on warning boundaries (F-01). T2 step 7 needs live data or a decision (F-02). The other T2 steps can run on demo.
-- **Label.** Any future run is an automated walkthrough (browser subagent). It is not user acceptance (`UAT.md` section 2.1).
+- **Run on 13 November 2026, locally, against the demo dataset.** Logs are in `.codex-build/uat/run-01/` and `run-02/` (gitignored). Results are in `UAT.md` section 9. Every row is an automated walkthrough (browser subagent). None is user acceptance.
+- **Results.** T1 passes, with the warning-boundary check skipped (F-01). T2 and T3 pass, with 3 and 2 checks skipped (F-02 and `UAT.md` section 6.6). T5 passes on desktop after a script correction (R-02), and fails one step on phone (R-01). T4 is blocked on both viewports: the demo moderation queue is empty (R-04), and the phone login was rate-limited (R-03).
+- **Acceptance rows.** AT-01 and AT-02 are Partial. AT-03 is Blocked, because it depends on T4. See `test-cases.csv`.
+- **Open decisions behind the blocks.** F-01 (warning boundary), F-02 (matched-update checks need live data), R-01 (phone demo label) and R-04 (a demo proposal for T4).
 - **Human acceptance is not planned.** Decision of 13 November 2026 (`UAT.md` line 7; section 2.2 is the protocol kept for later; `TEST-PLAN.md` section 9). NFR-03 is not evidenced (ST-N-03).
 
 ## 6 Open findings
@@ -120,7 +121,7 @@ F-05 and F-06 are test gaps, not blocking decisions. Decide whether to add the t
 ## 10 Next steps
 
 1. Confirm the overall conclusion of run 117086838832 on the GitHub Actions page.
-2. Run the UAT scripts locally, one at a time, against the demo dataset (`npx tsx tools/e2e/uat/<file>.ts`, from the repository root, as `UAT.md` section 2.1 describes). Do not run them alongside the heavy suites.
-3. Record each result in `UAT.md` section 9. Log each failed step in `DEFECTS.md` section D with an `R-nn` entry.
+2. Decide R-01, R-04, F-01 and F-02, then record each decision in `DEFECTS.md` and `UAT.md` section 6.6. Re-run T4 once the demo queue has a proposal and the login rate limit has reset, and re-run T5 phone after R-01 is decided. The scripts run one at a time against the demo dataset (`npx tsx tools/e2e/uat/<file>.ts`, from the repository root, as `UAT.md` section 2.1 describes). Do not run them alongside the heavy suites.
+3. Results are recorded in `UAT.md` section 9. Failed steps are logged in `DEFECTS.md` section D with an `R-nn` entry.
 4. Take the decisions in section 9 above.
 5. Read the assertions behind the Partial rows, where a reviewer who did not write them is available (`SYSTEM-TEST.md` section 7, item 6).

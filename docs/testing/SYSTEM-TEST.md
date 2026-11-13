@@ -90,9 +90,9 @@ Acceptance uses the three task flows in `docs/UX_API_SPEC.md` §5 (lines 199 to 
 
 | ID | Story and task | Checks | Linked tests | Walkthrough | Status |
 | --- | --- | --- | --- | --- | --- |
-| AT-01 | US-01: "Find an applicable report" | Identify event time, evidence kind, freshness and why the event may apply; list gives the same result as the map | ST-F-01, ST-F-04, ST-F-05 | `docs/testing/UAT.md` (T1) | Not run |
-| AT-02 | US-02: "Follow an update" | Save an interest; matched item with reason; one deduplicated change; remove the interest | ST-F-02, ST-F-13 | `docs/testing/UAT.md` (T2) | Not run |
-| AT-03 | US-03: "Review a disputed claim" | Compare evidence; submit with version and key; verify the public projection | ST-F-03, ST-F-07, ST-F-13 | `docs/testing/UAT.md` (T4) | Not run |
+| AT-01 | US-01: "Find an applicable report" | Identify event time, evidence kind, freshness and why the event may apply; list gives the same result as the map | ST-F-01, ST-F-04, ST-F-05 | `docs/testing/UAT.md` (T1) | Partial (run 01) |
+| AT-02 | US-02: "Follow an update" | Save an interest; matched item with reason; one deduplicated change; remove the interest | ST-F-02, ST-F-13 | `docs/testing/UAT.md` (T2) | Partial (run 01) |
+| AT-03 | US-03: "Review a disputed claim" | Compare evidence; submit with version and key; verify the public projection | ST-F-03, ST-F-07, ST-F-13 | `docs/testing/UAT.md` (T4) | Blocked (run 02, T4) |
 
 Per TEST-PLAN §3 and §8, a walkthrough records pass or fail per step and seconds per task. No seconds are recorded yet. No human sessions are planned (ST-N-03), so user acceptance is pending. SDP §10 requires, for release completion, held-out and usability evidence, a reproducible Free-tier deployment, and tested restoration or deterministic rebuild. None of these is met on the current evidence.
 
