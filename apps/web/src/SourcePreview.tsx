@@ -2,6 +2,7 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PreviewKind, PreviewRecord, PreviewSource, SourcePreviewPayload } from "@waspada/worker/source-preview-contracts";
 import { getSourcePreview, type SourcePreviewRequestMode } from "./source-preview-client.js";
+import { PROVIDER_FETCH_ROLE_NOTE, providerFetchRefusalNotice, requestModeAllowed } from "./provider-fetch-access.js";
 
 export type SourcePreviewMapRenderer = (
   points: readonly PreviewRecord[],
@@ -14,13 +15,15 @@ export interface SourcePreviewProps {
   datasetMode: "demo" | "live" | null;
   renderMap?: SourcePreviewMapRenderer;
   contextSources?: ReactNode;
+  /** Moderator or admin session only; a visitor gets no provider fetch control or request. */
+  canRequestProviderFetch?: boolean;
 }
 
 type RequestState =
   | { status: "not-requested" }
   | { status: "loading"; mode: SourcePreviewRequestMode }
   | { status: "loaded"; mode: SourcePreviewRequestMode }
-  | { status: "error"; mode: SourcePreviewRequestMode };
+  | { status: "error"; mode: SourcePreviewRequestMode; notice: string | null };
 type MobileView = "list" | "map";
 type SourceFilter = PreviewRecord["source"] | "all";
 type KindFilter = PreviewKind | "all";
@@ -201,18 +204,20 @@ export function SourcePreviewRecordDetails({ record }: { record: PreviewRecord |
 
 export function SourcePreviewRequestError({
   mode,
+  notice,
   onRetrySnapshot,
 }: {
   mode: SourcePreviewRequestMode;
+  notice?: string | null;
   onRetrySnapshot: () => void;
 }) {
   return (
     <div className="source-preview__request-error" role="alert">
       <strong>{mode === "snapshot" ? "Snapshot demo tidak dapat dimuat." : "Permintaan data sumber gagal."}</strong>
       <p>
-        {mode === "snapshot"
+        {notice ?? (mode === "snapshot"
           ? "Tidak ada data pengganti yang ditampilkan. Coba muat ulang snapshot lokal atau minta data sumber secara terpisah."
-          : "Tidak ada data pengganti yang ditampilkan. Anda dapat kembali ke snapshot atau meminta sumber lagi."}
+          : "Tidak ada data pengganti yang ditampilkan. Anda dapat kembali ke snapshot atau meminta sumber lagi.")}
       </p>
       {mode === "snapshot" && (
         <button className="button button--quiet" type="button" onClick={onRetrySnapshot}>
@@ -276,7 +281,7 @@ function SourceRecordList({
   );
 }
 
-export function SourcePreview({ datasetMode, renderMap, contextSources }: SourcePreviewProps) {
+export function SourcePreview({ datasetMode, renderMap, contextSources, canRequestProviderFetch = false }: SourcePreviewProps) {
   const [request, setRequest] = useState<RequestState>(() =>
     datasetMode === "demo" ? { status: "loading", mode: "snapshot" } : { status: "not-requested" },
   );
@@ -289,7 +294,13 @@ export function SourcePreview({ datasetMode, renderMap, contextSources }: Source
   const activeController = useRef<AbortController | null>(null);
   const requestSequence = useRef(0);
 
+  // Read through a ref so a session refresh does not restart the snapshot effect.
+  const fetchAllowed = useRef(canRequestProviderFetch);
+  useEffect(() => {
+    fetchAllowed.current = canRequestProviderFetch;
+  }, [canRequestProviderFetch]);
   const startRequest = useCallback((mode: SourcePreviewRequestMode) => {
+    if (requestModeAllowed(mode, fetchAllowed.current) === null) return;
     if (datasetMode !== "demo") return;
     activeController.current?.abort();
     const controller = new AbortController();
@@ -304,10 +315,10 @@ export function SourcePreview({ datasetMode, renderMap, contextSources }: Source
       setPayload(nextPayload);
       setRequest({ status: "loaded", mode });
       activeController.current = null;
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (controller.signal.aborted || sequence !== requestSequence.current) return;
       setPayload(null);
-      setRequest({ status: "error", mode });
+      setRequest({ status: "error", mode, notice: providerFetchRefusalNotice(error) });
       activeController.current = null;
     });
   }, [datasetMode]);
@@ -385,9 +396,9 @@ export function SourcePreview({ datasetMode, renderMap, contextSources }: Source
           </span>
         </div>
         <div className="source-preview__actions">
-          <button className="button button--primary" type="button" disabled={!canUsePreview || isLoading} onClick={fetchSources}>
+          {canRequestProviderFetch ? <button className="button button--primary" type="button" disabled={!canUsePreview || isLoading} onClick={fetchSources}>
             {isLoading && request.status === "loading" && request.mode === "fetch" ? "Meminta data…" : "Ambil data sumber"}
-          </button>
+          </button> : <p className="source-preview__role-note" role="status">{PROVIDER_FETCH_ROLE_NOTE}</p>}
           {request.status !== "not-requested" && request.mode === "fetch" && (
             <button className="button button--quiet" type="button" disabled={isLoading || !canUsePreview} onClick={showSnapshot}>
               Kembali ke snapshot
@@ -409,7 +420,7 @@ export function SourcePreview({ datasetMode, renderMap, contextSources }: Source
         </p>
       )}
       {request.status === "error" && (
-        <SourcePreviewRequestError mode={request.mode} onRetrySnapshot={showSnapshot} />
+        <SourcePreviewRequestError mode={request.mode} notice={request.notice} onRetrySnapshot={showSnapshot} />
       )}
 
       {payload && request.status === "loaded" && (

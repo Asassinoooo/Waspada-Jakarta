@@ -7,6 +7,11 @@ import {
 } from "../layers/l1-data-knowledge/petabencana-ingest.js";
 import { preparePermittedText } from "../layers/l1-data-knowledge/text-preparation.js";
 import type { PetabencanaReport, PetabencanaParseResult } from "../layers/l1-data-knowledge/petabencana-geojson.js";
+import {
+  BLOCKED_REDIRECT_ERROR,
+  isBlockedRedirect,
+  OUTBOUND_REDIRECT_POLICY,
+} from "./outbound-fetch-policy.js";
 
 export { parsePetaBencanaReports };
 
@@ -239,6 +244,8 @@ export function createPetaBencanaPollRuntime(
 
       response = await fetchImpl(endpoint, {
         method: "GET",
+        // NFR-07: a redirect is refused, not followed to a host PetaBencana did not name.
+        redirect: OUTBOUND_REDIRECT_POLICY,
         headers: {
           Accept: "application/json, application/geo+json",
         },
@@ -274,7 +281,9 @@ export function createPetaBencanaPollRuntime(
         fetchedCount: 0,
         filteredCount: 0,
         revisions: [],
-        error: `HTTP ${response.status}: ${response.statusText || "Request failed"}`,
+        error: isBlockedRedirect(response)
+          ? BLOCKED_REDIRECT_ERROR
+          : `HTTP ${response.status}: ${response.statusText || "Request failed"}`,
       };
     }
 

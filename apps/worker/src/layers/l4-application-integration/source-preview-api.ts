@@ -8,6 +8,8 @@ import {
   type SourcePreviewAdapterOptions,
 } from "../l1-data-knowledge/source-preview-adapters.js";
 import { createSourcePreviewRuntime } from "../../runtime/source-preview-runtime.js";
+import type { AccountWorkerEnvironment } from "../../accounts/types.js";
+import { moderationAccountConfig, moderatorSurfaceDenial } from "../../runtime/moderator-session.js";
 
 const routePath = "/api/v1/demo/source-preview";
 const jsonHeaders = {
@@ -16,7 +18,7 @@ const jsonHeaders = {
   "x-content-type-options": "nosniff",
 };
 
-export interface SourcePreviewEnvironment {
+export interface SourcePreviewEnvironment extends AccountWorkerEnvironment {
   readonly DATASET_MODE?: string;
   readonly SOURCE_PREVIEW_ENABLED?: string;
 }
@@ -53,6 +55,13 @@ export function createSourcePreviewHandler(
     const sourceMode = readSourceMode(url.search);
     if (sourceMode === null) {
       return apiError("INVALID_REQUEST", "The source-preview query is invalid.", 400);
+    }
+
+    // NFR-04 and the owner decision: fetch mode starts an upstream acquisition, so only a moderator
+    // or admin session may start it. The public snapshot never reaches a provider.
+    if (sourceMode === "fetch") {
+      const denied = await moderatorSurfaceDenial(request, moderationAccountConfig(env), "review_evidence");
+      if (denied) return denied;
     }
 
     try {

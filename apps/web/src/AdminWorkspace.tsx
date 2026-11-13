@@ -1,3 +1,4 @@
+import { providerFetchAllowed } from "./provider-fetch-access.js";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import type { PublicContext } from "@waspada/worker/public-contracts";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
@@ -120,7 +121,7 @@ export function AdminWorkspace({ initialTab, session, context, isNarrowScreen, o
       case "akun":
         return <AdminAccountsPanel session={session} onRefreshSession={onRefreshSession} />;
       case "sumber":
-        return <Suspense fallback={<TabLoading label="Memuat demo sumber…" />}><AdminSourceTab datasetMode={context?.dataset_mode ?? null} /></Suspense>;
+        return <Suspense fallback={<TabLoading label="Memuat demo sumber…" />}><AdminSourceTab datasetMode={context?.dataset_mode ?? null} canRequestProviderFetch={providerFetchAllowed(session)} /></Suspense>;
     }
   }
 

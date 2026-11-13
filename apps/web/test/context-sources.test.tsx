@@ -452,7 +452,8 @@ test("renders useful list-first earthquake details, separates origin/update/fetc
 });
 
 test("renders the non-demo guard and initial demo controls without fabricated source data", () => {
-  const live = markup(createElement(ContextSources, { datasetMode: "live" }));
+  // The fetch button is a moderator control, so the disabled state is checked with that access.
+  const live = markup(createElement(ContextSources, { datasetMode: "live", canRequestProviderFetch: true }));
   assert.match(live, /Tidak ada permintaan yang dilakukan/u);
   assert.match(live, /mode live/u);
   assert.match(live, /disabled=""/u);
@@ -464,7 +465,8 @@ test("renders the non-demo guard and initial demo controls without fabricated so
   assert.doesNotMatch(unknown, /Gempa bumi ·/u);
 
   const demo = markup(createElement(ContextSources, { datasetMode: "demo" }));
-  assert.match(demo, /Ambil konteks cuaca &amp; gempa/u);
+  // Provider fetch is a moderator or admin control; a visitor sees only the local status.
+  assert.doesNotMatch(demo, /Ambil konteks cuaca &amp; gempa/u);
   assert.match(demo, /Status lokal tidak menghubungi penyedia/u);
   assert.doesNotMatch(demo, /Prakiraan model ·/u);
 });

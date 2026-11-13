@@ -5,9 +5,15 @@ import {
   type ContextSourcesClock,
 } from "../src/layers/l1-data-knowledge/context-source-adapters.js";
 import { createContextSourcesHandler } from "../src/layers/l4-application-integration/context-sources-api.js";
+import { accountEnvironment, requestWithSession, sessionExecutor } from "./support/moderator-session.js";
 
 const contextPath = "https://waspada.test/api/v1/demo/context-sources";
 const demoEnvironment = { DATASET_MODE: "demo", SOURCE_PREVIEW_ENABLED: "true" } as const;
+// NFR-04: fetch mode needs a moderator session. Public reads keep the anonymous request.
+const moderatorEnvironment = accountEnvironment(demoEnvironment, sessionExecutor({ role: "moderator" }));
+function moderatorFetchRequest(): Request {
+  return requestWithSession(`${contextPath}?mode=fetch`, true);
+}
 const fixedNow = Date.parse("2026-10-10T05:00:00.000Z");
 const hourSeconds = 3_600;
 const fixedHourEpoch = fixedNow / 1_000;
@@ -117,6 +123,13 @@ function earthquakeCollection(features: unknown[], metadata: Record<string, unkn
   };
 }
 
+/** Yields to the event loop until the condition holds, or gives up after a bounded number of ticks. */
+async function waitUntil(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 500 && !condition(); attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 function makeHandler(fetcher: typeof fetch, clock: ContextSourcesClock = fakeClock().clock) {
   return createContextSourcesHandler({ fetch: fetcher, clock });
 }
@@ -200,7 +213,7 @@ test("fetch uses exactly two fixed provider requests and closed normalized proje
     return jsonResponse(earthquakeCollection([earthquakeFeature()]));
   });
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   assert.equal(response.status, 200);
   assert.equal(calls.length, 2);
   const weatherCall = calls.find((call) => call.url === openMeteoUrl);
@@ -305,7 +318,7 @@ test("Open-Meteo rejects wrong units, mismatched arrays, bad hour spacing, wrong
     const handler = makeHandler(async (input) => String(input) === openMeteoUrl
       ? jsonResponse(body)
       : jsonResponse(earthquakeCollection([])));
-    const response = await handler(request("?mode=fetch"), demoEnvironment);
+    const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
     const payload = await readPayload(response);
     const weather = source(payload, "openmeteo");
     assert.equal(weather.status, "unavailable", scenario.label);
@@ -338,7 +351,7 @@ test("weather allows null model values and the prior hour only across a request 
   const handler = makeHandler(async (input) => String(input) === openMeteoUrl
     ? jsonResponse(body)
     : jsonResponse(earthquakeCollection([])), clock);
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const payload = await readPayload(response);
   assert.equal(source(payload, "openmeteo").status, "available", JSON.stringify(payload));
   const forecast = source(payload, "openmeteo").forecast as { hours: Array<Record<string, unknown>> };
@@ -366,7 +379,7 @@ test("USGS accepts absent metadata.count and validates source time, bounds, IDs,
     const handler = makeHandler(async (input) => String(input) === openMeteoUrl
       ? jsonResponse(weatherPayload())
       : jsonResponse(earthquakeCollection([scenario.feature], scenario.metadata)));
-    const response = await handler(request("?mode=fetch"), demoEnvironment);
+    const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
     const payload = await readPayload(response);
     const earthquakes = source(payload, "usgs");
     assert.equal(earthquakes.status, scenario.expectedStatus ?? "unavailable", scenario.label);
@@ -377,7 +390,7 @@ test("USGS accepts absent metadata.count and validates source time, bounds, IDs,
   const inconsistentCount = makeHandler(async (input) => String(input) === openMeteoUrl
     ? jsonResponse(weatherPayload())
     : jsonResponse(earthquakeCollection([], { count: 1 })));
-  const countPayload = await readPayload(await inconsistentCount(request("?mode=fetch"), demoEnvironment));
+  const countPayload = await readPayload(await inconsistentCount(moderatorFetchRequest(), moderatorEnvironment));
   assert.equal(source(countPayload, "usgs").error, "invalid_payload");
 
   const missingCount = makeHandler(async (input) => String(input) === openMeteoUrl
@@ -387,7 +400,7 @@ test("USGS accepts absent metadata.count and validates source time, bounds, IDs,
       metadata: { generated: fixedNow - 30_000, status: 200 },
       features: [],
     }));
-  const emptyPayload = await readPayload(await missingCount(request("?mode=fetch"), demoEnvironment));
+  const emptyPayload = await readPayload(await missingCount(moderatorFetchRequest(), moderatorEnvironment));
   assert.equal(source(emptyPayload, "usgs").status, "empty");
   assert.equal(source(emptyPayload, "usgs").source_updated_at, "2026-10-10T04:59:30.000Z");
 });
@@ -396,7 +409,7 @@ test("identical earthquake IDs collapse while contradictory versions are rejecte
   const identicalHandler = makeHandler(async (input) => String(input) === openMeteoUrl
     ? jsonResponse(weatherPayload())
     : jsonResponse(earthquakeCollection([earthquakeFeature(), earthquakeFeature()])));
-  const identical = await readPayload(await identicalHandler(request("?mode=fetch"), demoEnvironment));
+  const identical = await readPayload(await identicalHandler(moderatorFetchRequest(), moderatorEnvironment));
   const identicalSource = source(identical, "usgs");
   assert.equal(identicalSource.status, "available");
   assert.equal(identicalSource.rejected_count, 1);
@@ -408,7 +421,7 @@ test("identical earthquake IDs collapse while contradictory versions are rejecte
       earthquakeFeature("us7000duplicate", { mag: 3.1 }),
       earthquakeFeature("us7000duplicate", { mag: 4.1 }),
     ])));
-  const contradictory = await readPayload(await contradictoryHandler(request("?mode=fetch"), demoEnvironment));
+  const contradictory = await readPayload(await contradictoryHandler(moderatorFetchRequest(), moderatorEnvironment));
   const contradictorySource = source(contradictory, "usgs");
   assert.equal(contradictorySource.status, "unavailable");
   assert.equal(contradictorySource.error, "invalid_payload");
@@ -421,7 +434,7 @@ test("identical earthquake IDs collapse while contradictory versions are rejecte
       earthquakeFeature("us7000duplicate-malformed"),
       earthquakeFeature("us7000duplicate-malformed", { updated: fixedNow - 25 * 60 * 60_000 }),
     ])));
-  const malformedDuplicate = await readPayload(await malformedDuplicateHandler(request("?mode=fetch"), demoEnvironment));
+  const malformedDuplicate = await readPayload(await malformedDuplicateHandler(moderatorFetchRequest(), moderatorEnvironment));
   const malformedDuplicateSource = source(malformedDuplicate, "usgs");
   assert.equal(malformedDuplicateSource.status, "unavailable");
   assert.equal(malformedDuplicateSource.error, "invalid_payload");
@@ -437,7 +450,7 @@ test("USGS limit is reflected in limited metadata and records remain bounded", a
   const handler = makeHandler(async (input) => String(input) === openMeteoUrl
     ? jsonResponse(weatherPayload())
     : jsonResponse(earthquakeCollection(features, { count: 30 })));
-  const payload = await readPayload(await handler(request("?mode=fetch"), demoEnvironment));
+  const payload = await readPayload(await handler(moderatorFetchRequest(), moderatorEnvironment));
   const earthquakes = source(payload, "usgs");
   assert.equal(earthquakes.status, "available");
   assert.equal(earthquakes.limited, true);
@@ -460,7 +473,7 @@ test("provider failures are independent, redirects are rejected, and details sta
         ? jsonResponse(weatherPayload())
         : jsonResponse(earthquakeCollection([]));
     });
-    const response = await handler(request("?mode=fetch"), demoEnvironment);
+    const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
     assert.equal(response.status, 200);
     const payload = await readPayload(response);
     const failedId = scenario.failing === "weather" ? "openmeteo" : "usgs";
@@ -491,7 +504,7 @@ test("invalid content type, declared and streamed body overages, and excessive J
     const handler = makeHandler(async (input) => String(input) === openMeteoUrl
       ? responseFactory()
       : jsonResponse(earthquakeCollection([])));
-    const payload = await readPayload(await handler(request("?mode=fetch"), demoEnvironment));
+    const payload = await readPayload(await handler(moderatorFetchRequest(), moderatorEnvironment));
     assert.equal(source(payload, "openmeteo").status, "unavailable");
     assert.equal(source(payload, "openmeteo").error, "invalid_payload");
     assert.equal(source(payload, "usgs").status, "empty");
@@ -509,7 +522,7 @@ test("invalid content type, declared and streamed body overages, and excessive J
   const streamedHandler = makeHandler(async (input) => String(input) === openMeteoUrl
     ? oversizedBody
     : jsonResponse(earthquakeCollection([])));
-  const streamedPayload = await readPayload(await streamedHandler(request("?mode=fetch"), demoEnvironment));
+  const streamedPayload = await readPayload(await streamedHandler(moderatorFetchRequest(), moderatorEnvironment));
   assert.equal(source(streamedPayload, "openmeteo").error, "invalid_payload");
   assert.ok(streamedBytes <= 2 * CONTEXT_SOURCES_LIMITS.maxBodyBytes);
   assert.equal(source(streamedPayload, "usgs").status, "empty");
@@ -534,7 +547,10 @@ test("25-second deadlines cover response headers and streamed bodies per provide
       return new Promise<Response>((resolve) => { releaseUsgs = resolve; });
     }, harness.clock);
 
-    const pending = handler(request("?mode=fetch"), demoEnvironment);
+    const pending = handler(moderatorFetchRequest(), moderatorEnvironment);
+    // The moderator gate awaits a real session lookup before any provider starts, so wait until the
+    // provider deadlines are armed, then take the same settle tick as before.
+    await waitUntil(() => harness.scheduledDelays().length > 0);
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const expectedActiveDeadlines = timeoutTarget === "weather_headers"
       ? [CONTEXT_SOURCES_LIMITS.requestDeadlineMs, CONTEXT_SOURCES_LIMITS.requestDeadlineMs]
@@ -565,9 +581,9 @@ test("concurrent fetches coalesce, cache normalized results five minutes, then r
     calls.push({ url: String(input), resolve });
   }), harness.clock);
 
-  const firstPending = handler(request("?mode=fetch"), demoEnvironment);
-  const secondPending = handler(request("?mode=fetch"), demoEnvironment);
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const firstPending = handler(moderatorFetchRequest(), moderatorEnvironment);
+  const secondPending = handler(moderatorFetchRequest(), moderatorEnvironment);
+  await waitUntil(() => calls.length === 2);
   assert.equal(calls.length, 2);
   for (const call of calls) {
     call.resolve(call.url === openMeteoUrl
@@ -580,13 +596,13 @@ test("concurrent fetches coalesce, cache normalized results five minutes, then r
   assert.equal(firstPayload.cached || secondPayload.cached, true);
   assert.equal(firstPayload.cached && secondPayload.cached, false);
 
-  const cached = await handler(request("?mode=fetch"), demoEnvironment);
+  const cached = await handler(moderatorFetchRequest(), moderatorEnvironment);
   assert.equal((await readPayload(cached) as { cached: boolean }).cached, true);
   assert.equal(calls.length, 2);
 
   harness.setNow(fixedNow + CONTEXT_SOURCES_LIMITS.cacheTtlMs);
   failAfterExpiry = true;
-  const refreshed = await handler(request("?mode=fetch"), demoEnvironment);
+  const refreshed = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const refreshedPayload = await readPayload(refreshed) as { cached: boolean };
   assert.equal(refreshedPayload.cached, false);
   assert.equal(source(refreshedPayload, "openmeteo").status, "unavailable");
@@ -602,7 +618,7 @@ test("USGS caps overlong provider output and rejects responses above the provide
   const cappedHandler = makeHandler(async (input) => String(input) === openMeteoUrl
     ? jsonResponse(weatherPayload())
     : jsonResponse(earthquakeCollection(overReturned, { count: 31 })));
-  const cappedPayload = await readPayload(await cappedHandler(request("?mode=fetch"), demoEnvironment));
+  const cappedPayload = await readPayload(await cappedHandler(moderatorFetchRequest(), moderatorEnvironment));
   const capped = source(cappedPayload, "usgs");
   assert.equal(capped.status, "available");
   assert.equal(capped.limited, true);
@@ -616,7 +632,7 @@ test("USGS caps overlong provider output and rejects responses above the provide
       metadata: { generated: fixedNow - 30_000, status: 200 },
       features: Array.from({ length: CONTEXT_SOURCES_LIMITS.maxProviderRecords + 1 }, () => null),
     }));
-  const oversizedPayload = await readPayload(await oversizedHandler(request("?mode=fetch"), demoEnvironment));
+  const oversizedPayload = await readPayload(await oversizedHandler(moderatorFetchRequest(), moderatorEnvironment));
   assert.equal(source(oversizedPayload, "usgs").status, "unavailable");
   assert.equal(source(oversizedPayload, "usgs").error, "invalid_payload");
 });

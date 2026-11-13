@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createContextSourcesHandler } from "../../worker/src/layers/l4-application-integration/context-sources-api.js";
-import { getContextSources } from "../src/context-sources-client.js";
+import { ContextSourcesHttpError, getContextSources } from "../src/context-sources-client.js";
+import { providerFetchRefusalNotice } from "../src/provider-fetch-access.js";
+// The Worker's synthetic session fixture: a moderator session for fetch mode, none for anonymous calls.
+import { accountEnvironment, sessionCookieHeader, sessionExecutor } from "../../worker/test/support/moderator-session.js";
 
 // Authored synthetic upstream data: no provider requests or real incident assertions.
 const instant = Date.parse("2026-10-10T08:30:00Z");
 const hour = Math.floor(instant / 3_600_000) * 3_600;
-const environment = { DATASET_MODE: "demo", SOURCE_PREVIEW_ENABLED: "true" };
+const environment = accountEnvironment(
+  { DATASET_MODE: "demo", SOURCE_PREVIEW_ENABLED: "true" },
+  sessionExecutor({ role: "moderator" }),
+);
 
-function setup(weatherUnavailable = false) {
+function setup(weatherUnavailable = false, withSession = true) {
   let calls = 0;
   const sourceFetch: typeof fetch = async (input) => {
     calls += 1;
@@ -51,9 +57,11 @@ function setup(weatherUnavailable = false) {
       cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
     },
   });
-  const apiFetch: typeof fetch = async (input, init) => handler(
-    new Request(new URL(String(input), "http://localhost"), init), environment,
-  );
+  const apiFetch: typeof fetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    if (withSession && String(input).includes("mode=fetch")) headers.set("cookie", sessionCookieHeader);
+    return handler(new Request(new URL(String(input), "http://localhost"), { ...init, headers }), environment);
+  };
   return { fetcher: apiFetch, calls: () => calls };
 }
 
@@ -90,4 +98,16 @@ test("browser accepts independently normalized source failure without discarding
   assert.equal(result.sources[0].forecast, null);
   assert.equal(result.sources[1].status, "available");
   assert.equal(result.sources[1].records.length, 1);
+});
+
+test("an anonymous fetch is refused by the closed API before any provider call, and the browser maps it to the role notice", async () => {
+  const service = setup(false, false);
+  const failure = await getContextSources({ ...service, mode: "fetch" }).then(
+    () => assert.fail("an anonymous fetch must not succeed"),
+    (error: unknown) => error,
+  );
+  assert.ok(failure instanceof ContextSourcesHttpError);
+  assert.equal(failure.status, 401);
+  assert.equal(service.calls(), 0);
+  assert.match(providerFetchRefusalNotice(failure) ?? "", /moderator atau admin/u);
 });

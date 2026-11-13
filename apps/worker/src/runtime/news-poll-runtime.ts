@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import {
+  BLOCKED_REDIRECT_ERROR,
+  isBlockedRedirect,
+  OUTBOUND_REDIRECT_POLICY,
+} from "./outbound-fetch-policy.js";
+import {
   buildAuthorizedRevision,
   parseAndFilterNewsRss,
   type PreparedNewsReportRevision,
@@ -834,6 +839,8 @@ async function pollSingleFeed(
   try {
     const response = await fetchFn(feed.url, {
       signal: controller.signal,
+      // NFR-07: a redirect is refused, not followed to a host the feed did not name.
+      redirect: OUTBOUND_REDIRECT_POLICY,
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 WaspadaJakarta-NewsPoller/1.0",
         "Accept": "application/rss+xml, application/xml, text/xml, */*",
@@ -845,7 +852,9 @@ async function pollSingleFeed(
         url: feed.url,
         sourceId: feed.sourceId,
         status: "fetch_error",
-        error: `HTTP ${response.status} ${response.statusText}`,
+        error: isBlockedRedirect(response)
+          ? BLOCKED_REDIRECT_ERROR
+          : `HTTP ${response.status} ${response.statusText}`,
         totalParsed: 0,
         matchedCount: 0,
         keptCount: 0,

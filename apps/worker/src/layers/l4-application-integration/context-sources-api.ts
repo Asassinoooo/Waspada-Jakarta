@@ -11,6 +11,8 @@ import type {
 import { CONTEXT_SOURCE_POLICY } from "../../contracts/context-sources.js";
 import type { ContextSourcesAdapterOptions } from "../l1-data-knowledge/context-source-adapters.js";
 import { createContextSourcesRuntime } from "../../runtime/context-sources-runtime.js";
+import type { AccountWorkerEnvironment } from "../../accounts/types.js";
+import { moderationAccountConfig, moderatorSurfaceDenial } from "../../runtime/moderator-session.js";
 
 export const CONTEXT_SOURCES_ROUTE_PATH = "/api/v1/demo/context-sources";
 const HOUR_MS = 60 * 60_000;
@@ -21,7 +23,7 @@ const jsonHeaders = {
   "x-content-type-options": "nosniff",
 };
 
-export interface ContextSourcesEnvironment {
+export interface ContextSourcesEnvironment extends AccountWorkerEnvironment {
   readonly DATASET_MODE?: string;
   readonly SOURCE_PREVIEW_ENABLED?: string;
 }
@@ -53,6 +55,13 @@ export function createContextSourcesHandler(
 
     const mode = readMode(url.search);
     if (mode === null) return apiError("INVALID_REQUEST", "The context-sources query is invalid.", 400);
+
+    // NFR-04 and the owner decision: fetch mode starts an upstream acquisition, so only a moderator
+    // or admin session may start it. Public reads answer from the not-requested state.
+    if (mode === "fetch") {
+      const denied = await moderatorSurfaceDenial(request, moderationAccountConfig(env), "review_evidence");
+      if (denied) return denied;
+    }
 
     try {
       const result = mode === "fetch"

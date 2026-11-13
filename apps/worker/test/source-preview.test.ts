@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createSourcePreviewHandler } from "../src/layers/l4-application-integration/source-preview-api.js";
+import { accountEnvironment, requestWithSession, sessionExecutor } from "./support/moderator-session.js";
 import {
   SOURCE_PREVIEW_LIMITS,
   mergeOsmDelta,
@@ -10,6 +11,11 @@ import {
 
 const previewPath = "https://waspada.test/api/v1/demo/source-preview";
 const demoEnvironment = { DATASET_MODE: "demo", SOURCE_PREVIEW_ENABLED: "true" } as const;
+// NFR-04: fetch mode needs a moderator session. Public reads keep the anonymous request.
+const moderatorEnvironment = accountEnvironment(demoEnvironment, sessionExecutor({ role: "moderator" }));
+function moderatorFetchRequest(): Request {
+  return requestWithSession(`${previewPath}?mode=fetch`, true);
+}
 const fixedNow = Date.parse("2026-10-10T05:00:00.000Z");
 
 interface FakeClockHarness {
@@ -107,6 +113,13 @@ function makeHandler(
   return createSourcePreviewHandler({ fetch: fetcher, clock });
 }
 
+/** Yields to the event loop until the condition holds, or gives up after a bounded number of ticks. */
+async function waitUntil(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 500 && !condition(); attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 function source(payload: unknown, id: "osm" | "petabencana"): Record<string, unknown> {
   const body = payload as { sources: Array<Record<string, unknown>> };
   const matched = body.sources.find((item) => item.id === id);
@@ -186,7 +199,7 @@ test("fetch uses the fixed endpoints, bounded query, identifying user agent, and
     throw new Error("unexpected endpoint");
   });
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   assert.equal(response.status, 200);
   assert.equal(calls.length, 2);
   const osmCall = calls.find((call) => call.url.includes("overpass-api"));
@@ -243,7 +256,7 @@ test("one failed provider remains a sanitized partial-source result", async () =
     throw new Error("PRIVATE UPSTREAM ERROR BODY");
   });
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   assert.equal(response.status, 200);
   const payload = await response.json() as { sources: Array<Record<string, unknown>> };
   assert.equal(source(payload, "osm").status, "empty");
@@ -265,7 +278,7 @@ test("manual redirects are rejected without following the provider location", as
     });
   });
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const payload = await response.json() as { sources: Array<Record<string, unknown>> };
   assert.equal(calls, 2);
   assert.equal(petabencanaRedirectMode, "manual");
@@ -309,7 +322,7 @@ test("early response rejection aborts that request after cleanup while the peer 
         : jsonResponse(petabencanaCollection([]));
     });
 
-    const response = await handler(request("?mode=fetch"), demoEnvironment);
+    const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
     const payload = await response.json() as { sources: Array<Record<string, unknown>> };
     const failingSource = source(payload, scenario.failingId);
     const peerId = scenario.failingId === "osm" ? "petabencana" : "osm";
@@ -326,7 +339,7 @@ test("provider remarks and application errors are not empty successes", async ()
     ? jsonResponse({ elements: [], remark: "runtime error" })
     : jsonResponse({ statusCode: 200, error: "provider error", result: { type: "FeatureCollection", features: [] } }));
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const payload = await response.json() as { sources: Array<Record<string, unknown>> };
   for (const id of ["osm", "petabencana"] as const) {
     assert.equal(source(payload, id).status, "unavailable");
@@ -353,7 +366,7 @@ test("invalid, out-of-window, non-point, stale, and future flood records are rej
     ? jsonResponse(emptyOsm())
     : jsonResponse(petabencanaCollection(features)));
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const payload = await response.json() as { sources: Array<Record<string, unknown>> };
   const petabencana = source(payload, "petabencana");
   assert.equal(petabencana.status, "available");
@@ -371,7 +384,7 @@ test("contradictory duplicate identities are removed instead of selecting an inp
       petabencanaFeature({ pkey: "same", created_at: "2026-10-10T04:31:00Z" }),
     ])));
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const payload = await response.json() as { sources: Array<Record<string, unknown>> };
   const osm = source(payload, "osm");
   const petabencana = source(payload, "petabencana");
@@ -398,7 +411,7 @@ test("streamed bodies stop at 1 MiB and remain independent from the other source
     ? oversized
     : jsonResponse(petabencanaCollection([])));
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const payload = await response.json() as { sources: Array<Record<string, unknown>> };
   assert.equal(source(payload, "osm").status, "unavailable");
   assert.equal(source(payload, "osm").error, "invalid_payload");
@@ -425,8 +438,9 @@ test("per-source 25-second deadlines include body reads and abort only the sourc
     });
   }, harness.clock);
 
-  const pending = handler(request("?mode=fetch"), demoEnvironment);
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const pending = handler(moderatorFetchRequest(), moderatorEnvironment);
+  // The moderator gate awaits a real session lookup before any provider starts; wait for both requests.
+  await waitUntil(() => calls === 2);
   assert.equal(calls, 2);
   assert.deepEqual(harness.scheduledDelays(), [
     SOURCE_PREVIEW_LIMITS.requestDeadlineMs,
@@ -451,9 +465,9 @@ test("concurrent refreshes coalesce and the normalized result is cached for five
     calls.push({ url: String(input), resolve });
   }), harness.clock);
 
-  const firstPending = handler(request("?mode=fetch"), demoEnvironment);
-  const secondPending = handler(request("?mode=fetch"), demoEnvironment);
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const firstPending = handler(moderatorFetchRequest(), moderatorEnvironment);
+  const secondPending = handler(moderatorFetchRequest(), moderatorEnvironment);
+  await waitUntil(() => calls.length === 2);
   assert.equal(calls.length, 2);
   for (const call of calls) {
     call.resolve(call.url.includes("overpass-api")
@@ -466,13 +480,13 @@ test("concurrent refreshes coalesce and the normalized result is cached for five
   assert.equal(firstPayload.cached || secondPayload.cached, true);
   assert.equal(firstPayload.cached && secondPayload.cached, false);
 
-  const cachedResponse = await handler(request("?mode=fetch"), demoEnvironment);
+  const cachedResponse = await handler(moderatorFetchRequest(), moderatorEnvironment);
   assert.equal((await cachedResponse.json() as { cached: boolean }).cached, true);
   assert.equal(calls.length, 2);
 
   harness.setNow(fixedNow + SOURCE_PREVIEW_LIMITS.cacheTtlMs);
-  const refreshPending = handler(request("?mode=fetch"), demoEnvironment);
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const refreshPending = handler(moderatorFetchRequest(), moderatorEnvironment);
+  await waitUntil(() => calls.length === 4);
   assert.equal(calls.length, 4);
   for (const call of calls.slice(2)) {
     call.resolve(call.url.includes("overpass-api")
@@ -493,13 +507,13 @@ test("an expired normalized cache refreshes without falling back to stale succes
       : jsonResponse(petabencanaCollection([]));
     throw new Error("refreshed upstream unavailable");
   }, harness.clock);
-  const firstResponse = await handler(request("?mode=fetch"), demoEnvironment);
+  const firstResponse = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const firstPayload = await firstResponse.json() as { cached: boolean; sources: Array<Record<string, unknown>> };
   assert.equal(firstPayload.cached, false);
   assert.equal(source(firstPayload, "osm").status, "empty");
 
   harness.setNow(fixedNow + SOURCE_PREVIEW_LIMITS.cacheTtlMs + 1);
-  const secondResponse = await handler(request("?mode=fetch"), demoEnvironment);
+  const secondResponse = await handler(moderatorFetchRequest(), moderatorEnvironment);
   const secondPayload = await secondResponse.json() as { cached: boolean; sources: Array<Record<string, unknown>> };
   assert.equal(secondPayload.cached, false);
   assert.equal(source(secondPayload, "osm").status, "unavailable");
@@ -579,7 +593,7 @@ test("incremental mode queries newer filter and falls back to base facilities on
     incremental: true,
   });
 
-  const response = await handler(request("?mode=fetch"), demoEnvironment);
+  const response = await handler(moderatorFetchRequest(), moderatorEnvironment);
   assert.equal(response.status, 200);
   assert.ok(calledQuery.includes('newer:"2026-10-10T04:06:43Z"'));
   const payload = await response.json() as { sources: Array<Record<string, unknown>> };

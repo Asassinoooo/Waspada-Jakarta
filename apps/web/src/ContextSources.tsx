@@ -13,6 +13,7 @@ import {
   getContextSources,
   type ContextSourcesRequestMode,
 } from "./context-sources-client.js";
+import { PROVIDER_FETCH_ROLE_NOTE, providerFetchRefusalNotice, requestModeAllowed } from "./provider-fetch-access.js";
 
 export type ContextSourcesMapRenderer = (
   points: readonly EarthquakeContextRecord[],
@@ -23,6 +24,8 @@ export type ContextSourcesMapRenderer = (
 export interface ContextSourcesProps {
   datasetMode: "demo" | "live" | null;
   renderMap?: ContextSourcesMapRenderer;
+  /** Moderator or admin session only; a visitor gets no provider fetch control or request. */
+  canRequestProviderFetch?: boolean;
 }
 
 type RequestState =
@@ -77,6 +80,8 @@ function timeValue(value: string | null, missing: string): ReactNode {
 }
 
 function requestErrorMessage(error: unknown, mode: ContextSourcesRequestMode): string {
+  const refusal = providerFetchRefusalNotice(error);
+  if (refusal !== null) return refusal;
   if (error instanceof ContextSourcesTimeoutError) return "Batas waktu permintaan habis. Coba lagi bila diperlukan.";
   if (error instanceof ContextSourcesHttpError) return "Status data pratinjau tidak dapat dimuat dari server.";
   if (error instanceof ContextSourcesPayloadError) return "Respons konteks tidak sesuai format yang dapat ditampilkan.";
@@ -437,14 +442,20 @@ function ContextRequestError({ state, onRetry, onReset }: {
   );
 }
 
-export function ContextSources({ datasetMode, renderMap }: ContextSourcesProps) {
+export function ContextSources({ datasetMode, renderMap, canRequestProviderFetch = false }: ContextSourcesProps) {
   const [request, setRequest] = useState<RequestState>({ status: "not-requested" });
   const [payload, setPayload] = useState<ContextSourcesPayload | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const activeController = useRef<AbortController | null>(null);
   const requestSequence = useRef(0);
 
+  // Read through a ref so a session refresh does not restart the snapshot effect.
+  const fetchAllowed = useRef(canRequestProviderFetch);
+  useEffect(() => {
+    fetchAllowed.current = canRequestProviderFetch;
+  }, [canRequestProviderFetch]);
   const startRequest = useCallback((mode: ContextSourcesRequestMode) => {
+    if (requestModeAllowed(mode, fetchAllowed.current) === null) return;
     if (datasetMode !== "demo") return;
     activeController.current?.abort();
     const controller = new AbortController();
@@ -523,9 +534,9 @@ export function ContextSources({ datasetMode, renderMap }: ContextSourcesProps) 
           </span>
         </div>
         <div className="context-sources__actions">
-          <button className="button button--primary" type="button" disabled={!canUseContext || isLoading} onClick={() => startRequest("fetch")}>
+          {canRequestProviderFetch ? <button className="button button--primary" type="button" disabled={!canUseContext || isLoading} onClick={() => startRequest("fetch")}>
             {request.status === "loading" && request.mode === "fetch" ? "Meminta konteks…" : "Ambil konteks cuaca & gempa"}
-          </button>
+          </button> : <p className="context-sources__role-note" role="status">{PROVIDER_FETCH_ROLE_NOTE}</p>}
           {request.status === "loaded" && request.mode === "fetch" && (
             <button className="button button--quiet" type="button" disabled={isLoading} onClick={reset}>
               Kembali ke belum diminta

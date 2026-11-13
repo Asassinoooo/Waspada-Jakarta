@@ -12,6 +12,7 @@ import type {
 }
 from "@waspada/worker/context-sources-contracts";
 import { CONTEXT_SOURCE_POLICY } from "@waspada/worker/context-sources-contracts";
+import { PROVIDER_FETCH_ROLE_NOTE, providerFetchRefusalNotice, requestModeAllowed } from "./provider-fetch-access.js";
 import {
   ContextSourcesHttpError, ContextSourcesPayloadError, ContextSourcesTimeoutError, getContextSources, type ContextSourcesRequestMode,
 }
@@ -36,6 +37,8 @@ export type UnifiedSourceMapRenderer = ( points: readonly SourceMapPoint[], sele
 export interface UnifiedSourceExplorerProps {
   datasetMode: "demo" | "live" | null;
   renderMap?: UnifiedSourceMapRenderer;
+  /** Moderator or admin session only; a visitor gets no provider fetch control or request. */
+  canRequestProviderFetch?: boolean;
 }
 export type UnifiedExplorerPanel = "daftar" | "detail" | "cuaca" | "sumber";
 export type UnifiedSourceFilter = SourceMapPoint["source"] | "all";
@@ -69,6 +72,7 @@ export interface UnifiedSourceExplorerViewProps {
   onContextRequest: (mode: ContextSourcesRequestMode) => void;
   defaultPanel?: UnifiedExplorerPanel;
   fallbackOsmRecords?: readonly SourceMapPoint[];
+  canRequestProviderFetch?: boolean;
 }
 const kindLabels: Readonly<Record<PreviewKind | "earthquake", string>> = {
   hospital: "Rumah sakit", police: "Kepolisian", fire_station: "Pemadam kebakaran", flood_report: "Laporan banjir warga", earthquake: "Gempa bumi regional",
@@ -109,6 +113,8 @@ function requestGroupStatus( request: UnifiedRequestState, payloadStatus: Contex
   return statusLabel(payloadStatus);
 }
 function sourceStatusError(error: unknown, group: "source" | "context"): string {
+  const refusal = providerFetchRefusalNotice(error);
+  if (refusal !== null) return refusal;
   if (group === "source") {
     if (error instanceof SourcePreviewTimeoutError) return "Permintaan sumber melewati batas waktu.";
     if (error instanceof SourcePreviewHttpError) return "Server tidak memberi respons pratinjau yang dapat digunakan.";
@@ -480,7 +486,7 @@ function WeatherPanel({
   </p> <p className="unified-source-explorer__note">Koordinat grid model dijelaskan di tabel sebagai konteks sampel. Tidak dibuat titik insiden cuaca pada peta.</p> </section> );
 }
 export function UnifiedSourceExplorerView({
-  datasetMode, sourcePayload, sourceRequest, contextPayload, contextRequest, renderMap, onSourceRequest, onContextRequest, defaultPanel = "daftar", fallbackOsmRecords,
+  datasetMode, sourcePayload, sourceRequest, contextPayload, contextRequest, renderMap, onSourceRequest, onContextRequest, defaultPanel = "daftar", fallbackOsmRecords, canRequestProviderFetch = false,
 }
 : UnifiedSourceExplorerViewProps) {
   void React;
@@ -537,7 +543,7 @@ export function UnifiedSourceExplorerView({
   </strong> <span>{
     datasetMode === "demo" ? "Default lokal; permintaan penyedia hanya setelah tindakan Anda." : datasetMode === "live" ? "Pratinjau demo tidak tersedia dalam mode live." : "Tidak ada data atau permintaan sebelum konfirmasi mode demo."
 }
-  </span> </div> <div className="unified-source-explorer__actions"> <button className="button button--primary" type="button" disabled={
+  </span> </div> <div className="unified-source-explorer__actions"> {canRequestProviderFetch ? <><button className="button button--primary" type="button" disabled={
     !canUseSources || sourceLoading
 }
   onClick={
@@ -555,7 +561,7 @@ export function UnifiedSourceExplorerView({
   > {
     contextLoading && contextRequest.status === "loading" && contextRequest.mode === "fetch" ? "Meminta cuaca & gempa…" : "Ambil cuaca & gempa"
 }
-  </button> </div> <div className="unified-source-explorer__source-status" role="region" tabIndex={0} aria-label="Status singkat tiap sumber"> <SourceStatusChip label="OSM" status={
+  </button></> : <p className="unified-source-explorer__role-note" role="status">{PROVIDER_FETCH_ROLE_NOTE}</p>} </div> <div className="unified-source-explorer__source-status" role="region" tabIndex={0} aria-label="Status singkat tiap sumber"> <SourceStatusChip label="OSM" status={
     visibleSourceStatus("osm")
 }
   /> <SourceStatusChip label="PetaBencana" status={
@@ -868,7 +874,7 @@ export function UnifiedSourceExplorerView({
   </div> </section> </div> </div> );
 }
 export function UnifiedSourceExplorer({
-  datasetMode, renderMap
+  datasetMode, renderMap, canRequestProviderFetch = false
 }
 : UnifiedSourceExplorerProps) {
   void React;
@@ -893,7 +899,13 @@ export function UnifiedSourceExplorer({
   const sourceSequence = useRef(0);
   const contextController = useRef<AbortController | null>(null);
   const contextSequence = useRef(0);
+  // Read through a ref so a session refresh does not restart the snapshot effect.
+  const fetchAllowed = useRef(canRequestProviderFetch);
+  useEffect(() => {
+    fetchAllowed.current = canRequestProviderFetch;
+  }, [canRequestProviderFetch]);
   const startSourceRequest = useCallback((mode: SourcePreviewRequestMode) => {
+    if (requestModeAllowed(mode, fetchAllowed.current) === null) return;
     if (datasetMode !== "demo") return;
     sourceController.current?.abort();
     const controller = new AbortController();
@@ -935,6 +947,7 @@ export function UnifiedSourceExplorer({
   }
   , [datasetMode]);
   const startContextRequest = useCallback((mode: ContextSourcesRequestMode) => {
+    if (requestModeAllowed(mode, fetchAllowed.current) === null) return;
     if (datasetMode !== "demo") return;
     contextController.current?.abort();
     const controller = new AbortController();
@@ -1030,5 +1043,6 @@ export function UnifiedSourceExplorer({
     startContextRequest
 }
   fallbackOsmRecords={snapshotOsmRecords}
+  canRequestProviderFetch={canRequestProviderFetch}
   />;
 }

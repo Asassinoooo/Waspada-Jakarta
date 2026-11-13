@@ -13,6 +13,11 @@
 
 import { createHash } from "node:crypto";
 import type { StoredEvidenceChunk, StoredReportRevision } from "./petabencana-poll-runtime.js";
+import {
+  BLOCKED_REDIRECT_ERROR,
+  isBlockedRedirect,
+  OUTBOUND_REDIRECT_POLICY,
+} from "./outbound-fetch-policy.js";
 
 export const BMKG_GEMPA_SOURCE_ID = "source-bmkg-gempa";
 export const DEFAULT_BMKG_AUTOGEMPA_ENDPOINT = "https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json";
@@ -171,17 +176,21 @@ export function createBmkgPollRuntime(
     const seenHashes = new Set<string>();
     let totalFetched = 0;
     let totalFiltered = 0;
+    let blockedRedirects = 0;
 
     try {
       // 1. Fetch autogempa (latest automated alert)
       try {
         const res = await fetchImpl(autogempaEndpoint, {
           signal: controller.signal,
+          // NFR-07: a redirect is refused, not followed to a host BMKG did not name here.
+          redirect: OUTBOUND_REDIRECT_POLICY,
           headers: {
             Accept: "application/json",
             "User-Agent": "WaspadaJakarta-NewsPoller/1.0",
           },
         });
+        if (isBlockedRedirect(res)) blockedRedirects += 1;
         if (res.ok) {
           const data = (await res.json()) as { Infogempa?: { gempa?: BmkgGempaRawItem } };
           const gempa = data?.Infogempa?.gempa;
@@ -201,11 +210,14 @@ export function createBmkgPollRuntime(
       try {
         const res = await fetchImpl(gempaterkiniEndpoint, {
           signal: controller.signal,
+          // NFR-07: a redirect is refused, not followed.
+          redirect: OUTBOUND_REDIRECT_POLICY,
           headers: {
             Accept: "application/json",
             "User-Agent": "WaspadaJakarta-NewsPoller/1.0",
           },
         });
+        if (isBlockedRedirect(res)) blockedRedirects += 1;
         if (res.ok) {
           const data = (await res.json()) as { Infogempa?: { gempa?: BmkgGempaRawItem[] } };
           const list = data?.Infogempa?.gempa;
@@ -227,11 +239,14 @@ export function createBmkgPollRuntime(
         await options.onRevisions(revisions);
       }
 
+      // A refused redirect is a failed fetch, not a silent empty result.
+      const blocked = blockedRedirects > 0;
       return {
-        outcome: revisions.length > 0 ? "success" : "empty",
+        outcome: revisions.length > 0 ? "success" : blocked ? "error" : "empty",
         fetchedCount: totalFetched,
         filteredCount: totalFiltered,
         revisions,
+        ...(blocked ? { error: BLOCKED_REDIRECT_ERROR } : {}),
       };
     } catch (err) {
       return {
