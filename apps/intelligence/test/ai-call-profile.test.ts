@@ -19,6 +19,7 @@ import { correlateWithoutCandidates, CORRELATION_MIN_SIMILARITY } from "../src/a
 import {
   BMKG_GEMPA_SOURCE_ID,
   PETABENCANA_SOURCE_ID,
+  PETABENCANA_SOURCE_LABEL,
   deterministicStructuredInterpretation,
 } from "../src/structured-interpretation.js";
 import { PETABENCANA_SOURCE_ID as WORKER_PETABENCANA_SOURCE_ID } from "../../worker/src/layers/l1-data-knowledge/petabencana-ingest.js";
@@ -305,7 +306,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
       assert.ok(bmkgRevision, "fixture is relevant to Jakarta");
 
       const cases = [
-        { label: "petabencana", sourceId: PETABENCANA_SOURCE_ID, text: pbText, expectType: "banjir", expectTime: "2026-11-11T07:30:00.000Z", expectLabel: null, expectCoords: [106.85, -6.21] },
+        { label: "petabencana", sourceId: PETABENCANA_SOURCE_ID, text: pbText, expectType: "banjir", expectTime: "2026-11-11T07:30:00.000Z", expectLabel: PETABENCANA_SOURCE_LABEL, expectCoords: [106.85, -6.21] },
         { label: "bmkg", sourceId: BMKG_GEMPA_SOURCE_ID, text: bmkgRevision!.permitted_text, expectType: "gempa bumi", expectTime: null, expectLabel: "80 km Barat Daya Sukabumi", expectCoords: [106.84, -6.21] },
       ] as const;
 
