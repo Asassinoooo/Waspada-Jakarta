@@ -11,7 +11,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { SqlExecutor } from "../../../../db/src/sql.js";
 import type { EventProposalWriter } from "../../../../db/src/event-proposal-writer.js";
-import { persistGeometryInTransaction } from "../../../../db/src/geometry-writer.js";
 import type { EventProposalDto } from "./moderation-api.js";
 import {
   PublicReadModel,
@@ -31,7 +30,7 @@ import {
   NULL_VALIDITY,
   reviewSummaryFor,
 } from "./event-record-v2.js";
-import { publicPointFor, publicPointLabel, pointGeometryIdFor, type PublicPointSource } from "./public-point.js";
+import { publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
 import {
   assessCorrectionGate,
   assessProposalSourceGate,
@@ -461,13 +460,18 @@ async function resolvePublicDisplay(
   return allowed;
 }
 
-/** HOSTED-10: what a publication adds to the stored record, from persisted rows only. */
+/**
+ * HOSTED-10: what a publication adds to the stored record, from persisted rows only. No geometry row is written here:
+ * the publication role cannot write geometries (owner decision, 17 Nov 2026).
+ */
 interface PublicationEnrichment {
   /** Support for each claim. Filled only when the proposal was built from one report revision. */
   readonly support: readonly DomainEvidenceRef[];
+  /** Always empty in this change. */
   readonly geometryIds: readonly string[];
+  /** Set only for a coordinate-bearing event. It records the source of the point that is pending. */
   readonly geometrySource: PublicPointSource | null;
-  readonly geometryStatus: "written" | "not_required_group_notice";
+  readonly geometryStatus: "pending_geometry_writer" | "whole_view" | "not_required_group_notice";
 }
 
 /**
@@ -573,10 +577,10 @@ async function ownEvidence(
 }
 
 /**
- * HOSTED-10: the support and the one point of a publication. Returns null when the publication must be refused: the
- * event needs a point, and no persisted evidence or no geometry write backs it. Nothing is written in that case.
- * The support of a claim is filled only when the proposal came from one report revision, so no claim is given evidence
- * from a revision that did not produce it.
+ * HOSTED-10: the support and the location status of a publication. It never refuses and never writes a geometry row.
+ * A coordinate-bearing event records geometry_status "pending_geometry_writer". An event with no usable coordinate
+ * records "whole_view". A group notice with no location records "not_required_group_notice". The support of a claim is
+ * filled only when the proposal came from one report revision, so no claim is given evidence from another revision.
  */
 async function enrichPublication(
   tx: SqlExecutor,
@@ -588,7 +592,7 @@ async function enrichPublication(
     readonly category: string;
     readonly proposal: EventProposalDto;
   },
-): Promise<PublicationEnrichment | null> {
+): Promise<PublicationEnrichment> {
   const { proposal } = input;
   const evidence = await withOptionalSavepoint(tx, "hosted10_evidence", () => ownEvidence(tx, input.datasetKind, proposal));
   const own: OwnEvidence = evidence.ok ? evidence.value : { revisions: [], refs: [] };
@@ -596,33 +600,18 @@ async function enrichPublication(
     ? own.refs.filter((ref) => ref.report_revision_id === own.revisions[0])
     : [];
 
-  const point = publicPointFor({
+  const outcome = publicPointOutcomeFor({
     category: input.category,
     locationLabel: proposal.location_label,
     coordinates: proposal.coordinates,
   });
-  if (point === null) {
+  if (outcome.status === "point") {
+    return { support, geometryIds: [], geometrySource: "model_approximate", geometryStatus: "pending_geometry_writer" };
+  }
+  if (outcome.status === "not_required_group_notice") {
     return { support, geometryIds: [], geometrySource: null, geometryStatus: "not_required_group_notice" };
   }
-  if (own.refs.length === 0) return null;
-
-  const geometryId = pointGeometryIdFor(input.datasetKind, input.eventId, input.version);
-  const written = await withOptionalSavepoint(tx, "hosted10_geometry", () => persistGeometryInTransaction(tx, {
-    schema_version: "2.0",
-    trace_id: input.traceId,
-    record_type: "Geometry",
-    dataset_kind: input.datasetKind,
-    geometry_id: geometryId,
-    role: "approximate_place",
-    geojson: { type: "Point", coordinates: point.coordinates },
-    coordinate_reference_system: "OGC:CRS84",
-    precision_m: null,
-    precision_basis: "unknown",
-    display_label: publicPointLabel(point.source, proposal.location_label),
-    source_evidence: own.refs.map((ref) => ({ ...ref })),
-  }));
-  if (!written.ok) return null;
-  return { support, geometryIds: [geometryId], geometrySource: point.source, geometryStatus: "written" };
+  return { support, geometryIds: [], geometrySource: null, geometryStatus: "whole_view" };
 }
 
 function parseJsonObject(value: unknown): Record<string, unknown> | null {
@@ -799,13 +788,9 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
     }
   }
 
-  // HOSTED-10: the optional point geometry and support are read or written only after the unchanged check, so a
-  // no_material_change decision never leaves a geometry row behind.
+  // HOSTED-10: the support and the location status are read only after the unchanged check. No geometry row is written
+  // by the publication role, and an event with no usable coordinate is published as a whole view, never refused for it.
   const enrichment = await enrichPublication(tx, { datasetKind, traceId, eventId, version, category: detail.category, proposal });
-  if (enrichment === null) {
-    if (action === "correct") return refuseCorrection("publication_failed", []);
-    return { outcome: { status: "denied", code: "publication_failed" } };
-  }
   const scope = { ...EMPTY_SCOPE, geometry_ids: [...enrichment.geometryIds] };
 
   await tx.query(
@@ -834,7 +819,7 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
         reason: core.reason,
         ...(waivers.length > 0 ? { waivers } : {}),
         ...(action === "correct" ? { base_version: core.baseVersion ?? null } : {}),
-        // HOSTED-10: the geometry source lives here, because the geometry row has no source column.
+        // HOSTED-10: the pending point's source and the location status live here. No geometry row is written.
         geometry_source: enrichment.geometrySource,
         geometry_status: enrichment.geometryStatus,
       }),

@@ -95,6 +95,7 @@ test("a raw published record maps its severity the same way", () => {
       title: "Pohon tumbang di Cawang",
       primary_category: "disasters_weather",
       severity: "medium",
+      location_label: "Cawang, Jakarta Timur",
     } as never,
   ]);
   assert.equal(model.events(new URLSearchParams()).data[0]?.severity, "medium");

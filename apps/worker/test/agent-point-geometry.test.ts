@@ -4,7 +4,6 @@ import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js"
 import { seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
-import { createPublicEventGeometriesRepository } from "../../db/src/public-event-geometries.js";
 import { createPublicEventListRepository } from "../../db/src/public-event-list.js";
 import { createPublicEventSnapshotRepository } from "../../db/src/public-event-snapshot.js";
 import { createPublicProjectionLookupRepository } from "../../db/src/public-projection-lookups.js";
@@ -23,16 +22,16 @@ import { createPublicEventProjectionService } from "../src/layers/l4-application
 import { createPublicEventListProjectionService } from "../src/layers/l4-application-integration/public-event-list-projection-service.js";
 import { PublicProjectionError, projectPublicEvent } from "../src/layers/l4-application-integration/public-projection.js";
 import {
-  JAKARTA_CENTRE_FALLBACK,
-  publicPointFor,
   publicPointLabel,
+  publicPointOutcomeFor,
 } from "../src/layers/l4-application-integration/public-point.js";
 
 /**
- * HOSTED-10: the point rule for published events. Every published event gets exactly one Point, except a group-specific
- * critical notice with no location. The point is the agent's approximate coordinate (model_approximate) when it is in the
- * sanity box, or the labelled Jakarta-centre fallback (fallback_jakarta_centre). An event needs a place id or a label,
- * except a group notice. Authored fictional data, the real decision writer and PGlite tables.
+ * HOSTED-10: the point rule for published events (owner decision, 17 Nov 2026). An event with an approximate in-box
+ * coordinate gets one Point (model_approximate) in the in-memory read model. The publication role writes no geometry row,
+ * so its decision records geometry_status "pending_geometry_writer". An event with no usable coordinate has no point and
+ * no geometry row. It is the whole map view (location_display "whole_view"). A non-group event needs a place id or a
+ * label. A group-specific critical notice may have neither. Authored fictional data, the real decision writer and PGlite.
  *
  * The DB list lists nothing for these events yet: no origin writer exists, so origin_ids stay empty and the strict
  * projector rejects them as INVALID_EVENT. The test pins that the page does not fail because of them.
@@ -97,60 +96,68 @@ function proposal(proposalId: string, options: ProposalOptions = {}): EventPropo
 
 describe("HOSTED-10 point rule", () => {
   it("(a) an agent coordinate inside the box is the one Point, labelled model_approximate", () => {
-    const point = publicPointFor({ category: "disasters_weather", locationLabel: "Cawang", coordinates: MODEL_POINT });
-    assert.deepEqual(point, { coordinates: MODEL_POINT, source: "model_approximate" });
+    assert.deepEqual(
+      publicPointOutcomeFor({ category: "disasters_weather", locationLabel: "Cawang", coordinates: MODEL_POINT }),
+      { status: "point", coordinates: MODEL_POINT },
+    );
 
     const detail = proposalToEventDetail(proposal("prop-h10-dto-a", { coordinates: MODEL_POINT }), undefined, { version: 1 });
+    assert.equal(detail.location_display, "point");
     assert.equal(detail.geometries.length, 1);
     assert.equal(detail.geometries[0]!.role, "approximate_place");
     assert.deepEqual(detail.geometries[0]!.geometry, { type: "Point", coordinates: MODEL_POINT });
     assert.equal(detail.geometries[0]!.precision_m, null, "no radius is invented");
+    assert.equal(detail.geometries[0]!.label, "Cawang, Jakarta Timur");
   });
 
-  it("(b) a missing coordinate is the Jakarta-centre fallback, labelled as one, and the event is listed", () => {
+  it("(b) no usable coordinate gives no geometry, location_display whole_view, and the event is listed", () => {
+    const cases: Array<[number, number] | null> = [null, [107.6, -6.9]];
+    for (const coordinates of cases) {
+      const detail = proposalToEventDetail(proposal("prop-h10-dto-b", { coordinates }), undefined, { version: 1 });
+      assert.equal(detail.title, "Genangan di Cawang", "the event is listed");
+      assert.equal(detail.location_display, "whole_view");
+      assert.deepEqual(detail.geometries, [], "no point is written for a whole-view event");
+    }
+    // The Jakarta-centre fallback is gone: no fallback point, label or coordinate reaches the detail.
     const detail = proposalToEventDetail(proposal("prop-h10-dto-b"), undefined, { version: 1 });
-    assert.equal(detail.geometries.length, 1);
-    assert.deepEqual(detail.geometries[0]!.geometry, {
-      type: "Point",
-      coordinates: [JAKARTA_CENTRE_FALLBACK.lon, JAKARTA_CENTRE_FALLBACK.lat],
-    });
-    assert.equal(detail.geometries[0]!.label, publicPointLabel("fallback_jakarta_centre", "Cawang, Jakarta Timur"));
-    assert.match(detail.geometries[0]!.label ?? "", /^Perkiraan pusat Jakarta/u);
-
-    // A coordinate outside the sanity box is treated like a missing one.
-    const outside = publicPointFor({ category: "disasters_weather", locationLabel: "Bandung", coordinates: [107.6, -6.9] });
-    assert.deepEqual(outside, {
-      coordinates: [JAKARTA_CENTRE_FALLBACK.lon, JAKARTA_CENTRE_FALLBACK.lat],
-      source: "fallback_jakarta_centre",
-    });
+    assert.doesNotMatch(JSON.stringify(detail), /Perkiraan pusat Jakarta|106\.82/u);
   });
 
-  it("(c) neither a place id nor a label is rejected with INVALID_EVENT", () => {
-    assert.throws(
-      () => proposalToEventDetail(proposal("prop-h10-dto-c", { locationLabel: null, coordinates: MODEL_POINT }), undefined, { version: 1 }),
-      (error: unknown) => error instanceof PublicEventDetailProjectionServiceError && error.message === "INVALID_EVENT",
-    );
+  it("(c) a non-group event with neither a place id nor a label is INVALID_EVENT, with or without a coordinate", () => {
+    const cases: Array<[number, number] | null> = [MODEL_POINT, null];
+    for (const coordinates of cases) {
+      assert.throws(
+        () => proposalToEventDetail(proposal("prop-h10-dto-c", { locationLabel: null, coordinates }), undefined, { version: 1 }),
+        (error: unknown) => error instanceof PublicEventDetailProjectionServiceError && error.message === "INVALID_EVENT",
+      );
+    }
   });
 
-  it("(d) a group-specific critical notice with no location is listed and has no point", () => {
+  it("(d) a group-specific critical notice with no location is listed as a whole view, with no point", () => {
     const detail = proposalToEventDetail(
       proposal("prop-h10-dto-d", { locationLabel: null, coordinates: null, primaryCategory: "group_specific_critical_notices" }),
       undefined,
       { version: 1 },
     );
     assert.equal(detail.category, "group_specific_critical_notices");
+    assert.equal(detail.location_display, "whole_view");
     assert.deepEqual(detail.geometries, []);
+    assert.deepEqual(
+      publicPointOutcomeFor({ category: "group_specific_critical_notices", locationLabel: null, coordinates: null }),
+      { status: "not_required_group_notice" },
+    );
   });
 
-  it("a group notice with a label but no coordinate still gets the labelled fallback point", () => {
+  it("a group notice with a label but no coordinate is a whole view, not a fallback point", () => {
     assert.deepEqual(
-      publicPointFor({ category: "group_specific_critical_notices", locationLabel: "Kemang", coordinates: null })?.source,
-      "fallback_jakarta_centre",
+      publicPointOutcomeFor({ category: "group_specific_critical_notices", locationLabel: "Kemang", coordinates: null }),
+      { status: "whole_view" },
     );
-    assert.equal(
-      publicPointFor({ category: "group_specific_critical_notices", locationLabel: null, coordinates: null }),
-      null,
-    );
+  });
+
+  it("the point label is the event's own label, or a neutral one", () => {
+    assert.equal(publicPointLabel("Cawang, Jakarta Timur"), "Cawang, Jakarta Timur");
+    assert.equal(publicPointLabel(null), "Lokasi perkiraan dari laporan");
   });
 });
 
@@ -285,6 +292,11 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
     return result.rows[0]!.record_json;
   }
 
+  async function geometryRowCount(): Promise<number> {
+    const result = await db.executor.query<{ n: number }>("SELECT COUNT(*)::int AS n FROM waspada.geometries");
+    return result.rows[0]!.n;
+  }
+
   before(async () => {
     db = await createTestDatabase();
     await applyMigrations(db.executor, await readMigrations(new URL("../../db/migrations/", import.meta.url)));
@@ -303,45 +315,36 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
     await db?.close();
   });
 
-  it("(a) an agent coordinate inside the box writes one Point with its persisted evidence", async () => {
+  it("(a) an agent coordinate inside the box is pending_geometry_writer, with no geometry row", async () => {
+    const rowsBefore = await geometryRowCount();
     await persist(proposal("prop-h10-db-a", { coordinates: MODEL_POINT }));
     const outcome = await auto("prop-h10-db-a");
     assert.equal(outcome.status, "published", JSON.stringify(outcome));
 
     const record = await currentRecord("prop-h10-db-a");
-    assert.equal(record.scope.geometry_ids.length, 1, "exactly one point");
-    const [geometryId] = record.scope.geometry_ids as string[];
-    assert.deepEqual(record.claims[0].scope.geometry_ids, [geometryId]);
+    assert.deepEqual(record.scope.geometry_ids, [], "the publication role writes no geometry row");
+    assert.deepEqual(record.claims[0].scope.geometry_ids, []);
     assert.equal(record.claims[0].support.length, 1, "the claim cites the persisted span it was built from");
     assert.equal(record.claims[0].support[0].report_revision_id, "rev-lineage-hosted10");
 
     const decision = await decisionRecord("prop-h10-db-a");
     assert.equal(decision.geometry_source, "model_approximate");
-    assert.equal(decision.geometry_status, "written");
-
-    const geometries = await createPublicEventGeometriesRepository(db.executor).read([geometryId]);
-    assert.equal(geometries.length, 1, "the public geometry reader serves the point");
-    const geometry = geometries[0]!.recordJson as Record<string, any>;
-    assert.equal(geometry.role, "approximate_place");
-    assert.equal(geometry.precision_m, null);
-    assert.equal(geometry.precision_basis, "unknown");
-    assert.deepEqual(geometry.geojson, { type: "Point", coordinates: MODEL_POINT });
+    assert.equal(decision.geometry_status, "pending_geometry_writer");
+    assert.equal(await geometryRowCount(), rowsBefore, "no geometry row is written");
   });
 
-  it("(b) a missing coordinate writes the labelled Jakarta-centre point and still publishes", async () => {
+  it("(b) no usable coordinate publishes as a whole view, with no geometry row", async () => {
+    const rowsBefore = await geometryRowCount();
     await persist(proposal("prop-h10-db-b"));
     const outcome = await auto("prop-h10-db-b");
     assert.equal(outcome.status, "published", JSON.stringify(outcome));
 
     const record = await currentRecord("prop-h10-db-b");
-    const [geometryId] = record.scope.geometry_ids as string[];
-    assert.ok(geometryId, "the point is written");
-    assert.equal((await decisionRecord("prop-h10-db-b")).geometry_source, "fallback_jakarta_centre");
-
-    const [geometry] = await createPublicEventGeometriesRepository(db.executor).read([geometryId]);
-    const recordJson = geometry!.recordJson as Record<string, any>;
-    assert.deepEqual(recordJson.geojson, { type: "Point", coordinates: [JAKARTA_CENTRE_FALLBACK.lon, JAKARTA_CENTRE_FALLBACK.lat] });
-    assert.equal(recordJson.display_label, publicPointLabel("fallback_jakarta_centre", "Cawang, Jakarta Timur"));
+    assert.deepEqual(record.scope.geometry_ids, []);
+    const decision = await decisionRecord("prop-h10-db-b");
+    assert.equal(decision.geometry_status, "whole_view");
+    assert.equal(decision.geometry_source, null);
+    assert.equal(await geometryRowCount(), rowsBefore, "no geometry row is written");
   });
 
   it("(c) an event with neither a place id nor a label is refused and writes nothing", async () => {
@@ -354,7 +357,20 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
     assert.equal(rows.rows[0]!.n, 0);
   });
 
-  it("(d) a group notice with no location is listed by a moderator with no point", async () => {
+  it("(c2) a non-group event with neither a place id nor a label and no coordinate is INVALID_EVENT at publish", async () => {
+    await persist(proposal("prop-h10-db-c2", { locationLabel: null, coordinates: null }));
+    // The unchanged ADR-061 gate queues a location-less proposal for a moderator first.
+    assert.deepEqual(await auto("prop-h10-db-c2"), { status: "queued", reasons: ["location_missing"] });
+    // The moderator publish builds the DTO, which rejects the event as INVALID_EVENT, so nothing is written.
+    const outcome = await moderate("prop-h10-db-c2");
+    assert.deepEqual(outcome, { status: "denied", code: "publication_failed" });
+    const rows = await db.executor.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM waspada.publication_decisions WHERE dataset_kind = 'live' AND proposal_id = 'prop-h10-db-c2'",
+    );
+    assert.equal(rows.rows[0]!.n, 0);
+  });
+
+  it("(d) a group notice with no location is listed by a moderator as a whole view, with no point", async () => {
     await persist(proposal("prop-h10-db-d", {
       locationLabel: null,
       coordinates: null,

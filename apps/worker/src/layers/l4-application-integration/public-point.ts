@@ -1,16 +1,18 @@
 /**
- * HOSTED-10: the one point rule for published events. Pure helpers with no project imports, so the publication, the record
- * builder, the in-memory public read model and the projector can share them without an import cycle.
+ * HOSTED-10: the one point rule for published events. Pure helpers with no project imports, so the publication, the
+ * record builder, the in-memory public read model and the projector can share them without an import cycle.
  *
- * Rule (owner decision, 16 Nov 2026):
- * - Every published event gets exactly one Point geometry, except a group-specific critical notice with no location.
- * - The point is a source coordinate when a source gives one (none does today). Otherwise it is the agent's
- *   approximateCoordinates, labelled model_approximate. If that is missing, not finite, or outside the sanity box, the
- *   point is the Jakarta centre, labelled fallback_jakarta_centre.
- * - No radius, polygon or line is ever written.
+ * Rule (owner decision, 17 Nov 2026; replaces the Jakarta-centre fallback of 16 Nov):
+ * - An event with a usable approximate coordinate gets one Point, labelled model_approximate. The coordinate must be
+ *   finite and inside the sanity box. A source coordinate would come first, but no source gives one today.
+ * - An event with no usable coordinate has NO point and NO geometry row. Its location is the whole map view
+ *   (location_display "whole_view"): the map fits the Jakarta extent, shows no pin, and never reuses another event's
+ *   point or the Jakarta centre as a pin.
+ * - No radius, polygon or line is ever written, and no coordinate is invented.
  * - An event needs a place id or a location label. A group-specific critical notice may have neither.
+ * - The publication role cannot write geometry rows. A coordinate-bearing event therefore records
+ *   geometry_status "pending_geometry_writer" and no geometry row (open decision: a narrow geometry-writer role, or defer).
  */
-import { createHash } from "node:crypto";
 
 export const GROUP_NOTICE_CATEGORY = "group_specific_critical_notices";
 
@@ -22,15 +24,14 @@ export const APPROXIMATE_POINT_SANITY_BOX = Object.freeze({
   lonMax: 107.1,
 });
 
-/** The Jakarta centre fallback. Labelled, never presented as a source location. */
-export const JAKARTA_CENTRE_FALLBACK = Object.freeze({ lon: 106.82, lat: -6.2 });
+/** The only point source today. A source coordinate would get its own value when a source supplies one. */
+export type PublicPointSource = "model_approximate";
 
-export type PublicPointSource = "model_approximate" | "fallback_jakarta_centre";
-
-export interface PublicPoint {
-  readonly coordinates: [number, number];
-  readonly source: PublicPointSource;
-}
+/** How an event's location is published. Only "point" carries a coordinate. */
+export type PublicPointOutcome =
+  | { readonly status: "point"; readonly coordinates: [number, number] }
+  | { readonly status: "whole_view" }
+  | { readonly status: "not_required_group_notice" };
 
 /** The model's approximate point as [longitude, latitude], or null when it is missing, non-finite or outside the box. */
 export function approximatePointFor(proposal: { readonly coordinates?: unknown }): [number, number] | null {
@@ -49,33 +50,28 @@ export function hasLocationLabel(locationLabel: unknown): boolean {
 }
 
 /**
- * The one point an event publishes, or null. Null only for a group-specific critical notice with no location, meaning
- * no label and no in-box approximate point. A source coordinate would be used first, but no source gives one today.
+ * The location outcome of an event. A usable approximate coordinate gives "point". Otherwise the event is "whole_view",
+ * except a group-specific critical notice with no label, which is "not_required_group_notice" (it has no location at all).
  */
-export function publicPointFor(input: {
+export function publicPointOutcomeFor(input: {
   readonly category: string;
   readonly locationLabel: unknown;
   readonly coordinates: unknown;
-}): PublicPoint | null {
+}): PublicPointOutcome {
   const approximate = approximatePointFor({ coordinates: input.coordinates });
-  if (approximate !== null) return { coordinates: approximate, source: "model_approximate" };
-  if (input.category === GROUP_NOTICE_CATEGORY && !hasLocationLabel(input.locationLabel)) return null;
-  return { coordinates: [JAKARTA_CENTRE_FALLBACK.lon, JAKARTA_CENTRE_FALLBACK.lat], source: "fallback_jakarta_centre" };
+  if (approximate !== null) return { status: "point", coordinates: approximate };
+  if (input.category === GROUP_NOTICE_CATEGORY && !hasLocationLabel(input.locationLabel)) {
+    return { status: "not_required_group_notice" };
+  }
+  return { status: "whole_view" };
 }
 
-/** The public label of a point. A fallback is named as one, so the reader is never shown it as a source location. */
-export function publicPointLabel(source: PublicPointSource, locationLabel: unknown): string {
-  if (source === "fallback_jakarta_centre") return "Perkiraan pusat Jakarta, lokasi belum diketahui";
+/** The public label of a point: the event's own location label, or a neutral label. It never names a fallback. */
+export function publicPointLabel(locationLabel: unknown): string {
   return hasLocationLabel(locationLabel) ? String(locationLabel).trim().slice(0, 200) : "Lokasi perkiraan dari laporan";
 }
 
 /** A non-group event needs a place id or a label. Proposals carry no place id, so the label is the test. */
 export function missingPlaceOrLabel(category: string, placeCount: number): boolean {
   return category !== GROUP_NOTICE_CATEGORY && placeCount === 0;
-}
-
-/** One geometry id per public version, so a later version with moved coordinates gets its own append-only row. */
-export function pointGeometryIdFor(datasetKind: string, eventId: string, version: number): string {
-  const digest = createHash("sha256").update(`${datasetKind}:${eventId}:${version}`).digest("hex");
-  return `geo-point-${digest.slice(0, 32)}`;
 }

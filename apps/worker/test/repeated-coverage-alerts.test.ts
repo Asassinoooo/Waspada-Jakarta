@@ -305,14 +305,15 @@ describe("FR-11 repeated coverage and re-delivery", () => {
       reviewer_id: AGENT_AUTO_PUBLISHER_ID,
     }]);
 
-    // HOSTED-10: the proposal carries no coordinate, so its one point is the labelled Jakarta-centre fallback.
-    const geometryIds = (record.scope as { geometry_ids: string[] }).geometry_ids;
-    assert.equal(geometryIds.length, 1, "every published event gets exactly one point");
-    const pointSource = await db.executor.query<{ geometry_source: string | null }>(
-      `SELECT record_json->>'geometry_source' AS geometry_source
+    // The proposal has no source-supported geometry, so the version maps no geometry and writes no geometry row.
+    assert.deepEqual((record.scope as { geometry_ids: unknown[] }).geometry_ids, []);
+    // HOSTED-10: no usable coordinate means the event is the whole map view, recorded as such. No fallback point is written.
+    const status = await db.executor.query<{ geometry_status: string | null; geometry_source: string | null }>(
+      `SELECT record_json->>'geometry_status' AS geometry_status, record_json->>'geometry_source' AS geometry_source
        FROM waspada.publication_decisions WHERE dataset_kind = 'live' AND proposal_id = 'prop-rep-feed'`,
     );
-    assert.equal(pointSource.rows[0]?.geometry_source, "fallback_jakarta_centre");
+    assert.equal(status.rows[0]?.geometry_status, "whole_view");
+    assert.equal(status.rows[0]?.geometry_source, null);
   });
 
   it("the publication writer role inserts only the review row it needs and cannot change it", async () => {

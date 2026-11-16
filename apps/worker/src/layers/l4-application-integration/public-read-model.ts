@@ -16,7 +16,7 @@ import type {
 } from "../../contracts/public-api.js";
 import type { SourceStatusProvider } from "../l1-data-knowledge/source-status.js";
 import type { EventProposalDto, StoredEvidenceChunk } from "./moderation-api.js";
-import { missingPlaceOrLabel, publicPointFor, publicPointLabel } from "./public-point.js";
+import { missingPlaceOrLabel, publicPointLabel, publicPointOutcomeFor } from "./public-point.js";
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
@@ -278,6 +278,7 @@ export class PublicReadModel {
         published_at: event.published_at,
         ...(event.severity !== undefined ? { severity: event.severity } : {}),
         geometries: [...(event.geometries || [])],
+        ...(event.location_display !== undefined ? { location_display: event.location_display } : {}),
       };
     }
     const fixture = this.findFixture(eventId);
@@ -393,6 +394,7 @@ export class PublicReadModel {
       published_at: withFreshness.published_at,
       ...(withFreshness.severity !== undefined ? { severity: withFreshness.severity } : {}),
       geometries,
+      ...(withFreshness.location_display !== undefined ? { location_display: withFreshness.location_display } : {}),
       ...(publication ? { publication } : {}),
     };
   }
@@ -667,19 +669,20 @@ export function proposalToEventDetail(
   if (missingPlaceOrLabel(category, places.length)) {
     throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
   }
-  // HOSTED-10: one Point per event, from public-point.ts. It is approximate, carries no radius (precision_m null) and,
-  // when it is the Jakarta centre fallback, is labelled as one. A group notice with no location has no point.
+  // HOSTED-10: an approximate in-box coordinate gives one Point (no radius, precision_m null). Without one the event has
+  // no point and is shown as the whole map view (location_display whole_view). No point is ever invented or reused.
   const geometries: PublicGeometry[] = [];
-  const point = publicPointFor({ category, locationLabel: proposal.location_label, coordinates: proposal.coordinates });
-  if (point !== null) {
+  const outcome = publicPointOutcomeFor({ category, locationLabel: proposal.location_label, coordinates: proposal.coordinates });
+  if (outcome.status === "point") {
     geometries.push({
       geometry_id: sanitizeEventId(`${eventId}-geom-1`),
       role: "approximate_place",
-      geometry: { type: "Point", coordinates: point.coordinates },
+      geometry: { type: "Point", coordinates: outcome.coordinates },
       precision_m: null,
-      label: publicPointLabel(point.source, proposal.location_label),
+      label: publicPointLabel(proposal.location_label),
     });
   }
+  const locationDisplay: "point" | "whole_view" = outcome.status === "point" ? "point" : "whole_view";
 
   const publishedAt = proposal.proposed_at || new Date().toISOString();
 
@@ -744,6 +747,7 @@ export function proposalToEventDetail(
     published_at: publishedAt,
     ...(severity !== undefined ? { severity } : {}),
     geometries,
+    location_display: locationDisplay,
     ...(options?.publication ? { publication: options.publication } : {}),
   };
 }
@@ -814,8 +818,8 @@ function rawInputToEventDetail(
     places.push(input.location_label.trim());
   }
 
-  // HOSTED-10: a raw record's own coordinate is the source coordinate and comes first. Without one, the shared point
-  // rule applies (approximate fallback or no point for a group notice with no location).
+  // HOSTED-10: a raw record's own coordinate is the source coordinate and comes first. Without one, the event has no
+  // point and is shown as the whole map view.
   if (missingPlaceOrLabel(category, places.length)) {
     throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
   }
@@ -838,18 +842,8 @@ function rawInputToEventDetail(
   } else if (Array.isArray(input.geometries)) {
     geometries.push(...(input.geometries as PublicGeometry[]));
   }
-  if (geometries.length === 0) {
-    const point = publicPointFor({ category, locationLabel: places[0] ?? null, coordinates: null });
-    if (point !== null) {
-      geometries.push({
-        geometry_id: sanitizeEventId(`${eventId}-geom-1`),
-        role: "approximate_place",
-        geometry: { type: "Point", coordinates: point.coordinates },
-        precision_m: null,
-        label: publicPointLabel(point.source, places[0] ?? null),
-      });
-    }
-  }
+  // HOSTED-10: with no source coordinate and no geometries, the event is the whole map view. Nothing is invented.
+  const locationDisplay: "point" | "whole_view" = geometries.length > 0 ? "point" : "whole_view";
 
   const publishedAt = typeof input.published_at === "string"
     ? input.published_at
@@ -894,5 +888,6 @@ function rawInputToEventDetail(
     published_at: publishedAt,
     ...(severity !== undefined ? { severity } : {}),
     geometries,
+    location_display: locationDisplay,
   };
 }
