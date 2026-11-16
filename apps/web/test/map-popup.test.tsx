@@ -122,6 +122,13 @@ test("a marker from an approximate place says so, and an unmapped event says it 
   assert.match(anchored({ marker: null }), /Lokasi belum dipetakan dari sumber\./);
 });
 
+test("an unmapped whole_view event says its location is the whole Jakarta view, not that it failed to map", () => {
+  const whole = anchored({ event: event({ location_display: "whole_view" }), marker: null });
+  assert.match(whole, /Lokasi: seluruh peta Jakarta/);
+  assert.match(whole, /bukan pernyataan bahwa area aman/);
+  assert.doesNotMatch(whole, /belum dipetakan/);
+});
+
 test("the phone popup is a peek sheet that names the dialog and keeps the same actions", () => {
   const peek = renderToStaticMarkup(createElement(PeekMapPopup, props()));
   assert.match(peek, /role="dialog"/);

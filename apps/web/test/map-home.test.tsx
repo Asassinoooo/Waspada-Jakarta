@@ -104,6 +104,23 @@ test("the empty list says the exact message, and never claims an area is safe", 
   assert.doesNotMatch(html, /Reset filter/, "no reset button without an active filter");
 });
 
+test("a whole_view event in the list says it covers the whole map, and an event without the flag keeps its not-mapped badge", () => {
+  const html = renderToStaticMarkup(createElement(MapEventList, {
+    headingId: "t",
+    status: "loaded",
+    events: [event("whole-list-1", { location_display: "whole_view" }), event("plain-list-1")],
+    markers: new Map(),
+    selectedId: null,
+    filtersActive: false,
+    errorMessage: null,
+    onSelect: () => {},
+    onReset: () => {},
+    onRetry: () => {},
+  }));
+  assert.match(html, /map-card__unmapped">Tanpa titik</u);
+  assert.equal((html.match(/Belum dipetakan/g) ?? []).length, 1, "only the event without the flag keeps the not-mapped badge");
+});
+
 test("an empty filtered list offers Reset filter", () => {
   const html = renderToStaticMarkup(createElement(MapEventList, {
     headingId: "t",
@@ -236,6 +253,13 @@ test("the phone list and popup use a bottom sheet, and the desktop list is a lef
   assert.match(source, /"\(min-width: 900px\)"/);
   assert.match(source, /className="map-home__panel"/);
   assert.match(source, /className="map-list-sheet"/);
+});
+
+test("selecting a whole_view event glides to the default Jakarta view, never to another event's pin", () => {
+  // MapHome selection is hook-bound, so this pins the source: a whole_view event with no marker takes the fly to the default view.
+  const source = readFileSync(new URL("../src/MapHome.tsx", import.meta.url), "utf8");
+  assert.match(source, /else if \(eventsById\.get\(eventId\)\?\.location_display === "whole_view"\) flyTo\(MAP_DEFAULT_VIEW\.center, MAP_DEFAULT_VIEW\.zoom, false\)/u);
+  assert.match(source, /else if \(target\.event\.location_display === "whole_view"\) flyTo\(MAP_DEFAULT_VIEW\.center, MAP_DEFAULT_VIEW\.zoom, false\)/u);
 });
 
 test("the filters type stays a value type, so a default is never mutated", () => {

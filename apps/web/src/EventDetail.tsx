@@ -338,6 +338,7 @@ function ApiEventDetail({
             <RecordMapPanel
               title={event.title}
               geometries={event.geometries}
+              locationDisplay={event.location_display}
               onReturnToList={onBackToList ?? (() => { window.location.hash = "#peta"; })}
             />
             <ApiHistory state={history} onRetry={onRetryHistory} demo={demo} />

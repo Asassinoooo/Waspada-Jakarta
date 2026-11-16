@@ -89,6 +89,15 @@ test("a record whose API geometries are empty still says it is not mapped, witho
   assert.doesNotMatch(markup, /class="geo-feature"/u);
 });
 
+test("a whole_view record with no API geometry is on the whole Jakarta view, with no pin and no not-mapped claim", () => {
+  const markup = renderDetail({ ...baseRecord, location_display: "whole_view", geometries: [] });
+
+  assert.match(markup, /Lokasi: seluruh peta Jakarta/u);
+  assert.match(markup, /Tanpa titik di peta bukan pernyataan bahwa area aman/u);
+  assert.doesNotMatch(markup, /Tidak dipetakan/u);
+  assert.doesNotMatch(markup, /class="geo-feature"/u, "a whole_view record never gets a pin");
+});
+
 test("a response with no geometries field makes no claim that the record lacks geometry", () => {
   const record = { ...baseRecord, geometries: undefined } as unknown as EventDetailRecord;
   const markup = renderDetail(record);

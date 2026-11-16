@@ -267,6 +267,72 @@ test("filtering a previously selected event out of the loaded page hides it with
   assert.doesNotMatch(markup, /data-feature-id="selected-before-filter"/);
 });
 
+test("a whole_view event selected on the map shows the whole-view note, draws no marker, and never borrows another event's point", () => {
+  const pointEvent = makeEvent("point-other-1", 1, "Point event");
+  const wholeView: EventView = { ...makeEvent("whole-1", 1, "Whole view event"), location_display: "whole_view" };
+  const otherFeature = makeFeature(pointEvent, "other-feature", geometries[0]!);
+  const markup = renderToStaticMarkup(
+    <MapPanel
+      selection={{ kind: "api-event", event: wholeView }}
+      mapState={{ status: "loaded", data: makeCollection([otherFeature]) }}
+      context={liveContext}
+      feedStatus="loaded"
+      visibleEvents={[pointEvent, wholeView]}
+      onSelectApiEvent={() => {}}
+      onRetryMap={() => {}}
+      onReturnToList={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Lokasi: seluruh peta Jakarta/);
+  assert.match(markup, /bukan pernyataan bahwa area aman/);
+  assert.doesNotMatch(markup, /Tidak dipetakan/, "a whole_view event never reads as a mapping failure");
+  assert.doesNotMatch(markup, /data-event-id="whole-1"/, "a whole_view event gets no marker");
+  assert.doesNotMatch(markup, /geo-feature--selected/, "nothing is highlighted for a whole_view selection");
+  assert.match(markup, /data-event-id="point-other-1"/, "the other event keeps its own point");
+});
+
+test("a point event selected on the map keeps its own feature and shows neither the whole-view nor the not-mapped note", () => {
+  const pointEvent: EventView = { ...makeEvent("point-1", 1, "Point event"), location_display: "point" };
+  const feature = makeFeature(pointEvent, "point-feature", geometries[0]!);
+  const markup = renderToStaticMarkup(
+    <MapPanel
+      selection={{ kind: "api-event", event: pointEvent, featureId: "point-feature" }}
+      mapState={{ status: "loaded", data: makeCollection([feature]) }}
+      context={liveContext}
+      feedStatus="loaded"
+      visibleEvents={[pointEvent]}
+      onSelectApiEvent={() => {}}
+      onRetryMap={() => {}}
+      onReturnToList={() => {}}
+    />,
+  );
+
+  assert.doesNotMatch(markup, /seluruh peta Jakarta/);
+  assert.doesNotMatch(markup, /Tidak dipetakan/);
+  assert.match(markup, /data-feature-id="point-feature"/);
+  assert.match(markup, /aria-pressed="true"/);
+});
+
+test("a selected event without location_display and without geometry still says it is not mapped", () => {
+  const plain = makeEvent("plain-1", 1, "Plain event");
+  const markup = renderToStaticMarkup(
+    <MapPanel
+      selection={{ kind: "api-event", event: plain }}
+      mapState={{ status: "loaded", data: makeCollection([]) }}
+      context={liveContext}
+      feedStatus="loaded"
+      visibleEvents={[plain]}
+      onSelectApiEvent={() => {}}
+      onRetryMap={() => {}}
+      onReturnToList={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Tidak dipetakan: respons GeoJSON tidak menyertakan geometri/);
+  assert.doesNotMatch(markup, /seluruh peta Jakarta/);
+});
+
 function renderLiveFeed(mapState: GeoJSONMapState) {
   const event = makeEvent("feed-live-1", 1, "Live event stays visible");
   return renderToStaticMarkup(
