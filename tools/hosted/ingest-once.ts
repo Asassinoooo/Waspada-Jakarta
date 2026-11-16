@@ -1,0 +1,127 @@
+// HOSTED-13: pure decisions for the scheduled one-cycle hosted ingest (`serve:hosted-ingest:once`).
+// Flag parsing, the time budget and the AI-job drain loop. Dependencies are injected, so the drain is
+// tested with fakes. No database and no network at import time. Log text carries counts, stop reasons and
+// fixed codes only: never URLs, keys, prompts, job text or raw error messages.
+import type { SqlExecutor } from "../../apps/db/src/sql.js";
+
+export const DEFAULT_INGEST_TIME_BUDGET_MINUTES = 20;
+export const MIN_INGEST_TIME_BUDGET_MINUTES = 1;
+/** Upper bound: setup, the poll cycle, one in-flight job and the freshness pass must fit in the 30-minute workflow timeout. */
+export const MAX_INGEST_TIME_BUDGET_MINUTES = 25;
+/** The drain stops after this many jobs in a row that did not complete (failed, deferred or lost the lease). */
+export const DRAIN_MAX_CONSECUTIVE_NOT_COMPLETED = 3;
+
+export interface RunFlags {
+  readonly headless: boolean;
+  readonly once: boolean;
+  /** Set for an unsupported combination. Fixed text. The caller prints it and exits 1. */
+  readonly error?: string;
+}
+
+/** `--once` is valid only with `--headless`. Without it the process would open the local PGlite server. */
+export function parseRunFlags(argv: readonly string[]): RunFlags {
+  const headless = argv.includes("--headless");
+  const once = argv.includes("--once");
+  if (once && !headless) {
+    return {
+      headless,
+      once,
+      error: "--once runs only with --headless (the hosted database). Use npm run serve:hosted-ingest:once.",
+    };
+  }
+  return { headless, once };
+}
+
+export interface IngestTimeBudget {
+  readonly budgetMs: number;
+  /** True when INGEST_TIME_BUDGET_MINUTES was set but not an integer from 1 to 25. The raw value is never echoed. */
+  readonly invalid: boolean;
+}
+
+/** Reads INGEST_TIME_BUDGET_MINUTES. An unset, empty or invalid value falls back to the 20-minute default. */
+export function resolveIngestTimeBudget(raw: string | undefined): IngestTimeBudget {
+  const defaultMs = DEFAULT_INGEST_TIME_BUDGET_MINUTES * 60_000;
+  const trimmed = raw?.trim() ?? "";
+  if (trimmed === "") return { budgetMs: defaultMs, invalid: false };
+  const minutes = /^\d+$/u.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(minutes) || minutes < MIN_INGEST_TIME_BUDGET_MINUTES || minutes > MAX_INGEST_TIME_BUDGET_MINUTES) {
+    return { budgetMs: defaultMs, invalid: true };
+  }
+  return { budgetMs: minutes * 60_000, invalid: false };
+}
+
+/**
+ * The drain starts no new job at or after this instant. The clock starts when the run starts (before the
+ * coverage guard), so the poll cycle and setup use up the same budget as the drain.
+ */
+export function drainDeadlineMs(runStartMs: number, budgetMs: number): number {
+  return runStartMs + budgetMs;
+}
+
+export function isTimeBudgetExhausted(nowMs: number, deadlineMs: number): boolean {
+  return nowMs >= deadlineMs;
+}
+
+export type DrainStop = "budget" | "empty" | "consecutive_not_completed";
+
+export interface DrainDeps {
+  readonly deadlineMs: number;
+  readonly now: () => number;
+  /** Read-only. True when the claim predicate would find a job right now. */
+  readonly hasClaimableJob: () => Promise<boolean>;
+  /** One claim-and-process step. True: the job completed. False: it failed, was deferred or lost its lease. */
+  readonly processNextJob: () => Promise<boolean>;
+  readonly maxConsecutiveNotCompleted?: number;
+}
+
+export interface DrainResult {
+  readonly completed: number;
+  readonly notCompleted: number;
+  readonly stop: DrainStop;
+}
+
+/**
+ * Drains the live AI queue for one run. The claim and the lease stay in the runner, so no job is processed
+ * twice. The budget is checked before each claim, so the drain never starts work after the deadline. The
+ * `false` from processNextJob is ambiguous (no job, or a failed job), so the claimable check decides "empty".
+ * A thrown error is not caught here: it means the database is unavailable, and the caller treats it as fatal.
+ */
+export async function drainAiJobs(deps: DrainDeps): Promise<DrainResult> {
+  const limit = deps.maxConsecutiveNotCompleted ?? DRAIN_MAX_CONSECUTIVE_NOT_COMPLETED;
+  let completed = 0;
+  let notCompleted = 0;
+  let streak = 0;
+  for (;;) {
+    if (isTimeBudgetExhausted(deps.now(), deps.deadlineMs)) return { completed, notCompleted, stop: "budget" };
+    if (streak >= limit) return { completed, notCompleted, stop: "consecutive_not_completed" };
+    if (!(await deps.hasClaimableJob())) return { completed, notCompleted, stop: "empty" };
+    if (await deps.processNextJob()) {
+      completed += 1;
+      streak = 0;
+    } else {
+      notCompleted += 1;
+      streak += 1;
+    }
+  }
+}
+
+/**
+ * Read-only mirror of the claim predicate in apps/db (claimAiJob). Only the runner's claim takes a lease;
+ * this check just decides whether the drain should stop.
+ */
+export async function hasClaimableAiJob(
+  executor: Pick<SqlExecutor, "query">,
+  datasetKind: string,
+  nowIso: string,
+): Promise<boolean> {
+  const result = await executor.query<{ found: number }>(
+    `SELECT 1 AS found
+       FROM waspada.ai_jobs
+      WHERE dataset_kind = $2
+        AND ((status IN ('pending', 'retry') AND available_at <= $1)
+          OR (status = 'leased' AND lease_expires_at < $1))
+      LIMIT 1`,
+    [nowIso, datasetKind],
+  );
+  return result.rows.length > 0;
+}

@@ -28,6 +28,15 @@ import {
 } from "../hosted/hosted-session.js";
 import { diffLayerRoles, LAYER_ROLES, planModeratorSeed, seedModeratorAccount } from "../hosted/neon-bootstrap.js";
 import { roleCreationsIn } from "../hosted/layer-roles.js";
+import {
+  DEFAULT_INGEST_TIME_BUDGET_MINUTES,
+  drainAiJobs,
+  drainDeadlineMs,
+  hasClaimableAiJob,
+  isTimeBudgetExhausted,
+  parseRunFlags,
+  resolveIngestTimeBudget,
+} from "../hosted/ingest-once.js";
 
 const READY_ROWS: RegistryRow[] = expectedLiveSourceIds().map((id) => ({
   source_id: id,
@@ -416,5 +425,158 @@ describe("moderator seed (HOSTED-09, fake store, no database)", () => {
     const existing = fakeStore(true);
     assert.equal(await seedModeratorAccount(existing.store, input), "already exists");
     assert.equal(existing.created.length, 0);
+  });
+});
+
+describe("HOSTED-13 scheduled one-cycle ingest (pure decisions, fakes only)", () => {
+  const TWENTY_MIN_MS = 20 * 60_000;
+
+  it("parses --once only together with --headless and refuses it alone", () => {
+    assert.deepEqual(parseRunFlags(["--headless", "--once"]), { headless: true, once: true });
+    assert.deepEqual(parseRunFlags(["--headless"]), { headless: true, once: false });
+    assert.deepEqual(parseRunFlags([]), { headless: false, once: false });
+    const refused = parseRunFlags(["--once"]);
+    assert.equal(refused.once, true);
+    assert.equal(refused.headless, false);
+    assert.match(refused.error ?? "", /--once runs only with --headless/u);
+  });
+
+  it("defaults the drain budget to 20 minutes and accepts whole minutes from 1 to 25", () => {
+    assert.equal(DEFAULT_INGEST_TIME_BUDGET_MINUTES, 20);
+    assert.deepEqual(resolveIngestTimeBudget(undefined), { budgetMs: TWENTY_MIN_MS, invalid: false });
+    assert.deepEqual(resolveIngestTimeBudget("   "), { budgetMs: TWENTY_MIN_MS, invalid: false });
+    assert.deepEqual(resolveIngestTimeBudget("1"), { budgetMs: 60_000, invalid: false });
+    assert.deepEqual(resolveIngestTimeBudget("25"), { budgetMs: 25 * 60_000, invalid: false });
+  });
+
+  it("falls back to the default for an out-of-range or malformed budget", () => {
+    for (const raw of ["0", "26", "-5", "2.5", "20m", "1e3"]) {
+      assert.deepEqual(resolveIngestTimeBudget(raw), { budgetMs: TWENTY_MIN_MS, invalid: true }, raw);
+    }
+  });
+
+  it("the deadline counts from run start, and the budget is exhausted exactly at the deadline", () => {
+    const deadline = drainDeadlineMs(1_000_000, TWENTY_MIN_MS);
+    assert.equal(deadline, 1_000_000 + TWENTY_MIN_MS);
+    assert.equal(isTimeBudgetExhausted(deadline - 1, deadline), false);
+    assert.equal(isTimeBudgetExhausted(deadline, deadline), true);
+  });
+
+  it("starts no claim once the budget is already used up", async () => {
+    let processed = 0;
+    let claimChecks = 0;
+    const result = await drainAiJobs({
+      deadlineMs: 100,
+      now: () => 100,
+      hasClaimableJob: async () => {
+        claimChecks += 1;
+        return true;
+      },
+      processNextJob: async () => {
+        processed += 1;
+        return true;
+      },
+    });
+    assert.deepEqual(result, { completed: 0, notCompleted: 0, stop: "budget" });
+    assert.equal(processed, 0);
+    assert.equal(claimChecks, 0);
+  });
+
+  it("never starts a job at or after the deadline, even while the queue still has work", async () => {
+    let clock = 0;
+    let processed = 0;
+    const result = await drainAiJobs({
+      deadlineMs: 50,
+      now: () => clock,
+      hasClaimableJob: async () => true,
+      processNextJob: async () => {
+        processed += 1;
+        clock += 20; // jobs start at t=0, 20 and 40; at t=60 the budget is spent
+        return true;
+      },
+    });
+    assert.equal(processed, 3);
+    assert.deepEqual(result, { completed: 3, notCompleted: 0, stop: "budget" });
+  });
+
+  it("stops as empty without calling processNextJob when no job is claimable", async () => {
+    let processed = 0;
+    const result = await drainAiJobs({
+      deadlineMs: Infinity,
+      now: () => 0,
+      hasClaimableJob: async () => false,
+      processNextJob: async () => {
+        processed += 1;
+        return true;
+      },
+    });
+    assert.deepEqual(result, { completed: 0, notCompleted: 0, stop: "empty" });
+    assert.equal(processed, 0);
+  });
+
+  it("drains until the queue is empty and counts completed jobs", async () => {
+    const claimable = [true, true, false];
+    let claimIndex = 0;
+    let processed = 0;
+    const result = await drainAiJobs({
+      deadlineMs: Infinity,
+      now: () => 0,
+      hasClaimableJob: async () => claimable[claimIndex++] ?? false,
+      processNextJob: async () => {
+        processed += 1;
+        return true;
+      },
+    });
+    assert.equal(processed, 2);
+    assert.deepEqual(result, { completed: 2, notCompleted: 0, stop: "empty" });
+  });
+
+  it("stops after three jobs in a row that do not complete, and a completed job resets the streak", async () => {
+    const outcomes = [false, false, true, false, false, false, true];
+    let index = 0;
+    const result = await drainAiJobs({
+      deadlineMs: Infinity,
+      now: () => 0,
+      hasClaimableJob: async () => true,
+      processNextJob: async () => outcomes[index++] ?? true,
+    });
+    assert.equal(index, 6, "the seventh outcome is never reached");
+    assert.deepEqual(result, { completed: 1, notCompleted: 5, stop: "consecutive_not_completed" });
+  });
+
+  it("lets a thrown error propagate, so the caller can treat a lost database as a hard error", async () => {
+    await assert.rejects(
+      drainAiJobs({
+        deadlineMs: Infinity,
+        now: () => 0,
+        hasClaimableJob: async () => true,
+        processNextJob: async () => {
+          throw new Error("connection lost");
+        },
+      }),
+      /connection lost/u,
+    );
+  });
+
+  it("the claimable check is read-only and mirrors the claim predicate for the live dataset", async () => {
+    const calls: { text: string; params: readonly unknown[] | undefined }[] = [];
+    const executor: Pick<SqlExecutor, "query"> = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        calls.push({ text, params });
+        return { rows: [] as Row[] };
+      },
+    };
+    const found = await hasClaimableAiJob(executor, "live", "2026-11-16T00:00:00.000Z");
+    assert.equal(found, false);
+    assert.equal(calls.length, 1);
+    assert.doesNotMatch(calls[0]!.text, /\b(UPDATE|INSERT|DELETE)\b|FOR UPDATE/iu);
+    assert.match(calls[0]!.text, /status IN \('pending', 'retry'\) AND available_at <= \$1/u);
+    assert.match(calls[0]!.text, /status = 'leased' AND lease_expires_at < \$1/u);
+    assert.deepEqual(calls[0]!.params, ["2026-11-16T00:00:00.000Z", "live"]);
+
+    const withRow: Pick<SqlExecutor, "query"> = {
+      query: async <Row extends object>() => ({ rows: [{ found: 1 }] as unknown as Row[] }),
+    };
+    assert.equal(await hasClaimableAiJob(withRow, "live", "2026-11-16T00:00:00.000Z"), true);
   });
 });

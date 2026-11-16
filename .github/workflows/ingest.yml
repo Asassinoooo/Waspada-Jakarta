@@ -1,0 +1,49 @@
+name: Hosted live ingest
+
+# HOSTED-13: one bounded ingest cycle against the hosted Neon database every 30 minutes, then exit.
+# The repository is public, so every log line here is public. The step prints counts and fixed stop reasons only.
+# The concurrency group below is the only lock. Local PC mode (serve:live or serve:hosted-ingest without --once)
+# has no lock, so it must not run alongside this schedule.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: waspada-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # No secrets on this step: install scripts run here, and the repository is public.
+      - name: Install dependencies
+        run: npm ci
+
+      # Secrets are passed to this step only. Nothing here is echoed, and no .env file is read.
+      - name: Run one ingest cycle
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          AI_PROVIDER: google_ai_studio
+          GOOGLE_AI_CHAT_MODEL: gemini-3.5-flash-lite
+          GOOGLE_AI_FALLBACK_CHAT_MODEL: gemini-3.1-flash-lite
+          DATASET_KIND: live
+        run: npm run serve:hosted-ingest:once
