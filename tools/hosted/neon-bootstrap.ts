@@ -1,15 +1,17 @@
 // HOSTED-03 / H1: one-time (and idempotent) bootstrap of a hosted Neon database for headless live ingest.
 //
-//   npm run hosted:bootstrap      (reads NEON_DATABASE_URL and the optional WASPADA_ADMIN_* from .env.local)
+//   npm run hosted:bootstrap      (reads NEON_DATABASE_URL and the optional WASPADA_ADMIN_* and WASPADA_MODERATOR_* from .env.local)
 //
 // Steps: check server version, apply every migration, check the layer roles against pg_roles and grant
 // them to the owner login (WITH SET TRUE), set the dataset namespace to live, insert missing live sources
-// (never changing an existing row), then seed the administrator if credentials are set. It prints step
+// (never changing an existing row), then seed the administrator and the moderator if their credentials are set.
+// It prints step
 // names and counts only. Errors print a code or error class, never a message, URL or host.
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAccountStore } from "../../apps/db/src/accounts.js";
+import { AccountUsernameTakenError, createAccountStore, type AccountStore } from "../../apps/db/src/accounts.js";
 import { applyMigrations, readMigrations } from "../../apps/db/src/migrations.js";
+import { hashPassword, normaliseUsername, validatePasswordPolicy } from "../../apps/worker/src/accounts/password.js";
 import { seedAdminAccount } from "../../apps/worker/src/accounts/seed-admin.js";
 import {
   checkLiveSourceCoverage,
@@ -30,9 +32,60 @@ const LIVE_DATASET = "live" as const;
 // WITH SET TRUE on GRANT needs PostgreSQL 16 or later. Neon's current default is newer.
 const MIN_SERVER_VERSION_NUM = 160000;
 
+export const MODERATOR_USERNAME_ENV = "WASPADA_MODERATOR_USERNAME";
+export const MODERATOR_PASSWORD_ENV = "WASPADA_MODERATOR_PASSWORD";
+
+export type ModeratorSeedPlan =
+  | { readonly kind: "seed"; readonly username: string; readonly password: string }
+  | { readonly kind: "skip" };
+
+/**
+ * Pure. Both moderator variables set: seed. Neither set (or empty): skip. Exactly one set: refuse with a code
+ * only, so no value reaches a log line or an error message.
+ */
+export function planModeratorSeed(env: NodeJS.ProcessEnv): ModeratorSeedPlan {
+  const username = env[MODERATOR_USERNAME_ENV];
+  const password = env[MODERATOR_PASSWORD_ENV];
+  if (username && password) return { kind: "seed", username, password };
+  if (!username && !password) return { kind: "skip" };
+  throw new HostedConfigError("moderator_env_partial");
+}
+
+/**
+ * Operator-provisioned moderator, with the same rules as the administrator seed: an existing username is left
+ * alone and never reset. Self-registration can only create `user`, so this is the only path to the moderator role.
+ */
+export async function seedModeratorAccount(
+  store: AccountStore,
+  input: { readonly username: string; readonly password: string; readonly now: string },
+): Promise<"seeded" | "already exists"> {
+  const username = normaliseUsername(input.username);
+  if (username === null) throw new HostedConfigError("moderator_username_invalid");
+  const policy = validatePasswordPolicy(input.password);
+  if (!policy.ok) throw new HostedConfigError(policy.code);
+  if (await store.findPasswordCredentialByUsername(username)) return "already exists";
+  try {
+    await store.createPasswordAccount({
+      datasetMode: store.datasetMode,
+      username,
+      passwordHash: await hashPassword(input.password),
+      displayName: username,
+      role: "moderator",
+      now: input.now,
+      reason: "Operator-seeded moderator account",
+    });
+  } catch (error) {
+    if (error instanceof AccountUsernameTakenError) return "already exists";
+    throw error;
+  }
+  return "seeded";
+}
+
 type Log = (line: string) => void;
 
 export async function runHostedBootstrap(env: NodeJS.ProcessEnv, log: Log = console.log): Promise<number> {
+  // Validated first: a half-set moderator refuses before any database work.
+  const moderatorPlan = planModeratorSeed(env);
   const session = createHostedSession({
     connectionString: env.NEON_DATABASE_URL ?? "",
     log,
@@ -111,6 +164,16 @@ export async function runHostedBootstrap(env: NodeJS.ProcessEnv, log: Log = cons
       log(`[6/6] Administrator account: ${seeded.status}.`);
     } else {
       log("[6/6] Administrator seeding skipped (WASPADA_ADMIN_USERNAME / WASPADA_ADMIN_PASSWORD not set).");
+    }
+    if (moderatorPlan.kind === "seed") {
+      const outcome = await seedModeratorAccount(createAccountStore(executor, LIVE_DATASET), {
+        username: moderatorPlan.username,
+        password: moderatorPlan.password,
+        now: new Date().toISOString(),
+      });
+      log(`[6/6] moderator: ${outcome}.`);
+    } else {
+      log("[6/6] moderator: skipped (env not set).");
     }
     // 0: complete (skipped sources are reported, not fatal). 2: a live source row is missing, so headless ingest refuses to start.
     return coverage.ok ? 0 : 2;

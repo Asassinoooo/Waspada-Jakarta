@@ -57,7 +57,7 @@ import {
   type SourceHealthEntry,
   type StructuredPollInput,
 } from "./live-source-coverage.js";
-import { seedRssSources } from "./live-sources-seed.js";
+import { seedLiveSourcesInsertMissing } from "./live-sources-seed.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -251,10 +251,11 @@ async function prepareLocalDatabase(executor: TransactionalSqlExecutor): Promise
   }
   console.log(`✓ Restored ${pubCount} published live versions into PublicReadModel.`);
 
-  // Seed the 14 news feeds into waspada.source_registry for live user testing
-  console.log(`\n[Source Registry] Seeding ${DEFAULT_NEWS_FEEDS.length} RSS sources...`);
-  const seeded = await seedRssSources(executor);
-  console.log(`✓ Seeded ${seeded} RSS sources in source_registry.`);
+  // Seed the 16 live sources (14 RSS feeds, PetaBencana, BMKG) as approved and on, the same seed as the hosted
+  // bootstrap. It runs before the first poll cycle, so the lazy insert in pollCycle (ON CONFLICT DO NOTHING) finds the row.
+  console.log(`\n[Source Registry] Seeding ${expectedLiveSourceIds().length} live sources...`);
+  const seeded = await seedLiveSourcesInsertMissing(executor);
+  console.log(`✓ Source registry: ${seeded.inserted} inserted, ${seeded.existing} already present (never modified).`);
 
   // Triage attempts/decisions are an append-only audit ledger (WJ-INT-02B) and also the
   // dedupe cache that stops every restart re-sending the 48h window to the model, so they
