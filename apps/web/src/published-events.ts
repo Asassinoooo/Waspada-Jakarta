@@ -3,7 +3,7 @@
  * (/api/v1/events) and the geometry (/api/v1/events.geojson). Everything else
  * here is pure: filters, labels and marker selection. Nothing is invented: a
  * missing time reads "Tidak diketahui", and a count is a count of distinct
- * named sources, never a verification.
+ * named outlets (syndicated copies are labelled, not counted), never a verification.
  */
 import { useEffect, useState } from "react";
 import type {
@@ -120,7 +120,10 @@ export function filterPublishedEvents(
   );
 }
 
-/** Distinct, named sources across the event's claims. This is a count of outlets, not corroboration. */
+/**
+ * Every distinct, named outlet across the event's claims, syndicated copies included, for display. It is not the
+ * number shown on a card: countIndependentSources gives that number.
+ */
 export function sourceNamesOf(event: EventView): string[] {
   const names = new Set<string>();
   for (const claim of event.claims) {
@@ -132,8 +135,54 @@ export function sourceNamesOf(event: EventView): string[] {
   return [...names];
 }
 
-export function sourceCountText(count: number): string {
-  return count === 0 ? "Sumber tidak tercatat" : `${count} sumber`;
+/** The claim text the read model uses when a claim has neither claim_text nor quote_text. It is a placeholder, never a title. */
+const UNTITLED_CLAIM_TEXT = "Klaim laporan";
+
+/** Normalised title for copy matching: lowercase, punctuation as spaces, whitespace collapsed. Empty when there is no usable title. */
+function normalisedTitle(text: unknown): string {
+  if (typeof text !== "string" || text.trim() === UNTITLED_CLAIM_TEXT) return "";
+  return text.toLocaleLowerCase("id").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * Splits the event's named outlets into outlets and copies, and the two always add up to sourceNamesOf(event).length.
+ * Two claims from different outlets carry the same report when their normalised titles are equal. The public DTO has
+ * no article title, so the claim text stands in for one. Outlets are visited most-distinct-titles first, then by name,
+ * so claims[] order does not change the result. An outlet is a copy when each of its claims repeats a title that an
+ * earlier outlet already carried. An outlet with an untitled claim is never a copy. Copies are labelled, never counted.
+ */
+export function countIndependentSources(event: EventView): { outlets: number; copies: number } {
+  const byOutlet = new Map<string, { titles: Set<string>; untitled: boolean }>();
+  for (const claim of event.claims) {
+    const title = normalisedTitle(claim.text);
+    for (const source of claim.sources) {
+      const name = typeof source.display_name === "string" ? source.display_name.trim() : "";
+      if (name.length === 0) continue;
+      const entry = byOutlet.get(name) ?? { titles: new Set<string>(), untitled: false };
+      if (title.length === 0) entry.untitled = true;
+      else entry.titles.add(title);
+      byOutlet.set(name, entry);
+    }
+  }
+  const ordered = [...byOutlet.entries()].sort(([nameA, a], [nameB, b]) => {
+    if (a.titles.size !== b.titles.size) return b.titles.size - a.titles.size;
+    return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
+  });
+  const covered = new Set<string>();
+  let outlets = 0;
+  for (const [, entry] of ordered) {
+    const copy = !entry.untitled && entry.titles.size > 0 && [...entry.titles].every((title) => covered.has(title));
+    if (copy) continue;
+    outlets += 1;
+    for (const title of entry.titles) covered.add(title);
+  }
+  return { outlets, copies: ordered.length - outlets };
+}
+
+/** "N sumber" counts outlets only. Copies add a short note and are never added to the number. */
+export function sourceCountText(outlets: number, copies = 0): string {
+  if (outlets === 0) return "Sumber tidak tercatat";
+  return copies > 0 ? `${outlets} sumber (${copies} salinan)` : `${outlets} sumber`;
 }
 
 /** Markers come only from API geometry. A Point feature wins over other roles, and the first one per event is kept. */

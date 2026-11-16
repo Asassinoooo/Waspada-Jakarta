@@ -5,9 +5,9 @@ import {
   categoryText,
   eventTimeText,
   freshnessText,
+  countIndependentSources,
   severityOf,
   sourceCountText,
-  sourceNamesOf,
   type PublishedEventsStatus,
   type PublishedMarker,
 } from "./published-events.js";
@@ -95,6 +95,7 @@ export function MapEventList({
             const selected = event.event_id === selectedId;
             const hasMarker = markers.has(event.event_id);
             const severity = severityOf(event);
+            const sources = countIndependentSources(event);
             return (
               <li key={event.event_id}>
                 <button
@@ -112,7 +113,7 @@ export function MapEventList({
                   <span className="map-card__meta">Waktu kejadian: {eventTimeText(event)}</span>
                   <span className="map-card__foot">
                     {severity !== null && <SeverityChip level={severity} />}
-                    <span className="map-card__sources">{sourceCountText(sourceNamesOf(event).length)}</span>
+                    <span className="map-card__sources">{sourceCountText(sources.outlets, sources.copies)}</span>
                     {!hasMarker && <span className="map-card__unmapped">Belum dipetakan</span>}
                   </span>
                 </button>

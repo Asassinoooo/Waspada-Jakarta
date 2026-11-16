@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { EventView } from "@waspada/worker/public-contracts";
 import { EventDetail } from "../src/EventDetail.js";
 import { MapHome } from "../src/MapHome.js";
-import { publicationPathText, sourceCountText, sourceNamesOf } from "../src/published-events.js";
+import { countIndependentSources, publicationPathText, sourceCountText, sourceNamesOf } from "../src/published-events.js";
 
 /** MERGE-REVIEW-01 (kept through UI-V2-B): the public map home shows published public events only, each with its own named sources. */
 
@@ -120,4 +120,78 @@ test("the public map reads only the published events endpoint, never the moderat
 test("the public map home keeps internal wording out of the public copy", () => {
   const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [publishedEvent()] }));
   assert.doesNotMatch(html, /fixture|cursor|polling/iu);
+});
+
+function claimFrom(claimId: string, text: string, outlet: string) {
+  return {
+    claim_id: claimId,
+    text,
+    event_time: { start: null, end: null, precision: "exact" },
+    validity: { valid_from: null, valid_until: null },
+    scope: { places: [], services: [], institutions: [], audiences: [] },
+    qualifiers: [],
+    evidence_label: "attributed_report",
+    sources: [{ display_name: outlet, url: `https://news.example/${claimId}`, published_at: null, observed_at: null, excerpt: null }],
+  };
+}
+
+test("a syndicated copy with the same title is labelled as a copy and is not counted as an extra outlet", () => {
+  const event = publishedEvent({
+    claims: [
+      claimFrom("claim-1", "Genangan 50 cm di Cawang", "Detik News"),
+      claimFrom("claim-2", "genangan  50 cm, di Cawang.", "Antara News"),
+    ],
+  });
+  assert.equal(sourceNamesOf(event).length, 2, "both outlets stay listed for display");
+  assert.deepEqual(countIndependentSources(event), { outlets: 1, copies: 1 });
+  const { outlets, copies } = countIndependentSources(event);
+  assert.equal(sourceCountText(outlets, copies), "1 sumber (1 salinan)");
+  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event] }));
+  assert.match(html, /1 sumber \(1 salinan\)/);
+});
+
+test("two outlets with different titles count as two outlets with no copy note", () => {
+  const event = publishedEvent();
+  assert.deepEqual(countIndependentSources(event), { outlets: 2, copies: 0 });
+  assert.equal(sourceCountText(2, 0), "2 sumber");
+  assert.doesNotMatch(sourceCountText(2, 0), /salinan/u);
+});
+
+test("one outlet counts as one source", () => {
+  const event = publishedEvent({ claims: [claimFrom("claim-1", "Genangan 50 cm di Cawang", "Detik News")] });
+  assert.deepEqual(countIndependentSources(event), { outlets: 1, copies: 0 });
+  assert.equal(sourceCountText(1, 0), "1 sumber");
+});
+
+test("an event with no named source keeps the untraced wording", () => {
+  const event = publishedEvent({ claims: [] });
+  assert.deepEqual(countIndependentSources(event), { outlets: 0, copies: 0 });
+  assert.equal(sourceCountText(0, 0), "Sumber tidak tercatat");
+});
+
+test("the placeholder claim text is never a title, so untitled claims from two outlets stay two outlets", () => {
+  const event = publishedEvent({
+    claims: [
+      claimFrom("claim-1", "Klaim laporan", "Detik News"),
+      claimFrom("claim-2", "Klaim laporan", "Antara News"),
+    ],
+  });
+  assert.deepEqual(countIndependentSources(event), { outlets: 2, copies: 0 });
+  assert.equal(sourceCountText(2, 0), "2 sumber");
+});
+
+test("the outlet and copy counts do not depend on the order of claims", () => {
+  const claims = [
+    claimFrom("claim-1", "Genangan 50 cm di Cawang", "Detik News"),
+    claimFrom("claim-2", "Banjir merendam Jalan DI Panjaitan", "Detik News"),
+    claimFrom("claim-3", "Genangan 50 cm di Cawang", "Antara News"),
+  ];
+  const forward = publishedEvent({ claims });
+  const backward = publishedEvent({ claims: [...claims].reverse() });
+  assert.deepEqual(countIndependentSources(forward), { outlets: 1, copies: 1 });
+  assert.deepEqual(countIndependentSources(backward), countIndependentSources(forward));
+  for (const event of [forward, backward]) {
+    const { outlets, copies } = countIndependentSources(event);
+    assert.equal(outlets + copies, sourceNamesOf(event).length);
+  }
 });

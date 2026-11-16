@@ -9,8 +9,8 @@ import {
   freshnessText,
   lifecycleText,
   publishedAtText,
+  countIndependentSources,
   sourceCountText,
-  sourceNamesOf,
   type PublishedMarker,
 } from "./published-events.js";
 
@@ -59,7 +59,7 @@ function locationNote(marker: PublishedMarker | null): string {
 
 /** Shared body for the anchored popup (desktop) and the peek sheet (phone). It carries no radius or circle. */
 function MapPopupBody({ event, marker, titleId, copyMessage, onClose, onViewDetail, onCopyLink }: MapPopupProps) {
-  const sourceCount = sourceNamesOf(event).length;
+  const sources = countIndependentSources(event);
   return (
     <>
       <header className="map-popup__head">
@@ -88,7 +88,7 @@ function MapPopupBody({ event, marker, titleId, copyMessage, onClose, onViewDeta
         <span className="map-popup__lifecycle">{lifecycleText(event.lifecycle)}</span>
       </p>
       <p className="map-popup__sources">
-        <strong>{sourceCountText(sourceCount)}</strong>
+        <strong>{sourceCountText(sources.outlets, sources.copies)}</strong>
         <span className="muted"> · Jumlah sumber bukan bukti kebenaran.</span>
       </p>
       <p className="map-popup__note muted">{locationNote(marker)}</p>
