@@ -12,12 +12,13 @@ import {
   type ProposalDecisionOutcome,
 } from "../src/layers/l4-application-integration/proposal-publication.js";
 import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
+import { EVENT_RECORD_V2_KEYS } from "../src/layers/l4-application-integration/event-record-v2.js";
 
 /**
  * FR-11, repeated coverage. The first delivery of a proposal publishes once, and a re-delivery writes nothing.
  * A repeated report of facts that are already public, from the same or another outlet, adds no version and no
  * update (F-ALERT-01). A material change publishes the next version. A published version must reach the public
- * updates feed (F-ALERT-02). That last test is a todo finding until the owner decides how review rows are written.
+ * updates feed (F-ALERT-02, HOSTED-02): a publication writes the record and the approved review row that feed reads.
  * Authored fictional data, real PGlite tables and the real decision writer.
  */
 
@@ -144,6 +145,8 @@ describe("FR-11 repeated coverage and re-delivery", () => {
     db = await createTestDatabase();
     await applyMigrations(db.executor, await readMigrations(new URL("../../db/migrations/", import.meta.url)));
     lineage = await seedProposalLineage(db.executor, "repeated");
+    // The public views read only a dataset the namespace config names as live.
+    await db.executor.query("INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')");
     deps = {
       executor: db.executor,
       datasetKind: "live",
@@ -264,12 +267,63 @@ describe("FR-11 repeated coverage and re-delivery", () => {
     ]);
   });
 
-  it("a newly published version appears in the public updates feed (F-ALERT-02)", { todo: "F-ALERT-02 blocked: ADR-020 moderator-selected change summaries, no INSERT grant on public_event_history_review_decisions, and decideProposal record_json lacks the v2.0 Event shape" }, async () => {
+  it("a newly published version appears in the public views and the updates feed (F-ALERT-02, HOSTED-02)", async () => {
     await persist(proposal("prop-rep-feed", "inc-rep-feed"));
     const decided = await auto("prop-rep-feed");
     assert.equal(decided.status, "published", JSON.stringify(decided));
 
     const feed = await feedEventIds();
     assert.equal(feed.includes("inc-rep-feed"), true, "the published version is listed as a material update");
+
+    const current = await db.executor.query<{ record_json: Record<string, unknown> }>(
+      "SELECT record_json FROM waspada.public_event_versions WHERE dataset_kind = 'live' AND event_id = 'inc-rep-feed'",
+    );
+    const record = current.rows[0]?.record_json;
+    assert.ok(record, "the published version is a current public version");
+    assert.deepEqual(Object.keys(record).sort(), [...EVENT_RECORD_V2_KEYS].sort(), "the stored record is the exact 23-key Event");
+    assert.equal(record.record_type, "Event");
+    assert.equal(record.publication_status, "published");
+    assert.equal(Object.hasOwn(record, "publication_mode"), false, "the mode stays on the decision, not the record");
+
+    const decision = await db.executor.query<{ publication_mode: string; published_at: string }>(
+      `SELECT record_json->>'publication_mode' AS publication_mode,
+              to_char(decided_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS published_at
+       FROM waspada.publication_decisions WHERE dataset_kind = 'live' AND proposal_id = 'prop-rep-feed'`,
+    );
+    assert.equal(decision.rows[0]?.publication_mode, "agent_auto");
+    assert.equal(record.published_at, decision.rows[0]?.published_at, "published_at is the decision time");
+
+    // The approved review row is the only write the updates feed reads. Its summary is the fixed template.
+    const reviews = await db.executor.query<Record<string, unknown>>(
+      `SELECT review_status, change_type, summary, reviewer_id FROM waspada.public_event_history_review_decisions
+       WHERE dataset_kind = 'live' AND event_id = 'inc-rep-feed'`,
+    );
+    assert.deepEqual(reviews.rows, [{
+      review_status: "approved",
+      change_type: "published",
+      summary: "Diterbitkan otomatis dari 1 sumber",
+      reviewer_id: AGENT_AUTO_PUBLISHER_ID,
+    }]);
+
+    // The proposal has no source-supported geometry, so the version maps no geometry and writes no geometry row.
+    assert.deepEqual((record.scope as { geometry_ids: unknown[] }).geometry_ids, []);
+  });
+
+  it("the publication writer role inserts only the review row it needs and cannot change it", async () => {
+    await db.executor.execute("BEGIN");
+    try {
+      await db.executor.execute("SET ROLE waspada_l4_publication_writer");
+      await db.executor.query(
+        `INSERT INTO waspada.public_event_history_review_decisions
+           (dataset_kind, event_id, event_version, review_status, change_type, summary, reviewer_id, reviewed_at)
+         VALUES ('live', 'inc-rep-feed', 1, 'approved', 'published', 'Uji hak tulis', 'agent:auto-publisher', now())`,
+      );
+      await assert.rejects(
+        db.executor.query("UPDATE waspada.public_event_history_review_decisions SET summary = 'diubah' WHERE event_id = 'inc-rep-feed'"),
+        /permission denied/,
+      );
+    } finally {
+      await db.executor.execute("ROLLBACK");
+    }
   });
 });

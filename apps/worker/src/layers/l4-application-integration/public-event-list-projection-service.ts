@@ -1,5 +1,8 @@
 import type { EventView } from "../../contracts/public-api.js";
-import type { PublicEventProjectionService } from "./public-event-projection-service.js";
+import {
+  PublicEventProjectionServiceError,
+  type PublicEventProjectionService,
+} from "./public-event-projection-service.js";
 
 export const PUBLIC_EVENT_LIST_PROJECTION_LIMITS = Object.freeze({
   defaultPageSize: 20,
@@ -163,19 +166,25 @@ export function createPublicEventListProjectionService(ports: {
           offset,
           offset + PUBLIC_EVENT_LIST_PROJECTION_LIMITS.maxConcurrentProjections,
         );
-        let projectionResults: readonly unknown[];
-        try {
-          projectionResults = await Promise.all(
-            batch.map((candidate) => ports.projections.read(candidate.eventId)),
-          );
-        } catch {
+        // Each candidate settles on its own. One candidate that the strict projector rejects as INVALID_EVENT is
+        // skipped (fail closed for that event only). Any other projection error still fails the whole page.
+        const outcomes = await Promise.all(batch.map(async (candidate) => {
+          try {
+            return { value: await ports.projections.read(candidate.eventId) };
+          } catch (error) {
+            return { error };
+          }
+        }));
+        if (outcomes.some((outcome) => "error" in outcome && !isInvalidEventProjection(outcome.error))) {
           fail("PROJECTION_READ_FAILED");
         }
 
         for (let index = 0; index < batch.length; index += 1) {
           const candidate = batch[index]!;
+          const outcome = outcomes[index]!;
+          if ("error" in outcome) continue;
           try {
-            const event = validateProjectionResult(projectionResults[index], candidate, validatedRequest.hasFilters);
+            const event = validateProjectionResult(outcome.value, candidate, validatedRequest.hasFilters);
             if (event !== null) events.push(event);
           } catch (error) {
             if (error instanceof PublicEventListProjectionServiceError) throw error;
@@ -187,6 +196,13 @@ export function createPublicEventListProjectionService(ports: {
       return { events, nextCursor: page.nextCursor };
     },
   };
+}
+
+/** True only for the strict projector's INVALID_EVENT rejection of one candidate. */
+function isInvalidEventProjection(error: unknown): boolean {
+  return error instanceof PublicEventProjectionServiceError
+    && error.code === "PROJECTION_FAILED"
+    && error.projectionCode === "INVALID_EVENT";
 }
 
 function validateRequestBoundary(value: unknown): ValidatedRequest {

@@ -177,6 +177,7 @@ describe('DATA-01 migrations', () => {
         '047_pipeline_flow_read',
         '048_incident_first_observed_nullable',
         '049_moderator_correction_proposals',
+        '050_publication_writer_review_grant',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -340,6 +341,7 @@ describe('DATA-01 migrations', () => {
       '047_pipeline_flow_read',
       '048_incident_first_observed_nullable',
       '049_moderator_correction_proposals',
+      '050_publication_writer_review_grant',
     ]);
   });
 
@@ -387,12 +389,13 @@ describe('DATA-01 migrations', () => {
       '047_pipeline_flow_read',
       '048_incident_first_observed_nullable',
       '049_moderator_correction_proposals',
+      '050_publication_writer_review_grant',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '49');
+    assert.equal(count.rows[0]?.count, '50');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -411,7 +414,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 049_moderator_correction_proposals/,
+      /Cannot apply migration 000_late_backfill before already applied migration 050_publication_writer_review_grant/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -467,6 +470,7 @@ describe('DATA-01 migrations', () => {
       { version: '047_pipeline_flow_read' },
       { version: '048_incident_first_observed_nullable' },
       { version: '049_moderator_correction_proposals' },
+      { version: '050_publication_writer_review_grant' },
     ]);
   });
 
@@ -511,6 +515,7 @@ describe('DATA-01 migrations', () => {
       '047_pipeline_flow_read',
       '048_incident_first_observed_nullable',
       '049_moderator_correction_proposals',
+      '050_publication_writer_review_grant',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -2344,7 +2349,7 @@ describe('DATA-01 migrations', () => {
       );
 
       const applied = await applyMigrations(migrationDatabase.executor, migrations);
-      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals']);
+      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals', '050_publication_writer_review_grant']);
       await insertIncident('inc-f14-after-048', null);
       const stored = await migrationDatabase.executor.query<{ incident_id: string; first_observed_at: string | null }>(
         `SELECT incident_id, first_observed_at FROM waspada.incidents WHERE incident_id = 'inc-f14-after-048'`,

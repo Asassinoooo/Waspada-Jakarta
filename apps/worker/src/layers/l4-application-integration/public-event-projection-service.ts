@@ -1,5 +1,5 @@
 import type { EventView } from "../../contracts/public-api.js";
-import { projectPublicEvent } from "./public-projection.js";
+import { PublicProjectionError, projectPublicEvent, type PublicProjectionErrorCode } from "./public-projection.js";
 
 export type PublicEventProjectionScopeEntityType = "place" | "service" | "institution" | "audience";
 
@@ -84,7 +84,11 @@ const errorMessages: Record<PublicEventProjectionServiceErrorCode, string> = {
 
 /** Bounded service errors never include event IDs, lookup keys, or record content. */
 export class PublicEventProjectionServiceError extends Error {
-  constructor(readonly code: PublicEventProjectionServiceErrorCode) {
+  /**
+   * The strict projector's own code, set only for PROJECTION_FAILED. It is never part of the message, so the list
+   * service can skip one invalid candidate without reading record content.
+   */
+  constructor(readonly code: PublicEventProjectionServiceErrorCode, readonly projectionCode?: PublicProjectionErrorCode) {
     super(errorMessages[code]);
     this.name = "PublicEventProjectionServiceError";
   }
@@ -163,8 +167,11 @@ export function createPublicEventProjectionService(ports: {
           publicAttributions: validatedLookupResult.publicAttributions,
           impacts: prepared.impactRecords,
         });
-      } catch {
-        fail("PROJECTION_FAILED");
+      } catch (error) {
+        throw new PublicEventProjectionServiceError(
+          "PROJECTION_FAILED",
+          error instanceof PublicProjectionError ? error.code : undefined,
+        );
       }
 
       return { kind: "found", event };
