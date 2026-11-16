@@ -58,6 +58,16 @@ export interface DomainTag {
   readonly value: string;
 }
 
+/** Domain EvidenceRef (contracts.schema.json). Only persisted evidence the proposal's own report revision used. */
+export interface DomainEvidenceRef {
+  readonly report_revision_id: string;
+  readonly permitted_text_hash: string;
+  readonly span_start: number;
+  readonly span_end: number;
+  readonly offset_unit: "unicode_code_points";
+  readonly relation: "supports";
+}
+
 /** Domain PublishedClaim. support and origin_ids are filled only from persisted evidence, never from the model. */
 export interface DomainPublishedClaim {
   readonly claim_id: string;
@@ -66,7 +76,7 @@ export interface DomainPublishedClaim {
   readonly validity: DomainValidity;
   readonly scope: DomainScope;
   readonly qualifiers: readonly string[];
-  readonly support: readonly unknown[];
+  readonly support: readonly DomainEvidenceRef[];
   readonly contradictions: readonly unknown[];
   readonly context_evidence: readonly unknown[];
   readonly origin_ids: readonly string[];
@@ -266,23 +276,26 @@ export function reviewSummaryFor(
 
 /**
  * The domain claims of a published version, built from the same claims the public DTO uses. The claim id comes from
- * publicClaimIdFor, so the stored claim, its event_claims row and the DTO agree. support and origin_ids stay empty:
- * the agent path does not persist evidence references or origins for them yet (see ADR-020 amendment).
+ * publicClaimIdFor, so the stored claim, its event_claims row and the DTO agree. `links.support` is the persisted
+ * evidence the proposal's own report revision used; origin_ids stay empty because no origin writer exists yet
+ * (see the ADR-020 amendment). `links.geometryIds` is the point geometry of the event, shared by its claims.
  */
 export function domainClaimsFor(
   proposal: EventProposalDto,
   eventId: string,
   eventTime: DomainTimeScope,
   claims: readonly { readonly text: string; readonly evidence_label: DomainPublishedClaim["evidence_label"] }[],
+  links: { readonly support?: readonly DomainEvidenceRef[]; readonly geometryIds?: readonly string[] } = {},
 ): DomainPublishedClaim[] {
+  const geometryIds = links.geometryIds ?? [];
   return (proposal.claims ?? []).map((claim, index) => ({
     claim_id: publicClaimIdFor(claim, eventId, index),
     text: claims[index]?.text ?? claim.claim_text,
     event_time: eventTime,
     validity: NULL_VALIDITY,
-    scope: EMPTY_SCOPE,
+    scope: { ...EMPTY_SCOPE, geometry_ids: [...geometryIds] },
     qualifiers: [],
-    support: [],
+    support: [...(links.support ?? [])],
     contradictions: [],
     context_evidence: [],
     origin_ids: [],

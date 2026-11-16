@@ -95,6 +95,12 @@ export interface EventView {
   summary: string;
   category: Category;
   incident_type?: string;
+  /**
+   * HOSTED-10 (additive, optional): "point" when the event has one approximate Point; "whole_view" when it has no usable
+   * coordinate. A whole_view event is shown as the whole map view (the Jakarta extent) with no pin. Never reuse another
+   * event's point or the Jakarta centre for it. Absent on fixtures and DB-projected versions.
+   */
+  location_display?: "point" | "whole_view";
   tags: Array<{
     namespace: "topic" | "service" | "audience" | "hazard" | "transport_mode" | "place_type";
     value: string;

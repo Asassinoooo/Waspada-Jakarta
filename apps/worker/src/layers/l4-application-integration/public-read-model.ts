@@ -16,6 +16,7 @@ import type {
 } from "../../contracts/public-api.js";
 import type { SourceStatusProvider } from "../l1-data-knowledge/source-status.js";
 import type { EventProposalDto, StoredEvidenceChunk } from "./moderation-api.js";
+import { missingPlaceOrLabel, publicPointLabel, publicPointOutcomeFor } from "./public-point.js";
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
@@ -277,6 +278,7 @@ export class PublicReadModel {
         published_at: event.published_at,
         ...(event.severity !== undefined ? { severity: event.severity } : {}),
         geometries: [...(event.geometries || [])],
+        ...(event.location_display !== undefined ? { location_display: event.location_display } : {}),
       };
     }
     const fixture = this.findFixture(eventId);
@@ -392,6 +394,7 @@ export class PublicReadModel {
       published_at: withFreshness.published_at,
       ...(withFreshness.severity !== undefined ? { severity: withFreshness.severity } : {}),
       geometries,
+      ...(withFreshness.location_display !== undefined ? { location_display: withFreshness.location_display } : {}),
       ...(publication ? { publication } : {}),
     };
   }
@@ -662,34 +665,24 @@ export function proposalToEventDetail(
     places.push(proposal.location_label.trim());
   }
 
-  const geometries: PublicGeometry[] = [];
-  if (
-    proposal.coordinates &&
-    Array.isArray(proposal.coordinates) &&
-    proposal.coordinates.length === 2
-  ) {
-    const lng = Number(proposal.coordinates[0]);
-    const lat = Number(proposal.coordinates[1]);
-    if (
-      Number.isFinite(lng) &&
-      Number.isFinite(lat) &&
-      lng >= -180 &&
-      lng <= 180 &&
-      lat >= -90 &&
-      lat <= 90
-    ) {
-      geometries.push({
-        geometry_id: sanitizeEventId(`${eventId}-geom-1`),
-        role: "incident_scene",
-        geometry: {
-          type: "Point",
-          coordinates: [lng, lat],
-        },
-        precision_m: 50,
-        label: proposal.location_label ? proposal.location_label.slice(0, 200) : "Lokasi Kejadian",
-      });
-    }
+  // HOSTED-10: an event needs a place id or a location label (a group-specific critical notice may have neither).
+  if (missingPlaceOrLabel(category, places.length)) {
+    throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
   }
+  // HOSTED-10: an approximate in-box coordinate gives one Point (no radius, precision_m null). Without one the event has
+  // no point and is shown as the whole map view (location_display whole_view). No point is ever invented or reused.
+  const geometries: PublicGeometry[] = [];
+  const outcome = publicPointOutcomeFor({ category, locationLabel: proposal.location_label, coordinates: proposal.coordinates });
+  if (outcome.status === "point") {
+    geometries.push({
+      geometry_id: sanitizeEventId(`${eventId}-geom-1`),
+      role: "approximate_place",
+      geometry: { type: "Point", coordinates: outcome.coordinates },
+      precision_m: null,
+      label: publicPointLabel(proposal.location_label),
+    });
+  }
+  const locationDisplay: "point" | "whole_view" = outcome.status === "point" ? "point" : "whole_view";
 
   const publishedAt = proposal.proposed_at || new Date().toISOString();
 
@@ -754,6 +747,7 @@ export function proposalToEventDetail(
     published_at: publishedAt,
     ...(severity !== undefined ? { severity } : {}),
     geometries,
+    location_display: locationDisplay,
     ...(options?.publication ? { publication: options.publication } : {}),
   };
 }
@@ -824,6 +818,11 @@ function rawInputToEventDetail(
     places.push(input.location_label.trim());
   }
 
+  // HOSTED-10: a raw record's own coordinate is the source coordinate and comes first. Without one, the event has no
+  // point and is shown as the whole map view.
+  if (missingPlaceOrLabel(category, places.length)) {
+    throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
+  }
   const geometries: PublicGeometry[] = [];
   if (Array.isArray(input.coordinates) && input.coordinates.length === 2) {
     const lng = Number(input.coordinates[0]);
@@ -836,13 +835,15 @@ function rawInputToEventDetail(
           type: "Point",
           coordinates: [lng, lat],
         },
-        precision_m: 50,
-        label: places[0] ? places[0].slice(0, 200) : "Lokasi Kejadian",
+        precision_m: null,
+        label: places[0] ? places[0].slice(0, 200) : "Lokasi sumber",
       });
     }
   } else if (Array.isArray(input.geometries)) {
     geometries.push(...(input.geometries as PublicGeometry[]));
   }
+  // HOSTED-10: with no source coordinate and no geometries, the event is the whole map view. Nothing is invented.
+  const locationDisplay: "point" | "whole_view" = geometries.length > 0 ? "point" : "whole_view";
 
   const publishedAt = typeof input.published_at === "string"
     ? input.published_at
@@ -887,5 +888,6 @@ function rawInputToEventDetail(
     published_at: publishedAt,
     ...(severity !== undefined ? { severity } : {}),
     geometries,
+    location_display: locationDisplay,
   };
 }

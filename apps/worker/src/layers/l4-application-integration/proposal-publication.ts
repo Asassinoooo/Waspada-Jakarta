@@ -25,10 +25,12 @@ import {
   domainEventTime,
   domainFreshness,
   domainTags,
+  type DomainEvidenceRef,
   EMPTY_SCOPE,
   NULL_VALIDITY,
   reviewSummaryFor,
 } from "./event-record-v2.js";
+import { publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
 import {
   assessCorrectionGate,
   assessProposalSourceGate,
@@ -458,6 +460,173 @@ async function resolvePublicDisplay(
   return allowed;
 }
 
+/**
+ * HOSTED-10: what a publication adds to the stored record, from persisted rows only. No geometry row is written here:
+ * the publication role cannot write geometries (owner decision, 17 Nov 2026).
+ */
+interface PublicationEnrichment {
+  /** Support for each claim. Filled only when the proposal was built from one report revision. */
+  readonly support: readonly DomainEvidenceRef[];
+  /** Always empty in this change. */
+  readonly geometryIds: readonly string[];
+  /** Set only for a coordinate-bearing event. It records the source of the point that is pending. */
+  readonly geometrySource: PublicPointSource | null;
+  readonly geometryStatus: "pending_geometry_writer" | "whole_view" | "not_required_group_notice";
+}
+
+/**
+ * Runs one optional write or read inside a savepoint. A failure rolls back only that savepoint. The caller decides
+ * whether the missing piece is acceptable.
+ */
+async function withOptionalSavepoint<Result>(
+  tx: SqlExecutor,
+  name: string,
+  work: () => Promise<Result>,
+): Promise<{ readonly ok: true; readonly value: Result } | { readonly ok: false }> {
+  await tx.query(`SAVEPOINT ${name}`);
+  try {
+    const value = await work();
+    await tx.query(`RELEASE SAVEPOINT ${name}`);
+    return { ok: true, value };
+  } catch {
+    try {
+      await tx.query(`ROLLBACK TO SAVEPOINT ${name}`);
+      await tx.query(`RELEASE SAVEPOINT ${name}`);
+    } catch {
+      // The failed savepoint is the one to report; the outer transaction is handled by its caller.
+    }
+    return { ok: false };
+  }
+}
+
+/** The persisted evidence of the proposal's grounding context, and the report revisions the proposal was built from. */
+interface OwnEvidence {
+  readonly revisions: readonly string[];
+  readonly refs: readonly DomainEvidenceRef[];
+}
+
+/**
+ * HOSTED-10: the persisted evidence the proposal's grounding context records. A span is listed only when the exact
+ * evidence_references row exists. The revisions are the proposal's own report_revision_ids, or, when it carries none,
+ * the revisions its context cites.
+ */
+async function ownEvidence(
+  tx: SqlExecutor,
+  datasetKind: string,
+  proposal: EventProposalDto,
+): Promise<OwnEvidence> {
+  const extra = proposal as unknown as { context_id?: unknown; report_revision_ids?: unknown };
+  if (typeof extra.context_id !== "string" || extra.context_id.length === 0) return { revisions: [], refs: [] };
+  const context = await tx.query<{ record_json: unknown }>(
+    `SELECT record_json FROM waspada.grounding_contexts WHERE dataset_kind = $1 AND context_id = $2`,
+    [datasetKind, extra.context_id],
+  );
+  const contextRecord = parseJsonObject(context.rows[0]?.record_json);
+  const entries = Array.isArray(contextRecord?.evidence) ? contextRecord.evidence : [];
+  const candidates: DomainEvidenceRef[] = [];
+  for (const entry of entries) {
+    if (!isRecordValue(entry)) continue;
+    if (typeof entry.report_revision_id !== "string" || entry.report_revision_id.length === 0) continue;
+    if (typeof entry.permitted_text_hash !== "string" || !/^[a-f0-9]{64}$/u.test(entry.permitted_text_hash)) continue;
+    if (!Number.isSafeInteger(entry.span_start) || !Number.isSafeInteger(entry.span_end)) continue;
+    const spanStart = entry.span_start as number;
+    const spanEnd = entry.span_end as number;
+    if (spanStart < 0 || spanEnd <= spanStart) continue;
+    if (entry.offset_unit !== "unicode_code_points" || entry.relation !== "supports") continue;
+    candidates.push({
+      report_revision_id: entry.report_revision_id,
+      permitted_text_hash: entry.permitted_text_hash,
+      span_start: spanStart,
+      span_end: spanEnd,
+      offset_unit: "unicode_code_points",
+      relation: "supports",
+    });
+  }
+
+  const refs: DomainEvidenceRef[] = [];
+  for (const candidate of candidates) {
+    const persisted = await tx.query<{ matches: number }>(
+      `SELECT COUNT(*)::int AS matches FROM waspada.evidence_references
+       WHERE dataset_kind = $1 AND report_revision_id = $2 AND permitted_text_hash = $3
+         AND span_start = $4 AND span_end = $5 AND offset_unit = $6 AND relation = $7`,
+      [
+        datasetKind,
+        candidate.report_revision_id,
+        candidate.permitted_text_hash,
+        candidate.span_start,
+        candidate.span_end,
+        candidate.offset_unit,
+        candidate.relation,
+      ],
+    );
+    if (persisted.rows[0]?.matches !== 1) continue;
+    if (!refs.some((existing) => existing.report_revision_id === candidate.report_revision_id
+      && existing.permitted_text_hash === candidate.permitted_text_hash
+      && existing.span_start === candidate.span_start && existing.span_end === candidate.span_end)) {
+      refs.push(candidate);
+    }
+  }
+
+  const declared = Array.isArray(extra.report_revision_ids)
+    ? [...new Set(extra.report_revision_ids.filter((id): id is string => typeof id === "string" && id.length > 0))]
+    : [];
+  const revisions = declared.length > 0
+    ? declared
+    : [...new Set(refs.map((ref) => ref.report_revision_id))];
+  return { revisions, refs };
+}
+
+/**
+ * HOSTED-10: the support and the location status of a publication. It never refuses and never writes a geometry row.
+ * A coordinate-bearing event records geometry_status "pending_geometry_writer". An event with no usable coordinate
+ * records "whole_view". A group notice with no location records "not_required_group_notice". The support of a claim is
+ * filled only when the proposal came from one report revision, so no claim is given evidence from another revision.
+ */
+async function enrichPublication(
+  tx: SqlExecutor,
+  input: {
+    readonly datasetKind: string;
+    readonly traceId: string;
+    readonly eventId: string;
+    readonly version: number;
+    readonly category: string;
+    readonly proposal: EventProposalDto;
+  },
+): Promise<PublicationEnrichment> {
+  const { proposal } = input;
+  const evidence = await withOptionalSavepoint(tx, "hosted10_evidence", () => ownEvidence(tx, input.datasetKind, proposal));
+  const own: OwnEvidence = evidence.ok ? evidence.value : { revisions: [], refs: [] };
+  const support = own.revisions.length === 1
+    ? own.refs.filter((ref) => ref.report_revision_id === own.revisions[0])
+    : [];
+
+  const outcome = publicPointOutcomeFor({
+    category: input.category,
+    locationLabel: proposal.location_label,
+    coordinates: proposal.coordinates,
+  });
+  if (outcome.status === "point") {
+    return { support, geometryIds: [], geometrySource: "model_approximate", geometryStatus: "pending_geometry_writer" };
+  }
+  if (outcome.status === "not_required_group_notice") {
+    return { support, geometryIds: [], geometrySource: null, geometryStatus: "not_required_group_notice" };
+  }
+  return { support, geometryIds: [], geometrySource: null, geometryStatus: "whole_view" };
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return isRecordValue(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 /** Input to the one publish transaction shared by the agent, a moderator publish and a moderator correction. */
 interface PublishCore {
   readonly datasetKind: "live" | "historical" | "synthetic";
@@ -619,6 +788,11 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
     }
   }
 
+  // HOSTED-10: the support and the location status are read only after the unchanged check. No geometry row is written
+  // by the publication role, and an event with no usable coordinate is published as a whole view, never refused for it.
+  const enrichment = await enrichPublication(tx, { datasetKind, traceId, eventId, version, category: detail.category, proposal });
+  const scope = { ...EMPTY_SCOPE, geometry_ids: [...enrichment.geometryIds] };
+
   await tx.query(
     `INSERT INTO waspada.publication_decisions (
        dataset_kind, decision_id, trace_id, proposal_id, policy_version,
@@ -645,6 +819,9 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
         reason: core.reason,
         ...(waivers.length > 0 ? { waivers } : {}),
         ...(action === "correct" ? { base_version: core.baseVersion ?? null } : {}),
+        // HOSTED-10: the pending point's source and the location status live here. No geometry row is written.
+        geometry_source: enrichment.geometrySource,
+        geometry_status: enrichment.geometryStatus,
       }),
     ],
   );
@@ -669,11 +846,11 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
     freshness: domainFreshness(eventTime, decidedAt),
     eventTime,
     validity: NULL_VALIDITY,
-    scope: EMPTY_SCOPE,
+    scope,
     claims: domainClaimsFor(proposal, eventId, eventTime, detail.claims.map((claim) => ({
       text: claim.text,
       evidence_label: claim.evidence_label,
-    }))),
+    })), { support: enrichment.support, geometryIds: enrichment.geometryIds }),
   });
   await tx.query(
     `INSERT INTO waspada.event_versions (
