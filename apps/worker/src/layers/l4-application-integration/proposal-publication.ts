@@ -19,6 +19,17 @@ import {
   publicEventIdForProposal,
 } from "./public-read-model.js";
 import {
+  buildEventRecordV2,
+  buildWithdrawnEventRecordV2,
+  domainClaimsFor,
+  domainEventTime,
+  domainFreshness,
+  domainTags,
+  EMPTY_SCOPE,
+  NULL_VALIDITY,
+  reviewSummaryFor,
+} from "./event-record-v2.js";
+import {
   assessCorrectionGate,
   assessProposalSourceGate,
   evaluateAutoPublication,
@@ -637,6 +648,33 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
       }),
     ],
   );
+  // HOSTED-02: the stored record is the domain schema 2.0 Event, built by the shared builder. Publication mode and
+  // waivers are not part of it: they stay on the publication decision row.
+  const eventTime = domainEventTime(proposal.event_time);
+  const record = buildEventRecordV2({
+    datasetKind,
+    traceId,
+    eventId,
+    version,
+    supersedesVersion: version > 1 ? version - 1 : null,
+    decisionId,
+    status: "published",
+    statusAt: decidedAt,
+    withdrawalReason: null,
+    title: detail.title,
+    summary: detail.summary.length > 0 ? detail.summary : detail.title,
+    category: detail.category,
+    lifecycle: detail.lifecycle,
+    tags: domainTags(proposal),
+    freshness: domainFreshness(eventTime, decidedAt),
+    eventTime,
+    validity: NULL_VALIDITY,
+    scope: EMPTY_SCOPE,
+    claims: domainClaimsFor(proposal, eventId, eventTime, detail.claims.map((claim) => ({
+      text: claim.text,
+      evidence_label: claim.evidence_label,
+    }))),
+  });
   await tx.query(
     `INSERT INTO waspada.event_versions (
        dataset_kind, event_id, version, trace_id, supersedes_version, title, summary, category,
@@ -647,17 +685,17 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
       eventId,
       version,
       traceId,
-      version > 1 ? version - 1 : null,
-      detail.title,
-      detail.summary.length > 0 ? detail.summary : detail.title,
-      detail.category,
-      detail.lifecycle,
+      record.supersedes_version,
+      record.title,
+      record.summary,
+      record.category,
+      record.lifecycle,
       decisionId,
       decidedAt,
-      JSON.stringify({ claims: detail.claims, impact_refs: [], publication_mode: publicationMode }),
+      JSON.stringify(record),
     ],
   );
-  for (const claim of detail.claims) {
+  for (const claim of record.claims) {
     await tx.query(
       `INSERT INTO waspada.event_claims (
          dataset_kind, event_id, event_version, claim_id, publication_status, claim_text, evidence_label, record_json)
@@ -670,6 +708,24 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
         claim.text,
         claim.evidence_label,
         JSON.stringify(claim),
+      ],
+    );
+  }
+  // HOSTED-02: the approved review row is what the public history and updates views read. Its summary is a fixed
+  // template (ADR-020 amendment). Only the live dataset has review rows: its CHECK allows no other dataset_kind.
+  if (datasetKind === "live") {
+    await tx.query(
+      `INSERT INTO waspada.public_event_history_review_decisions (
+         dataset_kind, event_id, event_version, review_status, change_type, summary, reviewer_id, reviewed_at)
+       VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7::timestamptz)`,
+      [
+        datasetKind,
+        eventId,
+        version,
+        action === "correct" ? "corrected" : "published",
+        reviewSummaryFor(action, { sourceCount, reason: core.reason }),
+        actor.actorId,
+        decidedAt,
       ],
     );
   }
@@ -848,26 +904,20 @@ export async function withdrawPublishedEvent(
           }),
         ],
       );
-      const tombstone = {
-        schema_version: "2.0",
-        record_type: "Event",
-        dataset_kind: datasetKind,
-        trace_id: latest.traceId,
-        event_id: input.eventId,
+      const tombstone = buildWithdrawnEventRecordV2({
+        datasetKind,
+        traceId: latest.traceId,
+        eventId: input.eventId,
         version,
-        supersedes_version: latest.version,
+        supersedesVersion: latest.version,
+        decisionId,
+        withdrawnAt: decidedAt,
+        reasonCategory: input.reasonCategory,
         title: published.title,
         summary: published.summary,
         category: published.category,
         lifecycle: published.lifecycle,
-        claims: [],
-        impact_refs: [],
-        publication_status: "withdrawn",
-        withdrawal_reason: input.reasonCategory,
-        publication_decision_id: decisionId,
-        published_at: null,
-        withdrawn_at: decidedAt,
-      };
+      });
       await tx.query(
         `INSERT INTO waspada.event_versions (
            dataset_kind, event_id, version, trace_id, supersedes_version, title, summary, category,

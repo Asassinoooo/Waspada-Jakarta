@@ -7,7 +7,10 @@ import {
   type PublicEventListCandidateReadOptions,
   type PublicEventListCursor,
 } from "../src/layers/l4-application-integration/public-event-list-projection-service.js";
-import type { PublicEventProjectionReadResult } from "../src/layers/l4-application-integration/public-event-projection-service.js";
+import {
+  PublicEventProjectionServiceError,
+  type PublicEventProjectionReadResult,
+} from "../src/layers/l4-application-integration/public-event-projection-service.js";
 
 type RecordValue = Record<string, unknown>;
 
@@ -198,6 +201,35 @@ test("omits candidates that become unavailable while retaining candidate cursor 
 
   assert.deepEqual(result.events.map((event) => event.event_id), [eventA]);
   assert.deepEqual(result.nextCursor, nextCursor);
+});
+
+test("HOSTED-02: skips one candidate the strict projector rejects as INVALID_EVENT and keeps the valid one", async (t) => {
+  const candidates = [
+    makeCandidate(eventA, firstTime),
+    makeCandidate(eventB, olderTime),
+  ];
+  const nextCursor = cursorFor(candidates[1]!);
+  const result = await createService(
+    makePage(candidates, nextCursor),
+    (eventId) => {
+      // The shape the real projection service raises for a record the strict projector rejects.
+      if (eventId === eventB) throw new PublicEventProjectionServiceError("PROJECTION_FAILED", "INVALID_EVENT");
+      return { kind: "found", event: makeEventView(String(eventId)) };
+    },
+  ).read({ limit: 2 });
+
+  assert.deepEqual(result.events.map((event) => event.event_id), [eventA]);
+  assert.deepEqual(result.nextCursor, nextCursor);
+  const skipped = candidates.length - result.events.length;
+  assert.equal(skipped, 1);
+  t.diagnostic(`public list skipped ${skipped} invalid candidate of ${candidates.length} (not in the response)`);
+
+  // Any other projector rejection still fails the whole page, with the same redacted error as before.
+  const otherRejection = createService(makePage(candidates, nextCursor), (eventId) => {
+    if (eventId === eventB) throw new PublicEventProjectionServiceError("PROJECTION_FAILED", "EVENT_NOT_PUBLIC");
+    return { kind: "found", event: makeEventView(String(eventId)) };
+  });
+  await assertServiceError(otherRejection.read({ limit: 2 }), "PROJECTION_READ_FAILED", [eventB]);
 });
 
 test("rejects closed request violations before calling either injected port", async () => {

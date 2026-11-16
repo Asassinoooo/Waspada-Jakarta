@@ -24,3 +24,13 @@ The database stores append-only, version-bound disclosure decisions and exposes 
 ## Affected requirements
 
 FR-10/12/13; NFR-01/07.
+
+## Amendment (HOSTED-02, 16 Nov 2026): agent-path review summaries are deterministic templates
+
+- Each published version writes one approved row to `public_event_history_review_decisions` (migration 050 grants the publication writer insert on it). The row's `summary` is a fixed Bahasa Indonesia template, never model output:
+  - agent auto-publication: `Diterbitkan otomatis dari {n} sumber`
+  - moderator publication: `Diterbitkan oleh moderator`
+  - moderator correction: the moderator's own note, trimmed and truncated to 500 characters, or `Dikoreksi oleh moderator` when the note is blank.
+- `change_type` is `published` for a new publication and `corrected` for a correction. Withdrawals and no-material-change decisions write no review row.
+- The stored event record is the domain schema 2.0 Event with exactly the 23 keys the public readers check. `publication_mode` and waivers stay on the publication decision row and are not copied into the record.
+- Known gap: the agent path does not yet persist support evidence references, claim origins or place ids for a published claim. The stored claims therefore carry empty `support` and `origin_ids`, and the event scope carries no place id. The public Layer 4 projection rejects such a version and fails closed until those inputs exist. No geometry is mapped from the model's approximate coordinates, because no source supports them.
