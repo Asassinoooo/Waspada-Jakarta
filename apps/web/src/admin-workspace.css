@@ -112,6 +112,28 @@
   min-width: 0;
 }
 
+/* R-01 (PROPOSED, not yet approved by the owner): app-shell.css visually hides the badge label at 600px and below,
+   so a demo workspace would show only a dot. This chip keeps the demo label visible at 480px and below (FR-15).
+   The badge's own label still serves screen readers, so the chip is aria-hidden. */
+.admin-ws__mode-chip {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .admin-ws__mode-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.25rem;
+    padding: 0 var(--space-1);
+    border: 1px solid currentColor;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    line-height: 1;
+    letter-spacing: 0.02em;
+  }
+}
+
 .admin-ws__more {
   min-width: 2.75rem;
   min-height: 2.75rem;

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AccountUser, SessionEnvelope } from "@waspada/worker/account-contracts";
 import type { PublicContext } from "@waspada/worker/public-contracts";
@@ -217,4 +219,14 @@ test("canonical tab hashes use the #admin/<tab> form", () => {
   assert.equal(adminTabHash("sumber"), "#admin/sumber");
   assert.equal(adminTabHash("akun"), "#admin/akun");
   assert.equal(adminTabHash("embedding"), "#admin/embedding");
+});
+
+// R-01 (proposed): phones keep a visible demo chip, because app-shell.css hides the badge label at 600px and below.
+test("R-01: the admin header shows a demo chip only for the demo dataset", () => {
+  const demo = renderToStaticMarkup(<AdminWorkspace initialTab="ringkasan" session={adminSession} context={demoContext} isNarrowScreen={false} onRefreshSession={() => {}} />);
+  assert.match(demo, /<span class="admin-ws__mode-chip" aria-hidden="true">Demo<\/span>/);
+  const live = renderToStaticMarkup(<AdminWorkspace initialTab="ringkasan" session={adminSession} context={{ ...demoContext, dataset_mode: "live" } as unknown as PublicContext} isNarrowScreen={false} onRefreshSession={() => {}} />);
+  assert.doesNotMatch(live, /admin-ws__mode-chip/);
+  const css = readFileSync(fileURLToPath(new URL("../src/admin-workspace.css", import.meta.url)), "utf8");
+  assert.match(css, /@media \(max-width: 480px\) \{\s*\.admin-ws__mode-chip \{\s*display: inline-flex;/u);
 });

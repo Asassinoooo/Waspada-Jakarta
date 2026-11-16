@@ -144,7 +144,7 @@ export function AdminWorkspace({ initialTab, session, context, isNarrowScreen, o
           {primary !== null && <a className="button button--primary admin-ws__primary" href={primary.href}>{primary.label}</a>}
           <Popover
             triggerClassName={`site-header__badge badge${badge.tone === "warning" ? " badge--warning" : badge.tone === "accent" ? " badge--accent" : ""}`}
-            triggerContent={<><span className="site-header__badge-dot" aria-hidden="true" /><span className="site-header__badge-label">{badge.label}</span></>}
+            triggerContent={<><span className="site-header__badge-dot" aria-hidden="true" /><span className="site-header__badge-label">{badge.label}</span>{context?.dataset_mode === "demo" && <span className="admin-ws__mode-chip" aria-hidden="true">Demo</span>}</>}
             panelClassName="site-header__status"
           >
             <p className="site-header__status-title"><strong>{badge.title}</strong></p>
