@@ -227,7 +227,7 @@ describe('public event snapshot repository', () => {
       async query<Row extends object>(statement: string) {
         queryCount += 1;
         const rows = queryCount === 1
-          ? [{ dataset_kind: 'live', event_id: 'event-requested', version: 1, record_json: {} }]
+          ? [{ dataset_kind: 'live', event_id: 'event-requested', version: 1, record_json: {}, location_label_present: false }]
           : tooManyImpacts;
         if (queryCount === 2) assert.match(statement, /LIMIT\s+\$3/u);
         return { rows: rows as Row[] };

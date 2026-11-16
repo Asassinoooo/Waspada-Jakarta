@@ -916,6 +916,8 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
   // by the publication role, and an event with no usable coordinate is published as a whole view, never refused for it.
   const enrichment = await enrichPublication(tx, { datasetKind, traceId, eventId, version, category: detail.category, proposal });
   const scope = { ...EMPTY_SCOPE, geometry_ids: [...enrichment.geometryIds] };
+  // HOSTED-18: the public list needs whether a label was present. The Event record has no label slot, so the label text is not stored here.
+  const locationLabelPresent = typeof proposal.location_label === "string" && proposal.location_label.trim().length > 0;
 
   await tx.query(
     `INSERT INTO waspada.publication_decisions (
@@ -935,6 +937,7 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
       JSON.stringify({
         disposition: "publish",
         ...actorRecord,
+        location_label_present: locationLabelPresent,
         publication_mode: publicationMode,
         gate: action === "auto_publish"
           ? "agent_auto_publication"

@@ -128,10 +128,11 @@ const freshnessStatuses = new Set<PublicEventListFreshness>(["current", "needs_u
 const eventViewKeys = [
   "event_id", "version", "title", "summary", "category", "tags", "lifecycle",
   "freshness", "event_time", "validity", "scope", "claims", "impacts", "published_at",
-  "severity",
+  "severity", "location_display",
 ] as const;
 /** SEV-01: severity is optional. A projection without it is valid, and an absent key is never added. */
-const optionalEventViewKeys: readonly string[] = ["severity"];
+/** HOSTED-18: location_display is present only on a whole-view event (TS EventView already declares it optional). */
+const optionalEventViewKeys: readonly string[] = ["severity", "location_display"];
 
 /**
  * Composes current-public event candidates through the strict Layer 4 projector.

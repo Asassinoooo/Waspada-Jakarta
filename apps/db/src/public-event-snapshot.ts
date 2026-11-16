@@ -23,6 +23,8 @@ export interface PublicEventSnapshot {
   /** Untrusted schema 2.0 input for the next Layer 4 validation boundary. */
   readonly recordJson: unknown;
   readonly impacts: readonly PublicEventSnapshotImpact[];
+  /** HOSTED-18: true only when the publication decision recorded a location label. */
+  readonly locationLabelPresent: boolean;
 }
 
 export type PublicEventSnapshotReadResult =
@@ -64,6 +66,7 @@ interface EventVersionRow {
   readonly event_id: unknown;
   readonly version: unknown;
   readonly record_json: unknown;
+  readonly location_label_present: unknown;
 }
 
 interface EventImpactRow {
@@ -90,8 +93,13 @@ export function createPublicEventSnapshotRepository(
 
       const eventRows = await queryRows<EventVersionRow>(
         executor,
-        `SELECT event.dataset_kind, event.event_id, event.version, event.record_json
+        `SELECT event.dataset_kind, event.event_id, event.version, event.record_json,
+                COALESCE(location.location_label_present, false) AS location_label_present
          FROM waspada.public_event_versions AS event
+         LEFT JOIN waspada.public_event_location_status AS location
+           ON location.dataset_kind = event.dataset_kind
+          AND location.event_id = event.event_id
+          AND location.version = event.version
          WHERE event.dataset_kind = 'live'
            AND event.event_id = $1
          ORDER BY event.version DESC
@@ -129,6 +137,7 @@ export function createPublicEventSnapshotRepository(
           eventId: event.eventId,
           eventVersion: event.eventVersion,
           recordJson: event.recordJson,
+          locationLabelPresent: event.locationLabelPresent,
           impacts,
         },
       };
@@ -140,8 +149,13 @@ export function createPublicEventSnapshotRepository(
 
       const eventRows = await queryRows<EventVersionRow>(
         executor,
-        `SELECT event.dataset_kind, event.event_id, event.version, event.record_json
+        `SELECT event.dataset_kind, event.event_id, event.version, event.record_json,
+                COALESCE(location.location_label_present, false) AS location_label_present
          FROM waspada.public_event_versions AS event
+         LEFT JOIN waspada.public_event_location_status AS location
+           ON location.dataset_kind = event.dataset_kind
+          AND location.event_id = event.event_id
+          AND location.version = event.version
          WHERE event.dataset_kind = 'live'
            AND event.event_id = ANY($1::text[])
          ORDER BY event.event_id COLLATE "C" ASC, event.version DESC
@@ -155,6 +169,7 @@ export function createPublicEventSnapshotRepository(
         readonly eventId: string;
         readonly eventVersion: number;
         readonly recordJson: unknown;
+        readonly locationLabelPresent: boolean;
       }>();
       for (const row of eventRows) {
         if (!isRecord(row) || typeof row.event_id !== 'string' || !requested.has(row.event_id)) {
@@ -212,6 +227,7 @@ export function createPublicEventSnapshotRepository(
         eventId: event.eventId,
         eventVersion: event.eventVersion,
         recordJson: event.recordJson,
+        locationLabelPresent: event.locationLabelPresent,
         impacts: (impactsByEventId.get(event.eventId) ?? []).sort((left, right) =>
           compareStrings(left.impactId, right.impactId) || left.impactVersion - right.impactVersion),
       }));
@@ -223,19 +239,22 @@ function validateEventRow(value: unknown, requestedEventId: string): {
   readonly eventId: string;
   readonly eventVersion: number;
   readonly recordJson: unknown;
+  readonly locationLabelPresent: boolean;
 } {
-  if (!hasExactKeys(value, ['dataset_kind', 'event_id', 'version', 'record_json'])
+  if (!hasExactKeys(value, ['dataset_kind', 'event_id', 'version', 'record_json', 'location_label_present'])
     || value.dataset_kind !== 'live'
     || !isIdentifier(value.event_id)
     || value.event_id !== requestedEventId
     || !isPositiveDatabaseInteger(value.version)
-    || !isJsonObject(value.record_json)) {
+    || !isJsonObject(value.record_json)
+    || typeof value.location_label_present !== 'boolean') {
     fail('RESULT_INVALID');
   }
   return {
     eventId: value.event_id,
     eventVersion: value.version,
     recordJson: value.record_json,
+    locationLabelPresent: value.location_label_present,
   };
 }
 

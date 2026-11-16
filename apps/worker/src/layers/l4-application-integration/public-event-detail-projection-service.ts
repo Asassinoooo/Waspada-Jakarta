@@ -154,7 +154,7 @@ export function createPublicEventDetailProjectionService(ports: {
       };
       let context: PublicEventGeometryProjectionContext;
       try {
-        context = projectPublicEventForGeometry(prepared.eventRecord, projectionLookups);
+        context = projectPublicEventForGeometry(prepared.eventRecord, projectionLookups, { locationLabelPresent: prepared.locationLabelPresent });
       } catch (error) {
         if (error instanceof PublicProjectionError
           && (error.code === "LOOKUPS_INVALID"
@@ -190,6 +190,7 @@ export function createPublicEventDetailProjectionService(ports: {
           prepared.eventRecord,
           projectionLookups,
           geometryRows.map((geometry) => geometry.recordJson),
+          { locationLabelPresent: prepared.locationLabelPresent },
         );
       } catch {
         fail("PROJECTION_FAILED");
