@@ -467,6 +467,8 @@ async function resolvePublicDisplay(
 interface PublicationEnrichment {
   /** Support for each claim. Filled only when the proposal was built from one report revision. */
   readonly support: readonly DomainEvidenceRef[];
+  /** HOSTED-15: the evidence_references ids of the same support, in the same order. They link the origin rows. */
+  readonly supportEvidenceRefIds: readonly string[];
   /** Always empty in this change. */
   readonly geometryIds: readonly string[];
   /** Set only for a coordinate-bearing event. It records the source of the point that is pending. */
@@ -503,6 +505,8 @@ async function withOptionalSavepoint<Result>(
 interface OwnEvidence {
   readonly revisions: readonly string[];
   readonly refs: readonly DomainEvidenceRef[];
+  /** HOSTED-15: the evidence_references id of each ref, in the same order as refs. Never written into a claim. */
+  readonly refIds: readonly string[];
 }
 
 /**
@@ -516,7 +520,7 @@ async function ownEvidence(
   proposal: EventProposalDto,
 ): Promise<OwnEvidence> {
   const extra = proposal as unknown as { context_id?: unknown; report_revision_ids?: unknown };
-  if (typeof extra.context_id !== "string" || extra.context_id.length === 0) return { revisions: [], refs: [] };
+  if (typeof extra.context_id !== "string" || extra.context_id.length === 0) return { revisions: [], refs: [], refIds: [] };
   const context = await tx.query<{ record_json: unknown }>(
     `SELECT record_json FROM waspada.grounding_contexts WHERE dataset_kind = $1 AND context_id = $2`,
     [datasetKind, extra.context_id],
@@ -544,9 +548,10 @@ async function ownEvidence(
   }
 
   const refs: DomainEvidenceRef[] = [];
+  const refIds: string[] = [];
   for (const candidate of candidates) {
-    const persisted = await tx.query<{ matches: number }>(
-      `SELECT COUNT(*)::int AS matches FROM waspada.evidence_references
+    const persisted = await tx.query<{ evidence_ref_id: string }>(
+      `SELECT evidence_ref_id::text AS evidence_ref_id FROM waspada.evidence_references
        WHERE dataset_kind = $1 AND report_revision_id = $2 AND permitted_text_hash = $3
          AND span_start = $4 AND span_end = $5 AND offset_unit = $6 AND relation = $7`,
       [
@@ -559,11 +564,13 @@ async function ownEvidence(
         candidate.relation,
       ],
     );
-    if (persisted.rows[0]?.matches !== 1) continue;
+    if (persisted.rows.length !== 1) continue;
+    const evidenceRefId = persisted.rows[0]!.evidence_ref_id;
     if (!refs.some((existing) => existing.report_revision_id === candidate.report_revision_id
       && existing.permitted_text_hash === candidate.permitted_text_hash
       && existing.span_start === candidate.span_start && existing.span_end === candidate.span_end)) {
       refs.push(candidate);
+      refIds.push(evidenceRefId);
     }
   }
 
@@ -573,7 +580,7 @@ async function ownEvidence(
   const revisions = declared.length > 0
     ? declared
     : [...new Set(refs.map((ref) => ref.report_revision_id))];
-  return { revisions, refs };
+  return { revisions, refs, refIds };
 }
 
 /**
@@ -595,10 +602,12 @@ async function enrichPublication(
 ): Promise<PublicationEnrichment> {
   const { proposal } = input;
   const evidence = await withOptionalSavepoint(tx, "hosted10_evidence", () => ownEvidence(tx, input.datasetKind, proposal));
-  const own: OwnEvidence = evidence.ok ? evidence.value : { revisions: [], refs: [] };
-  const support = own.revisions.length === 1
-    ? own.refs.filter((ref) => ref.report_revision_id === own.revisions[0])
+  const own: OwnEvidence = evidence.ok ? evidence.value : { revisions: [], refs: [], refIds: [] };
+  const supportIndexes = own.revisions.length === 1
+    ? own.refs.flatMap((ref, index) => (ref.report_revision_id === own.revisions[0] ? [index] : []))
     : [];
+  const support = supportIndexes.map((index) => own.refs[index]!);
+  const supportEvidenceRefIds = supportIndexes.map((index) => own.refIds[index]!);
 
   const outcome = publicPointOutcomeFor({
     category: input.category,
@@ -606,12 +615,125 @@ async function enrichPublication(
     coordinates: proposal.coordinates,
   });
   if (outcome.status === "point") {
-    return { support, geometryIds: [], geometrySource: "model_approximate", geometryStatus: "pending_geometry_writer" };
+    return {
+      support,
+      supportEvidenceRefIds,
+      geometryIds: [],
+      geometrySource: "model_approximate",
+      geometryStatus: "pending_geometry_writer",
+    };
   }
   if (outcome.status === "not_required_group_notice") {
-    return { support, geometryIds: [], geometrySource: null, geometryStatus: "not_required_group_notice" };
+    return {
+      support,
+      supportEvidenceRefIds,
+      geometryIds: [],
+      geometrySource: null,
+      geometryStatus: "not_required_group_notice",
+    };
   }
-  return { support, geometryIds: [], geometrySource: null, geometryStatus: "whole_view" };
+  return {
+    support,
+    supportEvidenceRefIds,
+    geometryIds: [],
+    geometrySource: null,
+    geometryStatus: "whole_view",
+  };
+}
+
+/** HOSTED-15: the origin kind of an evidence label. A label with no entry here keeps the origin kind "unknown". */
+const ORIGIN_KIND_BY_LABEL: Readonly<Partial<Record<string, string>>> = {
+  issuer_notice: "issuer_statement",
+  attributed_report: "reporter_observation",
+  crowdsourced_observation: "crowdsourced_observation",
+};
+
+/**
+ * HOSTED-15: the origin id of one registered source in one dataset. It is a pure function of the two, so every
+ * publication from that source reuses the same row.
+ */
+export function originIdFor(datasetKind: string, sourceId: string): string {
+  const hash = createHash("sha256").update("origin:").update(datasetKind).update(":").update(sourceId).digest("hex");
+  return `origin-${hash.slice(0, 40)}`;
+}
+
+interface OriginWriteResult {
+  /** The origin ids of each claim, by claim index. A claim with no registered source has none. */
+  readonly originIdsByClaim: readonly (readonly string[])[];
+  /** The number of distinct registered sources that have an origin row in this publication. */
+  readonly origins: number;
+}
+
+/**
+ * HOSTED-15: writes one evidence origin per registered source of the claims, and links each origin to the persisted
+ * evidence the version cites (the same support every claim carries). A source that is not in the registry gets no
+ * origin, so no claim ever names a row that does not exist. The origin content is the registry's display name and
+ * public hosts only. The publication role only inserts: a repeated source hits ON CONFLICT DO NOTHING and reuses its
+ * row. The bare conflict clause needs no read grant, and it is safe because each origin table's only unique key is
+ * its primary key (keep it that way, or name the target and grant the SELECT it needs). Origins are not corroboration,
+ * so both status fields stay "unknown". Origin rows are append-only.
+ */
+export async function writeOriginRows(
+  tx: SqlExecutor,
+  input: {
+    readonly datasetKind: string;
+    readonly traceId: string;
+    readonly claims: readonly { readonly sourceId: string | null; readonly evidenceLabel: string | null }[];
+    readonly supportEvidenceRefIds: readonly string[];
+  },
+): Promise<OriginWriteResult> {
+  const sourceIds = [...new Set(input.claims.map((claim) => claim.sourceId).filter((id): id is string => !!id))];
+  const registered = new Map<string, { readonly displayName: string; readonly approvedHosts: readonly string[] }>();
+  if (sourceIds.length > 0) {
+    const rows = await tx.query<{ source_id: string; display_name: string; approved_hosts: string[] }>(
+      "SELECT source_id, display_name, approved_hosts FROM waspada.source_registry WHERE source_id = ANY($1::text[])",
+      [sourceIds],
+    );
+    for (const row of rows.rows) {
+      registered.set(row.source_id, { displayName: row.display_name, approvedHosts: row.approved_hosts });
+    }
+  }
+
+  const originBySource = new Map<string, string>();
+  for (const sourceId of sourceIds) {
+    const source = registered.get(sourceId);
+    if (!source) continue;
+    const label = input.claims.find((claim) => claim.sourceId === sourceId)?.evidenceLabel ?? null;
+    const originId = originIdFor(input.datasetKind, sourceId);
+    const originKind = (label === null ? undefined : ORIGIN_KIND_BY_LABEL[label]) ?? "unknown";
+    await tx.query(
+      `INSERT INTO waspada.evidence_origins
+         (dataset_kind, origin_id, trace_id, origin_kind, actor_label, source_id, lineage_relation, independence_status, record_json)
+       VALUES ($1, $2, $3, $4, $5, $6, 'unknown', 'unknown', $7::jsonb)
+       ON CONFLICT DO NOTHING`,
+      [
+        input.datasetKind,
+        originId,
+        input.traceId,
+        originKind,
+        Array.from(source.displayName).slice(0, 200).join(""),
+        sourceId,
+        JSON.stringify({ public_hosts: [...source.approvedHosts].slice(0, 10) }),
+      ],
+    );
+    for (const evidenceRefId of input.supportEvidenceRefIds) {
+      await tx.query(
+        `INSERT INTO waspada.origin_evidence (dataset_kind, origin_id, evidence_ref_id)
+         VALUES ($1, $2, $3::bigint)
+         ON CONFLICT DO NOTHING`,
+        [input.datasetKind, originId, evidenceRefId],
+      );
+    }
+    originBySource.set(sourceId, originId);
+  }
+
+  return {
+    originIdsByClaim: input.claims.map((claim) => {
+      const originId = claim.sourceId === null ? undefined : originBySource.get(claim.sourceId);
+      return originId === undefined ? [] : [originId];
+    }),
+    origins: originBySource.size,
+  };
 }
 
 function parseJsonObject(value: unknown): Record<string, unknown> | null {
@@ -828,6 +950,20 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
   // HOSTED-02: the stored record is the domain schema 2.0 Event, built by the shared builder. Publication mode and
   // waivers are not part of it: they stay on the publication decision row.
   const eventTime = domainEventTime(proposal.event_time);
+  // HOSTED-15: the origin rows of the registered sources, linked to the evidence the version cites. They are written
+  // before the record, so each claim's origin_ids names a row of this transaction. Count-only log line.
+  const origins = await writeOriginRows(tx, {
+    datasetKind,
+    traceId,
+    claims: (proposal.claims ?? []).map((claim, index) => ({
+      sourceId: claim.source_id ?? null,
+      evidenceLabel: detail.claims[index]?.evidence_label ?? null,
+    })),
+    supportEvidenceRefIds: enrichment.supportEvidenceRefIds,
+  });
+  if (origins.origins > 0) {
+    console.info(JSON.stringify({ event: "publication_origins", origins: origins.origins, support_refs: enrichment.supportEvidenceRefIds.length }));
+  }
   const record = buildEventRecordV2({
     datasetKind,
     traceId,
@@ -850,7 +986,11 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
     claims: domainClaimsFor(proposal, eventId, eventTime, detail.claims.map((claim) => ({
       text: claim.text,
       evidence_label: claim.evidence_label,
-    })), { support: enrichment.support, geometryIds: enrichment.geometryIds }),
+    })), {
+      support: enrichment.support,
+      geometryIds: enrichment.geometryIds,
+      originIdsByClaim: origins.originIdsByClaim,
+    }),
   });
   await tx.query(
     `INSERT INTO waspada.event_versions (

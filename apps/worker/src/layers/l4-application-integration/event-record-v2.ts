@@ -277,15 +277,20 @@ export function reviewSummaryFor(
 /**
  * The domain claims of a published version, built from the same claims the public DTO uses. The claim id comes from
  * publicClaimIdFor, so the stored claim, its event_claims row and the DTO agree. `links.support` is the persisted
- * evidence the proposal's own report revision used; origin_ids stay empty because no origin writer exists yet
- * (see the ADR-020 amendment). `links.geometryIds` is the point geometry of the event, shared by its claims.
+ * evidence the proposal's own report revision used. `links.originIdsByClaim` is the origin rows of each claim, by claim
+ * index (HOSTED-15, ADR-020 amendment); a claim with no registered source has none. `links.geometryIds` is the point
+ * geometry of the event, shared by its claims.
  */
 export function domainClaimsFor(
   proposal: EventProposalDto,
   eventId: string,
   eventTime: DomainTimeScope,
   claims: readonly { readonly text: string; readonly evidence_label: DomainPublishedClaim["evidence_label"] }[],
-  links: { readonly support?: readonly DomainEvidenceRef[]; readonly geometryIds?: readonly string[] } = {},
+  links: {
+    readonly support?: readonly DomainEvidenceRef[];
+    readonly geometryIds?: readonly string[];
+    readonly originIdsByClaim?: readonly (readonly string[])[];
+  } = {},
 ): DomainPublishedClaim[] {
   const geometryIds = links.geometryIds ?? [];
   return (proposal.claims ?? []).map((claim, index) => ({
@@ -298,7 +303,7 @@ export function domainClaimsFor(
     support: [...(links.support ?? [])],
     contradictions: [],
     context_evidence: [],
-    origin_ids: [],
+    origin_ids: [...(links.originIdsByClaim?.[index] ?? [])],
     evidence_label: claims[index]?.evidence_label ?? "attributed_report",
   }));
 }

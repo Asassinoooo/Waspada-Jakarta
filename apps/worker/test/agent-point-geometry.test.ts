@@ -33,8 +33,9 @@ import {
  * no geometry row. It is the whole map view (location_display "whole_view"). A non-group event needs a place id or a
  * label. A group-specific critical notice may have neither. Authored fictional data, the real decision writer and PGlite.
  *
- * The DB list lists nothing for these events yet: no origin writer exists, so origin_ids stay empty and the strict
- * projector rejects them as INVALID_EVENT. The test pins that the page does not fail because of them.
+ * The DB list lists nothing for these events: their source is not in the registry, so no origin row is written
+ * (HOSTED-15), origin_ids stay empty, and the strict projector rejects them as INVALID_EVENT. The test pins that the
+ * page does not fail because of them.
  */
 
 const MODEL_POINT: [number, number] = [106.871, -6.244];
@@ -390,7 +391,7 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
   });
 
   it("the DB list lists none of these events yet and the page does not fail", async () => {
-    // No origin writer exists, so origin_ids stay empty and the projector skips each event as INVALID_EVENT.
+    // The source is not registered, so no origin row exists, origin_ids stay empty, and the projector skips each event as INVALID_EVENT.
     const list = createPublicEventListProjectionService({
       candidates: createPublicEventListRepository(db.executor),
       projections: createPublicEventProjectionService({
