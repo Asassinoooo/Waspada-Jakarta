@@ -95,7 +95,7 @@ export function accountMenuEntries(session: SessionEnvelope | null, themeLabel: 
   return entries;
 }
 
-function useAccountSession(refreshKey: number): SessionEnvelope | null {
+function useAccountSession(refreshKey: number, accountRevision: number): SessionEnvelope | null {
   const [session, setSession] = useState<SessionEnvelope | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -105,7 +105,7 @@ function useAccountSession(refreshKey: number): SessionEnvelope | null {
         if (!controller.signal.aborted) setSession(null);
       });
     return () => controller.abort();
-  }, [refreshKey]);
+  }, [refreshKey, accountRevision]);
   return session;
 }
 
@@ -148,12 +148,14 @@ export interface SiteHeaderProps {
   context?: PublicContext | null;
   /** Changes on each hash navigation so the account state is re-read after sign-in or sign-out. */
   sessionKey?: number;
+  /** Changes after an account action (sign-out or sign-in) so the header re-reads the session on the same page. */
+  accountRevision?: number;
 }
 
-export function SiteHeader({ route, context = null, sessionKey = 0 }: SiteHeaderProps) {
+export function SiteHeader({ route, context = null, sessionKey = 0, accountRevision = 0 }: SiteHeaderProps) {
   const compact = useMediaMatch(COMPACT_HEADER_QUERY);
   const theme = useThemePreference();
-  const session = useAccountSession(sessionKey);
+  const session = useAccountSession(sessionKey, accountRevision);
   const badge = datasetBadge(context?.dataset_mode);
   const menuItems: MenuItem[] = accountMenuEntries(session, compact ? THEME_LABEL[theme] : null).map((entry) => ({
     id: entry.id,

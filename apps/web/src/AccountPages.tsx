@@ -766,10 +766,11 @@ function AccountProfile({
     setLogoutState("working");
     try {
       await client.logout(activeCsrfToken);
-      onRefreshSession();
     } catch {
       setLogoutState("error");
-      if (logoutState !== "error") onRefreshSession();
+    } finally {
+      // Re-read the session whether or not the call succeeded, so the header and this page leave the signed-in state (R-06).
+      onRefreshSession();
     }
   }
 

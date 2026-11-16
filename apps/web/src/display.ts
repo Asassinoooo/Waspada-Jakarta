@@ -26,21 +26,21 @@ export function formatDate(value: string | null | undefined) {
   return dateFormatter.format(date);
 }
 
-export function formatEventTime(event: Pick<EventView, "event_time">) {
+export function formatEventTime(event: Pick<EventView, "event_time">, options: { fixtureWording?: boolean } = {}) {
   const time = event.event_time;
   if (time.precision === "unknown" || !time.start) return "Waktu kejadian tidak diketahui";
   const value = time.precision === "date" ? formatDate(time.start) : formatInstant(time.start);
   if (time.end) {
     const end = time.precision === "date" ? formatDate(time.end) : formatInstant(time.end);
-    return value + " sampai " + end + " (" + precisionLabel(time.precision) + ")";
+    return value + " sampai " + end + " (" + precisionLabel(time.precision, options) + ")";
   }
-  return value + " (" + precisionLabel(time.precision) + ")";
+  return value + " (" + precisionLabel(time.precision, options) + ")";
 }
 
-export function precisionLabel(value: "exact" | "date" | "range" | "unknown") {
+export function precisionLabel(value: "exact" | "date" | "range" | "unknown", options: { fixtureWording?: boolean } = {}) {
   switch (value) {
     case "exact":
-      return "waktu tepat menurut fixture";
+      return options.fixtureWording === false ? "waktu tepat" : "waktu tepat menurut fixture";
     case "date":
       return "tanggal saja";
     case "range":
@@ -50,12 +50,13 @@ export function precisionLabel(value: "exact" | "date" | "range" | "unknown") {
   }
 }
 
-export function lifecycleLabel(value: Lifecycle) {
+export function lifecycleLabel(value: Lifecycle, options: { fixtureWording?: boolean } = {}) {
+  const fixture = options.fixtureWording !== false;
   switch (value) {
     case "planned":
       return "Direncanakan";
     case "ongoing":
-      return "Berlangsung (nilai fixture)";
+      return fixture ? "Berlangsung (nilai fixture)" : "Berlangsung";
     case "resolved":
       return "Selesai";
     case "cancelled":
@@ -65,10 +66,11 @@ export function lifecycleLabel(value: Lifecycle) {
   }
 }
 
-export function freshnessLabel(value: FreshnessStatus) {
+export function freshnessLabel(value: FreshnessStatus, options: { fixtureWording?: boolean } = {}) {
+  const fixture = options.fixtureWording !== false;
   switch (value) {
     case "current":
-      return "Dalam batas tinjau saat evaluasi fixture";
+      return fixture ? "Dalam batas tinjau saat evaluasi fixture" : "Dalam batas tinjau saat evaluasi";
     case "needs_update":
       return "Perlu diperbarui";
     case "expired":

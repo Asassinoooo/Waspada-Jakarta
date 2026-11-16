@@ -449,7 +449,7 @@ export function App() {
 
   return (
     <div className={`app-shell${route.screen === "discover" ? " app-shell--map" : ""}`}>
-      <SiteHeader route={route} context={context} sessionKey={routeActivation} />
+      <SiteHeader route={route} context={context} sessionKey={routeActivation} accountRevision={sessionRevision} />
       {route.screen === "discover" && (
         <MapHome deepLinkEventId={route.eventId ?? null} context={context} />
       )}

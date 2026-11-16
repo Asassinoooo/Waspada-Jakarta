@@ -119,6 +119,11 @@ function PresentationDetail() {
   );
 }
 
+/** R-05: wording for API records. Only the demo dataset is labelled as synthetic or fixture. */
+function wording(demo: boolean, demoText: string, otherText: string): string {
+  return demo ? demoText : otherText;
+}
+
 function historyChangeLabel(changeType: HistoryPage["data"][number]["change_type"]) {
   switch (changeType) {
     case "published": return "Versi dipublikasikan";
@@ -131,49 +136,51 @@ function historyChangeLabel(changeType: HistoryPage["data"][number]["change_type
 function ApiHistory({
   state,
   onRetry,
+  demo,
 }: {
   state: ApiReadState<HistoryPage>;
   onRetry: () => void;
+  demo: boolean;
 }) {
   return (
     <section className="detail-panel history-panel" aria-labelledby="api-history-heading">
       <div className="panel-heading">
-        <div><p className="section-kicker">Riwayat fixture sintetis</p><h2 id="api-history-heading">Perubahan</h2></div>
+        <div><p className="section-kicker">{wording(demo, "Riwayat fixture sintetis", "Riwayat")}</p><h2 id="api-history-heading">Perubahan</h2></div>
         {state.status === "loaded" && <span className="count-chip">{state.data.data.length} entri</span>}
       </div>
       {state.status === "loading" && (
         <div className="state-panel state-panel--loading" role="status">
           <span className="loading-rule" aria-hidden="true" />
-          <strong>Memuat riwayat fixture…</strong>
-          <span>Riwayat sintetis ini bukan keadaan terkini.</span>
+          <strong>{wording(demo, "Memuat riwayat fixture…", "Memuat riwayat…")}</strong>
+          <span>{wording(demo, "Riwayat sintetis ini bukan keadaan terkini.", "Riwayat ini bukan keadaan terkini.")}</span>
         </div>
       )}
       {state.status === "not-found" && (
         <div className="state-panel state-panel--compact" role="status">
           <strong>Riwayat record tidak ditemukan.</strong>
-          <p>API demo tidak memiliki riwayat untuk ID ini.</p>
+          <p>{wording(demo, "API demo tidak memiliki riwayat untuk ID ini.", "API tidak memiliki riwayat untuk ID ini.")}</p>
         </div>
       )}
       {state.status === "unavailable" && (
         <div className="state-panel state-panel--error" role="alert">
           <strong>Riwayat belum dapat dimuat.</strong>
-          <p>Detail event tetap dapat dibaca. Riwayat fixture ini tidak memberi informasi tentang kondisi saat ini.</p>
+          <p>Detail event tetap dapat dibaca. {wording(demo, "Riwayat fixture ini tidak memberi informasi tentang kondisi saat ini.", "Riwayat ini tidak memberi informasi tentang kondisi saat ini.")}</p>
           <button className="button button--quiet" type="button" onClick={onRetry}>Coba lagi memuat riwayat</button>
         </div>
       )}
       {state.status === "loaded" && state.data.data.length === 0 && (
         <div className="state-panel state-panel--compact" role="status">
-          <strong>Tidak ada entri riwayat pada fixture ini.</strong>
+          <strong>{wording(demo, "Tidak ada entri riwayat pada fixture ini.", "Tidak ada entri riwayat pada record ini.")}</strong>
           <p>Entri yang kosong tidak menunjukkan keselamatan atau penyelesaian event.</p>
         </div>
       )}
       {state.status === "loaded" && state.data.data.length > 0 && (
-        <ol className="claims-list" aria-label="Entri riwayat fixture sintetis">
+        <ol className="claims-list" aria-label={wording(demo, "Entri riwayat fixture sintetis", "Entri riwayat")}>
           {state.data.data.map((entry) => (
             <li className="claim-card" key={`${entry.event_id}:${entry.version}:${entry.change_type}:${entry.changed_at}`}>
-              <span className="claim-card__label">{historyChangeLabel(entry.change_type)} · versi {entry.version} · fixture demo</span>
+              <span className="claim-card__label">{historyChangeLabel(entry.change_type)} · versi {entry.version}{wording(demo, " · fixture demo", "")}</span>
               <p>{entry.summary}</p>
-              <p>Waktu pada fixture: <time dateTime={entry.changed_at}>{formatInstant(entry.changed_at)}</time></p>
+              <p>{wording(demo, "Waktu pada fixture: ", "Waktu: ")}<time dateTime={entry.changed_at}>{formatInstant(entry.changed_at)}</time></p>
             </li>
           ))}
         </ol>
@@ -199,32 +206,35 @@ function ApiEventDetail({
 }) {
   const event = detail.status === "loaded" ? detail.data : null;
   const severity = event === null ? null : severityOf(event);
+  // R-05: only a demo dataset may be called synthetic or fixture. Live and unknown modes get neutral wording.
+  const demo = context?.dataset_mode === "demo";
+  const noun = demo ? "fixture" : "record";
 
   return (
     <>
       {detail.status === "loading" && (
         <>
           <section className="detail-heading" aria-labelledby="detail-title">
-            <p className="section-kicker">Detail record sintetis</p>
-            <h1 id="detail-title">Memuat detail contoh…</h1>
+            <p className="section-kicker">{wording(demo, "Detail record sintetis", "Detail record")}</p>
+            <h1 id="detail-title">{wording(demo, "Memuat detail contoh…", "Memuat detail…")}</h1>
           </section>
           <div className="state-panel state-panel--loading" role="status">
             <span className="loading-rule" aria-hidden="true" />
-            <strong>Memuat record sintetis dari API lokal…</strong>
-            <span>Data ini adalah contoh antarmuka, bukan laporan langsung.</span>
+            <strong>{wording(demo, "Memuat record sintetis dari API lokal…", "Memuat record dari API lokal…")}</strong>
+            <span>{wording(demo, "Data ini adalah contoh antarmuka, bukan laporan langsung.", "Ini bukan peringatan darurat.")}</span>
           </div>
         </>
       )}
       {detail.status === "not-found" && (
         <section className="state-panel" role="status">
-          <strong>Record contoh tidak ditemukan.</strong>
-          <p>API demo tidak menyediakan record untuk ID ini.</p>
+          <strong>{wording(demo, "Record contoh tidak ditemukan.", "Record tidak ditemukan.")}</strong>
+          <p>{wording(demo, "API demo tidak menyediakan record untuk ID ini.", "API tidak menyediakan record untuk ID ini.")}</p>
           <a className="text-link" href="#peta">Kembali ke daftar</a>
         </section>
       )}
       {detail.status === "unavailable" && (
         <section className="state-panel state-panel--error" role="alert">
-          <strong>Detail contoh belum dapat dimuat.</strong>
+          <strong>{wording(demo, "Detail contoh belum dapat dimuat.", "Detail belum dapat dimuat.")}</strong>
           <p>API lokal sementara tidak tersedia. Keadaan keselamatan tidak diketahui.</p>
           <button className="button button--primary" type="button" onClick={onRetryDetail}>Coba lagi memuat detail</button>
         </section>
@@ -232,7 +242,7 @@ function ApiEventDetail({
       {event && (
         <>
           <section className="detail-heading" aria-labelledby="detail-title">
-            <p className="section-kicker">Detail dari API lokal · record sintetis</p>
+            <p className="section-kicker">{wording(demo, "Detail dari API lokal · record sintetis", "Detail dari API lokal")}</p>
             <h1 id="detail-title">{event.title}</h1>
             <p>{event.summary}</p>
             {severity !== null && (
@@ -242,14 +252,14 @@ function ApiEventDetail({
               </p>
             )}
             <div className="fixture-notice" role="note">
-              Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta.
+              {wording(demo, "Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta.", "Record ini menampilkan waktu dan sumbernya. Ini bukan peringatan darurat atau gambaran kondisi Jakarta.")}
             </div>
           </section>
 
           <section className="status-grid" aria-label="Dimensi status yang terpisah">
-            <div className="status-cell"><dt>Siklus</dt><dd>{lifecycleLabel(event.lifecycle)}</dd></div>
-            <div className="status-cell"><dt>Kesegaran</dt><dd>{freshnessLabel(event.freshness.status)}</dd><small>Evaluasi fixture {formatInstant(event.freshness.evaluated_at)}; basis {event.freshness.basis.replaceAll("_", " ")}.</small></div>
-            <div className="status-cell"><dt>Bukti</dt><dd>{event.claims.length === 0 ? "Tidak tersedia pada fixture" : evidenceLabel(event.claims[0]?.evidence_label)}</dd></div>
+            <div className="status-cell"><dt>Siklus</dt><dd>{lifecycleLabel(event.lifecycle, { fixtureWording: demo })}</dd></div>
+            <div className="status-cell"><dt>Kesegaran</dt><dd>{freshnessLabel(event.freshness.status, { fixtureWording: demo })}</dd><small>{demo ? "Evaluasi fixture" : "Dievaluasi"} {formatInstant(event.freshness.evaluated_at)}; basis {event.freshness.basis.replaceAll("_", " ")}.</small></div>
+            <div className="status-cell"><dt>Bukti</dt><dd>{event.claims.length === 0 ? `Tidak tersedia pada ${noun}` : evidenceLabel(event.claims[0]?.evidence_label)}</dd></div>
             <div className="status-cell"><dt>Relevansi</dt><dd>Tidak dinilai</dd><small>Minat pengguna tidak digunakan.</small></div>
           </section>
 
@@ -257,24 +267,24 @@ function ApiEventDetail({
             <section className="detail-panel" aria-labelledby="api-facts-heading">
               <div className="panel-heading">
                 <div><p className="section-kicker">Proyeksi publik</p><h2 id="api-facts-heading">Waktu dan cakupan</h2></div>
-                <span className="synthetic-label">Contoh API</span>
+                <span className="synthetic-label">{wording(demo, "Contoh API", "Data API")}</span>
               </div>
               <dl className="detail-facts detail-facts--spacious">
-                <div><dt>Waktu kejadian</dt><dd>{formatEventTime(event)}</dd></div>
+                <div><dt>Waktu kejadian</dt><dd>{formatEventTime(event, { fixtureWording: demo })}</dd></div>
                 <div><dt>Validitas pada record</dt><dd>{event.validity.valid_from || event.validity.valid_until
                   ? <>{event.validity.valid_from ? formatInstant(event.validity.valid_from) : "Tidak ada waktu awal"} sampai {event.validity.valid_until ? formatInstant(event.validity.valid_until) : "Tidak ada waktu akhir"}</>
-                  : "Tidak tersedia pada fixture"}</dd></div>
-                <div><dt>Versi publik diterbitkan (waktu fixture)</dt><dd><time dateTime={event.published_at}>{formatInstant(event.published_at)}</time></dd></div>
+                  : `Tidak tersedia pada ${noun}`}</dd></div>
+                <div><dt>Versi publik diterbitkan{wording(demo, " (waktu fixture)", "")}</dt><dd><time dateTime={event.published_at}>{formatInstant(event.published_at)}</time></dd></div>
                 {publicationPathText(event.publication) !== null && (
                   <div><dt>Cara penerbitan</dt><dd>{publicationPathText(event.publication)}</dd></div>
                 )}
                 <div><dt>Respons konteks API dibuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
                 <div><dt>Waktu pengambilan sumber</dt><dd>Tidak disediakan dalam proyeksi EventDetail</dd></div>
-                <div><dt>Cakupan tempat/layanan/kelompok</dt><dd>{event.scope.places.concat(event.scope.services, event.scope.institutions, event.scope.audiences).join(", ") || "Tidak tersedia pada fixture"}</dd></div>
+                <div><dt>Cakupan tempat/layanan/kelompok</dt><dd>{event.scope.places.concat(event.scope.services, event.scope.institutions, event.scope.audiences).join(", ") || `Tidak tersedia pada ${noun}`}</dd></div>
               </dl>
               {event.impacts.length === 0 ? (
                 <div className="state-panel state-panel--compact" role="note">
-                  <strong>Dampak tidak tersedia pada fixture ini.</strong>
+                  <strong>{`Dampak tidak tersedia pada ${noun} ini.`}</strong>
                   <p>Ketiadaan dampak di record tidak menjelaskan kondisi atau keselamatan.</p>
                 </div>
               ) : (
@@ -284,7 +294,7 @@ function ApiEventDetail({
                       <span className="claim-card__label">Dampak · {lifecycleLabel(impact.lifecycle)} · {freshnessLabel(impact.freshness.status)}</span>
                       <strong>{impact.title}</strong>
                       <p>{impact.description}</p>
-                      <p>Waktu dampak: {formatEventTime({ event_time: impact.event_time })}</p>
+                      <p>Waktu dampak: {formatEventTime({ event_time: impact.event_time }, { fixtureWording: demo })}</p>
                     </article>
                   ))}
                 </div>
@@ -297,8 +307,8 @@ function ApiEventDetail({
               </div>
               {event.claims.length === 0 ? (
                 <div className="state-panel state-panel--compact" role="note">
-                  <strong>Bukti tidak tersedia pada fixture demo ini.</strong>
-                  <p>Tidak ada klaim, atribusi sumber, atau kutipan dalam record. Ringkasan contoh bukan bukti.</p>
+                  <strong>{`Bukti tidak tersedia pada ${noun}${demo ? " demo" : ""} ini.`}</strong>
+                  <p>Tidak ada klaim, atribusi sumber, atau kutipan dalam record. {wording(demo, "Ringkasan contoh bukan bukti.", "Ringkasan bukan bukti.")}</p>
                 </div>
               ) : (
                 <div className="claims-list">
@@ -330,13 +340,13 @@ function ApiEventDetail({
               geometries={event.geometries}
               onReturnToList={onBackToList ?? (() => { window.location.hash = "#peta"; })}
             />
-            <ApiHistory state={history} onRetry={onRetryHistory} />
+            <ApiHistory state={history} onRetry={onRetryHistory} demo={demo} />
           </div>
         </>
       )}
       {!event && (detail.status === "loading" || detail.status === "not-found" || detail.status === "unavailable") && (
         <div className="history-panel">
-          <ApiHistory state={history} onRetry={onRetryHistory} />
+          <ApiHistory state={history} onRetry={onRetryHistory} demo={demo} />
         </div>
       )}
     </>
