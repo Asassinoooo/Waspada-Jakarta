@@ -19,6 +19,7 @@ import {
   type ProposalEngineOptions,
   JAKARTA_ENVELOPE,
   generateProposalFromReport,
+  groundModelLocation,
 } from "./proposal-engine.js";
 
 export interface AiProposalServiceOptions {
@@ -341,15 +342,18 @@ export function createAiProposalService(options?: AiProposalServiceOptions): AiP
         };
       }
 
-      // Validate coordinates within Jakarta
-      let coordinates: readonly [number, number] | null = parsed.coordinates ?? null;
+      // HOSTED-14: the model's label and coordinate are kept only when the report text states the place.
+      const grounded = groundModelLocation(
+        { label: parsed.location_label ?? null, coordinates: parsed.coordinates ?? null },
+        report.permitted_text,
+      );
+      const deterministic = generateProposalFromReport(report, engineOptions);
+      // Validate coordinates within Jakarta. The deterministic fallback is text-stated, so it is not grounded again.
+      let coordinates: readonly [number, number] | null = grounded.coordinates;
       if (!isCoordinateInJakarta(coordinates)) {
-        // Fall back to deterministic location extraction coordinates
-        const fallbackProposal = generateProposalFromReport(report, engineOptions);
-        coordinates = fallbackProposal?.coordinates ?? null;
+        coordinates = deterministic?.coordinates ?? null;
       }
-
-      const locationLabel = parsed.location_label || "DKI Jakarta";
+      const locationLabel: string | null = grounded.locationLabel ?? deterministic?.location_label ?? null;
       const incidentType = parsed.incident_type;
       const severity: IncidentSeverity = parsed.severity || "medium";
 
@@ -363,12 +367,14 @@ export function createAiProposalService(options?: AiProposalServiceOptions): AiP
           const quoteInfo = findVerbatimQuote(
             rawClaim.quote_text || "",
             chunks,
-            [incidentType, locationLabel.split(",")[0] ?? "", severity],
+            [incidentType, (locationLabel ?? "").split(",")[0] ?? "", severity],
           );
 
           claims.push({
             claim_id: rawClaim.claim_id || `claim-${i + 1}`,
-            claim_text: rawClaim.claim_text || `${locationLabel}: laporan insiden ${incidentType}.`,
+            claim_text: rawClaim.claim_text || (locationLabel
+              ? `${locationLabel}: laporan insiden ${incidentType}.`
+              : `Laporan insiden ${incidentType}.`),
             evidence_label: "under_review",
             support_assessment: "supported",
             quote_text: quoteInfo.quote_text,
@@ -389,7 +395,9 @@ export function createAiProposalService(options?: AiProposalServiceOptions): AiP
       const proposal: EventProposalDto = {
         schema_version: "2.0",
         proposal_id,
-        title: parsed.title || `${incidentType.toUpperCase()} di ${locationLabel}`,
+        title: parsed.title || (locationLabel
+          ? `${incidentType.toUpperCase()} di ${locationLabel}`
+          : incidentType.toUpperCase()),
         incident_type: incidentType,
         severity,
         // F-14: no event time in the model output means unknown, never the retrieval time.

@@ -3,8 +3,9 @@
  * record builder, the in-memory public read model and the projector can share them without an import cycle.
  *
  * Rule (owner decision, 17 Nov 2026; replaces the Jakarta-centre fallback of 16 Nov):
- * - An event with a usable approximate coordinate gets one Point, labelled model_approximate. The coordinate must be
- *   finite and inside the sanity box. A source coordinate would come first, but no source gives one today.
+ * - An event with a usable approximate coordinate gets one Point. The coordinate must be finite and inside the sanity
+ *   box. Its source is "source_text" when every claim comes from PetaBencana or BMKG, whose coordinates are parsed
+ *   from the source's own text (HOSTED-14). Otherwise it is "model_approximate".
  * - An event with no usable coordinate has NO point and NO geometry row. Its location is the whole map view
  *   (location_display "whole_view"): the map fits the Jakarta extent, shows no pin, and never reuses another event's
  *   point or the Jakarta centre as a pin.
@@ -12,11 +13,13 @@
  * - An event needs a place id or a location label. A group-specific critical notice may have neither.
  * - The publication role cannot write geometry rows. A coordinate-bearing event therefore records
  *   geometry_status "pending_geometry_writer" and no geometry row (open decision: a narrow geometry-writer role, or defer).
+ * - HOSTED-14: a model coordinate reaches here only when the report text states a place for it (groundModelLocation
+ *   in proposal-engine.ts, groundInterpretationLocation in apps/intelligence).
  */
 
 export const GROUP_NOTICE_CATEGORY = "group_specific_critical_notices";
 
-/** Sanity check on the model's approximate point only. It is not a boundary of any kind. */
+/** Sanity check on a point only. It is not a boundary of any kind. */
 export const APPROXIMATE_POINT_SANITY_BOX = Object.freeze({
   latMin: -6.4,
   latMax: -5.0,
@@ -24,16 +27,34 @@ export const APPROXIMATE_POINT_SANITY_BOX = Object.freeze({
   lonMax: 107.1,
 });
 
-/** The only point source today. A source coordinate would get its own value when a source supplies one. */
-export type PublicPointSource = "model_approximate";
+/**
+ * Source ids whose coordinate is parsed from the source's own text: PetaBencana "Koordinat lokasi [lon, lat]" and BMKG
+ * "[lon, lat] BMKG: ...". They mirror PETABENCANA_SOURCE_ID and BMKG_GEMPA_SOURCE_ID in
+ * apps/intelligence/src/structured-interpretation.ts. The worker cannot import intelligence, so the literals are
+ * repeated here, and a test pins them to the intelligence constants.
+ */
+export const SOURCE_STATED_POINT_SOURCE_IDS: ReadonlySet<string> = new Set(["petabencana", "source-bmkg-gempa"]);
+
+/**
+ * Where a point's coordinate came from. "source_text" is stated by the source's own text. "model_approximate" is the
+ * agent's proposal. The rule is conservative: "source_text" needs every claim's source id to be a source-stated one.
+ */
+export type PublicPointSource = "source_text" | "model_approximate";
+
+/** "source_text" only when there is at least one claim and every claim's source id is source-stated. */
+export function pointSourceFor(claimSourceIds: readonly (string | null | undefined)[]): PublicPointSource {
+  const everyClaimSourceStated = claimSourceIds.length > 0 &&
+    claimSourceIds.every((id) => typeof id === "string" && SOURCE_STATED_POINT_SOURCE_IDS.has(id));
+  return everyClaimSourceStated ? "source_text" : "model_approximate";
+}
 
 /** How an event's location is published. Only "point" carries a coordinate. */
 export type PublicPointOutcome =
-  | { readonly status: "point"; readonly coordinates: [number, number] }
+  | { readonly status: "point"; readonly coordinates: [number, number]; readonly source: PublicPointSource }
   | { readonly status: "whole_view" }
   | { readonly status: "not_required_group_notice" };
 
-/** The model's approximate point as [longitude, latitude], or null when it is missing, non-finite or outside the box. */
+/** The approximate point as [longitude, latitude], or null when it is missing, non-finite or outside the box. */
 export function approximatePointFor(proposal: { readonly coordinates?: unknown }): [number, number] | null {
   const value = proposal.coordinates;
   if (!Array.isArray(value) || value.length !== 2) return null;
@@ -50,16 +71,20 @@ export function hasLocationLabel(locationLabel: unknown): boolean {
 }
 
 /**
- * The location outcome of an event. A usable approximate coordinate gives "point". Otherwise the event is "whole_view",
- * except a group-specific critical notice with no label, which is "not_required_group_notice" (it has no location at all).
+ * The location outcome of an event. A usable coordinate gives "point", with its source from the claims' source ids
+ * (HOSTED-14). Otherwise the event is "whole_view", except a group-specific critical notice with no label, which is
+ * "not_required_group_notice" (it has no location at all).
  */
 export function publicPointOutcomeFor(input: {
   readonly category: string;
   readonly locationLabel: unknown;
   readonly coordinates: unknown;
+  readonly claimSourceIds?: readonly (string | null | undefined)[];
 }): PublicPointOutcome {
   const approximate = approximatePointFor({ coordinates: input.coordinates });
-  if (approximate !== null) return { status: "point", coordinates: approximate };
+  if (approximate !== null) {
+    return { status: "point", coordinates: approximate, source: pointSourceFor(input.claimSourceIds ?? []) };
+  }
   if (input.category === GROUP_NOTICE_CATEGORY && !hasLocationLabel(input.locationLabel)) {
     return { status: "not_required_group_notice" };
   }
