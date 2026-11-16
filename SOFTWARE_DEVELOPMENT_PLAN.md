@@ -140,7 +140,7 @@ The prototype provides situational awareness. It does not dispatch responders, g
 
 | Story | User outcome | Primary acceptance scenario |
 | --- | --- | --- |
-| US-01 Discovery | As a Jakarta resident or visitor, I want to explore incidents relevant to my location or situation so I can make informed activity decisions. | Find an applicable event, read its event time and evidence, and distinguish a point from a warning boundary. |
+| US-01 Discovery | As a Jakarta resident or visitor, I want to explore incidents relevant to my location or situation so I can make informed activity decisions. | Find an applicable event, read its event time and evidence, and see it as a point on the map (points only; owner decision, 16 Nov 2026). |
 | US-02 Following updates | As someone potentially affected, I want updates about places, services and interests I follow so I can respond when conditions change. | Save an interest; see a relevant update and its reason; see a correction without duplicate alerts. |
 | US-03 Trustworthy maintenance | As a moderator, I want evidence comparison, bounded investigations and disputed-claim review so published information remains current and traceable. | Inspect origins, resolve a disputed detail, and verify a correction reaches every public view. |
 
@@ -185,6 +185,8 @@ Change of 13 Nov 2026 (owner decision): FR-01 is withdrawn and FR-16 is added fo
 
 Change of 13 Nov 2026 (owner decision): FR-09 is narrowed to points. The map and record page draw point geometry supplied by the API. Source-defined polygons and road or service segments are not drawn in this release. That is a documented limitation (F-01), not a gap to close, and no boundary display is claimed. Non-geographic notices stay accessible. US-01 and the release-scope wording in §3.1 still mention a warning boundary; this note does not change them, and they need separate approval.
 
+Change of 16 Nov 2026 (owner decision): US-01 is narrowed to points, and FR-09 is confirmed as points only. Warning boundaries and polygons are out of scope, and the map shows points. The 13 Nov note said that the §3.1 release scope mentions a warning boundary. A text check on 16 Nov 2026 found no such wording in §3.1, so §3.1 is not edited. Withdrawn events may return 404 (see the withdrawal bullet in section 10).
+
 | ID | Requirement and observable acceptance | Priority |
 | --- | --- | --- |
 | FR-01 | Withdrawn on 13 Nov 2026 by owner decision. The source approval gate no longer applies; collection is FR-16. | Withdrawn |
@@ -195,7 +197,7 @@ Change of 13 Nov 2026 (owner decision): FR-09 is narrowed to points. The map and
 | FR-06 | Match reports to candidate events and track independent origins per claim. Copied reports do not inflate corroboration; uncertain matches are reviewed. | Must |
 | FR-07 | Sufficient evidence bypasses investigation. Missing evidence creates a persisted bounded case with tools, counters, stop reasons and escalation. | Must |
 | FR-08 | Both paths and moderator corrections use one publication gate with evidence, scope, source, freshness and concurrency checks; models cannot publish. | Must |
-| FR-09 | Display only supported geometry: points. Source-defined polygons and road/service segments are not drawn in this release (documented limitation, 13 Nov 2026). Non-geographic notices remain accessible. | Must |
+| FR-09 | Display only supported geometry: points. Source-defined polygons and road/service segments are not drawn in this release (documented limitation, 13 Nov 2026; points only, owner decision 16 Nov 2026). Non-geographic notices remain accessible. | Must |
 | FR-10 | Map/feed/details expose source links, evidence labels, event time, freshness and supported effects; public queries exclude private drafts. | Must |
 | FR-11 | Preferences produce explainable relevant briefings and material updates; removing an interest removes its personalization. Repeated coverage does not repeat alerts. | Must |
 | FR-12 | Moderator authentication and authorization protect review, source approval, corrections, merges and withdrawals; all actions have an audit record. | Must |
@@ -398,7 +400,7 @@ Recorded limitations, owner decisions of 13 Nov 2026 (noted 14 Nov 2026). The ta
 - Open finding F-03-1: `synthetic-fixture-runner` takes L5 telemetry values. It is allowlisted in the layer-import test, not fixed.
 - Hosted grants: the L4 publication role cannot read `investigation_id` or `case_status`, so the F-04 check fails closed on hosted. The intelligence worker writes lineage tables through its own connection, and its Neon role mapping is unverified.
 - Source approval and FR-16: revoking a source also turns off its collection, which conflicts with FR-16 (collection needs no per-source approval). Owner decision pending. In `local_relaxed` mode approval does not change automatic publication.
-- Withdrawal (FR-12): a withdrawn event is final and cannot be reinstated. Corrections change only title, category, event time, location label and claim text. Whether a withdrawn event gets a public tombstone needs a contract change, so the public detail route answers 404 for it.
+- Withdrawal (FR-12): a withdrawn event is final and cannot be reinstated. Corrections change only title, category, event time, location label and claim text. Whether a withdrawn event gets a public tombstone needs a contract change, so the public detail route answers 404 for it. Accepted by the owner on 16 Nov 2026: withdrawn events may return 404.
 - Timing (FR-03 and FR-08): a news item without an explicit event time goes to the moderator queue as `time_missing`, so fewer items publish automatically. Previously published rows keep the processing time as their start until they are republished.
 
 ## 11. Risks, cost and open decisions

@@ -1,13 +1,14 @@
 # Defect and finding log
 
 Project: Waspada Jakarta (Team 12, RPL course). Status date: 13 November 2026. Branch: `work/TEST-DOC-01-chapter5`.
+Updated 16 November 2026 (HOSTED-01 documentation decisions): status lines on F-01, F-03, F-04, F-12, F-13 and F-14; F-13 and F-14 added to section B.
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules
 
 - A **defect** is a confirmed fault with a commit that fixes it. Section A lists defects.
-- An **open finding** is an observation that needs a decision and is not yet a confirmed fault. Section B lists findings. A finding becomes a defect only after the owner decides it is a fault and a fix commit exists.
-- Commit SHAs in this file were checked with `git -C <worktree> show -s --format='%h %s' <sha>` on 13 November 2026. All six resolve.
+- A **finding** is an observation that needs a decision. Section B lists findings, and each entry has a status line: open, fixed (with the commit SHA) or decided (with the owner's decision). A finding keeps its F-nn ID after a fix, so that the backlog and the gap reports still resolve. Findings are not moved to section A and are not renumbered.
+- Commit SHAs in this file were checked with `git -C <worktree> show -s --format='%h %s' <sha>` on 13 November 2026. SHAs checked on 13 November 2026 (the six in sections A and C) all resolved. The fix SHAs for F-03, F-04, F-13 and F-14 (section B) were checked on 16 November 2026 with `git show -s` and `git branch -r --contains`; each is on `origin/main`.
 - Blocked and pending UAT results are not defects (`docs/testing/UAT.md` section 10).
 
 ## Section A: Verified defects (fixed)
@@ -28,15 +29,15 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - **Covered by:** no test found that seeds through `tools/serve-live-pipeline.ts` or asserts that `media` is refused. Other database tests use `newsroom` (for example `apps/db/test/pipeline-flow-store.test.ts` line 89). Regression coverage is a gap.
 - **Source:** `DOKUMENTASI_UNIT_TESTING.md` section 2.a; `git show 973f70a`.
 
-## Section B: Open findings (need a decision)
+## Section B: Findings and their status
 
-Each finding is open. None is a confirmed defect.
+Each entry carries a status line as of 16 November 2026. An entry without a fixed or decided status is open.
 
 ### F-01: the public map shows no warning-boundary display
 
 - **Observation:** US-01 asks the user to tell a point from a warning boundary (SDP US-01; FR-09). The public popup captions every mapped marker as a point. Polygons appear only in the fixture presentation (`#detail/presentation`) and in the admin views.
 - **Evidence:** `docs/testing/UAT.md` section 6, T1 open item and section 6.6; `apps/web/src/MapPopup.tsx` lines 56-57 (`locationNote`). Affects ST-F-01 and AT-01. T1 is Blocked in `test-cases.csv`.
-- **Decision needed:** implement a boundary display on `#peta`, or change the wording of US-01 and FR-09 in the SDP.
+- **Status (16 Nov 2026): decided, points only (owner).** US-01 and FR-09 are narrowed to points. Warning boundaries and polygons are out of scope, and the map shows points. This closes F-01 as a scope decision, not as a fix: no boundary display is built, and none is claimed. Recorded in SDP §4 (FR-09 note, 13 Nov 2026; US-01 wording, 16 Nov 2026).
 
 ### F-02: matched-update checks cannot run on the demo dataset
 
@@ -48,13 +49,13 @@ Each finding is open. None is a confirmed defect.
 
 - **Observation:** `apps/worker/src/layers/l1-data-knowledge/webhook-ingest.ts` imports the L2 proposal engines (`apps/worker/src/layers/l2-model-grounding/proposal-engine.ts`, `apps/worker/src/layers/l2-model-grounding/correlated-proposal-engine.ts`) and the L4 `apps/worker/src/layers/l4-application-integration/event-broadcaster.ts`. The import block is at lines 13 to 24. `CLAUDE.md` allows L1 one fixed L2 extraction adapter and says L1 must not investigate or publish.
 - **Evidence:** `docs/testing/INTEGRATION-TEST.md` section 6 (that section gives lines 15 to 25; the block is at 13 to 24 in this file). `CLAUDE.md`, layer table (repository root). Affects IT-B1-06.
-- **Decision needed:** refactor (move proposal generation behind one L2 adapter, and the broadcast behind a port), or record the deviation as documented.
+- **Status (16 Nov 2026): fixed in `cffc865`** (`fix(TG-F03)`, 13 Nov 2026; on `origin/main`; CI result not checked). L1 webhook ingest now depends on ports (`DirectProposalPort`, `CorrelatedProposalPort`, `ModerationNotificationPort`) wired in `index.ts`. The import-boundary test `layer-import-boundary.test.ts` scans layer imports. **Residual:** F-03-1, an allowlisted L5 telemetry import in `synthetic-fixture-runner`, is not fixed (SDP §10).
 
 ### F-04: the publication gate does not read the L3 ledger status
 
 - **Observation:** the proposal writer checks only that the investigation lineage rows exist (`apps/db/src/event-proposals.ts`, `requireInvestigationLineage`, line 566). On the code read, no L4 gate file or proposal file references `case_status` or `stopped_for_review`. The grep was run on 13 Nov 2026 in the main checkout over `apps/worker/src` and `apps/db/src`; the only matches were in L3, L5 and the ledger. TI-02 is held because of a disputed claim and an unresolved field, not because of the ledger status. So a proposal from a `stopped_for_review` case is not refused on that status alone.
 - **Evidence:** TEST-INT-01 case TI-02 (`apps/db/test/l3-investigation-publication-gate.test.ts` on main, commit `71022ee`). Affects TI-02 and IT-B3-01.
-- **Decision needed:** should the gate refuse proposals whose investigation is `stopped_for_review` (a new reason code)? Or is the claim-level hold the intended control? Record the answer in the plan or an ADR.
+- **Status (16 Nov 2026): fixed in `593f849`** (`fix(TG-F04)`, 13 Nov 2026; on `origin/main`; CI result not checked). Owner decision (c), 13 Nov 2026: the gate refuses a proposal whose investigation's latest checkpoint is `stopped_for_review`. On the agent path it is queued with `investigation_stopped_for_review`; on the moderator path it is denied (API 409). Reject is still allowed. Recorded in the ADR-061 amendment of 13 Nov 2026. **Residuals:** the expiry sweep takes no lock and may write a second decision row for the same proposal (code reading, not reproduced); `assessAutoPublication` reads the investigation's latest status only, not grounding sufficiency; the L4 publication role cannot read `investigation_id` or `case_status` on hosted Neon, so the check fails closed there (SDP §10); the locks are not exercised under concurrent load or on hosted Neon.
 
 ### F-05: no PGlite test for the webhook route or the BMKG CAP parser
 
@@ -99,7 +100,19 @@ Each finding is open. None is a confirmed defect.
 ### F-12: No radius or polygon is drawn on the public map
 
 - **Observation:** the map draws OSM tiles and marker circles only (`EventMapCanvas.tsx`). An event with no point is not shown on the map, and no radius is drawn for it. The radius check in VIS-02 is skipped.
-- **Decision needed:** state in the report that the map shows points only, or add a source-defined boundary (FR-09).
+- **Status (16 Nov 2026): decided, points only (owner).** The map draws points only. No radius or polygon is drawn or claimed, and the radius check in VIS-02 is out of scope. Same scope decision as F-01. Not a fix.
+
+### F-13: the record page and the #peta sheet print "this API record has no geometry" for every record
+
+- **Observation:** the record page and the `#peta` sheet say that an API record has no geometry, for every record, including records that have geometry (`TEST-EVALUATION.md`, top finding 2; `REQUIREMENTS-GAP.md`, "New defects proposed"). Found by code reading, not in a browser. Affects ST-F-01 and the FR-09 clause C2b.
+- **Status (16 Nov 2026): fixed in `de0b77f`** (`fix(TG-F13)`, 13 Nov 2026; on `origin/main`; CI result not checked). Mapped records are drawn. A missing field shows a neutral notice. Geometries outside the Jakarta view are counted, not drawn.
+- **Residual:** covered at component level (`event-detail-geometry.test.tsx`), not checked in a browser. ST-F-01 is points-only scope (F-01).
+
+### F-14: proposal processing time was used as the public event time
+
+- **Observation:** proposal processing time was used as the public event time, and freshness was set to `current` by construction (`TEST-EVALUATION.md`, top finding 3). This conflicts with two CLAUDE.md invariants: keep event, issuer, acquisition and processing times distinct, and never invent a timestamp; and expiry, missing reports or an unavailable source never prove resolution or safety.
+- **Status (16 Nov 2026): fixed in `588e375`** (`fix(TG-F14)`, 13 Nov 2026; on `origin/main`; CI result not checked). With no explicit source event time, the start stays null with precision unknown, with no fallback to publish, retrieval or processing time. Freshness is `needs_update` with basis unknown, not `current`. Migration 048 drops NOT NULL on `incidents.first_observed_at`. Owner decision (f), 13 Nov 2026.
+- **Residuals:** news without an explicit event time now goes to the moderator queue as `time_missing`, so fewer items publish automatically. Rows published earlier keep processing-time starts until they are republished. FR-03 clauses 14 and 15 are not re-checked (`REQUIREMENTS-GAP.md`, 14 Nov 2026 update).
 
 ## Section C: Removed from the defect list (not fixes)
 

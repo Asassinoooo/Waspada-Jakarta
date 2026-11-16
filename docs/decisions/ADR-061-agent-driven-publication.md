@@ -84,3 +84,11 @@ Recorded under TEST-GAP-02 (14 Nov 2026). This amendment applies the existing ru
 - **Still open.** The expiry sweep (ADR-062) does not take these locks. It never publishes, but an expiry that overlaps a publish can write a second decision row for the same proposal (code reading; not reproduced). `assessAutoPublication` reads the investigation's latest status only and does not read grounding sufficiency. F-ALERT-02 (a published version never reaches `/api/v1/updates`) is open and is a todo in `repeated-coverage-alerts.test.ts`.
 - **Unchanged.** The gate checks, the `local_relaxed` waiver, the moderator rights rule and the hosted rule (`required` outside local live mode) are unchanged. Discrepancies still wait for a moderator. No migration is needed.
 - **Not verified.** No CI run for this amendment is recorded. The advisory locks have not been exercised under real concurrent load or on hosted Neon.
+
+## Amendment (16 Nov 2026, HOSTED-01): hosted topology
+
+Owner decision, 16 Nov 2026. The hosted topology and its limitations are in [ADR-065](ADR-065-hosted-topology.md).
+
+- **Hosted auto-publish.** The hosted site runs auto-publish with `AUTO_PUBLISH_SOURCE_PERMISSION=local_relaxed`. This amends the 11 Nov rule that hosted or public deployments must keep `required`. The waiver is a recorded rights limitation for all 14 RSS outlets, PetaBencana and BMKG. It is not a source-rights clearance. The statement above that the hosted environment never sets `local_relaxed` is superseded for the hosted site by this amendment.
+- **Unchanged.** Outside the hosted topology in ADR-065, the 11 Nov rules are unchanged. The moderator publish path has no waiver. Discrepancies still wait for a moderator.
+- **Still open.** `docs/SOURCE_CLEARANCE_PLAN.md` still records BMKG and ANTARA as needing permission. The SDP section 10 Rights line still says hosted or public use is not permitted; ADR-065 does not change that line.
