@@ -1,6 +1,7 @@
 # Test summary: Waspada Jakarta
 
 Project: Waspada Jakarta (Team 12, RPL course). Status date: 13 November 2026. Draft for review.
+Sections 6 to 9 updated 16 November 2026 (HOSTED-01 documentation decisions). Sections 1 to 5, 7 and 10 are as of 13 November 2026.
 Branch: `work/TEST-DOC-01-chapter5` (based on `main` at `ae75527`).
 Related: `docs/testing/TEST-PLAN.md`, `docs/testing/SYSTEM-TEST.md`, `docs/testing/INTEGRATION-TEST.md`, `docs/testing/UAT.md`, `docs/testing/test-cases.csv`, `docs/testing/DEFECTS.md`.
 
@@ -66,22 +67,24 @@ Points on this evidence:
 
 ## 6 Open findings
 
-Each finding is open and needs a decision. None is a confirmed defect. Details, evidence and the decision needed are in [DEFECTS.md](DEFECTS.md), section B.
+Status as of 16 November 2026 for this section. Details, evidence and status for each finding are in [DEFECTS.md](DEFECTS.md), section B.
 
-- **F-01** The public map shows no warning-boundary display (US-01, FR-09).
-- **F-02** Matched-update checks in T2 cannot run on the demo dataset (US-02).
-- **F-03** The L1 webhook ingest imports L2 and L4 modules at runtime.
-- **F-04** The publication gate does not read the L3 ledger status.
-- **F-05** No PGlite test for the webhook route or the BMKG CAP parser.
-- **F-06** No dedicated test for `freshness-aggregate-policy.ts`.
-- **F-07** SDP section 3.1 is stale about the moderator view (sign-in and authenticated moderation exist, ADR-060).
-- **F-08** The WSL distribution and the CI Node version are stated inconsistently.
-- **F-09** Copied reports are not flagged in the source count (FR-06).
-- **F-10** Expired-warning wording differs between card and detail (minor copy).
-- **F-11** "Unknown time" wording differs between card and detail (minor copy).
-- **F-12** No radius or polygon is drawn on the public map (FR-09).
+- **F-01** Decided, points only (owner, 16 Nov 2026). US-01 and FR-09 are narrowed to points. No boundary display is built or claimed.
+- **F-02** Open. Matched-update checks in T2 need live data (US-02).
+- **F-03** Fixed in `cffc865` (on `origin/main`; CI result not checked). Residual F-03-1: one allowlisted L5 telemetry import.
+- **F-04** Fixed in `593f849` (on `origin/main`; CI result not checked). Residuals: the expiry sweep takes no lock; grounding sufficiency is not read; the L4 role cannot read `investigation_id` or `case_status` on hosted Neon, so the check fails closed there.
+- **F-05** Open. No PGlite test for the webhook route or the BMKG CAP parser.
+- **F-06** Open. No dedicated test for `freshness-aggregate-policy.ts`.
+- **F-07** Open. SDP section 3.1 is stale about the moderator view (sign-in and authenticated moderation exist, ADR-060).
+- **F-08** Open. The WSL distribution and the CI Node version are stated inconsistently.
+- **F-09** Open. Copied reports are not flagged in the source count (FR-06).
+- **F-10** Open. Expired-warning wording differs between card and detail (minor copy).
+- **F-11** Open. "Unknown time" wording differs between card and detail (minor copy).
+- **F-12** Decided, points only (owner, 16 Nov 2026). Same scope decision as F-01.
+- **F-13** Fixed in `de0b77f` (on `origin/main`; CI result not checked). Component-level test only; not checked in a browser.
+- **F-14** Fixed in `588e375` (on `origin/main`; CI result not checked). Residual: news without an explicit event time goes to the moderator queue as `time_missing`; earlier rows keep processing-time starts until they are republished.
 
-**Confirmed open defects** (with source evidence, in `DEFECTS.md` section D): R-05, live event detail shows demo wording; R-06, the account menu is stale after sign-out.
+**Confirmed open defects** (DEFECTS.md section D): R-05, live event detail shows demo wording; R-06, the account menu is stale after sign-out. Neither has a fix commit recorded (searched 16 Nov 2026).
 
 ## 7 Limitations
 
@@ -107,27 +110,27 @@ SDP section 10 names the first five checks below. It also lists "stale/retracted
 
 | Check | Linked test IDs | Status | Notes |
 | --- | --- | --- | --- |
-| Unsupported publication | ST-F-03, ST-F-07, ST-N-01, IT-B3-02, TI-02 | Partial | Gate and policy tests exist. No adjudicated release scenarios (ST-N-01). Audit record not named (ST-F-07). |
+| Unsupported publication | ST-F-03, ST-F-07, ST-N-01, IT-B3-02, TI-02 | Partial | Gate and policy tests exist. F-04 is fixed in `593f849` (checked 16 Nov 2026), with residuals: the expiry sweep takes no lock, grounding sufficiency is not read, and the L4 role cannot read `investigation_id` or `case_status` on hosted Neon, so the check fails closed there. No adjudicated release scenarios (ST-N-01). Audit record not named (ST-F-07). |
 | Exposed personal data | ST-N-07, ST-F-06, IT-B2-06 | Partial | Access checks and telemetry allowlists are tested. No retention or secret-handling test is named (ST-N-07). |
-| Wrong active warning geometry | ST-F-01, ST-N-01, IT-B1-07 | Partial | Geometry projection tests exist. The public map shows no boundary display (F-01), and ST-F-01 is Blocked in the CSV. |
+| Wrong active warning geometry | ST-F-01, ST-N-01, IT-B1-07 | Partial | Geometry projection tests exist. Scope is points only (decided 16 Nov 2026, F-01 and F-12), so no warning boundary is drawn. The ST-F-01 status in the CSV is 'points-only scope (owner, 16 Nov 2026)'. F-13 is fixed in `de0b77f`, with a component-level test only. |
 | Budget bypass | ST-N-02, IT-B1-04, IT-B2-08, IT-B3-01 | Partial | Tests are Worker or local only. The live path bypasses L3. The 5-attempt and 4-turn limits are not named by any file. |
 | Unauthorised moderation | ST-F-06, ST-F-07, ST-N-07, IT-B3-08 | Partial | Route and role tests exist (`moderation-api.test.ts`, `l4-moderator-authorization.test.ts`, `pipeline-flow-route.test.ts`). The T4 browser walkthrough has not run. |
-| Stale or retracted evidence reinstated (in SDP section 10; not in the brief's list of five) | ST-F-13, ST-F-14, ST-N-05 | Partial | Stale-write conflict is not named by a file. Scheduled expiry does not run in deployment (ST-F-14). |
+| Stale or retracted evidence reinstated (in SDP section 10; not in the brief's list of five) | ST-F-13, ST-F-14, ST-N-05 | Partial | F-14 is fixed in `588e375`: freshness is no longer set to current from processing time. Stale-write conflict is not named by a file. Scheduled expiry does not run in deployment (ST-F-14). |
 
 ## 9 Decisions needed from the owner
 
-1. **F-01.** Show warning boundaries on `#peta`, or change the wording of US-01 and FR-09.
-2. **F-02.** Run T2 step 7 on live data (under explicit authorisation), or record the US-02 matched-update criterion as not evidenced.
-3. **F-03.** Refactor the L1 webhook imports, or record the deviation.
-4. **F-04.** Should the publication gate refuse proposals whose investigation is `stopped_for_review`?
-5. **F-07.** Update the SDP section 3.1 text (the root planner's document; this summary does not change the SDP).
-6. **F-08.** Confirm the WSL distribution for the recorded runs, and the CI Node version stated in `CLAUDE.md`.
-7. **R-05.** Remove the hardcoded demo wording from the live event detail, or choose it from the dataset mode.
-8. **R-06.** Refresh the account state after sign-out, so that the header updates on the same page.
-9. **F-09 to F-12.** Decide the copied-report wording (FR-06), the expired and unknown-time wording (F-10, F-11), and whether to draw boundaries (F-12).
-10. **Table 2.3, Week 10.** The report's Table 2.3 lists usability sessions in Week 10. SDP M6 (Weeks 11 to 12) covers usability (`TEST-PLAN.md` section 9). Align the two, or mark the sessions as not held. Table 2.3 is in the Google Docs report and is not in this repository.
+Status as of 16 November 2026.
 
-F-05 and F-06 are test gaps, not blocking decisions. Decide whether to add the tests before M6 or accept the current evidence (`DEFECTS.md`, section B).
+1. **F-01 and F-12: decided, points only (owner, 16 Nov 2026).** Closed as a scope decision, not as a fix. No decision is open on these.
+2. **F-02.** Run T2 step 7 on live data (under explicit authorisation), or record the US-02 matched-update criterion as not evidenced.
+3. **F-03 and F-04: fixed (`cffc865`, `593f849`).** No decision is open. The residuals are listed in section 6.
+4. **F-07.** Update the SDP section 3.1 text (the root planner's document; this summary does not change the SDP).
+5. **F-08.** Confirm the WSL distribution for the recorded runs, and the CI Node version stated in `CLAUDE.md`.
+6. **R-05.** Remove the hardcoded demo wording from the live event detail, or choose it from the dataset mode.
+7. **R-06.** Refresh the account state after sign-out, so that the header updates on the same page.
+8. **F-09 to F-11.** Decide the copied-report wording (FR-06), and the expired and unknown-time wording (F-10, F-11). F-12 is closed under item 1.
+9. **Hosted decisions (ADR-065, 16 Nov 2026).** Still open: the revoke behaviour for sources (ADR-065 limitation 6). The SDP section 10 line "Hosted or public use is not permitted" conflicts with ADR-065 and needs the owner's wording; ADR-065 does not change it.
+10. **Table 2.3, Week 10.** The report's Table 2.3 lists usability sessions in Week 10. SDP M6 (Weeks 11 to 12) covers usability (`TEST-PLAN.md` section 9). Align the two, or mark the sessions as not held. Table 2.3 is in the Google Docs report and is not in this repository.
 
 ## 10 Next steps
 
