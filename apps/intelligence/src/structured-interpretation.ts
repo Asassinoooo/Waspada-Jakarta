@@ -135,3 +135,41 @@ export function deterministicStructuredInterpretation(
   }
   return null;
 }
+
+function normalizeForMatch(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * HOSTED-14: true when the report text states the label. The label, or any comma-separated part of it, must appear
+ * in the text, case-insensitively. Parts shorter than three characters do not count. A bare "Jakarta" still passes
+ * when the text names Jakarta, so a broad label is a known gap.
+ */
+export function labelIsStatedInText(label: string | null, reportText: string): boolean {
+  if (label === null) return false;
+  const haystack = normalizeForMatch(reportText);
+  const parts = [label, ...label.split(",")].map(normalizeForMatch).filter((part) => part.length >= 3);
+  return parts.some((part) => haystack.includes(part));
+}
+
+/**
+ * HOSTED-14: no invented location. A model's label is kept only when the report text states it. A model coordinate is
+ * kept only when a stated place name backs it, which here means the stated label. Otherwise the label and the
+ * coordinate become null, and the precision becomes unknown when nothing is left. Nothing is replaced with a default.
+ * Source-stated coordinates (PetaBencana, BMKG) never reach this function: they come from the deterministic path.
+ */
+export function groundInterpretationLocation(interpretation: ReportInterpretation, reportText: string): ReportInterpretation {
+  const { label, approximateCoordinates, precision } = interpretation.location;
+  const stated = labelIsStatedInText(label, reportText);
+  const nextLabel = stated ? label : null;
+  const nextCoordinates = stated ? approximateCoordinates : null;
+  if (nextLabel === label && nextCoordinates === approximateCoordinates) return interpretation;
+  return {
+    ...interpretation,
+    location: {
+      label: nextLabel,
+      approximateCoordinates: nextCoordinates,
+      precision: nextLabel === null && nextCoordinates === null ? "unknown" : precision,
+    },
+  };
+}

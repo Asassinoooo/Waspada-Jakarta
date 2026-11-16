@@ -357,7 +357,7 @@ function extractEventTime(
 export function extractLocation(
   text: string,
   sourceId: string,
-): { readonly locationLabel: string; readonly coordinates: readonly [longitude: number, latitude: number] | null } | null {
+): { readonly locationLabel: string | null; readonly coordinates: readonly [longitude: number, latitude: number] | null } | null {
   // Check if text has explicit coordinates in GeoJSON / text format
   const coordRegex = /\[\s*([0-9.]+)\s*,\s*(-?[0-9.]+)\s*\]/;
   const coordMatch = text.match(coordRegex);
@@ -411,15 +411,47 @@ export function extractLocation(
   // If source is known to be Jakarta-scoped (e.g. antara-metro or petabencana with Jakarta coords)
   const isJakartaSource = sourceId.includes("jakarta") || sourceId.includes("metro") || sourceId.includes("petabencana");
   if (isJakartaSource) {
-    // HOSTED-10: no invented point. The source gives only the Jakarta label; a point comes from the agent's own
-    // approximate coordinate, or the labelled Jakarta-centre fallback applied at publish time (public-point.ts).
+    // HOSTED-14: the source is Jakarta-scoped, so the report stays in scope. It names no place, so the label is absent
+    // (null), never a default region. The coordinate is only one the text itself states.
     return {
-      locationLabel: "DKI Jakarta",
+      locationLabel: null,
       coordinates: explicitCoords,
     };
   }
 
   return null;
+}
+
+function normalizeForMatch(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * HOSTED-14: the model's place is kept only when the report text states it. A label, or any comma-separated part of
+ * it (at least three characters), must appear in the text, case-insensitively. A model coordinate is kept only when a
+ * stated place name backs it: that label, or a gazetteer place named in the text. Otherwise the label and the
+ * coordinate become null. Nothing is replaced with a default, and text-stated coordinates from the deterministic path
+ * are never passed through here.
+ */
+export function groundModelLocation(
+  model: { readonly label?: string | null; readonly coordinates?: readonly [number, number] | null },
+  reportText: string,
+): { readonly locationLabel: string | null; readonly coordinates: readonly [number, number] | null } {
+  const label = typeof model.label === "string" && model.label.trim().length > 0 ? model.label.trim() : null;
+  const haystack = normalizeForMatch(reportText);
+  const parts = label === null
+    ? []
+    : [label, ...label.split(",")].map(normalizeForMatch).filter((part) => part.length >= 3);
+  const labelStated = parts.some((part) => haystack.includes(part));
+  const placeStated = labelStated || findGazetteerPlace(reportText) !== null;
+  const value = model.coordinates;
+  const finite = Array.isArray(value) && value.length === 2 &&
+    Number.isFinite(value[0]) && Number.isFinite(value[1]) &&
+    value[0] >= -180 && value[0] <= 180 && value[1] >= -90 && value[1] <= 90;
+  return {
+    locationLabel: labelStated ? label : null,
+    coordinates: finite && placeStated ? [value[0], value[1]] : null,
+  };
 }
 
 /**
@@ -470,7 +502,7 @@ function extractExactQuote(chunkText: string, keywords: readonly string[]): stri
 /**
  * Generates an appropriate Indonesian title based on category, location, and severity.
  */
-function generateTitle(category: IncidentCategory, locationLabel: string, severity: IncidentSeverity): string {
+function generateTitle(category: IncidentCategory, locationLabel: string | null, severity: IncidentSeverity): string {
   let categoryName: string;
   switch (category) {
     case "flood":
@@ -495,7 +527,8 @@ function generateTitle(category: IncidentCategory, locationLabel: string, severi
       categoryName = String(category).replace(/_/g, " ");
       break;
   }
-  return `${categoryName} di ${locationLabel}`;
+  // HOSTED-14: no label means the title names no place.
+  return locationLabel ? `${categoryName} di ${locationLabel}` : categoryName;
 }
 
 /**
@@ -532,11 +565,13 @@ function createClaims(
   reportRevisionId: string,
   chunks: readonly StoredEvidenceChunk[],
   category: IncidentCategory,
-  locationLabel: string,
+  locationLabel: string | null,
   severity: IncidentSeverity,
 ): readonly EventProposalClaimDto[] {
   const claims: EventProposalClaimDto[] = [];
-  const searchKeywords = [category, locationLabel.split(",")[0] ?? "", "ketinggian", "kerusakan", "korban", "petugas", "evakuasi"];
+  // HOSTED-14: an absent label is named as the incident site, never as a default region.
+  const placeText = locationLabel ?? "lokasi kejadian";
+  const searchKeywords = [category, (locationLabel ?? "").split(",")[0] ?? "", "ketinggian", "kerusakan", "korban", "petugas", "evakuasi"];
 
   // Sort chunks by keyword density
   const scoredChunks = chunks.map((chunk) => {
@@ -564,7 +599,7 @@ function createClaims(
       } else if (i === 1) {
         claimText = `Tingkat keparahan insiden tergolong ${severity} dengan dampak gangguan di lokasi kejadian.`;
       } else {
-        claimText = `Upaya pemantauan dan koordinasi penanganan dilakukan terhadap insiden di ${locationLabel}.`;
+        claimText = `Upaya pemantauan dan koordinasi penanganan dilakukan terhadap insiden di ${placeText}.`;
       }
 
       claims.push({
@@ -601,7 +636,7 @@ function createClaims(
       if (quote2 !== quote1) {
         claims.push({
           claim_id: "claim-2",
-          claim_text: `Dampak kejadian dengan tingkat keparahan ${severity} di sekitar ${locationLabel}.`,
+          claim_text: `Dampak kejadian dengan tingkat keparahan ${severity} di sekitar ${placeText}.`,
           evidence_label: "under_review",
           support_assessment: "supported",
           quote_text: quote2,

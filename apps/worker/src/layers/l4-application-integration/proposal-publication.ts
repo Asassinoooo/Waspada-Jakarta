@@ -600,13 +600,15 @@ async function enrichPublication(
     ? own.refs.filter((ref) => ref.report_revision_id === own.revisions[0])
     : [];
 
+  // HOSTED-14: the point's source comes from the claims' own source ids (source_text only for PetaBencana or BMKG).
   const outcome = publicPointOutcomeFor({
     category: input.category,
     locationLabel: proposal.location_label,
     coordinates: proposal.coordinates,
+    claimSourceIds: (proposal.claims ?? []).map((claim) => claim.source_id),
   });
   if (outcome.status === "point") {
-    return { support, geometryIds: [], geometrySource: "model_approximate", geometryStatus: "pending_geometry_writer" };
+    return { support, geometryIds: [], geometrySource: outcome.source, geometryStatus: "pending_geometry_writer" };
   }
   if (outcome.status === "not_required_group_notice") {
     return { support, geometryIds: [], geometrySource: null, geometryStatus: "not_required_group_notice" };
