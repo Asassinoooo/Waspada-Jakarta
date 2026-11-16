@@ -6,11 +6,17 @@ import type { TransactionalSqlExecutor } from './sql.js';
  *
  * Approval is the registry's `approval_status`, and the existing CHECK constraints tie it to collection
  * and auto-publication settings:
- * - `auto_acquisition_enabled` may be true only while approval is `approved` (`source_registry_auto_acquisition_eligible_check`).
+ * - `auto_acquisition_enabled` may be true only while approval is `approved` and the registry is `active`
+ *   (`source_registry_auto_acquisition_eligible_check`).
  * - `auto_publication_policy` must be `never` unless approval is `approved`.
- * So a revocation must also switch collection off and set the policy to `never`. The store does that in the
- * same statement and records the previous and new values. Approval never changes those two columns.
- * Public display is decided separately by evaluateSourcePermissions (news-triage.ts) and is never granted here.
+ *
+ * The rule the store applies in one statement, recording previous and new values in the audit row:
+ * - Revoke switches collection off and sets the auto-publication policy to `never`.
+ * - Approve switches collection on only when the registry is `active`. A paused or retired source stays off.
+ *   The auto-publication policy is not restored on approve, so it stays `never` after a revoke.
+ * - Neither action changes published events. Public read paths do not filter on approval status.
+ * Public display is decided separately by evaluateSourcePermissions (news-triage.ts) from approval, collection
+ * and the reuse basis. This store never writes a reuse basis and never grants display itself.
  */
 
 export type SourceApprovalTarget = 'approved' | 'revoked';
@@ -159,8 +165,9 @@ export function createSourceApprovalStore(
         const before = toRecord(current);
         if (before.approval_status === input.status) return { outcome: 'unchanged', current: before };
 
+        // Revoke stops collection and auto-publication. Approve restores collection only for an active registry entry.
         const revoking = input.status === 'revoked';
-        const nextAutoAcquisition = revoking ? false : before.auto_acquisition_enabled;
+        const nextAutoAcquisition = !revoking && before.registry_status === 'active';
         const nextPolicy = revoking ? 'never' : before.auto_publication_policy;
         const updated = await transaction.query<SourceRow>(
           `UPDATE waspada.source_registry

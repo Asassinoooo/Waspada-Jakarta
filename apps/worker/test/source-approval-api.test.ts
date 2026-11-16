@@ -163,8 +163,8 @@ describe("FR-12 admin source approval route", () => {
     assert.equal(payload.source.public_display_granted, false, "approval alone grants no public display");
 
     assert.deepEqual(await registry("source-route-pending"), {
-      approval_status: "approved", auto_acquisition_enabled: false, auto_publication_policy: "never",
-    });
+      approval_status: "approved", auto_acquisition_enabled: true, auto_publication_policy: "never",
+    }, "approval on an active registry entry starts collection; the policy is unchanged");
     const audit = await db.executor.query<{ actor_id: string; action: string; reason: string; trace_id: string; dataset_kind: string; details: Record<string, unknown> }>(
       `SELECT actor_id, action, reason, trace_id, dataset_kind, details
        FROM waspada.audit_records WHERE entity_type = 'source' AND entity_id = 'source-route-pending'`,
@@ -234,34 +234,54 @@ describe("FR-12 admin source approval route", () => {
     assert.equal((await registry("source-route-pending"))?.approval_status, "revoked");
   });
 
-  it("the list shows public display as granted only when approval, collection and a public_display reuse token all hold", async () => {
+  it("re-approval through the route restores collection and a second revocation switches it off again", async () => {
+    assert.equal((await registry("source-route-pending"))?.auto_acquisition_enabled, false);
+    const approved = await send("POST", approvalPath("source-route-pending"), {
+      principal: "admin", body: { status: "approved", note: NOTE },
+    });
+    assert.equal(approved?.status, 200);
+    assert.deepEqual(await registry("source-route-pending"), {
+      approval_status: "approved", auto_acquisition_enabled: true, auto_publication_policy: "never",
+    });
+
+    const revoked = await send("POST", approvalPath("source-route-pending"), {
+      principal: "admin", body: { status: "revoked", note: NOTE },
+    });
+    assert.equal(revoked?.status, 200);
+    assert.deepEqual(await registry("source-route-pending"), {
+      approval_status: "revoked", auto_acquisition_enabled: false, auto_publication_policy: "never",
+    });
+    // Every route write shares one occurred_at, so count the transitions rather than rely on row order.
+    const audit = await db.executor.query<{ action: string }>(
+      `SELECT action FROM waspada.audit_records WHERE entity_id = 'source-route-pending'`,
+    );
+    const actions = audit.rows.map((row) => row.action);
+    assert.equal(actions.filter((action) => action === "source_approval_approved").length, 2);
+    assert.equal(actions.filter((action) => action === "source_approval_revoked").length, 2);
+  });
+
+  it("the list shows public display as granted only for an approved, collecting source whose reuse basis carries public_display", async () => {
     const readList = async () => {
       const list = await send("GET", "/api/v1/admin/sources", { principal: "admin" });
       assert.equal(list?.status, 200);
-      return (await list?.json() as { sources: Array<{ source_id: string; approval_status: string; public_display_granted: boolean }> }).sources;
+      return (await list?.json() as { sources: Array<{ source_id: string; approval_status: string; auto_acquisition_enabled: boolean; public_display_granted: boolean }> }).sources;
     };
     const before = await readList();
     assert.deepEqual(before.map((source) => source.source_id), ["source-route-pending", "source-route-public"]);
     assert.equal(before[0]?.approval_status, "revoked");
     assert.ok(before.every((source) => source.public_display_granted === false), "nothing is approved and collecting yet");
 
-    // Approval alone: the public_display token is present, but collection is still off.
+    // Approval on an active registry entry restarts collection. This source's reuse basis carries
+    // public_display, so the existing permission model now grants display for this one source only.
     const approved = await send("POST", approvalPath("source-route-public"), {
       principal: "admin", body: { status: "approved", note: NOTE },
     });
     assert.equal(approved?.status, 200);
     const afterApproval = await readList();
-    assert.equal(afterApproval.find((source) => source.source_id === "source-route-public")?.public_display_granted, false);
-
-    // Collection enabled through the existing registry columns (no route in this change): now the
-    // existing permission model grants public display for this one source only.
-    await db.executor.query(
-      `UPDATE waspada.source_registry SET auto_acquisition_enabled = true, polling_interval_seconds = 300
-       WHERE source_id = 'source-route-public'`,
-    );
-    const afterCollection = await readList();
-    assert.equal(afterCollection.find((source) => source.source_id === "source-route-public")?.public_display_granted, true);
-    assert.equal(afterCollection.find((source) => source.source_id === "source-route-pending")?.public_display_granted, false);
+    const publicSource = afterApproval.find((source) => source.source_id === "source-route-public");
+    assert.equal(publicSource?.auto_acquisition_enabled, true);
+    assert.equal(publicSource?.public_display_granted, true);
+    assert.equal(afterApproval.find((source) => source.source_id === "source-route-pending")?.public_display_granted, false);
   });
 
   it("maps a storage failure to 503 with a generic body", async () => {

@@ -10,7 +10,7 @@ import {
   type SourceApprovalClient,
 } from "./source-approval-client.js";
 
-/** FR-12 registry approval for the administrator workspace. Approval records status; it does not start collection or grant public display. */
+/** FR-12 registry approval for the administrator workspace. Approval restarts collection for an active registry entry; it never grants public display by itself. */
 
 const APPROVAL_LABEL: Readonly<Record<string, string>> = {
   pending: "Menunggu",
@@ -187,7 +187,7 @@ export function SourceApprovalPanel({ session, client = sourceApprovalClient }: 
     <section className="source-approval" aria-labelledby="source-approval-title">
       <h2 id="source-approval-title">Persetujuan sumber</h2>
       <p className="source-approval__intro">
-        Persetujuan mencatat status registri sumber. Persetujuan saja tidak memulai pengumpulan otomatis dan tidak memberi izin tampil publik.
+        Persetujuan mencatat status registri sumber dan menyalakan pengumpulan otomatis untuk sumber dengan registri aktif. Tampil publik tetap mengikuti hak penggunaan sumber.
         Pencabutan mematikan pengumpulan otomatis dan terbit otomatis untuk sumber itu, tetapi tidak menarik kejadian yang sudah terbit.
         Setiap perubahan dicatat dalam audit.
       </p>
@@ -216,7 +216,7 @@ export function SourceApprovalPanel({ session, client = sourceApprovalClient }: 
             <h2 id="source-approval-dialog-title">{change.status === "approved" ? `Setujui ${changeName}` : `Cabut persetujuan ${changeName}`}</h2>
             <p>
               {change.status === "approved"
-                ? "Persetujuan mencatat status registri saja. Pengumpulan otomatis tidak dimulai dan sumber ini tidak otomatis diizinkan tampil publik."
+                ? "Pengumpulan otomatis dinyalakan untuk sumber dengan registri aktif. Sumber dengan registri dijeda atau dipensiunkan tetap tidak dikumpulkan. Tampil publik tetap mengikuti hak penggunaan sumber."
                 : "Pencabutan mematikan pengumpulan otomatis dan mengatur terbit otomatis ke tidak pernah untuk sumber ini. Tindakan ini tidak menarik kejadian yang sudah terbit."}
             </p>
             <label className="source-approval__note">

@@ -2,13 +2,37 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations } from '../src/migrations.js';
 import { createSourceApprovalStore, type SourceApprovalStore } from '../src/source-approval-store.js';
+import type { SqlExecutor, TransactionalSqlExecutor } from '../src/sql.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
 /**
  * FR-12 source approval (synthetic fixtures only). The store records an administrator's approval or
  * revocation of a registry source in one transaction: the registry row, a request trace and an audit
  * row. Every assertion reads the rows back from the database.
+ *
+ * Rule under test: revoke switches collection off and the policy to `never`; approve switches collection
+ * back on for an `active` registry entry only; neither action changes published events.
  */
+
+/** Records every INSERT, UPDATE and DELETE the store sends, including the statements inside its transaction. */
+function recordingExecutor(base: TransactionalSqlExecutor, writes: string[]): TransactionalSqlExecutor {
+  const wrap = (executor: SqlExecutor): SqlExecutor => ({
+    query<Row extends object = Record<string, unknown>>(statement: string, parameters?: readonly unknown[]) {
+      if (/^\s*(insert|update|delete)\b/iu.test(statement)) writes.push(statement);
+      return executor.query<Row>(statement, parameters);
+    },
+    execute(statement: string) {
+      if (/^\s*(insert|update|delete)\b/iu.test(statement)) writes.push(statement);
+      return executor.execute(statement);
+    },
+  });
+  return {
+    ...wrap(base),
+    transaction<Result>(work: (transaction: SqlExecutor) => Promise<Result>): Promise<Result> {
+      return base.transaction<Result>((transaction) => work(wrap(transaction)));
+    },
+  };
+}
 
 const NOTE = 'Dicek ulang syarat penggunaan sumber ini pada 13 November 2026.';
 const ACTOR = 'admin-account-1';
@@ -35,8 +59,11 @@ describe('FR-12 source approval store', () => {
     await insertSource('source-pending', 'pending', false, 'never', 'newsroom');
     // Approved, collecting, issuer-notice auto-publication: revoking must switch both off.
     await insertSource('source-approved-live', 'approved', true, 'approved_issuer_notice', 'authority', ['public_display']);
-    // Revoked source: approval must not restart collection or auto-publication settings.
+    // Revoked source on an active registry entry: approval restores collection; the policy stays `never`.
     await insertSource('source-revoked', 'revoked', false, 'never', 'newsroom');
+    // Paused and retired registry entries: approval must leave collection off.
+    await insertSource('source-paused', 'pending', false, 'never', 'newsroom', ['model_triage'], 'paused');
+    await insertSource('source-retired', 'revoked', false, 'never', 'newsroom', ['model_triage'], 'retired');
     store = createSourceApprovalStore(db.executor, 'live');
   });
 
@@ -49,6 +76,7 @@ describe('FR-12 source approval store', () => {
     policy: string,
     kind: string,
     reuseBasis: string[] = ['model_triage'],
+    registryStatus: string = 'active',
   ): Promise<void> {
     await db.executor.query(
       `INSERT INTO waspada.source_registry
@@ -57,9 +85,9 @@ describe('FR-12 source approval store', () => {
           approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
           polling_interval_seconds)
        VALUES ($1, 'trace-seed-sources', 1, $1, $2, ARRAY['banjir'], 'rss', ARRAY[]::text[],
-          ARRAY['synthetic test fixture'], $3::text[], 'active', $4, 'unknown', $5, $6,
+          ARRAY['synthetic test fixture'], $3::text[], $7, $4, 'unknown', $5, $6,
           CASE WHEN $5 THEN 300 ELSE NULL END)`,
-      [sourceId, kind, reuseBasis, approval, autoAcquisition, policy],
+      [sourceId, kind, reuseBasis, approval, autoAcquisition, policy, registryStatus],
     );
   }
 
@@ -106,7 +134,7 @@ describe('FR-12 source approval store', () => {
   it('lists registry sources in source_id order with their approval and collection fields', async () => {
     const sources = await store.listSources();
     assert.deepEqual(sources.map((source) => source.source_id), [
-      'source-approved-live', 'source-pending', 'source-revoked',
+      'source-approved-live', 'source-paused', 'source-pending', 'source-retired', 'source-revoked',
     ]);
     const approved = sources[0]!;
     assert.equal(approved.approval_status, 'approved');
@@ -115,7 +143,7 @@ describe('FR-12 source approval store', () => {
     assert.deepEqual(approved.reuse_basis, ['public_display']);
   });
 
-  it('approving a pending source changes only its approval status and writes a trace and audit row read back from the database', async () => {
+  it('approving an active pending source starts collection, leaves the policy at never, and writes a trace and audit row read back from the database', async () => {
     const ids = nextIds();
     const result = await store.setApproval({
       sourceId: 'source-pending', status: 'approved', note: NOTE, actorId: ACTOR,
@@ -128,9 +156,9 @@ describe('FR-12 source approval store', () => {
 
     assert.deepEqual(await registryRow('source-pending'), {
       approval_status: 'approved',
-      auto_acquisition_enabled: false,
+      auto_acquisition_enabled: true,
       auto_publication_policy: 'never',
-    }, 'approval does not start collection or change the auto-publication policy');
+    }, 'approval on an active registry entry starts collection; the auto-publication policy is not changed');
 
     const audits = await auditRows('source-pending');
     assert.equal(audits.length, 1);
@@ -144,7 +172,7 @@ describe('FR-12 source approval store', () => {
     assert.equal(audit.details.previous_approval_status, 'pending');
     assert.equal(audit.details.approval_status, 'approved');
     assert.equal(audit.details.previous_auto_acquisition_enabled, false);
-    assert.equal(audit.details.auto_acquisition_enabled, false);
+    assert.equal(audit.details.auto_acquisition_enabled, true);
 
     const trace = await traceRow(ids.traceId);
     assert.deepEqual(trace, { dataset_kind: 'live', outcome: 'succeeded', ended_at: trace?.ended_at });
@@ -175,7 +203,56 @@ describe('FR-12 source approval store', () => {
     assert.equal(audit.details.auto_publication_policy, 'never');
   });
 
-  it('approving a revoked source does not restart collection or auto-publication', async () => {
+  it('revoke then approve restores collection, and the audit log holds both transitions', async () => {
+    const ids = nextIds();
+    const result = await store.setApproval({
+      sourceId: 'source-approved-live', status: 'approved', note: NOTE, actorId: ACTOR,
+      traceId: ids.traceId, auditId: ids.auditId, occurredAt: '2026-11-13T09:07:00.000Z',
+    });
+    assert.equal(result.outcome, 'updated');
+    if (result.outcome !== 'updated') return;
+    assert.equal(result.before.auto_acquisition_enabled, false);
+    assert.equal(result.after.auto_acquisition_enabled, true);
+
+    assert.deepEqual(await registryRow('source-approved-live'), {
+      approval_status: 'approved',
+      auto_acquisition_enabled: true,
+      auto_publication_policy: 'never',
+    }, 'collection is back on; the policy stays never until an operator sets it again');
+
+    const audits = await auditRows('source-approved-live');
+    assert.deepEqual(audits.map((row) => row.action), ['source_approval_revoked', 'source_approval_approved']);
+    const approval = audits[1]!;
+    assert.equal(approval.details.previous_approval_status, 'revoked');
+    assert.equal(approval.details.approval_status, 'approved');
+    assert.equal(approval.details.previous_auto_acquisition_enabled, false);
+    assert.equal(approval.details.auto_acquisition_enabled, true);
+    assert.equal(approval.details.previous_auto_publication_policy, 'never');
+    assert.equal(approval.details.auto_publication_policy, 'never');
+  });
+
+  it('revoke writes only the registry, trace and audit tables, so published public rows are not touched (structural check; no public rows are seeded here)', async () => {
+    const writes: string[] = [];
+    const recordingStore = createSourceApprovalStore(recordingExecutor(db.executor, writes), 'live');
+    const ids = nextIds();
+    const result = await recordingStore.setApproval({
+      sourceId: 'source-approved-live', status: 'revoked', note: NOTE, actorId: ACTOR,
+      traceId: ids.traceId, auditId: ids.auditId, occurredAt: '2026-11-13T09:20:00.000Z',
+    });
+    assert.equal(result.outcome, 'updated');
+    assert.deepEqual(
+      writes.map((sql) => sql.match(/waspada\.(\w+)/u)?.[1]),
+      ['source_registry', 'traces', 'audit_records'],
+    );
+    assert.ok(writes.every((sql) => !/public_/iu.test(sql)), 'no write statement names a public_* table');
+    assert.deepEqual(await registryRow('source-approved-live'), {
+      approval_status: 'revoked',
+      auto_acquisition_enabled: false,
+      auto_publication_policy: 'never',
+    });
+  });
+
+  it('approving a revoked source on an active registry entry restores collection and keeps the policy at never', async () => {
     const ids = nextIds();
     const result = await store.setApproval({
       sourceId: 'source-revoked', status: 'approved', note: NOTE, actorId: ACTOR,
@@ -184,9 +261,28 @@ describe('FR-12 source approval store', () => {
     assert.equal(result.outcome, 'updated');
     assert.deepEqual(await registryRow('source-revoked'), {
       approval_status: 'approved',
-      auto_acquisition_enabled: false,
+      auto_acquisition_enabled: true,
       auto_publication_policy: 'never',
     });
+  });
+
+  it('approving a paused or retired source keeps collection off, and the audit row records that', async () => {
+    for (const [index, sourceId] of ['source-paused', 'source-retired'].entries()) {
+      const ids = nextIds();
+      const result = await store.setApproval({
+        sourceId, status: 'approved', note: NOTE, actorId: ACTOR,
+        traceId: ids.traceId, auditId: ids.auditId, occurredAt: `2026-11-13T09:3${index}:00.000Z`,
+      });
+      assert.equal(result.outcome, 'updated', sourceId);
+      assert.deepEqual(await registryRow(sourceId), {
+        approval_status: 'approved',
+        auto_acquisition_enabled: false,
+        auto_publication_policy: 'never',
+      }, sourceId);
+      const audit = (await auditRows(sourceId)).at(-1)!;
+      assert.equal(audit.action, 'source_approval_approved', sourceId);
+      assert.equal(audit.details.auto_acquisition_enabled, false, sourceId);
+    }
   });
 
   it('a request that matches the current status changes nothing and writes no audit or trace row', async () => {
