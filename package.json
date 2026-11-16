@@ -20,6 +20,7 @@
     "pipeline:serve": "tsx tools/local-pipeline/run-local-server.ts",
     "serve:live": "node --env-file=.env.local --import tsx tools/serve-live-pipeline.ts",
     "serve:hosted-ingest": "node --env-file=.env.local --import tsx tools/serve-live-pipeline.ts --headless",
+    "serve:hosted-ingest:once": "node --import tsx tools/serve-live-pipeline.ts --headless --once",
     "hosted:bootstrap": "node --env-file=.env.local --import tsx tools/hosted/neon-bootstrap.ts",
     "ai:requeue": "tsx tools/requeue-ai-jobs.ts",
     "pipeline:test": "tsx tools/local-pipeline/run-tests.ts",

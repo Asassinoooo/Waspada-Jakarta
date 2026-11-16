@@ -88,3 +88,40 @@ It needs `NEON_DATABASE_URL` in the root `.env.local`. That file is git-ignored.
 - SSE is per isolate. A client sees updates only from its own isolate, so the web app polls instead.
 - No cron trigger is configured. The Worker's `scheduled()` handler therefore never runs in this deployment.
 - Rollback to the previous Worker version: `npx wrangler rollback --env production`.
+
+## 7. Scheduled hosted ingest (GitHub Actions, HOSTED-13)
+
+This replaces the PC ingest node in section 5 for the hosted site. `.github/workflows/ingest.yml` runs every 30 minutes (cron `*/30 * * * *`, UTC) and can also be started by hand. Each run does one bounded cycle against Neon and exits:
+
+1. Coverage guard: the 16 live sources must exist in `source_registry`. If one is missing, the run exits 1.
+2. One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A source that fails is logged and the run goes on.
+3. A drain of queued AI jobs. It stops when the queue is empty, when the time budget is used up, or after three jobs in a row that do not complete. The budget is `INGEST_TIME_BUDGET_MINUTES` (default 20, allowed 1 to 25) and counts from the start of the run. No new job starts after it.
+4. One freshness pass. The session closes and the run exits 0. Exit 1 happens only when the database is unreachable or a fault is unexpected.
+
+This path does not re-drive stranded jobs (`needs_review` with `model_failed` or `rate_limited`). Re-driving resets the attempt count, so a 30-minute schedule would retry them without a bound. The local `serve:hosted-ingest` mode still re-drives them when it starts.
+
+Owner setup:
+
+- Add two repository secrets in GitHub under Settings, then Secrets and variables, then Actions: `NEON_DATABASE_URL` (the direct, non-pooled Neon URL) and `GOOGLE_AI_API_KEY`. Do not store them as variables, and do not paste either value into an issue, a PR or chat.
+- Enable Actions for the repository under Settings, then Actions, then General. Scheduled runs use the default branch.
+- Merge HOSTED-12 (the Google AI provider) to `main` before you add the secrets. Until it is merged, `main` has no provider switch. The run then calls the NineRouter path, which is not reachable from GitHub, and jobs fail.
+- Record the publication decision before you enable the schedule. The headless path publishes with `AUTO_PUBLISH_SOURCE_PERMISSION=local_relaxed`, the same as the local server. That relaxes the source-permission check against the public database. Hosted deployments otherwise use `required`. This is still an open owner decision.
+- To run it by hand, open Actions, choose "Hosted live ingest", then "Run workflow". Manual runs share the same concurrency group.
+
+What to check in a run log. The log is public, so it prints counts and fixed codes only:
+
+- `✓ Source coverage: N of 16 live sources are ready; M skipped.`: how many of the 16 sources are ready. Skipped sources are listed under `[Coverage]`.
+- `[Once] AI jobs: completed=N not_completed=M stop=...`: `stop` is `empty`, `budget`, or `consecutive_not_completed`.
+- `[Once] Done: exit=0 elapsed=...s transaction_state_warnings=0`. A non-zero warning count needs a look.
+- The `[RSS Feeds]` and `[Freshness]` lines for totals.
+
+If a run fails, check the step's exit code first. Do not paste the log into an issue.
+
+Lock and timing:
+
+- The concurrency group `waspada-ingest` is the only lock. Runs never overlap, and a queued run waits for the one in progress.
+- Local PC mode (`serve:live`, or `serve:hosted-ingest` without `--once`) has no lock. Do not run it on the PC while the schedule is on.
+- GitHub can delay or skip scheduled runs under load, and `*/30` falls on the top and bottom of the hour, which is busy. Public repositories disable scheduled workflows after 60 days with no repository activity. Re-enable them from the Actions tab.
+- A run is capped at 30 minutes. If a model call is still running at the cap, the run is stopped. Its job lease expires after 5 minutes, and a later run then reclaims that job.
+- The workflow uploads no artifacts and caches only npm packages. Nothing from the database is written to a cache or an artifact.
+- Neon Free compute: each run wakes the database for the coverage check, the poll cycle and the freshness pass. Watch the compute hours on the free plan.

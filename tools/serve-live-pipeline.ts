@@ -58,6 +58,7 @@ import {
   type StructuredPollInput,
 } from "./live-source-coverage.js";
 import { seedRssSources } from "./live-sources-seed.js";
+import { drainAiJobs, drainDeadlineMs, hasClaimableAiJob, parseRunFlags, resolveIngestTimeBudget } from "./hosted/ingest-once.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -78,7 +79,12 @@ const SERVE_LIVE_DATASET_KIND = "live" as const;
 // HOSTED-03: `--headless` runs against the hosted Neon database (NEON_DATABASE_URL). It skips PGlite, the PID
 // claim, backup restore, the migrations, the admin and RSS seeding (tools/hosted/neon-bootstrap.ts does those),
 // the in-memory republish, and Vite/dist. The API stays bound to 127.0.0.1.
-const HEADLESS = process.argv.slice(2).includes("--headless");
+const RUN_FLAGS = parseRunFlags(process.argv.slice(2));
+const HEADLESS = RUN_FLAGS.headless;
+// HOSTED-13: `--once` (headless only) runs one poll cycle, a bounded drain of ai_jobs and one freshness pass,
+// then exits. It is the scheduled GitHub Actions path, and its concurrency group is the only lock. Local PC mode
+// (serve:live, serve:hosted-ingest without --once) has no lock, so it must not run alongside the schedule.
+const ONCE = RUN_FLAGS.once;
 
 /** Message in local mode (as before). Code or class only in headless mode, because messages can carry hosts. */
 function logDetail(error: unknown): string {
@@ -269,7 +275,7 @@ function openHostedSession(): HostedSession {
       log: (line) => console.warn(line),
     });
   } catch (err) {
-    console.error(`Refusing to start: ${safeErrorLabel(err)}. NEON_DATABASE_URL must be set in .env.local (its value is never printed).`);
+    console.error(`Refusing to start: ${safeErrorLabel(err)}. NEON_DATABASE_URL must be set (in .env.local locally, or as a repository secret for the scheduled run; its value is never printed).`);
     process.exit(1);
   }
 }
@@ -294,6 +300,12 @@ async function assertHostedSourceCoverage(executor: TransactionalSqlExecutor): P
 }
 
 async function main() {
+  // HOSTED-13: the time budget counts from here, before the coverage guard and the poll cycle.
+  const runStartMs = Date.now();
+  if (RUN_FLAGS.error !== undefined) {
+    console.error(RUN_FLAGS.error);
+    process.exit(1);
+  }
   console.log("==================================================================");
   console.log(HEADLESS
     ? "  Waspada Jakarta: Headless Live Ingestion (hosted database)          "
@@ -342,7 +354,9 @@ async function main() {
   const internalServiceKey = generateServiceKey();
   // AI-RATE-01 re-drive: jobs stranded in needs_review by model or rate-limit
   // failures go back to pending once per start.
-  const requeued = await requeueStrandedAiJobs(executor, { codes: ["model_failed", "rate_limited"] });
+  // HOSTED-13: --once skips the re-drive. retryAiJob resets attempt_count, so a re-drive on every scheduled start
+  // would retry model_failed and rate_limited jobs without a bound.
+  const requeued = ONCE ? [] : await requeueStrandedAiJobs(executor, { codes: ["model_failed", "rate_limited"] });
   if (requeued.length > 0) {
     console.log(`✓ Requeued ${requeued.length} stranded AI jobs (model_failed, rate_limited).`);
   }
@@ -369,7 +383,11 @@ async function main() {
 
   // 4. Start Unified Live Worker Server (Port 8787)
   const distDir = path.resolve(process.cwd(), "apps/web/dist");
+  // HOSTED-13: requests still inside the API handler. The once path waits for them before it closes the session,
+  // so an auto-publish that a job notification started is not cut off.
+  let requestsInFlight = 0;
   const server = http.createServer(async (req, res) => {
+    requestsInFlight += 1;
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 
@@ -422,6 +440,8 @@ async function main() {
       logError("Server request error:", err);
       res.statusCode = 500;
       res.end("Internal Server Error");
+    } finally {
+      requestsInFlight -= 1;
     }
   });
 
@@ -441,7 +461,8 @@ async function main() {
     pollIntervalMs: 2_000,
   });
 
-  let workerActive = true;
+  // HOSTED-13: --once drains ai_jobs in runOnce below, so this always-on loop starts stopped.
+  let workerActive = !ONCE;
   (async () => {
     while (workerActive) {
       try {
@@ -756,6 +777,78 @@ async function main() {
       }
       isPolling = false;
     }
+  }
+
+  // HOSTED-13: one bounded cycle for the scheduled run. Order: poll, drain, freshness, then close. No timer is
+  // started on this path, and it always ends the process.
+  async function waitForRequestsToSettle(maxMs: number): Promise<void> {
+    const until = Date.now() + maxMs;
+    while (requestsInFlight > 0 && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (requestsInFlight > 0) {
+      console.warn(`[Once] ${requestsInFlight} API request(s) still running after ${Math.round(maxMs / 1000)} s; closing anyway.`);
+    }
+  }
+
+  async function runOnce(): Promise<number> {
+    const budget = resolveIngestTimeBudget(process.env.INGEST_TIME_BUDGET_MINUTES);
+    if (budget.invalid) {
+      console.warn("[Once] INGEST_TIME_BUDGET_MINUTES must be an integer from 1 to 25; using 20 minutes.");
+    }
+    const deadlineMs = drainDeadlineMs(runStartMs, budget.budgetMs);
+    // A stop signal (for example a workflow timeout) closes the session and exits 1. An in-flight job keeps its
+    // lease, and a later run reclaims it when the lease expires.
+    const onSignal = () => {
+      console.warn("[Once] Stop signal received; closing the session.");
+      void (hosted?.close() ?? Promise.resolve()).finally(() => process.exit(1));
+    };
+    process.once("SIGTERM", onSignal);
+    process.once("SIGINT", onSignal);
+    let hardError = false;
+    try {
+      // 1. One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A failed source is logged inside pollLiveFeeds.
+      try {
+        await pollLiveFeeds();
+      } catch (err: unknown) {
+        logError("[Ingestion Cycle] failed:", err);
+      }
+      // 2. Drain the AI queue until it is empty, the budget is used up, or the failure streak stops it.
+      const drain = await drainAiJobs({
+        deadlineMs,
+        now: () => Date.now(),
+        hasClaimableJob: () => hasClaimableAiJob(executor, SERVE_LIVE_DATASET_KIND, new Date().toISOString()),
+        processNextJob: () => jobRunner.processNextJob(SERVE_LIVE_DATASET_KIND),
+      });
+      console.log(`[Once] AI jobs: completed=${drain.completed} not_completed=${drain.notCompleted} stop=${drain.stop}.`);
+      // 3. One freshness pass. startLiveFreshness sets an interval, so it is stopped right after the startup pass.
+      const freshness = startLiveFreshness({ executor, env: process.env });
+      await freshness.startup;
+      freshness.stop();
+    } catch (err: unknown) {
+      // A thrown error means the database is unavailable or a fault is unexpected. The run exits 1.
+      hardError = true;
+      logError("[Once] Hard error; the run stops here.", err);
+    } finally {
+      process.off("SIGTERM", onSignal);
+      process.off("SIGINT", onSignal);
+      // Job notifications reach the in-process API. Wait for them before the session closes, so a publish is not cut off.
+      await waitForRequestsToSettle(60_000);
+      server.close();
+      await Promise.race([
+        hosted?.close() ?? Promise.resolve(),
+        new Promise((resolve) => setTimeout(resolve, 10_000)),
+      ]).catch(() => undefined);
+    }
+    const elapsedSeconds = Math.round((Date.now() - runStartMs) / 1000);
+    const stateWarnings = hosted?.transactionStateWarnings() ?? 0;
+    console.log(`[Once] Done: exit=${hardError ? 1 : 0} elapsed=${elapsedSeconds}s transaction_state_warnings=${stateWarnings}.`);
+    return hardError ? 1 : 0;
+  }
+
+  if (ONCE) {
+    const code = await runOnce();
+    process.exit(code);
   }
 
   // Run initial poll cycle now, then repeat every 60 seconds. A cycle that throws (for example a
