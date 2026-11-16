@@ -15,6 +15,13 @@ import { ReportInterpretationSchema } from "./agents/report-interpretation-agent
 export const PETABENCANA_SOURCE_ID = "petabencana";
 export const BMKG_GEMPA_SOURCE_ID = "source-bmkg-gempa";
 
+/**
+ * HOSTED-17 (owner decision, 17 Nov 2026): PetaBencana reports carry no place-name field, only a map point. Their
+ * location label is this fixed source label, not a place. It is written by the deterministic path only, so the model
+ * path's grounding never sees it. It is never derived from the report text, a gazetteer or a region.
+ */
+export const PETABENCANA_SOURCE_LABEL = "Laporan warga PetaBencana";
+
 export interface StructuredInterpretationInput {
   readonly sourceId: string | undefined;
   readonly reportText: string;
@@ -59,7 +66,8 @@ function buildPetaBencana(input: StructuredInterpretationInput): ReportInterpret
     // Every PetaBencana feed in this pipeline is flood (disaster=flood).
     primaryCategory: "disasters_weather",
     location: {
-      label: null,
+      // HOSTED-17: the fixed source label. The coordinate, when present, is still the source's own text.
+      label: PETABENCANA_SOURCE_LABEL,
       approximateCoordinates: coordinates,
       precision: coordinates ? "approximate" : "unknown",
     },

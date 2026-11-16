@@ -7,6 +7,7 @@ import {
 import { generateWithinBudget } from "./generation-budget.js";
 import type { ReportInterpretation } from "./report-interpretation-agent.js";
 import type { CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
+import { PETABENCANA_SOURCE_LABEL } from "../structured-interpretation.js";
 
 /**
  * AI-RPM-01: a retrieved candidate only reaches the correlation model when its
@@ -179,7 +180,9 @@ Return ONLY valid JSON matching the requested schema. No markdown wrapping.
  */
 export function correlateWithoutCandidates(interpretation: ReportInterpretation): IncidentCorrelation {
   const basis = `Deterministic correlation, no model call: no candidate incident reached similarity ${CORRELATION_MIN_SIMILARITY.toFixed(2)}.`;
-  const hasLocation = interpretation.location.label !== null || interpretation.location.approximateCoordinates !== null;
+  // HOSTED-17: the fixed PetaBencana source label names no place, so it does not make a report "name a location".
+  const namesPlace = interpretation.location.label !== null && interpretation.location.label !== PETABENCANA_SOURCE_LABEL;
+  const hasLocation = namesPlace || interpretation.location.approximateCoordinates !== null;
   if (hasLocation) {
     return {
       decision: "new_incident",
