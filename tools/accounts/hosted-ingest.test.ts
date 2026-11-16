@@ -28,6 +28,7 @@ import {
 } from "../hosted/hosted-session.js";
 import { diffLayerRoles, LAYER_ROLES, planModeratorSeed, seedModeratorAccount } from "../hosted/neon-bootstrap.js";
 import { roleCreationsIn } from "../hosted/layer-roles.js";
+import { RoleAttributeError, stripPrivilegedRoleAttributes, verifyLayerRoleAttributes, withRoleAttributeCompat } from "../hosted/role-attribute-compat.js";
 import {
   DEFAULT_INGEST_TIME_BUDGET_MINUTES,
   drainAiJobs,
@@ -578,5 +579,68 @@ describe("HOSTED-13 scheduled one-cycle ingest (pure decisions, fakes only)", ()
       query: async <Row extends object>() => ({ rows: [{ found: 1 }] as unknown as Row[] }),
     };
     assert.equal(await hasClaimableAiJob(withRow, "live", "2026-11-16T00:00:00.000Z"), true);
+  });
+});
+
+describe("Neon role-attribute compatibility (HOSTED-19)", () => {
+  const migrationsDir = fileURLToPath(new URL("../../apps/db/migrations/", import.meta.url));
+  const files = fs.readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort();
+
+  it("strips only NOSUPERUSER, NOREPLICATION and NOBYPASSRLS from waspada ALTER ROLE statements in every migration", () => {
+    let touched = 0;
+    for (const name of files) {
+      const sql = fs.readFileSync(`${migrationsDir}${name}`, "utf8");
+      const out = stripPrivilegedRoleAttributes(sql);
+      for (const statement of out.match(/ALTER\s+ROLE\s+waspada_[a-z0-9_]+\b[^;]*/giu) ?? []) {
+        assert.doesNotMatch(statement, /NOSUPERUSER|NOREPLICATION|NOBYPASSRLS/u, name);
+        assert.match(statement, /NOLOGIN/u, name);
+      }
+      if (out !== sql) touched += 1;
+      const stripKeywords = (text: string) => text.replace(/\s+NO(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu, "");
+      assert.equal(stripKeywords(out), stripKeywords(sql), `${name}: only the three keywords may change`);
+    }
+    assert.ok(touched >= 8, `expected the hardened-role migrations to be adjusted, got ${touched}`);
+  });
+
+  it("keeps NOLOGIN, NOINHERIT, NOCREATEDB and NOCREATEROLE, and leaves other statements alone", () => {
+    const sql = "ALTER ROLE waspada_x\n  NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;\nCOMMENT ON ROLE waspada_x IS 'NOSUPERUSER';";
+    assert.equal(
+      stripPrivilegedRoleAttributes(sql),
+      "ALTER ROLE waspada_x\n  NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE;\nCOMMENT ON ROLE waspada_x IS 'NOSUPERUSER';",
+    );
+    assert.equal(stripPrivilegedRoleAttributes("ALTER ROLE other_role NOSUPERUSER;"), "ALTER ROLE other_role NOSUPERUSER;");
+  });
+
+  it("the wrapper rewrites execute() only and passes query() through", async () => {
+    const seen: string[] = [];
+    const inner: SqlExecutor = {
+      query: async <Row extends object>(text: string) => {
+        seen.push(`q:${text}`);
+        return { rows: [] as Row[] };
+      },
+      execute: async (text: string) => {
+        seen.push(`e:${text}`);
+      },
+    };
+    const wrapped = withRoleAttributeCompat(inner);
+    await wrapped.execute("ALTER ROLE waspada_y NOLOGIN NOSUPERUSER;");
+    await wrapped.query("SELECT 'ALTER ROLE waspada_y NOSUPERUSER'");
+    assert.deepEqual(seen, ["e:ALTER ROLE waspada_y NOLOGIN;", "q:SELECT 'ALTER ROLE waspada_y NOSUPERUSER'"]);
+  });
+
+  it("fails closed when any waspada role holds superuser, replication or bypassrls", async () => {
+    const rows = (bad: boolean) => [
+      { rolname: "waspada_a", rolsuper: false, rolreplication: false, rolbypassrls: false },
+      { rolname: "waspada_b", rolsuper: false, rolreplication: false, rolbypassrls: bad },
+    ];
+    const fake = (bad: boolean): Pick<SqlExecutor, "query"> => ({
+      query: async <Row extends object>() => ({ rows: rows(bad) as unknown as Row[] }),
+    });
+    assert.equal(await verifyLayerRoleAttributes(fake(false)), 2);
+    await assert.rejects(verifyLayerRoleAttributes(fake(true)), (error: unknown) => {
+      assert.ok(error instanceof RoleAttributeError);
+      assert.deepEqual(error.roles, ["waspada_b"]);
+      return true;
+    });
   });
 });

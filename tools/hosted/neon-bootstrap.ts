@@ -25,6 +25,7 @@ import {
 import { seedLiveSourcesInsertMissing } from "../live-sources-seed.js";
 import { createHostedSession, HostedConfigError } from "./hosted-session.js";
 import { diffLayerRoles, LAYER_ROLES, LAYER_ROLE_NAME_PATTERN } from "./layer-roles.js";
+import { verifyLayerRoleAttributes, withRoleAttributeCompat } from "./role-attribute-compat.js";
 
 export { diffLayerRoles, LAYER_ROLES } from "./layer-roles.js";
 
@@ -101,8 +102,12 @@ export async function runHostedBootstrap(env: NodeJS.ProcessEnv, log: Log = cons
     log(`[1/6] Server version check passed (server_version_num ${versionNum}).`);
 
     const migrations = await readMigrations(new URL("../../apps/db/migrations/", import.meta.url));
-    const applied = await applyMigrations(executor, migrations);
+    // HOSTED-19: Neon's owner login cannot name SUPERUSER/REPLICATION/BYPASSRLS in ALTER ROLE.
+    const applied = await applyMigrations(withRoleAttributeCompat(executor), migrations);
     log(`[2/6] Migrations: ${applied.applied.length} applied, ${applied.skipped.length} already applied (${migrations.length} files).`);
+
+    const checkedRoles = await verifyLayerRoleAttributes(executor);
+    log(`[2/6] Role attributes checked: ${checkedRoles} waspada roles, none superuser, replication or bypassrls.`);
 
     const present = await executor.query<{ rolname: string }>(
       "SELECT rolname FROM pg_roles WHERE rolname LIKE 'waspada%' ORDER BY rolname",
