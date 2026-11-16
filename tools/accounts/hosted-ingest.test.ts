@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { Client } from "pg";
+import type { AccountStore } from "../../apps/db/src/accounts.js";
 import type { SqlExecutor } from "../../apps/db/src/sql.js";
 import { BLOCKED_REDIRECT_ERROR } from "../../apps/worker/src/runtime/outbound-fetch-policy.js";
 import {
@@ -25,7 +26,7 @@ import {
   HostedConfigError,
   type SessionClient,
 } from "../hosted/hosted-session.js";
-import { diffLayerRoles, LAYER_ROLES } from "../hosted/neon-bootstrap.js";
+import { diffLayerRoles, LAYER_ROLES, planModeratorSeed, seedModeratorAccount } from "../hosted/neon-bootstrap.js";
 import { roleCreationsIn } from "../hosted/layer-roles.js";
 
 const READY_ROWS: RegistryRow[] = expectedLiveSourceIds().map((id) => ({
@@ -332,5 +333,88 @@ describe("bootstrap source seed", () => {
     const { executor, statements } = recordingExecutor();
     assert.equal(await seedRssSources(executor), 14);
     assert.ok(statements.every((text) => !/DO UPDATE/iu.test(text)), "no statement may update an existing row");
+  });
+});
+
+describe("live seed list (HOSTED-09: 16 sources, all approved and on)", () => {
+  it("inserts exactly the 16 expected sources, each approved, active and auto-acquisition enabled", async () => {
+    const recorded: { text: string; params: readonly unknown[] }[] = [];
+    const executor: SqlExecutor = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        recorded.push({ text, params: params ?? [] });
+        return { rows: [{ source_id: "inserted" } as unknown as Row] };
+      },
+      execute: async () => undefined,
+    };
+    await seedLiveSourcesInsertMissing(executor);
+    const inserts = recorded.filter((statement) => /INSERT INTO waspada\.source_registry/u.test(statement.text));
+    assert.equal(inserts.length, 16);
+    assert.deepEqual(inserts.map((statement) => statement.params[0]).sort(), [...expectedLiveSourceIds()].sort());
+    assert.ok(expectedLiveSourceIds().includes("petabencana"));
+    assert.ok(expectedLiveSourceIds().includes("source-bmkg-gempa"));
+    for (const statement of inserts) {
+      assert.match(statement.text, /'active', 'approved', 'healthy', true/u);
+    }
+  });
+});
+
+describe("moderator bootstrap env (HOSTED-09)", () => {
+  const ENV_USER = "WASPADA_MODERATOR_USERNAME";
+  const ENV_PASS = "WASPADA_MODERATOR_PASSWORD";
+
+  it("both set: seeds the moderator with the given values", () => {
+    assert.deepEqual(planModeratorSeed({ [ENV_USER]: "test_moderator", [ENV_PASS]: "test-password-123" }), {
+      kind: "seed",
+      username: "test_moderator",
+      password: "test-password-123",
+    });
+  });
+
+  it("neither set (or both empty): skips", () => {
+    assert.deepEqual(planModeratorSeed({}), { kind: "skip" });
+    assert.deepEqual(planModeratorSeed({ [ENV_USER]: "", [ENV_PASS]: "" }), { kind: "skip" });
+  });
+
+  it("exactly one set: refuses with a code and prints no value", () => {
+    const secretUser = "test_moderator_user_7731";
+    const secretPass = "test-password-SECRET-9913";
+    for (const env of [{ [ENV_USER]: secretUser }, { [ENV_PASS]: secretPass }]) {
+      assert.throws(() => planModeratorSeed(env), (error: unknown) => {
+        assert.ok(error instanceof HostedConfigError);
+        assert.equal(error.code, "moderator_env_partial");
+        assert.doesNotMatch(error.message, /test_moderator|test-password|SECRET/u);
+        return true;
+      });
+    }
+  });
+});
+
+describe("moderator seed (HOSTED-09, fake store, no database)", () => {
+  function fakeStore(existing: boolean): { store: AccountStore; created: { role: string; username: string }[] } {
+    const created: { role: string; username: string }[] = [];
+    const store = {
+      datasetMode: "live",
+      findPasswordCredentialByUsername: async () => (existing ? { account: {} } : null),
+      createPasswordAccount: async (input: { role: string; username: string }) => {
+        created.push(input);
+        return {};
+      },
+    } as unknown as AccountStore;
+    return { store, created };
+  }
+  const input = { username: "Test_Moderator", password: "test-password-123", now: "2026-11-16T00:00:00.000Z" };
+
+  it("creates a moderator-role account with the normalised username", async () => {
+    const fresh = fakeStore(false);
+    assert.equal(await seedModeratorAccount(fresh.store, input), "seeded");
+    assert.equal(fresh.created.length, 1);
+    assert.equal(fresh.created[0]!.role, "moderator");
+    assert.equal(fresh.created[0]!.username, "test_moderator");
+  });
+
+  it("leaves an existing username alone: no create, never a reset", async () => {
+    const existing = fakeStore(true);
+    assert.equal(await seedModeratorAccount(existing.store, input), "already exists");
+    assert.equal(existing.created.length, 0);
   });
 });

@@ -56,8 +56,9 @@ export interface LiveSourceSeedSummary {
 /**
  * Hosted bootstrap. Inserts each missing row as approved, active and auto-acquisition enabled.
  * ON CONFLICT DO NOTHING means nothing that already exists is modified, so an audited revocation survives.
- * The PetaBencana and BMKG values mirror the lazy insert in serve-live-pipeline.ts. Only approval,
- * the active status and the auto-acquisition flag differ.
+ * The PetaBencana and BMKG values mirror the lazy insert in serve-live-pipeline.ts. Approval, the active status,
+ * the auto-acquisition flag and polling_interval_seconds (600, the same as the RSS rows) differ. The lazy insert
+ * is ON CONFLICT DO NOTHING and runs after this seed, so it never overrides these rows.
  */
 export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promise<LiveSourceSeedSummary> {
   await ensureSeedTrace(executor, HOSTED_SEED_TRACE_ID, '{"seed": "live_sources"}');
@@ -88,10 +89,11 @@ export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promi
       `INSERT INTO waspada.source_registry (
          source_id, trace_id, registry_version, display_name, source_kind, remit,
          access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
-         approval_status, health_status, auto_acquisition_enabled, auto_publication_policy
+         approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
+         polling_interval_seconds
        )
        VALUES ($1, $2, 1, $1, 'authority', ARRAY['all'], 'manual_fixture',
-               ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', true, 'never')
+               ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', true, 'never', 600)
        ON CONFLICT (source_id) DO NOTHING
        RETURNING source_id`,
       [sourceId, HOSTED_SEED_TRACE_ID],
