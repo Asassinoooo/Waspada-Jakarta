@@ -155,6 +155,7 @@ function makeSnapshot(event = makeEvent()): RecordValue {
     eventId,
     eventVersion,
     recordJson: event,
+    locationLabelPresent: false,
     impacts: [{
       eventId,
       eventVersion,
