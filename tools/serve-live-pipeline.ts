@@ -2,7 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { PGlite } from "@electric-sql/pglite";
 import { postgis } from "@electric-sql/pglite-postgis";
 import { vector } from "@electric-sql/pglite-pgvector";
@@ -14,7 +14,8 @@ import { createJobRunner } from "../apps/intelligence/src/job-runner.js";
 import { getNineRouterConfig, patchGlobalFetchForNineRouter } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
 import { getNineRouterCallCounts, getNineRouterRateGateSnapshot } from "../apps/db/src/ninerouter-rate-gate.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
-import { createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
+import { BMKG_GEMPA_SOURCE_ID, createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
+import { PETABENCANA_SOURCE_ID } from "../apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.js";
 import { createCycleRevisionDedupe, createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
 import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-composition.js";
 import { createRecentItemIndex } from "../apps/worker/src/layers/l1-data-knowledge/news-title-dedupe.js";
@@ -38,6 +39,25 @@ import { createEventProposalWriter } from "../apps/db/src/event-proposal-writer.
 import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
 import { startLiveFreshness } from "./live-freshness-job.js";
+import { createHostedSession, type HostedSession } from "./hosted/hosted-session.js";
+import {
+  checkLiveSourceCoverage,
+  expectedLiveSourceIds,
+  failedHealthEntry,
+  formatCoverageFailure,
+  formatCoverageSkips,
+  formatNotFetchedLine,
+  formatSourceHealthLine,
+  livePollSourceIds,
+  loadRegistryRows,
+  rssFeedHealthEntry,
+  safeErrorLabel,
+  shouldPollFeed,
+  structuredHealthEntry,
+  type SourceHealthEntry,
+  type StructuredPollInput,
+} from "./live-source-coverage.js";
+import { seedRssSources } from "./live-sources-seed.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -55,32 +75,29 @@ let releaseClaim: () => void = () => {};
 // INTEL-02: serve:live always works on the live dataset. It is passed explicitly, never inferred from DATASET_KIND.
 const SERVE_LIVE_DATASET_KIND = "live" as const;
 
-async function main() {
-  console.log("==================================================================");
-  console.log("  Waspada Jakarta: Live Incident Intelligence & Ingestion Server  ");
-  console.log("==================================================================");
+// HOSTED-03: `--headless` runs against the hosted Neon database (NEON_DATABASE_URL). It skips PGlite, the PID
+// claim, backup restore, the migrations, the admin and RSS seeding (tools/hosted/neon-bootstrap.ts does those),
+// the in-memory republish, and Vite/dist. The API stays bound to 127.0.0.1.
+const HEADLESS = process.argv.slice(2).includes("--headless");
 
-  // 1. Probing NineRouter Live AI Gateway
-  const config = getNineRouterConfig();
-  // INTEL-02: mock mode gives deterministic chat output. The live dataset must not receive it.
-  if (config.explicitMock) {
-    console.error("Refusing to start: NINEROUTER_MODE=mock would write mock interpretations into the live dataset. Unset NINEROUTER_MODE to use the gateway.");
-    process.exit(1);
-  }
-  console.log(`[NineRouter] Gateway URL : ${config.baseUrl}`);
-  console.log(`[NineRouter] Chat Model  : ${config.chatModel}`);
-  console.log(`[NineRouter] Embeddings  : ${config.embeddingModel} (768 dimensions)`);
-  if (!config.baseUrl || !config.apiKey || config.baseUrl.includes("127.0.0.1:9090")) {
-    console.warn("⚠️ Warning: Real NINEROUTER_URL and NINEROUTER_KEY not found in environment. In live mode, requests will require valid credentials.");
-  } else {
-    console.log("✓ NineRouter provider credentials loaded.");
-  }
+/** Message in local mode (as before). Code or class only in headless mode, because messages can carry hosts. */
+function logDetail(error: unknown): string {
+  if (HEADLESS) return safeErrorLabel(error);
+  return error instanceof Error ? error.message : String(error);
+}
 
-  // AI-RATE-01: pace every NineRouter call (Mastra agents, embeddings, triage)
-  // through the shared rate gate. Installed before the job runner and the first poll.
-  patchGlobalFetchForNineRouter();
+function logError(label: string, error: unknown): void {
+  console.error(label, HEADLESS ? safeErrorLabel(error) : error);
+}
 
-  // 2. Persistent PGlite Database Setup
+interface LocalDatabase {
+  readonly database: PGlite;
+  readonly claim: LiveDbClaim;
+  readonly executor: TransactionalSqlExecutor;
+}
+
+/** Local mode: claim the PGlite dir, open it (restoring from backup if needed), and build the executor. */
+async function openLocalDatabase(): Promise<LocalDatabase> {
   const dataDir = path.resolve(process.cwd(), ".data/live-db");
   fs.mkdirSync(dataDir, { recursive: true });
   // LIVE-SERVER-02: claim the dir before anything opens or changes it. A live serve:live owner
@@ -155,7 +172,11 @@ async function main() {
       });
     },
   };
+  return { database, claim, executor };
+}
 
+/** Local mode only: migrations, admin seed, republish of decided versions, and the RSS source seed. */
+async function prepareLocalDatabase(executor: TransactionalSqlExecutor): Promise<void> {
   const migrations = await readMigrations(new URL("../apps/db/migrations/", import.meta.url));
   await applyMigrations(executor, migrations);
   console.log(`✓ Applied ${migrations.length} database migrations.`);
@@ -232,44 +253,87 @@ async function main() {
 
   // Seed the 14 news feeds into waspada.source_registry for live user testing
   console.log(`\n[Source Registry] Seeding ${DEFAULT_NEWS_FEEDS.length} RSS sources...`);
-  const seedTraceId = "trace-seed-rss-sources";
-  await executor.query(
-    `INSERT INTO waspada.traces (trace_id, dataset_kind, started_at, outcome, metadata)
-     VALUES ($1, 'live', now(), 'succeeded', '{"seed": "all_rss_feeds"}'::jsonb)
-     ON CONFLICT (trace_id, dataset_kind) DO NOTHING`,
-    [seedTraceId],
-  );
-
-  for (const feed of DEFAULT_NEWS_FEEDS) {
-    const host = new URL(feed.url).host;
-    const displayName = feed.sourceId.replace(/^source-/, "").replace(/-/g, " ").toUpperCase();
-    await executor.query(
-      `INSERT INTO waspada.source_registry (
-         source_id, trace_id, registry_version, display_name, source_kind, remit,
-         access_method, approved_hosts, access_restrictions, reuse_basis, registry_status,
-         approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
-         polling_interval_seconds
-       )
-       VALUES (
-         $1, $2, 1, $3, 'newsroom', ARRAY['news', 'incidents'],
-         'rss', ARRAY[$4]::text[], ARRAY[]::text[],
-         ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
-         'active', 'approved', 'healthy', true, 'never', 600
-       )
-       ON CONFLICT (source_id) DO UPDATE SET
-         approval_status = 'approved',
-         auto_acquisition_enabled = true,
-         registry_status = 'active',
-         reuse_basis = ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
-         health_status = 'healthy'`,
-      [feed.sourceId, seedTraceId, displayName, host],
-    );
-  }
-  console.log(`✓ Seeded ${DEFAULT_NEWS_FEEDS.length} RSS sources in source_registry.`);
+  const seeded = await seedRssSources(executor);
+  console.log(`✓ Seeded ${seeded} RSS sources in source_registry.`);
 
   // Triage attempts/decisions are an append-only audit ledger (WJ-INT-02B) and also the
   // dedupe cache that stops every restart re-sending the 48h window to the model, so they
   // are kept across runs. Rate-limited attempts are handled by AI-RATE-01, not by wiping.
+}
+
+/** Headless: the hosted session. A missing or unsafe NEON_DATABASE_URL refuses the start with a code only. */
+function openHostedSession(): HostedSession {
+  try {
+    return createHostedSession({
+      connectionString: process.env.NEON_DATABASE_URL ?? "",
+      log: (line) => console.warn(line),
+    });
+  } catch (err) {
+    console.error(`Refusing to start: ${safeErrorLabel(err)}. NEON_DATABASE_URL must be set in .env.local (its value is never printed).`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Headless: refuse to start only if a source is missing from source_registry (owner decision, 16 Nov).
+ * A revoked or disabled source is logged as skipped and the rest of the server keeps running.
+ */
+async function assertHostedSourceCoverage(executor: TransactionalSqlExecutor): Promise<void> {
+  const expectedIds = expectedLiveSourceIds();
+  const report = checkLiveSourceCoverage({
+    expectedIds,
+    pollSetIds: livePollSourceIds(),
+    rows: await loadRegistryRows(executor, expectedIds),
+  });
+  if (!report.ok) {
+    for (const line of formatCoverageFailure(report)) console.error(line);
+    process.exit(1);
+  }
+  for (const line of formatCoverageSkips(report)) console.warn(`[Coverage] ${line}`);
+  console.log(`✓ Source coverage: ${report.expected - report.notReady.length} of ${report.expected} live sources are ready; ${report.notReady.length} skipped.`);
+}
+
+async function main() {
+  console.log("==================================================================");
+  console.log(HEADLESS
+    ? "  Waspada Jakarta: Headless Live Ingestion (hosted database)          "
+    : "  Waspada Jakarta: Live Incident Intelligence & Ingestion Server  ");
+  console.log("==================================================================");
+
+  // 1. Probing NineRouter Live AI Gateway
+  const config = getNineRouterConfig();
+  // INTEL-02: mock mode gives deterministic chat output. The live dataset must not receive it.
+  if (config.explicitMock) {
+    console.error("Refusing to start: NINEROUTER_MODE=mock would write mock interpretations into the live dataset. Unset NINEROUTER_MODE to use the gateway.");
+    process.exit(1);
+  }
+  // Headless never prints the gateway address.
+  if (!HEADLESS) console.log(`[NineRouter] Gateway URL : ${config.baseUrl}`);
+  console.log(`[NineRouter] Chat Model  : ${config.chatModel}`);
+  console.log(`[NineRouter] Embeddings  : ${config.embeddingModel} (768 dimensions)`);
+  if (!config.baseUrl || !config.apiKey || config.baseUrl.includes("127.0.0.1:9090")) {
+    console.warn("⚠️ Warning: Real NINEROUTER_URL and NINEROUTER_KEY not found in environment. In live mode, requests will require valid credentials.");
+  } else {
+    console.log("✓ NineRouter provider credentials loaded.");
+  }
+
+  // AI-RATE-01: pace every NineRouter call (Mastra agents, embeddings, triage)
+  // through the shared rate gate. Installed before the job runner and the first poll.
+  patchGlobalFetchForNineRouter();
+
+  // 2. Database. Local mode opens PGlite and prepares it. Headless opens the hosted session and checks coverage.
+  let executor: TransactionalSqlExecutor;
+  let local: LocalDatabase | undefined;
+  let hosted: HostedSession | undefined;
+  if (HEADLESS) {
+    hosted = openHostedSession();
+    executor = hosted.executor;
+    await assertHostedSourceCoverage(executor);
+  } else {
+    local = await openLocalDatabase();
+    executor = local.executor;
+    await prepareLocalDatabase(executor);
+  }
 
   const incidentRepo = createSqlIncidentRepository(executor);
 
@@ -287,6 +351,9 @@ async function main() {
   // ADR-061 amendment: only this local server relaxes the automatic gate's public-display permission
   // check. It is bound to 127.0.0.1. Hosted deployments keep the default `required`.
   console.log("[Publication] Source-permission check is relaxed for local live mode (AUTO_PUBLISH_SOURCE_PERMISSION=local_relaxed). Other automatic gate checks still apply.");
+  if (HEADLESS) {
+    console.log("[Publication] Headless run: local_relaxed is also in effect against the hosted database. Owner decision pending.");
+  }
   // FLOW-VIS-01: in-process cycle, source, dedupe and NineRouter status for the moderator pipeline view.
   const pipelineStatus = createPipelineRuntimeStatus({ ninerouter: () => getNineRouterRateGateSnapshot() });
   const env: WorkerEnvironment = {
@@ -336,6 +403,10 @@ async function main() {
         });
         const resBuf = Buffer.from(await webRes.arrayBuffer());
         res.end(resBuf);
+      } else if (HEADLESS) {
+        // Headless serves the API only. There is no frontend build here.
+        res.statusCode = 404;
+        res.end("Not Found");
       } else {
         let targetFile = path.join(distDir, url.pathname);
         if (!fs.existsSync(targetFile) || fs.statSync(targetFile).isDirectory()) {
@@ -348,7 +419,7 @@ async function main() {
         res.end(content);
       }
     } catch (err) {
-      console.error("Server request error:", err);
+      logError("Server request error:", err);
       res.statusCode = 500;
       res.end("Internal Server Error");
     }
@@ -379,7 +450,7 @@ async function main() {
           await new Promise((r) => setTimeout(r, 2000));
         }
       } catch (err) {
-        console.error("[Intelligence Error]:", err);
+        logError("[Intelligence Error]:", err);
         await new Promise((r) => setTimeout(r, 3000));
       }
     }
@@ -411,10 +482,13 @@ async function main() {
     // FLOW-VIS-01: the fresh-call budget object is read at cycle end, after every feed has spent from it.
     let triageBudget: { remaining: number } | undefined;
     let cycleFeedFailures = 0;
+    // HOSTED-03: one count-only line per source per cycle, printed at the end of the cycle.
+    const health: SourceHealthEntry[] = [];
     pipelineStatus.recordCycleStart({ newItemsCap: liveCycle.maxNewItemsPerCycle, feedsTotal: liveFeeds.length });
     try {
       console.log("\n[Ingestion Cycle] Polling live Jakarta sources...");
     const discoveredRevisions: StoredReportRevision[] = [];
+    const structuredPolls: StructuredPollInput[] = [];
 
     // A. PetaBencana
     try {
@@ -427,9 +501,17 @@ async function main() {
         console.log("  [PetaBencana] 0 new flood reports in the last 24h.");
       }
       pipelineStatus.recordSourceCycle("petabencana", { ingest: pbRes.revisions.length, held: 0, duplicate: 0, deferred: 0, errors: 0 });
+      structuredPolls.push({
+        sourceId: PETABENCANA_SOURCE_ID,
+        outcome: pbRes.outcome,
+        fetched: pbRes.fetchedCount,
+        revisions: pbRes.revisions.length,
+        ...(pbRes.error === undefined ? {} : { error: pbRes.error }),
+      });
     } catch (e: unknown) {
-      console.warn(`  [PetaBencana] Poll error: ${e instanceof Error ? e.message : String(e)}`);
+      console.warn(`  [PetaBencana] Poll error: ${logDetail(e)}`);
       pipelineStatus.recordSourceCycle("petabencana", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
+      structuredPolls.push({ sourceId: PETABENCANA_SOURCE_ID, fetched: 0, revisions: 0, thrown: { error: e } });
     }
 
     // B. BMKG CAP Alerts
@@ -443,9 +525,17 @@ async function main() {
         console.log("  [BMKG] No active alerts for Jakarta.");
       }
       pipelineStatus.recordSourceCycle("bmkg", { ingest: bmkgRes.revisions.length, held: 0, duplicate: 0, deferred: 0, errors: 0 });
+      structuredPolls.push({
+        sourceId: BMKG_GEMPA_SOURCE_ID,
+        outcome: bmkgRes.outcome,
+        fetched: bmkgRes.fetchedCount,
+        revisions: bmkgRes.revisions.length,
+        ...(bmkgRes.error === undefined ? {} : { error: bmkgRes.error }),
+      });
     } catch (e: unknown) {
-      console.warn(`  [BMKG] Poll error: ${e instanceof Error ? e.message : String(e)}`);
+      console.warn(`  [BMKG] Poll error: ${logDetail(e)}`);
       pipelineStatus.recordSourceCycle("bmkg", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
+      structuredPolls.push({ sourceId: BMKG_GEMPA_SOURCE_ID, fetched: 0, revisions: 0, thrown: { error: e } });
     }
 
     // C. RSS Feeds (14 sources) — WJ-INT-02B shared gated-RSS cycle (§6):
@@ -473,8 +563,17 @@ async function main() {
       let totalHeld = 0;
       let totalDuplicates = 0;
       let totalBudgetDeferred = 0;
+      // HOSTED-03 (owner, 16 Nov): read approval and auto-acquisition for every feed before any fetch.
+      // A revoked, disabled or missing row is not fetched. The triage gate below is not the control for this.
+      const feedRows = await loadRegistryRows(executor, liveFeeds.map((feed) => feed.sourceId));
+      const feedRowById = new Map(feedRows.map((row) => [row.source_id, row] as const));
+      const notFetched: string[] = [];
       for (let i = 0; i < liveFeeds.length; i++) {
         const feed = liveFeeds[i]!;
+        if (!shouldPollFeed(feedRowById.get(feed.sourceId))) {
+          notFetched.push(feed.sourceId);
+          continue;
+        }
         try {
           const feedRes = await newsRunner.pollFeed(feed);
           const admitted = feedRes.revisions.filter((rev) => cycleDedupe.admit(rev));
@@ -508,21 +607,34 @@ async function main() {
             errors: 0,
           });
           console.log(`  [RSS ${i + 1}/${liveFeeds.length}: ${feed.sourceId}] ${admitted.length} ingest, ${feedRes.held ? feedRes.held.length : 0} held.`);
+          health.push(rssFeedHealthEntry({
+            sourceId: feed.sourceId,
+            status: feedRes.status,
+            ...(feedRes.error === undefined ? {} : { error: feedRes.error }),
+            totalParsed: feedRes.totalParsed,
+            admitted: admitted.length,
+            cycleDuplicates: feedRes.revisions.length - admitted.length,
+            ...(feedRes.triageCounts === undefined ? {} : { triage: feedRes.triageCounts }),
+          }));
         } catch (feedErr: unknown) {
-          console.warn(`  [RSS ${i + 1}/${liveFeeds.length}: ${feed.sourceId}] Poll error: ${feedErr instanceof Error ? feedErr.message : String(feedErr)}`);
+          console.warn(`  [RSS ${i + 1}/${liveFeeds.length}: ${feed.sourceId}] Poll error: ${logDetail(feedErr)}`);
           pipelineStatus.recordSourceCycle("rss", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
           cycleFeedFailures += 1;
+          health.push(failedHealthEntry(feed.sourceId, feedErr));
         }
       }
+      console.log(formatNotFetchedLine(notFetched));
       console.log(`  [RSS Feeds (${liveFeeds.length})] Total: ${totalIngest} articles (ingest), ${totalHeld} held, ${totalDuplicates} duplicate, ${totalBudgetDeferred} deferred by cycle cap.`);
     } catch (e: unknown) {
-      console.warn(`  [RSS Feeds] Poll error: ${e instanceof Error ? e.message : String(e)}`);
+      console.warn(`  [RSS Feeds] Poll error: ${logDetail(e)}`);
     }
 
     // Persist structured revisions (PetaBencana/BMKG) to PostgreSQL and enqueue
     // AI jobs. discoveredRevisions contains ONLY structured revisions: the
     // gated RSS half already persisted through runGatedRssCycle above.
     let persistFailures = gatedPersistFailures;
+    // HOSTED-03: revisions that were not in the database yet, per structured source (RETURNING counts inserts).
+    const structuredNew = new Map<string, number>();
     for (const rev of discoveredRevisions) {
       const revRecord = rev as unknown as Record<string, unknown>;
       const contentHash = typeof revRecord.content_hash === "string"
@@ -549,14 +661,15 @@ async function main() {
       );
 
       // Persist report revision
-      await executor.query(
+      const insertedRevision = await executor.query<{ report_revision_id: string }>(
         `INSERT INTO waspada.report_revisions (
            dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
            content_hash, permitted_text, permitted_text_hash, normalization_version,
            retrieved_at, revision_status, record_json, triage_required
          )
          VALUES ('live', $1, $2, $3, $4, $5, $6, $7, 'v1', $8, 'unreviewed', '{}'::jsonb, false)
-         ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
+         ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING
+         RETURNING report_revision_id`,
         [
           rev.report_revision_id,
           traceId,
@@ -568,6 +681,9 @@ async function main() {
           rev.retrieved_at,
         ],
       );
+      if (insertedRevision.rows.length > 0) {
+        structuredNew.set(rev.source_id, (structuredNew.get(rev.source_id) ?? 0) + 1);
+      }
 
       // Persist evidence chunks
       for (const chk of rev.chunks) {
@@ -599,6 +715,9 @@ async function main() {
         traceId,
       }).catch(() => {});
     }
+    for (const poll of structuredPolls) {
+      health.push(structuredHealthEntry(poll, structuredNew.get(poll.sourceId) ?? 0));
+    }
     if (persistFailures > 0) {
       console.log(`[news-triage] persist_failures=${persistFailures}`);
     }
@@ -615,6 +734,7 @@ async function main() {
         newItemsUsed: triageBudget ? liveCycle.maxNewItemsPerCycle - triageBudget.remaining : null,
         feedsFailed: cycleFeedFailures,
       });
+      for (const entry of health) console.log(formatSourceHealthLine(entry));
       // REVIEW-EXPIRY-01 (ADR-062): mark undecided proposals past the review TTL as expired. Counts only.
       // It runs inside the isPolling guard, so sweeps never overlap. Errors never reach proposal text.
       try {
@@ -638,33 +758,44 @@ async function main() {
     }
   }
 
-  // Run initial poll cycle now, then repeat every 60 seconds
-  void pollLiveFeeds();
-  const pollInterval = setInterval(() => {
-    void pollLiveFeeds();
-  }, 60_000);
+  // Run initial poll cycle now, then repeat every 60 seconds. A cycle that throws (for example a
+  // dropped hosted connection) is logged, never an unhandled rejection that would end the process.
+  const pollCycle = () => {
+    pollLiveFeeds().catch((err: unknown) => logError("[Ingestion Cycle] failed:", err));
+  };
+  pollCycle();
+  const pollInterval = setInterval(pollCycle, 60_000);
 
   // T8 / FR-13: freshness and expiry run on their own timer, once at startup and then every
   // LIVE_FRESHNESS_INTERVAL_MS (default 5 min). A pass never resolves an incident. Public views
   // are refreshed from the ledger after each pass.
   const freshnessSchedule = startLiveFreshness({ executor, env: process.env });
 
-  // 7. Start Vite Dev Server (Port 5173) for Live Frontend
-  console.log("\n[Frontend] Starting Vite development server on http://127.0.0.1:5173...");
-  const viteProcess = spawn("npm", ["run", "dev", "--workspace=@waspada/web"], {
-    stdio: "inherit",
-    shell: true,
-  });
+  // 7. Start Vite Dev Server (Port 5173) for Live Frontend (local mode only)
+  let viteProcess: ChildProcess | undefined;
+  if (!HEADLESS) {
+    console.log("\n[Frontend] Starting Vite development server on http://127.0.0.1:5173...");
+    viteProcess = spawn("npm", ["run", "dev", "--workspace=@waspada/web"], {
+      stdio: "inherit",
+      shell: true,
+    });
+  }
 
   console.log("\n==================================================================");
-  console.log("  ALL LIVE SERVICES ARE RUNNING:");
-  console.log("  ----------------------------------------------------------------");
-  console.log("  Web Application UI   : http://127.0.0.1:5173");
-  console.log("  Moderator Review     : http://127.0.0.1:5173/#tinjau-bukti");
-  console.log("  Public Incident Map  : http://127.0.0.1:5173/#peta");
-  console.log("  3D Embedding Visual  : http://127.0.0.1:5173/#visualisasi-3d");
-  console.log("  Live API & Ingestion : http://127.0.0.1:8787/api/v1");
-  console.log("  Moderator sign-in    : http://127.0.0.1:5173/#masuk (username and password)");
+  if (HEADLESS) {
+    console.log("  HEADLESS LIVE INGESTION IS RUNNING (hosted database):");
+    console.log("  ----------------------------------------------------------------");
+    console.log("  Live API & Ingestion : http://127.0.0.1:8787/api/v1");
+  } else {
+    console.log("  ALL LIVE SERVICES ARE RUNNING:");
+    console.log("  ----------------------------------------------------------------");
+    console.log("  Web Application UI   : http://127.0.0.1:5173");
+    console.log("  Moderator Review     : http://127.0.0.1:5173/#tinjau-bukti");
+    console.log("  Public Incident Map  : http://127.0.0.1:5173/#peta");
+    console.log("  3D Embedding Visual  : http://127.0.0.1:5173/#visualisasi-3d");
+    console.log("  Live API & Ingestion : http://127.0.0.1:8787/api/v1");
+    console.log("  Moderator sign-in    : http://127.0.0.1:5173/#masuk (username and password)");
+  }
   console.log("==================================================================");
   console.log("Press Ctrl+C to stop all services.\n");
 
@@ -673,10 +804,13 @@ async function main() {
     workerActive = false;
     clearInterval(pollInterval);
     freshnessSchedule.stop();
-    viteProcess.kill();
+    viteProcess?.kill();
     server.close();
-    claim.release();
-    void database.close().then(() => process.exit(0));
+    local?.claim.release();
+    void (async () => {
+      if (local !== undefined) await local.database.close();
+      if (hosted !== undefined) await hosted.close();
+    })().then(() => process.exit(0));
   };
 
   process.on("SIGINT", cleanup);
@@ -684,7 +818,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Live server error:", err);
+  logError("Live server error:", err);
   releaseClaim();
   process.exit(1);
 });
