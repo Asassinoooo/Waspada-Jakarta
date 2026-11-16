@@ -114,7 +114,7 @@ export function MapEventList({
                   <span className="map-card__foot">
                     {severity !== null && <SeverityChip level={severity} />}
                     <span className="map-card__sources">{sourceCountText(sources.outlets, sources.copies)}</span>
-                    {!hasMarker && <span className="map-card__unmapped">Belum dipetakan</span>}
+                    {!hasMarker && <span className="map-card__unmapped">{event.location_display === "whole_view" ? "Tanpa titik" : "Belum dipetakan"}</span>}
                   </span>
                 </button>
               </li>

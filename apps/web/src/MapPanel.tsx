@@ -204,6 +204,7 @@ export function MapPanel(props: MapPanelProps) {
     ? selectedEventFeatures.find(({ feature }) => feature.id === selection.featureId)?.feature ?? selectedEventFeatures[0]?.feature ?? null
     : null;
   const selectedEventHasGeometry = selectedEventFeatures.length > 0;
+  const selectedWholeView = selectedEvent?.location_display === "whole_view";
 
   return (
     <section className="map-panel" aria-labelledby="map-title">
@@ -223,7 +224,11 @@ export function MapPanel(props: MapPanelProps) {
 
       {selectedEvent && selectedEventIsVisible && mapState.status === "loaded" && !selectedEventHasGeometry && (
         <p className="map-selection-note" role="status">
-          Tidak dipetakan: respons GeoJSON tidak menyertakan geometri untuk “{selectedEvent.title}”. Record tetap tersedia di daftar; hasil kosong bukan pernyataan bahwa area aman.
+          {selectedWholeView ? (
+            "Lokasi: seluruh peta Jakarta. Laporan ini tidak punya titik di peta; daftar tetap menjadi sumber lengkap. Tanpa titik bukan pernyataan bahwa area aman."
+          ) : (
+            <>Tidak dipetakan: respons GeoJSON tidak menyertakan geometri untuk “{selectedEvent.title}”. Record tetap tersedia di daftar; hasil kosong bukan pernyataan bahwa area aman.</>
+          )}
         </p>
       )}
 
@@ -378,16 +383,20 @@ function insideMapArea(position: PublicGeoJSONPosition): boolean {
 /**
  * Record detail (page and #peta sheet): draws only the geometries the API returned for this record.
  * Nothing is added: no point, radius or area. A geometry outside the map area is counted, not drawn.
- * "Tidak dipetakan" appears only when the record's geometry list is empty.
+ * "Tidak dipetakan" appears only when the record's geometry list is empty and the record is not whole_view.
+ * A whole_view record has no usable point: it says it is on the whole Jakarta view, with no pin.
  */
 export function RecordMapPanel({
   title,
   geometries,
+  locationDisplay,
   onReturnToList,
 }: {
   title: string;
   /** undefined when the response had no geometries field (unknown); an empty array means the record has none. */
   geometries: readonly PublicGeometry[] | undefined;
+  /** HOSTED-10: "whole_view" means the record has no usable point and is shown on the whole Jakarta view. */
+  locationDisplay?: EventView["location_display"];
   onReturnToList: () => void;
 }) {
   const drawable = (geometries ?? []).filter((item) => {
@@ -421,8 +430,17 @@ export function RecordMapPanel({
           <div className="map-unavailable" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">—</span>
             <h3>{title}</h3>
-            <p>Tidak dipetakan. Record API ini tidak menyertakan geometri; daftar tetap tersedia sebagai alternatif lengkap.</p>
-            <p className="supporting-note">Tidak adanya geometri bukan pernyataan bahwa suatu area aman.</p>
+            {locationDisplay === "whole_view" ? (
+              <>
+                <p>Lokasi: seluruh peta Jakarta. Laporan ini tidak punya titik di peta; daftar tetap menjadi sumber lengkap.</p>
+                <p className="supporting-note">Tanpa titik di peta bukan pernyataan bahwa area aman.</p>
+              </>
+            ) : (
+              <>
+                <p>Tidak dipetakan. Record API ini tidak menyertakan geometri; daftar tetap tersedia sebagai alternatif lengkap.</p>
+                <p className="supporting-note">Tidak adanya geometri bukan pernyataan bahwa suatu area aman.</p>
+              </>
+            )}
             <button className="button button--quiet map-return" type="button" onClick={onReturnToList}>Kembali ke daftar</button>
           </div>
         ) : drawable.length === 0 ? (

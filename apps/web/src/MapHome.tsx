@@ -154,6 +154,8 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     setSelectedId(target.event.event_id);
     setCopyMessage(null);
     if (target.marker) flyTo(target.marker.coordinate, MAP_DETAIL_ZOOM);
+    // A whole_view event has no pin: show the whole Jakarta view (the recenter target), never another event's point.
+    else if (target.event.location_display === "whole_view") flyTo(MAP_DEFAULT_VIEW.center, MAP_DEFAULT_VIEW.zoom, false);
     if (!wide) setListOpen(false);
   }, [deepLinkEventId, data.status, data.events, data.markers, wide]);
 
@@ -193,6 +195,8 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     const marker = data.markers.get(eventId);
     // Every selection glides to its event: zoom out, travel, zoom in, so moving between events stays smooth.
     if (marker) flyTo(marker.coordinate, Math.max(view.zoom, MAP_DETAIL_ZOOM));
+    // A whole_view event has no pin: show the whole Jakarta view (the recenter target), never another event's point.
+    else if (eventsById.get(eventId)?.location_display === "whole_view") flyTo(MAP_DEFAULT_VIEW.center, MAP_DEFAULT_VIEW.zoom, false);
     // replaceState does not fire hashchange, so the route does not reload when the selection changes.
     window.history.replaceState(window.history.state, "", buildEventHash(eventId));
   }
