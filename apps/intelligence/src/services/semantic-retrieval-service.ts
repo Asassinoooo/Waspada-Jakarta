@@ -15,6 +15,7 @@ import {
   getNineRouterConfig,
   type NineRouterConfig,
 } from "../providers/ninerouter-adapter.js";
+import { GOOGLE_AI_PROVIDER } from "../providers/google-ai-adapter.js";
 import { RETRIEVAL_MAX_ROWS_EXAMINED, RETRIEVAL_MAX_RESULTS } from "../../../db/src/retrieval-limits.js";
 
 export const NINEROUTER_EMBEDDING_IDENTITY = {
@@ -26,6 +27,22 @@ export const NINEROUTER_EMBEDDING_IDENTITY = {
 };
 
 /**
+ * HOSTED-12: the embedding identity for the active provider. Google vectors are written and
+ * read under their own provider, model and index version, so a NineRouter vector and a Google
+ * vector never mix in one retrieval.
+ */
+export function embeddingIdentityFor(config: NineRouterConfig = getNineRouterConfig()): typeof NINEROUTER_EMBEDDING_IDENTITY {
+  if (config.provider !== GOOGLE_AI_PROVIDER) return NINEROUTER_EMBEDDING_IDENTITY;
+  return {
+    provider: GOOGLE_AI_PROVIDER,
+    modelVersion: config.embeddingModel,
+    dimensions: 768,
+    distanceMetric: "cosine" as const,
+    vectorIndexVersion: `google_ai_studio:${config.embeddingModel}:raw-768-cosine:v1`,
+  };
+}
+
+/**
  * AI-RATE-01: a stored vector for this chunk, model identity and exact chunk
  * text, or null. A retried job reuses it instead of calling the gateway again.
  * Read failures are treated as a miss so the call path stays unchanged.
@@ -35,8 +52,9 @@ async function readStoredChunkEmbedding(
   datasetKind: DatasetKind,
   chunkId: string,
   inputTextHash: string,
+  identity: typeof NINEROUTER_EMBEDDING_IDENTITY,
 ): Promise<readonly number[] | null> {
-  const dimensions = NINEROUTER_EMBEDDING_IDENTITY.dimensions;
+  const dimensions = identity.dimensions;
   try {
     const result = await executor.query<{ embedding: unknown }>(
       `SELECT vec.embedding::text AS embedding
@@ -56,8 +74,8 @@ async function readStoredChunkEmbedding(
       [
         datasetKind,
         chunkId,
-        NINEROUTER_EMBEDDING_IDENTITY.provider,
-        NINEROUTER_EMBEDDING_IDENTITY.modelVersion,
+        identity.provider,
+        identity.modelVersion,
         dimensions,
         inputTextHash,
       ],
@@ -115,6 +133,7 @@ export function createSemanticRetrievalService(dependencies: {
   readonly config?: NineRouterConfig;
 }): SemanticRetrievalService {
   const config = dependencies.config ?? getNineRouterConfig();
+  const identity = embeddingIdentityFor(config);
   const retrievalRepo = createSqlEvidenceRetrievalRepository(dependencies.executor);
 
   return {
@@ -127,7 +146,7 @@ export function createSemanticRetrievalService(dependencies: {
     }): Promise<readonly number[]> {
       const hash = createHash("sha256").update(input.chunkText).digest("hex");
       // AI-RATE-01: a retried job must not re-embed a chunk it already stored.
-      const stored = await readStoredChunkEmbedding(dependencies.executor, input.datasetKind, input.chunkId, hash);
+      const stored = await readStoredChunkEmbedding(dependencies.executor, input.datasetKind, input.chunkId, hash, identity);
       if (stored) return stored;
       const vector = await generateNineRouterEmbedding(input.chunkText, { config });
       const now = input.createdAt ?? new Date().toISOString();
@@ -142,11 +161,11 @@ export function createSemanticRetrievalService(dependencies: {
           embedding_run_id: `emb-${input.chunkId}-${hash.slice(0, 16)}`,
           chunk_id: input.chunkId,
           capability: "embedding",
-          provider: NINEROUTER_EMBEDDING_IDENTITY.provider,
-          model_version: NINEROUTER_EMBEDDING_IDENTITY.modelVersion,
-          dimensions: NINEROUTER_EMBEDDING_IDENTITY.dimensions,
-          distance_metric: NINEROUTER_EMBEDDING_IDENTITY.distanceMetric,
-          vector_index_version: NINEROUTER_EMBEDDING_IDENTITY.vectorIndexVersion,
+          provider: identity.provider,
+          model_version: identity.modelVersion,
+          dimensions: identity.dimensions,
+          distance_metric: identity.distanceMetric,
+          vector_index_version: identity.vectorIndexVersion,
           input_text_hash: hash,
           status: "available",
           created_at: now,
@@ -170,7 +189,7 @@ export function createSemanticRetrievalService(dependencies: {
       readonly candidateThreshold?: number;
     }): Promise<CandidateEvidenceResult> {
       const reusable = input.queryVector !== undefined
-        && input.queryVector.length === NINEROUTER_EMBEDDING_IDENTITY.dimensions;
+        && input.queryVector.length === identity.dimensions;
       const queryVector = reusable
         ? input.queryVector!
         : await generateNineRouterEmbedding(input.queryText, { config });
@@ -374,11 +393,11 @@ export function createSemanticRetrievalService(dependencies: {
               chunkerVersion: "v1",
               embeddingStatus: "matched",
               embeddingRunId: null,
-              embeddingProvider: NINEROUTER_EMBEDDING_IDENTITY.provider,
-              embeddingModelVersion: NINEROUTER_EMBEDDING_IDENTITY.modelVersion,
-              embeddingDimensions: NINEROUTER_EMBEDDING_IDENTITY.dimensions,
-              embeddingDistanceMetric: NINEROUTER_EMBEDDING_IDENTITY.distanceMetric,
-              embeddingIndexVersion: NINEROUTER_EMBEDDING_IDENTITY.vectorIndexVersion,
+              embeddingProvider: identity.provider,
+              embeddingModelVersion: identity.modelVersion,
+              embeddingDimensions: identity.dimensions,
+              embeddingDistanceMetric: identity.distanceMetric,
+              embeddingIndexVersion: identity.vectorIndexVersion,
               semanticDistance: Number(row.cosine_distance),
             },
           }));
@@ -397,7 +416,7 @@ export function createSemanticRetrievalService(dependencies: {
       const result = await retrievalRepo.search({
         datasetKind: input.datasetKind,
         semantic: {
-          identity: NINEROUTER_EMBEDDING_IDENTITY,
+          identity,
           queryVector,
         },
         maxResults,

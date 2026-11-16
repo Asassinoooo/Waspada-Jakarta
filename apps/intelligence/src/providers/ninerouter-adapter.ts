@@ -1,6 +1,16 @@
 import { Agent } from "@mastra/core/agent";
 import { getNineRouterRateGate } from "../../../db/src/ninerouter-rate-gate.js";
 import { createMockChatModel, type MockChatRole } from "./mock-chat-model.js";
+import {
+  AiProviderConfigError,
+  GOOGLE_AI_OPENAI_BASE_URL,
+  GOOGLE_AI_PROVIDER,
+  generateGoogleAiEmbedding,
+  getAiProviderKind,
+  getGoogleAiConfig,
+  installGoogleAiRateGate,
+  type AiProviderKind,
+} from "./google-ai-adapter.js";
 
 export type NineRouterExecutionMode = "live" | "mock";
 
@@ -24,6 +34,10 @@ export interface NineRouterConfig {
    * so a live run without credentials fails instead of writing mock interpretations.
    */
   readonly explicitMock?: boolean;
+  /** HOSTED-12: which provider answers. Unset means ninerouter. */
+  readonly provider?: AiProviderKind;
+  /** HOSTED-12, Google only: the one retry model for 429, 500, 503 or 404 on the primary. */
+  readonly fallbackChatModel?: string;
 }
 export function getNineRouterConfig(): NineRouterConfig {
   const rawUrl = process.env.NINEROUTER_URL?.trim() || "http://127.0.0.1:9090";
@@ -35,7 +49,24 @@ export function getNineRouterConfig(): NineRouterConfig {
   const executionMode: NineRouterExecutionMode =
     rawMode === "mock" ? "mock" : rawMode === "live" ? "live" : (apiKey ? "live" : "mock");
 
+  if (getAiProviderKind() === GOOGLE_AI_PROVIDER) {
+    const google = getGoogleAiConfig();
+    return {
+      provider: GOOGLE_AI_PROVIDER,
+      baseUrl: GOOGLE_AI_OPENAI_BASE_URL,
+      apiKey: google.apiKey,
+      chatModel: google.chatModel,
+      fallbackChatModel: google.fallbackChatModel,
+      embeddingModel: google.embeddingModel,
+      embeddingDimensions: google.embeddingDimensions,
+      // Google mode never turns a missing key into mock output. Only NINEROUTER_MODE=mock does.
+      executionMode: rawMode === "mock" ? "mock" : "live",
+      explicitMock: rawMode === "mock",
+    };
+  }
+
   return {
+    provider: "ninerouter",
     baseUrl,
     apiKey,
     chatModel,
@@ -57,6 +88,10 @@ export function patchGlobalFetchForNineRouter(): void {
   if (fetchPatched) return;
   fetchPatched = true;
 
+  if (getAiProviderKind() === GOOGLE_AI_PROVIDER) {
+    // HOSTED-12: the Google gate and its fallback transport must exist before the global patch.
+    installGoogleAiRateGate(getGoogleAiConfig());
+  }
   getNineRouterRateGate().installGlobalFetch((urlStr, init) => {
     if (urlStr.includes("/chat/completions") && init?.body && typeof init.body === "string") {
       try {
@@ -88,6 +123,12 @@ export async function generateNineRouterEmbedding(
   const dimensions = options?.dimensions ?? config.embeddingDimensions;
   if (config.executionMode === "mock") {
     return generateMockVector(text, dimensions);
+  }
+  if (config.provider === GOOGLE_AI_PROVIDER) {
+    // HOSTED-12: fixed 768 dimensions; the Google embedding path checks the length (fail closed).
+    // Installing here too means no entry point can reach the embedding path without the fallback transport.
+    const google = getGoogleAiConfig();
+    return generateGoogleAiEmbedding(text, { config: google, gate: installGoogleAiRateGate(google) });
   }
 
   if (!config.baseUrl || !config.apiKey || config.baseUrl.includes("127.0.0.1:9090")) {
@@ -184,6 +225,10 @@ export function createNineRouterMastraAgent(params: {
       model: createMockChatModel(params.mockRole) as unknown as ConstructorParameters<typeof Agent>[0]["model"],
     });
   }
+  const isGoogle = config.provider === GOOGLE_AI_PROVIDER;
+  if (isGoogle && !config.apiKey) {
+    throw new AiProviderConfigError("Google AI Studio credentials required: GOOGLE_AI_API_KEY must be set in live mode");
+  }
   patchGlobalFetchForNineRouter();
   const chatModel = params.modelOverride || config.chatModel;
 
@@ -197,7 +242,8 @@ export function createNineRouterMastraAgent(params: {
     model: {
       providerId: "openai",
       modelId: chatModel,
-      url: `${config.baseUrl}/v1`,
+      // Google's OpenAI-compatible base already ends in /v1beta/openai; NineRouter's needs /v1.
+      url: isGoogle ? config.baseUrl : `${config.baseUrl}/v1`,
       apiKey: config.apiKey || "mock-key",
       api: "chat",
     },

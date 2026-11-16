@@ -12,6 +12,7 @@ import { createAccountStore } from "../apps/db/src/accounts.js";
 import { createSqlIncidentRepository, requeueStrandedAiJobs } from "../apps/db/src/incident-repository.js";
 import { createJobRunner } from "../apps/intelligence/src/job-runner.js";
 import { getNineRouterConfig, patchGlobalFetchForNineRouter } from "../apps/intelligence/src/providers/ninerouter-adapter.js";
+import { GOOGLE_AI_PROVIDER, getAiProviderKind } from "../apps/intelligence/src/providers/google-ai-adapter.js";
 import { getNineRouterCallCounts, getNineRouterRateGateSnapshot } from "../apps/db/src/ninerouter-rate-gate.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
 import { BMKG_GEMPA_SOURCE_ID, createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
@@ -307,14 +308,24 @@ async function main() {
     console.error("Refusing to start: NINEROUTER_MODE=mock would write mock interpretations into the live dataset. Unset NINEROUTER_MODE to use the gateway.");
     process.exit(1);
   }
-  // Headless never prints the gateway address.
-  if (!HEADLESS) console.log(`[NineRouter] Gateway URL : ${config.baseUrl}`);
-  console.log(`[NineRouter] Chat Model  : ${config.chatModel}`);
-  console.log(`[NineRouter] Embeddings  : ${config.embeddingModel} (768 dimensions)`);
-  if (!config.baseUrl || !config.apiKey || config.baseUrl.includes("127.0.0.1:9090")) {
-    console.warn("⚠️ Warning: Real NINEROUTER_URL and NINEROUTER_KEY not found in environment. In live mode, requests will require valid credentials.");
+  // HOSTED-12: AI_PROVIDER selects the chat and embedding provider. Default ninerouter (local dev).
+  const aiProvider = getAiProviderKind();
+  if (aiProvider === GOOGLE_AI_PROVIDER) {
+    console.log("[AI] Provider     : google_ai_studio");
+    console.log(`[AI] Chat model  : ${config.chatModel} (fallback ${config.fallbackChatModel ?? "none"})`);
+    console.log(`[AI] Embeddings  : ${config.embeddingModel} (768 dimensions)`);
+    if (config.apiKey) console.log("✓ Google AI Studio credentials loaded.");
+    else console.warn("Warning: GOOGLE_AI_API_KEY not set. Live AI calls will fail until it is configured.");
   } else {
-    console.log("✓ NineRouter provider credentials loaded.");
+    // Headless never prints the gateway address.
+    if (!HEADLESS) console.log(`[NineRouter] Gateway URL : ${config.baseUrl}`);
+    console.log(`[NineRouter] Chat Model  : ${config.chatModel}`);
+    console.log(`[NineRouter] Embeddings  : ${config.embeddingModel} (768 dimensions)`);
+    if (!config.baseUrl || !config.apiKey || config.baseUrl.includes("127.0.0.1:9090")) {
+      console.warn("⚠️ Warning: Real NINEROUTER_URL and NINEROUTER_KEY not found in environment. In live mode, requests will require valid credentials.");
+    } else {
+      console.log("✓ NineRouter provider credentials loaded.");
+    }
   }
 
   // AI-RATE-01: pace every NineRouter call (Mastra agents, embeddings, triage)
@@ -547,6 +558,14 @@ async function main() {
         NINEROUTER_URL: process.env.NINEROUTER_URL,
         NINEROUTER_KEY: process.env.NINEROUTER_KEY,
         NINEROUTER_CHAT_MODEL: process.env.NINEROUTER_CHAT_MODEL,
+        AI_PROVIDER: process.env.AI_PROVIDER,
+        GOOGLE_AI_API_KEY: process.env.GOOGLE_AI_API_KEY,
+        GOOGLE_AI_CHAT_MODEL: process.env.GOOGLE_AI_CHAT_MODEL,
+        GOOGLE_AI_FALLBACK_CHAT_MODEL: process.env.GOOGLE_AI_FALLBACK_CHAT_MODEL,
+        GOOGLE_AI_EMBEDDING_MODEL: process.env.GOOGLE_AI_EMBEDDING_MODEL,
+        GOOGLE_AI_CHAT_RPM: process.env.GOOGLE_AI_CHAT_RPM,
+        GOOGLE_AI_EMBED_RPM: process.env.GOOGLE_AI_EMBED_RPM,
+        GOOGLE_AI_TIMEOUT_MS: process.env.GOOGLE_AI_TIMEOUT_MS,
         NEWS_DETERMINISTIC_FILTER_MODE: process.env.NEWS_DETERMINISTIC_FILTER_MODE ?? "enforce",
       };
       // Gate per cycle: the fresh-call budget resets each cycle and is shared by all feeds in it.

@@ -11,7 +11,7 @@ import {
   type GroundingRevisionState,
 } from "../../../db/src/grounding-contexts.js";
 import type { NineRouterConfig } from "../providers/ninerouter-adapter.js";
-import { NINEROUTER_EMBEDDING_IDENTITY } from "../services/semantic-retrieval-service.js";
+import { embeddingIdentityFor } from "../services/semantic-retrieval-service.js";
 import {
   GENERATION_MAX_ACTIVE_MS,
   GENERATION_MAX_OUTPUT_TOKENS,
@@ -170,7 +170,7 @@ export async function persistReportLineage(
     missing_fields: sufficient ? [] : ["cited_evidence"],
     conflicts: [],
     retrieval_version: WORKFLOW_RETRIEVAL_VERSION,
-    index_version: NINEROUTER_EMBEDDING_IDENTITY.vectorIndexVersion,
+    index_version: embeddingIdentityFor().vectorIndexVersion,
     sufficient,
   };
   await createSqlGroundingContextRepository(transactional).createOrVerify(record);

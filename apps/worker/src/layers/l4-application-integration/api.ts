@@ -68,6 +68,16 @@ export interface WorkerEnvironment {
   NINEROUTER_URL?: string;
   NINEROUTER_KEY?: string;
   NINEROUTER_CHAT_MODEL?: string;
+  /** HOSTED-12: `ninerouter` (default) or `google_ai_studio` for the live triage transport. */
+  AI_PROVIDER?: string;
+  /** HOSTED-12: Google AI Studio secret and optional overrides (names only; values come from bindings or env). */
+  GOOGLE_AI_API_KEY?: string;
+  GOOGLE_AI_CHAT_MODEL?: string;
+  GOOGLE_AI_FALLBACK_CHAT_MODEL?: string;
+  GOOGLE_AI_EMBEDDING_MODEL?: string;
+  GOOGLE_AI_CHAT_RPM?: string;
+  GOOGLE_AI_EMBED_RPM?: string;
+  GOOGLE_AI_TIMEOUT_MS?: string;
   /** DET-FILTER-01 shadow/enforce switch (`enforce` = test-only opt-in; default `shadow`). */
   NEWS_DETERMINISTIC_FILTER_MODE?: string;
   /** FLOW-VIS-01: live polling status, attached by the local live server only. Absent in the Worker and demo. */
