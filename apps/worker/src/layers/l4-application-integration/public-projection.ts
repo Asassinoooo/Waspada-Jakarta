@@ -111,6 +111,7 @@ interface ValidatedEvent {
   readonly claims: readonly ValidatedClaim[];
   readonly impactRefs: readonly { readonly impactId: string; readonly version: number }[];
   readonly publishedAt: string;
+  readonly wholeView: boolean;
 }
 
 interface ValidatedImpact {
@@ -173,14 +174,23 @@ const impactTypes = new Set<ImpactType>([
   "audience_notice",
   "other",
 ]);
+/** HOSTED-18: the publication decision's location flag. Missing or false keeps the strict place-or-geometry rule. */
+export interface PublicEventProjectionContext {
+  readonly locationLabelPresent?: boolean;
+}
+
 /**
  * Projects one schema 2.0 Event into the existing public EventView allowlist.
  * Unknown storage fields are ignored. The live-shaped values used by unit tests
  * are synthetic test fixtures, not live source records, publications, or rights.
  */
-export function projectPublicEvent(eventValue: unknown, lookupsValue: PublicProjectionLookups): EventView {
+export function projectPublicEvent(
+  eventValue: unknown,
+  lookupsValue: PublicProjectionLookups,
+  context: PublicEventProjectionContext = {},
+): EventView {
   const lookups = validateLookups(lookupsValue);
-  const event = validateEvent(eventValue);
+  const event = validateEvent(eventValue, context);
   return projectValidatedEvent(event, lookups);
 }
 
@@ -188,9 +198,10 @@ export function projectPublicEvent(eventValue: unknown, lookupsValue: PublicProj
 export function projectPublicEventForGeometry(
   eventValue: unknown,
   lookupsValue: PublicProjectionLookups,
+  context: PublicEventProjectionContext = {},
 ): PublicEventGeometryProjectionContext {
   const lookups = validateLookups(lookupsValue);
-  const event = validateEvent(eventValue);
+  const event = validateEvent(eventValue, context);
   return {
     eventView: projectValidatedEvent(event, lookups),
     eventId: event.eventId,
@@ -245,6 +256,7 @@ function projectValidatedEvent(
 
   return {
     event_id: event.eventId,
+    ...(event.wholeView ? { location_display: "whole_view" as const } : {}),
     version: event.version,
     title: event.title,
     summary: event.summary,
@@ -279,7 +291,10 @@ function validateLookups(value: unknown): {
   };
 }
 
-function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind: "live" } {
+function validateEvent(
+  value: unknown,
+  context: PublicEventProjectionContext = {},
+): ValidatedEvent & { readonly datasetKind: "live" } {
   if (!isRecord(value)) fail("INVALID_EVENT");
   requireEqual(value.schema_version, "2.0", "INVALID_EVENT");
   requireEqual(value.record_type, "Event", "INVALID_EVENT");
@@ -310,6 +325,10 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
   const eventTime = readTimeScope(value.event_time, "INVALID_EVENT");
   const validity = readValidity(value.validity, "INVALID_EVENT");
   const scope = readScope(value.scope, "INVALID_EVENT");
+  // HOSTED-18 (owner decision 17 Nov 2026): a labelled agent event with no place id and no geometry is listed as a
+  // whole view. Group notices keep their own rule. The label is not in the Event record; the decision records its presence.
+  const hasTarget = scopeHasPublicTarget(scope);
+  const wholeView = !hasTarget && !groupNoticeWithoutTarget && context.locationLabelPresent === true;
   requireEqual(value.withdrawal_reason, null, "INVALID_EVENT");
   readId(value.publication_decision_id, "INVALID_EVENT");
   if (value.withdrawn_at !== null) fail("INVALID_EVENT");
@@ -319,7 +338,7 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
   const claims: ValidatedClaim[] = [];
   const claimIds = new Set<string>();
   for (const claimValue of value.claims) {
-    const claim = readClaim(claimValue, "INVALID_EVENT", groupNoticeWithoutTarget);
+    const claim = readClaim(claimValue, "INVALID_EVENT", groupNoticeWithoutTarget || wholeView);
     if (claimIds.has(claim.claimId)) fail("INVALID_EVENT");
     claimIds.add(claim.claimId);
     claims.push(claim);
@@ -338,7 +357,7 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
     impactRefs.push({ impactId, version: impactVersion });
   }
 
-  if (!scopeHasPublicTarget(scope) && !groupNoticeWithoutTarget) fail("INVALID_EVENT");
+  if (!hasTarget && !groupNoticeWithoutTarget && !wholeView) fail("INVALID_EVENT");
 
   return {
     datasetKind: "live",
@@ -356,6 +375,7 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
     claims,
     impactRefs,
     publishedAt,
+    wholeView,
   };
 }
 

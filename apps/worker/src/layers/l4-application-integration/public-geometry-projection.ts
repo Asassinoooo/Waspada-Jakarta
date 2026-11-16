@@ -10,6 +10,7 @@ import {
   PublicProjectionError,
   projectPublicEventForGeometry,
   type PublicEventGeometryProjectionContext,
+  type PublicEventProjectionContext,
   type PublicGeometrySupportReference,
   type PublicProjectionLookups,
 } from "./public-projection.js";
@@ -119,8 +120,9 @@ export function projectPublicEventDetail(
   eventValue: unknown,
   lookupsValue: PublicProjectionLookups,
   geometryValues: unknown,
+  eventContext: PublicEventProjectionContext = {},
 ): EventDetail {
-  const context = projectPublicEventForGeometry(eventValue, lookupsValue);
+  const context = projectPublicEventForGeometry(eventValue, lookupsValue, eventContext);
   const geometries = projectReferencedGeometries(geometryValues, context);
   return { ...context.eventView, geometries };
 }

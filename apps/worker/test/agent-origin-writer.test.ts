@@ -9,6 +9,7 @@ import { createPublicEventSnapshotRepository } from "../../db/src/public-event-s
 import { createPublicProjectionLookupRepository } from "../../db/src/public-projection-lookups.js";
 import { createPublicEventListProjectionService } from "../src/layers/l4-application-integration/public-event-list-projection-service.js";
 import { createPublicEventProjectionService } from "../src/layers/l4-application-integration/public-event-projection-service.js";
+import { projectPublicEvent } from "../src/layers/l4-application-integration/public-projection.js";
 import {
   AGENT_AUTO_PUBLISHER_ID,
   decideProposal,
@@ -38,6 +39,7 @@ interface ClaimSource {
 function proposal(lineage: ProposalLineage, proposalId: string, options: {
   readonly incidentId?: string;
   readonly sources?: readonly ClaimSource[];
+  readonly locationLabel?: string | null;
 } = {}): EventProposalDto {
   const sources = options.sources ?? [{ sourceId: SOURCE_ONE, outlet: "Outlet Uji Satu" }];
   const claims = sources.map((source, index) => ({
@@ -62,7 +64,7 @@ function proposal(lineage: ProposalLineage, proposalId: string, options: {
     compatibility_category: "flood",
     severity: "medium",
     event_time: { precision: "exact", value: "2026-11-10T08:00:00.000Z" },
-    location_label: "Cawang, Jakarta Timur",
+    location_label: options.locationLabel === undefined ? "Cawang, Jakarta Timur" : options.locationLabel,
     coordinates: null,
     claims,
     impacts: [],
@@ -136,6 +138,25 @@ describe("HOSTED-15 publication writes the origin rows", () => {
       ids.push(result.rows[0]!.evidence_ref_id);
     }
     return ids.sort();
+  }
+
+  /** Fixture only: approves public attribution for every supporting evidence row, as the moderator review would. */
+  async function approveSupportingEvidence(): Promise<void> {
+    await db.executor.query(
+      `INSERT INTO waspada.public_attribution_review_decisions
+         (review_decision_id, dataset_kind, evidence_ref_id, report_revision_id,
+          permitted_text_hash, span_start, span_end, offset_unit, relation, review_version,
+          decision_status, rights_basis_ref, public_display_name, source_url,
+          source_published_at, source_observed_at, reviewer_id, decision_reason, reviewed_at)
+       SELECT 'fixture-attribution-' || evidence.evidence_ref_id::text, evidence.dataset_kind, evidence.evidence_ref_id,
+              evidence.report_revision_id, evidence.permitted_text_hash, evidence.span_start, evidence.span_end,
+              evidence.offset_unit, evidence.relation, 1, 'approved', 'synthetic-test-only-no-real-rights-asserted',
+              'Sumber Uji', 'https://fixture.example/attribution', NULL, NULL, 'fixture-reviewer-only',
+              'Authored fixture decision; no source rights or real review are asserted.', now()
+       FROM waspada.evidence_references AS evidence
+       WHERE evidence.dataset_kind = 'live' AND evidence.relation = 'supports'
+       ON CONFLICT DO NOTHING`,
+    );
   }
 
   async function registerSource(sourceId: string, displayName: string, hosts: readonly string[]): Promise<void> {
@@ -245,9 +266,9 @@ describe("HOSTED-15 publication writes the origin rows", () => {
   });
 
   it("(e) the origin SQL runs as the publication role: the insert, the conflict path and the link rows need no read grant", async () => {
-    // decideProposal itself cannot run as this role yet: the publication role has no SELECT on event_proposals
-    // .investigation_id (a pre-existing gap, not HOSTED-15). So this runs the origin writer, the same SQL the publish
-    // transaction runs, under the role. The evidence ids are read as the owner, before the role is set.
+    // decideProposal cannot run as this role yet: the publish path reads columns the role is denied (HOSTED-18, grant
+    // list pending an owner decision). So this runs the origin writer, the same SQL the publish transaction runs, under
+    // the role. The evidence ids are read as the owner, before the role is set.
     await persist(proposal(lineage, "prop-h15-e", { incidentId: "inc-h15-e" }));
     assert.equal((await auto("prop-h15-e")).status, "published");
     const record = await currentRecord("inc-h15-e");
@@ -279,9 +300,10 @@ describe("HOSTED-15 publication writes the origin rows", () => {
     assert.equal(count.rows[0]!.n, 1, "one origin row per source under the role too");
   });
 
-  it("(f) the DB list does not show these agent events yet: origins and support are filled, but no place or geometry target exists", async () => {
-    // The projector's target rule (a place id or a geometry) is unchanged, and map points are still skipped (HOSTED-10),
-    // so an agent event without a place id has no public target. The list skips it and the page does not fail.
+  it("(f) a labelled agent event with no place id and no geometry is listed as a whole view (HOSTED-18)", async () => {
+    // Owner decision (17 Nov 2026): such an event is listed without a place id, shown as the whole view. The publish
+    // decision recorded that a label was present, and the snapshot carries that flag to the projector.
+    await approveSupportingEvidence();
     const list = createPublicEventListProjectionService({
       candidates: createPublicEventListRepository(db.executor),
       projections: createPublicEventProjectionService({
@@ -290,8 +312,31 @@ describe("HOSTED-15 publication writes the origin rows", () => {
       }),
     });
     const page = await list.read();
-    assert.deepEqual(page.events, []);
+    const listed = page.events.find((event) => event.event_id === "inc-prop-h15-a");
+    assert.ok(listed, "the labelled agent event is listed");
+    assert.equal(listed.location_display, "whole_view");
+    const flag = await db.executor.query<{ flag: string | null }>(
+      "SELECT record_json ->> 'location_label_present' AS flag FROM waspada.publication_decisions WHERE dataset_kind = 'live' AND proposal_id = 'prop-h15-a'",
+    );
+    assert.equal(flag.rows[0]?.flag, "true");
+    assert.ok((await currentRecord("inc-prop-h15-a")).claims[0].origin_ids.length > 0, "the origin is still filled");
+  });
+
+  it("(g) an agent event with neither a label nor a place is not published, and the projector refuses it without the flag (HOSTED-18)", async () => {
+    await persist(proposal(lineage, "prop-h15-g", { incidentId: "inc-h15-g", locationLabel: null }));
+    const outcome = await auto("prop-h15-g");
+    assert.equal(outcome.status, "queued", "auto-publication holds a proposal with no location for review");
+    assert.deepEqual((outcome as { reasons?: unknown }).reasons, ["location_missing"]);
+    const versions = await db.executor.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM waspada.public_event_versions WHERE dataset_kind = 'live' AND event_id = 'inc-h15-g'",
+    );
+    assert.equal(versions.rows[0]!.n, 0, "no public version exists for the held event");
+    // The rule itself: a labelled record with no place is listed only when the decision flag is present.
     const record = await currentRecord("inc-prop-h15-a");
-    assert.ok(record.claims[0].origin_ids.length > 0, "the origin is filled, so the origin is not the blocker");
+    assert.throws(
+      () => projectPublicEvent(record, { scopeNames: [], publicAttributions: [], impacts: [] }),
+      (error: unknown) => (error as { code?: unknown }).code === "INVALID_EVENT",
+      "without the flag the strict place-or-geometry rule still refuses the event",
+    );
   });
 });

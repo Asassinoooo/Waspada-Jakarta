@@ -113,6 +113,7 @@ const scopeFields = [
 export interface PreparedPublicEventProjectionSnapshot {
   readonly eventRecord: Record<string, unknown>;
   readonly impactRecords: readonly unknown[];
+  readonly locationLabelPresent: boolean;
   readonly query: PublicEventProjectionLookupQuery;
 }
 
@@ -166,7 +167,7 @@ export function createPublicEventProjectionService(ports: {
           scopeNames: validatedLookupResult.scopeNames,
           publicAttributions: validatedLookupResult.publicAttributions,
           impacts: prepared.impactRecords,
-        });
+        }, { locationLabelPresent: prepared.locationLabelPresent });
       } catch (error) {
         throw new PublicEventProjectionServiceError(
           "PROJECTION_FAILED",
@@ -281,6 +282,7 @@ export function preparePublicEventProjectionSnapshot(value: unknown, requestedEv
   return {
     eventRecord,
     impactRecords,
+    locationLabelPresent: value.locationLabelPresent === true,
     query: {
       scopeKeys: [...scopeKeys.values()].sort(compareScopeKeys),
       supportReferences: [...supportReferences.values()].sort(compareSupportReferences),
