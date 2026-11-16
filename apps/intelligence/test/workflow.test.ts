@@ -218,6 +218,7 @@ describe("Mastra Incident Intelligence Workflow", () => {
       incidentType: "ledakan_gas",
       primaryCategory: "fires_infrastructure_hazards",
       severity: "high",
+      location: { label: "Duri Kepa, Kebon Jeruk, Jakarta Barat", approximateCoordinates: null, precision: "district" },
       evidence: [
         {
           chunkId: "chk-multi-001",

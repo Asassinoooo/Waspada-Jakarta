@@ -207,7 +207,7 @@ function readSnapshotResult(value: unknown): unknown | null {
     return null;
   }
   if (value.kind !== "found" || !hasExactKeys(value, ["kind", "snapshot"])
-    || !hasExactKeys(value.snapshot, ["datasetKind", "eventId", "eventVersion", "recordJson", "impacts"])) {
+    || !hasExactKeys(value.snapshot, ["datasetKind", "eventId", "eventVersion", "recordJson", "impacts", "locationLabelPresent"])) {
     fail("SNAPSHOT_INVALID");
   }
   return value.snapshot;

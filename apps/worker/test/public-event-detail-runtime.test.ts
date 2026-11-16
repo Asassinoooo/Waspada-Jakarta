@@ -135,6 +135,7 @@ function makeRowsForStatement(statement: string, parameters: readonly unknown[])
       event_id: eventId,
       version: eventVersion,
       record_json: makeEventRecord(),
+      location_label_present: false,
     }];
   }
   if (statement.includes("FROM waspada.public_event_impacts AS impact")) return [];

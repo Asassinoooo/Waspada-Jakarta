@@ -122,6 +122,7 @@ function makeFixture(
     event_id: eventId,
     version,
     record_json: eventRecord,
+    location_label_present: false,
   };
   const candidateRow = {
     dataset_kind: "live",

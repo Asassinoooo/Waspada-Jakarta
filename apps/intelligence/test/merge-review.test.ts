@@ -48,7 +48,7 @@ describe("MERGE-REVIEW-01 merge rules", () => {
       incidentType: "genangan_air_luapan_saluran",
       primaryCategory: "disasters_weather",
       severity: "medium",
-      location: { label: "Jl. DI Panjaitan, Cawang, Jakarta Timur", approximateCoordinates: [106.871, -6.244], precision: "approximate" },
+      location: { label: "Jalan DI Panjaitan, Cawang, Jakarta Timur", approximateCoordinates: [106.871, -6.244], precision: "approximate" },
       eventTime: { value: "2026-11-10T08:00:00.000Z", precision: "exact" },
       evidence: [{ chunkId: `chk-${spec.id}`, exactQuote: spec.claim, supports: spec.claim }],
     });
