@@ -327,7 +327,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           ?.proposal?.proposal_id;
         if (typeof persistedProposalId === "string" && internalServiceKey.length > 0) {
           try {
-            await fetch(`${workerUrl}/api/v1/internal/proposals`, {
+            const notified = await fetch(`${workerUrl}/api/v1/internal/proposals`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -336,8 +336,13 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
               body: JSON.stringify({ proposal_id: persistedProposalId }),
               signal: AbortSignal.timeout(3000),
             });
-          } catch {
-            // Notification failure is non-fatal: PostgreSQL transaction is already committed
+            // HOSTED-20: a refused notification leaves the proposal undecided. Log the status only.
+            if (!notified.ok) console.warn(`[Intelligence] Publication notification not accepted (HTTP ${notified.status}).`);
+          } catch (notifyErr: unknown) {
+            // Notification failure is non-fatal: PostgreSQL transaction is already committed. The proposal stays
+            // undecided, and the publication sweep picks it up. Log the error class name only, never the message.
+            const name = notifyErr instanceof Error ? notifyErr.name : "unknown";
+            console.warn(`[Intelligence] Publication notification not delivered (${/^[A-Za-z]{1,40}$/u.test(name) ? name : "unknown"}).`);
           }
         }
 

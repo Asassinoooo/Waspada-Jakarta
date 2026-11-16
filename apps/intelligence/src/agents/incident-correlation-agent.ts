@@ -1,10 +1,8 @@
 import { z } from "zod";
 import { Agent } from "@mastra/core/agent";
-import {
-  createNineRouterMastraAgent,
-  extractJsonFromText,
-} from "../providers/ninerouter-adapter.js";
+import { createNineRouterMastraAgent } from "../providers/ninerouter-adapter.js";
 import { generateWithinBudget } from "./generation-budget.js";
+import { parseModelOutput } from "./model-output.js";
 import type { ReportInterpretation } from "./report-interpretation-agent.js";
 import type { CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
 import { PETABENCANA_SOURCE_LABEL } from "../structured-interpretation.js";
@@ -63,6 +61,10 @@ export function validateDiscrepancyFields(correlation: IncidentCorrelation): voi
   }
 }
 
+/**
+ * HOSTED-20: the validation errors in this module carry fixed codes as their messages. A message never holds a
+ * quote, a model-supplied ID or other model text, because Mastra logs a failed step's message.
+ */
 export class EvidenceProvenanceError extends Error {
   constructor(message: string) {
     super(message);
@@ -77,23 +79,17 @@ export function validateCorrelationDecision(
   // 1. Validate Decision Contract
   if (correlation.decision === "same_incident") {
     if (!correlation.candidateIncidentId) {
-      throw new CorrelationValidationError(
-        "Decision 'same_incident' requires a non-null candidateIncidentId",
-      );
+      throw new CorrelationValidationError("same_incident_candidate_missing");
     }
     const candidate = input.candidateIncidents.find(
       (c) => c.incident.incidentId === correlation.candidateIncidentId,
     );
     if (!candidate) {
-      throw new CorrelationValidationError(
-        `Candidate incident '${correlation.candidateIncidentId}' does not exist in the retrieved candidate set`,
-      );
+      throw new CorrelationValidationError("candidate_incident_unknown");
     }
   } else if (correlation.decision === "new_incident") {
     if (correlation.candidateIncidentId !== null) {
-      throw new CorrelationValidationError(
-        `Decision 'new_incident' must not reference candidate incident '${correlation.candidateIncidentId}'; candidateIncidentId must be null`,
-      );
+      throw new CorrelationValidationError("new_incident_candidate_set");
     }
   } else if (correlation.decision === "unresolved") {
     if (correlation.candidateIncidentId !== null) {
@@ -101,9 +97,7 @@ export function validateCorrelationDecision(
         (c) => c.incident.incidentId === correlation.candidateIncidentId,
       );
       if (!candidate) {
-        throw new CorrelationValidationError(
-          `Unresolved candidate incident '${correlation.candidateIncidentId}' does not exist in the retrieved candidate set`,
-        );
+        throw new CorrelationValidationError("unresolved_candidate_unknown");
       }
     }
   }
@@ -115,25 +109,19 @@ export function validateCorrelationDecision(
 
     if (ev.reportRevisionId === input.incomingReportRevisionId) {
       if (!input.incomingReportText.includes(quote)) {
-        throw new EvidenceProvenanceError(
-          `Supporting quote "${quote}" does not exist verbatim in incoming report revision '${input.incomingReportRevisionId}'`,
-        );
+        throw new EvidenceProvenanceError("evidence_quote_not_in_incoming_report");
       }
     } else {
       const candidate = input.candidateIncidents.find(
         (c) => c.matchedReportRevisionId === ev.reportRevisionId,
       );
       if (!candidate) {
-        throw new EvidenceProvenanceError(
-          `Supporting evidence references unknown report revision '${ev.reportRevisionId}' not in retrieved candidate evidence`,
-        );
+        throw new EvidenceProvenanceError("evidence_report_revision_unknown");
       }
       const matchedText = candidate.matchedText ?? "";
       const incDesc = candidate.incident.description ?? "";
       if (!matchedText.includes(quote) && !incDesc.includes(quote)) {
-        throw new EvidenceProvenanceError(
-          `Supporting quote "${quote}" does not exist verbatim in candidate evidence for revision '${ev.reportRevisionId}'`,
-        );
+        throw new EvidenceProvenanceError("evidence_quote_not_in_candidate");
       }
     }
   }
@@ -277,8 +265,7 @@ Format your output as a single JSON object with these keys:
 
   // NFR-02: bounded steps, active time and tokens. See generation-budget.ts.
   const response = await generateWithinBudget(agent, prompt, INCIDENT_CORRELATOR_INSTRUCTIONS);
-  const parsedJson = extractJsonFromText(response.text);
-  const correlation = IncidentCorrelationSchema.parse(parsedJson);
+  const correlation = parseModelOutput(response.text, IncidentCorrelationSchema);
   validateCorrelationDecision(correlation, input);
   validateDiscrepancyFields(correlation);
   return correlation;

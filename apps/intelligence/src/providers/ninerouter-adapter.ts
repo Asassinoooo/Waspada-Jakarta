@@ -153,8 +153,8 @@ export async function generateNineRouterEmbedding(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`NineRouter embedding request failed (${response.status}): ${errorText}`);
+    // HOSTED-20: the gateway body can echo the request input, so only the status is kept.
+    throw new Error(`NineRouter embedding request failed (${response.status})`);
   }
 
   const data = (await response.json()) as {

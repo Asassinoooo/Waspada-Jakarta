@@ -1,11 +1,9 @@
 import { z } from "zod";
 import { Agent } from "@mastra/core/agent";
 import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../db/src/incident-categories.js";
-import {
-  createNineRouterMastraAgent,
-  extractJsonFromText,
-} from "../providers/ninerouter-adapter.js";
+import { createNineRouterMastraAgent } from "../providers/ninerouter-adapter.js";
 import { generateWithinBudget } from "./generation-budget.js";
+import { parseModelOutput } from "./model-output.js";
 
 /**
  * The severity levels the model is asked to output (rubric in REPORT_INTERPRETER_INSTRUCTIONS,
@@ -167,6 +165,6 @@ Format your output as a single JSON object with these keys:
 
   // NFR-02: bounded steps, active time and tokens. See generation-budget.ts.
   const response = await generateWithinBudget(agent, prompt, REPORT_INTERPRETER_INSTRUCTIONS);
-  const parsedJson = extractJsonFromText(response.text);
-  return ReportInterpretationSchema.parse(parsedJson);
+  // HOSTED-20: a JSON or schema failure carries a fixed code, never the model answer.
+  return parseModelOutput(response.text, ReportInterpretationSchema);
 }

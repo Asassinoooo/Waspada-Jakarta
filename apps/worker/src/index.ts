@@ -122,8 +122,9 @@ const pipelineFlowHandler = createPipelineFlowHandler({
 /**
  * WJ-INT-02B public-display rights gate: live registry permissions for one source. Fail-closed:
  * a missing row, an error or a denied capability denies publication. No approval overrides it.
+ * Exported for the hosted publication sweep (HOSTED-20), which runs the same rights check as the route.
  */
-async function checkSourcePublicDisplay(env: WorkerEnvironment, sourceId: string): Promise<boolean> {
+export async function checkSourcePublicDisplay(env: WorkerEnvironment, sourceId: string): Promise<boolean> {
   if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
   try {
     return await withSqlExecutor(env, async (executor) => {

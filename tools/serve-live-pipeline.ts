@@ -25,7 +25,7 @@ import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowled
 import { runGatedRssCycle } from "../apps/worker/src/runtime/gated-rss-persistence.js";
 import { createPipelineRuntimeStatus } from "../apps/worker/src/runtime/pipeline-runtime-status.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
-import worker from "../apps/worker/src/index.js";
+import worker, { checkSourcePublicDisplay } from "../apps/worker/src/index.js";
 import { seedAdminAccount } from "../apps/worker/src/accounts/seed-admin.js";
 import { generateServiceKey } from "../apps/worker/src/security/service-key.js";
 import { PublicReadModel, proposalToEventDetail } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
@@ -34,8 +34,13 @@ import {
   isValidProposalReviewTtlHours,
   parseProposalReviewTtlHours,
   SOURCE_PERMISSION_WAIVED_LOCAL,
+  parseAutoPublishSourcePermission,
 } from "../apps/worker/src/layers/l4-application-integration/publication-policy.js";
-import { expireStaleProposals } from "../apps/worker/src/layers/l4-application-integration/proposal-publication.js";
+import {
+  AGENT_AUTO_PUBLISHER_ID,
+  decideProposal,
+  expireStaleProposals,
+} from "../apps/worker/src/layers/l4-application-integration/proposal-publication.js";
 import { createEventProposalWriter } from "../apps/db/src/event-proposal-writer.js";
 import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
@@ -59,7 +64,17 @@ import {
   type StructuredPollInput,
 } from "./live-source-coverage.js";
 import { seedLiveSourcesInsertMissing } from "./live-sources-seed.js";
-import { drainAiJobs, drainDeadlineMs, hasClaimableAiJob, parseRunFlags, resolveIngestTimeBudget } from "./hosted/ingest-once.js";
+import {
+  drainAiJobs,
+  drainDeadlineMs,
+  hasClaimableAiJob,
+  listUndecidedProposalIds,
+  parseRunFlags,
+  publicationSweepReserveMs,
+  resolveIngestTimeBudget,
+  runOnceSequence,
+  sweepUndecidedProposals,
+} from "./hosted/ingest-once.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -816,7 +831,9 @@ async function main() {
     if (budget.invalid) {
       console.warn("[Once] INGEST_TIME_BUDGET_MINUTES must be an integer from 1 to 25; using 20 minutes.");
     }
-    const deadlineMs = drainDeadlineMs(runStartMs, budget.budgetMs);
+    // HOSTED-20: the drain stops early enough to leave the publication sweep its share of the budget.
+    const drainDeadlineMsForRun = drainDeadlineMs(runStartMs, budget.budgetMs - publicationSweepReserveMs(budget.budgetMs));
+    const sweepDeadlineMs = drainDeadlineMs(runStartMs, budget.budgetMs);
     // A stop signal (for example a workflow timeout) closes the session and exits 1. An in-flight job keeps its
     // lease, and a later run reclaims it when the lease expires.
     const onSignal = () => {
@@ -827,24 +844,47 @@ async function main() {
     process.once("SIGINT", onSignal);
     let hardError = false;
     try {
-      // 1. One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A failed source is logged inside pollLiveFeeds.
-      try {
-        await pollLiveFeeds();
-      } catch (err: unknown) {
-        logError("[Ingestion Cycle] failed:", err);
-      }
-      // 2. Drain the AI queue until it is empty, the budget is used up, or the failure streak stops it.
-      const drain = await drainAiJobs({
-        deadlineMs,
-        now: () => Date.now(),
-        hasClaimableJob: () => hasClaimableAiJob(executor, SERVE_LIVE_DATASET_KIND, new Date().toISOString()),
-        processNextJob: () => jobRunner.processNextJob(SERVE_LIVE_DATASET_KIND),
+      // Order: poll, drain, publication sweep, freshness. A thrown drain, sweep or freshness error is a hard error.
+      await runOnceSequence({
+        // One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A failed source is logged inside pollLiveFeeds.
+        poll: () => pollLiveFeeds(),
+        onPollError: (err) => logError("[Ingestion Cycle] failed:", err),
+        // Drain the AI queue until it is empty, the budget is used up, or the failure streak stops it.
+        drain: () => drainAiJobs({
+          deadlineMs: drainDeadlineMsForRun,
+          now: () => Date.now(),
+          hasClaimableJob: () => hasClaimableAiJob(executor, SERVE_LIVE_DATASET_KIND, new Date().toISOString()),
+          processNextJob: () => jobRunner.processNextJob(SERVE_LIVE_DATASET_KIND),
+        }),
+        // HOSTED-20: the same gate and decideProposal path as POST /api/v1/internal/proposals, run in this process
+        // over the undecided proposals. The job notification is fire-and-forget with a 3 s timeout, so it cannot
+        // be the only trigger. Held proposals are counted by reason code. Their decision rows are not written.
+        sweep: () => sweepUndecidedProposals({
+          listUndecided: (limit) => listUndecidedProposalIds(executor, SERVE_LIVE_DATASET_KIND, limit),
+          decide: (proposalId) => decideProposal(
+            {
+              executor,
+              datasetKind: SERVE_LIVE_DATASET_KIND,
+              checkPublicDisplay: (sourceId) => checkSourcePublicDisplay(env, sourceId),
+            },
+            {
+              proposalId,
+              action: "auto_publish",
+              actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+              sourcePermission: parseAutoPublishSourcePermission(env.AUTO_PUBLISH_SOURCE_PERMISSION),
+            },
+          ),
+          deadlineMs: sweepDeadlineMs,
+          now: () => Date.now(),
+        }),
+        // One freshness pass. startLiveFreshness sets an interval, so it is stopped right after the startup pass.
+        freshness: async () => {
+          const freshness = startLiveFreshness({ executor, env: process.env });
+          await freshness.startup;
+          freshness.stop();
+        },
+        log: (line) => console.log(line),
       });
-      console.log(`[Once] AI jobs: completed=${drain.completed} not_completed=${drain.notCompleted} stop=${drain.stop}.`);
-      // 3. One freshness pass. startLiveFreshness sets an interval, so it is stopped right after the startup pass.
-      const freshness = startLiveFreshness({ executor, env: process.env });
-      await freshness.startup;
-      freshness.stop();
     } catch (err: unknown) {
       // A thrown error means the database is unavailable or a fault is unexpected. The run exits 1.
       hardError = true;
