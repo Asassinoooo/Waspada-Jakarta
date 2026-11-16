@@ -1,5 +1,6 @@
 import type { EventView, Freshness, Lifecycle, PublicClaim, PublicImpact, TimeScope, Validity } from "../../contracts/public-api.js";
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
+import { GROUP_NOTICE_CATEGORY } from "./public-point.js";
 
 /**
  * Lookup rows are deliberately runtime-checked. They are supplied by trusted
@@ -300,6 +301,9 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
   const title = readString(value.title, 240, "INVALID_EVENT");
   const summary = readString(value.summary, 2000, "INVALID_EVENT");
   const category = readEnum(value.category, [...categories], "INVALID_EVENT");
+  // HOSTED-10: a group-specific critical notice with no location has no target and is listed without one. Every
+  // other event needs a place, a service, an institution, an audience or a geometry.
+  const groupNoticeWithoutTarget = category === GROUP_NOTICE_CATEGORY;
   const tags = readTags(value.tags, "INVALID_EVENT");
   const lifecycle = readEnum(value.lifecycle, [...lifecycles], "INVALID_EVENT");
   const freshness = readFreshness(value.freshness, "INVALID_EVENT");
@@ -315,7 +319,7 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
   const claims: ValidatedClaim[] = [];
   const claimIds = new Set<string>();
   for (const claimValue of value.claims) {
-    const claim = readClaim(claimValue, "INVALID_EVENT");
+    const claim = readClaim(claimValue, "INVALID_EVENT", groupNoticeWithoutTarget);
     if (claimIds.has(claim.claimId)) fail("INVALID_EVENT");
     claimIds.add(claim.claimId);
     claims.push(claim);
@@ -334,7 +338,7 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
     impactRefs.push({ impactId, version: impactVersion });
   }
 
-  if (!scopeHasPublicTarget(scope)) fail("INVALID_EVENT");
+  if (!scopeHasPublicTarget(scope) && !groupNoticeWithoutTarget) fail("INVALID_EVENT");
 
   return {
     datasetKind: "live",
@@ -355,14 +359,18 @@ function validateEvent(value: unknown): ValidatedEvent & { readonly datasetKind:
   };
 }
 
-function readClaim(value: unknown, code: PublicProjectionErrorCode): ValidatedClaim {
+function readClaim(
+  value: unknown,
+  code: PublicProjectionErrorCode,
+  allowWithoutTarget = false,
+): ValidatedClaim {
   if (!isRecord(value)) fail(code);
   const claimId = readId(value.claim_id, code);
   const text = readString(value.text, 4000, code);
   const eventTime = readTimeScope(value.event_time, code);
   const validity = readValidity(value.validity, code);
   const scope = readScope(value.scope, code);
-  if (!scopeHasPublicTarget(scope)) fail(code);
+  if (!scopeHasPublicTarget(scope) && !allowWithoutTarget) fail(code);
   const qualifiers = readStringArray(value.qualifiers, 500, code);
   if (!Array.isArray(value.support) || value.support.length === 0) fail(code);
   const support = value.support.map((reference) => readEvidenceReference(reference, "supports", code));
@@ -479,8 +487,14 @@ function readScope(value: unknown, code: PublicProjectionErrorCode): StoredScope
   };
 }
 
+/**
+ * A public target is an evidenced place, service, institution or audience, or a geometry. HOSTED-10: a point geometry
+ * from the agent's approximate coordinates is a target, so an event does not need a gazetteer place id to be listed.
+ * A label is not a target here, because the stored record has no slot for one.
+ */
 function scopeHasPublicTarget(scope: StoredScope): boolean {
-  return scope.placeIds.length + scope.serviceIds.length + scope.institutionIds.length + scope.audienceIds.length > 0;
+  return scope.placeIds.length + scope.serviceIds.length + scope.institutionIds.length + scope.audienceIds.length
+    + scope.geometryIds.length > 0;
 }
 
 function readIdArray(value: unknown, code: PublicProjectionErrorCode, nonEmpty: boolean): string[] {

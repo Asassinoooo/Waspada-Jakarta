@@ -411,9 +411,11 @@ export function extractLocation(
   // If source is known to be Jakarta-scoped (e.g. antara-metro or petabencana with Jakarta coords)
   const isJakartaSource = sourceId.includes("jakarta") || sourceId.includes("metro") || sourceId.includes("petabencana");
   if (isJakartaSource) {
+    // HOSTED-10: no invented point. The source gives only the Jakarta label; a point comes from the agent's own
+    // approximate coordinate, or the labelled Jakarta-centre fallback applied at publish time (public-point.ts).
     return {
       locationLabel: "DKI Jakarta",
-      coordinates: explicitCoords ?? [106.8272, -6.1754],
+      coordinates: explicitCoords,
     };
   }
 

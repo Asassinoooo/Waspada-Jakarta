@@ -156,42 +156,63 @@ class SqlGeometryWriter implements GeometryWriter {
     recordJson: string,
     geoJson: string,
   ): Promise<GeometryWriteResult> {
-    await assertPostgisTopology(transaction, geoJson);
-    const supports = await resolveSupportingEvidence(transaction, record);
-    const existing = await findExistingGeometry(transaction, record, recordJson, geoJson);
-    if (existing) return compareExistingGeometry(transaction, record, supports, existing);
-
-    await transaction.query(
-      [
-        "INSERT INTO waspada.geometries",
-        "  (dataset_kind, geometry_id, trace_id, role, shape, coordinate_reference_system,",
-        "   precision_m, precision_basis, display_label, record_json)",
-        "VALUES ($1, $2, $3, $4,",
-        "  ST_SetSRID(ST_GeomFromGeoJSON($5::text), 4326), $6, $7, $8, $9, $10::jsonb)",
-      ].join("\n"),
-      [
-        record.dataset_kind,
-        record.geometry_id,
-        record.trace_id,
-        record.role,
-        geoJson,
-        record.coordinate_reference_system,
-        record.precision_m,
-        record.precision_basis,
-        record.display_label,
-        recordJson,
-      ],
-    );
-
-    for (const support of supports) {
-      await transaction.query(
-        "INSERT INTO waspada.geometry_evidence (dataset_kind, geometry_id, evidence_ref_id) VALUES ($1, $2, $3)",
-        [record.dataset_kind, record.geometry_id, support.evidenceRefId],
-      );
-    }
-
-    return { geometryId: record.geometry_id, outcome: "created" };
+    return persistGeometryRecordInTransaction(transaction, record, recordJson, geoJson);
   }
+}
+
+/**
+ * HOSTED-10: the same validated append as persist(), inside a transaction the caller already holds. The publication
+ * transaction uses it so a point geometry and its event version commit or roll back together. It opens no transaction.
+ */
+export async function persistGeometryInTransaction(
+  transaction: SqlExecutor,
+  input: unknown,
+): Promise<GeometryWriteResult> {
+  const record = parseGeometryRecord(input);
+  return persistGeometryRecordInTransaction(transaction, record, JSON.stringify(record), JSON.stringify(record.geojson));
+}
+
+async function persistGeometryRecordInTransaction(
+  transaction: SqlExecutor,
+  record: GeometryRecord,
+  recordJson: string,
+  geoJson: string,
+): Promise<GeometryWriteResult> {
+  await assertPostgisTopology(transaction, geoJson);
+  const supports = await resolveSupportingEvidence(transaction, record);
+  const existing = await findExistingGeometry(transaction, record, recordJson, geoJson);
+  if (existing) return compareExistingGeometry(transaction, record, supports, existing);
+
+  await transaction.query(
+    [
+      "INSERT INTO waspada.geometries",
+      "  (dataset_kind, geometry_id, trace_id, role, shape, coordinate_reference_system,",
+      "   precision_m, precision_basis, display_label, record_json)",
+      "VALUES ($1, $2, $3, $4,",
+      "  ST_SetSRID(ST_GeomFromGeoJSON($5::text), 4326), $6, $7, $8, $9, $10::jsonb)",
+    ].join("\n"),
+    [
+      record.dataset_kind,
+      record.geometry_id,
+      record.trace_id,
+      record.role,
+      geoJson,
+      record.coordinate_reference_system,
+      record.precision_m,
+      record.precision_basis,
+      record.display_label,
+      recordJson,
+    ],
+  );
+
+  for (const support of supports) {
+    await transaction.query(
+      "INSERT INTO waspada.geometry_evidence (dataset_kind, geometry_id, evidence_ref_id) VALUES ($1, $2, $3)",
+      [record.dataset_kind, record.geometry_id, support.evidenceRefId],
+    );
+  }
+
+  return { geometryId: record.geometry_id, outcome: "created" };
 }
 
 function parseGeometryRecord(input: unknown): GeometryRecord {

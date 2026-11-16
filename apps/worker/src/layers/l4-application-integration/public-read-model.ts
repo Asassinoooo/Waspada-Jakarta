@@ -16,6 +16,7 @@ import type {
 } from "../../contracts/public-api.js";
 import type { SourceStatusProvider } from "../l1-data-knowledge/source-status.js";
 import type { EventProposalDto, StoredEvidenceChunk } from "./moderation-api.js";
+import { missingPlaceOrLabel, publicPointFor, publicPointLabel } from "./public-point.js";
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
@@ -662,33 +663,22 @@ export function proposalToEventDetail(
     places.push(proposal.location_label.trim());
   }
 
+  // HOSTED-10: an event needs a place id or a location label (a group-specific critical notice may have neither).
+  if (missingPlaceOrLabel(category, places.length)) {
+    throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
+  }
+  // HOSTED-10: one Point per event, from public-point.ts. It is approximate, carries no radius (precision_m null) and,
+  // when it is the Jakarta centre fallback, is labelled as one. A group notice with no location has no point.
   const geometries: PublicGeometry[] = [];
-  if (
-    proposal.coordinates &&
-    Array.isArray(proposal.coordinates) &&
-    proposal.coordinates.length === 2
-  ) {
-    const lng = Number(proposal.coordinates[0]);
-    const lat = Number(proposal.coordinates[1]);
-    if (
-      Number.isFinite(lng) &&
-      Number.isFinite(lat) &&
-      lng >= -180 &&
-      lng <= 180 &&
-      lat >= -90 &&
-      lat <= 90
-    ) {
-      geometries.push({
-        geometry_id: sanitizeEventId(`${eventId}-geom-1`),
-        role: "incident_scene",
-        geometry: {
-          type: "Point",
-          coordinates: [lng, lat],
-        },
-        precision_m: 50,
-        label: proposal.location_label ? proposal.location_label.slice(0, 200) : "Lokasi Kejadian",
-      });
-    }
+  const point = publicPointFor({ category, locationLabel: proposal.location_label, coordinates: proposal.coordinates });
+  if (point !== null) {
+    geometries.push({
+      geometry_id: sanitizeEventId(`${eventId}-geom-1`),
+      role: "approximate_place",
+      geometry: { type: "Point", coordinates: point.coordinates },
+      precision_m: null,
+      label: publicPointLabel(point.source, proposal.location_label),
+    });
   }
 
   const publishedAt = proposal.proposed_at || new Date().toISOString();
@@ -824,6 +814,11 @@ function rawInputToEventDetail(
     places.push(input.location_label.trim());
   }
 
+  // HOSTED-10: a raw record's own coordinate is the source coordinate and comes first. Without one, the shared point
+  // rule applies (approximate fallback or no point for a group notice with no location).
+  if (missingPlaceOrLabel(category, places.length)) {
+    throw new PublicEventDetailProjectionServiceError("INVALID_EVENT");
+  }
   const geometries: PublicGeometry[] = [];
   if (Array.isArray(input.coordinates) && input.coordinates.length === 2) {
     const lng = Number(input.coordinates[0]);
@@ -836,12 +831,24 @@ function rawInputToEventDetail(
           type: "Point",
           coordinates: [lng, lat],
         },
-        precision_m: 50,
-        label: places[0] ? places[0].slice(0, 200) : "Lokasi Kejadian",
+        precision_m: null,
+        label: places[0] ? places[0].slice(0, 200) : "Lokasi sumber",
       });
     }
   } else if (Array.isArray(input.geometries)) {
     geometries.push(...(input.geometries as PublicGeometry[]));
+  }
+  if (geometries.length === 0) {
+    const point = publicPointFor({ category, locationLabel: places[0] ?? null, coordinates: null });
+    if (point !== null) {
+      geometries.push({
+        geometry_id: sanitizeEventId(`${eventId}-geom-1`),
+        role: "approximate_place",
+        geometry: { type: "Point", coordinates: point.coordinates },
+        precision_m: null,
+        label: publicPointLabel(point.source, places[0] ?? null),
+      });
+    }
   }
 
   const publishedAt = typeof input.published_at === "string"
