@@ -5,6 +5,13 @@ import type {
   TriageAuthorization,
 } from "../layers/l1-data-knowledge/news-triage.js";
 import { evaluateSourcePermissions } from "../layers/l1-data-knowledge/news-triage.js";
+import {
+  GOOGLE_AI_OPENAI_BASE_URL,
+  GOOGLE_AI_PROVIDER,
+  getGoogleAiConfig,
+  installGoogleAiRateGate,
+  resolveAiProviderKind,
+} from "../../../intelligence/src/providers/google-ai-adapter.js";
 export {
   TITLE_MODEL_TOKENS,
   DESCRIPTION_MODEL_TOKENS,
@@ -105,6 +112,45 @@ function readCredential(envValue: string | undefined, processKey: string, fallba
   return fallback ?? "";
 }
 
+interface TriageChatTarget {
+  readonly endpoint: string;
+  readonly apiKey: string;
+  readonly chatModel: string;
+  /** Google: 1, because the fallback model is already tried inside the transport. NineRouter: 2. */
+  readonly maxAttempts: number;
+}
+
+function envBinding(env: WorkerEnvironment, name: string): string | undefined {
+  return (env as unknown as Record<string, string | undefined>)[name];
+}
+
+/**
+ * HOSTED-12: the triage chat target for the selected AI_PROVIDER, or null when credentials are
+ * missing (the gate then resolves items as uncertain, never ingest). Google mode installs the
+ * shared AI-RATE-01 gate with its fallback transport.
+ */
+function resolveTriageChatTarget(env: WorkerEnvironment): TriageChatTarget | null {
+  const providerKind = resolveAiProviderKind(readCredential(env.AI_PROVIDER, "AI_PROVIDER"));
+  if (providerKind === GOOGLE_AI_PROVIDER) {
+    const google = getGoogleAiConfig((name) => readCredential(envBinding(env, name), name) || undefined);
+    if (!google.apiKey) return null;
+    installGoogleAiRateGate(google);
+    return {
+      endpoint: `${GOOGLE_AI_OPENAI_BASE_URL}/chat/completions`,
+      apiKey: google.apiKey,
+      chatModel: google.chatModel,
+      maxAttempts: 1,
+    };
+  }
+  const baseUrl = readCredential(env.NINEROUTER_URL, "NINEROUTER_URL");
+  const apiKey = readCredential(env.NINEROUTER_KEY, "NINEROUTER_KEY");
+  if (!baseUrl || !apiKey) return null;
+  const chatModel =
+    readCredential(env.NINEROUTER_CHAT_MODEL, "NINEROUTER_CHAT_MODEL", "Waspada-Jakarta") ||
+    "Waspada-Jakarta";
+  return { endpoint: triageChatEndpoint(baseUrl), apiKey, chatModel, maxAttempts: 2 };
+}
+
 /**
  * Builds the live triage gate from Worker bindings first, local process env
  * second (local Node parity; env wins). Missing URL or key returns a chat-less
@@ -116,11 +162,7 @@ export function buildLiveTriageGate(
   executor: SqlExecutor,
   options: LiveTriageGateOptions = {},
 ): LiveTriageGate {
-  const baseUrl = readCredential(env.NINEROUTER_URL, "NINEROUTER_URL");
-  const apiKey = readCredential(env.NINEROUTER_KEY, "NINEROUTER_KEY");
-  const chatModel =
-    readCredential(env.NINEROUTER_CHAT_MODEL, "NINEROUTER_CHAT_MODEL", "Waspada-Jakarta") ||
-    "Waspada-Jakarta";
+  const chatTarget = resolveTriageChatTarget(env);
   // DET-FILTER-01: explicit test-only opt-in; anything but 'enforce' is shadow.
   const deterministicMode: 'shadow' | 'enforce' =
     readCredential(env.NEWS_DETERMINISTIC_FILTER_MODE, "NEWS_DETERMINISTIC_FILTER_MODE", "shadow")
@@ -305,9 +347,9 @@ export function buildLiveTriageGate(
     },
   };
 
-  if (!baseUrl || !apiKey) return gate;
+  if (!chatTarget) return gate;
 
-  const endpoint = triageChatEndpoint(baseUrl);
+  const { endpoint, apiKey, chatModel, maxAttempts } = chatTarget;
   // AI-RATE-01: every triage chat call goes through the shared NineRouter gate:
   // paced, one in flight, and a 429 or rate-like 503 becomes RateLimitedError.
   // The 60 s timeout starts only after the slot is acquired, so queueing
@@ -315,7 +357,7 @@ export function buildLiveTriageGate(
   const callChat = async (system: string, user: string): Promise<unknown> => {
     const rateGate = getNineRouterRateGate();
     let lastError: unknown = new Error("triage transport failed");
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
       }

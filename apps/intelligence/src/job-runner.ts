@@ -67,7 +67,7 @@ export function classifyJobError(err: unknown): string {
   if (message.includes("timeout") || message.includes("timed out") || message.includes("aborted")) {
     return "model_timeout";
   }
-  if (message.includes("ninerouter") || message.includes("500") || message.includes("502") || message.includes("503") || message.includes("econnrefused")) {
+  if (message.includes("ninerouter") || message.includes("google ai") || message.includes("500") || message.includes("502") || message.includes("503") || message.includes("econnrefused")) {
     return "model_failed";
   }
   if (message.includes("zod") || message.includes("parse") || message.includes("schema") || message.includes("json")) {
