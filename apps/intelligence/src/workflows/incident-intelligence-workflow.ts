@@ -32,6 +32,7 @@ import {
   BMKG_GEMPA_SOURCE_ID,
   PETABENCANA_SOURCE_ID,
   deterministicStructuredInterpretation,
+  groundInterpretationLocation,
 } from "../structured-interpretation.js";
 import { getNineRouterConfig, type NineRouterConfig } from "../providers/ninerouter-adapter.js";
 import { persistReportLineage, recordModelConfiguration } from "./proposal-lineage.js";
@@ -264,7 +265,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       // A retry after a later-step failure (for example a rate limit during
       // correlation) resumes from the saved interpretation: no second model call.
       const checkpointed = await readInterpretationCheckpoint(inputData);
-      const interpretation = checkpointed ?? await interpretReport(
+      const modelInterpretation = checkpointed ?? await interpretReport(
         {
           reportRevisionId: inputData.reportRevisionId,
           reportText: inputData.reportText,
@@ -277,6 +278,9 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
           agent: dependencies.agentOverrides?.interpreter,
         },
       );
+      // HOSTED-14: the model's place and coordinate are kept only when the report text states the place.
+      // Raw checkpoints from before this change are grounded on read too. Structured sources return early above.
+      const interpretation = groundInterpretationLocation(modelInterpretation, inputData.reportText);
       if (!checkpointed) {
         if (!usesFixtureLineage(inputData.datasetKind)) {
           await recordCall(inputData, "interpretation", dependencies.agentOverrides?.interpreter ? "override" : "factory");

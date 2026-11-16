@@ -52,8 +52,12 @@ export interface MapPopupProps {
   onCopyLink: () => void;
 }
 
-function locationNote(marker: PublishedMarker | null): string {
-  if (marker === null) return "Lokasi belum dipetakan dari sumber.";
+function locationNote(event: EventView, marker: PublishedMarker | null): string {
+  if (marker === null) {
+    return event.location_display === "whole_view"
+      ? "Lokasi: seluruh peta Jakarta. Tidak ada titik di peta; bukan pernyataan bahwa area aman."
+      : "Lokasi belum dipetakan dari sumber.";
+  }
   return marker.role === "approximate_place" ? "Titik lokasi perkiraan dari sumber." : "Titik lokasi dari sumber.";
 }
 
@@ -91,7 +95,7 @@ function MapPopupBody({ event, marker, titleId, copyMessage, onClose, onViewDeta
         <strong>{sourceCountText(sources.outlets, sources.copies)}</strong>
         <span className="muted"> · Jumlah sumber bukan bukti kebenaran.</span>
       </p>
-      <p className="map-popup__note muted">{locationNote(marker)}</p>
+      <p className="map-popup__note muted">{locationNote(event, marker)}</p>
       <div className="map-popup__actions">
         <button type="button" className="button button--primary" onClick={onViewDetail}>
           Lihat detail

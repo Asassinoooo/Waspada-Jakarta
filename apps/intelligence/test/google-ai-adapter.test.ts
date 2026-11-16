@@ -4,9 +4,12 @@ import {
   AiProviderConfigError,
   GOOGLE_AI_DEFAULT_CHAT_MODEL,
   GOOGLE_AI_DEFAULT_EMBEDDING_MODEL,
+  GOOGLE_AI_DEFAULT_CHAT_RPM,
+  GOOGLE_AI_DEFAULT_EMBED_RPM,
   GOOGLE_AI_DEFAULT_FALLBACK_CHAT_MODEL,
   GOOGLE_AI_OPENAI_BASE_URL,
   GOOGLE_AI_UNPACED_RPM,
+  GoogleAiRunBudget,
   createGoogleChatFallbackFetch,
   generateGoogleAiEmbedding,
   getGoogleAiConfig,
@@ -33,7 +36,18 @@ const CONFIG: GoogleAiConfig = {
   timeoutMs: 60_000,
   chatRpm: GOOGLE_AI_UNPACED_RPM,
   embedRpm: GOOGLE_AI_UNPACED_RPM,
+  chatRpd: 500,
+  embedRpd: 1000,
+  runsPerDay: 48,
 };
+
+/** HOSTED-14: a budget that never refuses, for tests that check transport behaviour rather than the caps. */
+const UNLIMITED = new GoogleAiRunBudget({
+  chatPerRun: Number.MAX_SAFE_INTEGER,
+  embedPerRun: Number.MAX_SAFE_INTEGER,
+  windowMs: 86_400_000,
+  log: () => undefined,
+});
 
 const CHAT_URL = `${GOOGLE_AI_OPENAI_BASE_URL}/chat/completions`;
 
@@ -116,7 +130,11 @@ describe("Google AI Studio provider config", () => {
     assert.equal(config.embeddingModel, "gemini-embedding-2");
     assert.equal(config.embeddingDimensions, 768);
     assert.equal(config.timeoutMs, 60_000);
-    assert.equal(config.chatRpm, GOOGLE_AI_UNPACED_RPM);
+    assert.equal(config.chatRpm, GOOGLE_AI_DEFAULT_CHAT_RPM);
+    assert.equal(config.embedRpm, GOOGLE_AI_DEFAULT_EMBED_RPM);
+    assert.equal(config.chatRpd, 500);
+    assert.equal(config.embedRpd, 1000);
+    assert.equal(config.runsPerDay, 48);
   });
 
   it("rejects an unknown AI_PROVIDER value instead of guessing", () => {
@@ -132,7 +150,7 @@ describe("Google AI Studio provider config", () => {
     };
     const config = getGoogleAiConfig((name) => env[name]);
     assert.equal(config.chatRpm, 7);
-    assert.equal(config.embedRpm, GOOGLE_AI_UNPACED_RPM);
+    assert.equal(config.embedRpm, GOOGLE_AI_DEFAULT_EMBED_RPM);
     assert.equal(config.timeoutMs, 12_000);
   });
 });
@@ -143,7 +161,9 @@ describe("Google chat fallback", () => {
     const { transport, calls } = fakeTransport([chatOk()]);
     const fetchWithFallback = createGoogleChatFallbackFetch({
       transport,
+      primaryModel: CONFIG.chatModel,
       fallbackModel: CONFIG.fallbackChatModel,
+      budget: UNLIMITED,
       timeoutMs: 60_000,
       log: (line) => logs.push(line),
     });
@@ -167,7 +187,9 @@ describe("Google chat fallback", () => {
     ]);
     const fetchWithFallback = createGoogleChatFallbackFetch({
       transport,
+      primaryModel: CONFIG.chatModel,
       fallbackModel: CONFIG.fallbackChatModel,
+      budget: UNLIMITED,
       timeoutMs: 60_000,
       log: (line) => logs.push(line),
     });
@@ -189,7 +211,9 @@ describe("Google chat fallback", () => {
     const { transport, calls } = fakeTransport([json(400, { error: { message: "bad" } })]);
     const fetchWithFallback = createGoogleChatFallbackFetch({
       transport,
+      primaryModel: CONFIG.chatModel,
       fallbackModel: CONFIG.fallbackChatModel,
+      budget: UNLIMITED,
       timeoutMs: 60_000,
       log: () => undefined,
     });
@@ -204,7 +228,9 @@ describe("Google chat fallback", () => {
     const { transport, calls } = fakeTransport([json(403, { error: { message: "denied" } })]);
     const fetchWithFallback = createGoogleChatFallbackFetch({
       transport,
+      primaryModel: CONFIG.chatModel,
       fallbackModel: CONFIG.fallbackChatModel,
+      budget: UNLIMITED,
       timeoutMs: 60_000,
       log: () => undefined,
     });
@@ -228,7 +254,9 @@ describe("Google chat fallback", () => {
       log: () => undefined,
       transport: createGoogleChatFallbackFetch({
         transport,
+        primaryModel: CONFIG.chatModel,
         fallbackModel: CONFIG.fallbackChatModel,
+        budget: UNLIMITED,
         timeoutMs: 60_000,
         log: () => undefined,
       }),
@@ -254,7 +282,9 @@ describe("Google chat fallback", () => {
       log: () => undefined,
       transport: createGoogleChatFallbackFetch({
         transport,
+        primaryModel: CONFIG.chatModel,
         fallbackModel: CONFIG.fallbackChatModel,
+        budget: UNLIMITED,
         timeoutMs: 60_000,
         log: () => undefined,
       }),
@@ -275,7 +305,9 @@ describe("Google chat fallback", () => {
     ]);
     const fetchWithFallback = createGoogleChatFallbackFetch({
       transport,
+      primaryModel: CONFIG.chatModel,
       fallbackModel: CONFIG.fallbackChatModel,
+      budget: UNLIMITED,
       timeoutMs: 60_000,
       log: (line) => logs.push(line),
     });
@@ -295,7 +327,7 @@ describe("Google embeddings", () => {
     const { clock } = fakeClock();
     const gate = createNineRouterRateGate({ chatRpm: GOOGLE_AI_UNPACED_RPM, embedRpm: GOOGLE_AI_UNPACED_RPM, clock, log: () => undefined, transport });
 
-    const vector = await generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate });
+    const vector = await generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate, budget: UNLIMITED });
 
     assert.equal(vector.length, 768);
     assert.equal(calls.length, 1);
@@ -313,7 +345,7 @@ describe("Google embeddings", () => {
       const { clock } = fakeClock();
       const gate = createNineRouterRateGate({ chatRpm: GOOGLE_AI_UNPACED_RPM, embedRpm: GOOGLE_AI_UNPACED_RPM, clock, log: () => undefined, transport });
       await assert.rejects(
-        () => generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate }),
+        () => generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate, budget: UNLIMITED }),
         /dimension mismatch: expected 768/,
       );
     }
@@ -325,7 +357,7 @@ describe("Google embeddings", () => {
     const { transport } = fakeTransport([json(200, { embedding: { values } })]);
     const { clock } = fakeClock();
     const gate = createNineRouterRateGate({ chatRpm: GOOGLE_AI_UNPACED_RPM, embedRpm: GOOGLE_AI_UNPACED_RPM, clock, log: () => undefined, transport });
-    await assert.rejects(() => generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate }), /non-finite value at index 5/);
+    await assert.rejects(() => generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate, budget: UNLIMITED }), /non-finite value at index 5/);
   });
 
   it("an HTTP error names the status but never the response body", async () => {
@@ -333,7 +365,7 @@ describe("Google embeddings", () => {
     const { clock } = fakeClock();
     const gate = createNineRouterRateGate({ chatRpm: GOOGLE_AI_UNPACED_RPM, embedRpm: GOOGLE_AI_UNPACED_RPM, clock, log: () => undefined, transport });
     await assert.rejects(
-      () => generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate }),
+      () => generateGoogleAiEmbedding("teks uji", { config: CONFIG, gate, budget: UNLIMITED }),
       (error: unknown) => error instanceof Error && error.message.includes("HTTP 503") && !error.message.includes(BODY_SENTINEL),
     );
   });
@@ -343,7 +375,7 @@ describe("Google embeddings", () => {
     const { clock } = fakeClock();
     const gate = createNineRouterRateGate({ chatRpm: GOOGLE_AI_UNPACED_RPM, embedRpm: GOOGLE_AI_UNPACED_RPM, clock, log: () => undefined, transport });
     await assert.rejects(
-      () => generateGoogleAiEmbedding("teks uji", { config: { ...CONFIG, apiKey: "" }, gate }),
+      () => generateGoogleAiEmbedding("teks uji", { config: { ...CONFIG, apiKey: "" }, gate, budget: UNLIMITED }),
       AiProviderConfigError,
     );
     assert.equal(calls.length, 0);
@@ -359,9 +391,9 @@ describe("Google embeddings", () => {
     const { clock } = fakeClock();
     const gate = createNineRouterRateGate({ chatRpm: GOOGLE_AI_UNPACED_RPM, embedRpm: GOOGLE_AI_UNPACED_RPM, clock, log: () => undefined, transport });
     await Promise.all([
-      generateGoogleAiEmbedding("a", { config: CONFIG, gate }),
-      generateGoogleAiEmbedding("b", { config: CONFIG, gate }),
-      generateGoogleAiEmbedding("c", { config: CONFIG, gate }),
+      generateGoogleAiEmbedding("a", { config: CONFIG, gate, budget: UNLIMITED }),
+      generateGoogleAiEmbedding("b", { config: CONFIG, gate, budget: UNLIMITED }),
+      generateGoogleAiEmbedding("c", { config: CONFIG, gate, budget: UNLIMITED }),
     ]);
     assert.equal(maxInFlight(), 1);
   });

@@ -99,7 +99,7 @@ describe("HOSTED-10 point rule", () => {
   it("(a) an agent coordinate inside the box is the one Point, labelled model_approximate", () => {
     assert.deepEqual(
       publicPointOutcomeFor({ category: "disasters_weather", locationLabel: "Cawang", coordinates: MODEL_POINT }),
-      { status: "point", coordinates: MODEL_POINT },
+      { status: "point", coordinates: MODEL_POINT, source: "model_approximate" },
     );
 
     const detail = proposalToEventDetail(proposal("prop-h10-dto-a", { coordinates: MODEL_POINT }), undefined, { version: 1 });

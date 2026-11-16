@@ -609,17 +609,19 @@ async function enrichPublication(
   const support = supportIndexes.map((index) => own.refs[index]!);
   const supportEvidenceRefIds = supportIndexes.map((index) => own.refIds[index]!);
 
+  // HOSTED-14: the point's source comes from the claims' own source ids (source_text only for PetaBencana or BMKG).
   const outcome = publicPointOutcomeFor({
     category: input.category,
     locationLabel: proposal.location_label,
     coordinates: proposal.coordinates,
+    claimSourceIds: (proposal.claims ?? []).map((claim) => claim.source_id),
   });
   if (outcome.status === "point") {
     return {
       support,
       supportEvidenceRefIds,
       geometryIds: [],
-      geometrySource: "model_approximate",
+      geometrySource: outcome.source,
       geometryStatus: "pending_geometry_writer",
     };
   }
