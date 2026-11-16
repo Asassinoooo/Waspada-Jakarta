@@ -33,6 +33,7 @@
     "smoke": "npm run smoke --workspace=@waspada/web",
     "build:web": "npm run build --workspace=@waspada/web",
     "build:worker": "npm run build --workspace=@waspada/worker",
+    "deploy:prod": "npm run build --workspace=@waspada/web && npm run deploy:prod --workspace=@waspada/worker",
     "build": "npm run typecheck && npm run build:web && npm run build:worker"
   },
   "devDependencies": {
