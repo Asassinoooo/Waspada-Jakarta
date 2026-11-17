@@ -1,8 +1,12 @@
 // HOSTED-03: pure checks for headless live ingest. Fake registry, fake SQL and fake clients only. No network.
+// HOSTED-24B adds one in-process PGlite database (migration 001 only) for the source health write. Still no network.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { after, before, describe, it } from "node:test";
+import { after, after as afterAll, before, before as beforeAll, beforeEach, describe, it } from "node:test";
+import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite-pgvector";
+import { postgis } from "@electric-sql/pglite-postgis";
 import { Client } from "pg";
 import type { AccountStore } from "../../apps/db/src/accounts.js";
 import type { SqlExecutor, TransactionalSqlExecutor } from "../../apps/db/src/sql.js";
@@ -38,6 +42,12 @@ import {
   parseRunFlags,
   resolveIngestTimeBudget,
 } from "../hosted/ingest-once.js";
+import {
+  formatSourceHealthLines,
+  recordSourceHealth,
+  rssFetchOutcome,
+  structuredFetchOutcome,
+} from "../hosted/source-health.js";
 // HOSTED-24C: the attribution backfill, its step in the --once order, and the publish fixtures it is tested with.
 import { backfillSourceAttributions, supportKeysOf } from "../hosted/attribution-backfill.js";
 import {
@@ -777,6 +787,223 @@ describe("Neon role-attribute compatibility (HOSTED-19)", () => {
       assert.deepEqual(error.roles, ["waspada_b"]);
       return true;
     });
+  });
+});
+
+const HEALTH_STAMP = "2026-11-17T10:00:00.000Z";
+const healthClock = () => new Date(HEALTH_STAMP);
+
+describe("HOSTED-24B source health: outcome mapping and log lines (pure, fakes only)", () => {
+  it("an RSS poll that fetched is ok, and a source refused before any request is not fetched", () => {
+    assert.equal(rssFetchOutcome({ status: "success" }), "ok");
+    assert.equal(rssFetchOutcome({ status: "success", error: "source_not_cleared" }), "not_fetched");
+  });
+
+  it("an RSS fetch error, timeout, parse error or blocked redirect is failed", () => {
+    assert.equal(rssFetchOutcome({ status: "fetch_error", error: "HTTP 503 Service Unavailable" }), "failed");
+    assert.equal(rssFetchOutcome({ status: "fetch_error", error: BLOCKED_REDIRECT_ERROR }), "failed");
+    assert.equal(rssFetchOutcome({ status: "timeout", error: "Request timed out after 20000ms" }), "failed");
+    assert.equal(rssFetchOutcome({ status: "parse_error", error: "XML parse error" }), "failed");
+  });
+
+  it("PetaBencana and BMKG: success and empty are ok, a lease skip is not fetched, an error or unknown value is failed", () => {
+    assert.equal(structuredFetchOutcome("success"), "ok");
+    assert.equal(structuredFetchOutcome("empty"), "ok");
+    assert.equal(structuredFetchOutcome("skipped"), "not_fetched");
+    assert.equal(structuredFetchOutcome("error"), "failed");
+    assert.equal(structuredFetchOutcome("something_new"), "failed");
+  });
+
+  it("prints counts and a fixed write-failure code only, never a source id or URL", () => {
+    assert.deepEqual(
+      formatSourceHealthLines({ ok: 15, failed: 1, notFetched: 0, writeFailed: 0 }, "[Once] Source health"),
+      ["[Once] Source health: ok=15 failed=1 not_fetched=0"],
+    );
+    const lines = formatSourceHealthLines({ ok: 14, failed: 1, notFetched: 1, writeFailed: 2 }, "[Once] Source health");
+    assert.deepEqual(lines, [
+      "[Once] Source health: ok=14 failed=1 not_fetched=1",
+      "[Once] Source health: write_failed count=2",
+    ]);
+    assert.doesNotMatch(lines.join("\n"), /https?:|:\/\/|source-/u);
+  });
+
+  it("writes one parameterised UPDATE per attempted source, sets only the granted columns, and never inserts", async () => {
+    const statements: { text: string; params: readonly unknown[] }[] = [];
+    const recording: Pick<SqlExecutor, "query"> = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        statements.push({ text, params: params ?? [] });
+        return { rows: [] as unknown as Row[] };
+      },
+    };
+    await recordSourceHealth(recording, [
+      { sourceId: "source-a", outcome: "ok" },
+      { sourceId: "source-b", outcome: "failed" },
+      { sourceId: "source-c", outcome: "not_fetched" },
+    ], healthClock);
+    assert.equal(statements.length, 2, "a not-fetched source is not written");
+    for (const statement of statements) {
+      assert.match(statement.text, /^UPDATE waspada\.source_registry\n/u);
+      assert.doesNotMatch(statement.text, /INSERT/iu);
+      assert.equal(statement.params.length, 2);
+      assert.equal(statement.params[1], HEALTH_STAMP);
+    }
+    assert.match(statements[0]!.text, /SET health_status = 'healthy', last_checked_at = \$2::timestamptz, last_success_at = \$2::timestamptz/u);
+    assert.match(statements[1]!.text, /SET health_status = 'degraded', last_checked_at = \$2::timestamptz\n/u);
+    assert.doesNotMatch(statements[1]!.text, /last_success_at/u);
+    assert.deepEqual(statements.map((statement) => statement.params[0]), ["source-a", "source-b"]);
+  });
+
+  it("a write that throws is counted and never thrown, even when every write fails, and the error text is not logged", async () => {
+    const secret = "SECRET-DB-DETAIL-7d3a";
+    const failing: Pick<SqlExecutor, "query"> = {
+      query: async () => {
+        throw new Error(secret);
+      },
+    };
+    const summary = await recordSourceHealth(failing, [
+      { sourceId: "source-a", outcome: "ok" },
+      { sourceId: "source-b", outcome: "failed" },
+    ], healthClock);
+    assert.deepEqual(summary, { ok: 1, failed: 1, notFetched: 0, writeFailed: 2 });
+    const text = formatSourceHealthLines(summary, "[Once] Source health").join("\n");
+    assert.match(text, /write_failed count=2/u);
+    assert.doesNotMatch(text, new RegExp(secret, "u"));
+  });
+});
+
+describe("HOSTED-24B source health write (PGlite, migration 001, real UPDATE and CHECK)", () => {
+  // Migration 001 defines source_registry, its health_status CHECK and the columns this UPDATE names. Later
+  // migrations add columns that this UPDATE never touches, so the foundation alone is enough for these cases.
+  const FOUNDATION = fileURLToPath(new URL("../../apps/db/migrations/001_foundation.sql", import.meta.url));
+  const ids = expectedLiveSourceIds();
+  const STAMP_LATER = "2026-11-17T10:15:00.000Z";
+  const STAMP_EARLIER = "2026-11-17T09:00:00.000Z";
+  let database: PGlite;
+  let executor: SqlExecutor;
+
+  interface HealthRow {
+    readonly health_status: string;
+    readonly last_checked_at: string | null;
+    readonly last_success_at: string | null;
+  }
+
+  async function registry(): Promise<Map<string, HealthRow>> {
+    const result = await executor.query<HealthRow & { source_id: string }>(
+      `SELECT source_id, health_status,
+              to_char(last_checked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS last_checked_at,
+              to_char(last_success_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS last_success_at
+         FROM waspada.source_registry`,
+    );
+    return new Map(result.rows.map((row) => [row.source_id, {
+      health_status: row.health_status,
+      last_checked_at: row.last_checked_at,
+      last_success_at: row.last_success_at,
+    }]));
+  }
+
+  async function rowCount(): Promise<number> {
+    const result = await executor.query<{ total: number }>("SELECT count(*)::int AS total FROM waspada.source_registry");
+    return result.rows[0]!.total;
+  }
+
+  beforeAll(async () => {
+    database = await PGlite.create({ extensions: { postgis, vector } });
+    executor = {
+      query: async <Row extends object>(statement: string, parameters?: readonly unknown[]) => {
+        const result = await database.query<Row>(statement, parameters ? [...parameters] : undefined);
+        return { rows: result.rows };
+      },
+      execute: async (statement: string) => {
+        await database.exec(statement);
+      },
+    };
+    await applyMigrations(executor, [{ version: "001_foundation", sql: fs.readFileSync(FOUNDATION, "utf8") }]);
+    await seedLiveSourcesInsertMissing(executor);
+  });
+
+  afterAll(async () => {
+    await database.close();
+  });
+
+  beforeEach(async () => {
+    // Every case starts from the seeded state: healthy, with no check times.
+    await executor.execute("UPDATE waspada.source_registry SET health_status = 'healthy', last_checked_at = NULL, last_success_at = NULL");
+  });
+
+  it("writes healthy with both times for a successful fetch, degraded with the check time for a failed one, and leaves a not-fetched row alone", async () => {
+    const [okId, failedId, skippedId] = [ids[0]!, ids[1]!, ids[2]!];
+    const snapshot = await registry();
+    const summary = await recordSourceHealth(executor, [
+      { sourceId: okId, outcome: "ok" },
+      { sourceId: failedId, outcome: "failed" },
+      { sourceId: skippedId, outcome: "not_fetched" },
+    ], healthClock);
+    assert.deepEqual(summary, { ok: 1, failed: 1, notFetched: 1, writeFailed: 0 });
+    const rows = await registry();
+    assert.deepEqual(rows.get(okId), { health_status: "healthy", last_checked_at: HEALTH_STAMP, last_success_at: HEALTH_STAMP });
+    assert.deepEqual(rows.get(failedId), { health_status: "degraded", last_checked_at: HEALTH_STAMP, last_success_at: null });
+    assert.deepEqual(rows.get(skippedId), snapshot.get(skippedId), "a not-fetched source keeps its row");
+  });
+
+  it("a failed fetch keeps the last success time, and the next successful fetch replaces it", async () => {
+    const id = ids[1]!;
+    await executor.query(
+      "UPDATE waspada.source_registry SET last_success_at = $2::timestamptz WHERE source_id = $1",
+      [id, STAMP_EARLIER],
+    );
+    await recordSourceHealth(executor, [{ sourceId: id, outcome: "failed" }], healthClock);
+    assert.deepEqual((await registry()).get(id), {
+      health_status: "degraded",
+      last_checked_at: HEALTH_STAMP,
+      last_success_at: STAMP_EARLIER,
+    });
+    await recordSourceHealth(executor, [{ sourceId: id, outcome: "ok" }], () => new Date(STAMP_LATER));
+    assert.deepEqual((await registry()).get(id), {
+      health_status: "healthy",
+      last_checked_at: STAMP_LATER,
+      last_success_at: STAMP_LATER,
+    });
+  });
+
+  it("never inserts a row for a source the registry does not hold", async () => {
+    assert.equal(await rowCount(), 16);
+    const summary = await recordSourceHealth(executor, [
+      { sourceId: "source-not-registered", outcome: "ok" },
+    ], healthClock);
+    assert.deepEqual(summary, { ok: 1, failed: 0, notFetched: 0, writeFailed: 0 });
+    assert.equal(await rowCount(), 16);
+    assert.equal((await registry()).has("source-not-registered"), false);
+  });
+
+  it("never moves a later check time backwards, so an older write cannot overwrite a newer one", async () => {
+    const id = ids[2]!;
+    await executor.query(
+      "UPDATE waspada.source_registry SET health_status = 'degraded', last_checked_at = $2::timestamptz WHERE source_id = $1",
+      [id, STAMP_LATER],
+    );
+    const snapshot = (await registry()).get(id);
+    await recordSourceHealth(executor, [{ sourceId: id, outcome: "ok" }], healthClock);
+    assert.deepEqual((await registry()).get(id), snapshot);
+  });
+
+  it("a write that throws is counted, and the other sources in the cycle are still written", async () => {
+    const failingId = ids[3]!;
+    const flaky: Pick<SqlExecutor, "query"> = {
+      query: async <Row extends object>(statement: string, parameters?: readonly unknown[]) => {
+        if (parameters?.[0] === failingId) throw new Error("connection terminated");
+        return executor.query<Row>(statement, parameters);
+      },
+    };
+    const summary = await recordSourceHealth(flaky, [
+      { sourceId: ids[2]!, outcome: "ok" },
+      { sourceId: failingId, outcome: "failed" },
+      { sourceId: ids[4]!, outcome: "ok" },
+    ], healthClock);
+    assert.deepEqual(summary, { ok: 2, failed: 1, notFetched: 0, writeFailed: 1 });
+    const rows = await registry();
+    assert.equal(rows.get(ids[2]!)?.health_status, "healthy");
+    assert.equal(rows.get(ids[4]!)?.health_status, "healthy");
+    assert.equal(rows.get(failingId)?.last_checked_at, null, "the failed write left its row unchanged");
   });
 });
 
