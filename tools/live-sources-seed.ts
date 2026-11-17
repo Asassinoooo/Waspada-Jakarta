@@ -3,12 +3,23 @@
 // Owner decision (16 Nov): a revoke must survive restarts. So nothing that already exists is ever changed by a
 // seed. The RSS seed inserts a missing feed as approved, active and auto-acquisition enabled. An existing row,
 // including a revoked one, is left as it is. The hosted bootstrap uses the same rule for all 16 sources.
+//
+// Owner decision (17 Nov): all 16 sources are approved with public display. PetaBencana and BMKG get the RSS grant.
+// Legacy rows that still carry only ['public'] are upgraded by upgradeStructuredPublicDisplayGrants, and nothing else.
 import type { SqlExecutor } from "../apps/db/src/sql.js";
+import { BMKG_GEMPA_SOURCE_ID } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
 import { DEFAULT_NEWS_FEEDS } from "../apps/worker/src/runtime/news-poll-runtime.js";
+import { PETABENCANA_SOURCE_ID } from "../apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.js";
 import { STRUCTURED_LIVE_SOURCE_IDS } from "./live-source-coverage.js";
 
 export const LOCAL_RSS_SEED_TRACE_ID = "trace-seed-rss-sources";
 export const HOSTED_SEED_TRACE_ID = "trace-seed-live-sources";
+
+/** The public-display grant. Constant SQL text only, never user input. */
+const PUBLIC_DISPLAY_REUSE_BASIS_SQL =
+  "ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display']";
+/** The legacy structured grant. It has no public_display token, so the public list never showed these sources. */
+const LEGACY_STRUCTURED_REUSE_BASIS_SQL = "ARRAY['public']::text[]";
 
 function rssDisplayName(sourceId: string): string {
   return sourceId.replace(/^source-/, "").replace(/-/g, " ").toUpperCase();
@@ -38,7 +49,7 @@ export async function seedRssSources(executor: SqlExecutor): Promise<number> {
        VALUES (
          $1, $2, 1, $3, 'newsroom', ARRAY['news', 'incidents'],
          'rss', ARRAY[$4]::text[], ARRAY[]::text[],
-         ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
+         ${PUBLIC_DISPLAY_REUSE_BASIS_SQL},
          'active', 'approved', 'healthy', true, 'never', 600
        )
        ON CONFLICT (source_id) DO NOTHING`,
@@ -56,9 +67,9 @@ export interface LiveSourceSeedSummary {
 /**
  * Hosted bootstrap. Inserts each missing row as approved, active and auto-acquisition enabled.
  * ON CONFLICT DO NOTHING means nothing that already exists is modified, so an audited revocation survives.
- * The PetaBencana and BMKG values mirror the lazy insert in serve-live-pipeline.ts. Approval, the active status,
- * the auto-acquisition flag and polling_interval_seconds (600, the same as the RSS rows) differ. The lazy insert
- * is ON CONFLICT DO NOTHING and runs after this seed, so it never overrides these rows.
+ * The PetaBencana and BMKG rows carry the RSS public-display grant (17 Nov). The lazy insert in serve-live-pipeline.ts
+ * still writes the legacy ['public'] grant, but it is ON CONFLICT DO NOTHING and runs after this seed, so it never
+ * changes these rows. A row seeded before 17 Nov is upgraded by upgradeStructuredPublicDisplayGrants, not here.
  */
 export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promise<LiveSourceSeedSummary> {
   await ensureSeedTrace(executor, HOSTED_SEED_TRACE_ID, '{"seed": "live_sources"}');
@@ -75,7 +86,7 @@ export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promi
        VALUES (
          $1, $2, 1, $3, 'newsroom', ARRAY['news', 'incidents'],
          'rss', ARRAY[$4]::text[], ARRAY[]::text[],
-         ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
+         ${PUBLIC_DISPLAY_REUSE_BASIS_SQL},
          'active', 'approved', 'healthy', true, 'never', 600
        )
        ON CONFLICT (source_id) DO NOTHING
@@ -93,7 +104,7 @@ export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promi
          polling_interval_seconds
        )
        VALUES ($1, $2, 1, $1, 'authority', ARRAY['all'], 'manual_fixture',
-               ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', true, 'never', 600)
+               ARRAY[]::text[], ARRAY[]::text[], ${PUBLIC_DISPLAY_REUSE_BASIS_SQL}, 'active', 'approved', 'healthy', true, 'never', 600)
        ON CONFLICT (source_id) DO NOTHING
        RETURNING source_id`,
       [sourceId, HOSTED_SEED_TRACE_ID],
@@ -102,4 +113,28 @@ export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promi
   }
   const total = DEFAULT_NEWS_FEEDS.length + STRUCTURED_LIVE_SOURCE_IDS.length;
   return { inserted, existing: total - inserted };
+}
+
+/**
+ * Idempotent upgrade (owner decision, 17 Nov) for the PetaBencana and BMKG rows seeded before the public-display grant.
+ * A row changes only when it is still approved, active and auto-acquisition enabled, and its reuse_basis is exactly
+ * ['public']. Revoked, disabled, paused and already-changed rows are never touched. Returns how many rows changed.
+ */
+export async function upgradeStructuredPublicDisplayGrants(executor: SqlExecutor): Promise<number> {
+  let upgraded = 0;
+  for (const sourceId of [PETABENCANA_SOURCE_ID, BMKG_GEMPA_SOURCE_ID]) {
+    const result = await executor.query<{ source_id: string }>(
+      `UPDATE waspada.source_registry
+          SET reuse_basis = ${PUBLIC_DISPLAY_REUSE_BASIS_SQL}
+        WHERE source_id = $1
+          AND approval_status = 'approved'
+          AND registry_status = 'active'
+          AND auto_acquisition_enabled = true
+          AND reuse_basis = ${LEGACY_STRUCTURED_REUSE_BASIS_SQL}
+        RETURNING source_id`,
+      [sourceId],
+    );
+    upgraded += result.rows.length;
+  }
+  return upgraded;
 }

@@ -310,13 +310,24 @@ function projectPublicGeoJSONCandidateCollectionUnchecked(input: unknown): Publi
 
   const detailBudget: PositionBudget = { count: 0 };
   const projectedDetails: EventDetail[] = [];
+  let skippedEvents = 0;
   for (const group of groups.values()) {
     const lookups = group.lookupBatch;
     if (lookups === undefined) fail("GEOMETRY_RESOLUTION_FAILED");
 
     const impacts = preflightEventWork(group.eventRecordJson, lookups.impacts, budget);
     validateExactScopeNameBatch(group.eventRecordJson, impacts, lookups.scopeNames);
-    const context = projectPublicEventForGeometry(group.eventRecordJson, lookups);
+    let context: ReturnType<typeof projectPublicEventForGeometry>;
+    try {
+      context = projectPublicEventForGeometry(group.eventRecordJson, lookups);
+    } catch (error) {
+      // ATTRIBUTION_FAILED: a supporting reference or claim has no single approved attribution. Only this event is skipped.
+      if (error instanceof PublicProjectionError && error.code === "ATTRIBUTION_FAILED") {
+        skippedEvents += 1;
+        continue;
+      }
+      throw error;
+    }
     if (context.eventId !== group.eventId
       || context.version !== group.eventVersion
       || context.eventView.event_id !== group.eventId
@@ -360,6 +371,10 @@ function projectPublicGeoJSONCandidateCollectionUnchecked(input: unknown): Publi
     projectedDetails.push({ ...context.eventView, geometries });
   }
 
+  if (skippedEvents > 0) {
+    // Count only: no event identifiers, record text or attribution detail reach the log.
+    console.info(JSON.stringify({ event: "public_geojson_skipped", skipped: skippedEvents }));
+  }
   return projectPublicFeatureCollection(projectedDetails);
 }
 

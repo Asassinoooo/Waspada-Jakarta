@@ -137,7 +137,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           readonly trace_id: string;
           readonly source_id: string;
           readonly permitted_text: string;
-          readonly retrieved_at: string | Date;
+          readonly published_at: string | Date | null;
           readonly display_name: string | null;
           readonly source_kind: string | null;
           readonly triage_required: boolean;
@@ -147,7 +147,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         const revResult = await options.executor.query<RevisionDbRow>(
           `SELECT
              r.report_revision_id, r.dataset_kind, r.trace_id, r.source_id,
-             r.permitted_text, r.retrieved_at, r.triage_required, r.canonical_url,
+             r.permitted_text, r.published_at, r.triage_required, r.canonical_url,
              s.display_name, s.source_kind
            FROM waspada.report_revisions r
            LEFT JOIN waspada.source_registry s ON s.source_id = r.source_id
@@ -279,7 +279,9 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           sourceDisplayName: rev.display_name || "Laporan Lapangan",
           sourceId: rev.source_id,
           sourceUrl: rev.canonical_url ?? null,
-          publishedAt: new Date(rev.retrieved_at).toISOString(),
+          // HOSTED-22 (F-14): the source's publish time only. The retrieval time is not a publish time, so a revision
+          // with no pubDate passes null, and the interpreter's prompt reads "Not specified".
+          publishedAt: rev.published_at === null ? null : new Date(rev.published_at).toISOString(),
           datasetKind: rev.dataset_kind,
           traceId: job.traceId || rev.trace_id || `trace-${job.jobId}`,
           evidenceChunks,

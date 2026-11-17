@@ -22,7 +22,7 @@ import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-comp
 import { createRecentItemIndex } from "../apps/worker/src/layers/l1-data-knowledge/news-title-dedupe.js";
 import { parseLiveCycleConfig } from "../apps/worker/src/runtime/live-cycle-config.js";
 import { TRIAGE_POLICY_VERSION } from "../apps/worker/src/layers/l1-data-knowledge/news-triage.js";
-import { runGatedRssCycle } from "../apps/worker/src/runtime/gated-rss-persistence.js";
+import { runGatedRssCycle, storedPublishedAtOrNull } from "../apps/worker/src/runtime/gated-rss-persistence.js";
 import { createPipelineRuntimeStatus } from "../apps/worker/src/runtime/pipeline-runtime-status.js";
 import type { WorkerEnvironment } from "../apps/worker/src/layers/l4-application-integration/api.js";
 import worker, { checkSourcePublicDisplay } from "../apps/worker/src/index.js";
@@ -63,7 +63,7 @@ import {
   type SourceHealthEntry,
   type StructuredPollInput,
 } from "./live-source-coverage.js";
-import { seedLiveSourcesInsertMissing } from "./live-sources-seed.js";
+import { seedLiveSourcesInsertMissing, upgradeStructuredPublicDisplayGrants } from "./live-sources-seed.js";
 import {
   drainAiJobs,
   drainDeadlineMs,
@@ -278,6 +278,10 @@ async function prepareLocalDatabase(executor: TransactionalSqlExecutor): Promise
   console.log(`\n[Source Registry] Seeding ${expectedLiveSourceIds().length} live sources...`);
   const seeded = await seedLiveSourcesInsertMissing(executor);
   console.log(`✓ Source registry: ${seeded.inserted} inserted, ${seeded.existing} already present (never modified).`);
+  // Owner decision (17 Nov): PetaBencana and BMKG get the RSS public-display grant. Only legacy rows that are still
+  // approved, active and on are upgraded. Revoked, disabled and already-changed rows are never touched.
+  const upgraded = await upgradeStructuredPublicDisplayGrants(executor);
+  console.log(`✓ Public display grant upgraded on ${upgraded} legacy PetaBencana/BMKG row(s).`);
 
   // Triage attempts/decisions are an append-only audit ledger (WJ-INT-02B) and also the
   // dedupe cache that stops every restart re-sending the 48h window to the model, so they
@@ -721,9 +725,9 @@ async function main() {
         `INSERT INTO waspada.report_revisions (
            dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
            content_hash, permitted_text, permitted_text_hash, normalization_version,
-           retrieved_at, revision_status, record_json, triage_required
+           retrieved_at, published_at, revision_status, record_json, triage_required
          )
-         VALUES ('live', $1, $2, $3, $4, $5, $6, $7, 'v1', $8, 'unreviewed', '{}'::jsonb, false)
+         VALUES ('live', $1, $2, $3, $4, $5, $6, $7, 'v1', $8, $9::timestamptz, 'unreviewed', '{}'::jsonb, false)
          ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING
          RETURNING report_revision_id`,
         [
@@ -735,6 +739,7 @@ async function main() {
           rev.permitted_text,
           rev.permitted_text_hash,
           rev.retrieved_at,
+          storedPublishedAtOrNull(rev),
         ],
       );
       if (insertedRevision.rows.length > 0) {

@@ -140,12 +140,14 @@ export function createPublicEventDetailProjectionService(ports: {
         fail("LOOKUP_READ_FAILED");
       }
 
-      let lookupResult: ValidatedLookupResult;
+      let lookupResult: ValidatedLookupResult | null;
       try {
         lookupResult = validateLookupResult(lookupValue, prepared);
       } catch {
         fail("LOOKUP_RESULT_INVALID");
       }
+      // A supporting reference with no approved attribution: the event is not publicly projectable (the list skips it too).
+      if (lookupResult === null) return { kind: "missing" };
 
       const projectionLookups: PublicProjectionLookups = {
         scopeNames: lookupResult.scopeNames,
@@ -156,10 +158,11 @@ export function createPublicEventDetailProjectionService(ports: {
       try {
         context = projectPublicEventForGeometry(prepared.eventRecord, projectionLookups, { locationLabelPresent: prepared.locationLabelPresent });
       } catch (error) {
+        // ATTRIBUTION_FAILED means no approved attribution for a supporting reference or claim: missing, as in the list.
+        if (error instanceof PublicProjectionError && error.code === "ATTRIBUTION_FAILED") return { kind: "missing" };
         if (error instanceof PublicProjectionError
           && (error.code === "LOOKUPS_INVALID"
-            || error.code === "NAME_LOOKUP_FAILED"
-            || error.code === "ATTRIBUTION_FAILED")) {
+            || error.code === "NAME_LOOKUP_FAILED")) {
           fail("LOOKUP_RESULT_INVALID");
         }
         fail("SNAPSHOT_INVALID");
@@ -213,10 +216,11 @@ function readSnapshotResult(value: unknown): unknown | null {
   return value.snapshot;
 }
 
+/** Returns null when some supporting reference has no approved attribution row; every other mismatch fails. */
 function validateLookupResult(
   value: unknown,
   prepared: PreparedPublicEventProjectionSnapshot,
-): ValidatedLookupResult {
+): ValidatedLookupResult | null {
   if (!hasExactKeys(value, ["scopeNames", "publicAttributions"])
     || !Array.isArray(value.scopeNames)
     || !Array.isArray(value.publicAttributions)) {
@@ -246,7 +250,8 @@ function validateLookupResult(
   }
 
   const expectedAttributions = new Set(prepared.query.supportReferences.map(supportReferenceKey));
-  if (value.publicAttributions.length !== expectedAttributions.size) fail("LOOKUP_RESULT_INVALID");
+  // More rows than references is always invalid. Fewer is handled after the rows are checked (returns null).
+  if (value.publicAttributions.length > expectedAttributions.size) fail("LOOKUP_RESULT_INVALID");
   const seenAttributions = new Set<string>();
   const publicAttributions: Record<string, unknown>[] = [];
   for (const candidate of value.publicAttributions) {
@@ -297,6 +302,8 @@ function validateLookupResult(
     });
   }
 
+  // Fewer approved rows than supporting references: at least one reference has no public attribution (see the caller).
+  if (publicAttributions.length < expectedAttributions.size) return null;
   return { scopeNames, publicAttributions };
 }
 

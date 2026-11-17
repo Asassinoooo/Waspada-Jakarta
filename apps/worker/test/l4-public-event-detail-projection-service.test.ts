@@ -531,6 +531,17 @@ test("rejects malformed geometry port rows without returning partial detail", as
   }
 });
 
+test("HOSTED-22: a supporting reference with no approved attribution is missing, not a lookup error", async () => {
+  // The lookup returns no approved attribution row for the reference. The event is then not publicly projectable, so the
+  // detail route answers not found (the list skips it too), and no geometry I/O happens.
+  const harness = makeHarness({ kind: "found", snapshot: makeSnapshot() }, {
+    lookup: (query) => ({ scopeNames: makeLookupResult(query).scopeNames, publicAttributions: [] }),
+  });
+  assert.deepEqual(await harness.service.read(eventId), { kind: "missing" });
+  assert.deepEqual(harness.calls, ["snapshot", "lookup"]);
+  assert.deepEqual(harness.geometryCalls, []);
+});
+
 test("validates valid and impossible source timestamps before geometry reads", async (t) => {
   await t.test("accepts a valid leap-day timestamp", async () => {
     const harness = makeHarness({ kind: "found", snapshot: makeSnapshot() }, {

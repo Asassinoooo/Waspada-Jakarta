@@ -19,7 +19,7 @@ import {
   structuredHealthEntry,
   type RegistryRow,
 } from "../live-source-coverage.js";
-import { seedLiveSourcesInsertMissing, seedRssSources } from "../live-sources-seed.js";
+import { seedLiveSourcesInsertMissing, seedRssSources, upgradeStructuredPublicDisplayGrants } from "../live-sources-seed.js";
 import {
   buildHostedClientConfig,
   createHostedSession,
@@ -343,6 +343,116 @@ describe("bootstrap source seed", () => {
     const { executor, statements } = recordingExecutor();
     assert.equal(await seedRssSources(executor), 14);
     assert.ok(statements.every((text) => !/DO UPDATE/iu.test(text)), "no statement may update an existing row");
+  });
+});
+
+describe("structured public display grant (17 Nov, fake executor)", () => {
+  const RSS_GRANT = ["model_triage", "model_description", "retain_title", "retain_description", "retain_derived", "public_display"];
+  const LEGACY = ["public"];
+  const PETABENCANA = "petabencana";
+  const BMKG = "source-bmkg-gempa";
+
+  interface RegistryRow {
+    source_id: string;
+    approval_status: string;
+    registry_status: string;
+    auto_acquisition_enabled: boolean;
+    reuse_basis: string[];
+  }
+
+  function legacyRow(sourceId: string, overrides: Partial<RegistryRow> = {}): RegistryRow {
+    return {
+      source_id: sourceId,
+      approval_status: "approved",
+      registry_status: "active",
+      auto_acquisition_enabled: true,
+      reuse_basis: [...LEGACY],
+      ...overrides,
+    };
+  }
+
+  /** Fake registry. It answers the upgrade's UPDATE by applying the same WHERE clause to the rows it holds. */
+  function fakeRegistry(rows: RegistryRow[]): { executor: SqlExecutor; statements: string[] } {
+    const statements: string[] = [];
+    const executor: SqlExecutor = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        statements.push(text);
+        const row = rows.find((candidate) => candidate.source_id === params?.[0]);
+        const eligible = row !== undefined
+          && row.approval_status === "approved"
+          && row.registry_status === "active"
+          && row.auto_acquisition_enabled === true
+          && row.reuse_basis.length === 1
+          && row.reuse_basis[0] === "public";
+        if (!/^\s*UPDATE waspada\.source_registry/u.test(text) || row === undefined || !eligible) {
+          return { rows: [] as unknown as Row[] };
+        }
+        row.reuse_basis = [...RSS_GRANT];
+        return { rows: [{ source_id: row.source_id } as unknown as Row] };
+      },
+      execute: async () => undefined,
+    };
+    return { executor, statements };
+  }
+
+  it("upgrades only the legacy PetaBencana and BMKG rows, adds public_display, and returns the count", async () => {
+    const rssFeed = expectedLiveSourceIds()[0]!;
+    const rows = [legacyRow(PETABENCANA), legacyRow(BMKG), legacyRow(rssFeed)];
+    const { executor, statements } = fakeRegistry(rows);
+
+    assert.equal(await upgradeStructuredPublicDisplayGrants(executor), 2);
+    assert.deepEqual(rows[0]!.reuse_basis, RSS_GRANT);
+    assert.deepEqual(rows[1]!.reuse_basis, RSS_GRANT);
+    assert.deepEqual(rows[2]!.reuse_basis, LEGACY, "an RSS feed is outside this upgrade");
+
+    const updates = statements.filter((text) => /UPDATE waspada\.source_registry/u.test(text));
+    assert.equal(updates.length, 2, "one guarded UPDATE per structured source");
+    for (const text of updates) {
+      assert.match(text, /approval_status = 'approved'/u);
+      assert.match(text, /registry_status = 'active'/u);
+      assert.match(text, /auto_acquisition_enabled = true/u);
+      assert.match(text, /reuse_basis = ARRAY\['public'\]::text\[\]/u);
+      assert.doesNotMatch(text, /DELETE/iu);
+    }
+  });
+
+  it("never changes a revoked, disabled, paused or already-changed row, and a second run changes nothing", async () => {
+    const untouched: Array<[string, Partial<RegistryRow>]> = [
+      ["revoked", { approval_status: "revoked" }],
+      ["disabled", { registry_status: "disabled" }],
+      ["auto-acquisition off", { auto_acquisition_enabled: false }],
+      ["already changed", { reuse_basis: ["public", "model_triage"] }],
+      ["already public_display", { reuse_basis: [...RSS_GRANT] }],
+    ];
+    for (const [label, overrides] of untouched) {
+      const row = legacyRow(BMKG, overrides);
+      const before = JSON.stringify(row);
+      const { executor } = fakeRegistry([row]);
+      assert.equal(await upgradeStructuredPublicDisplayGrants(executor), 0, label);
+      assert.equal(JSON.stringify(row), before, `${label}: the row is unchanged`);
+    }
+
+    const { executor } = fakeRegistry([legacyRow(PETABENCANA), legacyRow(BMKG)]);
+    assert.equal(await upgradeStructuredPublicDisplayGrants(executor), 2);
+    assert.equal(await upgradeStructuredPublicDisplayGrants(executor), 0, "the second run is a no-op");
+  });
+
+  it("a fresh PetaBencana or BMKG seed carries the same public-display grant as the RSS seed", async () => {
+    const statements: { text: string; params: readonly unknown[] }[] = [];
+    const executor: SqlExecutor = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        statements.push({ text, params: params ?? [] });
+        return { rows: [{ source_id: "inserted" } as unknown as Row] };
+      },
+      execute: async () => undefined,
+    };
+    await seedLiveSourcesInsertMissing(executor);
+    const structured = statements.filter((statement) => statement.params[0] === PETABENCANA || statement.params[0] === BMKG);
+    assert.equal(structured.length, 2);
+    for (const statement of structured) {
+      assert.match(statement.text, /'public_display'\]/u);
+      assert.doesNotMatch(statement.text, /ARRAY\['public'\], 'active'/u);
+    }
   });
 });
 

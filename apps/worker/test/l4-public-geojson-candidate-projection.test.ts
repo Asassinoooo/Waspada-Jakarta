@@ -482,7 +482,7 @@ test("rejects malformed candidate identity, duplicates, inconsistent Event JSON,
   );
 });
 
-test("rejects missing, duplicate, extraneous, malformed, and unreviewed lookup values", () => {
+test("rejects extraneous, malformed, and misnamed lookup values, and skips an event whose attribution is missing, duplicated or unreviewed", () => {
   const event = makeEvent();
   const geometry = makeGeometry("geometry-synthetic-lookups", "incident_scene", {
     type: "Point",
@@ -524,16 +524,17 @@ test("rejects missing, duplicate, extraneous, malformed, and unreviewed lookup v
 
   const missingAttribution = makeLookups();
   missingAttribution.publicAttributions = [];
-  assertFailure(
-    () => projectPublicGeoJSONCandidateCollection(makeEnvelope([candidate], [makeBatch(event, missingAttribution)])),
-    "ATTRIBUTION_FAILED",
+  // HOSTED-22: ATTRIBUTION_FAILED skips that event alone, so the collection is empty rather than failing.
+  assert.deepEqual(
+    projectPublicGeoJSONCandidateCollection(makeEnvelope([candidate], [makeBatch(event, missingAttribution)])).features,
+    [],
   );
 
   const duplicateAttribution = makeLookups();
   duplicateAttribution.publicAttributions.push(clone(duplicateAttribution.publicAttributions[0]!));
-  assertFailure(
-    () => projectPublicGeoJSONCandidateCollection(makeEnvelope([candidate], [makeBatch(event, duplicateAttribution)])),
-    "ATTRIBUTION_FAILED",
+  assert.deepEqual(
+    projectPublicGeoJSONCandidateCollection(makeEnvelope([candidate], [makeBatch(event, duplicateAttribution)])).features,
+    [],
   );
 
   const extraAttribution = makeLookups();
@@ -545,9 +546,9 @@ test("rejects missing, duplicate, extraneous, malformed, and unreviewed lookup v
 
   const unreviewedAttribution = makeLookups();
   unreviewedAttribution.publicAttributions[0]!.public_use_approved = false;
-  assertFailure(
-    () => projectPublicGeoJSONCandidateCollection(makeEnvelope([candidate], [makeBatch(event, unreviewedAttribution)])),
-    "ATTRIBUTION_FAILED",
+  assert.deepEqual(
+    projectPublicGeoJSONCandidateCollection(makeEnvelope([candidate], [makeBatch(event, unreviewedAttribution)])).features,
+    [],
   );
 
   const wrongVersionBatch = makeBatch(event);
@@ -556,6 +557,32 @@ test("rejects missing, duplicate, extraneous, malformed, and unreviewed lookup v
     () => projectPublicGeoJSONCandidateCollection(makeEnvelope([candidate], [wrongVersionBatch])),
     "GEOMETRY_RESOLUTION_FAILED",
   );
+});
+
+test("HOSTED-22: an event with no approved attribution is skipped, the other event still renders, and only a count is logged", (t) => {
+  const goodEvent = makeEvent("event-synthetic-geojson-good", ["geometry-synthetic-good"]);
+  const unattributedEvent = makeEvent("event-synthetic-geojson-unattributed", ["geometry-synthetic-unattributed"]);
+  const goodGeometry = makeGeometry("geometry-synthetic-good", "incident_scene", {
+    type: "Point",
+    coordinates: [106.8, -6.2],
+  });
+  const unattributedGeometry = makeGeometry("geometry-synthetic-unattributed", "incident_scene", {
+    type: "Point",
+    coordinates: [106.9, -6.3],
+  });
+  const logged: string[] = [];
+  t.mock.method(console, "info", (line: unknown) => {
+    logged.push(String(line));
+  });
+
+  const result = projectPublicGeoJSONCandidateCollection(makeEnvelope(
+    [makeCandidate(clone(goodEvent), goodGeometry), makeCandidate(clone(unattributedEvent), unattributedGeometry)],
+    [makeBatch(goodEvent), makeBatch(unattributedEvent, { ...makeLookups(), publicAttributions: [] })],
+  ));
+
+  assert.deepEqual(result.features.map((feature) => feature.properties.event_id), [goodEvent.event_id]);
+  assert.deepEqual(logged.map((line) => JSON.parse(line)), [{ event: "public_geojson_skipped", skipped: 1 }]);
+  assert.equal(logged.join("\n").includes(String(unattributedEvent.event_id)), false, "the log names no event");
 });
 
 test("validates exact impact records in each event-version lookup batch", () => {

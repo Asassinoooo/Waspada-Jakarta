@@ -37,7 +37,7 @@ import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-po
 import { TRIAGE_POLICY_VERSION, evaluateSourcePermissions } from "./layers/l1-data-knowledge/news-triage.js";
 import { buildLiveTriageGate } from "./runtime/news-triage-composition.js";
 import { readUncertainTriage, markTriageReviewed } from "../../db/src/news-triage-store.js";
-import { runGatedRssCycle } from "./runtime/gated-rss-persistence.js";
+import { runGatedRssCycle, storedPublishedAtOrNull } from "./runtime/gated-rss-persistence.js";
 
 import { eventBroadcaster, createSSEResponse } from "./layers/l4-application-integration/event-broadcaster.js";
 import { createWebhookIngestHandler, isWebhookIngestPath } from "./layers/l1-data-knowledge/webhook-ingest.js";
@@ -504,9 +504,9 @@ export default {
                     `INSERT INTO waspada.report_revisions (
                        dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
                        content_hash, permitted_text, permitted_text_hash, normalization_version,
-                       retrieved_at, revision_status, record_json, triage_required
+                       retrieved_at, published_at, revision_status, record_json, triage_required
                      )
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb, false)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, $10::timestamptz, 'unreviewed', '{}'::jsonb, false)
                      ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
                     [
                       datasetKind,
@@ -518,6 +518,7 @@ export default {
                       rev.permitted_text,
                       rev.permitted_text_hash,
                       rev.retrieved_at,
+                      storedPublishedAtOrNull(rev),
                     ],
                   );
                   // Persist chunks
@@ -830,9 +831,9 @@ export default {
           `INSERT INTO waspada.report_revisions (
              dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
              content_hash, permitted_text, permitted_text_hash, normalization_version,
-             retrieved_at, revision_status, record_json, triage_required
+             retrieved_at, published_at, revision_status, record_json, triage_required
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, 'unreviewed', '{}'::jsonb, false)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'v1', $9, $10::timestamptz, 'unreviewed', '{}'::jsonb, false)
            ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
           [
             datasetKind,
@@ -844,6 +845,7 @@ export default {
             rev.permitted_text,
             rev.permitted_text_hash,
             rev.retrieved_at,
+            storedPublishedAtOrNull(rev),
           ],
         );
         const rawChunks = revRecord.chunks;

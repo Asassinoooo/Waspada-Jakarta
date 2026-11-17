@@ -738,6 +738,160 @@ export async function writeOriginRows(
   };
 }
 
+/** HOSTED-22: the review version of every attribution row this publisher writes. See writeSourceAttributions. */
+const ATTRIBUTION_REVIEW_VERSION = 1;
+/** HOSTED-22: the fixed audit reason. It names the rule and carries no source text. */
+const ATTRIBUTION_DECISION_REASON = "Attribution follows the source's approval in source_registry at publication (owner decision, 17 Nov 2026).";
+/** HOSTED-22: a query parameter named like a credential. A link carrying one is never shown publicly. */
+const CREDENTIAL_PARAM_PATTERN = /^(api[-_]?key|apikey|key|token|access[-_]?token|auth|secret|signature|sig|password)$/iu;
+
+/**
+ * HOSTED-22: the review decision id of one supporting evidence reference. It is a pure function of the two, so a
+ * repeated publication names the same row.
+ */
+export function attributionDecisionIdFor(datasetKind: string, evidenceRefId: string): string {
+  const hash = createHash("sha256").update("attribution:").update(datasetKind).update(":").update(evidenceRefId).digest("hex");
+  return `attr-${hash.slice(0, 40)}`;
+}
+
+/**
+ * HOSTED-22: the URL an attribution may show, or null. Only an https link with no credentials and no credential-like
+ * query parameter passes. The schema requires https, so an http link gets no attribution rather than a changed scheme.
+ */
+export function attributionUrlFor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const url = value.trim();
+  if (url.length < 9 || url.length > 2048 || /\s/u.test(url) || !url.startsWith("https://")) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") return null;
+  for (const name of parsed.searchParams.keys()) {
+    if (CREDENTIAL_PARAM_PATTERN.test(name)) return null;
+  }
+  return url;
+}
+
+interface AttributionSupportRow {
+  readonly evidence_ref_id: string;
+  readonly report_revision_id: string;
+  readonly permitted_text_hash: string;
+  readonly span_start: number;
+  readonly span_end: number;
+  readonly source_id: string;
+  readonly canonical_url: string;
+  readonly published_at: string | null;
+}
+
+export interface AttributionWriteResult {
+  /** Supporting references that got an approved attribution. A repeat leaves the existing row as it is. */
+  readonly attributed: number;
+  /** Supporting references with no permitted source, no approved registry row, or no usable https link or name. */
+  readonly skipped: number;
+}
+
+/**
+ * HOSTED-22 (owner decision, 16-17 Nov 2026): approving a source grants public display of its attribution. For each
+ * supporting evidence reference of a published version, the publication transaction inserts one approved
+ * public_attribution_review_decisions row when the reference's source (its revision's source_id) is a claim source that
+ * passed the public-display rights check (decideProposal's publicDisplaySourceIds) and is approved in source_registry.
+ * The name is the registry display name. The link is the revision's canonical URL, https only. The publish time is the
+ * revision's own published_at, NULL when the source gave none: the acquisition time is never a publish time (F-14).
+ * source_observed_at stays NULL. The actor is agent:auto-publisher.
+ *
+ * Insert only. review_version is fixed at 1, because the publication role has no read on the table and cannot compute a
+ * next version. A bare ON CONFLICT DO NOTHING keeps the first decision for a reference. A repeat publication therefore
+ * changes nothing, and a later moderator decision on that reference is never overwritten. A reference with no row gets
+ * no approved attribution, and the public projector then refuses that version for the reference (ATTRIBUTION_FAILED).
+ */
+export async function writeSourceAttributions(
+  tx: SqlExecutor,
+  input: {
+    readonly datasetKind: string;
+    readonly evidenceRefIds: readonly string[];
+    readonly publicDisplaySourceIds: ReadonlySet<string>;
+    readonly decidedAt: string;
+  },
+): Promise<AttributionWriteResult> {
+  // The table's CHECK allows only the live dataset.
+  if (input.datasetKind !== "live" || input.evidenceRefIds.length === 0) return { attributed: 0, skipped: 0 };
+  const refs = await tx.query<AttributionSupportRow>(
+    `SELECT evidence.evidence_ref_id::text AS evidence_ref_id, evidence.report_revision_id,
+            evidence.permitted_text_hash, evidence.span_start, evidence.span_end,
+            revision.source_id, revision.canonical_url,
+            CASE WHEN revision.published_at IS NULL THEN NULL
+              ELSE to_char(revision.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+            END AS published_at
+     FROM waspada.evidence_references AS evidence
+     JOIN waspada.report_revisions AS revision
+       ON revision.dataset_kind = evidence.dataset_kind
+      AND revision.report_revision_id = evidence.report_revision_id
+     WHERE evidence.dataset_kind = $1
+       AND evidence.evidence_ref_id = ANY($2::bigint[])
+       AND evidence.relation = 'supports'
+       AND evidence.offset_unit = 'unicode_code_points'`,
+    [input.datasetKind, [...input.evidenceRefIds]],
+  );
+
+  const sourceIds = [...new Set(refs.rows.map((row) => row.source_id))];
+  const registry = new Map<string, { readonly displayName: string; readonly approved: boolean }>();
+  if (sourceIds.length > 0) {
+    const rows = await tx.query<{ source_id: string; display_name: string; approval_status: string }>(
+      "SELECT source_id, display_name, approval_status FROM waspada.source_registry WHERE source_id = ANY($1::text[])",
+      [sourceIds],
+    );
+    for (const row of rows.rows) {
+      registry.set(row.source_id, { displayName: row.display_name.trim(), approved: row.approval_status === "approved" });
+    }
+  }
+
+  let attributed = 0;
+  let skipped = 0;
+  for (const ref of refs.rows) {
+    const source = registry.get(ref.source_id);
+    const url = attributionUrlFor(ref.canonical_url);
+    const rightsBasisRef = `source_registry:${ref.source_id}`;
+    if (source === undefined || !source.approved || !input.publicDisplaySourceIds.has(ref.source_id)
+      || source.displayName.length === 0 || source.displayName.length > 200
+      || rightsBasisRef.length > 500 || url === null) {
+      skipped += 1;
+      continue;
+    }
+    await tx.query(
+      `INSERT INTO waspada.public_attribution_review_decisions (
+         review_decision_id, dataset_kind, evidence_ref_id, report_revision_id, permitted_text_hash,
+         span_start, span_end, offset_unit, relation, review_version, decision_status, rights_basis_ref,
+         public_display_name, source_url, source_published_at, source_observed_at, reviewer_id,
+         decision_reason, reviewed_at)
+       VALUES ($1, $2, $3::bigint, $4, $5, $6::integer, $7::integer, 'unicode_code_points', 'supports', $8::integer,
+         'approved', $9, $10, $11, $12::timestamptz, NULL, $13, $14, $15::timestamptz)
+       ON CONFLICT DO NOTHING`,
+      [
+        attributionDecisionIdFor(input.datasetKind, ref.evidence_ref_id),
+        input.datasetKind,
+        ref.evidence_ref_id,
+        ref.report_revision_id,
+        ref.permitted_text_hash,
+        ref.span_start,
+        ref.span_end,
+        ATTRIBUTION_REVIEW_VERSION,
+        rightsBasisRef,
+        source.displayName,
+        url,
+        ref.published_at,
+        AGENT_AUTO_PUBLISHER_ID,
+        ATTRIBUTION_DECISION_REASON,
+        input.decidedAt,
+      ],
+    );
+    attributed += 1;
+  }
+  return { attributed, skipped };
+}
+
 function parseJsonObject(value: unknown): Record<string, unknown> | null {
   try {
     const parsed = typeof value === "string" ? JSON.parse(value) : value;
@@ -968,6 +1122,16 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
   });
   if (origins.origins > 0) {
     console.info(JSON.stringify({ event: "publication_origins", origins: origins.origins, support_refs: enrichment.supportEvidenceRefIds.length }));
+  }
+  // HOSTED-22: the approved attribution of each supporting reference, from the source's approval at publication. Live only.
+  const attributions = await writeSourceAttributions(tx, {
+    datasetKind,
+    evidenceRefIds: enrichment.supportEvidenceRefIds,
+    publicDisplaySourceIds: core.publicDisplaySourceIds,
+    decidedAt,
+  });
+  if (attributions.attributed > 0 || attributions.skipped > 0) {
+    console.info(JSON.stringify({ event: "publication_attributions", attributed: attributions.attributed, skipped: attributions.skipped }));
   }
   const record = buildEventRecordV2({
     datasetKind,

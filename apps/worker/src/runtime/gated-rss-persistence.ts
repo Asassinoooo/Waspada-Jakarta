@@ -44,6 +44,29 @@ export interface AcceptedRssPersistInput {
 }
 
 /**
+ * HOSTED-22 (owner rule F-14): the publish time of a revision is the RSS item's own pubDate, parsed by the ingest. A
+ * missing or unparseable value is NULL. It is never the retrieval time or any other processing time.
+ */
+function publishedInstantOrNull(value: string | null | undefined): string | null {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+/**
+ * HOSTED-22 (F-14), for the structured inserts (PetaBencana, BMKG, webhook). Stores the revision's own time as its
+ * publish time. The BMKG mapper falls back to retrieved_at in memory when its feed has no DateTime, so a value equal
+ * to retrieved_at is acquisition time and is stored as NULL. Anything that is not a valid instant is NULL too.
+ */
+export function storedPublishedAtOrNull(rev: {
+  readonly published_at: string | null;
+  readonly retrieved_at: string;
+}): string | null {
+  if (rev.published_at === rev.retrieved_at) return null;
+  return publishedInstantOrNull(rev.published_at);
+}
+
+/**
  * Persist one accepted (ingest-disposition) RSS item atomically: traces,
  * triage decision (+ attempt-counted snapshot), attempt ledger row, revision
  * (with SELECT-first content-conflict check), authorized chunks, and the
@@ -280,14 +303,15 @@ export async function persistAcceptedRssItem(
     });
     // (4) revision row carrying the predecessor link (consistency already
     // verified above; ON CONFLICT DO NOTHING keeps identical replays safe).
+    // HOSTED-22 (F-14): published_at is the item's own pubDate, or NULL. The retrieval time is never written here.
     await tx.query(
       `INSERT INTO waspada.report_revisions (
          dataset_kind, report_revision_id, trace_id, source_id, canonical_url,
          source_revision_key, content_hash, permitted_text, permitted_text_hash,
-         normalization_version, retrieved_at, revision_status, record_json, supersedes_id,
+         normalization_version, retrieved_at, published_at, revision_status, record_json, supersedes_id,
          triage_required
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'v1', $10, 'unreviewed', '{}'::jsonb, $11, true)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'v1', $10, $11::timestamptz, 'unreviewed', '{}'::jsonb, $12, true)
        ON CONFLICT (dataset_kind, report_revision_id) DO NOTHING`,
       [
         input.datasetKind,
@@ -300,6 +324,7 @@ export async function persistAcceptedRssItem(
         rev.permitted_text,
         rev.permitted_text_hash,
         rev.retrieved_at,
+        publishedInstantOrNull(rev.published_at),
         predecessorRow?.report_revision_id ?? null,
       ],
     );

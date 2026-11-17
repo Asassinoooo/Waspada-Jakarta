@@ -35,12 +35,14 @@ export function lineageIdsFor(key: string): ProposalLineage {
 /**
  * `retrievedAt` is the revision's retrieval time. A test that counts reports in time windows passes a
  * time outside every window it counts, so the fixture revision does not change those counts.
+ * `publishedAt` is the source's own publish time (HOSTED-22). It defaults to null, as before.
  */
 export async function seedProposalLineage(
   executor: TransactionalSqlExecutor,
   key: string,
   datasetKind: DatasetKind = "live",
   retrievedAt: string = NOW,
+  publishedAt: string | null = null,
 ): Promise<ProposalLineage> {
   const ids = lineageIdsFor(key);
   const traceId = ids.trace_id;
@@ -81,7 +83,7 @@ export async function seedProposalLineage(
     permittedText: TEXT,
     permittedTextHash: textHash,
     normalizationVersion: "lineage-fixture-v1",
-    publishedAt: null,
+    publishedAt,
     observedAt: null,
     retrievedAt,
     validFrom: null,

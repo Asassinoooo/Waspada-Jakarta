@@ -111,6 +111,17 @@ export function isSeismicEventRelevant(item: BmkgGempaRawItem): boolean {
 }
 
 /**
+ * The feed's own time as an ISO instant. A missing DateTime keeps the in-memory fallback to retrieved_at, which the
+ * store never writes as a publish time (F-14). An unparseable DateTime is null: it neither throws nor falls back to
+ * the retrieval time, so the item still flows with no publish time.
+ */
+function feedPublishedAt(dateTime: string, retrievedAt: string): string | null {
+  if (!dateTime) return retrievedAt;
+  const parsed = Date.parse(dateTime);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+/**
  * Maps a BMKG raw earthquake item to a StoredReportRevision.
  */
 export function mapBmkgGempaToRevision(
@@ -151,7 +162,7 @@ export function mapBmkgGempaToRevision(
     canonical_url: `${BMKG_CANONICAL_BASE}#${reportRevisionId}`,
     permitted_text: permittedText,
     permitted_text_hash: hash,
-    published_at: item.DateTime ? new Date(item.DateTime).toISOString() : retrievedAt,
+    published_at: feedPublishedAt(item.DateTime, retrievedAt),
     retrieved_at: retrievedAt,
     revision_status: "unreviewed",
     chunks: [chunk],

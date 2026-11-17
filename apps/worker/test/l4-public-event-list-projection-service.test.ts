@@ -232,6 +232,31 @@ test("HOSTED-02: skips one candidate the strict projector rejects as INVALID_EVE
   await assertServiceError(otherRejection.read({ limit: 2 }), "PROJECTION_READ_FAILED", [eventB]);
 });
 
+test("HOSTED-22: skips one candidate the strict projector refuses as ATTRIBUTION_FAILED, keeps the valid one, and logs only a count", async (t) => {
+  const candidates = [
+    makeCandidate(eventA, firstTime),
+    makeCandidate(eventB, olderTime),
+  ];
+  const nextCursor = cursorFor(candidates[1]!);
+  const logged: string[] = [];
+  t.mock.method(console, "info", (line: unknown) => {
+    logged.push(String(line));
+  });
+  const result = await createService(
+    makePage(candidates, nextCursor),
+    (eventId) => {
+      // The shape the real projection service raises when a supporting reference has no approved attribution.
+      if (eventId === eventB) throw new PublicEventProjectionServiceError("PROJECTION_FAILED", "ATTRIBUTION_FAILED");
+      return { kind: "found", event: makeEventView(String(eventId)) };
+    },
+  ).read({ limit: 2 });
+
+  assert.deepEqual(result.events.map((event) => event.event_id), [eventA]);
+  assert.deepEqual(result.nextCursor, nextCursor);
+  assert.deepEqual(logged.map((line) => JSON.parse(line)), [{ event: "public_event_list_skipped", skipped: 1 }]);
+  assert.equal(logged.join("\n").includes(eventB), false, "the log names no event");
+});
+
 test("rejects closed request violations before calling either injected port", async () => {
   let candidateCalls = 0;
   let projectionCalls = 0;

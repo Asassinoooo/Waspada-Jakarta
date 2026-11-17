@@ -75,6 +75,27 @@ test("createBmkgPollRuntime polls autogempa and gempaterkini endpoints and retur
   assert.equal(result.revisions[0]!.source_id, BMKG_GEMPA_SOURCE_ID);
 });
 
+test("an unparseable BMKG DateTime gives a null publish time: no throw, no retrieval-time fallback, the item still flows", async () => {
+  const retrievedAt = "2026-10-28T02:00:00.000Z";
+  const unparseable: BmkgGempaRawItem = { ...SAMPLE_AUTOGEMPA, DateTime: "not-a-date" };
+
+  const rev = mapBmkgGempaToRevision(unparseable, retrievedAt);
+  assert.ok(rev !== null, "the item is still mapped");
+  assert.equal(rev.published_at, null);
+  assert.equal(rev.retrieved_at, retrievedAt);
+
+  const mockFetch: typeof fetch = async (input) => {
+    const body = String(input).includes("autogempa")
+      ? { Infogempa: { gempa: unparseable } }
+      : { Infogempa: { gempa: [] } };
+    return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const result = await createBmkgPollRuntime({ fetch: mockFetch, now: () => retrievedAt }).poll();
+  assert.equal(result.outcome, "success");
+  assert.equal(result.revisions.length, 1, "the poll keeps the item");
+  assert.equal(result.revisions[0]!.published_at, null);
+});
+
 test("createBmkgPollRuntime handles network failure gracefully without throwing", async () => {
   const failingFetch: typeof fetch = async () => {
     throw new Error("Network unreachable");
