@@ -250,6 +250,45 @@ export function sourcePublishedAtText(event: EventView): string | null {
   return earliest === null ? null : formatInstant(earliest);
 }
 
+/** The fields that make two attribution entries one source. */
+export interface ClaimSourceEntry {
+  readonly display_name: string;
+  readonly url: string;
+  readonly published_at: string | null;
+  readonly excerpt: string | null;
+}
+
+/** One source line for a claim, after repeated attributions of the same source are merged. */
+export interface ClaimSourceLine<T extends ClaimSourceEntry> {
+  /** The first occurrence. Its name, URL, times and position give the line. */
+  readonly source: T;
+  /** Every distinct excerpt of this source, in order. Empty when no occurrence carries one. */
+  readonly excerpts: readonly string[];
+}
+
+/**
+ * HOSTED-24A: the API writes one attribution per evidence item, so two quotes from the same article repeat the same
+ * source line. Entries with the same display name, URL and source publish time are one source. The first occurrence
+ * keeps its place in the order. Its different excerpts are kept, so no quoted text is dropped. Display only: the API
+ * data is not changed.
+ */
+export function collapseClaimSources<T extends ClaimSourceEntry>(sources: readonly T[]): ClaimSourceLine<T>[] {
+  const lines: { source: T; excerpts: string[] }[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const source of sources) {
+    const key = JSON.stringify([source.display_name, source.url, source.published_at ?? null]);
+    const index = indexByKey.get(key);
+    if (index === undefined) {
+      indexByKey.set(key, lines.length);
+      lines.push({ source, excerpts: source.excerpt ? [source.excerpt] : [] });
+      continue;
+    }
+    const line = lines[index]!;
+    if (source.excerpt && !line.excerpts.includes(source.excerpt)) line.excerpts.push(source.excerpt);
+  }
+  return lines;
+}
+
 /** Publication time (diterbitkan) for this public version. */
 export function publishedAtText(event: EventView): string {
   return event.published_at ? formatInstant(event.published_at) : "Tidak diketahui";

@@ -51,7 +51,9 @@ function renderDetail(current: PublicContext | null, data: EventDetailRecord = r
 test("R-05: a live record is labelled as live data, never as synthetic or fixture", () => {
   const html = renderDetail(context("live"));
   assert.doesNotMatch(textOf(html), /sintetis|fixture|Contoh API|dataset demo/u);
-  assert.match(html, /Detail dari API lokal</u);
+  // HOSTED-24A (R-09): the hosted site is not a local API, so the live kicker names the event detail only.
+  assert.match(html, /Detail peristiwa</u);
+  assert.doesNotMatch(textOf(html), /API lokal/u);
   assert.match(html, /Record ini menampilkan waktu dan sumbernya\. Ini bukan peringatan darurat/u);
   assert.match(html, /<dt>Siklus<\/dt><dd>Berlangsung<\/dd>/u);
   assert.match(html, /Dievaluasi /u);
@@ -71,7 +73,7 @@ test("R-05: a demo record keeps the synthetic demo wording", () => {
 test("R-05: with no known dataset mode the record is labelled neutrally", () => {
   const html = renderDetail(null);
   assert.doesNotMatch(textOf(html), /sintetis|fixture|Contoh API|dataset live/u);
-  assert.match(html, /Detail dari API lokal</u);
+  assert.match(html, /Detail peristiwa</u);
 });
 
 test("R-05: live loading and unavailable states do not call the record a sample", () => {
