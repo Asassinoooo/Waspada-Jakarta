@@ -5,6 +5,7 @@ import { documentedPresentationFixture as presentation } from "./presentation-fi
 import { MapPanel, RecordMapPanel } from "./MapPanel.js";
 import { SeverityChip } from "./MapSeverity.js";
 import {
+  collapseClaimSources,
   eventHasTime,
   publicationPathText,
   SEVERITY_NOTE,
@@ -229,7 +230,7 @@ function ApiEventDetail({
           </section>
           <div className="state-panel state-panel--loading" role="status">
             <span className="loading-rule" aria-hidden="true" />
-            <strong>{wording(demo, "Memuat record sintetis dari API lokal…", "Memuat record dari API lokal…")}</strong>
+            <strong>{wording(demo, "Memuat record sintetis dari API lokal…", "Memuat detail peristiwa…")}</strong>
             <span>{wording(demo, "Data ini adalah contoh antarmuka, bukan laporan langsung.", "Ini bukan peringatan darurat.")}</span>
           </div>
         </>
@@ -244,14 +245,14 @@ function ApiEventDetail({
       {detail.status === "unavailable" && (
         <section className="state-panel state-panel--error" role="alert">
           <strong>{wording(demo, "Detail contoh belum dapat dimuat.", "Detail belum dapat dimuat.")}</strong>
-          <p>API lokal sementara tidak tersedia. Keadaan keselamatan tidak diketahui.</p>
+          <p>{wording(demo, "API lokal sementara tidak tersedia.", "Layanan sementara tidak tersedia.")} Keadaan keselamatan tidak diketahui.</p>
           <button className="button button--primary" type="button" onClick={onRetryDetail}>Coba lagi memuat detail</button>
         </section>
       )}
       {event && (
         <>
           <section className="detail-heading" aria-labelledby="detail-title">
-            <p className="section-kicker">{wording(demo, "Detail dari API lokal · record sintetis", "Detail dari API lokal")}</p>
+            <p className="section-kicker">{wording(demo, "Detail dari API lokal · record sintetis", "Detail peristiwa")}</p>
             <h1 id="detail-title">{event.title}</h1>
             <p>{event.summary}</p>
             {severity !== null && (
@@ -329,11 +330,11 @@ function ApiEventDetail({
                       <p>Waktu kejadian klaim: {formatEventTime({ event_time: claim.event_time })}</p>
                       {claim.qualifiers.length > 0 && <p className="qualifier">{claim.qualifiers.join(" ")}</p>}
                       {claim.sources.length === 0 && <p>Atribusi sumber tidak tersedia pada record ini.</p>}
-                      {claim.sources.map((source) => (
-                        <div className="source-record" key={source.url}>
+                      {collapseClaimSources(claim.sources).map(({ source, excerpts }, index) => (
+                        <div className="source-record" key={`${index}:${source.url}`}>
                           <h3>{source.display_name}</h3>
                           <p>Waktu sumber diterbitkan: {formatInstant(source.published_at)} · waktu observasi: {formatInstant(source.observed_at)}</p>
-                          {source.excerpt && <blockquote className="source-excerpt">{source.excerpt}</blockquote>}
+                          {excerpts.map((excerpt) => <blockquote className="source-excerpt" key={excerpt}>{excerpt}</blockquote>)}
                           <a className="text-link" href={source.url} target="_blank" rel="noreferrer">Buka sumber publik</a>
                         </div>
                       ))}

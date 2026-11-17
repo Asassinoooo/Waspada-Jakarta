@@ -46,6 +46,7 @@ import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.j
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
 import { startLiveFreshness } from "./live-freshness-job.js";
 import { createHostedSession, type HostedSession } from "./hosted/hosted-session.js";
+import { backfillSourceAttributions } from "./hosted/attribution-backfill.js";
 import {
   checkLiveSourceCoverage,
   expectedLiveSourceIds,
@@ -912,6 +913,14 @@ async function main() {
               sourcePermission: parseAutoPublishSourcePermission(env.AUTO_PUBLISH_SOURCE_PERMISSION),
             },
           ),
+          deadlineMs: sweepDeadlineMs,
+          now: () => Date.now(),
+        }),
+        // HOSTED-24C: published versions whose supporting evidence has no attribution row get it here (idempotent,
+        // capped). Events published before HOSTED-22 are otherwise skipped from the public list.
+        attribution: () => backfillSourceAttributions({
+          executor,
+          checkPublicDisplay: (sourceId) => checkSourcePublicDisplay(env, sourceId),
           deadlineMs: sweepDeadlineMs,
           now: () => Date.now(),
         }),

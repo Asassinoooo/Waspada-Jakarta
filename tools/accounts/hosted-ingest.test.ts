@@ -3,14 +3,13 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { after as afterAll, before as beforeAll, beforeEach, describe, it } from "node:test";
+import { after, after as afterAll, before, before as beforeAll, beforeEach, describe, it } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { postgis } from "@electric-sql/pglite-postgis";
 import { Client } from "pg";
 import type { AccountStore } from "../../apps/db/src/accounts.js";
-import { applyMigrations } from "../../apps/db/src/migrations.js";
-import type { SqlExecutor } from "../../apps/db/src/sql.js";
+import type { SqlExecutor, TransactionalSqlExecutor } from "../../apps/db/src/sql.js";
 import { BLOCKED_REDIRECT_ERROR } from "../../apps/worker/src/runtime/outbound-fetch-policy.js";
 import {
   checkLiveSourceCoverage,
@@ -49,6 +48,31 @@ import {
   rssFetchOutcome,
   structuredFetchOutcome,
 } from "../hosted/source-health.js";
+// HOSTED-24C: the attribution backfill, its step in the --once order, and the publish fixtures it is tested with.
+import { backfillSourceAttributions, supportKeysOf } from "../hosted/attribution-backfill.js";
+import {
+  formatAttributionLine,
+  runOnceSequence,
+  type AttributionBackfillResult,
+  type DrainResult,
+  type OnceSteps,
+  type PublicationSweepResult,
+} from "../hosted/ingest-once.js";
+import { createTestDatabase, type TestDatabase } from "../../apps/db/test/harness.js";
+import { seedProposalLineage, type ProposalLineage } from "../../apps/db/test/proposal-lineage-fixture.js";
+import { applyMigrations, readMigrations } from "../../apps/db/src/migrations.js";
+import { createEventProposalWriter, type EventProposalDto } from "../../apps/db/src/event-proposal-writer.js";
+import { createPublicEventListRepository } from "../../apps/db/src/public-event-list.js";
+import { createPublicEventSnapshotRepository } from "../../apps/db/src/public-event-snapshot.js";
+import { createPublicProjectionLookupRepository } from "../../apps/db/src/public-projection-lookups.js";
+import { createPublicEventListProjectionService } from "../../apps/worker/src/layers/l4-application-integration/public-event-list-projection-service.js";
+import { createPublicEventProjectionService } from "../../apps/worker/src/layers/l4-application-integration/public-event-projection-service.js";
+import {
+  AGENT_AUTO_PUBLISHER_ID,
+  attributionDecisionIdFor,
+  decideProposal,
+  type ProposalDecisionDependencies,
+} from "../../apps/worker/src/layers/l4-application-integration/proposal-publication.js";
 
 const READY_ROWS: RegistryRow[] = expectedLiveSourceIds().map((id) => ({
   source_id: id,
@@ -980,5 +1004,334 @@ describe("HOSTED-24B source health write (PGlite, migration 001, real UPDATE and
     assert.equal(rows.get(ids[2]!)?.health_status, "healthy");
     assert.equal(rows.get(ids[4]!)?.health_status, "healthy");
     assert.equal(rows.get(failingId)?.last_checked_at, null, "the failed write left its row unchanged");
+  });
+});
+
+// HOSTED-24C: the attribution backfill. An event published before HOSTED-22 has no attribution row, so the public list
+// skips it. The backfill gives it the row the publish path would have written, and nothing else. One PGlite instance serves
+// the whole DB describe, because repeated PGlite instances in one process crash V8 under WSL Node 24. The publish path is
+// the real decideProposal, and the lineage is authored synthetic data.
+
+const H24C_RETRIEVED_AT = "2026-11-10T08:00:00.000Z";
+const H24C_SOURCE_PUBLISHED_AT = "2026-11-09T05:30:00.000Z";
+const H24C_SOURCE_PUBLISHED_AT_TEXT = "2026-11-09T05:30:00.000000Z";
+const H24C_CLAIM_TEXT = "Genangan setinggi 50 cm di Cawang (fiktif)";
+const H24C_ZERO: AttributionBackfillResult = { candidates: 0, attributed: 0, skipped: 0, failed: 0 };
+
+const h24cSource = (key: string): string => `source-lineage-${key}`;
+const h24cRevision = (key: string): string => `rev-lineage-${key}`;
+
+function h24cProposal(lineage: ProposalLineage, key: string, incidentId: string): EventProposalDto {
+  const sourceId = h24cSource(key);
+  return {
+    schema_version: "2.0",
+    ...lineage,
+    proposal_id: `prop-${incidentId}`,
+    incident_id: incidentId,
+    title: "Genangan di Cawang (fiktif)",
+    incident_type: "genangan_air_luapan_saluran",
+    primary_category: "disasters_weather",
+    compatibility_category: "flood",
+    severity: "medium",
+    event_time: { precision: "exact", value: "2026-11-10T08:00:00.000Z" },
+    location_label: "Cawang, Jakarta Timur",
+    coordinates: null,
+    claims: [{
+      claim_id: "claim-1",
+      claim_text: H24C_CLAIM_TEXT,
+      evidence_label: "attributed_report",
+      support_assessment: "supported",
+      quote_text: H24C_CLAIM_TEXT,
+      evidence_ref_id: `chk-${incidentId}`,
+      source_id: sourceId,
+      outlet: "Fictional lineage source",
+      source_url: `https://lineage.invalid/${key}`,
+    }],
+    impacts: [],
+    interpretation_category: null,
+    source_id: sourceId,
+    is_multi_source: false,
+    source_count: 1,
+    has_discrepancy: false,
+    discrepancy_summary: null,
+    discrepancies: [],
+    caveats: [],
+    correlation_relationship: "primary_initial",
+    proposed_at: "2026-11-10T08:05:00.000Z",
+  } as EventProposalDto;
+}
+
+describe("HOSTED-24C attribution backfill (PGlite, real publish path)", () => {
+  let db: TestDatabase;
+  let deps: ProposalDecisionDependencies;
+  const lineages = new Map<string, ProposalLineage>();
+  /** The sources the rights check permits right now. An owner approval is modelled by adding the source here. */
+  const permitted = new Set<string>();
+  const checkPublicDisplay = async (sourceId: string): Promise<boolean> => permitted.has(sourceId);
+
+  const persistAndPublish = async (key: string, incidentId: string, sourcePermission?: "required" | "local_relaxed") => {
+    const lineage = lineages.get(key);
+    assert.ok(lineage, `lineage ${key} is seeded`);
+    await createEventProposalWriter(db.executor).persistProposal(h24cProposal(lineage, key, incidentId), "live");
+    return decideProposal(deps, {
+      proposalId: `prop-${incidentId}`,
+      action: "auto_publish",
+      actor: { kind: "agent", actorId: AGENT_AUTO_PUBLISHER_ID },
+      ...(sourcePermission === undefined ? {} : { sourcePermission }),
+    });
+  };
+  const backfill = (executor: TransactionalSqlExecutor = db.executor): Promise<AttributionBackfillResult> => backfillSourceAttributions({
+    executor,
+    checkPublicDisplay,
+    deadlineMs: Number.POSITIVE_INFINITY,
+    now: () => 0,
+  });
+  const listService = () => createPublicEventListProjectionService({
+    candidates: createPublicEventListRepository(db.executor),
+    projections: createPublicEventProjectionService({
+      snapshots: createPublicEventSnapshotRepository(db.executor),
+      lookups: createPublicProjectionLookupRepository(db.executor),
+    }),
+  });
+  const listedEventIds = async (): Promise<string[]> => (await listService().read()).events.map((event) => event.event_id);
+  const allAttributionRows = async (): Promise<readonly Record<string, unknown>[]> => (await db.executor.query<Record<string, unknown>>(
+    `SELECT review_decision_id, dataset_kind, evidence_ref_id::text AS evidence_ref_id, report_revision_id, review_version,
+            decision_status, public_display_name, source_url, reviewer_id, rights_basis_ref, relation, offset_unit,
+            to_char(reviewed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS reviewed_at,
+            to_char(source_published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS source_published_at
+     FROM waspada.public_attribution_review_decisions
+     ORDER BY review_decision_id`,
+  )).rows;
+  const rowsFor = async (key: string) => (await allAttributionRows()).filter((row) => row.report_revision_id === h24cRevision(key));
+  const counts = async () => (await db.executor.query<{ versions: number; decisions: number }>(
+    `SELECT (SELECT COUNT(*)::int FROM waspada.event_versions WHERE dataset_kind = 'live') AS versions,
+            (SELECT COUNT(*)::int FROM waspada.publication_decisions WHERE dataset_kind = 'live') AS decisions`,
+  )).rows[0]!;
+  const decidedAtOf = async (incidentId: string): Promise<string> => (await db.executor.query<{ decided_at: string }>(
+    `SELECT to_char(decided_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS decided_at
+     FROM waspada.publication_decisions WHERE dataset_kind = 'live' AND proposal_id = $1`,
+    [`prop-${incidentId}`],
+  )).rows[0]!.decided_at;
+
+  before(async () => {
+    db = await createTestDatabase();
+    await applyMigrations(db.executor, await readMigrations(new URL("../../apps/db/migrations/", import.meta.url)));
+    // The public views read only a dataset the namespace config names as live.
+    await db.executor.query("INSERT INTO waspada.dataset_namespace_config (singleton, dataset_kind) VALUES (true, 'live')");
+    deps = { executor: db.executor, datasetKind: "live", checkPublicDisplay };
+    for (const key of ["h24c-ok", "h24c-gap", "h24c-off", "h24c-flaky", "h24c-flaky2"]) {
+      lineages.set(key, await seedProposalLineage(db.executor, key, "live", H24C_RETRIEVED_AT, H24C_SOURCE_PUBLISHED_AT));
+    }
+    // Published with its attribution: the source is permitted at publication, as the HOSTED-22 path writes it.
+    permitted.add(h24cSource("h24c-ok"));
+    assert.equal((await persistAndPublish("h24c-ok", "inc-h24c-ok-1")).status, "published");
+    // Published without a row, as before HOSTED-22: the source is not permitted at publication, and local_relaxed lets it publish.
+    permitted.clear();
+    assert.equal((await persistAndPublish("h24c-gap", "inc-h24c-gap-1", "local_relaxed")).status, "published");
+  });
+
+  after(async () => {
+    await db?.close();
+  });
+
+  it("HOSTED-24C a published event with no attribution row gets one on the first run, and then appears in the public list", async () => {
+    assert.deepEqual(await rowsFor("h24c-gap"), [], "no attribution row before the backfill");
+    assert.equal((await listedEventIds()).includes("inc-h24c-gap-1"), false, "the public list skips it before the backfill");
+    const countsBefore = await counts();
+
+    permitted.add(h24cSource("h24c-gap"));
+    assert.deepEqual(await backfill(), { candidates: 1, attributed: 1, skipped: 0, failed: 0 });
+
+    const rows = await rowsFor("h24c-gap");
+    assert.equal(rows.length, 1, "the one supporting reference has one row");
+    const row = rows[0]!;
+    assert.equal(row.review_decision_id, attributionDecisionIdFor("live", String(row.evidence_ref_id)));
+    assert.equal(row.decision_status, "approved");
+    assert.equal(row.review_version, 1);
+    assert.equal(row.public_display_name, "Fictional lineage source", "the registry display name");
+    assert.equal(row.source_url, "https://lineage.invalid/h24c-gap", "the revision's own canonical link");
+    assert.equal(row.source_published_at, H24C_SOURCE_PUBLISHED_AT_TEXT, "the source's own publish time");
+    assert.equal(row.reviewer_id, AGENT_AUTO_PUBLISHER_ID);
+    assert.equal(row.reviewed_at, await decidedAtOf("inc-h24c-gap-1"), "the decision time of the publication it belongs to");
+    assert.deepEqual(await counts(), countsBefore, "no event version and no publication decision was written");
+    assert.ok((await listedEventIds()).includes("inc-h24c-gap-1"), "the public list now shows the event");
+  });
+
+  it("HOSTED-24C a second run inserts no row, and an event that is already attributed is not a candidate and is not touched", async () => {
+    const rowsBefore = await allAttributionRows();
+    assert.equal(rowsBefore.length, 2, "one row for the event published with attribution, one for the backfilled event");
+    assert.deepEqual(await backfill(), H24C_ZERO);
+    assert.deepEqual(await backfill(), H24C_ZERO, "a repeat is a no-op");
+    assert.deepEqual(await allAttributionRows(), rowsBefore, "the same rows, with the same ids and times");
+    const listed = await listedEventIds();
+    assert.ok(listed.includes("inc-h24c-ok-1") && listed.includes("inc-h24c-gap-1"), "both events stay listed");
+  });
+
+  it("HOSTED-24C a version whose source is still not permitted is counted as skipped, retried on later runs, and attributed once permitted", async () => {
+    permitted.clear();
+    assert.equal((await persistAndPublish("h24c-off", "inc-h24c-off-1", "local_relaxed")).status, "published");
+    assert.deepEqual(await rowsFor("h24c-off"), []);
+
+    assert.deepEqual(await backfill(), { candidates: 1, attributed: 0, skipped: 1, failed: 0 });
+    assert.deepEqual(await backfill(), { candidates: 1, attributed: 0, skipped: 1, failed: 0 }, "still a candidate on the next run");
+    assert.deepEqual(await rowsFor("h24c-off"), [], "no row for a source that is not permitted");
+
+    permitted.add(h24cSource("h24c-off"));
+    assert.deepEqual(await backfill(), { candidates: 1, attributed: 1, skipped: 0, failed: 0 });
+    assert.equal((await rowsFor("h24c-off")).length, 1);
+  });
+
+  it("HOSTED-24C a failed write is counted and the run goes on to the next version, and past the budget nothing is attempted", async () => {
+    permitted.clear();
+    // The older publication is the first candidate. Its write fails once, and the newer one still gets its row.
+    assert.equal((await persistAndPublish("h24c-flaky", "inc-h24c-flaky-1", "local_relaxed")).status, "published");
+    assert.equal((await persistAndPublish("h24c-flaky2", "inc-h24c-flaky2-1", "local_relaxed")).status, "published");
+    permitted.add(h24cSource("h24c-flaky"));
+    permitted.add(h24cSource("h24c-flaky2"));
+    let injected = false;
+    const flaky: TransactionalSqlExecutor = {
+      query: db.executor.query,
+      execute: db.executor.execute,
+      transaction: <Result>(work: (transaction: SqlExecutor) => Promise<Result>): Promise<Result> => {
+        if (!injected) {
+          injected = true;
+          return Promise.reject(new Error("injected write failure"));
+        }
+        return db.executor.transaction(work);
+      },
+    };
+    assert.deepEqual(await backfill(flaky), { candidates: 2, attributed: 1, skipped: 0, failed: 1 }, "the first write fails, the second is attributed");
+    assert.deepEqual(await rowsFor("h24c-flaky"), [], "the failed write left no row");
+    assert.equal((await rowsFor("h24c-flaky2")).length, 1, "the run went on to the next version");
+
+    const pastBudget = await backfillSourceAttributions({
+      executor: db.executor,
+      checkPublicDisplay,
+      deadlineMs: 0,
+      now: () => 1,
+    });
+    assert.deepEqual(pastBudget, H24C_ZERO, "at or after the deadline no version is attempted");
+    assert.deepEqual(await rowsFor("h24c-flaky"), []);
+
+    assert.deepEqual(await backfill(), { candidates: 1, attributed: 1, skipped: 0, failed: 0 });
+    assert.equal((await rowsFor("h24c-flaky")).length, 1);
+  });
+
+  it("HOSTED-24C a failed candidate query returns one failed step and does not throw", async () => {
+    const down: TransactionalSqlExecutor = {
+      query: <Row extends object>(): Promise<{ readonly rows: readonly Row[] }> => Promise.reject(new Error("connection lost")),
+      execute: () => Promise.reject(new Error("connection lost")),
+      transaction: <Result>(): Promise<Result> => Promise.reject(new Error("connection lost")),
+    };
+    assert.deepEqual(await backfill(down), { candidates: 0, attributed: 0, skipped: 0, failed: 1 });
+  });
+});
+
+describe("HOSTED-24C attribution backfill helpers and the --once order (fakes)", () => {
+  const drain: DrainResult = { completed: 0, notCompleted: 0, stop: "empty" };
+  const sweep: PublicationSweepResult = {
+    assessed: 0,
+    published: 0,
+    unchanged: 0,
+    held: 0,
+    denied: 0,
+    skipped: 0,
+    failed: 0,
+    heldReasons: {},
+    deniedCodes: {},
+    failedCodes: {},
+    stop: "done",
+  };
+
+  /** The steps of one run, recording the order of calls. An attribution step is added only when one is given. */
+  function onceSteps(order: string[], logged: string[], attribution?: OnceSteps["attribution"]): OnceSteps {
+    return {
+      poll: async () => {
+        order.push("poll");
+      },
+      onPollError: () => order.push("poll-error"),
+      drain: async () => {
+        order.push("drain");
+        return drain;
+      },
+      sweep: async () => {
+        order.push("sweep");
+        return sweep;
+      },
+      ...(attribution === undefined ? {} : { attribution }),
+      freshness: async () => {
+        order.push("freshness");
+      },
+      log: (line) => logged.push(line),
+    };
+  }
+
+  it("HOSTED-24C runs the backfill after the sweep and before freshness, and logs exactly one count line", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence(onceSteps(order, logged, async () => {
+      order.push("attribution");
+      return { candidates: 2, attributed: 1, skipped: 1, failed: 0 };
+    }));
+    assert.deepEqual(order, ["poll", "drain", "sweep", "attribution", "freshness"]);
+    assert.equal(logged.filter((line) => line.startsWith("[Once] Attribution backfill:")).length, 1);
+    assert.equal(logged.at(-1), "[Once] Attribution backfill: candidates=2 attributed=1 skipped=1 failed=0");
+  });
+
+  it("HOSTED-24C a backfill that throws is counted as one failed step, the run still reaches freshness, and no error text is logged", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence(onceSteps(order, logged, async () => {
+      order.push("attribution");
+      throw new Error("connection lost to a source URL");
+    }));
+    assert.deepEqual(order, ["poll", "drain", "sweep", "attribution", "freshness"]);
+    assert.equal(logged.at(-1), "[Once] Attribution backfill: candidates=0 attributed=0 skipped=0 failed=1");
+    assert.equal(logged.some((line) => line.includes("connection lost") || line.includes("URL")), false, "the error text never reaches the log");
+  });
+
+  it("HOSTED-24C a run without an attribution step keeps its order and logs no backfill line", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence(onceSteps(order, logged));
+    assert.deepEqual(order, ["poll", "drain", "sweep", "freshness"]);
+    assert.equal(logged.some((line) => line.includes("Attribution backfill")), false);
+  });
+
+  it("HOSTED-24C the count line has a fixed shape with no source text", () => {
+    assert.equal(
+      formatAttributionLine({ candidates: 3, attributed: 2, skipped: 1, failed: 0 }),
+      "[Once] Attribution backfill: candidates=3 attributed=2 skipped=1 failed=0",
+    );
+  });
+
+  it("HOSTED-24C reads one distinct reference per exact tuple, in record order, and counts a malformed entry", () => {
+    const hash = "a".repeat(64);
+    const ref = {
+      report_revision_id: "rev-1",
+      permitted_text_hash: hash,
+      span_start: 0,
+      span_end: 5,
+      offset_unit: "unicode_code_points",
+      relation: "supports",
+    };
+    const record = {
+      claims: [
+        { support: [ref, ref, { ...ref, span_end: 3 }, { ...ref, relation: "context" }, null] },
+        { support: [ref] },
+      ],
+    };
+    const result = supportKeysOf(record);
+    assert.equal(result.keys.length, 2, "the repeated tuple is listed once");
+    assert.equal(result.malformed, 2, "a context relation and a non-object entry are malformed");
+    assert.deepEqual(result.keys[0], {
+      report_revision_id: "rev-1",
+      permitted_text_hash: hash,
+      span_start: "0",
+      span_end: "5",
+      offset_unit: "unicode_code_points",
+      relation: "supports",
+    });
+    assert.deepEqual(supportKeysOf({}), { keys: [], malformed: 0 }, "a record with no claims has no support");
   });
 });
