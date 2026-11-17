@@ -616,6 +616,10 @@ export type ProposalGateReason =
   | "discrepancy_flagged"
   | "discrepancy_status_unknown"
   | "location_missing"
+  /**
+   * A present event time that is not usable (malformed). A missing time is not a reason on the automatic path (see
+   * EVENT_TIME_UNKNOWN_WAIVER). A moderator correction still refuses a missing time with this code.
+   */
   | "time_missing"
   | "investigation_stopped_for_review";
 
@@ -641,7 +645,21 @@ export type AutoPublishSourcePermission = "required" | "local_relaxed";
 /** Recorded on a publication decision and its public event when the permission check was waived. */
 export const SOURCE_PERMISSION_WAIVED_LOCAL = "source_permission_waived_local";
 
-export type AutoPublicationWaiver = typeof SOURCE_PERMISSION_WAIVED_LOCAL;
+/**
+ * HOSTED-21 (owner decision 17 Nov 2026): the automatic gate publishes a proposal with no event time. The event time
+ * stays unknown (null, precision unknown) and is never filled in. The skipped time check is recorded here. A present
+ * but malformed time still holds. The moderator correction gate (assessCorrectionGate) is unchanged.
+ */
+export const EVENT_TIME_UNKNOWN_WAIVER = "event_time_unknown";
+
+export type AutoPublicationWaiver = typeof SOURCE_PERMISSION_WAIVED_LOCAL | typeof EVENT_TIME_UNKNOWN_WAIVER;
+
+const AUTO_PUBLICATION_WAIVERS: readonly unknown[] = [SOURCE_PERMISSION_WAIVED_LOCAL, EVENT_TIME_UNKNOWN_WAIVER];
+
+/** True only for a waiver code this gate writes. Restore paths keep these codes and drop anything else. */
+export function isAutoPublicationWaiver(value: unknown): value is AutoPublicationWaiver {
+  return AUTO_PUBLICATION_WAIVERS.includes(value);
+}
 
 /** Fail closed: only the exact value `local_relaxed` relaxes the check. Unset or any other value is `required`. */
 export function parseAutoPublishSourcePermission(value: unknown): AutoPublishSourcePermission {
@@ -695,6 +713,32 @@ function isNonEmptyText(value: unknown): value is string {
 
 function isIsoInstant(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+const EVENT_TIME_PRECISIONS: readonly unknown[] = ["exact", "date", "range", "unknown"];
+
+/** An ISO 8601 calendar date, or a date-time with an optional time zone (ISO 8601 allows a local time). */
+const ISO_EVENT_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/u;
+
+type EventTimeCheck = "usable" | "missing" | "malformed";
+
+/**
+ * HOSTED-21: classifies a proposal's event time for the automatic gate. `missing` means no time at all: the field is
+ * absent or null, or its value is null. `usable` is an ISO 8601 date or date-time with a known precision other than
+ * unknown. Anything else is `malformed`: a non-ISO or range text, an unknown precision that still carries a value,
+ * or a field of the wrong shape. A time is never filled in from another field.
+ */
+function classifyEventTime(record: Record<string, unknown>): EventTimeCheck {
+  const raw = record.event_time;
+  if (raw === undefined || raw === null) return "missing";
+  const eventTime = gateRecord(raw);
+  if (!eventTime || !EVENT_TIME_PRECISIONS.includes(eventTime.precision)) return "malformed";
+  const value = eventTime.value;
+  if (value === undefined || value === null) return "missing";
+  if (eventTime.precision === "unknown") return "malformed";
+  return typeof value === "string" && ISO_EVENT_TIME_PATTERN.test(value) && !Number.isNaN(Date.parse(value))
+    ? "usable"
+    : "malformed";
 }
 
 function isHttpUrl(value: unknown): value is string {
@@ -774,7 +818,9 @@ export function assessProposalSourceGate(proposal: unknown, options: ProposalGat
  * Automatic publication gate. Every check must pass. An empty result means the proposal may publish
  * without a moderator. A non-empty result means it waits for review, with the reasons recorded.
  * With `sourcePermission: "local_relaxed"` only the public-display permission check is skipped, and
- * the skip is reported in `waivers`. All other checks still apply.
+ * the skip is reported in `waivers`. HOSTED-21: a missing event time is not a reason here. It is
+ * reported in `waivers` as `event_time_unknown`, and the event time stays unknown. A malformed time holds.
+ * All other checks still apply.
  */
 export function evaluateAutoPublication(proposal: unknown, options: AutoPublicationGateOptions): AutoPublicationAssessment {
   const source = runProposalSourceGate(proposal, options, options.sourcePermission === "local_relaxed");
@@ -808,10 +854,10 @@ export function evaluateAutoPublication(proposal: unknown, options: AutoPublicat
     || (Array.isArray(record.coordinates) && record.coordinates.length === 2);
   if (!hasLocation) reasons.add("location_missing");
 
-  const eventTime = gateRecord(record.event_time);
-  if (!eventTime || !isIsoInstant(eventTime.value) || eventTime.precision === "unknown") {
-    reasons.add("time_missing");
-  }
+  // HOSTED-21: a missing event time publishes with its time unknown, and the skipped check is recorded. A malformed one holds.
+  const eventTimeCheck = classifyEventTime(record);
+  if (eventTimeCheck === "malformed") reasons.add("time_missing");
+  if (eventTimeCheck === "missing") waivers.push(EVENT_TIME_UNKNOWN_WAIVER);
   return { reasons: sortedReasons(reasons), waivers };
 }
 
@@ -821,9 +867,10 @@ export function assessAutoPublication(proposal: unknown, options: AutoPublicatio
 }
 
 /**
- * TG-FR12: the gate for a moderator correction. It is the moderator source gate plus the event-time
- * check that the automatic gate applies. A published event keeps a real event time, so a correction
- * cannot remove it. Labels, correlation and discrepancy checks do not apply to a moderator's own correction.
+ * TG-FR12: the gate for a moderator correction. It is the moderator source gate plus an event-time check. A
+ * correction must keep an event time, so it cannot remove one. HOSTED-21 waives a missing time only on the
+ * automatic path; this check is unchanged. Labels, correlation and discrepancy checks do not apply to a
+ * moderator's own correction.
  */
 export function assessCorrectionGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
   const reasons = new Set<ProposalGateReason>(assessProposalSourceGate(proposal, options));

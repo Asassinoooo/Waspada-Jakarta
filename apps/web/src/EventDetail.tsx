@@ -4,7 +4,14 @@ import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshness
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
 import { MapPanel, RecordMapPanel } from "./MapPanel.js";
 import { SeverityChip } from "./MapSeverity.js";
-import { publicationPathText, SEVERITY_NOTE, severityOf } from "./published-events.js";
+import {
+  eventHasTime,
+  publicationPathText,
+  SEVERITY_NOTE,
+  severityOf,
+  sourcePublishedAtText,
+  UNKNOWN_EVENT_TIME_TEXT,
+} from "./published-events.js";
 
 interface EventDetailProps {
   mode: "presentation" | "api-event";
@@ -206,6 +213,8 @@ function ApiEventDetail({
 }) {
   const event = detail.status === "loaded" ? detail.data : null;
   const severity = event === null ? null : severityOf(event);
+  // HOSTED-21: with no event time, the source's own publish time is shown on its own row, never as the event time.
+  const sourceTime = event === null || eventHasTime(event) ? null : sourcePublishedAtText(event);
   // R-05: only a demo dataset may be called synthetic or fixture. Live and unknown modes get neutral wording.
   const demo = context?.dataset_mode === "demo";
   const noun = demo ? "fixture" : "record";
@@ -270,7 +279,8 @@ function ApiEventDetail({
                 <span className="synthetic-label">{wording(demo, "Contoh API", "Data API")}</span>
               </div>
               <dl className="detail-facts detail-facts--spacious">
-                <div><dt>Waktu kejadian</dt><dd>{formatEventTime(event, { fixtureWording: demo })}</dd></div>
+                <div><dt>Waktu kejadian</dt><dd>{eventHasTime(event) ? formatEventTime(event, { fixtureWording: demo }) : UNKNOWN_EVENT_TIME_TEXT}</dd></div>
+                {sourceTime !== null && <div><dt>Dipublikasikan sumber</dt><dd>{sourceTime}</dd></div>}
                 <div><dt>Validitas pada record</dt><dd>{event.validity.valid_from || event.validity.valid_until
                   ? <>{event.validity.valid_from ? formatInstant(event.validity.valid_from) : "Tidak ada waktu awal"} sampai {event.validity.valid_until ? formatInstant(event.validity.valid_until) : "Tidak ada waktu akhir"}</>
                   : `Tidak tersedia pada ${noun}`}</dd></div>

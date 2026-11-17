@@ -10,6 +10,8 @@ import {
   lifecycleText,
   publishedAtText,
   countIndependentSources,
+  eventHasTime,
+  sourcePublishedAtText,
   sourceCountText,
   type PublishedMarker,
 } from "./published-events.js";
@@ -64,6 +66,8 @@ function locationNote(event: EventView, marker: PublishedMarker | null): string 
 /** Shared body for the anchored popup (desktop) and the peek sheet (phone). It carries no radius or circle. */
 function MapPopupBody({ event, marker, titleId, copyMessage, onClose, onViewDetail, onCopyLink }: MapPopupProps) {
   const sources = countIndependentSources(event);
+  // HOSTED-21: with no event time, the source's own publish time is shown on its own row, never as the event time.
+  const sourceTime = eventHasTime(event) ? null : sourcePublishedAtText(event);
   return (
     <>
       <header className="map-popup__head">
@@ -78,6 +82,12 @@ function MapPopupBody({ event, marker, titleId, copyMessage, onClose, onViewDeta
           <dt>Waktu kejadian</dt>
           <dd>{eventTimeText(event)}</dd>
         </div>
+        {sourceTime !== null && (
+          <div>
+            <dt>Dipublikasikan sumber</dt>
+            <dd>{sourceTime}</dd>
+          </div>
+        )}
         <div>
           <dt>Diterbitkan</dt>
           <dd>{publishedAtText(event)}</dd>

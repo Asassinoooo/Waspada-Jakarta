@@ -3,9 +3,11 @@ import { SeverityChip } from "./MapSeverity.js";
 import {
   areaText,
   categoryText,
+  eventHasTime,
   eventTimeText,
   freshnessText,
   countIndependentSources,
+  sourcePublishedAtText,
   severityOf,
   sourceCountText,
   type PublishedEventsStatus,
@@ -110,7 +112,10 @@ export function MapEventList({
                   </span>
                   <strong className="map-card__title">{event.title}</strong>
                   <span className="map-card__meta">{areaText(event)}</span>
-                  <span className="map-card__meta">Waktu kejadian: {eventTimeText(event)}</span>
+                  <span className="map-card__meta">{eventHasTime(event) ? `Waktu kejadian: ${eventTimeText(event)}` : eventTimeText(event)}</span>
+                  {!eventHasTime(event) && sourcePublishedAtText(event) !== null && (
+                    <span className="map-card__meta">Dipublikasikan sumber: {sourcePublishedAtText(event)}</span>
+                  )}
                   <span className="map-card__foot">
                     {severity !== null && <SeverityChip level={severity} />}
                     <span className="map-card__sources">{sourceCountText(sources.outlets, sources.copies)}</span>

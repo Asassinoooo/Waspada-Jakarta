@@ -566,7 +566,7 @@ test("API detail preserves unknown fields as unknown and has no invented geometr
   );
 
   assert.match(markup, /Detail dari API lokal/);
-  assert.match(markup, /Waktu kejadian tidak diketahui/);
+  assert.match(markup, /Waktu kejadian tidak disebutkan/);
   assert.match(markup, /Tidak tersedia pada fixture/);
   assert.match(markup, /Bukti tidak tersedia pada fixture demo ini/);
   assert.match(markup, /Versi contoh sintetis dimuat untuk demonstrasi antarmuka\./);

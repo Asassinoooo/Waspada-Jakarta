@@ -6,7 +6,7 @@ import type { EventView } from "@waspada/worker/public-contracts";
 import { AnchoredMapPopup, PeekMapPopup, POPUP_WIDTH_PX, popupAnchor, unmappedPopupAnchor, type MapPopupProps } from "../src/MapPopup.js";
 import { copyText, eventShareUrl } from "../src/map-links.js";
 
-/** UI-V2-B map popup: time rows stay separate, missing values read "Tidak diketahui", and nothing is drawn as a radius. */
+/** UI-V2-B map popup: time rows stay separate, a missing event time reads "Waktu kejadian tidak disebutkan" (HOSTED-21), and nothing is drawn as a radius. */
 
 function event(overrides: Record<string, unknown> = {}): EventView {
   return {
@@ -76,9 +76,9 @@ test("the popup shows event time and publication time as separate rows", () => {
   assert.ok(html.indexOf("Waktu kejadian") < html.indexOf("Diterbitkan"), "event time comes before publication time");
 });
 
-test("missing times read Tidak diketahui and are never filled in", () => {
+test("a missing event time reads Waktu kejadian tidak disebutkan and is never filled in", () => {
   const html = anchored({ event: event({ event_time: { start: null, end: null, precision: "unknown" }, published_at: "" }) });
-  assert.match(html, /<dt>Waktu kejadian<\/dt><dd>Tidak diketahui<\/dd>/);
+  assert.match(html, /<dt>Waktu kejadian<\/dt><dd>Waktu kejadian tidak disebutkan<\/dd>/);
   assert.match(html, /<dt>Diterbitkan<\/dt><dd>Tidak diketahui<\/dd>/);
 });
 

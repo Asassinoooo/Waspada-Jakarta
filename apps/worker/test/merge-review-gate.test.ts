@@ -3,8 +3,11 @@ import test from "node:test";
 import { createModerationApiHandler } from "../src/layers/l4-application-integration/moderation-api.js";
 import {
   assessAutoPublication,
+  assessCorrectionGate,
   assessProposalSourceGate,
+  EVENT_TIME_UNKNOWN_WAIVER,
   evaluateAutoPublication,
+  isAutoPublicationWaiver,
   parseAutoPublishSourcePermission,
   SOURCE_PERMISSION_WAIVED_LOCAL,
 } from "../src/layers/l4-application-integration/publication-policy.js";
@@ -110,15 +113,88 @@ test("auto gate queues a claim whose source lacks public-display permission", ()
   assert.ok(assessAutoPublication(unpermitted, PERMITTED).includes("source_rights_missing"));
 });
 
-test("auto gate queues missing location or time, and an unresolved correlation", () => {
+test("auto gate queues a missing location, and an unresolved correlation", () => {
   const noPlace = clean({ location_label: null, coordinates: null });
   assert.ok(assessAutoPublication(noPlace, PERMITTED).includes("location_missing"));
 
-  const noTime = clean({ event_time: { precision: "unknown", value: null } });
-  assert.ok(assessAutoPublication(noTime, PERMITTED).includes("time_missing"));
-
   const unresolved = clean({ correlation_relationship: "unresolved" });
   assert.ok(assessAutoPublication(unresolved, PERMITTED).includes("correlation_unresolved"));
+});
+
+/* HOSTED-21 (owner decision 17 Nov 2026): a missing event time publishes with its time unknown, and the skipped check is
+   recorded. A present but malformed time still holds. The moderator correction gate is unchanged. */
+
+const MISSING_TIME_FORMS: readonly [string, Record<string, unknown>][] = [
+  ["the field is absent", { event_time: undefined }],
+  ["the field is null", { event_time: null }],
+  ["precision unknown with a null value", { event_time: { precision: "unknown", value: null } }],
+  ["precision unknown with no value key", { event_time: { precision: "unknown" } }],
+  ["an exact precision with a null value", { event_time: { precision: "exact", value: null } }],
+];
+
+test("HOSTED-21: auto gate does not hold a proposal whose event time is missing, and records the waiver", () => {
+  for (const [label, overrides] of MISSING_TIME_FORMS) {
+    const proposal = clean(overrides);
+    const assessment = evaluateAutoPublication(proposal, PERMITTED);
+    assert.deepEqual(assessment.reasons, [], `${label}: no hold reason`);
+    assert.deepEqual(assessment.waivers, [EVENT_TIME_UNKNOWN_WAIVER], `${label}: the skipped time check is recorded`);
+    assert.deepEqual(assessAutoPublication(proposal, PERMITTED), [], `${label}: reason-only view publishes`);
+  }
+});
+
+test("HOSTED-21: a missing event time is waived only with the time check, and nothing else is changed", () => {
+  const noTimeAndNoPlace = clean({ event_time: undefined, location_label: null, coordinates: null });
+  assert.deepEqual(assessAutoPublication(noTimeAndNoPlace, PERMITTED), ["location_missing"]);
+  const noTimeAndUnpermitted = { ...UNPERMITTED, event_time: undefined };
+  const assessment = evaluateAutoPublication(noTimeAndUnpermitted, { ...PERMITTED, sourcePermission: "local_relaxed" });
+  assert.deepEqual(assessment.reasons, []);
+  assert.deepEqual(assessment.waivers, [SOURCE_PERMISSION_WAIVED_LOCAL, EVENT_TIME_UNKNOWN_WAIVER]);
+});
+
+test("HOSTED-21: auto gate holds a present but malformed event time", () => {
+  const malformed: [string, unknown][] = [
+    ["a non-ISO text", { precision: "exact", value: "besok pagi" }],
+    ["a text date that Date.parse accepts", { precision: "exact", value: "10 November 2026" }],
+    ["a slash date", { precision: "date", value: "13/11/2026" }],
+    ["a clock range text", { precision: "range", value: "dari jam 10.00 hingga 14.00" }],
+    ["unknown precision that still carries a value", { precision: "unknown", value: "2026-11-10T08:00:00.000Z" }],
+    ["a precision outside the vocabulary", { precision: "bogus", value: "2026-11-10T08:00:00.000Z" }],
+    ["a numeric value", { precision: "exact", value: 1762761600000 }],
+    ["a bare string instead of an object", "2026-11-10T08:00:00.000Z"],
+  ];
+  for (const [label, eventTime] of malformed) {
+    const assessment = evaluateAutoPublication(clean({ event_time: eventTime }), PERMITTED);
+    assert.ok(assessment.reasons.includes("time_missing"), `${label}: still holds`);
+    assert.ok(!assessment.waivers.includes(EVENT_TIME_UNKNOWN_WAIVER), `${label}: is not waived as unknown`);
+  }
+});
+
+test("HOSTED-21 control: dated event times in the ISO shapes the pipeline writes pass without a waiver", () => {
+  const dated: [string, unknown][] = [
+    ["exact UTC", { precision: "exact", value: "2026-11-10T08:00:00.000Z" }],
+    ["exact with an offset", { precision: "exact", value: "2026-11-12T08:30:00+07:00" }],
+    ["exact with no zone", { precision: "exact", value: "2026-11-10T08:00:00" }],
+    ["date only", { precision: "date", value: "2026-11-10" }],
+  ];
+  for (const [label, eventTime] of dated) {
+    const assessment = evaluateAutoPublication(clean({ event_time: eventTime }), PERMITTED);
+    assert.deepEqual(assessment.reasons, [], `${label}: no hold reason`);
+    assert.deepEqual(assessment.waivers, [], `${label}: nothing is waived`);
+  }
+});
+
+test("HOSTED-21: the moderator correction gate still refuses a missing event time", () => {
+  assert.ok(assessCorrectionGate(clean({ event_time: { precision: "unknown", value: null } }), PERMITTED).includes("time_missing"));
+  assert.ok(assessCorrectionGate(clean({ event_time: undefined }), PERMITTED).includes("time_missing"));
+  assert.deepEqual(assessCorrectionGate(clean(), PERMITTED), [], "a dated event time passes the correction gate");
+});
+
+test("HOSTED-21: restore keeps only the waiver codes this gate writes", () => {
+  assert.equal(isAutoPublicationWaiver(SOURCE_PERMISSION_WAIVED_LOCAL), true);
+  assert.equal(isAutoPublicationWaiver(EVENT_TIME_UNKNOWN_WAIVER), true);
+  for (const value of ["time_missing", "", undefined, null, 3, "event_time_known"]) {
+    assert.equal(isAutoPublicationWaiver(value), false, `${String(value)} is not a waiver`);
+  }
 });
 
 test("auto gate fails closed on an unsupported claim or an unknown category", () => {

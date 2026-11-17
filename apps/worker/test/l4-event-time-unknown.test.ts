@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildEventRecordV2,
+  domainClaimsFor,
+  domainEventTime,
+  domainFreshness,
+  EMPTY_SCOPE,
+  NULL_VALIDITY,
+  type DomainEvidenceRef,
+} from "../src/layers/l4-application-integration/event-record-v2.js";
+import { projectPublicEvent } from "../src/layers/l4-application-integration/public-projection.js";
+import {
   PublicReadModel,
   proposalToEventDetail,
 } from "../src/layers/l4-application-integration/public-read-model.js";
@@ -134,4 +144,81 @@ test("F-14: a date filter does not match an event that has no event start", () =
   const page = model.events(new URLSearchParams("from=2026-11-01T00:00:00Z"));
   assert.equal(page.data.length, 0);
   PublicReadModel.clearPublishedEvents();
+});
+
+/* HOSTED-21 (owner decision 17 Nov 2026): an event with no event time is accepted by the stored record and the public
+   projection, shown with its time unknown, and its source time is never its processing time. */
+
+test("HOSTED-21: the stored v2 record of an event with no event time is accepted by the public projection", () => {
+  const dto = proposal({ event_time: { precision: "unknown", value: null } }) as never;
+  const eventTime = domainEventTime({ precision: "unknown", value: null });
+  assert.deepEqual(eventTime, { start: null, end: null, precision: "unknown" });
+  const support: DomainEvidenceRef[] = [{
+    report_revision_id: "rev-f14-no-time-001",
+    permitted_text_hash: "a".repeat(64),
+    span_start: 0,
+    span_end: 12,
+    offset_unit: "unicode_code_points",
+    relation: "supports",
+  }];
+  const record = buildEventRecordV2({
+    datasetKind: "live",
+    traceId: "trace-f14-no-time-001",
+    eventId: "prop-time-001",
+    version: 1,
+    supersedesVersion: null,
+    decisionId: "dec-f14-no-time-001",
+    status: "published",
+    statusAt: processingTime,
+    withdrawalReason: null,
+    title: "Banjir merendam Jalan DI Panjaitan",
+    summary: "Banjir merendam Jalan DI Panjaitan",
+    category: "disasters_weather",
+    lifecycle: "ongoing",
+    tags: [],
+    freshness: domainFreshness(eventTime, processingTime),
+    eventTime,
+    validity: NULL_VALIDITY,
+    scope: { ...EMPTY_SCOPE, geometry_ids: [] },
+    claims: domainClaimsFor(dto, "prop-time-001", eventTime, [
+      { text: "Genangan setinggi 50 cm.", evidence_label: "attributed_report" },
+    ], { support, originIdsByClaim: [["origin-f14-no-time-001"]] }),
+  });
+  assert.deepEqual(record.event_time, { start: null, end: null, precision: "unknown" });
+  assert.equal(record.freshness.status, "needs_update");
+
+  const view = projectPublicEvent(record, {
+    scopeNames: [],
+    impacts: [],
+    publicAttributions: [{
+      dataset_kind: "live",
+      report_revision_id: "rev-f14-no-time-001",
+      permitted_text_hash: "a".repeat(64),
+      span_start: 0,
+      span_end: 12,
+      offset_unit: "unicode_code_points",
+      relation: "supports",
+      public_use_approved: true,
+      display_name: "Contoh Berita",
+      url: "https://example.invalid/berita/1",
+      published_at: null,
+      observed_at: null,
+      excerpt_public_use_approved: false,
+      excerpt: null,
+    }],
+  }, { locationLabelPresent: true });
+  assert.deepEqual(view.event_time, { start: null, end: null, precision: "unknown" });
+  assert.equal(view.freshness.status, "needs_update");
+  assert.equal(view.freshness.basis, "unknown");
+  assert.equal(view.location_display, "whole_view");
+  assert.equal(view.claims[0]!.event_time.precision, "unknown");
+  assert.equal(view.claims[0]!.sources[0]!.published_at, null, "no source time is invented");
+});
+
+test("HOSTED-21: a source publish time is never the processing time, and no source time is invented", () => {
+  const detail = proposalToEventDetail(proposal({ event_time: undefined }) as never);
+  assert.equal(detail.claims[0]!.sources[0]!.published_at, null);
+  assert.equal(detail.claims[0]!.sources[0]!.observed_at, null);
+  assert.notEqual(detail.claims[0]!.sources[0]!.published_at, processingTime);
+  assert.equal(detail.published_at, processingTime, "the version's own publication time is the proposal time, not a source time");
 });

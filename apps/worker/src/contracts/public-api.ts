@@ -154,7 +154,10 @@ export interface EventDetail extends EventView {
   publication?: {
     readonly mode: "agent_auto" | "moderator_reviewed";
     readonly source_count: number;
-    /** ADR-061 amendment: checks waived for local live mode (`source_permission_waived_local`). Absent otherwise. */
+    /**
+     * ADR-061 amendment: checks waived for this version. `source_permission_waived_local` is local live mode only.
+     * HOSTED-21: `event_time_unknown` means the version was published with no event time (kept unknown). Absent otherwise.
+     */
     readonly waivers?: readonly string[];
   };
 }

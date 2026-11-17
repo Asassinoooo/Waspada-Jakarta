@@ -217,12 +217,37 @@ function formatTime(value: string, precision: EventView["event_time"]["precision
   return precision === "date" ? formatDate(value) : formatInstant(value);
 }
 
+/** HOSTED-21: shown when an event has no event time. The time is never filled in from another field. */
+export const UNKNOWN_EVENT_TIME_TEXT = "Waktu kejadian tidak disebutkan";
+
 /** Event time (waktu kejadian) only. Never the publication time. */
 export function eventTimeText(event: EventView): string {
-  if (!eventHasTime(event) || event.event_time.start === null) return "Tidak diketahui";
+  if (!eventHasTime(event) || event.event_time.start === null) return UNKNOWN_EVENT_TIME_TEXT;
   const start = formatTime(event.event_time.start, event.event_time.precision);
   if (!event.event_time.end) return start;
   return `${start} – ${formatTime(event.event_time.end, event.event_time.precision)}`;
+}
+
+/**
+ * HOSTED-21: the source's own publish time, shown separately when the event has no event time. It is the earliest
+ * publish time the claim sources give. It is never the event's publication time or a processing time. Null when no
+ * source gives one.
+ */
+export function sourcePublishedAtText(event: EventView): string | null {
+  let earliestMs: number | null = null;
+  let earliest: string | null = null;
+  for (const claim of event.claims) {
+    for (const source of claim.sources) {
+      if (typeof source.published_at !== "string" || source.published_at.length === 0) continue;
+      const ms = Date.parse(source.published_at);
+      if (Number.isNaN(ms)) continue;
+      if (earliestMs === null || ms < earliestMs) {
+        earliestMs = ms;
+        earliest = source.published_at;
+      }
+    }
+  }
+  return earliest === null ? null : formatInstant(earliest);
 }
 
 /** Publication time (diterbitkan) for this public version. */

@@ -10,6 +10,7 @@ import {
   decideProposal,
   type ProposalDecisionDependencies,
 } from "../src/layers/l4-application-integration/proposal-publication.js";
+import { EVENT_TIME_UNKNOWN_WAIVER } from "../src/layers/l4-application-integration/publication-policy.js";
 import { PublicReadModel } from "../src/layers/l4-application-integration/public-read-model.js";
 
 /**
@@ -212,12 +213,35 @@ describe("ADR-061 automatic gate: database-level checks", () => {
       await assertQueuedOnly("inc-no-place", "location_missing");
     });
 
-    it("queues a proposal whose event time is unknown", async () => {
+    it("HOSTED-21: publishes a proposal whose event time is unknown, keeps the time unknown, and records the waiver", async () => {
       await writer().persistProposal(
         validProposal("inc-no-time", { event_time: { precision: "unknown", value: null } }),
         "live",
       );
-      await assertQueuedOnly("inc-no-time", "time_missing");
+      const outcome = await decideProposal(deps, { proposalId: "prop-inc-no-time", action: "auto_publish", actor: AGENT });
+      assert.equal(outcome.status, "published");
+      const [decision] = await decisionsFor("prop-inc-no-time");
+      assert.deepEqual(decision?.record_json.waivers, [EVENT_TIME_UNKNOWN_WAIVER], "the skipped time check is on the decision");
+      const stored = await db.executor.query<{ record_json: Record<string, unknown> }>(
+        `SELECT record_json FROM waspada.event_versions
+         WHERE dataset_kind = 'live' AND event_id = $1 AND version = 1`,
+        ["inc-no-time"],
+      );
+      const record = stored.rows[0]?.record_json as Record<string, unknown> | undefined;
+      assert.deepEqual(record?.event_time, { start: null, end: null, precision: "unknown" }, "the stored time is never filled in");
+      const event = publishedEvent("inc-no-time");
+      assert.ok(event, "the event is public");
+      assert.deepEqual(event.event_time, { start: null, end: null, precision: "unknown" });
+      assert.equal(event.freshness.status, "needs_update");
+      assert.deepEqual(event.publication?.waivers, [EVENT_TIME_UNKNOWN_WAIVER]);
+    });
+
+    it("HOSTED-21: queues a proposal whose event time is present but malformed", async () => {
+      await writer().persistProposal(
+        validProposal("inc-bad-time", { event_time: { precision: "exact", value: "besok pagi" } }),
+        "live",
+      );
+      await assertQueuedOnly("inc-bad-time", "time_missing");
     });
   });
 

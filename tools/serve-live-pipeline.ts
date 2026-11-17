@@ -31,9 +31,9 @@ import { generateServiceKey } from "../apps/worker/src/security/service-key.js";
 import { PublicReadModel, proposalToEventDetail } from "../apps/worker/src/layers/l4-application-integration/public-read-model.js";
 import {
   DEFAULT_PROPOSAL_REVIEW_TTL_HOURS,
+  isAutoPublicationWaiver,
   isValidProposalReviewTtlHours,
   parseProposalReviewTtlHours,
-  SOURCE_PERMISSION_WAIVED_LOCAL,
   parseAutoPublishSourcePermission,
 } from "../apps/worker/src/layers/l4-application-integration/publication-policy.js";
 import {
@@ -252,10 +252,10 @@ async function prepareLocalDatabase(executor: TransactionalSqlExecutor): Promise
     if (!p || row.event_version === null) continue;
     try {
       const mode = row.publication_mode === "agent_auto" ? "agent_auto" : "moderator_reviewed";
-      // ADR-061 amendment: keep the waiver label on versions published under local relaxation.
+      // ADR-061 amendment and HOSTED-21: keep the waiver labels (local permission relaxation, unknown event time).
       const storedWaivers = typeof row.waivers === "string" ? JSON.parse(row.waivers) : row.waivers;
       const waivers = Array.isArray(storedWaivers)
-        ? storedWaivers.filter((waiver) => waiver === SOURCE_PERMISSION_WAIVED_LOCAL)
+        ? storedWaivers.filter(isAutoPublicationWaiver)
         : [];
       const detail = proposalToEventDetail(p, undefined, {
         version: row.event_version,
