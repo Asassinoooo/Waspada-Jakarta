@@ -6,10 +6,8 @@ name: Hosted live ingest
 # has no lock, so it must not run alongside this schedule.
 
 on:
-  # Schedule paused (HOSTED-20): an error line can print source text into this public log, and the
-  # auto-publish gate does not run in --once yet. Restore the cron below once HOSTED-20 is merged.
-  # schedule:
-  #   - cron: "*/30 * * * *"
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
