@@ -1,6 +1,6 @@
 # ADR-065 — Hosted topology: Cloudflare Worker and Neon Free, with ingestion on the owner's PC
 
-- **Status:** Accepted on 16 November 2026 by owner decision (HOSTED-01). **Not implemented.** The hosted topology is not built or deployed. `npm run serve:hosted-ingest` does not exist on `main` or on any HOSTED branch, and `apps/worker/wrangler.toml` has no Hyperdrive or static-assets binding.
+- **Status:** Accepted on 16 November 2026 by owner decision (HOSTED-01). **Deployed 17 November 2026 (HOSTED-23)** at `https://waspada-jakarta.waspada-worker.workers.dev`, with ingestion moved from the owner's PC to a scheduled GitHub Actions job (HOSTED-13; see the 17 Nov amendment below). The original text below is kept as decided on 16 Nov.
 - **Date:** 2026-11-16
 - **Owner:** Team 12
 - **Scope:** deployment topology and hosted-only publication settings. It amends the hosted rule of the 11 Nov 2026 amendment to [ADR-061](ADR-061-agent-driven-publication.md); the 11 Nov amendment said that any change to that rule needs a new ADR, and this is that ADR. It builds on [ADR-010](ADR-010-cloudflare-neon-free.md) (Cloudflare Workers and Neon Free). Affects `apps/web/dist` (static assets), the planned `serve:hosted-ingest` entry point, `AUTO_PUBLISH_SOURCE_PERMISSION`, the password hash in `apps/worker/src/accounts/password.ts` ([ADR-060](ADR-060-password-accounts.md)), and [SOURCE_CLEARANCE_PLAN.md](../SOURCE_CLEARANCE_PLAN.md). No migration, no change to the public DTOs, and no change to the publication gate's checks.
@@ -30,35 +30,35 @@
 2. **No off-provider backup.** There is no 30-day encrypted off-provider backup and no deletion-replay rehearsal (SDP section 10, Phase 3 limitations; `docs/PLATFORM_COMPATIBILITY.md`, line 17). Neon Free's restore history is also limited (`docs/PLATFORM_COMPATIBILITY.md`, line 57).
 3. **SSE is per isolate, so the web polls.** Server-sent event streams are held per Worker isolate, so the hosted web app polls the public routes instead of relying on SSE.
 4. **No pipeline status on the hosted site.** `#alur-agen` shows no pipeline status on the hosted site.
-5. **PBKDF2 cost: unmeasured.** The current cost is 100,000 iterations (`apps/worker/src/accounts/password.ts`, `PASSWORD_HASH_ITERATIONS`). The count is lowered only if a measured login CPU time is too high for the Workers Free CPU limit. A lowered count is applied with a rehash on the next login. This rehash procedure is decided but not implemented. The verifier rejects stored counts below 10,000 (`MIN_STORED_ITERATIONS`). **Measured outcome: pending measurement.**
+5. **PBKDF2 cost: measured 17 Nov 2026 (see the amendment below).** The current cost is 100,000 iterations (`apps/worker/src/accounts/password.ts`, `PASSWORD_HASH_ITERATIONS`). The count is lowered only if a measured login CPU time is too high for the Workers Free CPU limit. A lowered count is applied with a rehash on the next login. This rehash procedure is decided but not implemented. The verifier rejects stored counts below 10,000 (`MIN_STORED_ITERATIONS`). **Measured outcome:** 25–38 ms CPU per login at 100,000 iterations, no CPU-limit failure; the count is unchanged (details in the 17 Nov amendment).
 6. **Source revocation is unchanged.** Revoking a source also turns off its collection, which conflicts with FR-16 (SDP section 10). This is an owner decision that is still open. It is not decided here.
 
 **Related, not one of the six owner limitations.** The F-04 publication check reads `investigation_id` and `case_status`. The L4 publication role cannot read these on hosted grants today, so the check fails closed on hosted (SDP section 10; `docs/testing/DEFECTS.md`, F-04).
 
-## Ingestion acceptance (per source; pending measurement)
+## Ingestion acceptance (per source)
 
-Source IDs are taken from `apps/worker/src/runtime/news-poll-runtime.ts` (`DEFAULT_NEWS_FEEDS`), `apps/worker/src/runtime/bmkg-poll-runtime.ts` and `apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.ts` (PetaBencana). The cells stay empty until each fetch is measured.
+Source IDs are taken from `apps/worker/src/runtime/news-poll-runtime.ts` (`DEFAULT_NEWS_FEEDS`), `apps/worker/src/runtime/bmkg-poll-runtime.ts` and `apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.ts` (PetaBencana). Staging evidence (16–17 Nov 2026): the hosted `--once` ingest runs against Neon logged 16 of 16 sources fetched (one later ANTARA Metro poll logged a `fetch_error`). The run log gives counts per source, not timestamps, so the staging cell names the run date. "Revisions" is the number of items that passed triage and were stored, read from `report_revisions` on 17 Nov 2026 04:45 UTC; zero revisions means the feed was fetched but nothing passed triage, not that the fetch failed. The production column needs the first scheduled GitHub Actions run, which had not fired at the time of writing.
 
 | # | Source ID | Kind | First successful fetch, staging | First successful fetch, first hour of production | Status |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `source-antara-metro` | RSS | | | pending |
-| 2 | `source-antara-hukum` | RSS | | | pending |
-| 3 | `source-antara-terkini` | RSS | | | pending |
-| 4 | `source-antara-topnews` | RSS | | | pending |
-| 5 | `source-antara-humaniora` | RSS | | | pending |
-| 6 | `source-antara-wartabumi` | RSS | | | pending |
-| 7 | `source-detik-news` | RSS | | | pending |
-| 8 | `source-detik-utama` | RSS | | | pending |
-| 9 | `source-cnn-nasional` | RSS | | | pending |
-| 10 | `source-cnn-utama` | RSS | | | pending |
-| 11 | `source-cnbc-news` | RSS | | | pending |
-| 12 | `source-sindonews-nasional` | RSS | | | pending |
-| 13 | `source-sindonews-daerah` | RSS | | | pending |
-| 14 | `source-tempo-nasional` | RSS | | | pending |
-| 15 | `petabencana` | PetaBencana | | | pending |
-| 16 | `source-bmkg-gempa` | BMKG | | | pending |
+| 1 | `source-antara-metro` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 2 | `source-antara-hukum` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 3 | `source-antara-terkini` | RSS | 16 Nov 2026 (`--once` run, fetched; 2 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 4 | `source-antara-topnews` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 5 | `source-antara-humaniora` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 6 | `source-antara-wartabumi` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 7 | `source-detik-news` | RSS | 16 Nov 2026 (`--once` run, fetched; 2 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 8 | `source-detik-utama` | RSS | 16 Nov 2026 (`--once` run, fetched; 1 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 9 | `source-cnn-nasional` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 10 | `source-cnn-utama` | RSS | 16 Nov 2026 (`--once` run, fetched; 1 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 11 | `source-cnbc-news` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 12 | `source-sindonews-nasional` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 13 | `source-sindonews-daerah` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 14 | `source-tempo-nasional` | RSS | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 15 | `petabencana` | PetaBencana | 16 Nov 2026 (`--once` run, fetched; 0 revisions) | pending (no scheduled run yet) | staging met; production pending |
+| 16 | `source-bmkg-gempa` | BMKG | 16 Nov 2026 (`--once` run, fetched; 1 revisions) | pending (no scheduled run yet) | staging met; production pending |
 
-Row 15 uses the poll runtime's default ID (`PETABENCANA_SOURCE_ID`). `apps/worker/src/layers/l1-data-knowledge/source-status.ts` uses `source-petabencana`, and the live seed registers only the RSS feeds. Confirm the ID that rows are written under on staging before filling in this row.
+Row 15 uses the poll runtime's default ID (`PETABENCANA_SOURCE_ID`). `apps/worker/src/layers/l1-data-knowledge/source-status.ts` uses `source-petabencana`, and the live seed registers only the RSS feeds. Confirmed on 17 Nov 2026: `source_registry` on Neon holds `petabencana`.
 
 ## Consequences
 
@@ -73,3 +73,13 @@ Row 15 uses the poll runtime's default ID (`PETABENCANA_SOURCE_ID`). `apps/worke
 - `apps/worker/wrangler.toml` has no Hyperdrive binding, no static-assets binding and no cron trigger.
 - No staging environment, no production deployment, no Neon connection check, and no PBKDF2 CPU measurement exist.
 - This ADR is documentation only. No test, typecheck or build was run for it.
+
+## Amendment, 17 November 2026: what was deployed (HOSTED-13 to HOSTED-23)
+
+- **Ingestion moved off the PC.** `.github/workflows/ingest.yml` runs one bounded cycle (`npm run serve:hosted-ingest:once`) every 30 minutes: poll the 16 sources, drain the AI jobs, run every undecided proposal through the deterministic gate (`decideProposal`), then one freshness pass. Its logs are public and carry counts and fixed codes only. Model calls use Google AI Studio from that job; the Worker still makes none. GitHub may delay or skip scheduled runs, so liveness now depends on GitHub's scheduler instead of the PC.
+- **One database.** The Worker and the scheduled ingest use the same Neon database (owner decision, 17 Nov). One Hyperdrive config, `waspada-public`, backs both `HYPERDRIVE` and `AUTH_HYPERDRIVE`; it connects as the Neon owner login, which switches into the NOLOGIN layer roles granted by `hosted:bootstrap`.
+- **Gate changes recorded elsewhere.** An unknown event time is accepted with waiver `event_time_unknown` (HOSTED-21, ADR-061 amendment), so decision item 2's "an event time from the source" no longer holds for auto-publish. Publication writes source attribution (HOSTED-22, ADR-020 amendment).
+- **Smoke (17 Nov 2026).** All public routes and event detail answered 200; a POST without `Origin` answered 403; self-registration returned role `user`; moderator and admin logins worked. Live UAT passed read-only: T4 15 of 15 steps, T5 23 of 23 steps, and a public U3 phone check with two copy/attribution findings (`docs/testing/UAT.md` section 9.2).
+- **PBKDF2 measurement (limitation 5).** `wrangler tail` on three production logins at 100,000 iterations: CPU time 25, 32 and 38 ms, outcome `ok`, wall time 153–183 ms. For comparison, `GET /api/v1/events` used 55 ms. This is above the nominal 10 ms Workers Free CPU allowance, but no request failed with an exceeded-CPU outcome, so the count was not lowered (lowering is reserved for measured failures). Re-measure if login errors with an exceeded-CPU outcome appear.
+- **Known gaps at deploy.** Events published before HOSTED-22 have no attribution rows and are skipped from the public list (3 at deploy). The hosted ingest does not write `source_registry` health columns. No production-hour fetch evidence exists until the schedule fires. No off-provider backup (limitation 2) and no rights clearance (limitation 1) are unchanged.
+

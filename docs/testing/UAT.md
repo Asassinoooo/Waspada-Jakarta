@@ -241,6 +241,20 @@ Result values: pass, fail, blocked (precondition not met), pending (live data ne
 | T1 and T2 | 320 px (manual) | Not run | — | Manual check, not scripted. | — |
 | T1 and T2 | 200% text (manual) | Not run | — | Manual check, not scripted. | — |
 
+### 9.2 Live hosted site (HOSTED-23, 17 Nov 2026)
+
+Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers.dev` (`UAT_TARGET=live`), automated walkthroughs (browser subagent), read-only. T4 made no decision (`UAT_T4_ACTION` unset). T5 never clicks approve or revoke.
+
+| Task | Viewport | Result | Seconds | Notes | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| T4 | Desktop 1440 × 900 | Pass (read-only) | 7.7 | 7 steps passed (15 in total, including setup). Signed in as the moderator. The proposal in the queue shows a discrepancy callout; the decision is left to the moderator. | `.codex-build/uat/hosted23-live/t4-moderator.json` |
+| T4 | Phone 390 × 844 | Pass (read-only) | 4.9 | 7 steps passed. | `.codex-build/uat/hosted23-live/t4-moderator.json` |
+| T5 | Desktop 1440 × 900 | Pass (read-only) | 5.9 | 11 steps passed (23 in total, including setup). External host while on `#admin/sumber`: `tile.openstreetmap.org` (note, not a fail). | `.codex-build/uat/hosted23-live-warp/t5-admin-sources.json` |
+| T5 | Phone 390 × 844 | Pass (read-only) | 4.2 | 11 steps passed. An earlier attempt (`hosted23-live`) failed on phone only because repeated admin logins hit the login throttle (HTTP 429, 12 per username per 10 min); it was re-run after the window. | `.codex-build/uat/hosted23-live-warp/t5-admin-sources.json` |
+| U3 (public views) | Phone 390 × 844 | Pass, 2 findings | — | Scripted public check, no sign-in. Map: no pin for the agent event (whole view), list count 1, no horizontal scroll, no page errors. Detail: "Waktu kejadian tidak disebutkan", "Dipublikasikan sumber" with the source time, whole-Jakarta location text, source links. Findings: R-09 the detail header reads "Detail dari API lokal" on the hosted site; R-10 each claim lists DETIK UTAMA twice (one attribution line per evidence item from the same source). | `.codex-build/uat/hosted23-u3/01-jelajah-phone.png`, `02-detail-phone.png` |
+
+Network note: the tester's ISP resolver (XL Axiata) answered `*.workers.dev` with a block page, which appears as a TLS name mismatch. The first T4 run used a DNS-over-HTTPS workaround; the T5 re-run and U3 used Cloudflare WARP with no workaround.
+
 ### 9.1 Persona walkthroughs on the local live app (13 Nov 2026)
 
 Each run is an automated walkthrough by a browser agent that acts as one target user through the interface (section 3). The runs are read-only on live data. Accounts were registered through the interface and are real rows in the local live database. Passwords are not recorded here. The live feed held two or three published reports at run time, with no flood, expired, copied, group or transport-impact case among them.
