@@ -91,7 +91,7 @@ Results on 17 Nov 2026 (HOSTED-23): `/`, `/api/v1/events`, `/api/v1/context`, `/
 
 ## 7. Scheduled hosted ingest (GitHub Actions, HOSTED-13)
 
-This replaces the PC ingest node in section 5 for the hosted site. `.github/workflows/ingest.yml` runs every 30 minutes (cron `*/30 * * * *`, UTC) and can also be started by hand. Each run does one bounded cycle against Neon and exits:
+This replaces the PC ingest node in section 5 for the hosted site. `.github/workflows/ingest.yml` runs every 30 minutes (cron `7,37 * * * *`, UTC; off-peak minutes because GitHub delays or drops scheduled runs at :00 and :30) and can also be started by hand. Each run does one bounded cycle against Neon and exits:
 
 1. Coverage guard: the 16 live sources must exist in `source_registry`. If one is missing, the run exits 1.
 2. One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A source that fails is logged and the run goes on.
