@@ -75,6 +75,13 @@ import {
   runOnceSequence,
   sweepUndecidedProposals,
 } from "./hosted/ingest-once.js";
+import {
+  formatSourceHealthLines,
+  recordSourceHealth,
+  rssFetchOutcome,
+  structuredFetchOutcome,
+  type SourceFetchResult,
+} from "./hosted/source-health.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -101,6 +108,8 @@ const HEADLESS = RUN_FLAGS.headless;
 // then exits. It is the scheduled GitHub Actions path, and its concurrency group is the only lock. Local PC mode
 // (serve:live, serve:hosted-ingest without --once) has no lock, so it must not run alongside the schedule.
 const ONCE = RUN_FLAGS.once;
+// HOSTED-24B: log prefix for the per-cycle source health summary. Counts and fixed codes only.
+const HEALTH_TAG = ONCE ? "[Once] Source health" : "[Source Health]";
 
 /** Message in local mode (as before). Code or class only in headless mode, because messages can carry hosts. */
 function logDetail(error: unknown): string {
@@ -536,6 +545,8 @@ async function main() {
     let cycleFeedFailures = 0;
     // HOSTED-03: one count-only line per source per cycle, printed at the end of the cycle.
     const health: SourceHealthEntry[] = [];
+    // HOSTED-24B: one fetch outcome per source this cycle tried. Written in the finally block below.
+    const fetchResults: SourceFetchResult[] = [];
     pipelineStatus.recordCycleStart({ newItemsCap: liveCycle.maxNewItemsPerCycle, feedsTotal: liveFeeds.length });
     try {
       console.log("\n[Ingestion Cycle] Polling live Jakarta sources...");
@@ -543,9 +554,12 @@ async function main() {
     const structuredPolls: StructuredPollInput[] = [];
 
     // A. PetaBencana
+    let petabencanaOutcomeRecorded = false;
     try {
       const pbRunner = createPetaBencanaPollRuntime();
       const pbRes = await pbRunner.poll();
+      fetchResults.push({ sourceId: PETABENCANA_SOURCE_ID, outcome: structuredFetchOutcome(pbRes.outcome) });
+      petabencanaOutcomeRecorded = true;
       if (pbRes.revisions.length > 0) {
         console.log(`  [PetaBencana] Discovered ${pbRes.revisions.length} live flood reports.`);
         discoveredRevisions.push(...pbRes.revisions);
@@ -564,12 +578,16 @@ async function main() {
       console.warn(`  [PetaBencana] Poll error: ${logDetail(e)}`);
       pipelineStatus.recordSourceCycle("petabencana", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
       structuredPolls.push({ sourceId: PETABENCANA_SOURCE_ID, fetched: 0, revisions: 0, thrown: { error: e } });
+      if (!petabencanaOutcomeRecorded) fetchResults.push({ sourceId: PETABENCANA_SOURCE_ID, outcome: "failed" });
     }
 
     // B. BMKG CAP Alerts
+    let bmkgOutcomeRecorded = false;
     try {
       const bmkgRunner = createBmkgPollRuntime();
       const bmkgRes = await bmkgRunner.poll();
+      fetchResults.push({ sourceId: BMKG_GEMPA_SOURCE_ID, outcome: structuredFetchOutcome(bmkgRes.outcome) });
+      bmkgOutcomeRecorded = true;
       if (bmkgRes.revisions.length > 0) {
         console.log(`  [BMKG] Discovered ${bmkgRes.revisions.length} weather/disaster warnings.`);
         discoveredRevisions.push(...bmkgRes.revisions);
@@ -588,6 +606,7 @@ async function main() {
       console.warn(`  [BMKG] Poll error: ${logDetail(e)}`);
       pipelineStatus.recordSourceCycle("bmkg", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
       structuredPolls.push({ sourceId: BMKG_GEMPA_SOURCE_ID, fetched: 0, revisions: 0, thrown: { error: e } });
+      if (!bmkgOutcomeRecorded) fetchResults.push({ sourceId: BMKG_GEMPA_SOURCE_ID, outcome: "failed" });
     }
 
     // C. RSS Feeds (14 sources) — WJ-INT-02B shared gated-RSS cycle (§6):
@@ -634,8 +653,13 @@ async function main() {
           notFetched.push(feed.sourceId);
           continue;
         }
+        // HOSTED-24B: the fetch outcome is recorded as soon as pollFeed returns, so a persistence error after a
+        // successful fetch does not mark the source as failed.
+        let feedOutcomeRecorded = false;
         try {
           const feedRes = await newsRunner.pollFeed(feed);
+          fetchResults.push({ sourceId: feed.sourceId, outcome: rssFetchOutcome(feedRes) });
+          feedOutcomeRecorded = true;
           const admitted = feedRes.revisions.filter((rev) => cycleDedupe.admit(rev));
           // FLOW-VIS-01: title-dedupe hits come from Stage A; cycle-dedupe hits are the revisions this cycle already admitted.
           const counts = feedRes.triageCounts;
@@ -681,6 +705,7 @@ async function main() {
           pipelineStatus.recordSourceCycle("rss", { ingest: 0, held: 0, duplicate: 0, deferred: 0, errors: 1 });
           cycleFeedFailures += 1;
           health.push(failedHealthEntry(feed.sourceId, feedErr));
+          if (!feedOutcomeRecorded) fetchResults.push({ sourceId: feed.sourceId, outcome: "failed" });
         }
       }
       console.log(formatNotFetchedLine(notFetched));
@@ -796,6 +821,14 @@ async function main() {
         feedsFailed: cycleFeedFailures,
       });
       for (const entry of health) console.log(formatSourceHealthLine(entry));
+      // HOSTED-24B: fetch health for the sources this cycle tried, one UPDATE each. Counts and fixed codes only.
+      // It sits in finally, so it must never throw: a throw here would skip the isPolling reset below.
+      try {
+        const healthSummary = await recordSourceHealth(executor, fetchResults);
+        for (const line of formatSourceHealthLines(healthSummary, HEALTH_TAG)) console.log(line);
+      } catch {
+        console.warn(`${HEALTH_TAG}: write_failed`);
+      }
       // REVIEW-EXPIRY-01 (ADR-062): mark undecided proposals past the review TTL as expired. Counts only.
       // It runs inside the isPolling guard, so sweeps never overlap. Errors never reach proposal text.
       try {
