@@ -1,14 +1,17 @@
 # Hosted deployment: Cloudflare Workers + Neon Free
 
-Status: HOSTED-04. The production environment is configured in `apps/worker/wrangler.toml` (`[env.production]`), but this change deploys nothing. Every step below is run by the owner. Routine CI never deploys.
+Status: **deployed 17 Nov 2026 (HOSTED-23).** The production Worker `waspada-jakarta` is live at `https://waspada-jakarta.waspada-worker.workers.dev`. The steps below record what was actually run. Routine CI never deploys; `ingest.yml` (section 7) writes data but deploys nothing.
 
-Hosted use stays gated. Before a public URL is shared, the source-rights gate in `SOURCE_CLEARANCE_PLAN.md` must be cleared for each live source. That file still records BMKG and ANTARA as needing permission, and it does not cover the other RSS outlets.
+Note for testers on Indonesian mobile ISPs: some resolvers (seen: XL Axiata) answer `*.workers.dev` with a block page, which shows up as a TLS "certificate name does not match" error. The site itself is fine. Use another resolver (for example Cloudflare WARP or 1.1.1.1) to reach it.
+
+Hosted use runs under the rights limitation recorded in ADR-065 (limitation 1, `local_relaxed`). No source-rights clearance is claimed. `SOURCE_CLEARANCE_PLAN.md` still records BMKG and ANTARA as needing permission, and it does not cover the other RSS outlets.
 
 ## What runs where
 
 - One Worker, `waspada-jakarta` (env `production`), serves the built SPA from `apps/web/dist` as static assets and the API under `/api/v1/*` on the same origin. The web app calls relative `/api/v1/*` paths, so no build-time base URL is needed. All Worker routes are under `/api/v1/*`, so `run_worker_first = ["/api/*"]` sends only API calls to the Worker.
-- The Worker reads Neon Postgres through Hyperdrive. `HYPERDRIVE` serves public reads and writes from webhook ingest, internal proposals and moderation. `AUTH_HYPERDRIVE` serves the dedicated auth role.
-- Live pollers (PetaBencana, BMKG, RSS) do not run inside the Worker. They run in the PC ingest node (`npm run serve:hosted-ingest`), which writes to Neon.
+- The Worker reads Neon Postgres through Hyperdrive. As deployed, **one** Hyperdrive config (`waspada-public`) backs both bindings, `HYPERDRIVE` and `AUTH_HYPERDRIVE`. It connects as the Neon owner login; the runtime switches into the NOLOGIN layer roles (including `waspada_auth_service`) that `hosted:bootstrap` granted to that login. No separate auth login exists.
+- The production Worker and the scheduled ingest use **the same Neon database** (owner decision, 17 Nov 2026). There is no separate staging database any more.
+- Live pollers (PetaBencana, BMKG, RSS) do not run inside the Worker. They run in the scheduled GitHub Actions ingest (section 7), which writes to Neon.
 - Production values: `DATASET_MODE=live`, `SOURCE_PREVIEW_ENABLED=false`, `AUTH_ENABLED=true`. The demo routes (`/api/v1/demo/*`) answer 404 in production. The default block in `wrangler.toml` keeps `DATASET_MODE=demo` for `npm run dev`.
 - Because `[env.production]` now exists, a bare `wrangler deploy` prints a warning that no environment was chosen. Use `npm run deploy:prod`, which passes `--env production`.
 
@@ -16,8 +19,8 @@ Hosted use stays gated. Before a public URL is shared, the source-rights gate in
 
 1. A Cloudflare account on the Workers Free plan.
 2. Log in from WSL with `npx wrangler login`. It opens a browser. Do not paste tokens into the terminal log or into chat.
-3. A Neon Free project in region `ap-southeast-1` with two branches, `staging` and `main`.
-4. Run `npm run hosted:bootstrap` once per Neon branch. This command is delivered by another HOSTED work branch and is not on this branch. Check that it appears in `npm run` before you rely on it.
+3. A Neon Free project (Postgres 17 with `postgis` and `vector`). As deployed, one database serves both the ingest and the Worker.
+4. Run `npm run hosted:bootstrap` once against it. It applies migrations 001–053, creates the layer roles (with the HOSTED-19 role-attribute compatibility for Neon's non-superuser owner), seeds the 16 sources and the admin and moderator accounts.
 
 ## 2. Hyperdrive configs
 
@@ -31,7 +34,7 @@ npx wrangler hyperdrive create waspada-auth --connection-string="$NEON_URL_AUTH"
 unset NEON_URL NEON_URL_AUTH
 ```
 
-The first config uses the `main` branch string. The second uses the dedicated auth role. Wrangler prints an id for each config. Paste them into `apps/worker/wrangler.toml`:
+As deployed (HOSTED-23) only the first command was run, with the direct (non-pooled) Neon host; Hyperdrive pools on its own. The second config is optional and was not created. Wrangler prints an id for each config. Paste them into `apps/worker/wrangler.toml`:
 
 - `[[env.production.hyperdrive]]` with `binding = "HYPERDRIVE"` replaces `REPLACE_WITH_HYPERDRIVE_ID`.
 - `[[env.production.hyperdrive]]` with `binding = "AUTH_HYPERDRIVE"` replaces `REPLACE_WITH_AUTH_HYPERDRIVE_ID`. If you deliberately use one config for both bindings, paste the same id in both blocks.
@@ -61,19 +64,13 @@ WEBHOOK_KEY=$(openssl rand -hex 32)
 printf '%s' "$WEBHOOK_KEY" | npx wrangler secret put WEBHOOK_SERVICE_KEY --env production
 ```
 
-Save `INTERNAL_SERVICE_KEY` and `WEBHOOK_SERVICE_KEY` in your password manager before you close the shell. Callers must present the same values. A webhook sender presents `WEBHOOK_SERVICE_KEY` as `x-service-key`. A PC node that notifies the Worker needs `INTERNAL_SERVICE_KEY` in the root `.env.local`, which is git-ignored. The cursor key is used only by the Worker, but keep a copy as well.
+As deployed, `INTERNAL_SERVICE_KEY` and `WEBHOOK_SERVICE_KEY` are also kept in the git-ignored root `.env.local` as `PROD_INTERNAL_SERVICE_KEY` and `PROD_WEBHOOK_SERVICE_KEY`; nothing off-Worker uses them today, because the ingest writes to Neon directly. Save them in your password manager as well. Callers must present the same values. A webhook sender presents `WEBHOOK_SERVICE_KEY` as `x-service-key`. A PC node that notifies the Worker needs `INTERNAL_SERVICE_KEY` in the root `.env.local`, which is git-ignored. The cursor key is used only by the Worker, but keep a copy as well.
 
 Until these secrets are set, the public event list answers with the bounded unavailable response (HTTP 503), and the machine routes answer 503 as well.
 
-## 5. PC ingest node
+## 5. Ingest (superseded)
 
-The live pollers run on your PC and write to Neon:
-
-```sh
-npm run serve:hosted-ingest
-```
-
-It needs `NEON_DATABASE_URL` in the root `.env.local`. That file is git-ignored. Never commit it, and never paste the string into docs or chat. This command is delivered by a HOSTED-03 work branch.
+The PC ingest node (`npm run serve:hosted-ingest`) is no longer how the hosted site is fed. The scheduled GitHub Actions ingest in section 7 replaced it. The PC command still exists for local runs, but it has no lock, so never run it alongside the schedule.
 
 ## 6. Smoke checks
 
@@ -81,12 +78,15 @@ It needs `NEON_DATABASE_URL` in the root `.env.local`. That file is git-ignored.
 - Open `https://<your-origin>/` in a browser. The SPA loads, and `#jelajah` shows only published data.
 - Check the Worker logs in the Cloudflare dashboard for secret or connection errors. Do not paste their contents into chat.
 
+Results on 17 Nov 2026 (HOSTED-23): `/`, `/api/v1/events`, `/api/v1/context`, `/api/v1/updates` and `/api/v1/events.geojson` answered 200, and event detail answered 200. The list held 1 event. A POST to `/api/v1/auth/register` without `Origin` answered 403. Registration with the web app's `Origin` and `x-waspada-request: 1` header returned role `user`. The moderator and admin logins answered 200 with roles `moderator` and `admin`. `wrangler tail` showed no exceptions. Login CPU time was 25–38 ms (see ADR-065, limitation 5).
+
 ## Known limitations
 
 - No off-provider backup. Neon Free is the only copy of the hosted data. Export it yourself if you need one.
-- The hosted pollers run on the owner's PC, so the site is only as live as that PC.
+- The site is only as live as the GitHub Actions schedule. GitHub may delay or skip scheduled runs under load; at the time of the deploy no scheduled run had fired yet.
+- The hosted ingest does not update `source_registry.health_status`, `last_checked_at` or `last_success_at`, so per-source health is read from the run log counts, not from the registry.
 - SSE is per isolate. A client sees updates only from its own isolate, so the web app polls instead.
-- No cron trigger is configured. The Worker's `scheduled()` handler therefore never runs in this deployment.
+- No Worker cron trigger is configured. The Worker's `scheduled()` handler therefore never runs; scheduling is done by GitHub Actions.
 - Rollback to the previous Worker version: `npx wrangler rollback --env production`.
 
 ## 7. Scheduled hosted ingest (GitHub Actions, HOSTED-13)
