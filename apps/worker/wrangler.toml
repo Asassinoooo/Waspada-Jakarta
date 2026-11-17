@@ -25,18 +25,18 @@ name = "waspada-jakarta"
 DATASET_MODE = "live"
 SOURCE_PREVIEW_ENABLED = "false"
 AUTH_ENABLED = "true"
-# OWNER: replace the placeholder with this Worker's exact https workers.dev origin (no trailing slash).
-AUTH_APP_ORIGIN = "https://waspada-jakarta.REPLACE-ME.workers.dev"
+# Production origin (HOSTED-23, 17 Nov 2026). Exact https origin, no trailing slash.
+AUTH_APP_ORIGIN = "https://waspada-jakarta.waspada-worker.workers.dev"
 
-# OWNER: run `npx wrangler hyperdrive create ...` against the Neon Free `main` branch and paste its id here.
+# Hyperdrive config waspada-public (HOSTED-23). Same Neon database as the scheduled ingest (owner decision).
 [[env.production.hyperdrive]]
 binding = "HYPERDRIVE"
-id = "REPLACE_WITH_HYPERDRIVE_ID"
+id = "7dad8907f83b4ab9b7499e0de586b222"
 
-# OWNER: second Hyperdrive config for the dedicated auth DB role (separate from the public/ingest role).
+# Same config for auth: the runtime switches into the NOLOGIN auth role granted by the bootstrap.
 [[env.production.hyperdrive]]
 binding = "AUTH_HYPERDRIVE"
-id = "REPLACE_WITH_AUTH_HYPERDRIVE_ID"
+id = "7dad8907f83b4ab9b7499e0de586b222"
 
 # Static web build served from the same Worker. Every Worker route is under /api/v1/*, so only those
 # paths run the Worker; everything else is an asset or, when missing, the SPA index.html.
