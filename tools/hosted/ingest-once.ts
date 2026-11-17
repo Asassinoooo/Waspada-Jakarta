@@ -317,6 +317,26 @@ export function formatDrainLine(drain: DrainResult): string {
   return `[Once] AI jobs: completed=${drain.completed} not_completed=${drain.notCompleted} stop=${drain.stop}.`;
 }
 
+/**
+ * HOSTED-24C: the counts of one attribution backfill run (see tools/hosted/attribution-backfill.ts). Each unit is one
+ * published live event version, never a reference and never a source.
+ */
+export interface AttributionBackfillResult {
+  /** Versions attempted in this run: attributed + skipped + failed. Zero when the run's candidate query failed. */
+  readonly candidates: number;
+  /** Versions whose every resolved supporting reference has an approved attribution row after this run's write. */
+  readonly attributed: number;
+  /** Versions still without a complete approved attribution: refused by the rights rules, or with an unresolved reference. */
+  readonly skipped: number;
+  /** Versions whose write threw (rolled back, and the run goes on). A whole-step failure counts as one. */
+  readonly failed: number;
+}
+
+/** HOSTED-24C: the one public count line of the attribution backfill. Fixed fields, no source text, URL or error text. */
+export function formatAttributionLine(result: AttributionBackfillResult): string {
+  return `[Once] Attribution backfill: candidates=${result.candidates} attributed=${result.attributed} skipped=${result.skipped} failed=${result.failed}`;
+}
+
 export interface OnceSteps {
   /** One poll cycle. A throw is reported through onPollError and does not stop the run. */
   readonly poll: () => Promise<void>;
@@ -324,6 +344,11 @@ export interface OnceSteps {
   /** Throws are hard errors: the caller stops the run and exits 1. */
   readonly drain: () => Promise<DrainResult>;
   readonly sweep: () => Promise<PublicationSweepResult>;
+  /**
+   * HOSTED-24C: optional, so a run without it keeps its order and its lines. It runs after the sweep. A throw is
+   * counted as one failed step, is never fatal, and never reaches the log as text.
+   */
+  readonly attribution?: () => Promise<AttributionBackfillResult>;
   readonly freshness: () => Promise<void>;
   readonly log: (line: string) => void;
 }
@@ -331,6 +356,7 @@ export interface OnceSteps {
 /**
  * HOSTED-20: the order of one `--once` run: poll, drain the AI queue, the publication sweep over what is still
  * undecided, then one freshness pass. A throw from drain, sweep or freshness is not caught here.
+ * HOSTED-24C: the attribution backfill runs after the sweep and before the freshness pass, and never fails the run.
  */
 export async function runOnceSequence(steps: OnceSteps): Promise<void> {
   try {
@@ -342,5 +368,14 @@ export async function runOnceSequence(steps: OnceSteps): Promise<void> {
   steps.log(formatDrainLine(drain));
   const sweep = await steps.sweep();
   for (const line of formatPublicationLines(sweep)) steps.log(line);
+  if (steps.attribution !== undefined) {
+    let backfill: AttributionBackfillResult;
+    try {
+      backfill = await steps.attribution();
+    } catch {
+      backfill = { candidates: 0, attributed: 0, skipped: 0, failed: 1 };
+    }
+    steps.log(formatAttributionLine(backfill));
+  }
   await steps.freshness();
 }
