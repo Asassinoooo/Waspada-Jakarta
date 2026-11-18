@@ -282,9 +282,14 @@ export function publishedAtText(event: EventView): string {
   return event.published_at ? formatInstant(event.published_at) : "Tidak diketahui";
 }
 
+/** HOSTED-26: the location named in the report itself, marked as approximate. It is not a verified place. */
+export const LOCATION_LABEL_NOTE = " (perkiraan dari laporan)";
+
 export function areaText(event: EventView): string {
   const places = event.scope.places.filter((place) => place.trim().length > 0);
-  return places.length > 0 ? places.slice(0, 2).join(", ") : "Lokasi tidak tercatat";
+  if (places.length > 0) return places.slice(0, 2).join(", ");
+  const label = typeof event.location_label === "string" ? event.location_label.trim() : "";
+  return label.length > 0 ? label + LOCATION_LABEL_NOTE : "Lokasi tidak tercatat";
 }
 
 export function categoryText(category: string): string {
