@@ -17,6 +17,7 @@ import type {
   StoredEvidenceChunk,
   StoredReportRevision,
 } from "../l1-data-knowledge/multisource-correlator.js";
+import { extractStatedDate } from "./proposal-engine.js";
 
 export type IncidentSeverity = "low" | "medium" | "high" | "critical";
 
@@ -167,8 +168,17 @@ function extractCombinedEventTime(
     }
   }
 
+  // HOSTED-29: a calendar date the reports state, with no hour, is kept as date precision. The same
+  // parsing as the single-report engine. No hour is added and no date is completed.
+  for (const rep of reports) {
+    const statedDate = extractStatedDate(rep.permitted_text);
+    if (statedDate !== null) {
+      return { precision: "date", value: statedDate };
+    }
+  }
+
   // F-14: a clock time alone gives no date, and publish or retrieval times are never the event time.
-  // Without a time in the text the event time is unknown, with no value.
+  // Without a date or range in the text the event time is unknown, with no value.
   return { precision: "unknown", value: null };
 }
 

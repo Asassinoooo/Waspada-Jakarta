@@ -517,7 +517,9 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
             coordinates: interpretation.location.approximateCoordinates,
             // F-14: the incident start is the report's own event time. It stays null when the report
             // gives none. The publish time, processing time and "now" are never stored here.
-            firstObservedAt: interpretation.eventTime.precision === "unknown" ? null : interpretation.eventTime.value,
+            // HOSTED-29: first_observed_at is a timestamptz, so only an exact instant goes here. A date-only or range time
+            // would become an invented midnight; it stays in event_time with its own precision instead.
+            firstObservedAt: interpretation.eventTime.precision === "exact" ? interpretation.eventTime.value : null,
             uncertaintyNotes: [
               ...interpretation.uncertaintyNotes,
               ...(correlation.decision === "unresolved" ? correlation.unresolvedQuestions : []),
