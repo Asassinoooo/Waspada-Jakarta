@@ -186,7 +186,7 @@ test("persistent shell and discovery expose synthetic dataset and linked list/ma
   assert.match(page, /Kesegaran/);
   assert.match(page, /Bukti/);
   assert.match(page, /Relevansi/);
-  assert.match(page, /Tidak ada geometri yang cocok pada halaman ini/);
+  assert.match(page, /Tidak ada lokasi yang cocok pada halaman ini/);
   assert.match(page, /aria-pressed="false">Tampilkan fixture/);
   assert.doesNotMatch(page, /route-diagram/);
   const selectedApi = renderFeed({ selection: { kind: "api-event", event: sampleEvent } });
@@ -299,7 +299,7 @@ test("the public header shows one dataset badge and no admin, review or source l
 
   const live = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={liveContext} />);
   assert.match(live, /<span class="site-header__badge-label">Langsung<\/span><\/button>/u);
-  assert.match(live, /LIVE — record berasal dari dataset live API/);
+  assert.match(live, /LIVE — laporan berasal dari data langsung/);
   assert.doesNotMatch(live, /DEMO —/);
 
   const unknown = renderToStaticMarkup(<SiteHeader route={{ screen: "discover" }} context={null} />);
@@ -571,7 +571,7 @@ test("API detail preserves unknown fields as unknown and has no invented geometr
   assert.match(markup, /Bukti tidak tersedia pada fixture demo ini/);
   assert.match(markup, /Versi contoh sintetis dimuat untuk demonstrasi antarmuka\./);
   assert.match(markup, /fixture demo/);
-  assert.match(markup, /Record API ini tidak menyertakan geometri/);
+  assert.match(markup, /Laporan ini tidak menyertakan lokasi/);
   assert.doesNotMatch(markup, /route-diagram|Didukung laporan independen|Buka sumber publik|example\.invalid/);
 });
 
@@ -631,7 +631,7 @@ test("detail not-found, unavailable, loading, and empty-history states are expli
   );
 
   assert.match(notFound, /Record contoh tidak ditemukan/);
-  assert.match(notFound, /Riwayat record tidak ditemukan/);
+  assert.match(notFound, /Riwayat laporan tidak ditemukan/);
   assert.doesNotMatch(notFound, /Contoh fiktif: pemberitahuan kelompok/);
   assert.match(unavailable, /Detail contoh belum dapat dimuat/);
   assert.match(unavailable, /Keadaan keselamatan tidak diketahui/);

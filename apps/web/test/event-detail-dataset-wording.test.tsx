@@ -54,11 +54,11 @@ test("R-05: a live record is labelled as live data, never as synthetic or fixtur
   // HOSTED-24A (R-09): the hosted site is not a local API, so the live kicker names the event detail only.
   assert.match(html, /Detail peristiwa</u);
   assert.doesNotMatch(textOf(html), /API lokal/u);
-  assert.match(html, /Record ini menampilkan waktu dan sumbernya\. Ini bukan peringatan darurat/u);
+  assert.match(html, /Laporan ini menampilkan waktu dan sumbernya\. Ini bukan peringatan darurat/u);
   assert.match(html, /<dt>Siklus<\/dt><dd>Berlangsung<\/dd>/u);
   assert.match(html, /Dievaluasi /u);
   assert.match(html, /Data API/u);
-  assert.match(html, /Tidak tersedia pada record/u);
+  assert.match(html, /Tidak tersedia pada laporan/u);
 });
 
 test("R-05: a demo record keeps the synthetic demo wording", () => {

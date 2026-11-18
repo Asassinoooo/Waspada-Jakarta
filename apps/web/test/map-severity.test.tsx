@@ -202,8 +202,11 @@ test("the legend says what the icon size means, names the three levels, and sits
   assert.match(html, /title="Ukuran ikon = tingkat dampak"/u);
   assert.ok(html.includes(">Ukuran ikon = tingkat dampak</p>"));
   for (const label of ["Rendah", "Sedang", "Tinggi"]) assert.ok(html.includes(`<span>${label}</span>`), label);
-  assert.match(cssBlock(".map-legend"), /position:\s*absolute;/u);
-  assert.match(cssBlock(".map-legend"), /pointer-events:\s*none;/u, "the key takes no pointer input");
+  // HOSTED-34: the home legend is scoped to its own modifier, so styles.css's detail-footer .map-legend cannot override it.
+  assert.match(cssBlock(".map-legend.map-legend--severity"), /position:\s*absolute;/u);
+  assert.match(cssBlock(".map-legend.map-legend--severity"), /pointer-events:\s*none;/u, "the key takes no pointer input");
+  assert.doesNotMatch(cssBlock(".map-legend.map-legend--severity"), /max-width/u, "the key has no fixed width that clips its items");
+  assert.match(cssBlock(".map-legend__items"), /flex-wrap:\s*wrap;/u, "the key items wrap instead of running out of the box");
 });
 
 test("the map home renders the legend and the assessed marker class together", () => {
@@ -211,7 +214,7 @@ test("the map home renders the legend and the assessed marker class together", (
     initialEvents: [event("evt-1", { severity: "high" })],
     initialMarkers: new Map([["evt-1", { coordinate: [106.8786, -6.2549] as const, role: "incident_scene" }]]),
   }));
-  assert.match(html, /class="map-legend"/u);
+  assert.match(html, /class="map-legend map-legend--severity"/u);
   assert.match(html, /class="map-marker map-marker--sev-high"/u);
 });
 

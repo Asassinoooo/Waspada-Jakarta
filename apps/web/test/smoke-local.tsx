@@ -107,7 +107,7 @@ async function runSmoke() {
   assert.match(feedMarkup, /SIMULASI FIKTIF/);
   assert.match(feedMarkup, /Daftar/);
   assert.match(feedMarkup, /Peta/);
-  assert.match(feedMarkup, /Status peta koordinat belum tersedia/);
+  assert.match(feedMarkup, /Status peta lokasi belum tersedia/);
   assert.match(feedMarkup, /tidak memastikan kondisi aman/);
   assert.ok(detailMarkup.includes(detail.title), "detail UI should render the API-provided title");
   assert.ok(detailMarkup.includes(detail.summary), "detail UI should render the API-provided summary");
@@ -117,8 +117,8 @@ async function runSmoke() {
   assert.ok(detailMarkup.includes(`dateTime="${detail.published_at}"`), "detail UI should preserve the API publication timestamp");
   assert.ok(detailMarkup.includes(`dateTime="${historyEntry.changed_at}"`), "history UI should preserve the API change timestamp");
   assert.match(detailMarkup, /Bukti tidak tersedia pada fixture demo ini/);
-  assert.match(detailMarkup, /Tidak dipetakan\. Record API ini tidak menyertakan geometri/);
-  assert.match(detailMarkup, /Tidak adanya geometri bukan pernyataan bahwa suatu area aman/);
+  assert.match(detailMarkup, /Tidak dipetakan\. Laporan ini tidak menyertakan lokasi/);
+  assert.match(detailMarkup, /Tidak adanya lokasi bukan pernyataan bahwa suatu area aman/);
   assert.doesNotMatch(detailMarkup, /fixture presentasi|Jalan Contoh|Sumber dan isi di bawah hanya berada dalam fixture sintetik/);
 
   console.log("UI/API smoke passed: local shell, context/list/detail/history routes, demo labels, returned timestamps, and honest empty evidence/geometry states.");

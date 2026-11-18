@@ -1,6 +1,6 @@
 import type { EventDetail as EventDetailRecord, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
 import type { ApiReadState } from "./api-client.js";
-import { categoryLabel, evidenceLabel, eventTimeText, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
+import { categoryLabel, evidenceLabel, eventTimeText, formatInstant, freshnessBasisLabel, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
 import { MapPanel, RecordMapPanel } from "./MapPanel.js";
 import { SeverityChip } from "./MapSeverity.js";
@@ -166,7 +166,7 @@ function ApiHistory({
       )}
       {state.status === "not-found" && (
         <div className="state-panel state-panel--compact" role="status">
-          <strong>Riwayat record tidak ditemukan.</strong>
+          <strong>Riwayat laporan tidak ditemukan.</strong>
           <p>{wording(demo, "API demo tidak memiliki riwayat untuk ID ini.", "API tidak memiliki riwayat untuk ID ini.")}</p>
         </div>
       )}
@@ -179,7 +179,7 @@ function ApiHistory({
       )}
       {state.status === "loaded" && state.data.data.length === 0 && (
         <div className="state-panel state-panel--compact" role="status">
-          <strong>{wording(demo, "Tidak ada entri riwayat pada fixture ini.", "Tidak ada entri riwayat pada record ini.")}</strong>
+          <strong>{wording(demo, "Tidak ada entri riwayat pada fixture ini.", "Tidak ada entri riwayat pada laporan ini.")}</strong>
           <p>Entri yang kosong tidak menunjukkan keselamatan atau penyelesaian event.</p>
         </div>
       )}
@@ -221,14 +221,14 @@ function ApiEventDetail({
   const sourceCounts = event === null ? null : countIndependentSources(event);
   // R-05: only a demo dataset may be called synthetic or fixture. Live and unknown modes get neutral wording.
   const demo = context?.dataset_mode === "demo";
-  const noun = demo ? "fixture" : "record";
+  const noun = demo ? "fixture" : "laporan";
 
   return (
     <>
       {detail.status === "loading" && (
         <>
           <section className="detail-heading" aria-labelledby="detail-title">
-            <p className="section-kicker">{wording(demo, "Detail record sintetis", "Detail record")}</p>
+            <p className="section-kicker">{wording(demo, "Detail record sintetis", "Detail laporan")}</p>
             <h1 id="detail-title">{wording(demo, "Memuat detail contoh…", "Memuat detail…")}</h1>
           </section>
           <div className="state-panel state-panel--loading" role="status">
@@ -240,8 +240,8 @@ function ApiEventDetail({
       )}
       {detail.status === "not-found" && (
         <section className="state-panel" role="status">
-          <strong>{wording(demo, "Record contoh tidak ditemukan.", "Record tidak ditemukan.")}</strong>
-          <p>{wording(demo, "API demo tidak menyediakan record untuk ID ini.", "API tidak menyediakan record untuk ID ini.")}</p>
+          <strong>{wording(demo, "Record contoh tidak ditemukan.", "Laporan tidak ditemukan.")}</strong>
+          <p>{wording(demo, "API demo tidak menyediakan record untuk ID ini.", "API tidak menyediakan laporan untuk ID ini.")}</p>
           <a className="text-link" href="#peta">Kembali ke daftar</a>
         </section>
       )}
@@ -265,13 +265,13 @@ function ApiEventDetail({
               </p>
             )}
             <div className="fixture-notice" role="note">
-              {wording(demo, "Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta.", "Record ini menampilkan waktu dan sumbernya. Ini bukan peringatan darurat atau gambaran kondisi Jakarta.")}
+              {wording(demo, "Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta.", "Laporan ini menampilkan waktu dan sumbernya. Ini bukan peringatan darurat atau gambaran kondisi Jakarta.")}
             </div>
           </section>
 
           <section className="status-grid" aria-label="Dimensi status yang terpisah">
             <div className="status-cell"><dt>Siklus</dt><dd>{lifecycleLabel(event.lifecycle, { fixtureWording: demo })}</dd></div>
-            <div className="status-cell"><dt>Kesegaran</dt><dd>{freshnessLabel(event.freshness.status, { fixtureWording: demo })}</dd><small>{demo ? "Evaluasi fixture" : "Dievaluasi"} {formatInstant(event.freshness.evaluated_at)}; basis {event.freshness.basis.replaceAll("_", " ")}.</small></div>
+            <div className="status-cell"><dt>Kesegaran</dt><dd>{freshnessLabel(event.freshness.status, { fixtureWording: demo })}</dd><small>{demo ? "Evaluasi fixture" : "Dievaluasi"} {formatInstant(event.freshness.evaluated_at)}; dasar: {freshnessBasisLabel(event.freshness.basis)}.</small></div>
             <div className="status-cell"><dt>Bukti</dt><dd>{event.claims.length === 0 ? `Tidak tersedia pada ${noun}` : evidenceLabel(event.claims[0]?.evidence_label)}</dd></div>
             <div className="status-cell"><dt>Relevansi</dt><dd>Tidak dinilai</dd><small>Minat pengguna tidak digunakan.</small></div>
           </section>
@@ -285,15 +285,15 @@ function ApiEventDetail({
               <dl className="detail-facts detail-facts--spacious">
                 <div><dt>Waktu kejadian</dt><dd>{eventTimeText(event.event_time)}</dd></div>
                 {sourceTime !== null && <div><dt>Dipublikasikan sumber</dt><dd>{sourceTime}</dd></div>}
-                <div><dt>Validitas pada record</dt><dd>{event.validity.valid_from || event.validity.valid_until
+                <div><dt>Validitas pada laporan</dt><dd>{event.validity.valid_from || event.validity.valid_until
                   ? <>{event.validity.valid_from ? formatInstant(event.validity.valid_from) : "Tidak ada waktu awal"} sampai {event.validity.valid_until ? formatInstant(event.validity.valid_until) : "Tidak ada waktu akhir"}</>
                   : `Tidak tersedia pada ${noun}`}</dd></div>
                 <div><dt>Versi publik diterbitkan{wording(demo, " (waktu fixture)", "")}</dt><dd><time dateTime={event.published_at}>{formatInstant(event.published_at)}</time></dd></div>
                 {event.publication && sourceCounts !== null && (
                   <div><dt>Cara penerbitan</dt><dd>{publicationPathText({ mode: event.publication.mode, source_count: sourceCounts.outlets }, sourceCounts.copies)}</dd></div>
                 )}
-                <div><dt>Respons konteks API dibuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
-                <div><dt>Waktu pengambilan sumber</dt><dd>Tidak disediakan dalam proyeksi EventDetail</dd></div>
+                <div><dt>Data dimuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
+                <div><dt>Waktu pengambilan sumber</dt><dd>Tidak disebutkan</dd></div>
                 {typeof event.location_label === "string" && event.location_label.trim().length > 0 && (
                   <div><dt>Lokasi menurut laporan</dt><dd>{event.location_label.trim()}{LOCATION_LABEL_NOTE}</dd></div>
                 )}
@@ -302,10 +302,10 @@ function ApiEventDetail({
               {event.impacts.length === 0 ? (
                 <div className="state-panel state-panel--compact" role="note">
                   <strong>{`Dampak tidak tersedia pada ${noun} ini.`}</strong>
-                  <p>Ketiadaan dampak di record tidak menjelaskan kondisi atau keselamatan.</p>
+                  <p>Ketiadaan dampak di laporan tidak menjelaskan kondisi atau keselamatan.</p>
                 </div>
               ) : (
-                <div className="claims-list" aria-label="Dampak yang tercantum pada record">
+                <div className="claims-list" aria-label="Dampak yang tercantum pada laporan">
                   {event.impacts.map((impact) => (
                     <article className="claim-card" key={`${impact.impact_id}:${impact.version}`}>
                       <span className="claim-card__label">Dampak · {lifecycleLabel(impact.lifecycle)} · {freshnessLabel(impact.freshness.status)}</span>
@@ -325,7 +325,7 @@ function ApiEventDetail({
               {event.claims.length === 0 ? (
                 <div className="state-panel state-panel--compact" role="note">
                   <strong>{`Bukti tidak tersedia pada ${noun}${demo ? " demo" : ""} ini.`}</strong>
-                  <p>Tidak ada klaim, atribusi sumber, atau kutipan dalam record. {wording(demo, "Ringkasan contoh bukan bukti.", "Ringkasan bukan bukti.")}</p>
+                  <p>Tidak ada klaim, atribusi sumber, atau kutipan dalam laporan. {wording(demo, "Ringkasan contoh bukan bukti.", "Ringkasan bukan bukti.")}</p>
                 </div>
               ) : (
                 <div className="claims-list">
@@ -335,7 +335,7 @@ function ApiEventDetail({
                       <blockquote>{claim.text}</blockquote>
                       <p>Waktu kejadian klaim: {eventTimeText(claim.event_time)}</p>
                       {claim.qualifiers.length > 0 && <p className="qualifier">{claim.qualifiers.join(" ")}</p>}
-                      {claim.sources.length === 0 && <p>Atribusi sumber tidak tersedia pada record ini.</p>}
+                      {claim.sources.length === 0 && <p>Atribusi sumber tidak tersedia pada laporan ini.</p>}
                       {collapseClaimSources(claim.sources).map(({ source, excerpts }, index) => {
                         // Every distinct excerpt is kept. The first shows; the rest sit in a disclosure under the same source.
                         const [firstExcerpt, ...moreExcerpts] = excerpts;

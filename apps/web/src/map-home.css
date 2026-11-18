@@ -268,15 +268,16 @@
 /*
  * SEV-01 legend: bottom-right, above the zoom controls and the attribution line. The offset clears the
  * desktop zoom row; the phone rule below clears the taller zoom column. It is a key only, so it takes no pointer input.
+ * HOSTED-34: scoped to the home legend (.map-legend--severity). styles.css also defines .map-legend for the detail
+ * footers; this two-class selector wins over it, and the legend no longer has a fixed width that clips its items.
  */
-.map-legend {
+.map-legend.map-legend--severity {
   position: absolute;
   right: var(--map-island-gap);
   bottom: calc(var(--map-island-gap) + 1.25rem + 2.5rem);
   z-index: 5;
   display: grid;
   gap: var(--space-1);
-  max-width: 12rem;
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
@@ -297,8 +298,9 @@
 
 .map-legend__items {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -895,7 +897,7 @@
   }
 
   /* The phone zoom column is three 2.75rem buttons tall, so the legend sits above it. */
-  .map-legend {
+  .map-legend.map-legend--severity {
     bottom: calc(var(--map-island-gap) + 1.25rem + 9.75rem);
   }
 }

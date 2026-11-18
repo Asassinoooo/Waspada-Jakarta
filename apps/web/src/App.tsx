@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { apiReadFailure, getEventDetail, getEventHistory, getPublicContext, listAllEvents, type ApiReadState } from "./api-client.js";
+import { documentTitleFor } from "./display.js";
 import { EventDetail } from "./EventDetail.js";
 import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { MapHome } from "./MapHome.js";
@@ -174,6 +175,14 @@ export function routeFromHash(hash: string): Route {
   return { screen: "discover" };
 }
 
+/**
+ * HOSTED-34: the fixture detail exists only on the demo dataset. A live (or other non-demo) dataset has no fixture to show,
+ * so the route falls through to the map home without a notice. An unknown context (null) does not fall through.
+ */
+export function presentationFallsThrough(route: Route, context: PublicContext | null): boolean {
+  return route.screen === "detail-presentation" && context !== null && context.dataset_mode !== "demo";
+}
+
 export function PresentationRoute({ context }: { context: PublicContext | null }) {
   if (context?.dataset_mode === "demo") {
     return <EventDetail mode="presentation" context={context} />;
@@ -186,7 +195,7 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
         <p>
           {context === null
             ? "Fixture presentasi disembunyikan sampai status dataset tersedia."
-            : "Record presentasi tidak ditampilkan pada dataset live."}
+            : "Laporan presentasi tidak ditampilkan pada dataset live."}
         </p>
         <a className="text-link" href="#peta">Kembali ke peta</a>
       </section>
@@ -370,6 +379,19 @@ export function App() {
       cancelled = true;
     };
   }, [contextRequestKey]);
+
+  // HOSTED-34: the browser tab names the demo dataset only when the API confirms demo mode.
+  useEffect(() => {
+    document.title = documentTitleFor(context?.dataset_mode);
+  }, [context?.dataset_mode]);
+
+  // HOSTED-34: a live dataset has no fixture detail. The route moves to the map home and the address follows it.
+  const fixtureFallsThrough = presentationFallsThrough(route, context);
+  useEffect(() => {
+    if (!fixtureFallsThrough) return;
+    window.history.replaceState(window.history.state, "", "#peta");
+    setRoute({ screen: "discover" });
+  }, [fixtureFallsThrough]);
 
   const detailEventId = route.screen === "detail-api" ? route.eventId : null;
 

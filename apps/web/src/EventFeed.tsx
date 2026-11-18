@@ -317,7 +317,7 @@ export function EventFeed({
                         <div><dt>Kejadian</dt><dd>{formatEventTime(event)}</dd></div>
                         <div><dt>Relevansi</dt><dd>Tidak dinilai</dd></div>
                       </dl>
-                      <a className="text-link" href={apiEventDetailHref(event.event_id)}>Buka detail record API</a>
+                      <a className="text-link" href={apiEventDetailHref(event.event_id)}>Buka detail laporan</a>
                     </article>
                   </li>
                 );

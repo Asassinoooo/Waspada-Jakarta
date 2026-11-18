@@ -15,7 +15,7 @@ export function SeverityChip({ level }: { level: PublicSeverity }) {
 /** Key for the marker sizes. It sits in the bottom-right corner, above the zoom controls. */
 export function MapLegend() {
   return (
-    <aside className="map-legend" aria-label="Keterangan ukuran ikon" title="Ukuran ikon = tingkat dampak">
+    <aside className="map-legend map-legend--severity" aria-label="Keterangan ukuran ikon" title="Ukuran ikon = tingkat dampak">
       <p className="map-legend__title">Ukuran ikon = tingkat dampak</p>
       <ul className="map-legend__items">
         {SEVERITY_LEVELS.map((level) => (

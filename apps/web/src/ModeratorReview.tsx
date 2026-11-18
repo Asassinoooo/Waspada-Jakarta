@@ -1,6 +1,16 @@
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { evidenceLabel, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
+import {
+  discrepancyKindLabel,
+  proposalEventTimeText,
+  triageActionabilityLabel,
+  triageConfidenceLabel,
+  triageDispositionLabel,
+  triageJakartaScopeLabel,
+  triageModelStatusLabel,
+  triageReasonLabel,
+} from "./moderation-labels.js";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
 import { MapPanel } from "./MapPanel.js";
 import { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
@@ -834,15 +844,15 @@ export function ModeratorReviewQueue({
                 <li key={item.item_identity_hash}>
                   <div>
                     <strong>{item.source_id}</strong>
-                    <span> · {item.item_identity_hash.slice(0, 12)}… · {item.disposition} · {item.jakarta_scope} · {item.actionability}</span>
+                    <span title={`${item.disposition} · ${item.jakarta_scope} · ${item.actionability}`}> · {item.item_identity_hash.slice(0, 12)}… · {triageDispositionLabel(item.disposition)} · {triageJakartaScopeLabel(item.jakarta_scope)} · {triageActionabilityLabel(item.actionability)}</span>
                   </div>
                   <div>
                     <span>Kategori: {item.primary_category ?? item.incident_type ?? "—"}</span>
-                    <span> · Keyakinan: {item.confidence} · {item.model_status}</span>
+                    <span title={`confidence: ${item.confidence}; model_status: ${item.model_status}`}> · Keyakinan: {triageConfidenceLabel(item.confidence)} · {triageModelStatusLabel(item.model_status)}</span>
                   </div>
                   <div>
-                    <span>Alasan: {item.reason_codes.join(", ")}</span>
-                    <span> · Ditinjau: {item.reviewed_at ? `${item.reviewed_at} oleh ${item.reviewed_by ?? "—"}` : "belum"}</span>
+                    <span title={item.reason_codes.join(", ")}>Alasan: {item.reason_codes.map((code) => triageReasonLabel(code)).join(", ")}</span>
+                    <span> · Ditinjau: {item.reviewed_at ? `${formatInstant(item.reviewed_at)} oleh ${item.reviewed_by ?? "—"}` : "belum"}</span>
                   </div>
                   <button
                     type="button"
@@ -970,7 +980,7 @@ export function ModeratorReviewQueue({
                       <strong className="proposal-card-title">{item.title}</strong>
                       <div className="proposal-card-meta">
                         <span>📍 {item.location_label || "Lokasi belum ditentukan"}</span>
-                        <span>⏱ {item.event_time.value || "Waktu belum ditentukan"}</span>
+                        <span>⏱ {proposalEventTimeText(item.event_time)}</span>
                         <span>📄 {item.claims.length} klaim untuk ditinjau</span>
                       </div>
                       {item.impacts && item.impacts.length > 0 && (
@@ -1031,7 +1041,7 @@ export function ModeratorReviewQueue({
                     <div>
                       <dt>Waktu Kejadian</dt>
                       <dd>
-                        {selectedProposal.event_time.value || "Waktu belum ditentukan"} ({selectedProposal.event_time.precision})
+                        {proposalEventTimeText(selectedProposal.event_time)}
                       </dd>
                     </div>
                     <div>
@@ -1056,7 +1066,7 @@ export function ModeratorReviewQueue({
                       <div className="discrepancy-pairs">
                         {selectedProposal.discrepancies.map((disc, dIdx) => (
                           <div className="discrepancy-pair" key={`disc-${dIdx}`}>
-                            <span className="badge badge--warning discrepancy-kind-pill">{disc.kind.replaceAll("_", " ")}</span>
+                            <span className="badge badge--warning discrepancy-kind-pill" title={disc.kind}>{discrepancyKindLabel(disc.kind)}</span>
                             <div className="card discrepancy-side">
                               <strong>Laporan A</strong>
                               <p>{disc.source_a?.claim_text ?? "-"}</p>
@@ -1122,7 +1132,7 @@ export function ModeratorReviewQueue({
                                 <header className="chunk-header">
                                   <strong>Chunk #{chunk.chunk_index + 1}</strong>
                                   <span className="chunk-span">
-                                    Span kode poin {chunk.span_start}–{chunk.span_end}
+                                    Rentang teks {chunk.span_start}–{chunk.span_end}
                                   </span>
                                 </header>
                                 <blockquote className="review-quote">
@@ -1178,7 +1188,7 @@ export function ModeratorReviewQueue({
                                 <header className="claim-card-top">
                                   <span className="claim-ref-badge">ID: {claim.claim_id}</span>
                                   <div className="claim-badges-group">
-                                    <span className="claim-status-badge">under_review</span>
+                                    <span className="claim-status-badge" title="under_review">Menunggu tinjauan</span>
                                   </div>
                                 </header>
                                 <blockquote className="review-claim">

@@ -257,7 +257,7 @@ test("account loading and failure are non-blocking, and anonymous onboarding has
 test("profile shows the server role as read-only and keeps the local-interest destination", () => {
   const html = renderToStaticMarkup(<AccountPage screen="account" sessionState={sessionState(adminSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
   assert.match(html, /Administrator/u);
-  assert.match(html, /<dt>Email<\/dt>/u);
+  assert.match(html, /<dt>Surel<\/dt>/u);
   assert.match(html, /Selesai/u);
   assert.match(html, /href="#ringkasan-saya"/u);
   assert.doesNotMatch(html, /<select/u);

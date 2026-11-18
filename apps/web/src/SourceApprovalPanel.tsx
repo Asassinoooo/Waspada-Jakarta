@@ -10,7 +10,22 @@ import {
   type SourceApprovalClient,
 } from "./source-approval-client.js";
 
-/** FR-12 registry approval for the administrator workspace. Approval restarts collection for an active registry entry; it never grants public display by itself. */
+/**
+ * FR-12 registry approval for the administrator workspace. Approval allows public display of the source's reports and
+ * never changes collection. Revoking stops publication only (HOSTED-28); collection keeps running.
+ */
+
+/** HOSTED-34: the intro. Kept true to apps/db/src/source-approval-store.ts (approve sets the status only; revoke sets it and auto-publication to never). */
+export const SOURCE_APPROVAL_INTRO = "Persetujuan mencatat status sumber. Menyetujui mengizinkan laporan dari sumber ini tampil publik. "
+  + "Mencabut menghentikan penerbitan dari sumber ini. Pengumpulan otomatis tidak berubah, baik saat disetujui maupun dicabut. "
+  + "Tampil publik tetap mengikuti hak penggunaan sumber. Pencabutan tidak menarik kejadian yang sudah terbit. Setiap perubahan dicatat dalam audit.";
+
+/** HOSTED-34: the body of the confirmation dialog for each change. */
+export function sourceApprovalDialogBody(status: AdminSourceApprovalStatus): string {
+  return status === "approved"
+    ? "Menyetujui mengizinkan laporan dari sumber ini tampil publik. Pengumpulan otomatis tidak berubah."
+    : "Mencabut menghentikan penerbitan dari sumber ini. Pengumpulan otomatis tetap berjalan, dan terbit otomatis diatur ke tidak pernah. Kejadian yang sudah terbit tidak ditarik.";
+}
 
 const APPROVAL_LABEL: Readonly<Record<string, string>> = {
   pending: "Menunggu",
@@ -186,11 +201,7 @@ export function SourceApprovalPanel({ session, client = sourceApprovalClient }: 
   return (
     <section className="source-approval" aria-labelledby="source-approval-title">
       <h2 id="source-approval-title">Persetujuan sumber</h2>
-      <p className="source-approval__intro">
-        Persetujuan mencatat status registri sumber dan menyalakan pengumpulan otomatis untuk sumber dengan registri aktif. Tampil publik tetap mengikuti hak penggunaan sumber.
-        Pencabutan mematikan pengumpulan otomatis dan terbit otomatis untuk sumber itu, tetapi tidak menarik kejadian yang sudah terbit.
-        Setiap perubahan dicatat dalam audit.
-      </p>
+      <p className="source-approval__intro">{SOURCE_APPROVAL_INTRO}</p>
       {message && <p className="source-approval__message" role="status">{message}</p>}
       {list.status === "loading" && <p role="status">Memuat daftar sumber…</p>}
       {list.status === "error" && (
@@ -214,11 +225,7 @@ export function SourceApprovalPanel({ session, client = sourceApprovalClient }: 
         {change && (
           <>
             <h2 id="source-approval-dialog-title">{change.status === "approved" ? `Setujui ${changeName}` : `Cabut persetujuan ${changeName}`}</h2>
-            <p>
-              {change.status === "approved"
-                ? "Pengumpulan otomatis dinyalakan untuk sumber dengan registri aktif. Sumber dengan registri dijeda atau dipensiunkan tetap tidak dikumpulkan. Tampil publik tetap mengikuti hak penggunaan sumber."
-                : "Pencabutan mematikan pengumpulan otomatis dan mengatur terbit otomatis ke tidak pernah untuk sumber ini. Tindakan ini tidak menarik kejadian yang sudah terbit."}
-            </p>
+            <p>{sourceApprovalDialogBody(change.status)}</p>
             <label className="source-approval__note">
               Catatan (10 sampai 500 karakter)
               <textarea

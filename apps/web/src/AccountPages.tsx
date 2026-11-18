@@ -173,7 +173,7 @@ function LoginForm({ client, onSignedIn }: { client: AccountClient; onSignedIn: 
       <FieldInput
         id="login-username"
         name="username"
-        label="Username"
+        label="Nama pengguna"
         value={username}
         onChange={setUsername}
         autoComplete="username"
@@ -233,7 +233,7 @@ function RegisterForm({ client, onSignedIn }: { client: AccountClient; onSignedI
       <FieldInput
         id="register-username"
         name="username"
-        label="Username"
+        label="Nama pengguna"
         value={username}
         onChange={setUsername}
         autoComplete="username"
@@ -785,7 +785,7 @@ function AccountProfile({
           <span className="account-role-chip">{roleLabel(user.role)}</span>
         </div>
         <dl className="account-profile__facts">
-          <div><dt>Email</dt><dd>{user.email ?? "Tidak ada (akun username)"}</dd></div>
+          <div><dt>Surel</dt><dd>{user.email ?? "Tidak ada (akun nama pengguna)"}</dd></div>
           <div><dt>Status akun</dt><dd>{user.active ? "Aktif" : "Tidak aktif"}</dd></div>
           <div><dt>Pengenalan akun</dt><dd>{user.onboarding_version === 1 ? "Selesai" : "Belum selesai"}</dd></div>
           {user.onboarding_completed_at && <div><dt>Waktu selesai</dt><dd><time dateTime={user.onboarding_completed_at}>{new Date(user.onboarding_completed_at).toLocaleString("id-ID")}</time></dd></div>}
