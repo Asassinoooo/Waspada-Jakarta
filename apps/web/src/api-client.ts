@@ -4,6 +4,7 @@ import type {
   BriefingResponse,
   EventDetail,
   EventPage,
+  EventView,
   FreshnessStatus,
   HistoryEntry,
   HistoryPage,
@@ -380,8 +381,67 @@ export async function requestBriefing(interests: BriefingInterests): Promise<Bri
   return parseBriefingResponse(body);
 }
 
-export function listEvents() {
-  return getJson<EventPage>("/api/v1/events");
+export function listEvents(cursor?: string) {
+  const query = new URLSearchParams();
+  if (cursor !== undefined) query.set("cursor", cursor);
+  const search = query.toString();
+  return getJson<EventPage>("/api/v1/events" + (search === "" ? "" : "?" + search));
+}
+
+/** Upper bound on pages followed by listAllEvents (HOSTED-33). */
+export const MAX_EVENT_PAGES = 10;
+
+/**
+ * A later page of the event list failed, or the page limit was reached before the list ended.
+ * `events` keeps every event from the pages that did load, in order.
+ */
+export class PartialEventListError extends Error {
+  readonly events: EventView[];
+  readonly reason: unknown;
+
+  constructor(events: EventView[], reason: unknown) {
+    super(reason instanceof Error ? reason.message : "Public API request failed");
+    this.name = "PartialEventListError";
+    this.events = events;
+    this.reason = reason;
+  }
+}
+
+function eventPageOrThrow(value: unknown): EventPage {
+  if (!isRecord(value) || !Array.isArray(value.data) || !isRecord(value.page)) throw new ApiPayloadError();
+  const next = value.page.next_cursor;
+  if (next !== null && (typeof next !== "string" || next.length === 0)) throw new ApiPayloadError();
+  return value as unknown as EventPage;
+}
+
+/**
+ * Every published event, following page.next_cursor until it is null (at most MAX_EVENT_PAGES pages).
+ * The first page failing rejects as a plain failed load. A later failure rejects with PartialEventListError,
+ * so the caller keeps the earlier pages and shows the same error state as a failed load.
+ * Duplicate event_ids are kept once, at their first position.
+ */
+export async function listAllEvents(): Promise<EventView[]> {
+  const events: EventView[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  for (let pageNumber = 1; pageNumber <= MAX_EVENT_PAGES; pageNumber += 1) {
+    let page: EventPage;
+    try {
+      page = eventPageOrThrow(await listEvents(cursor));
+    } catch (error) {
+      if (pageNumber === 1) throw error;
+      throw new PartialEventListError(events, error);
+    }
+    for (const event of page.data) {
+      if (seen.has(event.event_id)) continue;
+      seen.add(event.event_id);
+      events.push(event);
+    }
+    const next = page.page.next_cursor;
+    if (next === null) return events;
+    cursor = next;
+  }
+  throw new PartialEventListError(events, new ApiPayloadError());
 }
 
 export function getEventDetail(eventId: string) {

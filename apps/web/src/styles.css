@@ -1108,6 +1108,62 @@ time,
   100% { r: 18px; opacity: 0; }
 }
 
+/* HOSTED-33 record (detail) map: tiles and SVG share one 496x320 view, so the canvas keeps that exact aspect ratio. */
+.map-canvas.record-map {
+  display: block;
+  min-height: 0;
+  width: 100%;
+  max-width: 31rem;
+  aspect-ratio: 496 / 320;
+  margin: 0 auto;
+  box-sizing: border-box;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--beton);
+  background-image: none;
+}
+
+.record-map__tiles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.92;
+}
+
+.record-map__tile {
+  position: absolute;
+  display: block;
+  max-width: none;
+  border: 0;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.map-canvas.record-map .geojson-map {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.record-map__attribution {
+  position: absolute;
+  z-index: 3;
+  right: 0.45rem;
+  bottom: 0.4rem;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  padding: 0.18rem var(--space-2);
+  color: var(--tinta-kota);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  text-decoration: underline;
+}
+
 .route-diagram {
   display: block;
   width: 100%;

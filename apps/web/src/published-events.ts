@@ -20,7 +20,8 @@ import {
   getEventDetail,
   getEventGeoJSON,
   getEventHistory,
-  listEvents,
+  listAllEvents,
+  PartialEventListError,
   type ApiReadState,
 } from "./api-client.js";
 import { categoryLabel, formatInstant } from "./display.js";
@@ -414,13 +415,14 @@ export function usePublishedEvents(seed?: SeedState): PublishedEventsSnapshot {
     if (seed) return;
     let cancelled = false;
     setState((previous) => ({ ...previous, status: "loading", errorMessage: null }));
-    Promise.allSettled([listEvents(), getEventGeoJSON()]).then(([listResult, geoResult]) => {
+    Promise.allSettled([listAllEvents(), getEventGeoJSON()]).then(([listResult, geoResult]) => {
       if (cancelled) return;
       if (listResult.status === "rejected") {
+        // A later page that failed keeps the events of the pages that loaded, under the same error status as a failed load.
         setState({
           status: "unavailable",
-          events: [],
-          markers: NO_MARKERS,
+          events: listResult.reason instanceof PartialEventListError ? [...listResult.reason.events] : [],
+          markers: geoResult.status === "fulfilled" ? markersFromGeoJSON(geoResult.value) : NO_MARKERS,
           markersUnavailable: false,
           errorMessage: `Gagal memuat laporan publik: ${errorText(listResult.reason)}`,
         });
@@ -428,7 +430,7 @@ export function usePublishedEvents(seed?: SeedState): PublishedEventsSnapshot {
       }
       setState({
         status: "loaded",
-        events: listResult.value.data,
+        events: listResult.value,
         markers: geoResult.status === "fulfilled" ? markersFromGeoJSON(geoResult.value) : NO_MARKERS,
         markersUnavailable: geoResult.status === "rejected",
         errorMessage: null,

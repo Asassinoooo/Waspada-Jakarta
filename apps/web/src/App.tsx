@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessStatus, HistoryPage, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
-import { apiReadFailure, getEventDetail, getEventHistory, getPublicContext, listEvents, type ApiReadState } from "./api-client.js";
+import { apiReadFailure, getEventDetail, getEventHistory, getPublicContext, listAllEvents, type ApiReadState } from "./api-client.js";
 import { EventDetail } from "./EventDetail.js";
 import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
 import { MapHome } from "./MapHome.js";
@@ -279,8 +279,8 @@ export function App() {
     };
   }, [refreshAccountSession, sessionScope]);
   const refreshCurrentEvents = useCallback(async () => {
-    const page = await listEvents();
-    setEvents(page.data);
+    // Rejects when a later page fails, so UpdatesCenter shows its existing snapshot error.
+    setEvents(await listAllEvents());
     setStatus("loaded");
   }, []);
 
