@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Identifier | TEST-DOC-01 (report Chapter 5, section 5.3) |
-| Status date | 18 Nov 2026 |
-| Baseline | `main` at 6fff929 (18 Nov 2026). The earlier baseline was `main` at ae75527 (13 Nov 2026) |
-| Method | Static checks of file existence, test titles, imports, package scripts and workflow files. CI results come from GitHub Actions run 44211263890 (`gh run view`, job log), matched to files by test title or by the database `PASS` line. No test, build or server was run locally for this update. |
+| Status date | 18 Nov 2026 (updated in the evening, TG-DOCS-03) |
+| Baseline | `main` at 062aac6 (18 Nov 2026, TG-DOCS-03). Earlier baselines: 6fff929 (18 Nov 2026, TG-DOCS-02) and ae75527 (13 Nov 2026) |
+| Method | Static checks of file existence, test titles, imports, package scripts and workflow files. CI results come from GitHub Actions run 44314452973 (`gh api` job log; earlier rows cite 44211263890), matched to files by test title or by the database `PASS` line. No test, build or server was run locally for this update. |
 | Structure | IEEE 829 test-plan sections, with the integration approach of Braude, Ch 27 (build order, facades, state tests, acyclic dependencies) |
 | Update | 18 Nov 2026 (TG-DOCS-02). Header table and sections 1, 3.2 to 3.5, 4, 6, 7, 8, 9, 10.3 and 11 changed. Section 9 cites run 44211263890 at 6fff929 and keeps the earlier cec9358 run (43238566925). Previous update: 14 Nov 2026 (TEST-GAP-02), rows changed by commits 588e375 to abe7bf6 |
 
@@ -117,13 +117,13 @@ Files added by the same commits that already have rows in section 3.3 (`briefing
 
 ### 3.5 Integration tests added after 14 Nov 2026 (hosted work)
 
-Each file below is in run 44211263890 (6fff929). "Pass" means the suite passed in that run and at least one title from the file printed as passed (section 9). The "What it proves" column comes from the file header or the test titles.
+Each file below is in run 44211263890 (6fff929) and again in run 44314452973 (062aac6). Rows marked TG-DOCS-03 were added on 18 Nov 2026 and are only in the later run (HOSTED-31: see its row). "Pass" means the suite passed in that run and at least one title from the file printed as passed (section 9). The "What it proves" column comes from the file header or the test titles.
 
 | File | HOSTED ID | What it proves | CI result |
 | --- | --- | --- | --- |
 | `apps/worker/test/agent-origin-writer.test.ts` | HOSTED-15, HOSTED-18 | A publication writes one evidence origin per registered source of each claim, and links it to the cited evidence. The publication role may only insert these rows. A labelled event with no place or geometry is listed as a whole view. | Pass |
 | `apps/worker/test/hosted22-public-attribution.test.ts` | HOSTED-22 | An approved source writes one attribution row (registry name, article link, the source's own publish time). A revoked source publishes with no attribution, and the public list skips it. | Pass |
-| `apps/worker/test/agent-point-geometry.test.ts` | HOSTED-10 | An in-box agent coordinate gives one Point labelled `model_approximate`, recorded as `pending_geometry_writer`. An event with no usable coordinate is a whole view with no geometry row. | Pass |
+| `apps/worker/test/agent-point-geometry.test.ts` | HOSTED-10, HOSTED-26, HOSTED-31 | An in-box agent coordinate gives one Point labelled `model_approximate`. Since HOSTED-26 (migration 054) the publication writes it as one geometry row with its evidence, every claim links it, and a later version at the same point reuses the row. An event with no usable coordinate is a whole view with no geometry row. Since HOSTED-31 a merged proposal whose claim has no exact support is refused. | Pass |
 | `apps/worker/test/hosted14-no-invent.test.ts` | HOSTED-14 | A label or coordinate is kept only when the report text states the place. The deterministic path has no default region. Pure, no database. | Pass |
 | `apps/worker/test/hosted17-petabencana-label.test.ts` | HOSTED-17 | A PetaBencana event with the fixed label and no coordinate is a whole view, not `INVALID_EVENT`. An event with no label and no coordinate is still refused. Pure. | Pass |
 | `apps/worker/test/hosted22-rss-published-at.test.ts` | HOSTED-22 | A gated RSS revision stores the item's own time as `published_at`, or NULL when the time is missing or unparseable. It never stores the retrieval time. The BMKG fallback stores NULL. | Pass |
@@ -136,6 +136,12 @@ Each file below is in run 44211263890 (6fff929). "Pass" means the suite passed i
 | `apps/intelligence/test/agent-output-leak.test.ts` | HOSTED-20 | Agent errors carry fixed codes only. A fabricated quote, a model revision ID, or JSON and schema error text never reaches the message. No network, no database. | Pass |
 | `apps/intelligence/test/hosted17-petabencana-label.test.ts` | HOSTED-17 | A PetaBencana report gets the fixed label. The label is not grounded against the text, and it does not make a report without a coordinate name a location. Pure. | Pass |
 | `apps/intelligence/test/hosted22-published-at.test.ts` | HOSTED-22 | The interpreter's "Published At" is the revision's own publish time. A revision with no publish time gives null, never its retrieval time. Real job runner over PGlite, with a capturing mock model. | Pass |
+| `apps/worker/test/hosted26-location-label.test.ts` (TG-DOCS-03) | HOSTED-26 | The decision stores the report's location label (a generic label is stored as null). The snapshot reader returns it, and the location backfill writes one new version for a legacy event and does not select it again. 12 tests, PGlite. | Pass (44314452973) |
+| `apps/worker/test/hosted28-source-count.test.ts` (TG-DOCS-03) | HOSTED-28 | Revoking a source stops publication only (gate reason `source_revoked`); collection continues. Copies of one article count as one outlet. 8 tests. | Pass (44314452973) |
+| `apps/worker/test/hosted29-date-precision.test.ts` (TG-DOCS-03) | HOSTED-29 | A date-only event time stays day precision from proposal to public projection. No midnight instant is stored. 14 tests. | Pass (44314452973) |
+| `apps/worker/test/pipeline-flow-cycle.test.ts` (TG-DOCS-03) | HOSTED-30 | On hosted, `#alur-agen` reads the latest live ingest run and the per-source check times from the database. 10 tests. | Pass (44314452973) |
+| `apps/db/test/pipeline-flow-cycle-store.test.ts` (TG-DOCS-03) | HOSTED-30 | One `pipeline_cycle_runs` row per ingest run, with validated counts and role grants (migration 057). 9 tests, PGlite. | Pass (44314452973, `PASS` line) |
+| `apps/worker/test/hosted31-merged-claim-support.test.ts` (TG-DOCS-03) | HOSTED-31 | A proposal merged from several reports gives each claim the persisted reference of the chunk it cites, from the proposal's own revisions only. A claim without exact support refuses the version before any write. The backfill re-writes a legacy unsupported version, and the public list reads again. 4 tests, PGlite. | Pass (44319579284) |
 
 ## 4 Interface tests (facade)
 
@@ -223,7 +229,7 @@ Acyclicity is not checked. A dependency-graph run over these four trees would be
 6. **No live-path test in CI.** No step in `ci.yml` runs `serve:live` (LIVE-LOCAL-01) or the live Worker with `apps/intelligence`. The hosted one-cycle path (`serve:hosted-ingest:once`) has fake and PGlite tests only: `tools/accounts/hosted-ingest.test.ts` and `tools/accounts/hosted-once-publication.test.ts`, both run by `accounts:test`.
 7. **No browser or responsive checks.** The CI log states "Browser checks. None run in CI."
 8. **Hosted behaviour not tested automatically.** The Worker and Neon are deployed (HOSTED-23), but no automated test calls them. Hosted walkthroughs are in `UAT.md` section 9.2 (section 1).
-9. **No local test run.** This update rests on the run 44211263890 log (read with `gh`), static checks and file reads. No local test run was made for it.
+9. **Local runs are changed files only.** This update rests on the run 44314452973 log (read with `gh api`), static checks and file reads. For the fixes of 18 Nov 2026 (CI-FIX `e64d281`, HOSTED-31) only the changed test files were run locally, one at a time, as the owner's test policy allows; the full suites ran in CI.
 10. **Preferences are covered by FR-11 tests in part.** M5 names preferences (section 8). The FR-11 files in section 3.3 test interest removal and client-side repeat handling. F-ALERT-01 (repeated coverage publishing a new version) is closed locally by 9d107b6. F-ALERT-02 (a published version is not listed in the updates feed) is closed by 1a11d3c (HOSTED-02), and its test is active.
 11. **FR-14 holds on the L2/L3 path and, since 74c4616, on the live intelligence path for the job trace, report lineage and model configuration** (`live-lineage.test.ts`; F-TRACE-01 and F-TRACE-02 are closed locally). The live path still writes no investigation row, so the investigation link is absent for live.
 12. **Withdrawal and correction** (abe7bf6) have database and handler tests. The public detail route's 404 for a withdrawn event is not asserted at HTTP, and no public tombstone exists (SDP section 10, recorded limitations).
@@ -231,6 +237,7 @@ Acyclicity is not checked. A dependency-graph run over these four trees would be
 14. **The ingest workflow itself.** `.github/workflows/ingest.yml` has no automated test. Its evidence is the run history: 44056409413 and 44071702304 (manual dispatch), 44151179665 (GitHub schedule, which HOSTED-25 removed) and 44217189260 (Worker cron dispatch, 18 Nov 2026). All four show `success` (checked with `gh`).
 15. **Production deploy.** `npm run deploy:prod` has no automated test. Its check is the manual smoke list in `docs/DEPLOYMENT.md` section 6.
 16. **HOSTED-16 whole-view display on the web.** Unit tests only, in `apps/web/test` (for example `map-home.test.tsx` and `geojson-map.test.tsx`). CI runs no browser check, so CI does not check the rendered page. The walkthrough of the hosted site, including the phone public check, is in `UAT.md` section 9.2.
+17. **The public list with a merged event (found 18 Nov 2026, F-19).** No test read the public list after publishing a proposal merged from several reports. The old (a4) case in `agent-point-geometry.test.ts` even ran after the list check on purpose, because such a version failed the list. On the hosted site four merged events then made `/api/v1/events` and `/api/v1/events.geojson` answer 500. HOSTED-31 fixes the cause and adds `hosted31-merged-claim-support.test.ts`, which reads the list after each case.
 
 ## 8 Integration gate and status against M5
 
@@ -248,21 +255,25 @@ Overall status: partially evidenced. This document does not claim that M5 is com
 
 ## 9 Test run evidence
 
-Latest run: CI run 44211263890 on commit 6fff929 (`main`, push event, 18 Nov 2026 00:51Z). The conclusion is `success`, confirmed with `gh run view 44211263890` on 18 Nov 2026. The job runs on `ubuntu-24.04` with Node 24.
+Latest green run: CI run 44314452973 on commit 062aac6 (`main`, push event, 18 Nov 2026). The conclusion is `success`, read with `gh run view` on 18 Nov 2026. The job runs on `ubuntu-24.04` with Node 24.21.0 (pinned since `e41e11d`, D-04). Counts are summed from the `ℹ tests`, `ℹ pass` and `ℹ fail` lines of each step in the job log.
 
-| CI step | Command | Result in run 44211263890 |
+| CI step | Command | Result in run 44314452973 |
 | --- | --- | --- |
 | 5 Typecheck | `npm run typecheck` | Pass |
-| 6 Database tests | `npm run db:test` | 58 files, 399 tests, 399 pass, 0 fail (one `PASS` line per file) |
-| 7 Web tests | `npm run test --workspace=@waspada/web` | 443 pass, 0 fail |
-| 8 Worker tests | `npm run test --workspace=@waspada/worker` | 1,311 pass, 0 fail |
-| 9 Intelligence tests | `npm run test:intelligence` | 189 pass, 0 fail |
+| 6 Database tests | `npm run db:test` | 59 of 59 files, 411 tests, 411 pass, 0 fail |
+| 7 Web tests | `npm run test --workspace=@waspada/web` | 457 pass, 0 fail |
+| 8 Worker tests | `npm run test --workspace=@waspada/worker` | 1,360 pass, 0 fail |
+| 9 Intelligence tests | `npm run test:intelligence` | 190 pass, 0 fail |
 | 10 Pipeline tests | `npm run pipeline:test` | 58 of 58 cases pass |
-| 11 Accounts tests | `npm run accounts:test` | 81 pass, 0 fail |
+| 11 Accounts tests | `npm run accounts:test` | 100 pass, 0 fail |
 | 12 Evaluation and AI tool tests | `npx tsx --test` (eight files, see `ci.yml`) | 74 pass, 0 fail |
 | 13 Build | `npm run build` | Pass (Wrangler dry run) |
 
-Steps 6 to 12 total 2,555 passing tests and 0 failing.
+Steps 6 to 12 total 2,650 passing tests and 0 failing. The three runs before it on `main` (44248122378, 44250372908, 44250662007) failed on test fixtures (D-05 in `DEFECTS.md`).
+
+Latest run: CI run 44319579284 on commit `2d9d442` (HOSTED-31), conclusion `success`. Database 59 of 59 files and 411 tests, web 457, worker 1,364 (1,360 plus the four HOSTED-31 tests), intelligence 190, pipeline 58, accounts 100, evaluation and AI 74: 2,654 pass, 0 fail. The four titles of `hosted31-merged-claim-support.test.ts` and the changed (a4) title of `agent-point-geometry.test.ts` printed as passed.
+
+Previous green run: CI run 44211263890 on commit 6fff929 (18 Nov 2026 00:51Z), 2,555 passing and 0 failing (DB 399, web 443, worker 1,311, intelligence 189, pipeline 58, accounts 81, evaluation and AI 74).
 
 File check for run 44211263890. The job log was read with `gh run view 44211263890 --log`. Each of the 42 test files cited in this document is in the log. The 16 database files print a `PASS` line. The other 26 files each have at least one test title that printed as passed in their step. The other steps print test titles, not file names, so this is a title match. It is not a per-file runner result.
 
@@ -279,9 +290,9 @@ Points on the evidence:
 
 - The overall conclusion is now confirmed with `gh`: `success` for run 44211263890 and for run 43238566925.
 - The counts are aggregate. The file check above matches each cited file by title or PASS line. It is not a runner result per file.
-- The database file count is now 58: 58 `*.test.ts` files in `apps/db/test`, and 58 `PASS` lines in run 44211263890. At cec9358 it was 56.
+- The database file count is now 59: 59 `*.test.ts` files in `apps/db/test` and 59 passed files in run 44314452973 (`pipeline-flow-cycle-store.test.ts` is new). It was 58 in run 44211263890 and 56 at cec9358.
 - The cec9358 commit is an ancestor of `main` (checked with git).
-- No test, build or server was run locally to write this update.
+- For this update only the changed test files of 18 Nov 2026 were run locally (section 7, item 9).
 
 ## 10 Detail for the report
 
@@ -303,7 +314,7 @@ The composition test TEST-INT-01 (`l3-investigation-publication-gate.test.ts`) r
 
 ## 11 Approval
 
-Prepared by: Team 12 (TG-DOCS-02, 18 Nov 2026)
+Prepared by: Team 12 (TG-DOCS-02 and TG-DOCS-03, 18 Nov 2026)
 
 Reviewed by: ____
 
