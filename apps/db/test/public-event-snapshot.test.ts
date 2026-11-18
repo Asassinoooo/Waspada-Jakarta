@@ -107,10 +107,47 @@ describe('public event snapshot repository', () => {
       })),
     );
     await seedPublishedEvent(testDatabase, syntheticFixture, 'event-synthetic', 1, []);
+    // HOSTED-26: a decision that stored a label, and one that says a label was present but stored none (before 055).
+    await seedPublishedEvent(testDatabase, liveFixture, 'event-labelled', 1, [], {
+      location_label_present: true,
+      location_label: 'Cawang, Jakarta Timur',
+    });
+    await seedPublishedEvent(testDatabase, liveFixture, 'event-labelled-legacy', 1, [], {
+      location_label_present: true,
+    });
   });
 
   after(async () => {
     await testDatabase?.close();
+  });
+
+  it('HOSTED-26 exposes the decision stored label as text, reads null when none was stored, and keeps the view columns in order', async () => {
+    const columns = await testDatabase.executor.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'waspada' AND table_name = 'public_event_location_status'
+       ORDER BY ordinal_position`,
+    );
+    assert.deepEqual(columns.rows.map((row) => row.column_name),
+      ['dataset_kind', 'event_id', 'version', 'location_label_present', 'location_label']);
+
+    const repository = createPublicEventSnapshotRepository(testDatabase.executor);
+    const labelled = await repository.read('event-labelled');
+    assert.equal(labelled.kind, 'found');
+    if (labelled.kind !== 'found') return;
+    assert.equal(labelled.snapshot.locationLabelPresent, true);
+    assert.equal(labelled.snapshot.locationLabel, 'Cawang, Jakarta Timur');
+
+    const legacy = await repository.read('event-labelled-legacy');
+    assert.equal(legacy.kind, 'found');
+    if (legacy.kind !== 'found') return;
+    assert.equal(legacy.snapshot.locationLabelPresent, true);
+    assert.equal(legacy.snapshot.locationLabel, null, 'a decision with no stored label reads as null');
+
+    const bulk = await repository.readMany(['event-labelled', 'event-current']);
+    assert.deepEqual(
+      bulk.map(({ eventId, locationLabel }) => [eventId, locationLabel]),
+      [['event-current', null], ['event-labelled', 'Cawang, Jakarta Timur']],
+    );
   });
 
   it('reads one current live event and impacts linked to its exact current version', async () => {
@@ -227,7 +264,7 @@ describe('public event snapshot repository', () => {
       async query<Row extends object>(statement: string) {
         queryCount += 1;
         const rows = queryCount === 1
-          ? [{ dataset_kind: 'live', event_id: 'event-requested', version: 1, record_json: {}, location_label_present: false }]
+          ? [{ dataset_kind: 'live', event_id: 'event-requested', version: 1, record_json: {}, location_label_present: false, location_label: null }]
           : tooManyImpacts;
         if (queryCount === 2) assert.match(statement, /LIMIT\s+\$3/u);
         return { rows: rows as Row[] };
@@ -578,8 +615,9 @@ async function seedPublishedEvent(
   eventId: string,
   version: number,
   impacts: readonly ImpactFixture[],
+  decisionRecord: Record<string, unknown> = { fixture: 'authored-fiction-only' },
 ): Promise<void> {
-  await seedEventVersion(database, fixture, eventId, version, 'published', impacts);
+  await seedEventVersion(database, fixture, eventId, version, 'published', impacts, decisionRecord);
 }
 
 async function seedWithdrawnEvent(
@@ -598,6 +636,7 @@ async function seedEventVersion(
   version: number,
   status: 'published' | 'withdrawn',
   impacts: readonly ImpactFixture[],
+  decisionRecord: Record<string, unknown> = { fixture: 'authored-fiction-only' },
 ): Promise<void> {
   const proposalId = fixture.prefix + '-proposal-' + eventId + '-v' + version;
   const decisionId = fixture.prefix + '-decision-' + eventId + '-v' + version;
@@ -629,9 +668,8 @@ async function seedEventVersion(
       `INSERT INTO waspada.publication_decisions
          (dataset_kind, decision_id, trace_id, proposal_id, policy_version,
           event_id, event_version, decided_at, record_json)
-       VALUES ($1, $2, $3, $4, 'snapshot-test-policy-v1', $5, $6, $7,
-          '{"fixture":"authored-fiction-only"}'::jsonb)`,
-      [fixture.datasetKind, decisionId, fixture.traceId, proposalId, eventId, version, TEST_TIME],
+       VALUES ($1, $2, $3, $4, 'snapshot-test-policy-v1', $5, $6, $7, $8::jsonb)`,
+      [fixture.datasetKind, decisionId, fixture.traceId, proposalId, eventId, version, TEST_TIME, JSON.stringify(decisionRecord)],
     );
     await transaction.query(
       `INSERT INTO waspada.event_versions

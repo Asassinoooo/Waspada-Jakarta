@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestDatabase, type TestDatabase } from "../../db/test/harness.js";
-import { seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
+import { lineageIdsFor, seedProposalLineage, type ProposalLineage } from "../../db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../db/src/migrations.js";
 import { createEventProposalWriter, type EventProposalDto } from "../../db/src/event-proposal-writer.js";
+import { persistGeometryInCallerTransaction } from "../../db/src/geometry-writer.js";
+import { createPublicEventGeoJSONCandidateRepository } from "../../db/src/public-event-geojson-candidates.js";
+import { createPublicEventGeometriesRepository } from "../../db/src/public-event-geometries.js";
 import { createPublicEventListRepository } from "../../db/src/public-event-list.js";
 import { createPublicEventSnapshotRepository } from "../../db/src/public-event-snapshot.js";
 import { createPublicProjectionLookupRepository } from "../../db/src/public-projection-lookups.js";
 import {
   AGENT_AUTO_PUBLISHER_ID,
   decideProposal,
+  pointGeometryIdFor,
   type ProposalDecisionDependencies,
   type ProposalDecisionOutcome,
 } from "../src/layers/l4-application-integration/proposal-publication.js";
@@ -28,10 +32,13 @@ import {
 
 /**
  * HOSTED-10: the point rule for published events (owner decision, 17 Nov 2026). An event with an approximate in-box
- * coordinate gets one Point (model_approximate) in the in-memory read model. The publication role writes no geometry row,
- * so its decision records geometry_status "pending_geometry_writer". An event with no usable coordinate has no point and
- * no geometry row. It is the whole map view (location_display "whole_view"). A non-group event needs a place id or a
- * label. A group-specific critical notice may have neither. Authored fictional data, the real decision writer and PGlite.
+ * coordinate gets one Point (model_approximate) in the in-memory read model. HOSTED-26 (owner decision, 18 Nov 2026):
+ * the publication transaction also writes that Point as one geometry row when the version has support from one report
+ * revision. Its decision records geometry_status "point_written", and every claim links the row. Without support, and
+ * with no earlier row, the decision records "pending_geometry_writer" and the event stays a whole view. An event with no
+ * usable coordinate has no point and no geometry row. It is the whole map view (location_display "whole_view"). A
+ * non-group event needs a place id or a label. A group-specific critical notice may have neither. Authored fictional
+ * data, the real decision writer and PGlite.
  *
  * The DB list lists nothing for these events: their source is not in the registry, so no origin row is written
  * (HOSTED-15), origin_ids stay empty, and the strict projector rejects them as INVALID_EVENT. The test pins that the
@@ -49,15 +56,23 @@ interface ProposalOptions {
   readonly coordinates?: [number, number] | null;
   readonly locationLabel?: string | null;
   readonly primaryCategory?: string;
+  /** The event the proposal publishes. A later version names the same event. */
+  readonly incidentId?: string;
+  readonly claimText?: string;
+  /** The lineage the proposal is written under. Defaults to the shared fixture lineage. */
+  readonly lineageIds?: ProposalLineage;
+  /** The report revisions the proposal was built from. Two or more means no single-revision support. */
+  readonly reportRevisionIds?: readonly string[];
 }
 
 function proposal(proposalId: string, options: ProposalOptions = {}): EventProposalDto {
+  const claimText = options.claimText ?? CLAIM_TEXT;
   const claim = {
     claim_id: "claim-1",
-    claim_text: CLAIM_TEXT,
+    claim_text: claimText,
     evidence_label: "attributed_report" as const,
     support_assessment: "supported" as const,
-    quote_text: CLAIM_TEXT,
+    quote_text: claimText,
     evidence_ref_id: "chk-" + proposalId,
     source_id: "source-detik",
     outlet: "Detik News",
@@ -65,9 +80,10 @@ function proposal(proposalId: string, options: ProposalOptions = {}): EventPropo
   };
   return {
     schema_version: "2.0",
-    ...(lineage ?? {}),
+    ...(options.lineageIds ?? lineage ?? {}),
+    ...(options.reportRevisionIds ? { report_revision_ids: [...options.reportRevisionIds] } : {}),
     proposal_id: proposalId,
-    incident_id: "inc-" + proposalId,
+    incident_id: options.incidentId ?? "inc-" + proposalId,
     title: "Genangan di Cawang",
     incident_type: "genangan_air_luapan_saluran",
     primary_category: options.primaryCategory ?? "disasters_weather",
@@ -298,6 +314,54 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
     return result.rows[0]!.n;
   }
 
+  /** The stored record of one version of an event. */
+  async function versionRecord(eventId: string, version: number): Promise<Record<string, any>> {
+    const result = await db.executor.query<{ record_json: Record<string, any> }>(
+      "SELECT record_json FROM waspada.event_versions WHERE dataset_kind = 'live' AND event_id = $1 AND version = $2",
+      [eventId, version],
+    );
+    return result.rows[0]!.record_json;
+  }
+
+  /** The one geometry row of a point, read through the owner connection: its trace, typed columns and coordinate. */
+  async function geometryRow(geometryId: string) {
+    const result = await db.executor.query<{
+      trace_id: string;
+      role: string;
+      precision_m: number | null;
+      precision_basis: string;
+      display_label: string | null;
+      geometry_type: string;
+      lon: number;
+      lat: number;
+    }>(
+      `SELECT trace_id, role, precision_m, precision_basis, display_label, GeometryType(shape) AS geometry_type,
+              ST_X(shape) AS lon, ST_Y(shape) AS lat
+       FROM waspada.geometries WHERE dataset_kind = 'live' AND geometry_id = $1`,
+      [geometryId],
+    );
+    return result.rows;
+  }
+
+  async function geometryEvidenceIds(geometryId: string): Promise<string[]> {
+    const result = await db.executor.query<{ evidence_ref_id: string }>(
+      `SELECT evidence_ref_id::text AS evidence_ref_id FROM waspada.geometry_evidence
+       WHERE dataset_kind = 'live' AND geometry_id = $1 ORDER BY evidence_ref_id`,
+      [geometryId],
+    );
+    return result.rows.map((row) => row.evidence_ref_id);
+  }
+
+  /** The geometry links of each claim of one version, read through the owner connection. */
+  async function claimGeometryLinks(eventId: string, version: number): Promise<Array<{ claim_id: string; geometry_id: string }>> {
+    const result = await db.executor.query<{ claim_id: string; geometry_id: string }>(
+      `SELECT claim_id, geometry_id FROM waspada.event_claim_geometries
+       WHERE dataset_kind = 'live' AND event_id = $1 AND event_version = $2 ORDER BY claim_id, geometry_id`,
+      [eventId, version],
+    );
+    return result.rows.map((row) => ({ claim_id: row.claim_id, geometry_id: row.geometry_id }));
+  }
+
   before(async () => {
     db = await createTestDatabase();
     await applyMigrations(db.executor, await readMigrations(new URL("../../db/migrations/", import.meta.url)));
@@ -316,22 +380,121 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
     await db?.close();
   });
 
-  it("(a) an agent coordinate inside the box is pending_geometry_writer, with no geometry row", async () => {
+  it("(a) an agent coordinate inside the box is one Point geometry, linked by every claim of the version", async () => {
     const rowsBefore = await geometryRowCount();
     await persist(proposal("prop-h10-db-a", { coordinates: MODEL_POINT }));
     const outcome = await auto("prop-h10-db-a");
     assert.equal(outcome.status, "published", JSON.stringify(outcome));
 
+    const eventId = "inc-prop-h10-db-a";
+    const geometryId = pointGeometryIdFor("live", eventId, MODEL_POINT);
     const record = await currentRecord("prop-h10-db-a");
-    assert.deepEqual(record.scope.geometry_ids, [], "the publication role writes no geometry row");
-    assert.deepEqual(record.claims[0].scope.geometry_ids, []);
+    assert.deepEqual(record.scope.geometry_ids, [geometryId], "the event names its one Point");
+    assert.deepEqual(record.claims[0].scope.geometry_ids, [geometryId], "the claim names the same Point");
     assert.equal(record.claims[0].support.length, 1, "the claim cites the persisted span it was built from");
     assert.equal(record.claims[0].support[0].report_revision_id, "rev-lineage-hosted10");
 
     const decision = await decisionRecord("prop-h10-db-a");
     assert.equal(decision.geometry_source, "model_approximate");
-    assert.equal(decision.geometry_status, "pending_geometry_writer");
-    assert.equal(await geometryRowCount(), rowsBefore, "no geometry row is written");
+    assert.equal(decision.geometry_status, "point_written");
+    assert.equal(await geometryRowCount(), rowsBefore + 1, "exactly one geometry row is written");
+
+    const rows = await geometryRow(geometryId);
+    assert.deepEqual(rows, [{
+      trace_id: lineageIdsFor("hosted10").trace_id,
+      role: "approximate_place",
+      precision_m: null,
+      precision_basis: "unknown",
+      display_label: "Cawang, Jakarta Timur",
+      geometry_type: "POINT",
+      lon: MODEL_POINT[0],
+      lat: MODEL_POINT[1],
+    }], "the row is the Point at the model coordinate, with no radius");
+
+    assert.equal((await geometryEvidenceIds(geometryId)).length, record.claims[0].support.length,
+      "one evidence link per support reference");
+    assert.deepEqual(await claimGeometryLinks(eventId, 1), [{ claim_id: record.claims[0].claim_id, geometry_id: geometryId }],
+      "each claim of the version links the Point");
+  });
+
+  it("(a2) the Point reaches the public detail reader and the GeoJSON candidates, with its label", async () => {
+    const geometryId = pointGeometryIdFor("live", "inc-prop-h10-db-a", MODEL_POINT);
+    const geometries = await createPublicEventGeometriesRepository(db.executor).read([geometryId]);
+    assert.equal(geometries.length, 1, "the detail reader returns the one Point");
+    const stored = geometries[0]!.recordJson as Record<string, any>;
+    assert.deepEqual(stored.geojson, { type: "Point", coordinates: MODEL_POINT });
+    assert.equal(stored.role, "approximate_place");
+    assert.equal(stored.display_label, "Cawang, Jakarta Timur");
+
+    const candidates = await createPublicEventGeoJSONCandidateRepository(db.executor).read({
+      bbox: [106.8, -6.3, 106.95, -6.2],
+    });
+    const features = candidates.filter((candidate) => candidate.eventId === "inc-prop-h10-db-a");
+    assert.equal(features.length, 1, "the GeoJSON feed lists the event once");
+    assert.equal(features[0]!.geometryId, geometryId, "the feature is the Point");
+  });
+
+  it("(a3) a later version at the same coordinate reuses the row, from another trace and revision, without error", async () => {
+    const second = await seedProposalLineage(db.executor, "hosted10b");
+    const eventId = "inc-prop-h10-db-a";
+    const geometryId = pointGeometryIdFor("live", eventId, MODEL_POINT);
+    const rowsBefore = await geometryRowCount();
+    const evidenceBefore = await geometryEvidenceIds(geometryId);
+
+    await persist(proposal("prop-h10-db-a3", {
+      coordinates: MODEL_POINT,
+      incidentId: eventId,
+      claimText: "Genangan 80 cm di Cawang",
+      lineageIds: second,
+    }));
+    const outcome = await auto("prop-h10-db-a3");
+    assert.equal(outcome.status, "published", JSON.stringify(outcome));
+
+    const record = await versionRecord(eventId, 2);
+    assert.deepEqual(record.scope.geometry_ids, [geometryId], "version 2 names the same Point");
+    assert.equal(record.claims[0].support[0].report_revision_id, "rev-lineage-hosted10b", "version 2 cites its own revision");
+    assert.equal((await decisionRecord("prop-h10-db-a3")).geometry_status, "point_written");
+    assert.equal(await geometryRowCount(), rowsBefore, "the existing row is reused, so no new geometry row is written");
+    assert.equal((await geometryRow(geometryId))[0]?.trace_id, lineageIdsFor("hosted10").trace_id,
+      "the Point keeps the trace of the version that first wrote it");
+    assert.deepEqual(await geometryEvidenceIds(geometryId), evidenceBefore, "the Point keeps its first evidence links");
+    assert.deepEqual(await claimGeometryLinks(eventId, 2), [{ claim_id: record.claims[0].claim_id, geometry_id: geometryId }],
+      "version 2's claim links the same Point");
+  });
+
+  it("(a5) the Point write runs as the publication role: create, repeat, and no read of the report text", async () => {
+    const record = await currentRecord("prop-h10-db-a");
+    const geometryId = "geo-h26-role-check";
+    const input = {
+      schema_version: "2.0",
+      trace_id: lineageIdsFor("hosted10").trace_id,
+      record_type: "Geometry",
+      dataset_kind: "live",
+      geometry_id: geometryId,
+      role: "approximate_place",
+      geojson: { type: "Point", coordinates: MODEL_POINT },
+      coordinate_reference_system: "OGC:CRS84",
+      precision_m: null,
+      precision_basis: "unknown",
+      display_label: "Cawang, Jakarta Timur",
+      source_evidence: record.claims[0].support,
+    };
+    // decideProposal is not run here: the publish path reads columns the publication role may not read (HOSTED-18).
+    // The point write itself is the SQL that runs under the role, the same as agent-origin-writer (e).
+    await db.executor.execute("SET ROLE waspada_l4_publication_writer");
+    try {
+      assert.equal((await persistGeometryInCallerTransaction(db.executor, input)).outcome, "created");
+      assert.equal((await persistGeometryInCallerTransaction(db.executor, input)).outcome, "already_exists",
+        "the repeat is the same record, so it is accepted");
+      await assert.rejects(
+        db.executor.query("SELECT permitted_text FROM waspada.report_revisions LIMIT 1"),
+        /permission denied/,
+        "the publication role still cannot read the permitted text",
+      );
+    } finally {
+      await db.executor.execute("RESET ROLE");
+    }
+    assert.equal((await geometryEvidenceIds(geometryId)).length, record.claims[0].support.length);
   });
 
   it("(b) no usable coordinate publishes as a whole view, with no geometry row", async () => {
@@ -401,5 +564,29 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
     });
     const page = await list.read();
     assert.deepEqual(page.events, []);
+  });
+  // Runs after the list check on purpose. The public list reads every published version in the database. A version
+  // with no single-revision support, like this one, is rejected by preparePublicEventProjectionSnapshot (every claim
+  // must cite a persisted span), and the list then fails the whole page. That is a pre-existing gap, reported to the
+  // owner, not fixed here. Keeping this case after the list check lets the list check keep its assertion unchanged.
+  it("(a4) a coordinate with support from more than one revision writes no row and stays a whole view", async () => {
+    const rowsBefore = await geometryRowCount();
+    await persist(proposal("prop-h10-db-a4", {
+      coordinates: MODEL_POINT,
+      incidentId: "inc-prop-h10-db-a4",
+      reportRevisionIds: ["rev-lineage-hosted10", "rev-h10-other"],
+    }));
+    const outcome = await auto("prop-h10-db-a4");
+    assert.equal(outcome.status, "published", JSON.stringify(outcome));
+
+    const record = await versionRecord("inc-prop-h10-db-a4", 1);
+    assert.deepEqual(record.scope.geometry_ids, [], "no single-revision support, so no Point is written");
+    assert.deepEqual(record.claims[0].scope.geometry_ids, []);
+    assert.deepEqual(record.claims[0].support, [], "no claim cites a span from one revision");
+    const decision = await decisionRecord("prop-h10-db-a4");
+    assert.equal(decision.geometry_status, "pending_geometry_writer");
+    assert.equal(decision.geometry_source, "model_approximate");
+    assert.equal(await geometryRowCount(), rowsBefore, "no geometry row is written");
+    assert.deepEqual(await claimGeometryLinks("inc-prop-h10-db-a4", 1), []);
   });
 });

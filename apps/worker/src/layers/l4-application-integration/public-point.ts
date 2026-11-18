@@ -11,8 +11,11 @@
  *   point or the Jakarta centre as a pin.
  * - No radius, polygon or line is ever written, and no coordinate is invented.
  * - An event needs a place id or a location label. A group-specific critical notice may have neither.
- * - The publication role cannot write geometry rows. A coordinate-bearing event therefore records
- *   geometry_status "pending_geometry_writer" and no geometry row (open decision: a narrow geometry-writer role, or defer).
+ * - HOSTED-26 (owner decision, 18 Nov 2026): the publication transaction writes that one Point as one geometry row
+ *   (role approximate_place, precision_m null) and links every claim of the version to it, when the version has
+ *   support from one report revision. The row is keyed by the event and the exact coordinate, so a later version at
+ *   the same place reuses it. Without support, and with no earlier row, the event records geometry_status
+ *   "pending_geometry_writer" and stays a whole view.
  * - HOSTED-14: a model coordinate reaches here only when the report text states a place for it (groundModelLocation
  *   in proposal-engine.ts, groundInterpretationLocation in apps/intelligence).
  */
@@ -91,9 +94,34 @@ export function publicPointOutcomeFor(input: {
   return { status: "whole_view" };
 }
 
-/** The public label of a point: the event's own location label, or a neutral label. It never names a fallback. */
+/** HOSTED-26: labels that name no specific place. "DKI Jakarta" and "Jakarta" are the correlator's area fallbacks. */
+const GENERIC_LOCATION_LABELS: ReadonlySet<string> = new Set(["jakarta", "dki jakarta"]);
+/** HOSTED-26: the fallback phrases the correlator writes when no place is known (multisource-correlator.ts). */
+const GENERIC_LOCATION_PHRASES: readonly string[] = ["belum teridentifikasi", "tidak teridentifikasi", "lokasi spesifik"];
+const PUBLIC_LOCATION_LABEL_MAX_CODE_POINTS = 200;
+
+/**
+ * HOSTED-26 (owner decision, 18 Nov 2026): the public text of an event's location label, or null. The label is trimmed,
+ * its whitespace is collapsed and it is limited to 200 code points. A label that names no specific place is null: an
+ * empty label, "Jakarta" or "DKI Jakarta" in any case, or a label containing a fallback phrase. The text is data, shown
+ * as text only. It never sets a pin, and it is not a coordinate.
+ */
+export function publicLocationLabel(label: unknown): string | null {
+  if (typeof label !== "string") return null;
+  const collapsed = label.replace(/\s+/gu, " ").trim();
+  if (collapsed.length === 0) return null;
+  const folded = collapsed.toLowerCase();
+  if (GENERIC_LOCATION_LABELS.has(folded)) return null;
+  if (GENERIC_LOCATION_PHRASES.some((phrase) => folded.includes(phrase))) return null;
+  return Array.from(collapsed).slice(0, PUBLIC_LOCATION_LABEL_MAX_CODE_POINTS).join("");
+}
+
+/**
+ * The public label of a point: the event's own public location label, or a neutral label. A generic label never becomes
+ * the point's label, so the point never names a fallback.
+ */
 export function publicPointLabel(locationLabel: unknown): string {
-  return hasLocationLabel(locationLabel) ? String(locationLabel).trim().slice(0, 200) : "Lokasi perkiraan dari laporan";
+  return publicLocationLabel(locationLabel) ?? "Lokasi perkiraan dari laporan";
 }
 
 /** A non-group event needs a place id or a label. Proposals carry no place id, so the label is the test. */

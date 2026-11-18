@@ -101,6 +101,12 @@ export interface EventView {
    * event's point or the Jakarta centre for it. Absent on fixtures and DB-projected versions.
    */
   location_display?: "point" | "whole_view";
+  /**
+   * HOSTED-26 (additive, optional): the public text of the event's location label, when it names a specific place. Absent
+   * for a generic label (for example "DKI Jakarta") and for an event with no label. It is text only: it is not a coordinate
+   * and never sets a pin.
+   */
+  readonly location_label?: string;
   tags: Array<{
     namespace: "topic" | "service" | "audience" | "hazard" | "transport_mode" | "place_type";
     value: string;

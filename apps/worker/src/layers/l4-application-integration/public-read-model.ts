@@ -16,7 +16,7 @@ import type {
 } from "../../contracts/public-api.js";
 import type { SourceStatusProvider } from "../l1-data-knowledge/source-status.js";
 import type { EventProposalDto, StoredEvidenceChunk } from "./moderation-api.js";
-import { missingPlaceOrLabel, publicPointLabel, publicPointOutcomeFor } from "./public-point.js";
+import { missingPlaceOrLabel, publicLocationLabel, publicPointLabel, publicPointOutcomeFor } from "./public-point.js";
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
@@ -92,6 +92,7 @@ function toEventView(event: EventDetail | EventView): EventView {
     impacts: event.impacts,
     published_at: event.published_at,
     ...(event.severity !== undefined ? { severity: event.severity } : {}),
+    ...(event.location_label !== undefined ? { location_label: event.location_label } : {}),
   };
 }
 
@@ -279,6 +280,7 @@ export class PublicReadModel {
         ...(event.severity !== undefined ? { severity: event.severity } : {}),
         geometries: [...(event.geometries || [])],
         ...(event.location_display !== undefined ? { location_display: event.location_display } : {}),
+        ...(event.location_label !== undefined ? { location_label: event.location_label } : {}),
       };
     }
     const fixture = this.findFixture(eventId);
@@ -395,6 +397,7 @@ export class PublicReadModel {
       ...(withFreshness.severity !== undefined ? { severity: withFreshness.severity } : {}),
       geometries,
       ...(withFreshness.location_display !== undefined ? { location_display: withFreshness.location_display } : {}),
+      ...(withFreshness.location_label !== undefined ? { location_label: withFreshness.location_label } : {}),
       ...(publication ? { publication } : {}),
     };
   }
@@ -683,6 +686,8 @@ export function proposalToEventDetail(
     });
   }
   const locationDisplay: "point" | "whole_view" = outcome.status === "point" ? "point" : "whole_view";
+  // HOSTED-26: the public label text, when it names a specific place. The same rule as the stored decision.
+  const locationLabel = publicLocationLabel(proposal.location_label);
 
   const publishedAt = proposal.proposed_at || new Date().toISOString();
 
@@ -748,6 +753,7 @@ export function proposalToEventDetail(
     ...(severity !== undefined ? { severity } : {}),
     geometries,
     location_display: locationDisplay,
+    ...(locationLabel !== null ? { location_label: locationLabel } : {}),
     ...(options?.publication ? { publication: options.publication } : {}),
   };
 }
@@ -854,6 +860,7 @@ function rawInputToEventDetail(
   const { start: eventStart, precision } = publicEventStart(input.event_time);
 
   const severity = publicSeverity(input.severity);
+  const rawLocationLabel = publicLocationLabel(input.location_label);
   return {
     event_id: eventId,
     version: typeof input.version === "number" ? input.version : 1,
@@ -889,5 +896,6 @@ function rawInputToEventDetail(
     ...(severity !== undefined ? { severity } : {}),
     geometries,
     location_display: locationDisplay,
+    ...(rawLocationLabel !== null ? { location_label: rawLocationLabel } : {}),
   };
 }

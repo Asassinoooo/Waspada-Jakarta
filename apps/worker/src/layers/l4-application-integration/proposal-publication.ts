@@ -9,8 +9,9 @@
  * record in one transaction. A correction is a stored proposal and passes the same gate as any other.
  */
 import { createHash, randomUUID } from "node:crypto";
-import type { SqlExecutor } from "../../../../db/src/sql.js";
+import type { SqlExecutor, TransactionalSqlExecutor } from "../../../../db/src/sql.js";
 import type { EventProposalWriter } from "../../../../db/src/event-proposal-writer.js";
+import { persistGeometryInCallerTransaction } from "../../../../db/src/geometry-writer.js";
 import type { EventProposalDto } from "./moderation-api.js";
 import {
   PublicReadModel,
@@ -30,7 +31,7 @@ import {
   NULL_VALIDITY,
   reviewSummaryFor,
 } from "./event-record-v2.js";
-import { publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
+import { publicLocationLabel, publicPointLabel, publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
 import {
   assessCorrectionGate,
   assessProposalSourceGate,
@@ -403,6 +404,8 @@ interface LatestEventDecision {
   readonly proposalId: string;
   readonly traceId: string;
   readonly proposal: EventProposalDto;
+  /** HOSTED-26: the decision's own record (gate, publication mode, waivers and location fields). */
+  readonly decisionRecord: Record<string, unknown>;
 }
 
 async function latestEventDecision(
@@ -416,10 +419,12 @@ async function latestEventDecision(
     proposal_id: string;
     trace_id: string;
     disposition: string;
+    decision_record: unknown;
     record_json: unknown;
   }>(
     `SELECT decision.decision_id, decision.event_version, decision.proposal_id, decision.trace_id,
-            decision.record_json->>'disposition' AS disposition, proposal.record_json
+            decision.record_json->>'disposition' AS disposition, decision.record_json AS decision_record,
+            proposal.record_json
      FROM waspada.publication_decisions AS decision
      JOIN waspada.event_proposals AS proposal
        ON proposal.dataset_kind = decision.dataset_kind AND proposal.proposal_id = decision.proposal_id
@@ -438,6 +443,7 @@ async function latestEventDecision(
     proposalId: row.proposal_id,
     traceId: row.trace_id,
     proposal: parseProposal(row.record_json),
+    decisionRecord: parseJsonObject(row.decision_record) ?? {},
   };
 }
 
@@ -461,19 +467,19 @@ async function resolvePublicDisplay(
 }
 
 /**
- * HOSTED-10: what a publication adds to the stored record, from persisted rows only. No geometry row is written here:
- * the publication role cannot write geometries (owner decision, 17 Nov 2026).
+ * HOSTED-10 and HOSTED-26: what a publication adds to the stored record, from persisted rows only. A coordinate-bearing
+ * event with support gets one Point geometry in the same transaction (see writePointGeometry).
  */
 interface PublicationEnrichment {
   /** Support for each claim. Filled only when the proposal was built from one report revision. */
   readonly support: readonly DomainEvidenceRef[];
   /** HOSTED-15: the evidence_references ids of the same support, in the same order. They link the origin rows. */
   readonly supportEvidenceRefIds: readonly string[];
-  /** Always empty in this change. */
+  /** HOSTED-26: the event's one Point geometry id, or empty. Every claim of the version links to it. */
   readonly geometryIds: readonly string[];
-  /** Set only for a coordinate-bearing event. It records the source of the point that is pending. */
+  /** Set only for a coordinate-bearing event. It records the source of the point. */
   readonly geometrySource: PublicPointSource | null;
-  readonly geometryStatus: "pending_geometry_writer" | "whole_view" | "not_required_group_notice";
+  readonly geometryStatus: "point_written" | "pending_geometry_writer" | "whole_view" | "not_required_group_notice";
 }
 
 /**
@@ -584,10 +590,77 @@ async function ownEvidence(
 }
 
 /**
- * HOSTED-10: the support and the location status of a publication. It never refuses and never writes a geometry row.
- * A coordinate-bearing event records geometry_status "pending_geometry_writer". An event with no usable coordinate
- * records "whole_view". A group notice with no location records "not_required_group_notice". The support of a claim is
- * filled only when the proposal came from one report revision, so no claim is given evidence from another revision.
+ * HOSTED-26: the id of the one Point a published event gets at one coordinate. It is a pure function of the dataset, the
+ * event and the exact coordinate, so a later version at the same place names the same row. Only the publication writes
+ * "geo-pub-" ids.
+ */
+export function pointGeometryIdFor(datasetKind: string, eventId: string, coordinates: readonly [number, number]): string {
+  const hash = createHash("sha256")
+    .update(`${datasetKind}|${eventId}|${coordinates[0]}|${coordinates[1]}`)
+    .digest("hex");
+  return `geo-pub-${hash.slice(0, 32)}`;
+}
+
+interface PointWriteInput {
+  readonly datasetKind: string;
+  readonly traceId: string;
+  readonly eventId: string;
+  readonly coordinates: readonly [number, number];
+  readonly source: PublicPointSource;
+  readonly locationLabel: unknown;
+  readonly support: readonly DomainEvidenceRef[];
+}
+
+/**
+ * HOSTED-26: writes the event's one Point, or reuses the row an earlier version wrote. It returns the geometry id, or
+ * null when there is no row and no support to write one, so the event stays a whole view. It runs inside the caller's
+ * savepoint, which also covers the geometry's own evidence links.
+ *
+ * A row that already exists under this id is the same point of the same event, so it is reused whatever its trace,
+ * label or evidence. The writer's own comparison would refuse a later version, because that version's trace and
+ * support differ. So this path checks existence first, and the point keeps the trace, label and evidence of the first
+ * version that wrote it.
+ */
+async function writePointGeometry(tx: SqlExecutor, input: PointWriteInput): Promise<string | null> {
+  const geometryId = pointGeometryIdFor(input.datasetKind, input.eventId, input.coordinates);
+  const existing = await tx.query<{ geometry_id: string }>(
+    "SELECT geometry_id FROM waspada.geometries WHERE dataset_kind = $1 AND geometry_id = $2",
+    [input.datasetKind, geometryId],
+  );
+  if (existing.rows.length > 0) return geometryId;
+  if (input.support.length === 0) return null;
+
+  await persistGeometryInCallerTransaction(tx, {
+    schema_version: "2.0",
+    trace_id: input.traceId,
+    record_type: "Geometry",
+    dataset_kind: input.datasetKind,
+    geometry_id: geometryId,
+    role: "approximate_place",
+    geojson: { type: "Point", coordinates: [input.coordinates[0], input.coordinates[1]] },
+    coordinate_reference_system: "OGC:CRS84",
+    precision_m: null,
+    precision_basis: input.source === "source_text" ? "source_supplied" : "unknown",
+    display_label: publicPointLabel(input.locationLabel),
+    source_evidence: input.support.map((ref) => ({
+      report_revision_id: ref.report_revision_id,
+      permitted_text_hash: ref.permitted_text_hash,
+      span_start: ref.span_start,
+      span_end: ref.span_end,
+      offset_unit: ref.offset_unit,
+      relation: ref.relation,
+    })),
+  });
+  return geometryId;
+}
+
+/**
+ * HOSTED-10 and HOSTED-26: the support and the location status of a publication. It never refuses. A coordinate-bearing
+ * event with support gets one Point geometry (geometry_status "point_written"). A coordinate-bearing event with no
+ * support, and no row written earlier, records "pending_geometry_writer" and stays a whole view. An event with no usable
+ * coordinate records "whole_view". A group notice with no location records "not_required_group_notice". The support of a
+ * claim is filled only when the proposal came from one report revision, so no claim is given evidence from another
+ * revision.
  */
 async function enrichPublication(
   tx: SqlExecutor,
@@ -617,12 +690,22 @@ async function enrichPublication(
     claimSourceIds: (proposal.claims ?? []).map((claim) => claim.source_id),
   });
   if (outcome.status === "point") {
+    const point = await withOptionalSavepoint(tx, "hosted26_point", () => writePointGeometry(tx, {
+      datasetKind: input.datasetKind,
+      traceId: input.traceId,
+      eventId: input.eventId,
+      coordinates: outcome.coordinates,
+      source: outcome.source,
+      locationLabel: proposal.location_label,
+      support,
+    }));
+    const geometryId = point.ok ? point.value : null;
     return {
       support,
       supportEvidenceRefIds,
-      geometryIds: [],
+      geometryIds: geometryId === null ? [] : [geometryId],
       geometrySource: outcome.source,
-      geometryStatus: "pending_geometry_writer",
+      geometryStatus: geometryId === null ? "pending_geometry_writer" : "point_written",
     };
   }
   if (outcome.status === "not_required_group_notice") {
@@ -923,6 +1006,169 @@ interface PublishCore {
   readonly baseVersion?: number;
 }
 
+/** HOSTED-26: the rows of one published version. The caller builds the decision record, so every gate and location field is explicit. */
+interface PublishedVersionWrite {
+  readonly datasetKind: "live" | "historical" | "synthetic";
+  readonly traceId: string;
+  readonly eventId: string;
+  readonly version: number;
+  readonly proposalId: string;
+  readonly decisionId: string;
+  readonly decidedAt: string;
+  /** The reviewer of the decision and of the review row. */
+  readonly actorId: string;
+  readonly proposal: EventProposalDto;
+  readonly detail: EventDetail;
+  readonly enrichment: PublicationEnrichment;
+  readonly decisionRecord: Record<string, unknown>;
+  readonly publicDisplaySourceIds: ReadonlySet<string>;
+  /** The public update the version adds. The review row takes this change type and summary. */
+  readonly review: { readonly changeType: "published" | "corrected"; readonly summary: string };
+}
+
+/**
+ * HOSTED-26: the one write of a published version, shared by a publication and a location refresh. It writes the publish
+ * decision, the origin and attribution rows of the version, the version and its claims, the claim-geometry links and the
+ * approved review row. It runs inside the caller's transaction and writes nothing else. A caller that must not write
+ * throws before it is reached, which rolls the whole transaction back.
+ */
+async function writePublishedVersion(tx: SqlExecutor, input: PublishedVersionWrite): Promise<void> {
+  const { datasetKind, traceId, eventId, version, decisionId, decidedAt, proposal, detail, enrichment } = input;
+  await tx.query(
+    `INSERT INTO waspada.publication_decisions (
+       dataset_kind, decision_id, trace_id, proposal_id, policy_version,
+       event_id, event_version, reviewer_id, decided_at, record_json)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10::jsonb)`,
+    [
+      datasetKind,
+      decisionId,
+      traceId,
+      input.proposalId,
+      PUBLICATION_POLICY_VERSION,
+      eventId,
+      version,
+      input.actorId,
+      decidedAt,
+      JSON.stringify(input.decisionRecord),
+    ],
+  );
+  // HOSTED-02: the stored record is the domain schema 2.0 Event, built by the shared builder. Publication mode and
+  // waivers are not part of it: they stay on the publication decision row.
+  const eventTime = domainEventTime(proposal.event_time);
+  // HOSTED-15: the origin rows of the registered sources, linked to the evidence the version cites. They are written
+  // before the record, so each claim's origin_ids names a row of this transaction. Count-only log line.
+  const origins = await writeOriginRows(tx, {
+    datasetKind,
+    traceId,
+    claims: (proposal.claims ?? []).map((claim, index) => ({
+      sourceId: claim.source_id ?? null,
+      evidenceLabel: detail.claims[index]?.evidence_label ?? null,
+    })),
+    supportEvidenceRefIds: enrichment.supportEvidenceRefIds,
+  });
+  if (origins.origins > 0) {
+    console.info(JSON.stringify({ event: "publication_origins", origins: origins.origins, support_refs: enrichment.supportEvidenceRefIds.length }));
+  }
+  // HOSTED-22: the approved attribution of each supporting reference, from the source's approval at publication. Live only.
+  const attributions = await writeSourceAttributions(tx, {
+    datasetKind,
+    evidenceRefIds: enrichment.supportEvidenceRefIds,
+    publicDisplaySourceIds: input.publicDisplaySourceIds,
+    decidedAt,
+  });
+  if (attributions.attributed > 0 || attributions.skipped > 0) {
+    console.info(JSON.stringify({ event: "publication_attributions", attributed: attributions.attributed, skipped: attributions.skipped }));
+  }
+  const scope = { ...EMPTY_SCOPE, geometry_ids: [...enrichment.geometryIds] };
+  const record = buildEventRecordV2({
+    datasetKind,
+    traceId,
+    eventId,
+    version,
+    supersedesVersion: version > 1 ? version - 1 : null,
+    decisionId,
+    status: "published",
+    statusAt: decidedAt,
+    withdrawalReason: null,
+    title: detail.title,
+    summary: detail.summary.length > 0 ? detail.summary : detail.title,
+    category: detail.category,
+    lifecycle: detail.lifecycle,
+    tags: domainTags(proposal),
+    freshness: domainFreshness(eventTime, decidedAt),
+    eventTime,
+    validity: NULL_VALIDITY,
+    scope,
+    claims: domainClaimsFor(proposal, eventId, eventTime, detail.claims.map((claim) => ({
+      text: claim.text,
+      evidence_label: claim.evidence_label,
+    })), {
+      support: enrichment.support,
+      geometryIds: enrichment.geometryIds,
+      originIdsByClaim: origins.originIdsByClaim,
+    }),
+  });
+  await tx.query(
+    `INSERT INTO waspada.event_versions (
+       dataset_kind, event_id, version, trace_id, supersedes_version, title, summary, category,
+       lifecycle, publication_status, publication_decision_id, published_at, record_json)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'published', $10, $11::timestamptz, $12::jsonb)`,
+    [
+      datasetKind,
+      eventId,
+      version,
+      traceId,
+      record.supersedes_version,
+      record.title,
+      record.summary,
+      record.category,
+      record.lifecycle,
+      decisionId,
+      decidedAt,
+      JSON.stringify(record),
+    ],
+  );
+  for (const claim of record.claims) {
+    await tx.query(
+      `INSERT INTO waspada.event_claims (
+         dataset_kind, event_id, event_version, claim_id, publication_status, claim_text, evidence_label, record_json)
+       VALUES ($1, $2, $3, $4, 'published', $5, $6, $7::jsonb)`,
+      [
+        datasetKind,
+        eventId,
+        version,
+        claim.claim_id,
+        claim.text,
+        claim.evidence_label,
+        JSON.stringify(claim),
+      ],
+    );
+  }
+  // HOSTED-26: each claim links the geometry ids its claim scope names, which are the version's point. Only a version
+  // with a point writes links. The public detail and the GeoJSON feed both need these rows to show the pin.
+  if (enrichment.geometryIds.length > 0) {
+    for (const claim of record.claims) {
+      for (const geometryId of claim.scope.geometry_ids) {
+        await tx.query(
+          `INSERT INTO waspada.event_claim_geometries (dataset_kind, event_id, event_version, claim_id, geometry_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [datasetKind, eventId, version, claim.claim_id, geometryId],
+        );
+      }
+    }
+  }
+  // HOSTED-02: the approved review row is what the public history and updates views read. Its summary is a fixed
+  // template (ADR-020 amendment). Only the live dataset has review rows: its CHECK allows no other dataset_kind.
+  if (datasetKind === "live") {
+    await tx.query(
+      `INSERT INTO waspada.public_event_history_review_decisions (
+         dataset_kind, event_id, event_version, review_status, change_type, summary, reviewer_id, reviewed_at)
+       VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7::timestamptz)`,
+      [datasetKind, eventId, version, input.review.changeType, input.review.summary, input.actorId, decidedAt],
+    );
+  }
+}
+
 /**
  * The publish transaction body. It runs inside a transaction the caller opened, and takes the proposal lock and
  * the event lock in that order. A correction refusal is recorded (rejected decision plus audit record) in the same
@@ -1066,155 +1312,52 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
     }
   }
 
-  // HOSTED-10: the support and the location status are read only after the unchanged check. No geometry row is written
-  // by the publication role, and an event with no usable coordinate is published as a whole view, never refused for it.
+  // HOSTED-10 and HOSTED-26: the support and the location status are read only after the unchanged check. A point gets
+  // its one geometry row here, inside this transaction. An event with no usable coordinate is published as a whole view,
+  // never refused for it.
   const enrichment = await enrichPublication(tx, { datasetKind, traceId, eventId, version, category: detail.category, proposal });
-  const scope = { ...EMPTY_SCOPE, geometry_ids: [...enrichment.geometryIds] };
-  // HOSTED-18: the public list needs whether a label was present. The Event record has no label slot, so the label text is not stored here.
+  // HOSTED-18: the public list needs whether a label was present. HOSTED-26: the sanitized label text is stored with it
+  // (owner decision, 18 Nov 2026). The Event record has no label slot, so both stay on the publication decision.
   const locationLabelPresent = typeof proposal.location_label === "string" && proposal.location_label.trim().length > 0;
+  const locationLabel = publicLocationLabel(proposal.location_label);
 
-  await tx.query(
-    `INSERT INTO waspada.publication_decisions (
-       dataset_kind, decision_id, trace_id, proposal_id, policy_version,
-       event_id, event_version, reviewer_id, decided_at, record_json)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10::jsonb)`,
-    [
-      datasetKind,
-      decisionId,
-      traceId,
-      proposalId,
-      PUBLICATION_POLICY_VERSION,
-      eventId,
-      version,
-      actor.actorId,
-      decidedAt,
-      JSON.stringify({
-        disposition: "publish",
-        ...actorRecord,
-        location_label_present: locationLabelPresent,
-        publication_mode: publicationMode,
-        gate: action === "auto_publish"
-          ? "agent_auto_publication"
-          : action === "correct" ? "moderator_correction" : "moderator_review",
-        source_count: sourceCount,
-        reason: core.reason,
-        ...(waivers.length > 0 ? { waivers } : {}),
-        ...(action === "correct" ? { base_version: core.baseVersion ?? null } : {}),
-        // HOSTED-10: the pending point's source and the location status live here. No geometry row is written.
-        geometry_source: enrichment.geometrySource,
-        geometry_status: enrichment.geometryStatus,
-      }),
-    ],
-  );
-  // HOSTED-02: the stored record is the domain schema 2.0 Event, built by the shared builder. Publication mode and
-  // waivers are not part of it: they stay on the publication decision row.
-  const eventTime = domainEventTime(proposal.event_time);
-  // HOSTED-15: the origin rows of the registered sources, linked to the evidence the version cites. They are written
-  // before the record, so each claim's origin_ids names a row of this transaction. Count-only log line.
-  const origins = await writeOriginRows(tx, {
-    datasetKind,
-    traceId,
-    claims: (proposal.claims ?? []).map((claim, index) => ({
-      sourceId: claim.source_id ?? null,
-      evidenceLabel: detail.claims[index]?.evidence_label ?? null,
-    })),
-    supportEvidenceRefIds: enrichment.supportEvidenceRefIds,
-  });
-  if (origins.origins > 0) {
-    console.info(JSON.stringify({ event: "publication_origins", origins: origins.origins, support_refs: enrichment.supportEvidenceRefIds.length }));
-  }
-  // HOSTED-22: the approved attribution of each supporting reference, from the source's approval at publication. Live only.
-  const attributions = await writeSourceAttributions(tx, {
-    datasetKind,
-    evidenceRefIds: enrichment.supportEvidenceRefIds,
-    publicDisplaySourceIds: core.publicDisplaySourceIds,
-    decidedAt,
-  });
-  if (attributions.attributed > 0 || attributions.skipped > 0) {
-    console.info(JSON.stringify({ event: "publication_attributions", attributed: attributions.attributed, skipped: attributions.skipped }));
-  }
-  const record = buildEventRecordV2({
+  await writePublishedVersion(tx, {
     datasetKind,
     traceId,
     eventId,
     version,
-    supersedesVersion: version > 1 ? version - 1 : null,
+    proposalId,
     decisionId,
-    status: "published",
-    statusAt: decidedAt,
-    withdrawalReason: null,
-    title: detail.title,
-    summary: detail.summary.length > 0 ? detail.summary : detail.title,
-    category: detail.category,
-    lifecycle: detail.lifecycle,
-    tags: domainTags(proposal),
-    freshness: domainFreshness(eventTime, decidedAt),
-    eventTime,
-    validity: NULL_VALIDITY,
-    scope,
-    claims: domainClaimsFor(proposal, eventId, eventTime, detail.claims.map((claim) => ({
-      text: claim.text,
-      evidence_label: claim.evidence_label,
-    })), {
-      support: enrichment.support,
-      geometryIds: enrichment.geometryIds,
-      originIdsByClaim: origins.originIdsByClaim,
-    }),
+    decidedAt,
+    actorId: actor.actorId,
+    proposal,
+    detail,
+    enrichment,
+    publicDisplaySourceIds: core.publicDisplaySourceIds,
+    decisionRecord: {
+      disposition: "publish",
+      ...actorRecord,
+      location_label_present: locationLabelPresent,
+      // HOSTED-26: always written (null for none or a generic label), so the location backfill never re-selects it.
+      location_label: locationLabel,
+      publication_mode: publicationMode,
+      gate: action === "auto_publish"
+        ? "agent_auto_publication"
+        : action === "correct" ? "moderator_correction" : "moderator_review",
+      source_count: sourceCount,
+      reason: core.reason,
+      ...(waivers.length > 0 ? { waivers } : {}),
+      ...(action === "correct" ? { base_version: core.baseVersion ?? null } : {}),
+      // HOSTED-10 and HOSTED-26: the point's source and the location status live here. "point_written" means the
+      // version's claims link one geometry row (event_claim_geometries).
+      geometry_source: enrichment.geometrySource,
+      geometry_status: enrichment.geometryStatus,
+    },
+    review: {
+      changeType: action === "correct" ? "corrected" : "published",
+      summary: reviewSummaryFor(action, { sourceCount, reason: core.reason }),
+    },
   });
-  await tx.query(
-    `INSERT INTO waspada.event_versions (
-       dataset_kind, event_id, version, trace_id, supersedes_version, title, summary, category,
-       lifecycle, publication_status, publication_decision_id, published_at, record_json)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'published', $10, $11::timestamptz, $12::jsonb)`,
-    [
-      datasetKind,
-      eventId,
-      version,
-      traceId,
-      record.supersedes_version,
-      record.title,
-      record.summary,
-      record.category,
-      record.lifecycle,
-      decisionId,
-      decidedAt,
-      JSON.stringify(record),
-    ],
-  );
-  for (const claim of record.claims) {
-    await tx.query(
-      `INSERT INTO waspada.event_claims (
-         dataset_kind, event_id, event_version, claim_id, publication_status, claim_text, evidence_label, record_json)
-       VALUES ($1, $2, $3, $4, 'published', $5, $6, $7::jsonb)`,
-      [
-        datasetKind,
-        eventId,
-        version,
-        claim.claim_id,
-        claim.text,
-        claim.evidence_label,
-        JSON.stringify(claim),
-      ],
-    );
-  }
-  // HOSTED-02: the approved review row is what the public history and updates views read. Its summary is a fixed
-  // template (ADR-020 amendment). Only the live dataset has review rows: its CHECK allows no other dataset_kind.
-  if (datasetKind === "live") {
-    await tx.query(
-      `INSERT INTO waspada.public_event_history_review_decisions (
-         dataset_kind, event_id, event_version, review_status, change_type, summary, reviewer_id, reviewed_at)
-       VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7::timestamptz)`,
-      [
-        datasetKind,
-        eventId,
-        version,
-        action === "correct" ? "corrected" : "published",
-        reviewSummaryFor(action, { sourceCount, reason: core.reason }),
-        actor.actorId,
-        decidedAt,
-      ],
-    );
-  }
   if (action === "correct") {
     await writeAuditRecord(tx, {
       datasetKind,
@@ -1592,6 +1735,155 @@ export async function submitEventCorrection(
     return { status: "refused", code: outcome.code as CorrectionRefusalCode, reasons: outcome.reasons ?? [], proposalId };
   }
   return { status: "refused", code: "publication_failed", reasons: [], proposalId };
+}
+
+/** HOSTED-26: the gate a location refresh records. It runs no gate of its own: the proposal already passed it for this event. */
+const LOCATION_REFRESH_GATE = "location_refresh";
+/** HOSTED-26: the fixed audit reason of a location refresh. */
+const LOCATION_REFRESH_REASON = "Lokasi peta diperbarui (HOSTED-26)";
+/** HOSTED-26: the fixed public update summary. It says what changed, and nothing about the facts. */
+const LOCATION_REFRESH_SUMMARY = "Lokasi peta diperbarui.";
+
+/** Why a location refresh wrote no version. Fixed codes only. */
+export type LocationRefreshSkipReason = "no_publication" | "withdrawn" | "nothing_to_add" | "publication_failed" | "event_changed";
+
+export type LocationRefreshOutcome =
+  | { readonly status: "refreshed"; readonly version: number }
+  | { readonly status: "skipped"; readonly reason: LocationRefreshSkipReason };
+
+export interface LocationRefreshInput {
+  readonly datasetKind: "live";
+  readonly eventId: string;
+  /** The rights check for the attribution write of the new version. Fail-closed: a throw counts as not permitted. */
+  readonly checkPublicDisplay: (sourceId: string) => Promise<boolean>;
+  readonly now?: () => Date;
+}
+
+/** Ends the refresh transaction without a write. The transaction rolls back, and the caller gets the reason. */
+class LocationRefreshSkip extends Error {
+  constructor(readonly reason: LocationRefreshSkipReason) {
+    super(reason);
+    this.name = "LocationRefreshSkip";
+  }
+}
+
+/** HOSTED-26: the geometry ids in the stored record of one version of an event. */
+async function versionGeometryIds(tx: SqlExecutor, datasetKind: string, eventId: string, version: number): Promise<readonly string[]> {
+  const row = await tx.query<{ record_json: unknown }>(
+    "SELECT record_json FROM waspada.event_versions WHERE dataset_kind = $1 AND event_id = $2 AND version = $3",
+    [datasetKind, eventId, version],
+  );
+  const record = parseJsonObject(row.rows[0]?.record_json);
+  const scope = record && isRecordValue(record.scope) ? record.scope : null;
+  return scope && Array.isArray(scope.geometry_ids)
+    ? scope.geometry_ids.filter((id): id is string => typeof id === "string")
+    : [];
+}
+
+/**
+ * HOSTED-26 (owner decision, 18 Nov 2026): gives a published event its location. It writes one version after the latest
+ * one, when that version lacks something the latest proposal now supplies: its one Point (the latest version has no
+ * geometry, and the proposal has single-revision support and a coordinate in the box), or the public location label
+ * (the latest decision has none, and the proposal names a specific place). Everything else is copied from the proposal
+ * and the latest decision. Claims and facts are not re-decided, and no gate runs: the proposal already passed it for this
+ * event. The version is recorded as a corrected update with a fixed summary. A withdrawn event is never refreshed.
+ *
+ * One transaction under the event lock. When nothing would be added, the transaction is ended and rolled back, so no
+ * geometry row or version is left behind. The version uses the publication's own write path (writePublishedVersion).
+ * After the commit, the in-memory public read model shows the new version. A database error throws, so the caller counts
+ * a failure. A refresh of an event that another decision changed meanwhile is skipped (event_changed).
+ */
+export async function refreshPublishedLocation(
+  executor: TransactionalSqlExecutor,
+  input: LocationRefreshInput,
+): Promise<LocationRefreshOutcome> {
+  const { datasetKind, eventId } = input;
+  // The registry checks run before the lock, as in decideProposal, so no database lock is held across them.
+  const before = await latestEventDecision(executor, datasetKind, eventId);
+  if (!before) return { status: "skipped", reason: "no_publication" };
+  if (before.disposition === "withdraw") return { status: "skipped", reason: "withdrawn" };
+  const publicDisplaySourceIds = await resolvePublicDisplay(
+    { executor, datasetKind, checkPublicDisplay: input.checkPublicDisplay },
+    before.proposal,
+  );
+  const decidedAt = (input.now ?? (() => new Date()))().toISOString();
+  const decisionId = `dec-${randomUUID()}`;
+
+  let written: { readonly version: number; readonly detail: EventDetail };
+  try {
+    written = await runInTransaction(executor, async (tx) => {
+      await lockEventPublication(tx, datasetKind, eventId);
+      const latest = await latestEventDecision(tx, datasetKind, eventId);
+      if (!latest) throw new LocationRefreshSkip("no_publication");
+      if (latest.disposition === "withdraw") throw new LocationRefreshSkip("withdrawn");
+      if (latest.decisionId !== before.decisionId) throw new LocationRefreshSkip("event_changed");
+
+      const proposal = latest.proposal;
+      const version = latest.version + 1;
+      // The publication mode and the waivers of the latest decision carry over. No new gate run, so no new waiver.
+      const publicationMode = latest.decisionRecord.publication_mode === "agent_auto" ? "agent_auto" : "moderator_reviewed";
+      const waivers = Array.isArray(latest.decisionRecord.waivers)
+        ? latest.decisionRecord.waivers.filter((waiver): waiver is string => typeof waiver === "string")
+        : [];
+      const sourceCount = distinctPublishers(proposal);
+      let detail: EventDetail;
+      try {
+        detail = proposalToEventDetail(proposal, undefined, {
+          version,
+          publication: { mode: publicationMode, source_count: sourceCount, ...(waivers.length > 0 ? { waivers } : {}) },
+        });
+      } catch {
+        throw new LocationRefreshSkip("publication_failed");
+      }
+
+      const enrichment = await enrichPublication(tx, { datasetKind, traceId: latest.traceId, eventId, version, category: detail.category, proposal });
+      const latestGeometryIds = await versionGeometryIds(tx, datasetKind, eventId, latest.version);
+      const locationLabel = publicLocationLabel(proposal.location_label);
+      const addsPoint = enrichment.geometryStatus === "point_written" && latestGeometryIds.length === 0;
+      const addsLabel = locationLabel !== null && latest.decisionRecord.location_label === undefined;
+      if (!addsPoint && !addsLabel) throw new LocationRefreshSkip("nothing_to_add");
+
+      await writePublishedVersion(tx, {
+        datasetKind,
+        traceId: latest.traceId,
+        eventId,
+        version,
+        proposalId: latest.proposalId,
+        decisionId,
+        decidedAt,
+        actorId: AGENT_AUTO_PUBLISHER_ID,
+        proposal,
+        detail,
+        enrichment,
+        publicDisplaySourceIds,
+        decisionRecord: {
+          disposition: "publish",
+          actor_kind: "agent",
+          actor_id: AGENT_AUTO_PUBLISHER_ID,
+          // Carried over from the latest decision, so the list eligibility of the event does not change.
+          location_label_present: latest.decisionRecord.location_label_present === true,
+          // HOSTED-26: always written (null for none or a generic label), so the location backfill never re-selects it.
+      location_label: locationLabel,
+          publication_mode: publicationMode,
+          gate: LOCATION_REFRESH_GATE,
+          source_count: sourceCount,
+          reason: LOCATION_REFRESH_REASON,
+          ...(waivers.length > 0 ? { waivers } : {}),
+          base_version: latest.version,
+          geometry_source: enrichment.geometrySource,
+          geometry_status: enrichment.geometryStatus,
+        },
+        review: { changeType: "corrected", summary: LOCATION_REFRESH_SUMMARY },
+      });
+      return { version, detail };
+    });
+  } catch (error) {
+    if (error instanceof LocationRefreshSkip) return { status: "skipped", reason: error.reason };
+    throw error;
+  }
+  // Only after COMMIT: the in-memory public read model never shows a version that rolled back.
+  PublicReadModel.publish(written.detail);
+  return { status: "refreshed", version: written.version };
 }
 
 export interface ExpireStaleProposalsInput {

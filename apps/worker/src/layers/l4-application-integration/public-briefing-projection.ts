@@ -216,10 +216,12 @@ function normalizeMatchText(value: string): string {
 }
 
 function isEventView(value: unknown): value is EventView {
-  if (!hasExactKeys(value, [
+  // HOSTED-26: location_label is optional. It is the public label text of a labelled event (at most 200 code points).
+  const requiredKeys = [
     "event_id", "version", "title", "summary", "category", "tags", "lifecycle", "freshness",
     "event_time", "validity", "scope", "claims", "impacts", "published_at",
-  ])) return false;
+  ];
+  if (!hasExactKeys(value, requiredKeys) && !(hasExactKeys(value, [...requiredKeys, "location_label"]))) return false;
   if (!isIdentifier(value.event_id) || !isVersion(value.version)
     || !isBoundedText(value.title, 240) || !isBoundedText(value.summary, 2000)
     || !isCategory(value.category) || !isArrayOf(value.tags, isTag)
@@ -227,6 +229,7 @@ function isEventView(value: unknown): value is EventView {
     || !isTimeScope(value.event_time) || !isValidity(value.validity)
     || !isPublicScope(value.scope) || !isArrayOf(value.claims, isPublicClaim, maxClaims)
     || !isArrayOf(value.impacts, isPublicImpact, maxImpacts) || !isDateTime(value.published_at)) return false;
+  if (Object.hasOwn(value, "location_label") && !isBoundedText(value.location_label, 200)) return false;
   return true;
 }
 

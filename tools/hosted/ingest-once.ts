@@ -337,6 +337,26 @@ export function formatAttributionLine(result: AttributionBackfillResult): string
   return `[Once] Attribution backfill: candidates=${result.candidates} attributed=${result.attributed} skipped=${result.skipped} failed=${result.failed}`;
 }
 
+/**
+ * HOSTED-26: the counts of one location backfill run (see tools/hosted/location-backfill.ts). Each unit is one published
+ * live event, never a version, a claim or a source.
+ */
+export interface LocationBackfillResult {
+  /** Events attempted in this run: refreshed + skipped + failed. Zero when the run's candidate query failed. */
+  readonly candidates: number;
+  /** Events that got a new version with their point, or their public label, or both. */
+  readonly refreshed: number;
+  /** Events whose latest version already has what the proposal supplies, or that are withdrawn, or that cannot be refreshed. */
+  readonly skipped: number;
+  /** Events whose refresh threw (rolled back, and the run goes on). A whole-step failure counts as one. */
+  readonly failed: number;
+}
+
+/** HOSTED-26: the one public count line of the location backfill. Fixed fields, no event id, title, label or error text. */
+export function formatLocationLine(result: LocationBackfillResult): string {
+  return `[Once] Location backfill: candidates=${result.candidates} refreshed=${result.refreshed} skipped=${result.skipped} failed=${result.failed}`;
+}
+
 export interface OnceSteps {
   /** One poll cycle. A throw is reported through onPollError and does not stop the run. */
   readonly poll: () => Promise<void>;
@@ -349,6 +369,11 @@ export interface OnceSteps {
    * counted as one failed step, is never fatal, and never reaches the log as text.
    */
   readonly attribution?: () => Promise<AttributionBackfillResult>;
+  /**
+   * HOSTED-26: optional, like attribution. It runs after the attribution backfill, so the attribution of a version
+   * exists before the location refresh writes the next one. The same failure rules apply.
+   */
+  readonly location?: () => Promise<LocationBackfillResult>;
   readonly freshness: () => Promise<void>;
   readonly log: (line: string) => void;
 }
@@ -357,6 +382,7 @@ export interface OnceSteps {
  * HOSTED-20: the order of one `--once` run: poll, drain the AI queue, the publication sweep over what is still
  * undecided, then one freshness pass. A throw from drain, sweep or freshness is not caught here.
  * HOSTED-24C: the attribution backfill runs after the sweep and before the freshness pass, and never fails the run.
+ * HOSTED-26: the location backfill runs after the attribution backfill, and never fails the run either.
  */
 export async function runOnceSequence(steps: OnceSteps): Promise<void> {
   try {
@@ -376,6 +402,15 @@ export async function runOnceSequence(steps: OnceSteps): Promise<void> {
       backfill = { candidates: 0, attributed: 0, skipped: 0, failed: 1 };
     }
     steps.log(formatAttributionLine(backfill));
+  }
+  if (steps.location !== undefined) {
+    let backfill: LocationBackfillResult;
+    try {
+      backfill = await steps.location();
+    } catch {
+      backfill = { candidates: 0, refreshed: 0, skipped: 0, failed: 1 };
+    }
+    steps.log(formatLocationLine(backfill));
   }
   await steps.freshness();
 }

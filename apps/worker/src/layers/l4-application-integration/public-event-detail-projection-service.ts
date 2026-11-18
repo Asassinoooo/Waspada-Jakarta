@@ -156,7 +156,10 @@ export function createPublicEventDetailProjectionService(ports: {
       };
       let context: PublicEventGeometryProjectionContext;
       try {
-        context = projectPublicEventForGeometry(prepared.eventRecord, projectionLookups, { locationLabelPresent: prepared.locationLabelPresent });
+        context = projectPublicEventForGeometry(prepared.eventRecord, projectionLookups, {
+          locationLabelPresent: prepared.locationLabelPresent,
+          locationLabel: prepared.locationLabel,
+        });
       } catch (error) {
         // ATTRIBUTION_FAILED means no approved attribution for a supporting reference or claim: missing, as in the list.
         if (error instanceof PublicProjectionError && error.code === "ATTRIBUTION_FAILED") return { kind: "missing" };
@@ -193,7 +196,7 @@ export function createPublicEventDetailProjectionService(ports: {
           prepared.eventRecord,
           projectionLookups,
           geometryRows.map((geometry) => geometry.recordJson),
-          { locationLabelPresent: prepared.locationLabelPresent },
+          { locationLabelPresent: prepared.locationLabelPresent, locationLabel: prepared.locationLabel },
         );
       } catch {
         fail("PROJECTION_FAILED");
@@ -210,7 +213,7 @@ function readSnapshotResult(value: unknown): unknown | null {
     return null;
   }
   if (value.kind !== "found" || !hasExactKeys(value, ["kind", "snapshot"])
-    || !hasExactKeys(value.snapshot, ["datasetKind", "eventId", "eventVersion", "recordJson", "impacts", "locationLabelPresent"])) {
+    || !hasExactKeys(value.snapshot, ["datasetKind", "eventId", "eventVersion", "recordJson", "impacts", "locationLabelPresent", "locationLabel"])) {
     fail("SNAPSHOT_INVALID");
   }
   return value.snapshot;
