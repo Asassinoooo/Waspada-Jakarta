@@ -49,7 +49,8 @@ describe('HOSTED-36 source display names (migration 058)', () => {
   });
 
   it('renames only the BMKG and PetaBencana rows that still carry their source id', async () => {
-    const beforeMigration = migrations.filter(({ version }) => version !== MIGRATION);
+    // Apply only the migrations before 058; later ones (059+) come after it, in order.
+    const beforeMigration = migrations.filter(({ version }) => version < MIGRATION);
     const first = await applyMigrations(db.executor, beforeMigration);
     assert.equal(first.applied.at(-1), '057_pipeline_cycle_runs');
 
@@ -62,7 +63,7 @@ describe('HOSTED-36 source display names (migration 058)', () => {
     await insertSource(db, PETABENCANA_SOURCE_ID, PETABENCANA_SOURCE_ID);
     await insertSource(db, 'source-hosted36-owner-named', 'Nama Pilihan Pemilik');
 
-    const applied = await applyMigrations(db.executor, migrations);
+    const applied = await applyMigrations(db.executor, migrations.filter(({ version }) => version <= MIGRATION));
     assert.deepEqual(applied.applied, [MIGRATION]);
 
     assert.equal(await readDisplayName(db, BMKG_GEMPA_SOURCE_ID), 'BMKG');
