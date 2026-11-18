@@ -247,3 +247,102 @@ test("keeps response and item allowlists within the existing bounds", () => {
     ]);
   }
 });
+
+// HOSTED-32: whole-view events carry location_display, labelled events carry location_label. Both are fictional here.
+const placeLabelReason = "Nama tempat ini disebut di laporan (perkiraan, bukan konfirmasi)";
+const fictionalLabel = "Jatinegara, Jakarta Timur";
+
+function withLocation(event: EventView, location: Partial<Pick<EventView, "location_display" | "location_label" | "severity">>): EventView {
+  return { ...event, ...location } as EventView;
+}
+
+test("accepts whole-view events and any combination of the optional location and severity keys", () => {
+  const category = { category: "crime_personal_security" as const };
+  const whole = withLocation(makeEvent("event-whole-view", category), { location_display: "whole_view" });
+  const labelled = withLocation(makeEvent("event-labelled", category), { location_label: fictionalLabel });
+  const both = withLocation(makeEvent("event-whole-labelled", category), { location_display: "whole_view", location_label: fictionalLabel });
+  const point = withLocation(makeEvent("event-point", category), { location_display: "point" });
+  const severe = withLocation(makeEvent("event-severity", category), { severity: "high" });
+  const events = [whole, labelled, both, point, severe];
+
+  const response = project(makeRequest({ categories: ["crime_personal_security"] }), events);
+
+  assert.deepEqual(response.items.map((item) => item.event.event_id), events.map((event) => event.event_id));
+  for (const [index, event] of events.entries()) {
+    assert.strictEqual(response.items[index]?.event, event, "the event object passes through unchanged");
+    assert.deepEqual(response.items[index]?.relevance_reasons, ["Sesuai kategori yang Anda ikuti"]);
+  }
+  assert.equal(response.items[0]?.event.location_display, "whole_view");
+  assert.equal(response.items[1]?.event.location_label, fictionalLabel);
+  assert.equal(response.items[2]?.event.location_display, "whole_view");
+  assert.equal(response.items[2]?.event.location_label, fictionalLabel);
+});
+
+test("rejects unknown location_display values, invalid label text, severity values, and extra keys", () => {
+  const bad: Record<string, unknown>[] = [
+    { location_display: "polygon" },
+    { location_display: "Whole_View" },
+    { location_display: undefined },
+    { location_label: "" },
+    { location_label: "x".repeat(201) },
+    { severity: "critical" },
+    { location_display: "whole_view", incident_radius_m: 500 },
+  ];
+  for (const extra of bad) {
+    assertProjectionError(() => project(makeRequest(), [{ ...makeEvent("event-bad-location"), ...extra }]), "EVENT_INVALID");
+  }
+});
+
+test("a whole-view event with no place scope returns its item instead of failing the read", () => {
+  const event = withLocation(makeEvent("event-whole-view-item", { category: "disasters_weather" }), {
+    location_display: "whole_view",
+    location_label: fictionalLabel,
+  });
+  const response = project(makeRequest({ categories: ["disasters_weather"] }), [event]);
+
+  assert.deepEqual(response.items, [{ event, relevance_reasons: ["Sesuai kategori yang Anda ikuti"] }]);
+  assert.equal(response.items[0]?.event.location_display, "whole_view");
+});
+
+test("a place interest matches the location label as the whole label or one comma-separated segment", () => {
+  const event = withLocation(makeEvent("event-label-segment"), { location_label: fictionalLabel });
+
+  assert.deepEqual(project(makeRequest({ places: ["Jakarta Timur"] }), [event]).items, [
+    { event, relevance_reasons: [placeLabelReason] },
+  ]);
+  assert.deepEqual(project(makeRequest({ places: ["  JATINEGARA "] }), [event]).items[0]?.relevance_reasons, [placeLabelReason]);
+  assert.deepEqual(project(makeRequest({ places: [" jatinegara, JAKARTA timur "] }), [event]).items[0]?.relevance_reasons, [placeLabelReason]);
+});
+
+test("a place interest does not match a partial word or substring of the location label", () => {
+  const event = withLocation(makeEvent("event-label-partial"), { location_label: fictionalLabel });
+
+  for (const interest of ["Jakarta", "Timur", "Jakarta Tim", "Jatinegara Jakarta Timur", "Jakarta Timur Raya"]) {
+    assert.deepEqual(project(makeRequest({ places: [interest] }), [event]).items, [], interest);
+  }
+  assert.deepEqual(project(makeRequest({ services: ["Jakarta Timur"], institutions: ["Jakarta Timur"], audiences: ["Jakarta Timur"] }), [event]).items, []);
+});
+
+test("category-only interests still match whole-view and labelled events", () => {
+  const whole = withLocation(makeEvent("event-category-whole", { category: "crime_personal_security" }), {
+    location_display: "whole_view",
+  });
+  const labelled = withLocation(makeEvent("event-category-labelled", { category: "crime_personal_security" }), {
+    location_label: fictionalLabel,
+  });
+  const response = project(makeRequest({ categories: ["crime_personal_security"] }), [whole, labelled]);
+
+  assert.deepEqual(response.items.map((item) => item.relevance_reasons), [
+    ["Sesuai kategori yang Anda ikuti"],
+    ["Sesuai kategori yang Anda ikuti"],
+  ]);
+});
+
+test("a real place scope match keeps the scope reason and does not add the label reason", () => {
+  const event = withLocation(makeEvent("event-scope-and-label", {
+    scope: { ...emptyScope(), places: ["Jatinegara"] },
+  }), { location_label: fictionalLabel });
+  const reasons = project(makeRequest({ places: ["Jatinegara", "Jakarta Timur"] }), [event]).items[0]?.relevance_reasons;
+
+  assert.deepEqual(reasons, ["Mencakup tempat yang Anda ikuti"]);
+});

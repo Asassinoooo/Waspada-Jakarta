@@ -21,6 +21,8 @@ interface ScopeIds {
 }
 interface EventOptions {
   category?: string; recordCategory?: string; scope?: ScopeIds; claimScopes?: readonly ScopeIds[];
+  /** HOSTED-32: the publication decision's recorded public location label (agent-derived text). */
+  locationLabel?: string;
 }
 interface Interests {
   places: readonly unknown[]; services: readonly unknown[];
@@ -101,6 +103,9 @@ describe('public briefing candidate repository', () => {
     });
     await seedEvent(live, 'event-order-new', 1, 'published', SECOND, { scope: { place_ids: ['p-order-new'] } });
     await seedEvent(live, 'event-order-old', 1, 'published', OLDER, { scope: { place_ids: ['p-order-old'] } });
+    await seedEvent(live, 'event-label-jatinegara', 1, 'published', FIRST, { locationLabel: 'Jatinegara, Jakarta Timur' });
+    await seedEvent(live, 'event-label-old', 1, 'published', FIRST, { locationLabel: 'Kelurahan Lama, Jakarta Selatan' });
+    await seedEvent(live, 'event-label-old', 2, 'published', SECOND);
   });
 
   after(async () => { await database?.close(); });
@@ -134,6 +139,23 @@ describe('public briefing candidate repository', () => {
     assert.deepEqual((await repo.read(request({ places: ['Café Contoh'] }))).map((row) => row.eventId), ['event-unicode']);
     assert.deepEqual((await repo.read(request({ places: ['i\u0307stanbul'] }))).map((row) => row.eventId), ['event-dotted-i']);
     assert.deepEqual((await repo.read(request({ places: ['ος'] }))).map((row) => row.eventId), ['event-greek']);
+  });
+
+  it('matches a place interest against the current location label as the whole label or one comma-separated segment', async () => {
+    const repo = createPublicBriefingCandidateRepository(database.executor);
+    const eventIds = async (places: string[]) => (await repo.read(request({ places }))).map((row) => row.eventId);
+    assert.deepEqual(await eventIds(['Jakarta Timur']), ['event-label-jatinegara']);
+    assert.deepEqual(await eventIds(['Jatinegara']), ['event-label-jatinegara']);
+    assert.deepEqual(await eventIds(['  JATINEGARA, jakarta timur ']), ['event-label-jatinegara']);
+    for (const partial of ['Jakarta', 'Timur', 'Jakarta Tim', 'Jatinegara Jakarta Timur']) {
+      assert.deepEqual(await eventIds([partial]), [], partial);
+    }
+    assert.deepEqual(
+      (await repo.read(request({ services: ['Jakarta Timur'], institutions: ['Jakarta Timur'], audiences: ['Jatinegara'] }))),
+      [],
+      'a location label matches place interests only',
+    );
+    assert.deepEqual(await eventIds(['Jakarta Selatan', 'Kelurahan Lama']), [], 'a superseded version label is not current');
   });
 
   it('uses the immutable version-1 timestamp and only current published live scope data', async () => {
@@ -170,6 +192,7 @@ describe('public briefing candidate repository', () => {
     await database.executor.execute('SET ROLE waspada_public_reader');
     try {
       assert.deepEqual((await repo.read(request({ categories: ['crime_personal_security'] }))).map((row) => row.eventId), ['event-category']);
+      assert.deepEqual((await repo.read(request({ places: ['Jakarta Timur'] }))).map((row) => row.eventId), ['event-label-jatinegara']);
       await assert.rejects(database.executor.query('SELECT event_id FROM waspada.event_versions LIMIT 1'), /permission denied/iu);
     } finally {
       await database.executor.execute('RESET ROLE');
@@ -180,6 +203,7 @@ describe('public briefing candidate repository', () => {
     assert.match(call.statement, /LIMIT \$6/u);
     assert.match(call.statement, /waspada\.public_scope_names/u);
     assert.match(call.statement, /waspada\.public_event_impacts/u);
+    assert.match(call.statement, /waspada\.public_event_location_status/u);
     assert.doesNotMatch(call.statement, /(?:FROM|JOIN) waspada\.(?:event_versions|event_impact_refs|scope_name_review_decisions|publication_decisions)/iu);
   });
 
@@ -332,10 +356,13 @@ async function seedEvent(
       [f.datasetKind, proposal, f.traceId, f.candidateId, f.contextId, version === 1 ? null : eventId,
         version === 1 ? null : version - 1, FIRST],
     );
+    const decisionRecord = options.locationLabel === undefined
+      ? { fixture: 'fiction-only' }
+      : { fixture: 'fiction-only', location_label_present: true, location_label: options.locationLabel };
     await tx.query(
       'INSERT INTO waspada.publication_decisions (dataset_kind, decision_id, trace_id, proposal_id, policy_version, event_id, event_version, decided_at, record_json) ' +
-      'VALUES ($1, $2, $3, $4, \'briefing-test-policy\', $5, $6, $7, \'{"fixture":"fiction-only"}\'::jsonb)',
-      [f.datasetKind, decision, f.traceId, proposal, eventId, version, FIRST],
+      'VALUES ($1, $2, $3, $4, \'briefing-test-policy\', $5, $6, $7, $8::jsonb)',
+      [f.datasetKind, decision, f.traceId, proposal, eventId, version, FIRST, JSON.stringify(decisionRecord)],
     );
     await tx.query(
       'INSERT INTO waspada.event_versions ' +
