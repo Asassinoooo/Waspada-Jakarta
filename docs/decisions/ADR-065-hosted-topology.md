@@ -92,3 +92,12 @@ Status 18 Nov 2026: the Hyperdrive bindings, static assets, cron trigger (HOSTED
 - **Source health (HOSTED-24B, HOSTED-25).** The ingest writes per-source health to `source_registry`. On the hosted database only GitHub Actions runs write it; a PC run logs `skipped`. Run 44071702304 logged ok=16 failed=0.
 - **Worker cron starts the ingest (HOSTED-25).** GitHub's own schedule fired once in about 18 hours (run 44151179665, 17 Nov 18:44 UTC). The workflow's `schedule:` was removed. The production Worker cron (`7,37 * * * *`) now sends one `workflow_dispatch` request per slot, with a fine-grained token limited to this repository's Actions. First cron-started run: 44217189260, 18 Nov 2026 01:37 UTC. The Worker still does no ingest and makes no model calls.
 - **Detail copy and source lines (HOSTED-24A).** UAT findings R-09 and R-10 were fixed (88bcf69) and verified on the live site.
+
+## Amendment, 18 November 2026: owner decisions on the limitations
+
+- **Limitation 1 (rights, `local_relaxed`): accepted as a known limitation** (owner, 18 Nov 2026). Hosted auto-publish keeps the waiver. It is recorded as a limitation of the course prototype, not as source clearance. `docs/SOURCE_CLEARANCE_PLAN.md` still governs any claim of permission.
+- **Limitation 2 (no off-provider backup): accepted** (owner, 18 Nov 2026). Neon Free is the only copy. No backup job will be added for this release.
+- **Limitation 4 (no pipeline status on the hosted site): to be fixed.** The owner chose to wire `#alur-agen` to the database (follow-up task).
+- **Limitation 6 (source revocation): decided.** Revoking a source stops publication only; collection continues (FR-16). Implementation is a follow-up task; until it lands, the old behaviour applies.
+- **Domain: no custom domain** (owner, 18 Nov 2026). The site stays on `*.workers.dev`. Some ISP resolvers block that hostname (`docs/testing/DEFECTS.md` F-17); this is an accepted limitation.
+- **Password reset: out of scope** for this release (owner, 18 Nov 2026).
