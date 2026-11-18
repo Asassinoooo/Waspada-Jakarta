@@ -305,6 +305,46 @@ export function mapIncidentTypeToPublicCategory(type: IncidentCategory): string 
   }
 }
 
+const INDONESIAN_MONTH_NUMBERS: Readonly<Record<string, string>> = {
+  januari: "01", februari: "02", maret: "03", april: "04", mei: "05", juni: "06",
+  juli: "07", agustus: "08", september: "09", oktober: "10", november: "11", desember: "12",
+};
+
+/**
+ * True when value is a real calendar day as YYYY-MM-DD (no 31 February, no month 13, no day 0).
+ */
+export function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match || !match[1] || !match[2] || !match[3]) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const probe = new Date(0);
+  probe.setUTCFullYear(year, month - 1, day);
+  return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
+
+/**
+ * The calendar date the report text states with no hour, as YYYY-MM-DD: "26 Oktober 2026" or "2026-10-26".
+ * Returns null when no real calendar date is stated. It never invents a date or an hour. The correlated
+ * (multi-source) engine uses the same parsing.
+ */
+export function extractStatedDate(text: string): string | null {
+  const indonesianDateMatch = text.match(/\b([0-3]?[0-9])\s+(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+(\d{4})\b/i);
+  if (indonesianDateMatch && indonesianDateMatch[1] && indonesianDateMatch[2] && indonesianDateMatch[3]) {
+    const day = indonesianDateMatch[1].padStart(2, "0");
+    const month = INDONESIAN_MONTH_NUMBERS[indonesianDateMatch[2].toLowerCase()] ?? "01";
+    const isoDate = `${indonesianDateMatch[3]}-${month}-${day}`;
+    if (isCalendarDate(isoDate)) return isoDate;
+  }
+
+  const isoDateMatch = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (isoDateMatch && isoDateMatch[1] && isCalendarDate(isoDateMatch[1])) {
+    return isoDateMatch[1];
+  }
+  return null;
+}
+
 /**
  * Extracts the physical event time and precision from the report text only. F-14: publish and
  * retrieval times are never the event time, so a text with no event time gives precision "unknown"
@@ -328,26 +368,13 @@ function extractEventTime(
     return { precision: "exact", value: isoMatch[1] };
   }
 
-  // 4. Indonesian long date: "26 Oktober 2026"
-  const monthMap: Record<string, string> = {
-    januari: "01", februari: "02", maret: "03", april: "04", mei: "05", juni: "06",
-    juli: "07", agustus: "08", september: "09", oktober: "10", november: "11", desember: "12",
-  };
-  const indonesianDateMatch = text.match(/\b([0-3]?[0-9])\s+(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+(\d{4})\b/i);
-  if (indonesianDateMatch && indonesianDateMatch[1] && indonesianDateMatch[2] && indonesianDateMatch[3]) {
-    const day = indonesianDateMatch[1].padStart(2, "0");
-    const month = monthMap[indonesianDateMatch[2].toLowerCase()] ?? "01";
-    const year = indonesianDateMatch[3];
-    return { precision: "date", value: `${year}-${month}-${day}` };
+  // 4. A calendar date with no hour, "26 Oktober 2026" or "2026-10-26": kept as stated (HOSTED-29).
+  const statedDate = extractStatedDate(text);
+  if (statedDate !== null) {
+    return { precision: "date", value: statedDate };
   }
 
-  // 5. Short ISO date in text: "2026-10-26"
-  const dateMatch = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  if (dateMatch && dateMatch[1]) {
-    return { precision: "date", value: dateMatch[1] };
-  }
-
-  // 6. No event time in the text. Publish and retrieval times are never the event time (F-14).
+  // 5. No event time in the text. Publish and retrieval times are never the event time (F-14).
   return { precision: "unknown", value: null };
 }
 

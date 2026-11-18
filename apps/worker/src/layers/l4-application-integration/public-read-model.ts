@@ -21,6 +21,7 @@ import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
 import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-categories.js";
+import { isCalendarDate } from "../l2-model-grounding/proposal-engine.js";
 
 const categories: Record<string, true> = Object.fromEntries(
   OFFICIAL_INCIDENT_CATEGORIES.map((slug) => [slug, true]),
@@ -699,7 +700,7 @@ export function proposalToEventDetail(
     event_time: {
       start: eventStart,
       end: null,
-      precision: eventStart === null ? "unknown" : "exact",
+      precision: eventStart === null ? "unknown" : precision,
     },
     validity: { valid_from: null, valid_until: null },
     scope: { places: [...places], services: [], institutions: [], audiences: [] },
@@ -738,7 +739,7 @@ export function proposalToEventDetail(
       precision,
     },
     validity: {
-      valid_from: eventStart,
+      valid_from: validityStartFor(precision, eventStart),
       valid_until: null,
     },
     scope: {
@@ -774,13 +775,27 @@ function publicEventStart(eventTime: unknown): {
   if (record.precision === "unknown" || raw === null || raw.length === 0) {
     return { start: null, precision: "unknown" };
   }
+  const precision: TimeScope["precision"] = typeof record.precision === "string" && timePrecisions.has(record.precision)
+    ? record.precision as TimeScope["precision"]
+    : "exact";
+  // HOSTED-29: a date keeps its calendar day as YYYY-MM-DD. Turning it into an instant would invent an hour
+  // (UTC midnight), so a value that is not a real calendar day gives no start.
+  if (precision === "date") {
+    return isCalendarDate(raw) ? { start: raw, precision } : { start: null, precision: "unknown" };
+  }
   const parsed = Date.parse(raw);
   return {
     start: Number.isNaN(parsed) ? raw : new Date(parsed).toISOString(),
-    precision: typeof record.precision === "string" && timePrecisions.has(record.precision)
-      ? record.precision as TimeScope["precision"]
-      : "exact",
+    precision,
   };
+}
+
+/**
+ * HOSTED-29: the validity start takes only an instant, and a date is not one, so a date-precision event gives
+ * no validity start (null is unknown, never an invented hour). Other precisions keep the event start.
+ */
+function validityStartFor(precision: TimeScope["precision"], eventStart: string | null): string | null {
+  return precision === "date" ? null : eventStart;
 }
 
 /**
@@ -881,7 +896,7 @@ function rawInputToEventDetail(
       precision,
     },
     validity: {
-      valid_from: eventStart,
+      valid_from: validityStartFor(precision, eventStart),
       valid_until: null,
     },
     scope: {

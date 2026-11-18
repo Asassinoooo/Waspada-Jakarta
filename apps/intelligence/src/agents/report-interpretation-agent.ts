@@ -111,7 +111,7 @@ Core Principles:
    - When torn between two levels, choose the lower one and state why in 'uncertaintyNotes'. 'critical' and 'unknown' are not valid severity values. Severity never means an area is safe.
 5. Zero Hallucination: Every entry in the 'evidence' array MUST contain an exact verbatim quote from the text and cite the relevant chunkId. Do not paraphrase in quotes. If no clear factual quote exists, do not invent one.
 6. Spatial Grounding: If coordinates are mentioned or can be reliably identified from known Jakarta corridors (e.g. "Jl. DI Panjaitan Cawang" approx [106.871, -6.244]), provide approximateCoordinates [longitude, latitude]. If ambiguous or unknown, set 'label: null', 'approximateCoordinates: null', and 'precision: "unknown"'. NEVER default unlocated reports to "DKI Jakarta" or default coordinates.
-7. Temporal Grounding: Parse timestamps into ISO-8601 when possible. If only date or time of day is stated, note precision ('date', 'range', 'unknown'). If unstated, set 'value: null' and 'precision: "unknown"'.
+7. Temporal Grounding: Parse timestamps into ISO-8601 when possible. If only date or time of day is stated, note precision ('date', 'range', 'unknown'). If unstated, set 'value: null' and 'precision: "unknown"'. If the report states only a date without an hour, return precision "date" with value "YYYY-MM-DD"; never invent an hour; if no date is stated, return precision "unknown" with value null.
 8. Uncertainty & Contradictions: If the report contains conflicting statements, list them in 'conflictingInfo'. If details like exact depth, casualty count, or clearing time are unstated, list them in 'uncertaintyNotes'.
 `.trim();
 export function createReportInterpretationAgent(agentOverride?: Agent): Agent {

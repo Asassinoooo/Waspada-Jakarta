@@ -190,6 +190,13 @@ describe("Severity rubric: the model answers low, medium or high", () => {
     assert.ok(rubric.includes("'critical' and 'unknown' are not valid severity values"));
   });
 
+  it("the temporal rule keeps a date-only report at date precision and never invents an hour (HOSTED-29)", () => {
+    const rubric = REPORT_INTERPRETER_INSTRUCTIONS;
+    assert.ok(rubric.includes('return precision "date" with value "YYYY-MM-DD"'));
+    assert.ok(rubric.includes("never invent an hour"));
+    assert.ok(rubric.includes('if no date is stated, return precision "unknown" with value null'));
+  });
+
   it("normalizeReportSeverity keeps low, medium and high, maps critical to high, and falls back to unknown", () => {
     const cases: Array<readonly [unknown, ReportSeverity]> = [
       ["low", "low"],

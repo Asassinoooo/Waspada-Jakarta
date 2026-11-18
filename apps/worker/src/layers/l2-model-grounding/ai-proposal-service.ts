@@ -105,7 +105,8 @@ JSON format:
 Rules:
 1. "incident_type" MUST be one of the listed categories or null if not an emergency incident.
 2. "coordinates" MUST be [longitude, latitude] within DKI Jakarta: 106.32 <= lng <= 106.98, -6.40 <= lat <= -5.16.
-3. Every "quote_text" in claims MUST be an EXACT VERBATIM substring from the chunk corresponding to "chunk_index".`;
+3. Every "quote_text" in claims MUST be an EXACT VERBATIM substring from the chunk corresponding to "chunk_index".
+4. If the report states only a date without an hour, return precision "date" with value "YYYY-MM-DD"; never invent an hour; if no date is stated, return precision "unknown" with value null.`;
 
 /**
  * Validates whether coordinates fall strictly within the DKI Jakarta envelope.
