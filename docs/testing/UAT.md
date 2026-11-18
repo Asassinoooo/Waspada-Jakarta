@@ -245,7 +245,7 @@ Result values: pass, fail, blocked (precondition not met), pending (live data ne
 
 ### 9.2 Live hosted site (HOSTED-23, 17 Nov 2026)
 
-Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers.dev` (`UAT_TARGET=live`), automated walkthroughs (browser subagent), read-only. T4 made no decision (`UAT_T4_ACTION` unset). T5 never clicks approve or revoke. These runs used the HOSTED-23 deploy of 17 Nov 2026. No UAT run is recorded after the 18 Nov redeploy (HOSTED-25).
+Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers.dev` (`UAT_TARGET=live`), automated walkthroughs (browser subagent), read-only. T4 made no decision (`UAT_T4_ACTION` unset). T5 never clicks approve or revoke. These runs used the HOSTED-23 deploy of 17 Nov 2026. No UAT run is recorded after the 18 Nov redeploys (HOSTED-25 to HOSTED-30).
 
 | Task | Viewport | Result | Seconds | Notes | Evidence |
 | --- | --- | --- | --- | --- | --- |
@@ -256,6 +256,8 @@ Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers
 | PUB-01 public phone check (not a target user; see section 3) | Phone 390 × 844 | Pass, 2 findings, both fixed | — | Scripted public check, no sign-in. Map: no pin for the agent event (whole view), list count 1, no horizontal scroll, no page errors. Detail: "Waktu kejadian tidak disebutkan", "Dipublikasikan sumber" with the source time, whole-Jakarta location text, source links. Findings: R-09 (the detail header read "Detail dari API lokal" on the hosted site) and R-10 (each claim listed DETIK UTAMA twice, one attribution line per evidence item from the same source). Both are fixed in `88bcf69` (HOSTED-24A, 17 Nov 2026) and were verified on the live site (ADR-065, 18 Nov 2026 amendment). See `docs/testing/DEFECTS.md` section D. | `.codex-build/uat/hosted23-u3/01-jelajah-phone.png`, `02-detail-phone.png` |
 
 Network note: the tester's ISP resolver (XL Axiata) answered `*.workers.dev` with a block page, which appears as a TLS name mismatch. The first T4 run used a DNS-over-HTTPS workaround; the T5 re-run and PUB-01 used Cloudflare WARP with no workaround. The block is tracked as F-17 in `docs/testing/DEFECTS.md`.
+
+Update, 18 Nov 2026 (TG-DOCS-03). No walkthrough was re-run. From these results the register (`test-cases.csv`) now records T5 as Pass (hosted, read-only) and AT-03 as Partial instead of Blocked. AT-03 stays Partial because T4 made no decision. Read-only API checks of the hosted site on 18 Nov 2026 are system rows, not UAT: map points and labels (ST-H-11), and the public list outage and its repair (ST-H-12, F-19 in `DEFECTS.md`).
 
 ### 9.1 Persona walkthroughs on the local live app (13 Nov 2026)
 

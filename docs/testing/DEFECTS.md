@@ -42,7 +42,14 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - **Symptom:** CI run 44220257264 (commit `a9ddcc7`, documentation only, 18 Nov 2026) failed in `Run Database Tests`. Node 24.22.2 stopped with `V8_Fatal ... UnregisterWasmAllocation` in `l3-investigation-publication-gate.test.ts` after its first case passed.
 - **Cause:** a V8 crash during repeated PGlite (WebAssembly) instantiation, the same class the per-file DB runner was built to contain (`CLAUDE.md`, test runner notes). It is not a test assertion failure and is not counted as a pass.
 - **Action:** the failed job was re-run and passed (399 of 399 DB tests; 2,555 in total).
-- **Status (18 Nov 2026): open, monitor.** If it repeats, pin the CI Node patch version or isolate the file further.
+- **Status (18 Nov 2026): mitigated.** CI and the hosted ingest pin Node 24.21.0 (`e41e11d`). No crash has repeated in later runs, including 44314452973. Re-open if it returns.
+
+### D-05: CI red on `main` on 18 Nov 2026 after the HOSTED-26 to HOSTED-30 merges, fixed forward
+
+- **Symptom:** runs 44248122378 (`7f1c0ac`), 44250372908 (`0eaf0f7`) and 44250662007 (`34b831f`) failed. The worker step failed six cases in `public-briefing-runtime`, `public-event-detail-runtime` and `public-event-geojson-runtime`. The database step failed one case in `persistence.test.ts` ("Missing expected rejection").
+- **Cause:** test fixtures, not product code. The three runtime fixtures lacked the `location_label` column that the snapshot reader selects since migration 055. `persistence.test.ts` still expected a pending source to be refused collection, which migration 056 (HOSTED-28, owner decision: revoke stops publication only) no longer does.
+- **Fix:** `e64d281`. Its message reuses the ID CI-FIX-02, which `c985712` already used on 16 Nov (D-03); the two are different fixes. Each file was run locally and passed. Run 44314452973 (`062aac6`) passed every step (2,650 tests and cases, 0 failed).
+- **Status (18 Nov 2026): closed.**
 
 ## Section B: Findings and their status
 
@@ -102,16 +109,19 @@ Each entry carries a status line as of 18 November 2026. An entry without a fixe
 - **Observation:** the card reads "N sumber" from the number of distinct outlet names (`apps/web/src/published-events.ts` lines 123 to 136). A code comment says this is "a count of outlets, not corroboration". The interface shows no copy or duplicate marker, so a syndicated copy counts as an extra source. The worker run found no copy wording in `apps/web/src`.
 - **Evidence:** `worker-run-01` (WRK-01 blocked: no copied report in the live feed); `published-events.ts`.
 - **Decision needed:** flag copies in the source count, or relabel the count so that it does not read as corroboration (FR-06).
+- **Status (18 Nov 2026): fixed (owner decision).** Copies of the same article count once: the detail counts outlets, not copies (HOSTED-27, `f0d81ed`), and the publication `source_count` ignores copies (HOSTED-28, `731ec5b`, test `apps/worker/test/hosted28-source-count.test.ts`). The source count still is not corroboration. WRK-01 stays Blocked until a copied report is live.
 
 ### F-10: Expired-warning wording differs between card and detail
 
 - **Observation:** the card and popup say "Lewat masa berlaku sumber" (`published-events.ts` line 216). The detail says "Lewat batas tinjau" (`display.ts` line 76). No expired event was in the live feed, so this is read from source only.
 - **Decision needed:** choose one wording for the expired state (minor copy).
+- **Status (18 Nov 2026): fixed in `f0d81ed` (HOSTED-27).** Card, popup and detail all say "Lewat masa berlaku sumber" (`apps/web/src/display.ts`). Test: `apps/web/test/event-time-day-precision.test.tsx` (UT-HOST-12).
 
 ### F-11: "Unknown time" wording differs between card and detail
 
 - **Observation:** the card says "Tidak diketahui". The detail says "Waktu kejadian tidak diketahui" (`display.ts` line 31). Seen in `visitor-run-01` and `resident-run-01`.
 - **Decision needed:** choose one wording (minor copy).
+- **Status (18 Nov 2026): fixed in `f0d81ed` (HOSTED-27).** Card and detail both say "Waktu kejadian tidak disebutkan". A date-only time is shown with day precision ("17 Nov 2026, jam tidak disebutkan", owner decision 18 Nov 2026; HOSTED-29 `f625c81`). Test: UT-HOST-12.
 
 ### F-12: No radius or polygon is drawn on the public map
 
@@ -147,6 +157,15 @@ Each entry carries a status line as of 18 November 2026. An entry without a fixe
 - **Observation:** a local ingest run on 17 Nov 2026 from one PC network failed to fetch three ANTARA feeds. GitHub run 44071702304, on the same day, fetched all 16 sources (`ok=16 failed=0`). The local log is not cited in the repository.
 - **Evidence:** GitHub Actions run 44071702304 (`gh run view`); ADR-065, 18 Nov 2026 amendment.
 - **Status (18 Nov 2026): mitigated; not a product fault.** The failure is on one network path. Since HOSTED-24B and HOSTED-25 (`25d5d6a`, `a83b2c0`), only GitHub runs write hosted source health. A PC run logs `skipped`, so a local network problem cannot mark a source degraded (`docs/DEPLOYMENT.md`, known limitations).
+
+### F-19: the hosted public list and map answered 500 because of merged events (High)
+
+- **Observation (18 Nov 2026, about 14:00 UTC):** `/api/v1/events` and `/api/v1/events.geojson` on the hosted site answered 500 (`TEMPORARILY_UNAVAILABLE`); `/api/v1/context` answered 200. The public site showed no events. The list still answered at about 06:30 UTC (ST-H-11). The first merged version with unsupported claims was decided at 07:48:36 UTC (`publication_decisions.decided_at`), so the outage most likely lasted from 07:48 to 14:07 UTC, about six hours. No check alerted; it was found by a manual read.
+- **Cause:** four published events were merged from several reports (proposal ids of the form `prop-<event>-<report>`). The publication gave claim support only to a one-revision proposal, so every claim of these versions had empty support. The public reader refuses such a snapshot (`SNAPSHOT_INVALID`), and the list fails closed, so one refused version failed the whole page. Found by a read-only probe of each published event against Neon (event ids and error codes only).
+- **Severity:** High on the working rule in `SYSTEM-TEST.md` §9: it made the public site unavailable to all users.
+- **Fix:** `5b64a29` (HOSTED-31). Each claim of a merged proposal gets the persisted reference that exactly matches the chunk it cites, from the proposal's own revisions only. A merged version with an unsupported claim is refused before any write. The location backfill also selects a version with an unsupported claim and re-writes it. Test: `apps/worker/test/hosted31-merged-claim-support.test.ts` (IT-HOST-12). The old case (a4) in `agent-point-geometry.test.ts`, which pinned the empty-support version, now expects the refusal.
+- **Verification (18 Nov 2026, 14:07 UTC):** ingest run 44319612423 (code at `2d9d442`) logged `Location backfill: candidates=4 refreshed=4 skipped=0 failed=0`. Afterwards `/api/v1/events` answered 200 with 21 events over two pages (12 with a point, 9 whole view, 21 with a location label), `/api/v1/events.geojson` answered 200 with 12 features, and the detail of a repaired event answered 200 (ST-H-12).
+- **Status (18 Nov 2026): fixed and verified on the hosted site.** Residual: no automated check reads the hosted public API, so a similar fault would again be found only by a manual read (`SYSTEM-TEST.md` §7, item 17). The Worker itself still runs code from `34b831f`: a moderator publish of a merged proposal on the hosted site would use the old path until the Worker is redeployed.
 
 ### F-ALERT-02: a published version did not reach `/api/v1/updates`
 

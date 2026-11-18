@@ -249,6 +249,20 @@ Steps 1 to 4 (job setup, checkout, Node.js, install) and the post steps print no
 - `l3-investigation-publication-gate.test.ts` (TEST-INT-01): merged after the run. It is in the database directory scan. Run 44211263890 printed its `PASS` line in step 6.
 - `map-motion.test.ts`, `map-severity.test.tsx`, `pipeline-flow-client.test.ts` (web) and `public-severity.test.ts` (worker): added after the run and listed in their package test scripts. Run 44211263890 shows passed titles for all four.
 
+## Test files added after run 44211263890 (TG-DOCS-03, 18 Nov 2026)
+
+Seven files were added on 18 Nov 2026. Each is in its package test list (worker and web) or in a directory glob (database). On disk there are now 273 test files: 59 database, 124 worker, 42 web, 26 intelligence, 4 accounts, 9 pipeline, 6 evaluation and AI tool files and 3 `tools/live-*` files. Visibility was checked in the job log of run 44314452973 (`062aac6`) by a passed title (worker, web) or a passed-file line (database).
+
+| Test file | HOSTED ID | Step | Visible |
+| --- | --- | --- | --- |
+| `apps/db/test/pipeline-flow-cycle-store.test.ts` | HOSTED-30 | 6 | Yes, run 44314452973 |
+| `apps/web/test/event-time-day-precision.test.tsx` | HOSTED-27, HOSTED-29 | 7 | Yes, run 44314452973 |
+| `apps/worker/test/hosted26-location-label.test.ts` | HOSTED-26 | 8 | Yes, run 44314452973 |
+| `apps/worker/test/hosted28-source-count.test.ts` | HOSTED-28 | 8 | Yes, run 44314452973 |
+| `apps/worker/test/hosted29-date-precision.test.ts` | HOSTED-29 | 8 | Yes, run 44314452973 |
+| `apps/worker/test/pipeline-flow-cycle.test.ts` | HOSTED-30 | 8 | Yes, run 44314452973 |
+| `apps/worker/test/hosted31-merged-claim-support.test.ts` | HOSTED-31 | 8 | Yes, run 44319579284 (`2d9d442`) |
+
 ## Current run 44211263890 (6fff929)
 
 Run 44211263890 is the `main` push run for commit `6fff929` (18 Nov 2026, conclusion `success`, confirmed with `gh`). Its job log was read with `gh run view 44211263890 --log`. The database step prints one `===== PASS: <file> =====` line per file. The other steps print test titles, so a file counts as visible when at least one of its titles printed as passed in its step.

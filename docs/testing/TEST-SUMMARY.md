@@ -1,164 +1,124 @@
 # Test summary: Waspada Jakarta
 
-Project: Waspada Jakarta (Team 12, RPL course). Status date: 18 November 2026. Draft for review. Baseline: `main` at `6fff929`.
-Updated 18 November 2026 (TG-DOCS-02) for the hosted site, CI run 44211263890 and the register. Section 3 is as of 13 November 2026.
-Branch: `work/TG-DOCS-02-test-docs` (based on `main` at `6fff929`).
+Project: Waspada Jakarta (Team 12, RPL course). Status date: 18 November 2026 (evening, TG-DOCS-03). Draft for review. Baseline: `main` at `2d9d442`.
+Earlier versions: TG-DOCS-02 (18 November 2026 morning, baseline `6fff929`) and the 13 November 2026 summary. Section 3 is as of 13 November 2026.
 Related: `docs/testing/TEST-PLAN.md`, `docs/testing/SYSTEM-TEST.md`, `docs/testing/INTEGRATION-TEST.md`, `docs/testing/UAT.md`, `docs/testing/test-cases.csv`, `docs/testing/DEFECTS.md`.
 
-No test, build or server was run to write this summary. It compiles records that already exist, and each figure is cited to its source.
+This summary compiles records that exist, and each figure is cited to its source. For TG-DOCS-03 the CI logs were read with `gh`, the hosted public API was read without signing in, and the hosted database was read (read-only) to find the cause of F-19. Only the changed test files of the 18 November fixes were run locally (owner test policy, 12 November 2026).
 
 ## 1 Scope and status
 
-- **What was tested.** The local live mode (`npm run serve:live`, backlog LIVE-LOCAL-01, accepted 8 November 2026; `CLAUDE.md`) and the synthetic demo (`DATASET_MODE=demo`). The scope covers `apps/web`, `apps/worker`, `apps/db` and `apps/intelligence` (`TEST-PLAN.md` sections 1 and 2; `SYSTEM-TEST.md` section 1).
-- **Against which requirements.** FR-02 to FR-16 (FR-01 withdrawn on 13 Nov 2026) and NFR-01 to NFR-08 (`SOFTWARE_DEVELOPMENT_PLAN.md` section 4), and user stories US-01 to US-03 (SDP section 2).
-- **Register.** `docs/testing/test-cases.csv` has 136 rows, counted on 18 November 2026 with a parser (every row has 15 fields). The 109 earlier rows were kept. 27 rows were added: 10 hosted system rows (ST-H-01 to ST-H-10), 6 integration rows (IT-HOST-01 to IT-HOST-06) and 11 unit rows (UT-HOST-01 to UT-HOST-11).
-  By level: system 38, acceptance 23, integration 51, unit 24. By status: Evidence exists 53, Partial 44, Pass (local run reported; not re-run in TG-DOCS) 21, Pass (CI run 44211263890) 3, Pass (hosted, read-only, 17 Nov 2026) 1, points-only scope 4, Blocked 6, Not evidenced 2, Pending run 2. By actual_result: Pass 107, Partial 15, Blocked 6, Not run 8.
-- **Result columns.** `actual_result` is Pass when every automated file cited in the row is in a suite that passed in run 44211263890. Manual rows show Partial, Blocked or Not run. `run_date` and `run_ref` name the run or the document. `defect_ids` lists the F- and R- IDs named in the notes. ST-N-06 is Not run although its cited files pass, because its check (a restore rehearsal) has not been run.
-- **Not complete.** No human session is planned. The live path is not tested end to end in CI. The hosted site (Cloudflare Workers and Neon Free) was deployed on 17 November 2026 and has read-only checks in rows ST-H-01 to ST-H-10. It has no timed latency run, no off-provider backup and no rights clearance. The release checks in SDP section 10 are not met (section 8 below).
+- **What was tested.** The local live mode (`npm run serve:live`, LIVE-LOCAL-01), the synthetic demo (`DATASET_MODE=demo`) and, since 17 November 2026, the hosted site on Cloudflare Workers Free and Neon Free (`DATASET_MODE=live`). The scope covers `apps/web`, `apps/worker`, `apps/db` and `apps/intelligence` (`TEST-PLAN.md` sections 1 and 2; `SYSTEM-TEST.md` sections 1, 2 and 6A).
+- **Against which requirements.** FR-02 to FR-16 (FR-01 withdrawn on 13 Nov 2026), NFR-01 to NFR-08 (`SOFTWARE_DEVELOPMENT_PLAN.md` section 4), and user stories US-01 to US-03 (SDP section 2).
+- **Register.** `docs/testing/test-cases.csv` has 145 rows (every row has 15 fields). TG-DOCS-03 added 9: IT-HOST-07 to IT-HOST-12, UT-HOST-12, ST-H-11 and ST-H-12. By status: Evidence exists 62, Partial 44, Pass (local run reported; not re-run in TG-DOCS) 21, Blocked 5, points-only scope 4, Pass (CI run 44319579284) 3, Not evidenced 2, Pass (hosted, read-only, 17 Nov 2026) 2, Pending run 2. By actual_result: Pass 117, Partial 15, Not run 8, Blocked 5.
+- **Result columns.** `actual_result` is Pass when every automated file cited in the row is in a suite that passed in the cited run. Since TG-DOCS-03 the automated rows cite run 44319579284, the latest green run, which contains all their files; nothing was removed from the suites. Manual rows show Partial, Blocked or Not run.
+- **Not complete.** No human session is planned. No automated test reads the hosted site. The release checks in SDP section 10 are not met (section 8).
 
-## 2 Automated evidence from CI
+## 2 What changed on 18 November 2026 (evening)
 
-**Docs commit `a9ddcc7` (TG-DOCS-02), run 44220257264.** The first attempt failed when the runner's Node 24.22.2 crashed (V8 fatal error in a WebAssembly allocation) inside `apps/db/test/l3-investigation-publication-gate.test.ts`; see D-04 in `DEFECTS.md`. The re-run of the failed job passed with the same totals as below (2,555 passed, 0 failed). The commit changes documentation only.
+| Item | Before | Now | Evidence |
+| --- | --- | --- | --- |
+| CI on `main` | Red on three pushes (`7f1c0ac`, `0eaf0f7`, `34b831f`) | Green at `062aac6` (run 44314452973). Latest: `2d9d442` (run 44319579284, HOSTED-31), green | D-05; section 3 |
+| Hosted public list and map | 500 on `/api/v1/events` and `/api/v1/events.geojson` (about 14:00 UTC) | 200; 21 events, 12 points, 12 GeoJSON features, all 21 labelled (14:07 UTC) | F-19; ST-H-12 |
+| Map points and labels (HOSTED-26) | No geometry row written; "Lokasi tidak tercatat" | One Point per located event, written at publication; the report's place shown as the location label | IT-HOST-03, IT-HOST-07, ST-H-11 |
+| Date-only times (HOSTED-29), wording (HOSTED-27) | Shown as unknown; card and detail wording differed | Day precision ("jam tidak disebutkan"); one wording | IT-HOST-09, UT-HOST-12; F-10, F-11 closed |
+| Source revoke (HOSTED-28) | Revoke also stopped collection; copies counted as sources | Revoke stops publication only; copies count once | IT-HOST-08; F-09 closed |
+| `#alur-agen` on hosted (HOSTED-30) | No pipeline data on hosted | Reads the last ingest run and source check times from the database | IT-HOST-10, IT-HOST-11 |
+| SDP section 3.1 | Described a read-only moderator view | Describes the signed-in moderator review | F-07 closed |
 
-**Current result: run 44211263890** (commit `6fff929`, 18 November 2026, conclusion success). Ubuntu 24.04 runner, Node 24. Every step passed (checked with the GitHub CLI and the run log on 18 November 2026). Totals from the run log:
+## 3 Automated evidence from CI
+
+**Latest green run: 44314452973** (commit `062aac6`, 18 November 2026, conclusion success). Ubuntu 24.04 runner, Node 24.21.0 (pinned, D-04). Counts are summed from the `ℹ tests`, `ℹ pass` and `ℹ fail` lines of each step in the job log, read with `gh api` on 18 November 2026.
 
 | CI step | Count in log | Result in log |
 | --- | --- | --- |
 | 5 Typecheck | no count | pass |
-| 6 Database | 58 files, 399 tests | 399 pass, 0 fail |
-| 7 Web | 443 tests | 443 pass, 0 fail |
-| 8 Worker | 1,311 tests | 1,311 pass, 0 fail |
-| 9 Intelligence | 189 tests | 189 pass, 0 fail |
+| 6 Database | 59 files, 411 tests | 411 pass, 0 fail |
+| 7 Web | 457 tests | 457 pass, 0 fail |
+| 8 Worker | 1,360 tests | 1,360 pass, 0 fail |
+| 9 Intelligence | 190 tests | 190 pass, 0 fail |
 | 10 Pipeline | 58 cases | 58 pass, 0 fail |
-| 11 Accounts | 81 tests | 81 pass, 0 fail |
+| 11 Accounts | 100 tests | 100 pass, 0 fail |
 | 12 Evaluation and AI | 74 tests | 74 pass, 0 fail |
 | 13 Build | no count | pass |
 
-**Total: 2,555 tests and cases** (2,555 pass, 0 fail).
+**Total: 2,650 tests and cases** (2,650 pass, 0 fail).
 
-**History: run 43238566925** (commit `cec9358`, 12 November 2026, conclusion success). Source: CI log kept locally at `.codex-build/ci-logs/cec9358/SUMMARY.md`. Its total was checked against the run log on 18 November 2026. The table below is that run.
+**Latest run: 44319579284** (commit `2d9d442`, HOSTED-31, 18 November 2026, conclusion success). Same counts as above, except worker 1,364 (four new HOSTED-31 tests). **Total: 2,654 tests and cases** (2,654 pass, 0 fail). The four HOSTED-31 titles and the changed (a4) title printed as passed.
 
-| CI step | Command (`.github/workflows/ci.yml`) | Count in log | Result in log |
-| --- | --- | --- | --- |
-| 5 Typecheck | `npm run typecheck` | no count | no error lines |
-| 6 Database | `npm run db:test` | 56 files, 381 tests | 381 pass, 0 fail |
-| 7 Web | `npm run test --workspace=@waspada/web` | 335 tests | 335 pass, 0 fail |
-| 8 Worker | `npm run test --workspace=@waspada/worker` | 1,089 tests | 1,089 pass, 0 fail |
-| 9 Intelligence | `npm run test:intelligence` | 104 tests | 104 pass, 0 fail |
-| 10 Pipeline | `npm run pipeline:test` | 58 cases | 58 pass, 0 fail |
-| 11 Accounts | `npm run accounts:test` | 3 tests | 3 pass, 0 fail |
-| 12 Evaluation and AI | `tsx --test` on the tools files (`ci.yml` line 47) | 64 tests | 64 pass, 0 fail |
-| 13 Build | `npm run build` (Wrangler dry-run) | no count | dry-run completed, no error lines |
+**Earlier green runs.** 44211263890 (`6fff929`, 18 November 2026): 2,555 pass, 0 fail. 43238566925 (`cec9358`, 12 November 2026): 2,034 pass, 0 fail (from the local log summary `.codex-build/ci-logs/cec9358/SUMMARY.md`).
 
-**Total for run 43238566925 (12 November 2026): 2,034 tests and cases** (381 + 335 + 1,089 + 104 + 58 + 3 + 64; re-added on 13 November 2026).
-
-**CI failures on `main`, 16 to 17 November 2026 (fixed forward).** Runs 43882651216 (`aae6501`), 43883966354 (`8324c11`) and 43890955604 (`5717d37`) failed on 16 November. Run 44003526985 (`181d331`) failed on 17 November. The next green run was 44009413390 (`330b20d`). Every later run on `main`, including 44211263890, passed.
+**CI failures on `main` (fixed forward).** 16 and 17 November: runs 43882651216, 43883966354, 43890955604 and 44003526985 (D-03). 18 November: run 44220257264, a PGlite WebAssembly crash on Node 24.22.2 that passed on re-run (D-04); runs 44248122378, 44250372908 and 44250662007, on test fixtures that predated migrations 055 and 056 (D-05).
 
 Points on this evidence:
-- **Where each test appears in the run.** `CI-VISIBILITY.md` lists every test file, its step in the GitHub Actions run, and whether its names appear in that run. `test-cases.csv` gives the same per test (column `ci_visibility`). Six files are not in the run: one is not run by CI, one was merged after it, and four were added after it.
+- **Where each test appears.** `CI-VISIBILITY.md` lists every test file and its step. On disk there are 273 test files. One, `tools/evaluation/benchmark-runner.test.ts`, is run by no script.
+- **Aggregate counts only.** A passing step does not show a pass for each file. The per-file statuses rest on file membership in a step and on title matches in the log.
+- **Node version.** `ci.yml` pins Node 24.21.0. `CLAUDE.md` still says CI uses Node 22 (F-08).
 
-- **Overall run conclusion.** Runs 43238566925 (12 November) and 44211263890 (18 November) both concluded success, checked with the GitHub CLI. An earlier draft cited a run id that does not exist; the 12 November run is 43238566925.
-- **Commit range (12 November run).** The log is for `cec9358`. `main` is 13 commits ahead (`git rev-list --count cec9358..main`), including `71022ee` (TEST-INT-01) and `d6b6e4a` (FLOW-RANGE-01). This CI evidence does not cover them. `SYSTEM-TEST.md` section 7, item 5 says "ten commits ahead". Ten is the count from `cec9358` to `ae75527`, the worktree base, so that line is stale.
-- **Aggregate counts only.** A passing step does not show a pass for each file. The per-file statuses in `test-cases.csv` rest on file membership in a CI step (`SYSTEM-TEST.md` status key).
-- **How membership was checked.** The worker and web test lists are explicit in `apps/worker/package.json` and `apps/web/package.json`. The database runner (`apps/db/test/run-db-tests.ts`), the intelligence runner (`test/*.test.ts`) and the pipeline runner (`tools/local-pipeline/run-tests.ts`) select files by glob, so files in those directories count as listed. The CSV uses the `CI step <n>` label only after this check; all 145 CI-step labels were re-checked against the package files.
-- **Node version.** `ci.yml` line 19 sets Node 24. `CLAUDE.md` says CI uses Node 22. See F-08 in `DEFECTS.md`.
+## 4 Local-only evidence (not in CI)
 
-## 3 Local-only evidence (not in CI)
+- **Flutter analysis and 41 tests (apps/mobile).** Recorded on 15 October 2026 (SDP line 7). Not in CI, not re-run.
+- **Browser checks at 320 px and 200% text.** `docs/DELIVERY_LOG.md` line 31. Screenshots not kept (BR-01, BR-02).
+- **Changed-file runs on 18 November 2026.** For the CI fixture fix (`e64d281`): `apps/db/test/persistence.test.ts` 9 of 9, `public-briefing-runtime` 17 of 17, `public-event-detail-runtime` 5 of 5, `public-event-geojson-runtime` 6 of 6. For HOSTED-31 (`5b64a29`): `hosted31-merged-claim-support` 4 of 4, `agent-point-geometry` 19 of 19, `hosted26-location-label` 12 of 12, `tools/accounts/hosted-ingest` 83 of 83, `adr061-gate-db` 15 of 15, `event-withdrawal-correction-db` 12 of 12, `merge-review-publication` 13 of 13, `agent-origin-writer` 7 of 7, `hosted22-public-attribution` 7 of 7. `npm run typecheck` passed.
 
-- **Flutter analysis and 41 tests (apps/mobile).** Recorded on 15 October 2026 in `SOFTWARE_DEVELOPMENT_PLAN.md` line 7 (the AUTH-01 entry: "Android analyze, 41 tests"). The Chapter 4 Table 4.3 presentation is in the Google Docs report, which is not in this repository. Not in CI. Not re-run for this cycle. Android device testing is not done (`TEST-PLAN.md` section 1).
-- **Browser checks at 320 px and 200% text.** Headless QA recorded in `docs/DELIVERY_LOG.md` line 31: zero browser errors and no document overflow at the tested desktop, mobile, 320 px and 200% text settings. Not in CI. No browser check is automated in the repository. Screenshots at 320 px and 200% are not kept (BR-01, BR-02 in `test-cases.csv`).
-- **Local typecheck and changed-file tests.** Owner policy of 12 November 2026 (`CLAUDE.md`, `TEST-PLAN.md` section 6). No local result is recorded in this summary.
+## 5 Hosted results
 
-## 4 New tests this cycle
+`SYSTEM-TEST.md` section 6A has 12 rows (ST-H-01 to ST-H-12):
+- Smoke routes, Origin refusal, self-registration as `user`, and moderator and admin logins passed on 17 November (ST-H-01 to ST-H-04). Login CPU is above the nominal Free allowance with no failure (ST-H-05).
+- T4 and T5 passed read-only on desktop and phone; no decision, approve or revoke was made (ST-H-06, ST-H-07). The public phone check found R-09 and R-10, both fixed (ST-H-08).
+- Ingest: 16 of 16 sources in a manual run (ST-H-09), and the Worker cron starts the run (ST-H-10). Cron-started runs on 18 November include 44300890829 (12:07 UTC) to 44315558618 (13:37 UTC), all with success. Run 44319612423 (14:00 UTC, started by hand to apply HOSTED-31) exited 0.
+- Map points and labels after the HOSTED-26 backfill (ST-H-11).
+- The public list outage and its repair (ST-H-12, F-19).
 
-- **TEST-INT-01** (commit `71022ee` on `main`, "test(TEST-INT-01): cover L3 ledger to L4 publication gate"). File: `apps/db/test/l3-investigation-publication-gate.test.ts`, with two cases, later joined by two F-04 cases added in `593f849`:
-  - TI-01, "L3 ledger supported context is bridged to a canonical proposal, published by the manual gate, and read publicly" (line 100).
-  - TI-02, "L3 stopped case with a disputed claim is held by the publication gate before any write or public read" (line 164).
-- **Local result.** Run locally on 13 November 2026 after the title change and before the commit: 2 tests, 2 pass, 0 fail (exit 0). The rebase onto `main` did not change the file.
-- **CI result.** Run 44211263890 (18 November 2026) ran the file in the database step: 58 of 58 DB files passed. The file now has four tests: TI-01 and TI-02, plus two F-04 cases (the stopped-case refusal and its control). The `cec9358` log did not cover it.
-- **What TI-02 shows.** The hold comes from the disputed claim and the unresolved field, not from the ledger status. The gate does not read `stopped_for_review` (F-04 in `DEFECTS.md`).
+## 6 UAT (acceptance)
 
-## 5 UAT (acceptance)
+- **Local runs (13 November 2026, demo dataset).** T1 to T3 pass with skipped checks (F-01, F-02, `UAT.md` section 6.6). T5 fails one phone step (R-01). T4 was blocked by an empty demo queue (R-04).
+- **Hosted runs (17 November 2026, read-only).** T4 and T5 passed. From TG-DOCS-03 the register records T5 as Pass (hosted, read-only) and AT-03 as Partial instead of Blocked. AT-03 stays Partial because no decision was made, so the version, key and public projection were not checked.
+- **Persona walkthroughs (13 November 2026, local live app).** Blocked cases need data that the live feed did not have at run time (flood or weather, stale, copied, expired, group notice). R-05 and R-06 are fixed (`7cf6c0f`), but the persona re-run has not been done, so VIS-03 and ACC-02 stay Partial. MOD-00 and MOD-02 were skipped by decision and are not run anywhere.
+- **Human acceptance is not planned** (decision of 13 November 2026). NFR-03 is not evidenced.
 
-- **Run on 13 November 2026, locally, against the demo dataset.** Logs are in `.codex-build/uat/run-01/` and `run-02/` (gitignored). Results are in `UAT.md` section 9. Every row is an automated walkthrough (browser subagent). None is user acceptance.
-- **Local results (13 November 2026).** T1 passes, with the warning-boundary check skipped (F-01). T2 and T3 pass, with 3 and 2 checks skipped (F-02 and `UAT.md` section 6.6). T5 passes on desktop after a script correction (R-02), and fails one step on phone (R-01). T4 is blocked on both viewports: the demo moderation queue is empty (R-04), and the phone login was rate-limited (R-03).
-- **Hosted run, 17 November 2026 (`UAT.md` section 9.2).** Read-only, on the production site. T4 passed on desktop and phone (15 steps in total across both viewports) and made no decision. T5 passed on desktop and phone (23 steps in total) and never clicked approve or revoke. The public U3 phone check found R-09 and R-10, fixed in `88bcf69`. Rows ST-H-06 to ST-H-08 hold these results.
-- **Acceptance rows.** AT-01 and AT-02 are Partial. AT-03 is Blocked on the local run, because its T4 run was blocked. The hosted T4 pass of 17 November is not yet traced to AT-03. See `test-cases.csv`.
-- **Open decisions behind the blocks.** F-01 (warning boundary), F-02 (matched-update checks need live data), R-01 (phone demo label) and R-04 (a demo proposal for T4).
-- **Persona walkthroughs (local live app, 13 Nov 2026).** Five personas ran through the interface on the local live app, read-only: U1 resident, U1 visitor, U1 worker, U2 commuter and U2 student. Results are in `UAT.md` section 9.1. Most checks pass. Several cases are blocked because the live feed had no flood, stale, copied, group or transport-impact event at run time. Two confirmed defects are open: R-05 (live records shown with demo wording) and R-06 (stale account menu after sign-out). The moderator (U3) and administrator steps were skipped by decision and are not yet run.
-- **Human acceptance is not planned.** Decision of 13 November 2026 (`UAT.md` line 7; section 2.2 is the protocol kept for later; `TEST-PLAN.md` section 9). NFR-03 is not evidenced (ST-N-03).
+## 7 Partial rows: what moved and what did not
 
-## 6 Open findings
+The question for this update was whether rows that were Partial are now fully proven. Moving a row needs new evidence for the part that was missing.
 
-Status as of 18 November 2026 for this section. Details, evidence and status for each finding are in [DEFECTS.md](DEFECTS.md), section B.
+| Row | Was | Now | Why |
+| --- | --- | --- | --- |
+| AT-03 | Blocked | Partial | Hosted T4 ran; no decision made |
+| T5 | Partial | Pass (hosted, read-only) | Hosted T5 passed on both viewports (ST-H-07) |
+| ST-F-11 | Partial | Partial | Live feeds now run every 30 minutes on the hosted site; quarantine of a malformed item is still not named by a file |
+| ST-F-14 | Partial | Partial | The freshness pass runs in deployment; no file tests that pass |
+| ST-N-08 | Partial | Partial | Deployed on the Free plans; no rebuild from a clean clone is recorded |
+| FR-16 (traceability) | Not covered | Partial | Revoke-keeps-collection is tested (IT-HOST-08) |
+| WRK-01, VIS-03, ACC-02 | Blocked or Partial | unchanged | Their fixes are in, but the persona re-run or the live data is missing |
 
-- **F-01** Decided, points only (owner, 16 Nov 2026). US-01 and FR-09 are narrowed to points. No boundary display is built or claimed.
-- **F-02** Open. Matched-update checks in T2 need live data (US-02).
-- **F-03** Fixed in `cffc865` (on `origin/main`; in CI run 44211263890, which passed). Residual F-03-1: one allowlisted L5 telemetry import.
-- **F-04** Fixed in `593f849` (on `origin/main`; in CI run 44211263890, which passed). Residuals: the expiry sweep takes no lock; grounding sufficiency is not read; the L4 role cannot read `investigation_id` or `case_status` on hosted Neon, so the check fails closed there.
-- **F-05** Open. No PGlite test for the webhook route or the BMKG CAP parser.
-- **F-06** Open. No dedicated test for `freshness-aggregate-policy.ts`.
-- **F-07** Open. SDP section 3.1 is stale about the moderator view (sign-in and authenticated moderation exist, ADR-060).
-- **F-08** Open. The WSL distribution and the CI Node version are stated inconsistently.
-- **F-09** Open. Copied reports are not flagged in the source count (FR-06).
-- **F-10** Open. Expired-warning wording differs between card and detail (minor copy).
-- **F-11** Open. "Unknown time" wording differs between card and detail (minor copy).
-- **F-12** Decided, points only (owner, 16 Nov 2026). Same scope decision as F-01.
-- **F-13** Fixed in `de0b77f` (on `origin/main`; in CI run 44211263890, which passed). Component-level test only; not checked in a browser.
-- **F-14** Fixed in `588e375` (on `origin/main`; in CI run 44211263890, which passed). Residual: since HOSTED-21 (`f8463b6`, 17 November 2026) a missing event time is waived for auto-publish as `event_time_unknown`. Only a malformed time stays `time_missing` in the moderator queue, and a correction that would remove the event time is still refused. Earlier rows keep processing-time starts until they are republished.
+The other Partial rows have the same gap as before: no live data for the case, a check that is not named by any file, an assertion not yet read against its expected result (`SYSTEM-TEST.md` section 7, item 6), or a manual run that has not been done.
 
-**UAT defects.** R-05 (live event detail shows demo wording) and R-06 (account menu stale after sign-out) are fixed in `7cf6c0f` (HOSTED-05); the re-run is pending. R-09 (hosted detail header says 'API lokal') and R-10 (duplicate source line per claim) are fixed in `88bcf69` (HOSTED-24A) and were checked on the live site (ADR-065).
+## 8 Open findings
 
-## 7 Limitations
+Details in [DEFECTS.md](DEFECTS.md).
 
-1. The hosted site (Cloudflare Workers and Neon Free) was deployed on 17 November 2026 and has read-only checks (ST-H rows). It has no timed latency run (`PERFORMANCE.md`), no off-provider backup (ADR-065 limitation 2), and no rights clearance: hosted use runs under the ADR-065 rights limitation (`local_relaxed`).
-2. PGlite is not Neon. The database tests run on PGlite (`TEST-PLAN.md` section 6).
-3. The live path is not tested end to end in CI. `serve:live` flow wiring is typechecked but not run live (`CLAUDE.md` known gaps; `INTEGRATION-TEST.md` section 7, item 6).
-4. The live intelligence path (`apps/intelligence`) bypasses the Worker L2 and L3 modules (`CLAUDE.md` architecture; `INTEGRATION-TEST.md` section 3.2).
-5. No real-user sessions. NFR-03 is not evidenced.
-6. The held-out casebook evaluation is not done. It needs source rights and human labels (SDP section 10; `TEST-PLAN.md` section 1). The synthetic casebook (`docs/evaluation/fixtures/synthetic-casebook.json`) is not an adjudicated release set (ST-N-01).
-7. Android device testing is not done (`TEST-PLAN.md` section 1).
-8. No penetration test. No file covers malicious-source, redirect, secret-handling or retention checks (ST-N-07).
-9. Password reset is not implemented (`CLAUDE.md` known gaps).
-10. No latency has been measured (ST-N-04).
-11. In deployment, freshness runs only inside the GitHub Actions ingest, one pass per run. The Worker cron (`7,37 * * * *`) starts that ingest; the Worker does not run freshness itself in production (ST-F-14).
-12. Statuses rest on file names and CI membership. The assertions have not all been read against each expected result (`SYSTEM-TEST.md` section 7, item 6).
-13. Coverage is not measured, and no mutation testing is used (`TEST-PLAN.md` section 3).
-14. Reviewer independence is partial: the team has three members (`TEST-PLAN.md` section 7).
-15. Browser evidence is local only (BR rows).
+- **Fixed or decided on 18 November 2026:** F-07 (SDP section 3.1), F-09 (copies), F-10 and F-11 (wording), F-16 (scheduler, mitigated), F-17 (accepted limitation), F-18 (mitigated), F-19 (outage, verified), D-04 (mitigated), D-05 (closed).
+- **Still open:** F-02 (matched-update checks need live data), F-05 (no PGlite test for the webhook route or BMKG CAP), F-06 (no test for `freshness-aggregate-policy.ts`), F-08 (Node and WSL statements), R-01 (phone demo label), R-04 (demo queue for T4). F-01 and F-12 are closed by the points-only scope decision.
+- **Re-run pending:** R-05 and R-06 (fixed in `7cf6c0f`).
 
-## 8 Release-blocking checks (SDP section 10)
+## 9 Release-blocking checks (SDP section 10)
 
-SDP section 10 names the first five checks below. It also lists "stale/retracted evidence reinstated as current", which is the sixth row. No check is evidenced as passed for release.
+No check is evidenced as passed for release.
 
 | Check | Linked test IDs | Status | Notes |
 | --- | --- | --- | --- |
-| Unsupported publication | ST-F-03, ST-F-07, ST-N-01, IT-B3-02, TI-02 | Partial | Gate and policy tests exist. F-04 is fixed in `593f849` (checked 16 Nov 2026), with residuals: the expiry sweep takes no lock, grounding sufficiency is not read, and the L4 role cannot read `investigation_id` or `case_status` on hosted Neon, so the check fails closed there. No adjudicated release scenarios (ST-N-01). Audit record not named (ST-F-07). |
-| Exposed personal data | ST-N-07, ST-F-06, IT-B2-06 | Partial | Access checks and telemetry allowlists are tested. No retention or secret-handling test is named (ST-N-07). |
-| Wrong active warning geometry | ST-F-01, ST-N-01, IT-B1-07 | Partial | Geometry projection tests exist. Scope is points only (decided 16 Nov 2026, F-01 and F-12), so no warning boundary is drawn. The ST-F-01 status in the CSV is 'points-only scope (owner, 16 Nov 2026)'. F-13 is fixed in `de0b77f`, with a component-level test only. |
-| Budget bypass | ST-N-02, IT-B1-04, IT-B2-08, IT-B3-01 | Partial | Tests are Worker or local only. The live path bypasses L3. The 5-attempt and 4-turn limits are not named by any file. |
-| Unauthorised moderation | ST-F-06, ST-F-07, ST-N-07, IT-B3-08 | Partial | Route and role tests exist (`moderation-api.test.ts`, `l4-moderator-authorization.test.ts`, `pipeline-flow-route.test.ts`). T4 ran read-only on the live site on 17 November 2026 (ST-H-06) and made no moderation decision. |
-| Stale or retracted evidence reinstated (in SDP section 10; not in the brief's list of five) | ST-F-13, ST-F-14, ST-N-05 | Partial | F-14 is fixed in `588e375`: freshness is no longer set to current from processing time. Stale-write conflict is not named by a file. In deployment, freshness runs only inside the GitHub ingest (ST-F-14). |
+| Unsupported publication | ST-F-03, ST-F-07, ST-N-01, IT-B3-02, TI-02, IT-HOST-12 | Partial | Gate and policy tests exist. F-19 showed one path that published claims with empty support (merged proposals); HOSTED-31 closes it and adds a test. No adjudicated release scenarios (ST-N-01). |
+| Exposed personal data | ST-N-07, ST-F-06, IT-B2-06 | Partial | No retention or secret-handling test is named (ST-N-07). |
+| Wrong active warning geometry | ST-F-01, ST-N-01, IT-B1-07, IT-HOST-03, ST-H-11 | Partial | Points only, by decision. Points are now written on hosted and match the GeoJSON feed (ST-H-11, ST-H-12). |
+| Budget bypass | ST-N-02, IT-B1-04, IT-B2-08, IT-B3-01 | Partial | Worker or local only. The live path bypasses L3. |
+| Unauthorised moderation | ST-F-06, ST-F-07, ST-N-07, IT-B3-08 | Partial | Route and role tests exist. Hosted T4 made no decision. |
+| Stale or retracted evidence reinstated | ST-F-13, ST-F-14, ST-N-05 | Partial | F-14 fixed. Stale-write conflict is not named by a file. |
 
-## 9 Decisions needed from the owner
+## 10 Decisions and actions still open
 
-Status as of 16 November 2026.
-
-1. **F-01 and F-12: decided, points only (owner, 16 Nov 2026).** Closed as a scope decision, not as a fix. No decision is open on these.
-2. **F-02.** Run T2 step 7 on live data (under explicit authorisation), or record the US-02 matched-update criterion as not evidenced.
-3. **F-03 and F-04: fixed (`cffc865`, `593f849`).** No decision is open. The residuals are listed in section 6.
-4. **F-07.** Update the SDP section 3.1 text (the root planner's document; this summary does not change the SDP).
-5. **F-08.** Confirm the WSL distribution for the recorded runs, and the CI Node version stated in `CLAUDE.md`.
-6. **R-05.** Remove the hardcoded demo wording from the live event detail, or choose it from the dataset mode.
-7. **R-06.** Refresh the account state after sign-out, so that the header updates on the same page.
-8. **F-09 to F-11.** Decide the copied-report wording (FR-06), and the expired and unknown-time wording (F-10, F-11). F-12 is closed under item 1.
-9. **Hosted decisions (ADR-065, 16 Nov 2026).** Still open: the revoke behaviour for sources (ADR-065 limitation 6). The SDP wording that said hosted or public use is not permitted was replaced in `5ea3c83` (HOSTED-01) with the ADR-065 rights wording, so this conflict is closed.
-10. **Table 2.3, Week 10.** The report's Table 2.3 lists usability sessions in Week 10. SDP M6 (Weeks 11 to 12) covers usability (`TEST-PLAN.md` section 9). Align the two, or mark the sessions as not held. Table 2.3 is in the Google Docs report and is not in this repository.
-
-## 10 Next steps
-
-1. Done (18 November 2026): the overall conclusion of run 44211263890 is success. The 12 November run is 43238566925.
-2. Decide R-01, R-04, F-01 and F-02, then record each decision in `DEFECTS.md` and `UAT.md` section 6.6. Re-run T4 once the demo queue has a proposal and the login rate limit has reset, and re-run T5 phone after R-01 is decided. The scripts run one at a time against the demo dataset (`npx tsx tools/e2e/uat/<file>.ts`, from the repository root, as `UAT.md` section 2.1 describes). Do not run them alongside the heavy suites.
-3. Results are recorded in `UAT.md` section 9. Failed steps are logged in `DEFECTS.md` section D with an `R-nn` entry.
-4. Take the decisions in section 9 above.
-5. Read the assertions behind the Partial rows, where a reviewer who did not write them is available (`SYSTEM-TEST.md` section 7, item 6).
+1. **Team names for the sign-off blocks** (`SYSTEM-TEST.md` section 9, `INTEGRATION-TEST.md` section 11, `TEST-PLAN.md`). Owner decision 10 of 18 November 2026; the names have not been supplied.
+2. **Worker redeploy for HOSTED-31.** The ingest already runs the fix. The deployed Worker still runs `34b831f`, so a moderator publish of a merged proposal would use the old path until it is redeployed (F-19 residual).
+3. **Persona re-run** to close R-01, R-05 and R-06 (owner to decide).
+4. **F-02.** Run T2 step 7 on live data, or record the US-02 matched-update criterion as not evidenced.
+5. **F-08.** Correct the CI Node statement in `CLAUDE.md`.
+6. **A hosted API check.** No automated check reads the hosted public routes (`SYSTEM-TEST.md` section 7, item 17).
