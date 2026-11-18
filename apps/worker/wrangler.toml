@@ -27,6 +27,15 @@ SOURCE_PREVIEW_ENABLED = "false"
 AUTH_ENABLED = "true"
 # Production origin (HOSTED-23, 17 Nov 2026). Exact https origin, no trailing slash.
 AUTH_APP_ORIGIN = "https://waspada-jakarta.waspada-worker.workers.dev"
+# HOSTED-25: the cron below only starts the GitHub Actions ingest (GITHUB_DISPATCH_TOKEN is a secret).
+SCHEDULED_MODE = "github_dispatch"
+INGEST_DISPATCH_REPO = "Asassinoooo/Waspada-Jakarta"
+INGEST_DISPATCH_WORKFLOW = "ingest.yml"
+INGEST_DISPATCH_REF = "main"
+
+# Off-peak minutes, every 30 minutes. Each run takes 8 to 16 minutes, so runs do not overlap.
+[env.production.triggers]
+crons = ["7,37 * * * *"]
 
 # Hyperdrive config waspada-public (HOSTED-23). Same Neon database as the scheduled ingest (owner decision).
 [[env.production.hyperdrive]]

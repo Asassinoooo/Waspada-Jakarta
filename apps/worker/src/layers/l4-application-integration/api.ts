@@ -63,6 +63,13 @@ export interface WorkerEnvironment {
   AUTO_PUBLISH_SOURCE_PERMISSION?: string;
   /** REVIEW-EXPIRY-01 (ADR-062): hours before an undecided proposal expires. Unset or invalid means 48. */
   PROPOSAL_REVIEW_TTL_HOURS?: string;
+  /** HOSTED-25: `github_dispatch` makes scheduled() only start the GitHub ingest workflow. */
+  SCHEDULED_MODE?: string;
+  /** HOSTED-25: fine-grained token (this repo, Actions read/write). Secret. */
+  GITHUB_DISPATCH_TOKEN?: string;
+  INGEST_DISPATCH_REPO?: string;
+  INGEST_DISPATCH_WORKFLOW?: string;
+  INGEST_DISPATCH_REF?: string;
   SQL_EXECUTOR?: SqlExecutor;
   /** WJ-INT-02A live triage transport (Worker bindings; secrets via dashboard/wrangler secret). */
   NINEROUTER_URL?: string;
