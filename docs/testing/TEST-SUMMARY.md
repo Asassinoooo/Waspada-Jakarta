@@ -117,7 +117,7 @@ No check is evidenced as passed for release.
 ## 10 Decisions and actions still open
 
 1. **Team names for the sign-off blocks** (`SYSTEM-TEST.md` section 9, `INTEGRATION-TEST.md` section 11, `TEST-PLAN.md`). Owner decision 10 of 18 November 2026; the names have not been supplied.
-2. **Worker redeploy for HOSTED-31.** The ingest already runs the fix. The deployed Worker still runs `34b831f`, so a moderator publish of a merged proposal would use the old path until it is redeployed (F-19 residual).
+2. **Worker redeploy for HOSTED-31: done** (18 Nov 2026, version `bddb82f4` from `f9cb7a0`; public smoke routes 200, Origin refusal 403).
 3. **Persona re-run** to close R-01, R-05 and R-06 (owner to decide).
 4. **F-02.** Run T2 step 7 on live data, or record the US-02 matched-update criterion as not evidenced.
 5. **F-08.** Correct the CI Node statement in `CLAUDE.md`.
