@@ -177,6 +177,9 @@ test("empty preferences render a labelled editor and all ten contract categories
   assert.match(markup, /status dataset belum dapat diverifikasi/);
   assert.match(markup, /Simpan di perangkat ini/);
   assert.match(markup, /Hapus semua minat/);
+  // HOSTED-32: the place help text does not promise a kecamatan or kelurahan match, which the service cannot confirm.
+  assert.match(markup, /Tulis nama wilayah seperti tertulis di laporan, misalnya Jakarta Timur atau Jatinegara\. Kecocokan berdasarkan nama tempat di laporan, bukan konfirmasi lokasi\./);
+  assert.doesNotMatch(markup, /kecamatan, kelurahan/);
 });
 
 test("saved preferences render their values without claiming a relevance match", () => {

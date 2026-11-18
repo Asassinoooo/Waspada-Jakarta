@@ -53,6 +53,9 @@ function makeFixture(
     readonly category?: string;
     readonly firstPublishedAt?: string;
     readonly scopeIds?: readonly string[];
+    /** HOSTED-32: with no scope id, a present location flag makes the event a whole view. */
+    readonly wholeView?: boolean;
+    readonly locationLabel?: string;
   } = {},
 ): Fixture {
   const version = options.version ?? 3;
@@ -122,8 +125,8 @@ function makeFixture(
     event_id: eventId,
     version,
     record_json: eventRecord,
-    location_label_present: false,
-    location_label: null,
+    location_label_present: options.wholeView === true,
+    location_label: options.locationLabel ?? null,
   };
   const candidateRow = {
     dataset_kind: "live",
@@ -404,6 +407,37 @@ test("one read-only repeatable-read operation composes candidates, exact snapsho
   ]);
   assert.equal(response.items[0]?.event.version, fixture.version);
   assert.deepEqual(Object.keys(response).sort(), ["generated_at", "items"]);
+});
+
+test("HOSTED-32: a whole-view event is returned in the briefing instead of failing the read with 503", async () => {
+  const fixture = makeFixture("event-whole-view-briefing", {
+    scopeIds: [],
+    wholeView: true,
+    locationLabel: "Jatinegara, Jakarta Timur",
+    category: "crime_personal_security",
+  });
+  const harness = makeRuntime([fixture]);
+  const response = await harness.runtime.read(makeRequest({ categories: ["crime_personal_security"] }));
+
+  assert.deepEqual(response.items.map((item) => item.event.event_id), [fixture.eventId]);
+  assert.equal(response.items[0]?.event.location_display, "whole_view");
+  assert.equal(response.items[0]?.event.location_label, "Jatinegara, Jakarta Timur");
+  assert.deepEqual(response.items[0]?.relevance_reasons, ["Sesuai kategori yang Anda ikuti"]);
+});
+
+test("HOSTED-32: a place interest that names one segment of a public location label is returned with the label reason", async () => {
+  const fixture = makeFixture("event-label-place-briefing", {
+    scopeIds: [],
+    wholeView: true,
+    locationLabel: "Jatinegara, Jakarta Timur",
+  });
+  const harness = makeRuntime([fixture]);
+  const response = await harness.runtime.read(makeRequest({ places: ["Jakarta Timur"] }));
+
+  assert.deepEqual(response.items.map((item) => item.event.event_id), [fixture.eventId]);
+  assert.deepEqual(response.items[0]?.relevance_reasons, [
+    "Nama tempat ini disebut di laporan (perkiraan, bukan konfirmasi)",
+  ]);
 });
 
 test("concurrent event projections preserve candidate order and require exact current versions", async () => {

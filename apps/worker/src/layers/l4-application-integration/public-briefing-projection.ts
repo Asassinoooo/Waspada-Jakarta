@@ -5,6 +5,7 @@ import type {
   PublicClaim,
   PublicImpact,
 } from "../../contracts/public-api.js";
+import { eventViewKeys, optionalEventViewKeys } from "./public-event-list-projection-service.js";
 
 export interface PublicBriefingProjectionInput {
   readonly datasetMode: unknown;
@@ -109,6 +110,13 @@ const scopeReasons: Record<ScopeInterestField, string> = {
   audiences: "Mencakup kelompok yang Anda ikuti",
 };
 
+/** HOSTED-32: a place interest matched the report's public location label. Agent-derived, so never a confirmation. */
+const placeLabelReason = "Nama tempat ini disebut di laporan (perkiraan, bukan konfirmasi)";
+
+const requiredEventViewKeys = eventViewKeys.filter((key) => !optionalEventViewKeys.includes(key));
+const locationDisplays = new Set<unknown>(["point", "whole_view"]);
+const severities = new Set<unknown>(["low", "medium", "high"]);
+
 interface NormalizedInterests {
   readonly places: ReadonlySet<string>;
   readonly services: ReadonlySet<string>;
@@ -190,7 +198,12 @@ function matchReasons(event: EventView, interests: NormalizedInterests): string[
   if (interests.categories.has(event.category)) reasons.push("Sesuai kategori yang Anda ikuti");
 
   for (const field of interestFields) {
-    if (scopeMatches(field, event, interests[field])) reasons.push(scopeReasons[field]);
+    if (scopeMatches(field, event, interests[field])) {
+      reasons.push(scopeReasons[field]);
+    } else if (field === "places" && labelMatches(event, interests.places)) {
+      // A real scope match keeps the scope reason. The label reason is only for a place named by the label alone.
+      reasons.push(placeLabelReason);
+    }
   }
   return reasons;
 }
@@ -207,6 +220,17 @@ function scopeMatches(field: ScopeInterestField, event: EventView, interests: Re
   return false;
 }
 
+/**
+ * HOSTED-32: a place interest matches the public location label when it equals the whole label or one comma-separated
+ * segment of it. Same rule as the SQL candidate reader (apps/db/src/public-briefing-candidates.ts). No substring match.
+ */
+function labelMatches(event: EventView, interests: ReadonlySet<string>): boolean {
+  if (interests.size === 0 || event.location_label === undefined) return false;
+  const whole = normalizeMatchText(event.location_label);
+  if (interests.has(whole)) return true;
+  return whole.split(",").some((segment) => interests.has(normalizeMatchText(segment)));
+}
+
 function matchesAnyName(names: readonly string[], interests: ReadonlySet<string>): boolean {
   return names.some((name) => interests.has(normalizeMatchText(name)));
 }
@@ -216,12 +240,7 @@ function normalizeMatchText(value: string): string {
 }
 
 function isEventView(value: unknown): value is EventView {
-  // HOSTED-26: location_label is optional. It is the public label text of a labelled event (at most 200 code points).
-  const requiredKeys = [
-    "event_id", "version", "title", "summary", "category", "tags", "lifecycle", "freshness",
-    "event_time", "validity", "scope", "claims", "impacts", "published_at",
-  ];
-  if (!hasExactKeys(value, requiredKeys) && !(hasExactKeys(value, [...requiredKeys, "location_label"]))) return false;
+  if (!hasEventViewKeys(value)) return false;
   if (!isIdentifier(value.event_id) || !isVersion(value.version)
     || !isBoundedText(value.title, 240) || !isBoundedText(value.summary, 2000)
     || !isCategory(value.category) || !isArrayOf(value.tags, isTag)
@@ -229,8 +248,24 @@ function isEventView(value: unknown): value is EventView {
     || !isTimeScope(value.event_time) || !isValidity(value.validity)
     || !isPublicScope(value.scope) || !isArrayOf(value.claims, isPublicClaim, maxClaims)
     || !isArrayOf(value.impacts, isPublicImpact, maxImpacts) || !isDateTime(value.published_at)) return false;
+  // HOSTED-26: location_label is the public label text (at most 200 code points).
   if (Object.hasOwn(value, "location_label") && !isBoundedText(value.location_label, 200)) return false;
+  // HOSTED-18/HOSTED-32: a whole-view event carries location_display "whole_view"; "point" is the other closed value.
+  if (Object.hasOwn(value, "location_display") && !locationDisplays.has(value.location_display)) return false;
+  // SEV-01: severity is optional and is never a safety claim.
+  if (Object.hasOwn(value, "severity") && !severities.has(value.severity)) return false;
   return true;
+}
+
+/**
+ * Every required EventView key is present, and only EventView keys appear. Optional keys may be absent, in any
+ * combination (HOSTED-32). The optional key list is shared with the public event list projector.
+ */
+function hasEventViewKeys(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const ownKeys = Reflect.ownKeys(value);
+  return ownKeys.every((key) => typeof key === "string" && (eventViewKeys as readonly string[]).includes(key))
+    && requiredEventViewKeys.every((key) => Object.hasOwn(value, key));
 }
 
 function isPublicClaim(value: unknown): value is PublicClaim {

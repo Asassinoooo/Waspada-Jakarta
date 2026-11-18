@@ -32,7 +32,10 @@ type Drafts = Record<TextInterestField, string>;
 type FieldMessages = Partial<Record<TextInterestField, string>>;
 
 const TEXT_FIELD_COPY: Record<TextInterestField, { label: string; help: string }> = {
-  places: { label: "Tempat", help: "Contoh: kecamatan, kelurahan, atau tempat umum." },
+  places: {
+    label: "Tempat",
+    help: "Tulis nama wilayah seperti tertulis di laporan, misalnya Jakarta Timur atau Jatinegara. Kecocokan berdasarkan nama tempat di laporan, bukan konfirmasi lokasi.",
+  },
   services: { label: "Layanan", help: "Contoh: operator, rute, atau fasilitas." },
   institutions: { label: "Institusi", help: "Contoh: kampus, sekolah, atau instansi." },
   audiences: { label: "Kelompok", help: "Contoh: mahasiswa, orang tua, atau pengguna angkutan umum." },
