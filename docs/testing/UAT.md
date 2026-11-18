@@ -1,7 +1,7 @@
 # User acceptance test plan (UAT)
 
 Project: Waspada Jakarta (Team 12, RPL course).
-Document: UAT. Status: draft for review, 18 November 2026. Hosted read-only results are in section 9.2.
+Document: UAT. Status: draft for review, 19 November 2026 (TG-DOCS-04). Hosted read-only results are in section 9.2, and the exploration of 18 November 2026 (EXPLORE-18) is recorded there too.
 Basis: SDP section 10 and the requirement tables (US-01 to US-03, NFR-03, NFR-07); TEST-PLAN.md, acceptance row.
 
 **Human acceptance is pending.** No human sessions are planned (decision of 13 November 2026). The automated runs in this plan are an *automated walkthrough (browser subagent)*. They are not user acceptance, and they do not evidence NFR-03. Report them under that label only.
@@ -245,7 +245,7 @@ Result values: pass, fail, blocked (precondition not met), pending (live data ne
 
 ### 9.2 Live hosted site (HOSTED-23, 17 Nov 2026)
 
-Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers.dev` (`UAT_TARGET=live`), automated walkthroughs (browser subagent), read-only. T4 made no decision (`UAT_T4_ACTION` unset). T5 never clicks approve or revoke. These runs used the HOSTED-23 deploy of 17 Nov 2026. No UAT run is recorded after the 18 Nov redeploys (HOSTED-25 to HOSTED-30).
+Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers.dev` (`UAT_TARGET=live`), automated walkthroughs (browser subagent), read-only. T4 made no decision (`UAT_T4_ACTION` unset). T5 never clicks approve or revoke. These runs used the HOSTED-23 deploy of 17 Nov 2026. No UAT script run is recorded after the 18 Nov redeploys (HOSTED-25 to HOSTED-30). EXPLORE-18 (18 Nov 2026, read and write) is recorded in the note below the 18 Nov update.
 
 | Task | Viewport | Result | Seconds | Notes | Evidence |
 | --- | --- | --- | --- | --- | --- |
@@ -258,6 +258,17 @@ Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers
 Network note: the tester's ISP resolver (XL Axiata) answered `*.workers.dev` with a block page, which appears as a TLS name mismatch. The first T4 run used a DNS-over-HTTPS workaround; the T5 re-run and PUB-01 used Cloudflare WARP with no workaround. The block is tracked as F-17 in `docs/testing/DEFECTS.md`.
 
 Update, 18 Nov 2026 (TG-DOCS-03). No walkthrough was re-run. From these results the register (`test-cases.csv`) now records T5 as Pass (hosted, read-only) and AT-03 as Partial instead of Blocked. AT-03 stays Partial because T4 made no decision. Read-only API checks of the hosted site on 18 Nov 2026 are system rows, not UAT: map points and labels (ST-H-11), and the public list outage and its repair (ST-H-12, F-19 in `DEFECTS.md`).
+
+Update, 19 Nov 2026 (TG-DOCS-04): EXPLORE-18. On 18 Nov 2026 five read and write walkthroughs ran on the hosted site, and an API data audit read all 21 published events. Because the walkthroughs made decisions (a moderator rejection and an administrator revoke and approve), they are recorded as exploration, not as read-only UAT results. Evidence is under `.codex-build/explore/` (gitignored, not committed). Outcome by persona:
+
+- **Anonymous visitor:** a walkthrough at 1440, 390 and 320 px and at 200% zoom.
+- **Two self-registered residents** (test accounts `uat18_komuter_a` and `uat18_warga_b`): read and write walkthroughs.
+- **Moderator:** rejected one stale duplicate proposal. No proposal was published.
+- **Administrator:** revoked and re-approved ANTARA HUKUM. The source ended approved.
+- **MOD-00 (partial):** the administrator granted, and then removed, the moderator role on a test account (`uat18_calon_mod`). The look-only check was not done, so MOD-00 stays partial.
+- **API data audit:** all 21 published events read.
+
+Nine findings came from EXPLORE-18, F-20 to F-28 (`docs/testing/DEFECTS.md` section B). All nine have fixes in HOSTED-32 to HOSTED-38. Eight were checked on the hosted site on 19 Nov 2026 (ST-H-13 to ST-H-20 in `docs/testing/SYSTEM-TEST.md` section 6A). F-27 is covered by tests only. The test accounts `uat18_komuter_a`, `uat18_warga_b` and `uat18_calon_mod` were deactivated by the administrator on 19 Nov 2026. No passwords or account details are recorded here.
 
 ### 9.1 Persona walkthroughs on the local live app (13 Nov 2026)
 
@@ -277,6 +288,6 @@ Not run on the local live app: U3 (moderator) and the administrator steps, skipp
 
 ## 10 Defects
 
-- Every failed step is logged in `docs/testing/DEFECTS.md` by the orchestrator, which is written after the runs. Each entry gives the task and step, the viewport, what was observed, what was expected, the run ID and the evidence path. `docs/testing/DEFECTS.md` exists, and section D holds the run defects R-01 to R-10.
+- Every failed step is logged in `docs/testing/DEFECTS.md` by the orchestrator, which is written after the runs. Each entry gives the task and step, the viewport, what was observed, what was expected, the run ID and the evidence path. `docs/testing/DEFECTS.md` exists, and section D holds the run defects R-01 to R-13.
 - Blocked results (precondition not met) and pending results (live data needed) are not defects. They are tracked under section 6.6.
 - A fatal failure sets the script's exit code to 1. A non-fatal check (a label not confirmed, or a proposed time limit) is reported in the log but does not change the exit code.
