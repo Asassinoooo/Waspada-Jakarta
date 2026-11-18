@@ -166,7 +166,7 @@ test("public inspector keeps lifecycle, freshness, date precision, validity, and
 
   assert.match(html, /Status laporan<\/dt><dd>Selesai<\/dd>/);
   assert.match(html, /Kondisi informasi<\/dt><dd>Perlu diperbarui<\/dd>/);
-  assert.match(html, /tanggal saja/);
+  assert.match(html, /9 Okt 2026, jam tidak disebutkan/);
   assert.match(html, /Mulai 9 Okt 2026.*; akhir tidak dinyatakan/);
   assert.match(html, /Browser membaca data/);
   assert.match(html, /Terbit pada data publik/);

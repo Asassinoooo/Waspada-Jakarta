@@ -746,9 +746,19 @@ test("update cards distinguish current event time, published-change time, and sy
   assert.match(markup, /Pernyataan terkait ditarik/);
   assert.doesNotMatch(markup, /Versi ditarik/);
   assert.match(markup, /Waktu kejadian saat ini/);
-  assert.match(markup, /tanggal saja/);
+  assert.match(markup, /25 Sep 2026, jam tidak disebutkan/);
   assert.match(markup, /Waktu perubahan dipublikasikan/);
   assert.match(markup, /Pemeriksaan sistem terakhir/);
   assert.match(markup, /href="#detail\/api\/fictional%2Fid%3F1"/);
   assert.match(markup, /Cocok dengan kategori pilihan Anda/);
+
+  // F-10 (18 Nov 2026): an expired source reads "Lewat masa berlaku sumber" on the update card, never "Batas tinjau lewat".
+  item.event.freshness.status = "expired";
+  const expiredMarkup = renderToStaticMarkup(<UpdateCenterContent
+    gate="live"
+    state={{ status: "ready", phase: "updates", items: [item], checkedAt, resetNotice: false, failure: null }}
+    onRefresh={() => {}}
+  />);
+  assert.match(expiredMarkup, /Lewat masa berlaku sumber/u);
+  assert.doesNotMatch(expiredMarkup, /Batas tinjau lewat|Lewat batas tinjau/u);
 });

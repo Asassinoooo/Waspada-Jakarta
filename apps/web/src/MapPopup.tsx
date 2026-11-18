@@ -80,7 +80,7 @@ function MapPopupBody({ event, marker, titleId, copyMessage, onClose, onViewDeta
       <dl className="map-popup__facts">
         <div>
           <dt>Waktu kejadian</dt>
-          <dd>{eventTimeText(event)}</dd>
+          <dd>{eventTimeText(event.event_time)}</dd>
         </div>
         {sourceTime !== null && (
           <div>

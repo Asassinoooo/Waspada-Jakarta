@@ -13,6 +13,7 @@ import {
   getContextSources,
   type ContextSourcesRequestMode,
 } from "./context-sources-client.js";
+import { UNKNOWN_EVENT_TIME_TEXT } from "./display.js";
 import { PROVIDER_FETCH_ROLE_NOTE, providerFetchRefusalNotice, requestModeAllowed } from "./provider-fetch-access.js";
 
 export type ContextSourcesMapRenderer = (
@@ -303,7 +304,7 @@ export function EarthquakeRecordDetails({ record, fetchedAt }: { record: Earthqu
       <dl className="context-sources__record-facts">
         <div>
           <dt>Asal kejadian</dt>
-          <dd>{timeValue(record.event_time, "Tidak diketahui.")}</dd>
+          <dd>{timeValue(record.event_time, UNKNOWN_EVENT_TIME_TEXT)}</dd>
         </div>
         <div>
           <dt>Pembaruan sumber</dt>

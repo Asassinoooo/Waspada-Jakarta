@@ -19,7 +19,7 @@ export const documentedPresentationFixture = {
     eventTime: {
       start: "2026-09-24T08:00:00+07:00",
       end: null,
-      precision: "exact",
+      precision: "exact" as const,
     },
     validity: {
       validFrom: "2026-09-24T08:00:00+07:00",
