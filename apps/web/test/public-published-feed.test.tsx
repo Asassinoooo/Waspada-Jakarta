@@ -113,7 +113,7 @@ test("the public map reads only the published events endpoint, never the moderat
     assert.doesNotMatch(source, /fetchModerationProposals|fetchProposalDetail|\/api\/v1\/moderation/, file);
   }
   const hook = readFileSync(new URL("../src/published-events.ts", import.meta.url), "utf8");
-  assert.match(hook, /listEvents\(\)/);
+  assert.match(hook, /listAllEvents\(\)/);
   assert.match(hook, /getEventGeoJSON\(\)/);
 });
 

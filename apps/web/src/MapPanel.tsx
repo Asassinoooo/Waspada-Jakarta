@@ -2,6 +2,7 @@ import type { EventView, PublicContext, PublicFeature, PublicFeatureCollection, 
 import type { ReactNode } from "react";
 import type { FeedStatus } from "./EventFeed.js";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
+import { coordinateToWorldPixels, createOsmTileUrl, getVisibleMapTiles, worldPixelsToCoordinate, type MapCoordinate, type VisibleMapTile } from "./SourcePointMap.js";
 
 export type MapSelection =
   | { kind: "none" }
@@ -64,16 +65,18 @@ export function positionsInGeometry(geometry: PublicGeoJSONGeometry): PublicGeoJ
   }
 }
 
-function linePath(positions: PublicGeoJSONPosition[], close = false): string {
+type Projector = (position: PublicGeoJSONPosition) => ProjectedPosition;
+
+function linePath(positions: PublicGeoJSONPosition[], close = false, project: Projector = projectCRS84Position): string {
   const path = positions.map((position, index) => {
-    const [x, y] = projectCRS84Position(position);
+    const [x, y] = project(position);
     return (index === 0 ? "M " : "L ") + x.toFixed(2) + " " + y.toFixed(2);
   }).join(" ");
   return close ? path + " Z" : path;
 }
 
-function polygonPath(rings: PublicGeoJSONPosition[][]): string {
-  return rings.map((ring) => linePath(ring, true)).join(" ");
+function polygonPath(rings: PublicGeoJSONPosition[][], project: Projector = projectCRS84Position): string {
+  return rings.map((ring) => linePath(ring, true, project)).join(" ");
 }
 
 function geometryLabel(feature: PublicFeature): string {
@@ -84,10 +87,10 @@ function featureHref(eventId: string): string {
   return "#detail/api/" + encodeURIComponent(eventId);
 }
 
-function renderGeometry(geometry: PublicGeoJSONGeometry): ReactNode {
+function renderGeometry(geometry: PublicGeoJSONGeometry, project: Projector = projectCRS84Position): ReactNode {
   switch (geometry.type) {
     case "Point": {
-      const [cx, cy] = projectCRS84Position(geometry.coordinates);
+      const [cx, cy] = project(geometry.coordinates);
       return (
         <g className="geo-feature__pin-group">
           <circle className="geo-feature__pulse" cx={cx} cy={cy} r="16" fill="none" stroke="var(--kali-teal)" strokeWidth="2" opacity="0.6" />
@@ -97,20 +100,20 @@ function renderGeometry(geometry: PublicGeoJSONGeometry): ReactNode {
     }
     case "MultiPoint":
       return geometry.coordinates.map((position, index) => {
-        const [cx, cy] = projectCRS84Position(position);
+        const [cx, cy] = project(position);
         return <circle key={index} className="geo-feature__point" cx={cx} cy={cy} r="7" />;
       });
     case "LineString":
-      return <path className="geo-feature__line" d={linePath(geometry.coordinates)} />;
+      return <path className="geo-feature__line" d={linePath(geometry.coordinates, false, project)} />;
     case "MultiLineString":
       return geometry.coordinates.map((line, index) => (
-        <path key={index} className="geo-feature__line" d={linePath(line)} />
+        <path key={index} className="geo-feature__line" d={linePath(line, false, project)} />
       ));
     case "Polygon":
-      return <path className="geo-feature__polygon" d={polygonPath(geometry.coordinates)} fillRule="evenodd" />;
+      return <path className="geo-feature__polygon" d={polygonPath(geometry.coordinates, project)} fillRule="evenodd" />;
     case "MultiPolygon":
       return geometry.coordinates.map((polygon, index) => (
-        <path key={index} className="geo-feature__polygon" d={polygonPath(polygon)} fillRule="evenodd" />
+        <path key={index} className="geo-feature__polygon" d={polygonPath(polygon, project)} fillRule="evenodd" />
       ));
   }
 }
@@ -380,6 +383,153 @@ function insideMapArea(position: PublicGeoJSONPosition): boolean {
     position[1] >= CRS84_ENVELOPE.south && position[1] <= CRS84_ENVELOPE.north;
 }
 
+/** Record (detail) map, HOSTED-33: the same Web Mercator tiles and pixel maths as the home map (SourcePointMap). */
+/** Highest zoom the record map uses. A single point is shown at this zoom. */
+export const RECORD_MAP_ZOOM = 11;
+/** Lowest zoom the fit may fall back to, so a spread-out record stays readable. */
+export const RECORD_MAP_MIN_ZOOM = 9;
+/** View size in CSS px. The canvas keeps this aspect ratio (31rem x 20rem, as before). */
+export const RECORD_MAP_VIEW = { width: 496, height: 320 } as const;
+/** Kept clear around the fitted bounds, so markers and line strokes are not cut at the canvas edge. */
+export const RECORD_MAP_FIT_PADDING_PX = 24;
+const RECORD_MAP_TILE_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const RECORD_TILE_PX = 256;
+const RECORD_MAP_ENVELOPE_CENTER: MapCoordinate = [
+  (CRS84_ENVELOPE.west + CRS84_ENVELOPE.east) / 2,
+  (CRS84_ENVELOPE.south + CRS84_ENVELOPE.north) / 2,
+];
+
+export interface RecordMapLayout {
+  zoom: number;
+  width: number;
+  height: number;
+  /** Centre of the fitted bounds; the envelope centre when nothing is drawable. */
+  center: MapCoordinate;
+  /** World pixel (at `zoom`) of the view's top-left corner. */
+  origin: { x: number; y: number };
+  /** Base-map tiles; left/top are offsets from the view's top-left corner. */
+  tiles: VisibleMapTile[];
+  /** The event point in view pixels. Null when the record has no point: no pin is invented. */
+  pin: { x: number; y: number } | null;
+  /** CRS84 to view pixels, at the same zoom and origin as the tiles. */
+  project: Projector;
+}
+
+/** What the view is fitted to: pins (Point geometries) first, every drawable position when there are no pins. */
+export interface RecordMapFocus {
+  points: readonly MapCoordinate[];
+  positions: readonly MapCoordinate[];
+}
+
+interface PixelExtent {
+  width: number;
+  height: number;
+  centre: { x: number; y: number };
+}
+
+/** Web Mercator extent of the positions at one zoom. Mercator is monotone, so the extremes are the extremes of the positions. */
+function pixelExtent(positions: readonly MapCoordinate[], zoom: number): PixelExtent {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const position of positions) {
+    const world = coordinateToWorldPixels(position, zoom);
+    minX = Math.min(minX, world.x);
+    maxX = Math.max(maxX, world.x);
+    minY = Math.min(minY, world.y);
+    maxY = Math.max(maxY, world.y);
+  }
+  return { width: maxX - minX, height: maxY - minY, centre: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 } };
+}
+
+/** The highest zoom in [MIN, MAX] at which the positions fit inside the padded view; MIN when none does. */
+function fitZoom(positions: readonly MapCoordinate[], size: { width: number; height: number }): number {
+  const innerWidth = size.width - RECORD_MAP_FIT_PADDING_PX * 2;
+  const innerHeight = size.height - RECORD_MAP_FIT_PADDING_PX * 2;
+  for (let zoom = RECORD_MAP_ZOOM; zoom >= RECORD_MAP_MIN_ZOOM; zoom -= 1) {
+    const extent = pixelExtent(positions, zoom);
+    if (extent.width <= innerWidth && extent.height <= innerHeight) return zoom;
+  }
+  return RECORD_MAP_MIN_ZOOM;
+}
+
+function fitCentre(positions: readonly MapCoordinate[], zoom: number): MapCoordinate {
+  const { centre } = pixelExtent(positions, zoom);
+  return worldPixelsToCoordinate(centre.x, centre.y, zoom);
+}
+
+/**
+ * Lays out the record map. The view centres on the bounds of the pins (or of every position when there are no
+ * pins), at the zoom from fitZoom. Tiles sit at their Web Mercator pixel offsets, and the pin and every geometry
+ * use the same zoom and origin, so they stay aligned with the basemap.
+ */
+export function layoutRecordMap(
+  focus: RecordMapFocus,
+  size: { width: number; height: number } = RECORD_MAP_VIEW,
+): RecordMapLayout {
+  const anchors = focus.points.length > 0 ? focus.points : focus.positions;
+  const zoom = anchors.length > 0 ? fitZoom(anchors, size) : RECORD_MAP_ZOOM;
+  const center = anchors.length > 0 ? fitCentre(anchors, zoom) : RECORD_MAP_ENVELOPE_CENTER;
+  const centerPixels = coordinateToWorldPixels(center, zoom);
+  const origin = { x: centerPixels.x - size.width / 2, y: centerPixels.y - size.height / 2 };
+  const project: Projector = (position) => {
+    const world = coordinateToWorldPixels([position[0], position[1]], zoom);
+    return [world.x - origin.x, world.y - origin.y];
+  };
+  const firstPoint = focus.points[0];
+  const pinPosition = firstPoint === undefined ? null : project([firstPoint[0], firstPoint[1]]);
+  return {
+    zoom,
+    width: size.width,
+    height: size.height,
+    center,
+    origin,
+    tiles: getVisibleMapTiles(size.width, size.height, center, zoom),
+    pin: pinPosition === null ? null : { x: pinPosition[0], y: pinPosition[1] },
+    project,
+  };
+}
+
+/** Point geometries are the pins; every drawable position feeds the fallback fit. Lines and polygons never give a pin. */
+function recordFocusOf(drawable: readonly PublicGeometry[]): RecordMapFocus {
+  const points: MapCoordinate[] = [];
+  const positions: MapCoordinate[] = [];
+  for (const item of drawable) {
+    if (item.geometry.type === "Point") points.push([item.geometry.coordinates[0], item.geometry.coordinates[1]]);
+    for (const position of positionsInGeometry(item.geometry)) positions.push([position[0], position[1]]);
+  }
+  return { points, positions };
+}
+
+function RecordBaseTiles({ layout }: { layout: RecordMapLayout }) {
+  const percentX = (value: number) => (value / layout.width) * 100 + "%";
+  const percentY = (value: number) => (value / layout.height) * 100 + "%";
+  return (
+    <div className="record-map__tiles" aria-hidden="true">
+      {layout.tiles.map((tile) => (
+        <img
+          key={tile.key}
+          className="record-map__tile"
+          src={createOsmTileUrl(RECORD_MAP_TILE_TEMPLATE, tile)}
+          alt=""
+          width={RECORD_TILE_PX}
+          height={RECORD_TILE_PX}
+          draggable={false}
+          decoding="async"
+          referrerPolicy="strict-origin-when-cross-origin"
+          style={{
+            left: percentX(tile.left),
+            top: percentY(tile.top),
+            width: percentX(RECORD_TILE_PX),
+            height: percentY(RECORD_TILE_PX),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
  * Record detail (page and #peta sheet): draws only the geometries the API returned for this record.
  * Nothing is added: no point, radius or area. A geometry outside the map area is counted, not drawn.
@@ -404,6 +554,9 @@ export function RecordMapPanel({
     return positions.length > 0 && positions.every(insideMapArea);
   });
   const notDrawn = (geometries?.length ?? 0) - drawable.length;
+  // Tiles are drawn only with drawable geometry; the "Tanpa peta dasar" chip stays for the no-tiles states.
+  const showsBaseMap = drawable.length > 0;
+  const layout = layoutRecordMap(recordFocusOf(drawable));
 
   return (
     <section className="map-panel" aria-labelledby="record-map-title">
@@ -412,7 +565,7 @@ export function RecordMapPanel({
           <p className="section-kicker">Geometri dari respons API</p>
           <h2 id="record-map-title">Peta koordinat CRS84</h2>
         </div>
-        <span className="fixture-chip">Tanpa peta dasar</span>
+        {!showsBaseMap && <span className="fixture-chip">Tanpa peta dasar</span>}
       </header>
 
       <p className="map-panel__intro">
@@ -452,21 +605,29 @@ export function RecordMapPanel({
           </div>
         ) : (
           <>
-            <div className="map-canvas map-canvas--osm">
-              <OsmTiles />
+            <div className="map-canvas map-canvas--osm record-map">
+              <RecordBaseTiles layout={layout} />
               <svg
                 className="geojson-map"
-                viewBox="0 0 500 500"
+                viewBox={`0 0 ${layout.width} ${layout.height}`}
                 role="group"
                 aria-label={"Geometri record " + title}
               >
                 {drawable.map((item) => (
                   <g key={item.geometry_id} className="geo-feature" data-geometry-id={item.geometry_id}>
                     <title>{title + ", " + item.role.replaceAll("_", " ") + ", " + item.geometry.type}</title>
-                    {renderGeometry(item.geometry)}
+                    {renderGeometry(item.geometry, layout.project)}
                   </g>
                 ))}
               </svg>
+              <a
+                className="record-map__attribution"
+                href="https://www.openstreetmap.org/copyright"
+                target="_blank"
+                rel="noreferrer"
+              >
+                © OpenStreetMap contributors
+              </a>
             </div>
             <figcaption className="map-caption">
               <strong>{`${drawable.length} geometri pada record ini`}</strong>
