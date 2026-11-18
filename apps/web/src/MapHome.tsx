@@ -128,6 +128,8 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   const selectedEvent = selectedId !== null && visibleIds.has(selectedId) ? eventsById.get(selectedId) ?? null : null;
   const activeCount = countActiveFilters(applied.filters, applied.facilitiesOn);
   const filtersActive = activeCount > 0 || query.trim().length > 0;
+  // HOSTED-34: a text query with no category, time or source filter gets the search-specific empty message.
+  const searchOnly = activeCount === 0 && query.trim().length > 0;
 
   // The list panel follows the layout: open on desktop, closed as a sheet on phones. A resize never opens a sheet by itself.
   useEffect(() => {
@@ -266,6 +268,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       markers={data.markers}
       selectedId={selectedId}
       filtersActive={filtersActive}
+      searchOnly={searchOnly}
       errorMessage={data.errorMessage}
       onSelect={openFromList}
       onReset={resetFilters}

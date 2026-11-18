@@ -20,6 +20,7 @@ import {
 import {
   PIPELINE_FLOW_RANGES,
   type PipelineFlowItemsDto,
+  type PipelineFlowCycleDto,
   type PipelineFlowNineRouterDto,
   type PipelineFlowNodeId,
   type PipelineFlowRange,
@@ -210,6 +211,7 @@ export function PipelineDrawer({
   view,
   nineRouter,
   generatedAt,
+  cycle,
   items,
   itemState,
   onClose,
@@ -217,6 +219,8 @@ export function PipelineDrawer({
   view: PipelineFlowNodeView;
   nineRouter: PipelineFlowNineRouterDto | null;
   generatedAt: string | null;
+  /** HOSTED-34: the last polling cycle, shown on the cycle node. Null when the snapshot carries no runtime status. */
+  cycle?: PipelineFlowCycleDto | null;
   items: PipelineFlowItemsDto | null;
   itemState: "loading" | "ready" | "error" | "forbidden";
   onClose: () => void;
@@ -237,6 +241,11 @@ export function PipelineDrawer({
       </header>
       <p className="pipeline-drawer__desc">{meta.description}</p>
       {view.emptyText !== null && <p className="pipeline-drawer__note" role="status">{view.emptyText}</p>}
+      {view.id === "cycle" && (
+        <p className="pipeline-drawer__note">
+          Waktu siklus terakhir: {cycle?.finished_at ? formatInstant(cycle.finished_at) : "Belum ada siklus tercatat"}
+        </p>
+      )}
       {nineRouter && <NineRouterMeters runtime={nineRouter} generatedAt={generatedAt} />}
       <section aria-labelledby="pipeline-drawer-counts">
         <h3 id="pipeline-drawer-counts">Hitungan</h3>
@@ -583,6 +592,7 @@ export function PipelineFlow() {
           view={nodeView(selectedNode, snapshotRange(snapshot))}
           nineRouter={selectedNode.id === "ninerouter" ? snapshot?.runtime?.ninerouter ?? null : null}
           generatedAt={snapshot?.runtime?.generated_at ?? null}
+          cycle={snapshot?.runtime?.cycle ?? null}
           items={items}
           itemState={itemState}
           onClose={() => setSelectedId(null)}

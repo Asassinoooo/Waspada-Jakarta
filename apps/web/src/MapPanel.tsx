@@ -142,7 +142,7 @@ function MapFeature({
       className={"geo-feature" + (selected ? " geo-feature--selected" : "")}
       role="button"
       tabIndex={0}
-      aria-label={label + "; pilih untuk menyorot record dan membuka detail"}
+      aria-label={label + "; pilih untuk menyorot laporan dan membuka detail"}
       aria-pressed={selected}
       onClick={onSelect}
       onKeyDown={(keyEvent) => {
@@ -210,8 +210,8 @@ export function MapPanel(props: MapPanelProps) {
     <section className="map-panel" aria-labelledby="map-title">
       <header className="panel-heading map-panel__heading">
         <div>
-          <p className="section-kicker">{legacyScreen ? "Geometri yang tercatat" : "Geometri dari respons API"}</p>
-          <h2 id="map-title">{legacyScreen ? "Sketsa peta" : "Peta koordinat CRS84"}</h2>
+          <p className="section-kicker">{legacyScreen ? "Geometri yang tercatat" : "Lokasi dari laporan"}</p>
+          <h2 id="map-title">{legacyScreen ? "Sketsa peta" : "Peta lokasi"}</h2>
         </div>
         <span className="fixture-chip">Tanpa peta dasar</span>
       </header>
@@ -219,7 +219,7 @@ export function MapPanel(props: MapPanelProps) {
       <p className="map-panel__intro">
         {legacyScreen
           ? "Garis hanya muncul untuk segmen yang tercantum pada fixture dokumen. Tidak ada batas bahaya atau area sekitar."
-          : "Hanya geometri yang dikembalikan API untuk record terlihat yang ditampilkan. Cakupan mengikuti halaman daftar yang dimuat dan filter saat ini; ini bukan hitungan seluruh laporan di Jakarta."}
+          : "Hanya lokasi dari laporan terlihat yang ditampilkan. Cakupan mengikuti halaman daftar yang dimuat dan filter saat ini; ini bukan hitungan seluruh laporan di Jakarta."}
       </p>
 
       {selectedEvent && selectedEventIsVisible && mapState.status === "loaded" && !selectedEventHasGeometry && (
@@ -227,7 +227,7 @@ export function MapPanel(props: MapPanelProps) {
           {selectedWholeView ? (
             "Lokasi: seluruh peta Jakarta. Laporan ini tidak punya titik di peta; daftar tetap menjadi sumber lengkap. Tanpa titik bukan pernyataan bahwa area aman."
           ) : (
-            <>Tidak dipetakan: respons GeoJSON tidak menyertakan geometri untuk “{selectedEvent.title}”. Record tetap tersedia di daftar; hasil kosong bukan pernyataan bahwa area aman.</>
+            <>Tidak dipetakan: data peta tidak menyertakan lokasi untuk “{selectedEvent.title}”. Laporan tetap tersedia di daftar; hasil kosong bukan pernyataan bahwa area aman.</>
           )}
         </p>
       )}
@@ -270,25 +270,25 @@ export function MapPanel(props: MapPanelProps) {
         ) : mapState.status === "idle" ? (
           <div className="map-unavailable" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">i</span>
-            <h3>Status peta koordinat belum tersedia</h3>
+            <h3>Status peta lokasi belum tersedia</h3>
             <p>
               {context === null
-                ? "Status dataset belum tersedia; geometri API belum dimuat."
+                ? "Status dataset belum tersedia; lokasi dari laporan belum dimuat."
                 : feedStatus === "loading"
-                  ? "Menunggu daftar API selesai dimuat sebelum geometri dicocokkan."
-                  : "Peta koordinat belum dimuat."}
+                  ? "Menunggu daftar laporan selesai dimuat sebelum lokasinya dicocokkan."
+                  : "Peta lokasi belum dimuat."}
             </p>
           </div>
         ) : mapState.status === "loading" ? (
           <div className="map-unavailable map-unavailable--loading" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">…</span>
-            <h3>Memuat geometri dari API…</h3>
-            <p>Daftar tetap dapat dibaca saat peta koordinat dimuat.</p>
+            <h3>Memuat lokasi dari laporan…</h3>
+            <p>Daftar tetap dapat dibaca saat peta lokasi dimuat.</p>
           </div>
         ) : mapState.status === "unavailable" ? (
           <div className="map-unavailable" role="alert">
             <span className="map-unavailable__mark" aria-hidden="true">!</span>
-            <h3>Peta koordinat belum dapat dimuat</h3>
+            <h3>Peta lokasi belum dapat dimuat</h3>
             <p>Kegagalan peta tidak mengubah daftar. Keadaan dan kelengkapan data tidak dapat disimpulkan dari peta.</p>
             <div className="map-state-actions">
               <button className="button button--primary" type="button" onClick={onRetryMap}>Coba lagi memuat peta</button>
@@ -298,8 +298,8 @@ export function MapPanel(props: MapPanelProps) {
         ) : visibleFeatures.length === 0 ? (
           <div className="map-unavailable" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">—</span>
-            <h3>Tidak ada geometri yang cocok pada halaman ini</h3>
-            <p>Respons GeoJSON tidak menyertakan geometri untuk record yang terlihat. Hasil kosong bukan pernyataan bahwa area aman.</p>
+            <h3>Tidak ada lokasi yang cocok pada halaman ini</h3>
+            <p>Data peta tidak menyertakan lokasi untuk laporan yang terlihat. Hasil kosong bukan pernyataan bahwa area aman.</p>
             <button className="button button--quiet map-return" type="button" onClick={onReturnToList}>Kembali ke daftar</button>
           </div>
         ) : (
@@ -310,7 +310,7 @@ export function MapPanel(props: MapPanelProps) {
                 className="geojson-map"
                 viewBox="0 0 500 500"
                 role="group"
-                aria-label="Feature CRS84 yang cocok dengan daftar API dimuat"
+                aria-label="Titik lokasi yang cocok dengan daftar laporan yang dimuat"
               >
                 {visibleFeatures.map(({ feature, event }) => (
                   <MapFeature
@@ -327,27 +327,27 @@ export function MapPanel(props: MapPanelProps) {
               {selectedFeature && selectedEvent ? (
                 <>
                   <strong>{selectedFeature.properties.title}</strong>
-                  <a className="text-link" href={featureHref(selectedEvent.event_id)}>Buka detail record API</a>
+                  <a className="text-link" href={featureHref(selectedEvent.event_id)}>Buka detail laporan</a>
                 </>
               ) : (
                 <>
-                  <strong>{visibleFeatures.length} geometri pada record yang terlihat</strong>
-                  <span>Pilih titik, garis, atau bidang untuk menyorot record di daftar.</span>
+                  <strong>{visibleFeatures.length} lokasi pada laporan yang terlihat</strong>
+                  <span>Pilih titik, garis, atau bidang untuk menyorot laporan di daftar.</span>
                 </>
               )}
             </figcaption>
             <dl className="coordinate-row">
               <div className="coordinate-row__source">
-                <dt>Koordinat CRS84 dari respons API</dt>
+                <dt>Koordinat dari laporan</dt>
                 <dd>
                   {selectedFeature
                     ? formatCoordinates(selectedFeature.geometry)
-                    : "Pilih geometri untuk menampilkan semua koordinatnya seperti dikembalikan API."}
+                    : "Pilih lokasi untuk menampilkan semua koordinatnya dari laporan."}
                 </dd>
               </div>
               <div>
-                <dt>Proyeksi gambar</dt>
-                <dd>Equirektangular lokal; posisi sumber tidak diubah.</dd>
+                <dt>Posisi di peta</dt>
+                <dd>Posisi titik sesuai koordinat dari laporan.</dd>
               </div>
             </dl>
           </>
@@ -363,8 +363,8 @@ export function MapPanel(props: MapPanelProps) {
       ) : mapState.status === "loaded" && visibleFeatures.length > 0 ? (
         <footer className="map-legend">
           <span className="legend-point" aria-hidden="true" />
-          <span>Feature API yang dikembalikan</span>
-          <span className="map-legend__note">Hanya record terlihat pada halaman yang dimuat.</span>
+          <span>Lokasi laporan yang ditampilkan</span>
+          <span className="map-legend__note">Hanya laporan terlihat pada halaman yang dimuat.</span>
         </footer>
       ) : (
         <footer className="map-legend map-legend--empty">
@@ -409,22 +409,22 @@ export function RecordMapPanel({
     <section className="map-panel" aria-labelledby="record-map-title">
       <header className="panel-heading map-panel__heading">
         <div>
-          <p className="section-kicker">Geometri dari respons API</p>
-          <h2 id="record-map-title">Peta koordinat CRS84</h2>
+          <p className="section-kicker">Lokasi dari laporan</p>
+          <h2 id="record-map-title">Peta lokasi</h2>
         </div>
         <span className="fixture-chip">Tanpa peta dasar</span>
       </header>
 
       <p className="map-panel__intro">
-        Hanya geometri yang dikembalikan API untuk record ini yang digambar. Peta tidak menambahkan titik, radius, atau area sekitar.
+        Hanya lokasi dari laporan ini yang digambar. Peta tidak menambahkan titik, radius, atau area sekitar.
       </p>
 
       <figure className="map-figure">
         {geometries === undefined ? (
           <div className="map-unavailable" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">i</span>
-            <h3>Geometri belum tersedia dalam respons ini</h3>
-            <p>Peta koordinat tidak dapat dibentuk dari respons ini. Keadaan dan kelengkapan data tidak dapat disimpulkan dari peta.</p>
+            <h3>Lokasi belum tersedia dalam data ini</h3>
+            <p>Peta lokasi tidak dapat dibentuk dari data ini. Keadaan dan kelengkapan data tidak dapat disimpulkan dari peta.</p>
           </div>
         ) : geometries.length === 0 ? (
           <div className="map-unavailable" role="status">
@@ -437,8 +437,8 @@ export function RecordMapPanel({
               </>
             ) : (
               <>
-                <p>Tidak dipetakan. Record API ini tidak menyertakan geometri; daftar tetap tersedia sebagai alternatif lengkap.</p>
-                <p className="supporting-note">Tidak adanya geometri bukan pernyataan bahwa suatu area aman.</p>
+                <p>Tidak dipetakan. Laporan ini tidak menyertakan lokasi; daftar tetap tersedia sebagai alternatif lengkap.</p>
+                <p className="supporting-note">Tidak adanya lokasi bukan pernyataan bahwa suatu area aman.</p>
               </>
             )}
             <button className="button button--quiet map-return" type="button" onClick={onReturnToList}>Kembali ke daftar</button>
@@ -446,8 +446,8 @@ export function RecordMapPanel({
         ) : drawable.length === 0 ? (
           <div className="map-unavailable" role="status">
             <span className="map-unavailable__mark" aria-hidden="true">—</span>
-            <h3>Geometri di luar area peta</h3>
-            <p>{`${geometries.length} geometri dari API berada di luar area peta Jakarta yang ditampilkan, sehingga tidak digambar. Ini bukan pernyataan bahwa area aman.`}</p>
+            <h3>Lokasi di luar area peta</h3>
+            <p>{`${geometries.length} lokasi dari laporan berada di luar area peta Jakarta yang ditampilkan, sehingga tidak digambar. Ini bukan pernyataan bahwa area aman.`}</p>
             <button className="button button--quiet map-return" type="button" onClick={onReturnToList}>Kembali ke daftar</button>
           </div>
         ) : (
@@ -458,7 +458,7 @@ export function RecordMapPanel({
                 className="geojson-map"
                 viewBox="0 0 500 500"
                 role="group"
-                aria-label={"Geometri record " + title}
+                aria-label={"Lokasi laporan " + title}
               >
                 {drawable.map((item) => (
                   <g key={item.geometry_id} className="geo-feature" data-geometry-id={item.geometry_id}>
@@ -469,20 +469,20 @@ export function RecordMapPanel({
               </svg>
             </div>
             <figcaption className="map-caption">
-              <strong>{`${drawable.length} geometri pada record ini`}</strong>
+              <strong>{`${drawable.length} lokasi pada laporan ini`}</strong>
               <span>
-                {notDrawn > 0 ? `${notDrawn} geometri di luar area peta tidak digambar. ` : ""}
-                Garis, titik, dan bidang digambar apa adanya dari respons API.
+                {notDrawn > 0 ? `${notDrawn} lokasi di luar area peta tidak digambar. ` : ""}
+                Garis, titik, dan bidang digambar apa adanya dari laporan.
               </span>
             </figcaption>
             <dl className="coordinate-row">
               <div className="coordinate-row__source">
-                <dt>Koordinat CRS84 dari respons API</dt>
+                <dt>Koordinat dari laporan</dt>
                 <dd>{drawable.map((item) => formatCoordinates(item.geometry)).join("; ")}</dd>
               </div>
               <div>
-                <dt>Proyeksi gambar</dt>
-                <dd>Equirektangular lokal; posisi sumber tidak diubah.</dd>
+                <dt>Posisi di peta</dt>
+                <dd>Posisi titik sesuai koordinat dari laporan.</dd>
               </div>
             </dl>
           </>
@@ -491,7 +491,7 @@ export function RecordMapPanel({
 
       <footer className="map-legend">
         <span className="legend-point" aria-hidden="true" />
-        <span>Geometri yang dikembalikan API untuk record ini</span>
+        <span>Lokasi dari laporan ini</span>
         <span className="map-legend__note">Bentuk dan warna tidak menilai tingkat bahaya.</span>
       </footer>
     </section>

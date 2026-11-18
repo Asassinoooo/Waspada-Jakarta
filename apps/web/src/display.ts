@@ -1,4 +1,4 @@
-import type { EventView, FreshnessStatus, Lifecycle, TimeScope } from "@waspada/worker/public-contracts";
+import type { EventView, FreshnessStatus, Lifecycle, PublicContext, TimeScope } from "@waspada/worker/public-contracts";
 
 const instantFormatter = new Intl.DateTimeFormat("id-ID", {
   dateStyle: "medium",
@@ -125,4 +125,27 @@ export function categoryLabel(value: string) {
     default:
       return value;
   }
+}
+
+/** HOSTED-34: the basis of a freshness status, in Indonesian. A code this build does not know reads "lainnya", never the raw code. */
+export function freshnessBasisLabel(value: string | null | undefined): string {
+  switch (value) {
+    case "source_validity":
+      return "masa berlaku sumber";
+    case "fast_observation_review":
+      return "tinjauan cepat laporan";
+    case "undated_advisory_review":
+      return "tinjauan pengumuman tanpa tanggal";
+    case "manual_review":
+      return "tinjauan manual";
+    case "unknown":
+      return "belum diketahui";
+    default:
+      return "lainnya";
+  }
+}
+
+/** HOSTED-34: the browser tab title. Only the demo dataset is labelled as synthetic; live and unknown modes get the plain name. */
+export function documentTitleFor(datasetMode: PublicContext["dataset_mode"] | null | undefined): string {
+  return datasetMode === "demo" ? "Waspada Jakarta — demo sintetis" : "Waspada Jakarta";
 }

@@ -148,7 +148,9 @@ test("proposal queue renders cards with incident badges, severity chips, locatio
   assert.match(html, /Tinggi/);
   assert.match(html, /Banjir 50 cm di Kampung Melayu Jakarta Timur/);
   assert.match(html, /Kampung Melayu, Jatinegara, Jakarta Timur/);
-  assert.match(html, /2026-10-26T07:00:00\.000Z/);
+  // HOSTED-34: the event time reads in Jakarta time with its precision, never as a raw ISO string.
+  assert.match(html, /26 Okt 2026, 14\.00 WIB \(jam tercatat\)/);
+  assert.doesNotMatch(html, /2026-10-26T07:00:00/);
 
   assert.match(html, /incident-badge--fire/);
   assert.match(html, /Kebakaran/);
@@ -178,7 +180,7 @@ test("selected proposal displays detailed metadata, coordinates, and claims", ()
   assert.match(html, /Banjir setinggi 50 cm merendam permukiman Kampung Melayu\./);
   assert.match(html, /claim-002/);
   assert.match(html, /Penyebab banjir adalah luapan Kali Ciliwung pada Senin pagi\./);
-  assert.match(html, /under_review/);
+  assert.match(html, /Menunggu tinjauan/);
 });
 
 test("evidence reader highlights exact quotes inside chunk text", () => {
@@ -191,7 +193,8 @@ test("evidence reader highlights exact quotes inside chunk text", () => {
 
   assert.match(html, /Pembaca Bukti Sumber/);
   assert.match(html, /Chunk #1/);
-  assert.match(html, /kode poin 0–140/i);
+  assert.match(html, /Rentang teks 0–140/);
+  assert.doesNotMatch(html, /kode poin/i);
   assert.match(
     html,
     /<mark class="evidence-quote-highlight">banjir setinggi 50 cm merendam kawasan Kampung Melayu<\/mark>/

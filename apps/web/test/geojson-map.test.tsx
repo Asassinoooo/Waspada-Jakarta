@@ -214,10 +214,11 @@ test("map renders all six geometry types as keyboard-operable linked features", 
   }
   assert.match(markup, /role="button"/);
   assert.match(markup, /tabindex="0"/);
-  assert.match(markup, /aria-label="Feature CRS84 yang cocok dengan daftar API dimuat"/);
-  assert.match(markup, /Peta koordinat CRS84/);
+  assert.match(markup, /aria-label="Titik lokasi yang cocok dengan daftar laporan yang dimuat"/);
+  assert.match(markup, /Peta lokasi/);
   assert.match(markup, /Tanpa peta dasar/);
-  assert.match(markup, /Equirektangular lokal; posisi sumber tidak diubah/);
+  assert.match(markup, /Posisi titik sesuai koordinat dari laporan\./);
+  assert.doesNotMatch(markup, /CRS84|Equirektangular|respons API/u, "the map copy names no projection or response");
 });
 
 test("map links only visible exact-version records and shows source coordinates plus the detail link", () => {
@@ -243,7 +244,7 @@ test("map links only visible exact-version records and shows source coordinates 
   assert.doesNotMatch(markup, /data-feature-id="filtered-feature"|data-feature-id="stale-feature"/);
   assert.match(markup, /aria-pressed="true"/);
   assert.match(markup, /106\.73, -6\.23 · 106\.74, -6\.24/);
-  assert.match(markup, /href="#detail\/api\/visible-1">Buka detail record API/);
+  assert.match(markup, /href="#detail\/api\/visible-1">Buka detail laporan/);
 });
 
 test("filtering a previously selected event out of the loaded page hides it without claiming its geometry is missing", () => {
@@ -262,7 +263,7 @@ test("filtering a previously selected event out of the loaded page hides it with
     />,
   );
 
-  assert.match(markup, /Tidak ada geometri yang cocok pada halaman ini/);
+  assert.match(markup, /Tidak ada lokasi yang cocok pada halaman ini/);
   assert.doesNotMatch(markup, /Tidak dipetakan: respons GeoJSON tidak menyertakan geometri/);
   assert.doesNotMatch(markup, /data-feature-id="selected-before-filter"/);
 });
@@ -329,7 +330,7 @@ test("a selected event without location_display and without geometry still says 
     />,
   );
 
-  assert.match(markup, /Tidak dipetakan: respons GeoJSON tidak menyertakan geometri/);
+  assert.match(markup, /Tidak dipetakan: data peta tidak menyertakan lokasi/);
   assert.doesNotMatch(markup, /seluruh peta Jakarta/);
 });
 
@@ -364,9 +365,9 @@ function renderLiveFeed(mapState: GeoJSONMapState) {
 
 test("map failure stays independent from the feed and live mode hides the presentation fixture", () => {
   const markup = renderLiveFeed({ status: "unavailable" });
-  assert.match(markup, /LIVE — record berasal dari dataset live API/);
+  assert.match(markup, /LIVE — laporan berasal dari data langsung/);
   assert.match(markup, /Live event stays visible/);
-  assert.match(markup, /Peta koordinat belum dapat dimuat/);
+  assert.match(markup, /Peta lokasi belum dapat dimuat/);
   assert.match(markup, /Coba lagi memuat peta/);
   assert.doesNotMatch(markup, /fixture presentasi|Bus 12 diversion|route-diagram/);
   assert.doesNotMatch(markup, /DEMO — data sintetis/);

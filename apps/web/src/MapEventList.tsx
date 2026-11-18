@@ -16,6 +16,8 @@ import {
 
 export const EMPTY_LIST_TITLE = "Belum ada laporan terbit di area ini dalam rentang waktu ini.";
 export const EMPTY_LIST_NOTE = "Daftar ini hanya memuat laporan yang sudah terbit. Hasil kosong tidak berarti tidak ada kejadian.";
+/** HOSTED-34: the empty message when only the text search is active (no category, time or source filter). */
+export const EMPTY_SEARCH_TITLE = "Tidak ada laporan terbit yang cocok dengan pencarian ini.";
 export const LIST_NOTE = "Hanya laporan yang sudah terbit. Ini bukan hasil pemeriksaan atau verifikasi otomatis.";
 
 export interface MapEventListProps {
@@ -25,6 +27,8 @@ export interface MapEventListProps {
   markers: ReadonlyMap<string, PublishedMarker>;
   selectedId: string | null;
   filtersActive: boolean;
+  /** True when the text search is the only narrowing; the empty message then names the search. */
+  searchOnly?: boolean;
   errorMessage: string | null;
   onSelect: (eventId: string) => void;
   onReset: () => void;
@@ -39,6 +43,7 @@ export function MapEventList({
   markers,
   selectedId,
   filtersActive,
+  searchOnly = false,
   errorMessage,
   onSelect,
   onReset,
@@ -81,7 +86,7 @@ export function MapEventList({
 
       {status === "loaded" && events.length === 0 && (
         <div className="empty-state map-list__empty" role="status">
-          <p className="empty-state__title">{EMPTY_LIST_TITLE}</p>
+          <p className="empty-state__title">{searchOnly ? EMPTY_SEARCH_TITLE : EMPTY_LIST_TITLE}</p>
           <p>{EMPTY_LIST_NOTE}</p>
           {filtersActive && (
             <button type="button" className="button button--quiet" onClick={onReset}>

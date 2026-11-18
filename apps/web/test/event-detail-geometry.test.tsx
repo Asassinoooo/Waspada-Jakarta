@@ -66,10 +66,10 @@ test("a record with point geometry on the record page draws it and never says it
   const markup = renderDetail({ ...baseRecord, geometries: [pointGeometry] });
 
   assert.doesNotMatch(markup, /Tidak dipetakan/u, "a mapped record must not print the no-geometry message");
-  assert.doesNotMatch(markup, /tidak menyertakan geometri/u);
-  assert.match(markup, /Peta koordinat CRS84/u);
+  assert.doesNotMatch(markup, /tidak menyertakan lokasi/u);
+  assert.match(markup, /Peta lokasi/u);
   assert.match(markup, /class="geo-feature"/u, "the record's own point is drawn");
-  assert.match(markup, /1 geometri pada record ini/u);
+  assert.match(markup, /1 lokasi pada laporan ini/u);
   assert.match(markup, /106\.8, -6\.2/u, "the coordinates are the API's own, unchanged");
 });
 
@@ -78,14 +78,14 @@ test("a record with point geometry in the #peta sheet draws it and never says it
 
   assert.doesNotMatch(markup, /Tidak dipetakan/u);
   assert.match(markup, /class="geo-feature"/u);
-  assert.match(markup, /1 geometri pada record ini/u);
+  assert.match(markup, /1 lokasi pada laporan ini/u);
 });
 
 test("a record whose API geometries are empty still says it is not mapped, without implying safety", () => {
   const markup = renderDetail({ ...baseRecord, geometries: [] });
 
-  assert.match(markup, /Tidak dipetakan\. Record API ini tidak menyertakan geometri/u);
-  assert.match(markup, /Tidak adanya geometri bukan pernyataan bahwa suatu area aman/u);
+  assert.match(markup, /Tidak dipetakan\. Laporan ini tidak menyertakan lokasi/u);
+  assert.match(markup, /Tidak adanya lokasi bukan pernyataan bahwa suatu area aman/u);
   assert.doesNotMatch(markup, /class="geo-feature"/u);
 });
 
@@ -103,19 +103,19 @@ test("a response with no geometries field makes no claim that the record lacks g
   const markup = renderDetail(record);
 
   assert.doesNotMatch(markup, /Tidak dipetakan/u);
-  assert.doesNotMatch(markup, /tidak menyertakan geometri/u);
-  assert.match(markup, /Geometri belum tersedia dalam respons ini/u);
+  assert.doesNotMatch(markup, /tidak menyertakan lokasi/u);
+  assert.match(markup, /Lokasi belum tersedia dalam data ini/u);
 });
 
 test("a geometry outside the Jakarta map area is counted as not drawn, not shown as a point or as unmapped", () => {
   const mixed = renderDetail({ ...baseRecord, geometries: [pointGeometry, outsideMapGeometry] });
   assert.doesNotMatch(mixed, /Tidak dipetakan/u);
-  assert.match(mixed, /1 geometri pada record ini/u);
-  assert.match(mixed, /1 geometri di luar area peta tidak digambar/u);
+  assert.match(mixed, /1 lokasi pada laporan ini/u);
+  assert.match(mixed, /1 lokasi di luar area peta tidak digambar/u);
   assert.doesNotMatch(mixed, /107\.3/u, "an off-map coordinate is not presented as drawn");
 
   const onlyOutside = renderDetail({ ...baseRecord, geometries: [outsideMapGeometry] });
   assert.doesNotMatch(onlyOutside, /Tidak dipetakan/u);
-  assert.match(onlyOutside, /Geometri di luar area peta/u);
+  assert.match(onlyOutside, /Lokasi di luar area peta/u);
   assert.doesNotMatch(onlyOutside, /class="geo-feature"/u);
 });

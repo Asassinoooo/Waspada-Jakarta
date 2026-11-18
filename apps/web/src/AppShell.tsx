@@ -43,8 +43,8 @@ export function datasetBadge(datasetMode: string | undefined, sourcePreview = fa
   if (datasetMode === "live") {
     return {
       label: "Langsung",
-      title: "LIVE — record berasal dari dataset live API",
-      detail: "Waktu dan kesegaran tercantum per record; cakupan mengikuti data API yang dimuat.",
+      title: "LIVE — laporan berasal dari data langsung",
+      detail: "Waktu dan kesegaran tercantum per laporan; cakupan mengikuti data yang dimuat.",
       tone: "accent",
     };
   }
