@@ -615,6 +615,11 @@ export type ProposalGateReason =
   | "correlation_unresolved"
   | "discrepancy_flagged"
   | "discrepancy_status_unknown"
+  /**
+   * HOSTED-35b: the proposal title or a claim text does not read as Indonesian (see looksIndonesian). The automatic gate
+   * holds it for a moderator, as it holds a discrepancy. The moderator publish gate does not check language.
+   */
+  | "language_review"
   | "location_missing"
   /**
    * A present event time that is not usable (malformed). A missing time is not a reason on the automatic path (see
@@ -754,6 +759,47 @@ function classifyEventTime(record: Record<string, unknown>): EventTimeCheck {
     : "malformed";
 }
 
+/*
+ * HOSTED-35b: a deterministic language check for the automatic gate. The marker words are common function words and a
+ * few domain words. A place or outlet name is in neither set, so it never counts. "jakarta" is listed as an Indonesian
+ * marker, as specified. This holds text for a moderator. It does not identify a language.
+ */
+const INDONESIAN_MARKER_WORDS: ReadonlySet<string> = new Set([
+  "yang", "di", "ke", "dari", "dan", "pada", "untuk", "dengan", "oleh", "itu", "ini", "tidak", "akan", "telah", "sudah",
+  "dalam", "karena", "sebagai", "adalah", "juga", "atau", "saat", "setelah", "warga", "polisi", "kebakaran", "banjir",
+  "jalan", "jakarta", "ada", "tersebut", "lalu", "serta", "namun", "tetapi", "sedang", "masih", "belum", "bisa", "dapat",
+  "hingga", "sejak", "bahwa", "mereka", "ketika", "para", "pun", "saja", "sebuah", "orang", "rumah", "tiga", "dua",
+]);
+
+const ENGLISH_MARKER_WORDS: ReadonlySet<string> = new Set([
+  "the", "of", "and", "in", "on", "at", "to", "with", "by", "for", "from", "is", "are", "was", "were", "be", "been",
+  "has", "have", "had", "that", "this", "which", "its", "their", "after", "before", "during", "into", "over", "near",
+  "incident", "location", "nature", "response", "deployment", "describes", "arrest", "reported", "police", "residents",
+  "emergency", "damage",
+]);
+
+/** Texts shorter than this many words are not judged and pass. */
+const LANGUAGE_CHECK_MIN_WORDS = 3;
+
+/**
+ * HOSTED-35b: true when the text reads as Indonesian, or is too short to judge (fewer than three words). A text of three
+ * or more words is not Indonesian when English marker words outnumber Indonesian ones, or when it has no Indonesian
+ * marker word and at least two English ones. Deterministic and pure. A false result holds the proposal for review.
+ */
+export function looksIndonesian(text: string): boolean {
+  const words = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (words.length < LANGUAGE_CHECK_MIN_WORDS) return true;
+  let indonesian = 0;
+  let english = 0;
+  for (const word of words) {
+    if (INDONESIAN_MARKER_WORDS.has(word)) indonesian += 1;
+    if (ENGLISH_MARKER_WORDS.has(word)) english += 1;
+  }
+  if (english > indonesian) return false;
+  if (indonesian === 0 && english >= 2) return false;
+  return true;
+}
+
 function isHttpUrl(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0) return false;
   try {
@@ -838,6 +884,7 @@ export function assessProposalSourceGate(proposal: unknown, options: ProposalGat
  * the skip is reported in `waivers`. HOSTED-28: a claim from a revoked source (`revokedSourceIds`) is never
  * waived and gives `source_revoked`. HOSTED-21: a missing event time is not a reason here. It is
  * reported in `waivers` as `event_time_unknown`, and the event time stays unknown. A malformed time holds.
+ * HOSTED-35b: a title or claim text that does not read as Indonesian gives `language_review`, and no waiver skips it.
  * All other checks still apply.
  */
 export function evaluateAutoPublication(proposal: unknown, options: AutoPublicationGateOptions): AutoPublicationAssessment {
@@ -866,6 +913,12 @@ export function evaluateAutoPublication(proposal: unknown, options: AutoPublicat
     reasons.add("discrepancy_flagged");
   } else if (record.has_discrepancy !== false) {
     reasons.add("discrepancy_status_unknown");
+  }
+
+  // HOSTED-35b: a title or claim text that does not read as Indonesian waits for a moderator, as a discrepancy does.
+  const claimTexts = Array.isArray(record.claims) ? record.claims.map((raw) => gateRecord(raw)?.claim_text) : [];
+  if ([record.title, ...claimTexts].some((text) => typeof text === "string" && !looksIndonesian(text))) {
+    reasons.add("language_review");
   }
 
   const hasLocation = isNonEmptyText(record.location_label)
