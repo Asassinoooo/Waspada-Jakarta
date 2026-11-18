@@ -12,7 +12,6 @@ import { createPublicEventListProjectionService } from "../src/layers/l4-applica
 import { createPublicEventDetailProjectionService } from "../src/layers/l4-application-integration/public-event-detail-projection-service.js";
 import {
   createPublicEventProjectionService,
-  PublicEventProjectionServiceError,
 } from "../src/layers/l4-application-integration/public-event-projection-service.js";
 import {
   AGENT_AUTO_PUBLISHER_ID,
@@ -205,18 +204,26 @@ describe("HOSTED-22 publication writes the attribution from source approval", ()
     assert.ok(page.events.some((event) => event.event_id === "inc-h22-ok-2"), "the second event lists too");
   });
 
-  it("(c) an unpermitted source writes no attribution, and under the default gate the event is queued, not published", async () => {
+  it("(c) a revoked source writes no attribution, collection stays on, and under the default gate the event is queued as source_revoked", async () => {
     const sourceId = "source-lineage-hosted22-off";
+    // HOSTED-28: revocation changes the approval only. Collection stays on (FR-16).
     await db.executor.query(
       `UPDATE waspada.source_registry
-       SET approval_status = 'revoked', auto_acquisition_enabled = false
+       SET approval_status = 'revoked'
        WHERE source_id = $1`,
       [sourceId],
+    );
+    assert.deepEqual(
+      (await db.executor.query<{ auto_acquisition_enabled: boolean }>(
+        "SELECT auto_acquisition_enabled FROM waspada.source_registry WHERE source_id = $1",
+        [sourceId],
+      )).rows.map((row) => row.auto_acquisition_enabled),
+      [true],
     );
     await persist(agentProposal(lineageOff, sourceId, "hosted22-off", "inc-h22-off-1"));
     const outcome = await auto("prop-inc-h22-off-1");
     assert.equal(outcome.status, "queued", JSON.stringify(outcome));
-    assert.ok(((outcome as { reasons?: readonly string[] }).reasons ?? []).includes("source_rights_missing"));
+    assert.ok(((outcome as { reasons?: readonly string[] }).reasons ?? []).includes("source_revoked"));
 
     assert.deepEqual(await attributionsFor("rev-lineage-hosted22-off"), []);
     const versions = await db.executor.query<{ n: number }>(
@@ -226,25 +233,21 @@ describe("HOSTED-22 publication writes the attribution from source approval", ()
   });
 
   it("(d) under local_relaxed a revoked source publishes without an attribution, the list skips that event, and its detail answers not found", async () => {
-    // local_relaxed waives the permission check, so the event publishes. The projector refuses that version
-    // (ATTRIBUTION_FAILED). The list skips only that event, and the detail route answers not found (17 Nov decision).
+    // HOSTED-28: the local_relaxed waiver never reaches a revoked source. The gate refuses the proposal with
+    // source_revoked, so nothing publishes, no attribution is written and the public reads show no version.
     await persist(agentProposal(lineageOff, "source-lineage-hosted22-off", "hosted22-off", "inc-h22-off-2"));
     const outcome = await auto("prop-inc-h22-off-2", "local_relaxed");
-    assert.equal(outcome.status, "published", JSON.stringify(outcome));
+    assert.equal(outcome.status, "queued", JSON.stringify(outcome));
+    assert.ok(((outcome as { reasons?: readonly string[] }).reasons ?? []).includes("source_revoked"));
     assert.deepEqual(await attributionsFor("rev-lineage-hosted22-off"), [], "no attribution row for the revoked source");
-
-    const projection = createPublicEventProjectionService({
-      snapshots: createPublicEventSnapshotRepository(db.executor),
-      lookups: createPublicProjectionLookupRepository(db.executor),
-    });
-    await assert.rejects(projection.read("inc-h22-off-2"), (error: unknown) =>
-      error instanceof PublicEventProjectionServiceError
-      && error.code === "PROJECTION_FAILED"
-      && error.projectionCode === "ATTRIBUTION_FAILED");
+    const versions = await db.executor.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM waspada.event_versions WHERE dataset_kind = 'live' AND event_id = 'inc-h22-off-2'",
+    );
+    assert.equal(versions.rows[0]!.n, 0, "no public version exists for the revoked source's event");
     const page = await listService().read();
     const listedIds = page.events.map((event) => event.event_id);
     assert.ok(listedIds.includes("inc-h22-ok-1"), "the attributed event still lists");
-    assert.equal(listedIds.includes("inc-h22-off-2"), false, "the unattributed event is skipped, the page still renders");
+    assert.equal(listedIds.includes("inc-h22-off-2"), false, "the revoked source's event is not listed");
 
     const detail = createPublicEventDetailProjectionService({
       snapshots: createPublicEventSnapshotRepository(db.executor),

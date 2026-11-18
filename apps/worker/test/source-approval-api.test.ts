@@ -49,10 +49,10 @@ describe("FR-12 admin source approval route", () => {
        VALUES
          ('source-route-pending', 'trace-seed-route', 1, 'Sumber uji menunggu', 'newsroom', ARRAY['banjir'],
           'rss', ARRAY[]::text[], ARRAY['synthetic test fixture'], ARRAY['model_triage'], 'active',
-          'pending', 'unknown', false, 'never'),
+          'pending', 'unknown', true, 'never'),
          ('source-route-public', 'trace-seed-route', 1, 'Sumber uji tampil publik', 'authority', ARRAY['banjir'],
           'rss', ARRAY[]::text[], ARRAY['synthetic test fixture'], ARRAY['public_display'], 'active',
-          'pending', 'unknown', false, 'never')`,
+          'pending', 'unknown', true, 'never')`,
     );
     store = createSourceApprovalStore(db.executor, "live");
     handler = createSourceApprovalApiHandler({
@@ -164,7 +164,7 @@ describe("FR-12 admin source approval route", () => {
 
     assert.deepEqual(await registry("source-route-pending"), {
       approval_status: "approved", auto_acquisition_enabled: true, auto_publication_policy: "never",
-    }, "approval on an active registry entry starts collection; the policy is unchanged");
+    }, "approval sets the status only: collection was already on and stays on; the policy is unchanged");
     const audit = await db.executor.query<{ actor_id: string; action: string; reason: string; trace_id: string; dataset_kind: string; details: Record<string, unknown> }>(
       `SELECT actor_id, action, reason, trace_id, dataset_kind, details
        FROM waspada.audit_records WHERE entity_type = 'source' AND entity_id = 'source-route-pending'`,
@@ -182,14 +182,14 @@ describe("FR-12 admin source approval route", () => {
     assert.equal(trace.rows[0]?.outcome, "succeeded");
   });
 
-  it("revocation turns collection and auto-publication off and the audit row records the change", async () => {
+  it("revocation stops auto-publication only: collection stays on (FR-16) and the audit row records the change", async () => {
     const response = await send("POST", approvalPath("source-route-pending"), {
       principal: "admin", body: { status: "revoked", note: NOTE },
     });
     assert.equal(response?.status, 200);
     assert.deepEqual(await registry("source-route-pending"), {
-      approval_status: "revoked", auto_acquisition_enabled: false, auto_publication_policy: "never",
-    });
+      approval_status: "revoked", auto_acquisition_enabled: true, auto_publication_policy: "never",
+    }, "revocation does not switch collection off");
     const audit = await db.executor.query<{ action: string }>(
       `SELECT action FROM waspada.audit_records WHERE entity_id = 'source-route-pending' ORDER BY occurred_at, audit_id`,
     );
@@ -234,8 +234,8 @@ describe("FR-12 admin source approval route", () => {
     assert.equal((await registry("source-route-pending"))?.approval_status, "revoked");
   });
 
-  it("re-approval through the route restores collection and a second revocation switches it off again", async () => {
-    assert.equal((await registry("source-route-pending"))?.auto_acquisition_enabled, false);
+  it("re-approval and a second revocation both leave collection on (FR-16), and the audit log counts each transition", async () => {
+    assert.equal((await registry("source-route-pending"))?.auto_acquisition_enabled, true);
     const approved = await send("POST", approvalPath("source-route-pending"), {
       principal: "admin", body: { status: "approved", note: NOTE },
     });
@@ -249,7 +249,7 @@ describe("FR-12 admin source approval route", () => {
     });
     assert.equal(revoked?.status, 200);
     assert.deepEqual(await registry("source-route-pending"), {
-      approval_status: "revoked", auto_acquisition_enabled: false, auto_publication_policy: "never",
+      approval_status: "revoked", auto_acquisition_enabled: true, auto_publication_policy: "never",
     });
     // Every route write shares one occurred_at, so count the transitions rather than rely on row order.
     const audit = await db.executor.query<{ action: string }>(
@@ -269,9 +269,9 @@ describe("FR-12 admin source approval route", () => {
     const before = await readList();
     assert.deepEqual(before.map((source) => source.source_id), ["source-route-pending", "source-route-public"]);
     assert.equal(before[0]?.approval_status, "revoked");
-    assert.ok(before.every((source) => source.public_display_granted === false), "nothing is approved and collecting yet");
+    assert.ok(before.every((source) => source.public_display_granted === false), "nothing is approved yet");
 
-    // Approval on an active registry entry restarts collection. This source's reuse basis carries
+    // Approval sets the status only: both sources already collect (FR-16). This source's reuse basis carries
     // public_display, so the existing permission model now grants display for this one source only.
     const approved = await send("POST", approvalPath("source-route-public"), {
       principal: "admin", body: { status: "approved", note: NOTE },

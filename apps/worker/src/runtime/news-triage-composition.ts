@@ -200,8 +200,9 @@ export function buildLiveTriageGate(
         const row = res.rows[0];
         if (!row) return { cleared: false, reason: "source_not_registered" };
         // WJ-INT-02B explicit capability evaluation (ADR-005). Acquisition is
-        // the unchanged approval gate; model use additionally needs an
-        // explicit title/description model token (or licensed legacy basis).
+        // collection (active and auto-acquisition enabled, HOSTED-28: approval
+        // does not gate it); model use additionally needs an explicit
+        // title/description model token (or licensed legacy basis).
         const basis = Array.isArray(row.reuse_basis) ? row.reuse_basis : null;
         const permissions = evaluateSourcePermissions(
           {

@@ -30,18 +30,36 @@ function baseRow(): RegistryPermissionRow {
 }
 
 describe('evaluateSourcePermissions', () => {
-  it('denies everything when acquisition is not approved', () => {
+  it('HOSTED-28: collection needs no approval, so a revoked source keeps acquisition, triage and retention; only public display waits for approval', () => {
     const permissions = evaluateSourcePermissions(
       {
         ...baseRow(),
-        approval_status: 'pending',
+        approval_status: 'revoked',
         reuse_basis: ['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'],
       },
       NOW,
     );
-    assert.equal(permissions.acquisition, false);
-    assert.equal(permissions.titleModel, false);
-    assert.equal(permissions.descriptionRetention, false);
+    assert.deepEqual(permissions, {
+      acquisition: true,
+      titleModel: true,
+      descriptionModel: true,
+      titleRetention: true,
+      descriptionRetention: true,
+      derivedRetention: true,
+      publicDisplay: false,
+    });
+  });
+
+  it('HOSTED-28: a pending source with collection off is denied everything, and a paused registry entry is denied everything', () => {
+    const full = ['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display'];
+    const off = evaluateSourcePermissions({ ...baseRow(), approval_status: 'pending', auto_acquisition_enabled: false, reuse_basis: full }, NOW);
+    assert.equal(off.acquisition, false);
+    assert.equal(off.titleModel, false);
+    assert.equal(off.descriptionRetention, false);
+    assert.equal(off.publicDisplay, false);
+    const paused = evaluateSourcePermissions({ ...baseRow(), approval_status: 'approved', registry_status: 'paused', reuse_basis: full }, NOW);
+    assert.equal(paused.acquisition, false);
+    assert.equal(paused.publicDisplay, false);
   });
 
   it('grants the full explicit vocabulary without license evidence', () => {

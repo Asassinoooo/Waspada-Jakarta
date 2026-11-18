@@ -65,7 +65,6 @@ export class SqlSourcePollScheduler implements SourcePollScheduler {
         "SELECT source.source_id, source.polling_interval_seconds",
         "FROM waspada.source_registry AS source",
         "WHERE source.registry_status = 'active'",
-        "  AND source.approval_status = 'approved'",
         "  AND source.auto_acquisition_enabled",
         "  AND source.polling_interval_seconds IS NOT NULL",
         "  AND (",

@@ -200,7 +200,6 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
        FROM waspada.source_registry AS source
        WHERE source.source_id = $7
          AND source.registry_status = 'active'
-         AND source.approval_status = 'approved'
          AND source.auto_acquisition_enabled
          AND source.polling_interval_seconds IS NOT NULL
        ON CONFLICT (dataset_kind, idempotency_key) DO NOTHING
@@ -306,7 +305,6 @@ export class SqlAcquisitionJobRepository implements AcquisitionJobRepository {
            AND job.available_at <= $1::timestamptz
            AND (job.job_kind = 'moderator_submission' OR (
              source.registry_status = 'active'
-             AND source.approval_status = 'approved'
              AND source.auto_acquisition_enabled
              AND source.polling_interval_seconds IS NOT NULL
            ))

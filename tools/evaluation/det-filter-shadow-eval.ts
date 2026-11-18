@@ -29,8 +29,8 @@
  * embeddings, semantic triage, or queues. The production deterministic
  * filter mode stays `shadow`; candidate/ambiguous/low_signal semantics stay frozen.
  *
- * Clearance for this task: acquisition approved+enabled AND a recorded grant
- * covering deterministic processing of RSS title/excerpt metadata (a
+ * Clearance for this task: acquisition (active and auto-acquisition enabled; HOSTED-28, approval does not gate
+ * collection) AND a recorded grant covering deterministic processing of RSS title/excerpt metadata (a
  * title/excerpt retention or model-use token; a model token is NOT required).
  * A public URL or HTTP 200 is NEVER permission. Absent a registry snapshot
  * (`--registry-json`, a JSON object mapping sourceId to RegistryPermissionRow
@@ -339,7 +339,7 @@ export function loadRegistrySnapshot(jsonText: string): {
 }
 
 /**
- * Eval clearance: acquisition approved+enabled AND a recorded grant covering
+ * Eval clearance: acquisition (active and auto-acquisition enabled, HOSTED-28) AND a recorded grant covering
  * deterministic processing of RSS title/excerpt metadata. Retention grants
  * suffice on their own; model-use grants also imply processing permission.
  * Anything else (including legacy-only tokens without reviewer-recorded

@@ -621,7 +621,13 @@ export type ProposalGateReason =
    * EVENT_TIME_UNKNOWN_WAIVER). A moderator correction still refuses a missing time with this code.
    */
   | "time_missing"
-  | "investigation_stopped_for_review";
+  | "investigation_stopped_for_review"
+  /**
+   * HOSTED-28 (owner decision, 18 Nov 2026): a claim's source is registered but not approved (revoked, suspended or
+   * pending). Never waived, not even under local_relaxed. The proposal waits for a moderator, and a moderator publish
+   * is refused too. Existing published events are not withdrawn.
+   */
+  | "source_revoked";
 
 /** The L3 case status a proposal's linked investigation is in, read from its latest checkpoint. */
 export type LinkedInvestigationStatus = "open" | "paused" | "completed" | "stopped_for_review";
@@ -629,6 +635,13 @@ export type LinkedInvestigationStatus = "open" | "paused" | "completed" | "stopp
 export interface ProposalGateOptions {
   /** Registry source ids whose current permissions grant public display. Resolved by the caller. */
   readonly publicDisplaySourceIds: ReadonlySet<string>;
+  /**
+   * HOSTED-28 (owner decision, 18 Nov 2026): registry source ids whose approval is not `approved`, resolved by the
+   * caller next to publicDisplaySourceIds. A claim from one of them is refused with `source_revoked` before any waiver.
+   * A source with no registry row is not listed, so the local_relaxed waiver still applies to it. Omitted means the
+   * caller knows of no revoked source. decideProposal always passes it.
+   */
+  readonly revokedSourceIds?: ReadonlySet<string>;
   /**
    * F-04 (ADR-061 amendment): the status of the investigation the proposal is linked to. Null or omitted
    * means no linked investigation. Only `stopped_for_review` is refused. A moderator must resolve the case first.
@@ -792,7 +805,10 @@ function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, 
     if (claim.support_assessment !== "supported") reasons.add("claim_unsupported");
     if (!isNonEmptyText(claim.quote_text)) reasons.add("claim_quote_missing");
     if (!isHttpUrl(claim.source_url)) reasons.add("claim_source_link_missing");
-    if (!isNonEmptyText(claim.source_id) || !options.publicDisplaySourceIds.has(claim.source_id)) {
+    // HOSTED-28: a revoked source is refused before the waiver branch, so local_relaxed never publishes it.
+    if (isNonEmptyText(claim.source_id) && options.revokedSourceIds?.has(claim.source_id)) {
+      reasons.add("source_revoked");
+    } else if (!isNonEmptyText(claim.source_id) || !options.publicDisplaySourceIds.has(claim.source_id)) {
       if (waivePermission) {
         permissionWaived = true;
       } else {
@@ -808,7 +824,8 @@ function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, 
  * claim's source has a link and public-display permission. It does not check labels, discrepancies or
  * correlation. Moderator publication uses this check. It has no waiver, so ADR-061's local relaxation
  * never reaches moderator publication. It also refuses a proposal linked to a stopped_for_review
- * investigation (F-04), which the automatic gate shares.
+ * investigation (F-04), which the automatic gate shares. HOSTED-28: a claim from a revoked source is
+ * refused with `source_revoked`.
  */
 export function assessProposalSourceGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
   return runProposalSourceGate(proposal, options, false).reasons;
@@ -818,7 +835,8 @@ export function assessProposalSourceGate(proposal: unknown, options: ProposalGat
  * Automatic publication gate. Every check must pass. An empty result means the proposal may publish
  * without a moderator. A non-empty result means it waits for review, with the reasons recorded.
  * With `sourcePermission: "local_relaxed"` only the public-display permission check is skipped, and
- * the skip is reported in `waivers`. HOSTED-21: a missing event time is not a reason here. It is
+ * the skip is reported in `waivers`. HOSTED-28: a claim from a revoked source (`revokedSourceIds`) is never
+ * waived and gives `source_revoked`. HOSTED-21: a missing event time is not a reason here. It is
  * reported in `waivers` as `event_time_unknown`, and the event time stays unknown. A malformed time holds.
  * All other checks still apply.
  */

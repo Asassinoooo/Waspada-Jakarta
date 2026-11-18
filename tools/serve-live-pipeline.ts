@@ -317,7 +317,7 @@ function openHostedSession(): HostedSession {
 
 /**
  * Headless: refuse to start only if a source is missing from source_registry (owner decision, 16 Nov).
- * A revoked or disabled source is logged as skipped and the rest of the server keeps running.
+ * A paused, retired or disabled source is logged as skipped and the rest of the server keeps running.
  */
 async function assertHostedSourceCoverage(executor: TransactionalSqlExecutor): Promise<void> {
   const expectedIds = expectedLiveSourceIds();
@@ -647,8 +647,9 @@ async function main() {
       let totalHeld = 0;
       let totalDuplicates = 0;
       let totalBudgetDeferred = 0;
-      // HOSTED-03 (owner, 16 Nov): read approval and auto-acquisition for every feed before any fetch.
-      // A revoked, disabled or missing row is not fetched. The triage gate below is not the control for this.
+      // HOSTED-03 (owner, 16 Nov): read registry status and auto-acquisition for every feed before any fetch.
+      // A paused, retired, disabled or missing row is not fetched. Approval does not gate collection (HOSTED-28).
+      // The triage gate below is not the control for this.
       const feedRows = await loadRegistryRows(executor, liveFeeds.map((feed) => feed.sourceId));
       const feedRowById = new Map(feedRows.map((row) => [row.source_id, row] as const));
       const notFetched: string[] = [];

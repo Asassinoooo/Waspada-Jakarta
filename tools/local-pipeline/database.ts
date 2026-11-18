@@ -187,7 +187,7 @@ async function bindSyntheticProfile(executor: TransactionalSqlExecutor, profileI
     const storedSource = source.rows[0];
     if (!storedSource || storedSource.trace_id !== bootstrapTraceId || storedSource.source_kind !== 'other'
       || storedSource.access_method !== 'manual_fixture' || storedSource.registry_status !== 'active'
-      || storedSource.approval_status !== 'approved' || storedSource.auto_acquisition_enabled !== true
+      || storedSource.auto_acquisition_enabled !== true
       || storedSource.auto_publication_policy !== 'never' || Number(storedSource.polling_interval_seconds) !== 60
       || storedSource.approved_hosts.length !== 0) {
       throw new Error('Local authored source conflicts with stored registry state');

@@ -173,8 +173,8 @@ async function readWriteBody(request: Request): Promise<WriteBody> {
 }
 
 /**
- * Public-display state from the existing permission model. Approval is one input; collection and a
- * public_display reuse token are the others. This route never writes any of them to grant display.
+ * Public-display state from the existing permission model. Approval and a public_display reuse token are the inputs
+ * (HOSTED-28: collection does not gate display). This route never writes any of them to grant display.
  */
 function toItem(record: SourceApprovalRecord, nowIso: string): AdminSourceApprovalItem {
   const permissions = evaluateSourcePermissions(
