@@ -84,7 +84,7 @@ Results on 17 Nov 2026 (HOSTED-23): `/`, `/api/v1/events`, `/api/v1/context`, `/
 
 - No off-provider backup. Neon Free is the only copy of the hosted data. Export it yourself if you need one.
 - The site is only as live as the ingest runs. GitHub's own schedule fired once in about 18 hours (17 to 18 Nov 2026), so since HOSTED-25 the Worker cron starts each run instead (section 7).
-- The hosted ingest does not update `source_registry.health_status`, `last_checked_at` or `last_success_at`, so per-source health is read from the run log counts, not from the registry.
+- Per-source health in `source_registry` (`health_status`, `last_checked_at`, `last_success_at`) is written by the GitHub Actions ingest only (HOSTED-24B, HOSTED-25). A PC run against the hosted database logs `skipped`, so a local network problem cannot mark a source degraded.
 - SSE is per isolate. A client sees updates only from its own isolate, so the web app polls instead.
 - The production Worker has a cron trigger (`7,37 * * * *`, HOSTED-25). With `SCHEDULED_MODE=github_dispatch` its `scheduled()` handler only sends one `workflow_dispatch` request to GitHub and logs `[ingest-dispatch] outcome=<code>`. It never polls or ingests in the Worker.
 - Rollback to the previous Worker version: `npx wrangler rollback --env production`.

@@ -1,5 +1,16 @@
 # Requirements gap report
 
+## Update 18 Nov 2026 (TG-DOCS-02)
+
+Superseded items. The text below is kept as written; these statements are no longer true:
+- The hosted topology is implemented and deployed (17 Nov 2026, HOSTED-23): https://waspada-jakarta.waspada-worker.workers.dev on Cloudflare Workers Free and Neon Free via Hyperdrive. `npm run deploy:prod` is the deploy script.
+- A cron trigger exists: the production Worker cron (`7,37 * * * *`, HOSTED-25) starts the GitHub Actions ingest (`.github/workflows/ingest.yml`), which also runs the freshness pass.
+- PBKDF2 login CPU is measured: 25–38 ms at 100,000 iterations, no CPU-limit failure (ADR-065).
+- A missing event time no longer blocks auto-publish; it is waived as `event_time_unknown` (HOSTED-21, f8463b6). Corrections still need a time.
+- The SDP section 10 rights wording was aligned with ADR-065 (5ea3c83).
+- Current CI evidence: run 44211263890 on 6fff929 (18 Nov 2026), 2,555 tests passed, 0 failed. The current per-level status is in `TEST-SUMMARY.md`, `INTEGRATION-TEST.md` and `SYSTEM-TEST.md`.
+- Still open: no off-provider backup (ADR-065 limitation 2), no source-rights clearance.
+
 ## Update 16 Nov 2026 (HOSTED-01 documentation decisions)
 
 Basis: owner decisions of 16 Nov 2026, recorded as documentation. No code or clause verdict changed. Four test-case status cells changed (ST-F-01, AT-01, T1, VIS-02). The 14 Nov update below is kept as it was.

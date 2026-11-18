@@ -1,14 +1,16 @@
 # Defect and finding log
 
-Project: Waspada Jakarta (Team 12, RPL course). Status date: 13 November 2026. Branch: `work/TEST-DOC-01-chapter5`.
+Project: Waspada Jakarta (Team 12, RPL course). Status date: 18 November 2026. Branch: `work/TEST-DOC-01-chapter5`.
 Updated 16 November 2026 (HOSTED-01 documentation decisions): status lines on F-01, F-03, F-04, F-12, F-13 and F-14; F-13 and F-14 added to section B.
+Updated 18 November 2026 (TG-DOCS-02): status for R-01, R-05, R-06, R-09 and R-10; CI status on F-03, F-04, F-13 and F-14; the F-14 residual; new entries D-03, F-16, F-17, F-18 and F-ALERT-02.
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules
 
 - A **defect** is a confirmed fault with a commit that fixes it. Section A lists defects.
-- A **finding** is an observation that needs a decision. Section B lists findings, and each entry has a status line: open, fixed (with the commit SHA) or decided (with the owner's decision). A finding keeps its F-nn ID after a fix, so that the backlog and the gap reports still resolve. Findings are not moved to section A and are not renumbered.
+- A **finding** is an observation that needs a decision. Section B lists findings, and each entry has a status line: open, fixed (with the commit SHA), mitigated (with the commit SHA, where the cause is outside the repository) or decided (with the owner's decision). A finding keeps its F-nn ID after a fix, so that the backlog and the gap reports still resolve. Findings are not moved to section A and are not renumbered.
 - Commit SHAs in this file were checked with `git -C <worktree> show -s --format='%h %s' <sha>` on 13 November 2026. SHAs checked on 13 November 2026 (the six in sections A and C) all resolved. The fix SHAs for F-03, F-04, F-13 and F-14 (section B) were checked on 16 November 2026 with `git show -s` and `git branch -r --contains`; each is on `origin/main`.
+- SHAs and run IDs added on 18 November 2026 were checked with `git show -s`, `git merge-base --is-ancestor` and `gh run view` on that date.
 - Blocked and pending UAT results are not defects (`docs/testing/UAT.md` section 10).
 
 ## Section A: Verified defects (fixed)
@@ -29,9 +31,15 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - **Covered by:** no test found that seeds through `tools/serve-live-pipeline.ts` or asserts that `media` is refused. Other database tests use `newsroom` (for example `apps/db/test/pipeline-flow-store.test.ts` line 89). Regression coverage is a gap.
 - **Source:** `DOKUMENTASI_UNIT_TESTING.md` section 2.a; `git show 973f70a`.
 
+### D-03: CI red on `main` on 16 and 17 Nov 2026, fixed forward
+
+- **Symptom:** the CI `test` job failed on three pushes to `main`: `8324c11` (run 43883966354, 16 Nov 2026), `5717d37` (run 43890955604, 16 Nov) and `181d331` (run 44003526985, 17 Nov).
+- **Fix:** the first green run after the 16 Nov failures was `c985712` (run 43897403670, 16 Nov). The commit messages of `5717d37` (CI-FIX-01) and `c985712` (CI-FIX-02) name the same area: the detail snapshot and its fixtures, which involve `locationLabelPresent`. The cause of the 17 Nov failure is not recorded in the repository. The next push, `330b20d` (run 44009413390), passed. That commit changes only `.github/workflows/ingest.yml`.
+- **Status (18 Nov 2026): closed.** The current head, `6fff929`, passed (run 44211263890).
+
 ## Section B: Findings and their status
 
-Each entry carries a status line as of 16 November 2026. An entry without a fixed or decided status is open.
+Each entry carries a status line as of 18 November 2026. An entry without a fixed, mitigated or decided status is open. F-15 is not used here, because `REQUIREMENTS-GAP.md` uses it for a proposed CI item.
 
 ### F-01: the public map shows no warning-boundary display
 
@@ -49,13 +57,13 @@ Each entry carries a status line as of 16 November 2026. An entry without a fixe
 
 - **Observation:** `apps/worker/src/layers/l1-data-knowledge/webhook-ingest.ts` imports the L2 proposal engines (`apps/worker/src/layers/l2-model-grounding/proposal-engine.ts`, `apps/worker/src/layers/l2-model-grounding/correlated-proposal-engine.ts`) and the L4 `apps/worker/src/layers/l4-application-integration/event-broadcaster.ts`. The import block is at lines 13 to 24. `CLAUDE.md` allows L1 one fixed L2 extraction adapter and says L1 must not investigate or publish.
 - **Evidence:** `docs/testing/INTEGRATION-TEST.md` section 6 (that section gives lines 15 to 25; the block is at 13 to 24 in this file). `CLAUDE.md`, layer table (repository root). Affects IT-B1-06.
-- **Status (16 Nov 2026): fixed in `cffc865`** (`fix(TG-F03)`, 13 Nov 2026; on `origin/main`; CI result not checked). L1 webhook ingest now depends on ports (`DirectProposalPort`, `CorrelatedProposalPort`, `ModerationNotificationPort`) wired in `index.ts`. The import-boundary test `layer-import-boundary.test.ts` scans layer imports. **Residual:** F-03-1, an allowlisted L5 telemetry import in `synthetic-fixture-runner`, is not fixed (SDP §10).
+- **Status (16 Nov 2026): fixed in `cffc865`** (`fix(TG-F03)`, 13 Nov 2026; on `origin/main`; CI for `6fff929` (run 44211263890, 18 Nov 2026) is green and includes it). L1 webhook ingest now depends on ports (`DirectProposalPort`, `CorrelatedProposalPort`, `ModerationNotificationPort`) wired in `index.ts`. The import-boundary test `layer-import-boundary.test.ts` scans layer imports. **Residual:** F-03-1, an allowlisted L5 telemetry import in `synthetic-fixture-runner`, is not fixed (SDP §10).
 
 ### F-04: the publication gate does not read the L3 ledger status
 
 - **Observation:** the proposal writer checks only that the investigation lineage rows exist (`apps/db/src/event-proposals.ts`, `requireInvestigationLineage`, line 566). On the code read, no L4 gate file or proposal file references `case_status` or `stopped_for_review`. The grep was run on 13 Nov 2026 in the main checkout over `apps/worker/src` and `apps/db/src`; the only matches were in L3, L5 and the ledger. TI-02 is held because of a disputed claim and an unresolved field, not because of the ledger status. So a proposal from a `stopped_for_review` case is not refused on that status alone.
 - **Evidence:** TEST-INT-01 case TI-02 (`apps/db/test/l3-investigation-publication-gate.test.ts` on main, commit `71022ee`). Affects TI-02 and IT-B3-01.
-- **Status (16 Nov 2026): fixed in `593f849`** (`fix(TG-F04)`, 13 Nov 2026; on `origin/main`; CI result not checked). Owner decision (c), 13 Nov 2026: the gate refuses a proposal whose investigation's latest checkpoint is `stopped_for_review`. On the agent path it is queued with `investigation_stopped_for_review`; on the moderator path it is denied (API 409). Reject is still allowed. Recorded in the ADR-061 amendment of 13 Nov 2026. **Residuals:** the expiry sweep takes no lock and may write a second decision row for the same proposal (code reading, not reproduced); `assessAutoPublication` reads the investigation's latest status only, not grounding sufficiency; the L4 publication role cannot read `investigation_id` or `case_status` on hosted Neon, so the check fails closed there (SDP §10); the locks are not exercised under concurrent load or on hosted Neon.
+- **Status (16 Nov 2026): fixed in `593f849`** (`fix(TG-F04)`, 13 Nov 2026; on `origin/main`; CI for `6fff929` (run 44211263890, 18 Nov 2026) is green and includes it). Owner decision (c), 13 Nov 2026: the gate refuses a proposal whose investigation's latest checkpoint is `stopped_for_review`. On the agent path it is queued with `investigation_stopped_for_review`; on the moderator path it is denied (API 409). Reject is still allowed. Recorded in the ADR-061 amendment of 13 Nov 2026. **Residuals:** the expiry sweep takes no lock and may write a second decision row for the same proposal (code reading, not reproduced); `assessAutoPublication` reads the investigation's latest status only, not grounding sufficiency; the L4 publication role cannot read `investigation_id` or `case_status` on hosted Neon, so the check fails closed there (SDP §10); the locks are not exercised under concurrent load or on hosted Neon.
 
 ### F-05: no PGlite test for the webhook route or the BMKG CAP parser
 
@@ -105,14 +113,38 @@ Each entry carries a status line as of 16 November 2026. An entry without a fixe
 ### F-13: the record page and the #peta sheet print "this API record has no geometry" for every record
 
 - **Observation:** the record page and the `#peta` sheet say that an API record has no geometry, for every record, including records that have geometry (`TEST-EVALUATION.md`, top finding 2; `REQUIREMENTS-GAP.md`, "New defects proposed"). Found by code reading, not in a browser. Affects ST-F-01 and the FR-09 clause C2b.
-- **Status (16 Nov 2026): fixed in `de0b77f`** (`fix(TG-F13)`, 13 Nov 2026; on `origin/main`; CI result not checked). Mapped records are drawn. A missing field shows a neutral notice. Geometries outside the Jakarta view are counted, not drawn.
+- **Status (16 Nov 2026): fixed in `de0b77f`** (`fix(TG-F13)`, 13 Nov 2026; on `origin/main`; CI for `6fff929` (run 44211263890, 18 Nov 2026) is green and includes it). Mapped records are drawn. A missing field shows a neutral notice. Geometries outside the Jakarta view are counted, not drawn.
 - **Residual:** covered at component level (`event-detail-geometry.test.tsx`), not checked in a browser. ST-F-01 is points-only scope (F-01).
 
 ### F-14: proposal processing time was used as the public event time
 
 - **Observation:** proposal processing time was used as the public event time, and freshness was set to `current` by construction (`TEST-EVALUATION.md`, top finding 3). This conflicts with two CLAUDE.md invariants: keep event, issuer, acquisition and processing times distinct, and never invent a timestamp; and expiry, missing reports or an unavailable source never prove resolution or safety.
-- **Status (16 Nov 2026): fixed in `588e375`** (`fix(TG-F14)`, 13 Nov 2026; on `origin/main`; CI result not checked). With no explicit source event time, the start stays null with precision unknown, with no fallback to publish, retrieval or processing time. Freshness is `needs_update` with basis unknown, not `current`. Migration 048 drops NOT NULL on `incidents.first_observed_at`. Owner decision (f), 13 Nov 2026.
-- **Residuals:** news without an explicit event time now goes to the moderator queue as `time_missing`, so fewer items publish automatically. Rows published earlier keep processing-time starts until they are republished. FR-03 clauses 14 and 15 are not re-checked (`REQUIREMENTS-GAP.md`, 14 Nov 2026 update).
+- **Status (16 Nov 2026): fixed in `588e375`** (`fix(TG-F14)`, 13 Nov 2026; on `origin/main`; CI for `6fff929` (run 44211263890, 18 Nov 2026) is green and includes it). With no explicit source event time, the start stays null with precision unknown, with no fallback to publish, retrieval or processing time. Freshness is `needs_update` with basis unknown, not `current`. Migration 048 drops NOT NULL on `incidents.first_observed_at`. Owner decision (f), 13 Nov 2026.
+- **Residuals:** Since HOSTED-21 (`f8463b6`, 17 Nov 2026), a missing event time is waived for auto-publish. The check is recorded as the waiver `event_time_unknown`, and the public detail shows "Waktu kejadian tidak disebutkan". Only a malformed time holds an item (`time_missing`). A correction still needs an event time (`assessCorrectionGate`; ADR-061 amendment of 17 Nov 2026). Rows published earlier keep processing-time starts until they are republished. FR-03 clauses 14 and 15 are not re-checked (`REQUIREMENTS-GAP.md`, 14 Nov 2026 update).
+
+### F-16: GitHub's scheduled ingest ran too rarely
+
+- **Observation:** the hosted ingest's `schedule:` trigger fired once in about 18 hours. The only scheduled run recorded on 17 and 18 Nov 2026 was run 44151179665 (17 Nov, 18:44 UTC). The site is only as current as its last ingest run (`docs/DEPLOYMENT.md`, known limitations).
+- **Evidence:** GitHub Actions run 44151179665 (event `schedule`, `gh run view`); ADR-065, 18 Nov 2026 amendment.
+- **Status (18 Nov 2026): mitigated (`a83b2c0`, HOSTED-25).** The `schedule:` trigger was removed from `ingest.yml`. The production Worker cron (`7,37 * * * *`) now sends one `workflow_dispatch` per slot. The first run it started, 44217189260, completed with success (ST-H-10). The cause is GitHub's scheduler, which is outside the repository. The cron needs the `GITHUB_DISPATCH_TOKEN` secret. Without it the cron logs `outcome=not_configured`, and an expired token shows as `rejected_auth` (`docs/DEPLOYMENT.md` §7).
+
+### F-17: `*.workers.dev` is blocked by some ISP DNS resolvers
+
+- **Observation:** a resolver on one Indonesian mobile network (XL Axiata) answers `*.workers.dev` with a block page. The browser then shows a TLS "certificate name does not match" error. The site itself is fine.
+- **Evidence:** `docs/DEPLOYMENT.md` (note at the top); `docs/testing/UAT.md` section 9.2, network note.
+- **Status (18 Nov 2026): open.** Another resolver reaches the site, such as Cloudflare WARP or 1.1.1.1. Decision needed (owner): whether the public site should use a custom domain.
+
+### F-18: ANTARA feeds failed from one PC network
+
+- **Observation:** a local ingest run on 17 Nov 2026 from one PC network failed to fetch three ANTARA feeds. GitHub run 44071702304, on the same day, fetched all 16 sources (`ok=16 failed=0`). The local log is not cited in the repository.
+- **Evidence:** GitHub Actions run 44071702304 (`gh run view`); ADR-065, 18 Nov 2026 amendment.
+- **Status (18 Nov 2026): mitigated; not a product fault.** The failure is on one network path. Since HOSTED-24B and HOSTED-25 (`25d5d6a`, `a83b2c0`), only GitHub runs write hosted source health. A PC run logs `skipped`, so a local network problem cannot mark a source degraded (`docs/DEPLOYMENT.md`, known limitations).
+
+### F-ALERT-02: a published version did not reach `/api/v1/updates`
+
+- **Observation:** a published version was not listed in `/api/v1/updates`. The test for it was a todo in `apps/worker/test/repeated-coverage-alerts.test.ts`. The local `serve:live` answered 503 for updates (`docs/testing/PERFORMANCE.md`). This ID is the one used in `SOFTWARE_DEVELOPMENT_PLAN.md`, `docs/testing/TEST-EVALUATION.md` and `docs/IMPLEMENTATION_BACKLOG.md`. It is kept so that those references still resolve.
+- **Evidence:** the test "a newly published version appears in the public views and the updates feed (F-ALERT-02, HOSTED-02)" in `apps/worker/test/repeated-coverage-alerts.test.ts` is active, with no todo left. CI run 44211263890 is green at `6fff929`. The hosted `/api/v1/updates` returned 200 on 17 Nov 2026 (`docs/DEPLOYMENT.md` section 6).
+- **Status (18 Nov 2026): fixed in `1a11d3c`** (`feat(HOSTED-02)`, 16 Nov 2026): a publish writes a v2.0 event record and review row.
 
 ## Section C: Removed from the defect list (not fixes)
 
@@ -125,18 +157,20 @@ These commits were in an earlier draft of the defect list. The corrected unit re
 
 ## Section D: Test run defects
 
-Runs on 13 November 2026: T1 to T5 on the demo dataset (`docs/testing/UAT.md` section 9), and persona walkthroughs on the local live app (section 9.1). No CI failure is recorded for `cec9358`.
+Runs on 13 November 2026: T1 to T5 on the demo dataset (`docs/testing/UAT.md` section 9), and persona walkthroughs on the local live app (section 9.1). No CI failure is recorded for `cec9358`. Hosted run on 17 November 2026: R-09 and R-10 (`docs/testing/UAT.md` section 9.2).
 
 | ID | Date | Run ID | Step | Symptom | Evidence path | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| R-01 | 13 Nov 2026 | run-02 | T5, phone, 'workspace header marks the page as demo' | At 390 px the admin header shows no demo label. 'Pratinjau sumber (demo)' is hidden (`admin-workspace.css:77-80`), and 'Data contoh' shrinks to a dot. The drawer note 'Mode demo terisolasi' still shows. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` | Open. Needs a decision: label the phone header, or accept the drawer note as the phone demo marker (FR-15). |
+| R-01 | 13 Nov 2026 | run-02 | T5, phone, 'workspace header marks the page as demo' | At 390 px the admin header shows no demo label. 'Pratinjau sumber (demo)' is hidden (`admin-workspace.css:77-80`), and 'Data contoh' shrinks to a dot. The drawer note 'Mode demo terisolasi' still shows. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` | Open. Fix proposed in `7cf6c0f` (compact Demo chip in the admin header at 480 px or less, demo dataset only). Not confirmed: needs a T5 phone re-run. |
 | R-02 | 13 Nov 2026 | run-01 | T5, steps 4 to 7, desktop and phone | The script checked source copy from `UnifiedSourceExplorer.tsx`. That copy is `display: none` on the map view by design (`unified-source-explorer.css:802-807`, commit `f0395b0`). Test-script defect, not a product defect. | `.codex-build/uat/run-01/t5-admin-sources.json` | Not a defect. Script corrected on `work/UAT-RUN-01` to check the notice the Sumber panel shows. The four source-copy checks are reported as skipped. |
 | R-03 | 13 Nov 2026 | run-02 | T4, phone, 'sign in as demo.moderator' | Login returned HTTP 429. Repeated demo logins in one session tripped the rate limit. The window length is not measured. | `.codex-build/uat/run-02/t4-moderator.json` | Not a product defect (test-run condition). Re-run after a pause, with fewer logins per run. |
 | R-04 | 13 Nov 2026 | run-02 | T4, desktop, 'at least one proposal is in the queue' | The demo moderation queue is empty, so the decision steps cannot run. | `.codex-build/uat/run-02/t4-moderator.json` | Blocked, not a defect. Needs a demo proposal fixture (decision). |
-| R-05 | 13 Nov 2026 | commuter-run-01, visitor-run-01, resident-run-01 | Event detail sheet for a live event, both viewports | The sheet for a live event shows "Detail dari API lokal · record sintetis" and "Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta." The lifecycle reads "Berlangsung (nilai fixture)" and the freshness reads "... saat evaluasi fixture". The text is hardcoded in the event-detail branch with no dataset check (`apps/web/src/EventDetail.tsx` lines 233 to 243; `display.ts` lines 58 and 70). Live records are labelled as synthetic. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-{commuter,visitor,resident}-run-01/` | Open, confirmed defect. Fix: choose the wording from the dataset mode. |
-| R-06 | 13 Nov 2026 | student-run-01 (attempts 2 and 3) | ACC-02, desktop and phone | After "Keluar" on the same page, the header menu still lists "Akun saya" until the page changes. The account state is re-read only on hash navigation (`apps/web/src/AppShell.tsx` line 149). Sign-out refreshes it only on success (`AccountPages.tsx` lines 764 to 772). | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-student-run-01/` | Open, confirmed defect. Fix: refresh the account state after sign-out. |
+| R-05 | 13 Nov 2026 | commuter-run-01, visitor-run-01, resident-run-01 | Event detail sheet for a live event, both viewports | The sheet for a live event shows "Detail dari API lokal · record sintetis" and "Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta." The lifecycle reads "Berlangsung (nilai fixture)" and the freshness reads "... saat evaluasi fixture". The text is hardcoded in the event-detail branch with no dataset check (`apps/web/src/EventDetail.tsx` lines 233 to 243; `display.ts` lines 58 and 70). Live records are labelled as synthetic. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-{commuter,visitor,resident}-run-01/` | Fixed in `7cf6c0f` (16 Nov 2026, HOSTED-05): live and unknown dataset modes no longer show fixture wording. Persona re-run pending. |
+| R-06 | 13 Nov 2026 | student-run-01 (attempts 2 and 3) | ACC-02, desktop and phone | After "Keluar" on the same page, the header menu still lists "Akun saya" until the page changes. The account state is re-read only on hash navigation (`apps/web/src/AppShell.tsx` line 149). Sign-out refreshes it only on success (`AccountPages.tsx` lines 764 to 772). | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-student-run-01/` | Fixed in `7cf6c0f` (16 Nov 2026, HOSTED-05): the header re-reads the session after sign-out, on success or error. Persona re-run pending. |
 | R-07 | 13 Nov 2026 | student-run-01 (attempt 3) | Sign-in on phone | "Terlalu banyak percobaan masuk. Tunggu beberapa menit..." after repeated sign-ins during the walkthroughs. A test-run condition, not a defect. The window length is not measured. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-student-run-01/` | Not a defect (run condition). Space the sign-ins. |
 | R-08 | 13 Nov 2026 | commuter-run-01 (attempt 1) | COM-02, both viewports | The script waited for `#detail/api/`, which was a wrong route assumption. Results from attempt 2 stand. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-commuter-run-01/` | Not a defect (script). Corrected in attempt 2. |
+| R-09 | 17 Nov 2026 | hosted23-u3 (UAT §9.2, PUB-01 public phone check) | Event detail, phone 390 px, hosted site | The detail header reads "Detail dari API lokal" on the hosted site, which holds live records. | `.codex-build/uat/hosted23-u3/02-detail-phone.png` | Closed. Fixed in `88bcf69` (HOSTED-24A, 17 Nov 2026); verified on the live site (ADR-065, 18 Nov 2026 amendment). |
+| R-10 | 17 Nov 2026 | hosted23-u3 (UAT §9.2, PUB-01 public phone check) | Event detail, phone 390 px, source lines per claim | Each claim lists the same outlet (DETIK UTAMA) twice, one attribution line per evidence item from that source. | `.codex-build/uat/hosted23-u3/02-detail-phone.png` | Closed. Fixed in `88bcf69` (HOSTED-24A, 17 Nov 2026); verified on the live site (ADR-065, 18 Nov 2026 amendment). |
 
 Entry format for later use:
 
