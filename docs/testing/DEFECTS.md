@@ -37,6 +37,13 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - **Fix:** the first green run after the 16 Nov failures was `c985712` (run 43897403670, 16 Nov). The commit messages of `5717d37` (CI-FIX-01) and `c985712` (CI-FIX-02) name the same area: the detail snapshot and its fixtures, which involve `locationLabelPresent`. The cause of the 17 Nov failure is not recorded in the repository. The next push, `330b20d` (run 44009413390), passed. That commit changes only `.github/workflows/ingest.yml`.
 - **Status (18 Nov 2026): closed.** The current head, `6fff929`, passed (run 44211263890).
 
+### D-04: PGlite WebAssembly crash on the CI runner (flaky)
+
+- **Symptom:** CI run 44220257264 (commit `a9ddcc7`, documentation only, 18 Nov 2026) failed in `Run Database Tests`. Node 24.22.2 stopped with `V8_Fatal ... UnregisterWasmAllocation` in `l3-investigation-publication-gate.test.ts` after its first case passed.
+- **Cause:** a V8 crash during repeated PGlite (WebAssembly) instantiation, the same class the per-file DB runner was built to contain (`CLAUDE.md`, test runner notes). It is not a test assertion failure and is not counted as a pass.
+- **Action:** the failed job was re-run and passed (399 of 399 DB tests; 2,555 in total).
+- **Status (18 Nov 2026): open, monitor.** If it repeats, pin the CI Node patch version or isolate the file further.
+
 ## Section B: Findings and their status
 
 Each entry carries a status line as of 18 November 2026. An entry without a fixed, mitigated or decided status is open. F-15 is not used here, because `REQUIREMENTS-GAP.md` uses it for a proposed CI item.

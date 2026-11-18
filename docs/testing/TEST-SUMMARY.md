@@ -18,6 +18,8 @@ No test, build or server was run to write this summary. It compiles records that
 
 ## 2 Automated evidence from CI
 
+**Docs commit `a9ddcc7` (TG-DOCS-02), run 44220257264.** The first attempt failed when the runner's Node 24.22.2 crashed (V8 fatal error in a WebAssembly allocation) inside `apps/db/test/l3-investigation-publication-gate.test.ts`; see D-04 in `DEFECTS.md`. The re-run of the failed job passed with the same totals as below (2,555 passed, 0 failed). The commit changes documentation only.
+
 **Current result: run 44211263890** (commit `6fff929`, 18 November 2026, conclusion success). Ubuntu 24.04 runner, Node 24. Every step passed (checked with the GitHub CLI and the run log on 18 November 2026). Totals from the run log:
 
 | CI step | Count in log | Result in log |
