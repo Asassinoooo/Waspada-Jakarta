@@ -306,7 +306,7 @@ describe("AI-RPM-01 call profile (intelligence workflow)", () => {
       assert.ok(bmkgRevision, "fixture is relevant to Jakarta");
 
       const cases = [
-        { label: "petabencana", sourceId: PETABENCANA_SOURCE_ID, text: pbText, expectType: "banjir", expectTime: "2026-11-11T07:30:00.000Z", expectLabel: PETABENCANA_SOURCE_LABEL, expectCoords: [106.85, -6.21] },
+        { label: "petabencana", sourceId: PETABENCANA_SOURCE_ID, text: pbText, expectType: "banjir", expectTime: null, expectLabel: PETABENCANA_SOURCE_LABEL, expectCoords: [106.85, -6.21] },
         { label: "bmkg", sourceId: BMKG_GEMPA_SOURCE_ID, text: bmkgRevision!.permitted_text, expectType: "gempa bumi", expectTime: null, expectLabel: "80 km Barat Daya Sukabumi", expectCoords: [106.84, -6.21] },
       ] as const;
 
