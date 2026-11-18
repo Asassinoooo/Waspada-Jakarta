@@ -11,6 +11,7 @@ import {
   createPipelineFlowStore,
   PIPELINE_FLOW_DB_ITEM_NODES,
   type PipelineFlowAggregates,
+  type PipelineFlowCycleRunAggregate,
   type PipelineFlowStoredItem,
 } from "../../../../db/src/pipeline-flow-store.js";
 import {
@@ -30,13 +31,21 @@ import {
   type PipelineFlowItemsDto,
   type PipelineFlowLane,
   type PipelineFlowNodeDto,
+  type PipelineFlowCycleDto,
   type PipelineFlowNodeId,
   type PipelineFlowRange,
   type PipelineFlowRuntimeDto,
   type PipelineFlowSnapshotDto,
   type PipelineFlowWindowDto,
 } from "../../contracts/pipeline-flow.js";
-import type { PipelineRuntimeNineRouterBucket, PipelineRuntimeSnapshot, PipelineRuntimeStage, PipelineRuntimeStatusProvider } from "../../runtime/pipeline-runtime-status.js";
+import {
+  PIPELINE_RUNTIME_THROUGHPUT_WINDOW_MS,
+  type PipelineRuntimeCycle,
+  type PipelineRuntimeNineRouterBucket,
+  type PipelineRuntimeSnapshot,
+  type PipelineRuntimeStage,
+  type PipelineRuntimeStatusProvider,
+} from "../../runtime/pipeline-runtime-status.js";
 import type { WorkerEnvironment } from "./api.js";
 
 export const PIPELINE_FLOW_ROUTE_PATH = "/api/v1/pipeline/flow";
@@ -116,6 +125,46 @@ function runtimeNineRouterCooldown(bucket: PipelineRuntimeNineRouterBucket | und
   return bucket ? bucket.cooldownRemainingMs : 0;
 }
 
+/**
+ * HOSTED-30: the runtime cycle shape, filled from the latest recorded hosted run (waspada.pipeline_cycle_runs). The feed
+ * counts cover every source the run addressed (PetaBencana, BMKG and the RSS feeds), not only the 14 RSS feeds the
+ * in-process runtime counts. The hosted run has no in-process cycle, so its `running` is always false.
+ */
+function cycleFromRecordedRun(run: PipelineFlowCycleRunAggregate): PipelineRuntimeCycle {
+  return {
+    running: false,
+    sequence: run.runs_recorded,
+    started_at: run.started_at,
+    finished_at: run.finished_at,
+    duration_ms: run.elapsed_ms,
+    new_items_cap: run.new_items_cap,
+    new_items_used: run.new_items_used,
+    feeds_total: run.feeds_ok + run.feeds_failed + run.feeds_not_fetched,
+    feeds_failed: run.feeds_failed,
+    // A failed source, a poll that threw, or a run that exited non-zero each count as one error.
+    error_count: run.feeds_failed + run.poll_errors + (run.exit_code === 0 ? 0 : 1),
+  };
+}
+
+/** HOSTED-30: the per-run counts a recorded hosted cycle adds to the cycle node. */
+function recordedRunCounts(run: PipelineFlowCycleRunAggregate): Counts {
+  return {
+    feeds_ok: run.feeds_ok,
+    items_new: run.items_new,
+    ai_completed: run.ai_completed,
+    ai_not_completed: run.ai_not_completed,
+    published: run.published,
+    held: run.held,
+  };
+}
+
+/** HOSTED-30: a recorded run that finished inside the 15-minute window counts as one unit of throughput. */
+function recordedRunFinishedWithin15m(run: PipelineFlowCycleRunAggregate, generatedAt: string): boolean {
+  const finished = Date.parse(run.finished_at);
+  const now = Date.parse(generatedAt);
+  return Number.isFinite(finished) && Number.isFinite(now) && now - finished >= 0 && now - finished < PIPELINE_RUNTIME_THROUGHPUT_WINDOW_MS;
+}
+
 export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): PipelineFlowSnapshotDto {
   const { aggregates: a, runtime } = input;
   const range = input.range ?? PIPELINE_FLOW_DEFAULT_RANGE;
@@ -141,6 +190,9 @@ export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): Pipeli
         acquisition_waiting: row?.acquisition_waiting ?? 0,
         acquisition_running: row?.acquisition_running ?? 0,
         acquisition_failed_24h: row?.acquisition_failed_24h ?? 0,
+        checked_24h: row?.checked_24h ?? 0,
+        succeeded_24h: row?.succeeded_24h ?? 0,
+        never_checked: row?.never_checked ?? 0,
       },
       throughput: revisions15,
       failing: unhealthy > 0 || failed15 > 0,
@@ -353,7 +405,9 @@ export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): Pipeli
     unavailable: nr === null,
   };
 
-  const cycle = runtimeSnapshot?.cycle ?? null;
+  // HOSTED-30: the attached runtime status wins. Without it (the hosted Worker), the latest recorded hosted run is the cycle.
+  const cycleRun = runtimeSnapshot === null ? (a.cycle_run ?? null) : null;
+  const cycle: PipelineRuntimeCycle | null = runtimeSnapshot?.cycle ?? (cycleRun ? cycleFromRecordedRun(cycleRun) : null);
   drafts.cycle = {
     counts: cycle
       ? {
@@ -363,9 +417,10 @@ export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): Pipeli
         new_items_cap: cycle.new_items_cap ?? 0,
         feeds_failed: cycle.feeds_failed ?? 0,
         duration_ms: cycle.duration_ms ?? 0,
+        ...(cycleRun ? recordedRunCounts(cycleRun) : {}),
       }
       : {},
-    throughput: throughputOfRuntime("cycle"),
+    throughput: cycleRun ? (recordedRunFinishedWithin15m(cycleRun, input.generatedAt) ? 1 : 0) : throughputOfRuntime("cycle"),
     failing: cycle !== null && cycle.error_count > 0,
     waiting: false,
     active: cycle !== null && cycle.running,
@@ -389,40 +444,47 @@ export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): Pipeli
     throughput_15m: throughputById.get(to) ?? 0,
   }));
 
-  const runtimeDto: PipelineFlowRuntimeDto | null = runtimeSnapshot && nr && cycle
+  // HOSTED-30: `ninerouter` is null when no provider counters are attached (the hosted runtime). The runtime block is
+  // present whenever a cycle is, from the attached status or from the recorded hosted run.
+  const cycleDto: PipelineFlowCycleDto | null = cycle
     ? {
-      generated_at: runtimeSnapshot.generated_at,
-      ninerouter: {
-        chat: {
-          rpm: nr.chat.rpm,
-          tokens_available: nr.chat.tokensAvailable,
-          cooldown_remaining_ms: nr.chat.cooldownRemainingMs,
-          in_flight: nr.chat.inFlight,
-          queued: nr.chat.queued,
-        },
-        embed: {
-          rpm: nr.embed.rpm,
-          tokens_available: nr.embed.tokensAvailable,
-          cooldown_remaining_ms: nr.embed.cooldownRemainingMs,
-          in_flight: nr.embed.inFlight,
-          queued: nr.embed.queued,
-        },
-        call_counts: { chat: nr.callCounts.chat, embed: nr.callCounts.embed },
-      },
-      cycle: {
-        running: cycle.running,
-        sequence: cycle.sequence,
-        started_at: cycle.started_at,
-        finished_at: cycle.finished_at,
-        duration_ms: cycle.duration_ms,
-        new_items_cap: cycle.new_items_cap,
-        new_items_used: cycle.new_items_used,
-        feeds_total: cycle.feeds_total,
-        feeds_failed: cycle.feeds_failed,
-        error_count: cycle.error_count,
-      },
+      running: cycle.running,
+      sequence: cycle.sequence,
+      started_at: cycle.started_at,
+      finished_at: cycle.finished_at,
+      duration_ms: cycle.duration_ms,
+      new_items_cap: cycle.new_items_cap,
+      new_items_used: cycle.new_items_used,
+      feeds_total: cycle.feeds_total,
+      feeds_failed: cycle.feeds_failed,
+      error_count: cycle.error_count,
     }
     : null;
+  const runtimeDto: PipelineFlowRuntimeDto | null = cycleDto === null
+    ? null
+    : {
+      generated_at: runtimeSnapshot?.generated_at ?? input.generatedAt,
+      ninerouter: runtimeSnapshot && nr
+        ? {
+          chat: {
+            rpm: nr.chat.rpm,
+            tokens_available: nr.chat.tokensAvailable,
+            cooldown_remaining_ms: nr.chat.cooldownRemainingMs,
+            in_flight: nr.chat.inFlight,
+            queued: nr.chat.queued,
+          },
+          embed: {
+            rpm: nr.embed.rpm,
+            tokens_available: nr.embed.tokensAvailable,
+            cooldown_remaining_ms: nr.embed.cooldownRemainingMs,
+            in_flight: nr.embed.inFlight,
+            queued: nr.embed.queued,
+          },
+          call_counts: { chat: nr.callCounts.chat, embed: nr.callCounts.embed },
+        }
+        : null,
+      cycle: cycleDto,
+    };
 
   return {
     schema_version: PIPELINE_FLOW_SCHEMA_VERSION,

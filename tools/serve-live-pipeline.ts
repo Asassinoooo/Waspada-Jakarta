@@ -42,6 +42,7 @@ import {
   expireStaleProposals,
 } from "../apps/worker/src/layers/l4-application-integration/proposal-publication.js";
 import { createEventProposalWriter } from "../apps/db/src/event-proposal-writer.js";
+import { insertPipelineCycleRun } from "../apps/db/src/pipeline-cycle-runs.js";
 import { claimLiveDb, LiveDbBusyError, type LiveDbClaim } from "./live-db-lock.js";
 import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-restore.js";
 import { startLiveFreshness } from "./live-freshness-job.js";
@@ -76,6 +77,7 @@ import {
   resolveIngestTimeBudget,
   runOnceSequence,
   sweepUndecidedProposals,
+  type PollCycleCounts,
 } from "./hosted/ingest-once.js";
 import {
   formatSourceHealthLines,
@@ -538,16 +540,20 @@ async function main() {
   }
   console.log(`[Review] Undecided proposals expire after ${reviewTtlHours} h without a moderator decision (ADR-062).`);
   let isPolling = false;
-  async function pollLiveFeeds() {
+  async function pollLiveFeeds(): Promise<PollCycleCounts | undefined> {
     if (isPolling) {
       console.log("  [Ingestion Cycle] Previous poll cycle still running, skipping.");
-      return;
+      return undefined;
     }
     isPolling = true;
     const callsAtCycleStart = getNineRouterCallCounts();
     // FLOW-VIS-01: the fresh-call budget object is read at cycle end, after every feed has spent from it.
     let triageBudget: { remaining: number } | undefined;
     let cycleFeedFailures = 0;
+    // HOSTED-30: counts for the once run's cycle row. Set in the finally block, so they exist even when the cycle throws.
+    let pollCounts: PollCycleCounts | undefined;
+    let cycleItemsNew = 0;
+    let cycleRegistrySkipped = 0;
     // HOSTED-03: one count-only line per source per cycle, printed at the end of the cycle.
     const health: SourceHealthEntry[] = [];
     // HOSTED-24B: one fetch outcome per source this cycle tried. Written in the finally block below.
@@ -685,6 +691,7 @@ async function main() {
             }
           }
           totalIngest += admitted.length;
+          cycleItemsNew += admitted.length;
           totalHeld += feedRes.held ? feedRes.held.length : 0;
           totalDuplicates += feedRes.triageCounts?.duplicate ?? 0;
           totalBudgetDeferred += feedRes.triageCounts?.budgetDeferred ?? 0;
@@ -713,6 +720,7 @@ async function main() {
           if (!feedOutcomeRecorded) fetchResults.push({ sourceId: feed.sourceId, outcome: "failed" });
         }
       }
+      cycleRegistrySkipped = notFetched.length;
       console.log(formatNotFetchedLine(notFetched));
       console.log(`  [RSS Feeds (${liveFeeds.length})] Total: ${totalIngest} articles (ingest), ${totalHeld} held, ${totalDuplicates} duplicate, ${totalBudgetDeferred} deferred by cycle cap.`);
     } catch (e: unknown) {
@@ -774,6 +782,7 @@ async function main() {
       );
       if (insertedRevision.rows.length > 0) {
         structuredNew.set(rev.source_id, (structuredNew.get(rev.source_id) ?? 0) + 1);
+        cycleItemsNew += 1;
       }
 
       // Persist evidence chunks
@@ -857,8 +866,19 @@ async function main() {
       } catch (err) {
         console.warn(`[Review] expiry sweep failed (${err instanceof Error ? err.name : "unknown error"}).`);
       }
+      // HOSTED-30: the cycle's source outcomes, counted once. Not-fetched covers the registry gate and the lease skips.
+      const outcomeCount = (outcome: string) => fetchResults.filter((result) => result.outcome === outcome).length;
+      pollCounts = {
+        feedsOk: outcomeCount("ok"),
+        feedsFailed: outcomeCount("failed"),
+        feedsNotFetched: outcomeCount("not_fetched") + cycleRegistrySkipped,
+        itemsNew: cycleItemsNew,
+        newItemsCap: liveCycle.maxNewItemsPerCycle,
+        newItemsUsed: triageBudget ? liveCycle.maxNewItemsPerCycle - triageBudget.remaining : null,
+      };
       isPolling = false;
     }
+    return pollCounts;
   }
 
   // HOSTED-13: one bounded cycle for the scheduled run. Order: poll, drain, freshness, then close. No timer is
@@ -894,6 +914,29 @@ async function main() {
       // Order: poll, drain, publication sweep, attribution, location, freshness. A thrown drain, sweep or freshness error is
       // a hard error. The attribution and location backfills never fail the run.
       await runOnceSequence({
+        // HOSTED-30: the run's own start, so elapsed time covers setup as well, and one cycle row at the end (best effort).
+        runStartedAtMs: runStartMs,
+        recordCycle: (record) => insertPipelineCycleRun(executor, {
+          datasetKind: SERVE_LIVE_DATASET_KIND,
+          runId: `once-${crypto.randomUUID()}`,
+          startedAt: record.startedAt,
+          finishedAt: record.finishedAt,
+          elapsedMs: record.elapsedMs,
+          feedsOk: record.feedsOk,
+          feedsFailed: record.feedsFailed,
+          itemsNew: record.itemsNew,
+          aiCompleted: record.aiCompleted,
+          aiNotCompleted: record.aiNotCompleted,
+          published: record.published,
+          held: record.held,
+          exitCode: record.exitCode,
+          record: {
+            new_items_cap: record.newItemsCap,
+            new_items_used: record.newItemsUsed,
+            feeds_not_fetched: record.feedsNotFetched,
+            poll_errors: record.pollErrors,
+          },
+        }),
         // One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A failed source is logged inside pollLiveFeeds.
         poll: () => pollLiveFeeds(),
         onPollError: (err) => logError("[Ingestion Cycle] failed:", err),

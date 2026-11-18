@@ -357,9 +357,49 @@ export function formatLocationLine(result: LocationBackfillResult): string {
   return `[Once] Location backfill: candidates=${result.candidates} refreshed=${result.refreshed} skipped=${result.skipped} failed=${result.failed}`;
 }
 
+/**
+ * HOSTED-30: the counts one poll cycle reports to the run. Counts only: no source id, URL, title or error text. A poll
+ * that throws reports nothing, and the run records it as one poll error with zero feed counts.
+ */
+export interface PollCycleCounts {
+  /** Sources whose fetch succeeded this cycle: PetaBencana, BMKG and the RSS feeds. */
+  readonly feedsOk: number;
+  readonly feedsFailed: number;
+  /** Sources refused before any request: a registry gate, or a lease skip. */
+  readonly feedsNotFetched: number;
+  /** RSS revisions admitted after the cycle dedupe, plus PetaBencana and BMKG revisions newly stored. */
+  readonly itemsNew: number;
+  /** The fresh-triage budget of the cycle and how much of it the RSS feeds used. Null when the RSS step did not run. */
+  readonly newItemsCap: number | null;
+  readonly newItemsUsed: number | null;
+}
+
+/** HOSTED-30: the one row a `--once` run writes to waspada.pipeline_cycle_runs (migration 057). Counts, timings and codes only. */
+export interface OnceCycleRecord {
+  readonly startedAt: string;
+  readonly finishedAt: string;
+  readonly elapsedMs: number;
+  readonly feedsOk: number;
+  readonly feedsFailed: number;
+  readonly feedsNotFetched: number;
+  readonly itemsNew: number;
+  readonly aiCompleted: number;
+  readonly aiNotCompleted: number;
+  readonly published: number;
+  readonly held: number;
+  /** 0 for a clean run, 1 when drain, sweep or freshness threw (a hard error). */
+  readonly exitCode: number;
+  readonly pollErrors: number;
+  readonly newItemsCap: number | null;
+  readonly newItemsUsed: number | null;
+}
+
 export interface OnceSteps {
-  /** One poll cycle. A throw is reported through onPollError and does not stop the run. */
-  readonly poll: () => Promise<void>;
+  /**
+   * One poll cycle. A throw is reported through onPollError and does not stop the run. HOSTED-30: a poll may return its
+   * counts; a poll that returns nothing (or throws) records zero feed counts.
+   */
+  readonly poll: () => Promise<PollCycleCounts | void>;
   readonly onPollError: (error: unknown) => void;
   /** Throws are hard errors: the caller stops the run and exits 1. */
   readonly drain: () => Promise<DrainResult>;
@@ -376,6 +416,23 @@ export interface OnceSteps {
   readonly location?: () => Promise<LocationBackfillResult>;
   readonly freshness: () => Promise<void>;
   readonly log: (line: string) => void;
+  /** HOSTED-30: epoch ms when the whole run started (before the coverage guard). Omitted means the sequence's own start. */
+  readonly runStartedAtMs?: number;
+  /** HOSTED-30: the clock for the elapsed time and the finish instant. Defaults to Date.now. */
+  readonly now?: () => number;
+  /**
+   * HOSTED-30: optional. Writes the one cycle row at the end of the run, also after a hard error. It is best effort: a
+   * throw logs a fixed code and never fails the run or the caller.
+   */
+  readonly recordCycle?: (record: OnceCycleRecord) => Promise<void>;
+}
+
+/** HOSTED-30: the count line of the cycle row. Fixed fields, no run id, source text or error text. */
+export function formatCycleRecordLine(record: OnceCycleRecord): string {
+  return `[Once] Cycle record: feeds_ok=${record.feedsOk} feeds_failed=${record.feedsFailed} ` +
+    `feeds_not_fetched=${record.feedsNotFetched} items_new=${record.itemsNew} ai_completed=${record.aiCompleted} ` +
+    `ai_not_completed=${record.aiNotCompleted} published=${record.published} held=${record.held} ` +
+    `poll_errors=${record.pollErrors} exit=${record.exitCode} elapsed_ms=${record.elapsedMs}.`;
 }
 
 /**
@@ -385,32 +442,89 @@ export interface OnceSteps {
  * HOSTED-26: the location backfill runs after the attribution backfill, and never fails the run either.
  */
 export async function runOnceSequence(steps: OnceSteps): Promise<void> {
+  const clock = steps.now ?? (() => Date.now());
+  const startedMs = steps.runStartedAtMs ?? clock();
+  let poll: PollCycleCounts | undefined;
+  let pollErrors = 0;
+  let aiCompleted = 0;
+  let aiNotCompleted = 0;
+  let published = 0;
+  let held = 0;
+  let exitCode = 0;
   try {
-    await steps.poll();
+    try {
+      const counted = await steps.poll();
+      if (counted) poll = counted;
+    } catch (err) {
+      pollErrors = 1;
+      steps.onPollError(err);
+    }
+    const drain = await steps.drain();
+    aiCompleted = drain.completed;
+    aiNotCompleted = drain.notCompleted;
+    steps.log(formatDrainLine(drain));
+    const sweep = await steps.sweep();
+    published = sweep.published;
+    held = sweep.held;
+    for (const line of formatPublicationLines(sweep)) steps.log(line);
+    if (steps.attribution !== undefined) {
+      let backfill: AttributionBackfillResult;
+      try {
+        backfill = await steps.attribution();
+      } catch {
+        backfill = { candidates: 0, attributed: 0, skipped: 0, failed: 1 };
+      }
+      steps.log(formatAttributionLine(backfill));
+    }
+    if (steps.location !== undefined) {
+      let backfill: LocationBackfillResult;
+      try {
+        backfill = await steps.location();
+      } catch {
+        backfill = { candidates: 0, refreshed: 0, skipped: 0, failed: 1 };
+      }
+      steps.log(formatLocationLine(backfill));
+    }
+    await steps.freshness();
   } catch (err) {
-    steps.onPollError(err);
-  }
-  const drain = await steps.drain();
-  steps.log(formatDrainLine(drain));
-  const sweep = await steps.sweep();
-  for (const line of formatPublicationLines(sweep)) steps.log(line);
-  if (steps.attribution !== undefined) {
-    let backfill: AttributionBackfillResult;
-    try {
-      backfill = await steps.attribution();
-    } catch {
-      backfill = { candidates: 0, attributed: 0, skipped: 0, failed: 1 };
+    exitCode = 1;
+    throw err;
+  } finally {
+    // HOSTED-30: one row per run, written even after a hard error (exit 1). Best effort: it never fails the run.
+    if (steps.recordCycle !== undefined) {
+      const finishedMs = Math.max(clock(), startedMs);
+      const record: OnceCycleRecord = {
+        startedAt: new Date(startedMs).toISOString(),
+        finishedAt: new Date(finishedMs).toISOString(),
+        elapsedMs: finishedMs - startedMs,
+        feedsOk: poll?.feedsOk ?? 0,
+        feedsFailed: poll?.feedsFailed ?? 0,
+        feedsNotFetched: poll?.feedsNotFetched ?? 0,
+        itemsNew: poll?.itemsNew ?? 0,
+        aiCompleted,
+        aiNotCompleted,
+        published,
+        held,
+        exitCode,
+        pollErrors,
+        newItemsCap: poll?.newItemsCap ?? null,
+        newItemsUsed: poll?.newItemsUsed ?? null,
+      };
+      await recordCycleSafely(steps.recordCycle, steps.log, record);
     }
-    steps.log(formatAttributionLine(backfill));
   }
-  if (steps.location !== undefined) {
-    let backfill: LocationBackfillResult;
-    try {
-      backfill = await steps.location();
-    } catch {
-      backfill = { candidates: 0, refreshed: 0, skipped: 0, failed: 1 };
-    }
-    steps.log(formatLocationLine(backfill));
+}
+
+/** HOSTED-30: a record write that throws is logged as one fixed code. Its error text never reaches the log. */
+async function recordCycleSafely(
+  write: (record: OnceCycleRecord) => Promise<void>,
+  log: (line: string) => void,
+  record: OnceCycleRecord,
+): Promise<void> {
+  try {
+    await write(record);
+    log(formatCycleRecordLine(record));
+  } catch {
+    log("[Once] Cycle record: write_failed.");
   }
-  await steps.freshness();
 }

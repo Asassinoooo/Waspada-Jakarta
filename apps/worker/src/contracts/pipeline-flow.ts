@@ -112,7 +112,15 @@ export interface PipelineFlowCycleDto {
 
 export interface PipelineFlowRuntimeDto {
   readonly generated_at: string;
-  readonly ninerouter: PipelineFlowNineRouterDto;
+  /**
+   * HOSTED-30: null when the provider counters are not attached. The hosted Worker reads the database, and the
+   * NineRouter rate gate lives in the process that makes the calls, so only the local live server fills this in.
+   */
+  readonly ninerouter: PipelineFlowNineRouterDto | null;
+  /**
+   * The last polling cycle. On the local live server it comes from the in-process status. On the hosted runtime it comes
+   * from the latest waspada.pipeline_cycle_runs row (migration 057): `sequence` is then the number of recorded runs.
+   */
   readonly cycle: PipelineFlowCycleDto;
 }
 
@@ -125,7 +133,10 @@ export interface PipelineFlowSnapshotDto {
   readonly window_hours: PipelineFlowWindowHours;
   readonly nodes: readonly PipelineFlowNodeDto[];
   readonly edges: readonly PipelineFlowEdgeDto[];
-  /** Null when the runtime status is not attached (the Worker, demo, or a stopped server). */
+  /**
+   * Null when neither the runtime status nor a recorded hosted cycle is available (demo, or a database with no
+   * `--once` run recorded yet). The cycle comes from the attached runtime status when there is one, else from the database.
+   */
   readonly runtime: PipelineFlowRuntimeDto | null;
 }
 

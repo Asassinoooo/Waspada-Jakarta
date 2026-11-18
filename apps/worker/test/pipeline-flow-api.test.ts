@@ -128,7 +128,7 @@ describe("FLOW-VIS-01 pipeline flow snapshot", () => {
     const { aggregates, runtime } = demoPipelineFlowSnapshotSource(NOW);
     const snapshot = buildPipelineFlowSnapshot({ generatedAt: NOW.toISOString(), datasetMode: "demo", aggregates, runtime });
     assert.equal(snapshot.dataset_mode, "demo", "the demo snapshot is labelled");
-    assert.equal(snapshot.runtime?.ninerouter.chat.cooldown_remaining_ms, 42_000);
+    assert.equal(snapshot.runtime?.ninerouter?.chat.cooldown_remaining_ms, 42_000);
     assert.equal(nodeOf(snapshot, "ninerouter").health, "waiting", "a chat cooldown is amber");
     assert.notEqual(nodeOf(snapshot, "cycle").health, "unavailable");
     assert.equal(snapshot.runtime?.cycle.sequence, 3);
