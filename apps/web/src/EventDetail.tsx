@@ -12,6 +12,7 @@ import {
   SEVERITY_NOTE,
   severityOf,
   sourcePublishedAtText,
+  LOCATION_LABEL_NOTE,
 } from "./published-events.js";
 
 interface EventDetailProps {
@@ -293,6 +294,9 @@ function ApiEventDetail({
                 )}
                 <div><dt>Respons konteks API dibuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
                 <div><dt>Waktu pengambilan sumber</dt><dd>Tidak disediakan dalam proyeksi EventDetail</dd></div>
+                {typeof event.location_label === "string" && event.location_label.trim().length > 0 && (
+                  <div><dt>Lokasi menurut laporan</dt><dd>{event.location_label.trim()}{LOCATION_LABEL_NOTE}</dd></div>
+                )}
                 <div><dt>Cakupan tempat/layanan/kelompok</dt><dd>{event.scope.places.concat(event.scope.services, event.scope.institutions, event.scope.audiences).join(", ") || `Tidak tersedia pada ${noun}`}</dd></div>
               </dl>
               {event.impacts.length === 0 ? (

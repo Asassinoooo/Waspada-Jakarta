@@ -259,3 +259,11 @@ test("F-09: two outlets with different reports are two media on the detail page,
   assert.match(html, /<dt>Cara penerbitan<\/dt><dd>Diringkas otomatis oleh agen AI · dilaporkan oleh 2 media<\/dd>/u);
   assert.doesNotMatch(html, /salinan/u);
 });
+
+test("HOSTED-26: the report's own location label is shown, marked approximate, when no place id exists", async () => {
+  const { areaText } = await import("../src/published-events.js");
+  const base = { scope: { places: [], services: [], institutions: [], audiences: [] } } as unknown as Parameters<typeof areaText>[0];
+  assert.equal(areaText(base), "Lokasi tidak tercatat");
+  assert.equal(areaText({ ...base, location_label: "Jalan Rawa Belong, Palmerah" } as typeof base), "Jalan Rawa Belong, Palmerah (perkiraan dari laporan)");
+  assert.equal(areaText({ ...base, scope: { ...base.scope, places: ["Tebet"] } } as typeof base), "Tebet");
+});
