@@ -282,7 +282,8 @@ test("uncleared source aborts with source_not_cleared and zero fetches", async (
     calls += 1;
     return okFetch(feed(CANDIDATE));
   };
-  const denied: RegistryPermissionRow = clearedRow({ approval_status: "pending" });
+  // HOSTED-28: approval does not gate collection, so the denied case is collection switched off.
+  const denied: RegistryPermissionRow = clearedRow({ auto_acquisition_enabled: false });
   const output = await runShadowEval({
     mode: "live",
     lookbackHours: LOOKBACK,

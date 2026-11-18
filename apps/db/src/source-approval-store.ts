@@ -4,19 +4,22 @@ import type { TransactionalSqlExecutor } from './sql.js';
  * FR-12 source approval. An administrator records approval or revocation of a registry source. The
  * write runs in one transaction: the registry row, a request trace and an audit row.
  *
- * Approval is the registry's `approval_status`, and the existing CHECK constraints tie it to collection
- * and auto-publication settings:
- * - `auto_acquisition_enabled` may be true only while approval is `approved` and the registry is `active`
- *   (`source_registry_auto_acquisition_eligible_check`).
- * - `auto_publication_policy` must be `never` unless approval is `approved`.
+ * Approval is the registry's `approval_status`. It gates public display and automatic publication, never
+ * collection (HOSTED-28, owner decision 18 Nov 2026, FR-16). The CHECK constraints tie it to publication only:
+ * - `auto_publication_policy` must be `never` unless approval is `approved` (001_foundation).
+ * - `auto_acquisition_enabled` needs only an `active` registry entry
+ *   (`source_registry_auto_acquisition_eligible_check`, migration 056).
  *
  * The rule the store applies in one statement, recording previous and new values in the audit row:
- * - Revoke switches collection off and sets the auto-publication policy to `never`.
- * - Approve switches collection on only when the registry is `active`. A paused or retired source stays off.
- *   The auto-publication policy is not restored on approve, so it stays `never` after a revoke.
+ * - Revoke sets approval to `revoked` and the auto-publication policy to `never`. It leaves
+ *   `auto_acquisition_enabled` unchanged: a revoked source keeps collecting, and its items stop at the
+ *   publication gate (publication-policy.ts, `source_revoked`).
+ * - Approve sets approval to `approved` and nothing else. It does not turn collection on or off, and it does not
+ *   restore the auto-publication policy, so it stays `never` after a revoke.
  * - Neither action changes published events. Public read paths do not filter on approval status.
- * Public display is decided separately by evaluateSourcePermissions (news-triage.ts) from approval, collection
- * and the reuse basis. This store never writes a reuse basis and never grants display itself.
+ * Public display is decided separately by evaluateSourcePermissions (news-triage.ts): it needs approval, an active
+ * registry entry, collection enabled and the public_display reuse token. This store never writes a reuse basis and
+ * never grants display itself.
  */
 
 export type SourceApprovalTarget = 'approved' | 'revoked';
@@ -165,16 +168,15 @@ export function createSourceApprovalStore(
         const before = toRecord(current);
         if (before.approval_status === input.status) return { outcome: 'unchanged', current: before };
 
-        // Revoke stops collection and auto-publication. Approve restores collection only for an active registry entry.
+        // Revoke stops auto-publication only; collection is left as it is. Approve sets the status only.
         const revoking = input.status === 'revoked';
-        const nextAutoAcquisition = !revoking && before.registry_status === 'active';
         const nextPolicy = revoking ? 'never' : before.auto_publication_policy;
         const updated = await transaction.query<SourceRow>(
           `UPDATE waspada.source_registry
-           SET approval_status = $2, auto_acquisition_enabled = $3, auto_publication_policy = $4
-           WHERE source_id = $1 AND approval_status = $5
+           SET approval_status = $2, auto_publication_policy = $3
+           WHERE source_id = $1 AND approval_status = $4
            RETURNING ${SOURCE_COLUMNS}`,
-          [input.sourceId, input.status, nextAutoAcquisition, nextPolicy, before.approval_status],
+          [input.sourceId, input.status, nextPolicy, before.approval_status],
         );
         const row = updated.rows[0];
         if (!row) throw new Error('Source approval changed concurrently; the write was rolled back.');

@@ -32,6 +32,7 @@ import {
   reviewSummaryFor,
 } from "./event-record-v2.js";
 import { publicLocationLabel, publicPointLabel, publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
+import { countPublicationOutlets } from "./publication-source-count.js";
 import {
   assessCorrectionGate,
   assessProposalSourceGate,
@@ -324,14 +325,13 @@ async function writeAuditRecord(
   );
 }
 
-/** Distinct publishers across claims: the registry source, or the outlet when there is none. */
-export function distinctPublishers(proposal: EventProposalDto): number {
-  const publishers = new Set<string>();
-  for (const claim of proposal.claims ?? []) {
-    const key = claim.source_id || claim.outlet || null;
-    if (key) publishers.add(key);
-  }
-  return publishers.size;
+/**
+ * HOSTED-28 (owner decision, 18 Nov 2026; F-09): the publication source_count is the number of distinct outlets across the
+ * claims. A syndicated copy is not counted. The rule is countPublicationOutlets (publication-source-count.ts), which
+ * mirrors the count the public card shows.
+ */
+export function distinctOutlets(proposal: EventProposalDto): number {
+  return countPublicationOutlets(proposal.claims ?? []).outlets;
 }
 
 /** Stable JSON with sorted keys, so two equal values always serialize to the same text. */
@@ -464,6 +464,31 @@ async function resolvePublicDisplay(
     }
   }
   return allowed;
+}
+
+/**
+ * HOSTED-28 (owner decision, 18 Nov 2026): the claim sources of a proposal that are registered but not approved (revoked,
+ * suspended or pending). These are refused with `source_revoked` before any local_relaxed waiver. Read outside the lock,
+ * like resolvePublicDisplay. A source with no registry row is not listed, so the existing waiver still applies to it. A
+ * failed read lists every claim source, so the gate refuses rather than publishes (fail closed).
+ */
+async function resolveRevokedSourceIds(executor: SqlExecutor, proposal: EventProposalDto): Promise<Set<string>> {
+  const sourceIds = [...new Set(
+    (proposal.claims ?? [])
+      .map((claim) => claim.source_id)
+      .filter((sourceId): sourceId is string => typeof sourceId === "string" && sourceId.length > 0),
+  )];
+  if (sourceIds.length === 0) return new Set();
+  try {
+    const rows = await executor.query<{ source_id: string; approval_status: string }>(
+      "SELECT source_id, approval_status FROM waspada.source_registry WHERE source_id = ANY($1::text[])",
+      [sourceIds],
+    );
+    const statusById = new Map(rows.rows.map((row) => [row.source_id, row.approval_status] as const));
+    return new Set(sourceIds.filter((sourceId) => statusById.has(sourceId) && statusById.get(sourceId) !== "approved"));
+  } catch {
+    return new Set(sourceIds);
+  }
 }
 
 /**
@@ -1000,6 +1025,8 @@ interface PublishCore {
   readonly reason: string | null;
   readonly sourcePermission?: AutoPublishSourcePermission;
   readonly publicDisplaySourceIds: ReadonlySet<string>;
+  /** HOSTED-28: claim sources that are not approved. Refused before any waiver. Resolved by resolveRevokedSourceIds. */
+  readonly revokedSourceIds: ReadonlySet<string>;
   readonly decisionId: string;
   readonly decidedAt: string;
   /** TG-FR12: the version a correction was made from. A correction publishes only over that version. */
@@ -1216,7 +1243,11 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
   if (prior) return { outcome: { status: "already_decided", disposition: prior.disposition } };
 
   const linkedInvestigationStatus = await latestInvestigationStatus(tx, datasetKind, core.investigationId);
-  const gateOptions = { publicDisplaySourceIds: core.publicDisplaySourceIds, linkedInvestigationStatus };
+  const gateOptions = {
+    publicDisplaySourceIds: core.publicDisplaySourceIds,
+    revokedSourceIds: core.revokedSourceIds,
+    linkedInvestigationStatus,
+  };
 
   let waivers: readonly AutoPublicationWaiver[] = [];
   if (action === "auto_publish") {
@@ -1253,7 +1284,7 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
 
   const version = (latest?.version ?? 0) + 1;
   const publicationMode = action === "auto_publish" ? "agent_auto" : "moderator_reviewed";
-  const sourceCount = distinctPublishers(proposal);
+  const sourceCount = distinctOutlets(proposal);
 
   // Build the public version before any write. Invalid data then refuses without a decision row.
   let detail: EventDetail;
@@ -1391,6 +1422,8 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
  * F-ALERT-01: a publish that passes the gate but carries the same public facts as the event's current version is
  * recorded as no_material_change and returns "unchanged". It writes no version, claim or outbox row.
  * TG-FR12: an event withdrawn by a moderator is never published again (denied, event_withdrawn).
+ * HOSTED-28: a claim from a source that is not approved is refused with source_revoked, before any local_relaxed waiver.
+ * The proposal is queued (auto_publish) or denied (publish). Published events are not withdrawn.
  */
 export async function decideProposal(
   dependencies: ProposalDecisionDependencies,
@@ -1440,6 +1473,7 @@ export async function decideProposal(
 
   // External registry checks run before the lock, so no database lock is held across them. Fail-closed.
   const publicDisplaySourceIds = await resolvePublicDisplay(dependencies, proposal);
+  const revokedSourceIds = await resolveRevokedSourceIds(executor, proposal);
   // Narrowed outside the closure below: "reject" returned above, so this is the publish side of the action.
   const publishAction: "auto_publish" | "publish" = input.action;
 
@@ -1459,6 +1493,7 @@ export async function decideProposal(
       reason: input.reason ?? null,
       sourcePermission: input.sourcePermission,
       publicDisplaySourceIds,
+      revokedSourceIds,
       decisionId,
       decidedAt,
     }));
@@ -1677,6 +1712,7 @@ export async function submitEventCorrection(
     edits: input.edits,
   });
   const publicDisplaySourceIds = await resolvePublicDisplay(dependencies, corrected);
+  const revokedSourceIds = await resolveRevokedSourceIds(executor, corrected);
   const decisionId = `dec-${randomUUID()}`;
 
   let attempt: PublishAttempt;
@@ -1717,6 +1753,7 @@ export async function submitEventCorrection(
         actor: { kind: "moderator", actorId: input.actorId },
         reason: input.reason ?? null,
         publicDisplaySourceIds,
+        revokedSourceIds,
         decisionId,
         decidedAt: proposedAt,
         baseVersion: input.baseVersion,
@@ -1745,7 +1782,14 @@ const LOCATION_REFRESH_REASON = "Lokasi peta diperbarui (HOSTED-26)";
 const LOCATION_REFRESH_SUMMARY = "Lokasi peta diperbarui.";
 
 /** Why a location refresh wrote no version. Fixed codes only. */
-export type LocationRefreshSkipReason = "no_publication" | "withdrawn" | "nothing_to_add" | "publication_failed" | "event_changed";
+export type LocationRefreshSkipReason =
+  | "no_publication"
+  | "withdrawn"
+  | "nothing_to_add"
+  | "publication_failed"
+  | "event_changed"
+  /** HOSTED-28: a claim's source is no longer approved, so the event gets no new public version. */
+  | "source_revoked";
 
 export type LocationRefreshOutcome =
   | { readonly status: "refreshed"; readonly version: number }
@@ -1817,6 +1861,8 @@ export async function refreshPublishedLocation(
       if (!latest) throw new LocationRefreshSkip("no_publication");
       if (latest.disposition === "withdraw") throw new LocationRefreshSkip("withdrawn");
       if (latest.decisionId !== before.decisionId) throw new LocationRefreshSkip("event_changed");
+      // HOSTED-28: a new version is a publication, so an event with a revoked claim source is not refreshed. Nothing is withdrawn.
+      if ((await resolveRevokedSourceIds(tx, latest.proposal)).size > 0) throw new LocationRefreshSkip("source_revoked");
 
       const proposal = latest.proposal;
       const version = latest.version + 1;
@@ -1825,7 +1871,7 @@ export async function refreshPublishedLocation(
       const waivers = Array.isArray(latest.decisionRecord.waivers)
         ? latest.decisionRecord.waivers.filter((waiver): waiver is string => typeof waiver === "string")
         : [];
-      const sourceCount = distinctPublishers(proposal);
+      const sourceCount = distinctOutlets(proposal);
       let detail: EventDetail;
       try {
         detail = proposalToEventDetail(proposal, undefined, {

@@ -99,13 +99,23 @@ describe("coverage guard (owner decision, 16 Nov)", () => {
     assert.deepEqual(formatCoverageSkips(report), []);
   });
 
-  it("does not refuse a revoked source: it is logged as skipped and the others stay ready", () => {
+  it("does not refuse or skip a revoked source: collection stays on (HOSTED-28, FR-16), so it is polled", () => {
+    const rows = READY_ROWS.map((row) => row.source_id === "petabencana"
+      ? { ...row, approval_status: "revoked" }
+      : row);
+    const report = checkLiveSourceCoverage({ expectedIds: POLL_SET, pollSetIds: POLL_SET, rows });
+    assert.equal(report.ok, true);
+    assert.deepEqual(formatCoverageSkips(report), []);
+    assert.equal(shouldPollFeed(rows.find((row) => row.source_id === "petabencana")), true);
+  });
+
+  it("logs a source whose collection is off as skipped, and the others stay ready", () => {
     const rows = READY_ROWS.map((row) => row.source_id === "petabencana"
       ? { ...row, approval_status: "revoked", auto_acquisition_enabled: false }
       : row);
     const report = checkLiveSourceCoverage({ expectedIds: POLL_SET, pollSetIds: POLL_SET, rows });
     assert.equal(report.ok, true);
-    assert.deepEqual(formatCoverageSkips(report), ["revoked: petabencana, skipped"]);
+    assert.deepEqual(formatCoverageSkips(report), ["auto_acquisition_off: petabencana, skipped"]);
     assert.doesNotMatch(formatCoverageSkips(report).join("\n"), /https?:|:\/\//u);
   });
 
@@ -133,23 +143,25 @@ describe("coverage guard (owner decision, 16 Nov)", () => {
 describe("per-cycle fetch decision", () => {
   const row = (overrides: Partial<RegistryRow>): RegistryRow => ({ ...READY_ROWS[0]!, ...overrides });
 
-  it("polls only an approved, auto-acquisition-enabled row", () => {
+  it("polls an active, auto-acquisition-enabled row whatever its approval (HOSTED-28)", () => {
     assert.equal(shouldPollFeed(row({})), true);
+    assert.equal(shouldPollFeed(row({ approval_status: "revoked" })), true);
+    assert.equal(shouldPollFeed(row({ approval_status: "suspended" })), true);
+    assert.equal(shouldPollFeed(row({ approval_status: "pending" })), true);
   });
 
-  it("does not poll a revoked, suspended, pending or disabled row, or a missing one", () => {
-    assert.equal(shouldPollFeed(row({ approval_status: "revoked", auto_acquisition_enabled: false })), false);
-    assert.equal(shouldPollFeed(row({ approval_status: "suspended", auto_acquisition_enabled: false })), false);
-    assert.equal(shouldPollFeed(row({ approval_status: "pending", auto_acquisition_enabled: false })), false);
+  it("does not poll a paused, retired or auto-acquisition-disabled row, or a missing one", () => {
+    assert.equal(shouldPollFeed(row({ registry_status: "paused", auto_acquisition_enabled: false })), false);
+    assert.equal(shouldPollFeed(row({ registry_status: "retired", auto_acquisition_enabled: false })), false);
     assert.equal(shouldPollFeed(row({ auto_acquisition_enabled: false })), false);
     assert.equal(shouldPollFeed(undefined), false);
   });
 
   it("prints the not-fetched line with a count and ids only", () => {
-    assert.equal(formatNotFetchedLine([]), "  [Source Health] revoked_or_disabled_not_fetched count=0 source_ids=none");
+    assert.equal(formatNotFetchedLine([]), "  [Source Health] collection_off_not_fetched count=0 source_ids=none");
     assert.equal(
       formatNotFetchedLine(["source-cnn-utama", "source-tempo-nasional"]),
-      "  [Source Health] revoked_or_disabled_not_fetched count=2 source_ids=source-cnn-utama,source-tempo-nasional",
+      "  [Source Health] collection_off_not_fetched count=2 source_ids=source-cnn-utama,source-tempo-nasional",
     );
   });
 });

@@ -107,8 +107,10 @@ function hasAnyToken(basis: readonly string[], tokens: ReadonlySet<string>): boo
 
 /**
  * WJ-INT-02B explicit capability evaluation (ADR-005, pure: no I/O).
- * `acquisition` is the unchanged approval gate. Every other capability needs
- * its explicit token present. Rows carrying ONLY legacy `public` /
+ * HOSTED-28 (owner decision, 18 Nov 2026; FR-16): `acquisition` is collection. It needs an active registry entry and
+ * auto-acquisition enabled, and no approval, so polling, model triage and retention continue for a revoked source.
+ * `publicDisplay` also needs `approval_status = 'approved'`: approval gates public display and publication only.
+ * Every other capability needs its explicit token present. Rows carrying ONLY legacy `public` /
  * `open_access` tokens additionally need reviewer-recorded license evidence
  * (URL + reviewer + fresh review + unexpired scope); unknown, missing,
  * ambiguous, or expired evidence fails that capability closed. New explicit
@@ -124,11 +126,9 @@ export function evaluateSourcePermissions(row: RegistryPermissionRow, nowIso: st
     derivedRetention: false,
     publicDisplay: false,
   };
-  const acquisition =
-    row.approval_status === "approved" &&
-    row.auto_acquisition_enabled === true &&
-    row.registry_status === "active";
+  const acquisition = row.auto_acquisition_enabled === true && row.registry_status === "active";
   if (!acquisition) return denied;
+  const approved = row.approval_status === "approved";
   const basis = Array.isArray(row.reuse_basis) ? row.reuse_basis : null;
   if (!basis || basis.length === 0) return { ...denied, acquisition };
   const explicit =
@@ -153,7 +153,7 @@ export function evaluateSourcePermissions(row: RegistryPermissionRow, nowIso: st
     titleRetention: grant(TITLE_RETAIN_TOKENS),
     descriptionRetention: grant(DESCRIPTION_RETAIN_TOKENS),
     derivedRetention: grant(DERIVED_RETAIN_TOKENS),
-    publicDisplay: grant(PUBLIC_DISPLAY_TOKENS),
+    publicDisplay: approved && grant(PUBLIC_DISPLAY_TOKENS),
   };
 }
 /**

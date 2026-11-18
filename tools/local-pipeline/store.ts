@@ -224,7 +224,7 @@ export class SqlLocalPipelineStore implements LocalPipelineStore {
            WHERE job.dataset_kind = 'synthetic' AND job.job_kind = 'source_poll'
              AND job.source_id = $2 AND job.status IN ('pending', 'retry')
              AND job.available_at <= $1::timestamptz
-             AND source.registry_status = 'active' AND source.approval_status = 'approved'
+             AND source.registry_status = 'active'
              AND source.auto_acquisition_enabled AND source.polling_interval_seconds IS NOT NULL
              AND NOT EXISTS (
                SELECT 1

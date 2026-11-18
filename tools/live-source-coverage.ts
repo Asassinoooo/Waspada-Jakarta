@@ -31,22 +31,21 @@ export interface CoverageReport {
   readonly ok: boolean;
   readonly expected: number;
   readonly missing: readonly string[];
-  /** Present but not ready (revoked, suspended, pending or auto-acquisition off). Skipped, never fatal. */
+  /** Present but not ready (registry paused or retired, or auto-acquisition off). Skipped, never fatal. */
   readonly notReady: readonly { readonly sourceId: string; readonly label: string; readonly reason: string }[];
   readonly notPolled: readonly string[];
   readonly unexpectedPolled: readonly string[];
 }
 
-/** Why a present row is not pollable. Source ids and enum values only. */
+/** Why a present row is not pollable. Source ids and enum values only. Approval does not gate collection (HOSTED-28). */
 function skipLabel(row: RegistryRow): string {
-  if (row.approval_status !== "approved") return row.approval_status;
   if (row.registry_status !== "active") return `registry_${row.registry_status}`;
   return "auto_acquisition_off";
 }
 
 /**
  * Coverage guard (owner decision, 16 Nov). Refuses only when a source is missing from the registry, or when
- * the poll set does not match the expected list. A revoked or disabled source is not fatal: it is logged as
+ * the poll set does not match the expected list. A paused, retired or disabled source is not fatal: it is logged as
  * skipped and the other sources keep running.
  */
 export function checkLiveSourceCoverage(input: {
@@ -85,11 +84,12 @@ export function checkLiveSourceCoverage(input: {
 
 /**
  * Per-cycle fetch decision for an RSS feed, made from source_registry before any request is sent.
- * Only an approved, auto-acquisition-enabled row is polled. A revoked or disabled row, or a missing row
- * (fail closed), is not fetched. The triage gate still runs after fetch and is not the control here.
+ * Only an active, auto-acquisition-enabled row is polled (HOSTED-28, FR-16: approval does not gate collection;
+ * a revoked source is still polled and its items stop at the publication gate). A disabled or paused row, or a
+ * missing row (fail closed), is not fetched. The triage gate still runs after fetch and is not the control here.
  */
 export function shouldPollFeed(row: RegistryRow | undefined): boolean {
-  return row !== undefined && row.approval_status === "approved" && row.auto_acquisition_enabled === true;
+  return row !== undefined && row.registry_status === "active" && row.auto_acquisition_enabled === true;
 }
 
 /** Fatal refusal lines: missing sources or poll-set mismatch only. */
@@ -102,15 +102,15 @@ export function formatCoverageFailure(report: CoverageReport): string[] {
   return lines;
 }
 
-/** One line per skipped source, for example "revoked: source-x, skipped". Ids and enum values only. */
+/** One line per skipped source, for example "auto_acquisition_off: source-x, skipped". Ids and enum values only. */
 export function formatCoverageSkips(report: CoverageReport): string[] {
   return report.notReady.map((item) => `${item.label}: ${item.sourceId}, skipped`);
 }
 
-/** Per-cycle line for feeds that were not fetched because they are revoked or disabled. Count and ids only. */
+/** Per-cycle line for feeds that were not fetched because collection is off or the registry entry is not active. Count and ids only. */
 export function formatNotFetchedLine(sourceIds: readonly string[]): string {
   const ids = sourceIds.length === 0 ? "none" : sourceIds.join(",");
-  return `  [Source Health] revoked_or_disabled_not_fetched count=${sourceIds.length} source_ids=${ids}`;
+  return `  [Source Health] collection_off_not_fetched count=${sourceIds.length} source_ids=${ids}`;
 }
 
 export async function loadRegistryRows(executor: SqlExecutor, sourceIds: readonly string[]): Promise<RegistryRow[]> {
