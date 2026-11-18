@@ -1,14 +1,14 @@
 # User acceptance test plan (UAT)
 
 Project: Waspada Jakarta (Team 12, RPL course).
-Document: UAT. Status: draft for review, 13 November 2026.
+Document: UAT. Status: draft for review, 18 November 2026. Hosted read-only results are in section 9.2.
 Basis: SDP section 10 and the requirement tables (US-01 to US-03, NFR-03, NFR-07); TEST-PLAN.md, acceptance row.
 
 **Human acceptance is pending.** No human sessions are planned (decision of 13 November 2026). The automated runs in this plan are an *automated walkthrough (browser subagent)*. They are not user acceptance, and they do not evidence NFR-03. Report them under that label only.
 
 ## 1 Purpose and scope
 
-The purpose is to show whether the user tasks in the SDP can be completed in the local app, in a browser at desktop and phone widths, by three target users (section 3). Each step gets a result, and each task gets seconds. The tasks run in two places: the demo dataset for T1 to T5, and the local live app for the persona cases (section 5).
+The purpose is to show whether the user tasks in the SDP can be completed in the local app, in a browser at desktop and phone widths, by three target users (section 3). Each step gets a result, and each task gets seconds. The tasks run in three places: the demo dataset for T1 to T5, the local live app for the persona cases, and the hosted site for T4, T5 and a public phone check (sections 5 and 9.2).
 
 In scope:
 - Three target users (section 3): U1 resident (discovery, US-01), U2 commuter (following updates, US-02) and U3 moderator (review, US-03).
@@ -16,10 +16,11 @@ In scope:
 - T4 for U3 on the demo dataset: review and decide one proposal.
 - T5 for the administrator (operator, not a target user): the demo-only source preview.
 - Desktop 1440 × 900 and phone 390 × 844, including the phone list fallback.
+- The hosted site, read-only: T4, T5 and a public phone check (section 9.2, 17 Nov 2026).
 
 Out of scope:
 - Starting or stopping the live server, real source fetches and model calls. The persona cases read the live app and do not change its data. The matched-update checks in US-02 need live data and stay pending (T2).
-- Hosted deployment (Cloudflare Workers, Neon), source rights and password reset.
+- Hosted decisions and writes (the hosted walkthroughs are read-only, section 9.2), hosted backup and restore, source rights and password reset.
 - A full accessibility audit. Section 7 lists the only layout and text-size checks.
 
 ## 2 Method
@@ -27,7 +28,7 @@ Out of scope:
 ### 2.1 Automated walkthrough (browser subagent): the current method
 
 - Playwright Chromium, headless. There is one script per task in `tools/e2e/uat/`, run one at a time with `npx tsx tools/e2e/uat/<file>.ts` from the repository root.
-- T1 to T5 run on the demo dataset. Each script checks that the server reports `dataset_mode` as `demo`, and stops if it does not. The persona cases run on the local live app, and each checks for `live` and stops if it does not (section 5).
+- T1 to T3 run on the demo dataset, and each checks that the server reports `dataset_mode` as `demo`. T4 and T5 check the dataset that matches their target: `demo` by default, or `live` when `UAT_TARGET=live` is set with `UAT_BASE_URL` (section 9.2). Each stops on a mismatch. The persona cases run on the local live app, and each checks for `live` and stops if it does not (section 5).
 - Each step is recorded with its name, pass or fail, milliseconds and error message. Timings include page load and waits, so they are an upper bound on a user's own time.
 - Results are labelled "automated walkthrough (browser subagent)". They are not user acceptance and must not be reported as such.
 - A *skipped* check cannot run on the demo dataset, or its label cannot be confirmed from the source. It is neither a pass nor a fail, and it is listed in section 6.6.
@@ -70,15 +71,16 @@ The UAT covers three target users, which is the limit for this plan. Each one co
 
 - Toolchain: Node 24.21.0 in WSL Ubuntu-26.04, as recorded in CLAUDE.md. Do not use Windows-host Node.
 - Browser: Chromium for Playwright (root devDependency `playwright`, ^1.64.1).
-- Two runtimes are used, and their results are reported separately.
-  - **Demo stack (T1 to T5, runs 01 and 02).** Start `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. Vite serves on 127.0.0.1:5173 and proxies `/api/v1` to the Worker on :8787. It also proxies `/api/v1/auth` and `/api/v1/account` to the accounts runtime on :8789. The dataset is `demo`, and each script refuses to run otherwise.
+- Three targets are used, and their results are reported separately.
+  - **Demo stack (T1 to T5, runs 01 and 02).** Start `npm run accounts:local -- --enable --demo --state accounts-demo`, then `WASPADA_LOCAL_ACCOUNTS=true npm run dev`. Vite serves on 127.0.0.1:5173 and proxies `/api/v1` to the Worker on :8787. It also proxies `/api/v1/auth` and `/api/v1/account` to the accounts runtime on :8789. The dataset is `demo`. T1 to T3 refuse to run on any other dataset, and T4 and T5 refuse a mismatch with their target (section 2.1).
   - **Local live app (persona cases, 13 November 2026).** `npm run serve:live` runs on the same ports. The dataset is `live`, and each persona script refuses to run unless `/api/v1/context` reports `live`. Live feeds and model calls run in this app. The UAT does not start it and does not spend model quota.
+  - **Hosted site (section 9.2, 17 Nov 2026).** `UAT_TARGET=live` with `UAT_BASE_URL` set to the site's https URL runs T4 and T5 read-only. The URL is read from the environment and is not printed. T4 makes no decision unless `UAT_T4_ACTION` is set.
 - **Accounts on the local live app.** The persona runs register their own accounts through the interface: `uat.resident01`, `uat.commuter01`, `uat.student01` and `uat.worker01`. `uat.moderator01` is planned. Passwords are kept in `.codex-build/uat/accounts/`, which is gitignored. They are never printed in this document, in logs or in reports. The accounts are real rows in the local live database and stay there.
 - **Demo accounts.** `demo.warga`, `demo.moderator` and `demo.admin` are defined in `tools/accounts/demo-accounts.ts`. The password is the constant `SYNTHETIC_DEMO_PASSWORD` in that file, and it is never printed.
 - **Operator account on the local live app.** The administrator account comes from `WASPADA_ADMIN_USERNAME` and `WASPADA_ADMIN_PASSWORD` in `.env.local`. The scripts read these through `node --env-file`, never print them, and skip the administrator steps if they are unset.
 - **Read-only on live.** Persona scripts never click a control that fetches from providers ("Ambil ...", "Reset", "Atur ulang", refresh or "Coba lagi"). They never publish, reject, correct or edit a record. Interests are saved only in the browser.
 - **Not used.** The scripts do not start the live server, do not run `ai:smoke` or `test:e2e`, and do not spend model quota. They do not read the contents of `.env.local` or `.dev.vars`.
-- **Machine and login limits.** Run one browser script at a time. Login is rate-limited, and repeated sign-ins can return "Terlalu banyak percobaan masuk" (R-07). Space the runs out.
+- **Machine and login limits.** Run one browser script at a time. Login is rate-limited, and repeated sign-ins can return "Terlalu banyak percobaan masuk" (R-07). Space the runs out. On the hosted site, the login limit recorded in the T5 re-run was 12 attempts per username per 10 minutes, after which login returns HTTP 429 (section 9.2). This is a test condition, not a product defect.
 - **Browser state.** Light theme, locale id-ID, device scale 1. Each viewport uses a new browser context. T4 changes one proposal in the local demo database, and reject is the default decision. If the moderation queue is empty on a repeat run, rebuild the demo state before repeating T4 (NFR-06).
 
 ## 6 Tasks
@@ -94,8 +96,8 @@ Each row names the target user (section 3) and the state of the run so far. "Dem
 | T1 Find an applicable event | U1 | US-01, FR-10 | Pass; boundary check skipped (F-01) | RES-01 blocked: no flood or weather event listed |
 | T2 Follow an update | U2 | US-02, FR-11, FR-13 | Pass; three checks need live data (F-02) | COM-01 pass |
 | T3 Inspect origins and history | U1 | US-03, FR-10 | Pass; two checks skipped | VIS-03 pass; finding R-05 |
-| T4 Review one proposal | U3 | US-03, FR-12 | Blocked: empty demo queue (R-04) | Not run |
-| T5 Source preview (operator) | Operator | NFR-07 | Pass on desktop after correction (R-02); phone fails one step (R-01) | Not run |
+| T4 Review one proposal | U3 | US-03, FR-12 | Blocked: empty demo queue (R-04) | Hosted, read-only: pass on 17 Nov, no decision made (section 9.2) |
+| T5 Source preview (operator) | Operator | NFR-07 | Pass on desktop after correction (R-02); phone fails one step (R-01; fix proposed in `7cf6c0f`, not yet re-run) | Hosted, read-only: pass on 17 Nov (section 9.2) |
 | RES-01 Find a flood or weather event | U1 | US-01, FR-10 | Not run | Blocked: none listed |
 | RES-02 Crime event detail, no safety claim | U1 | FR-10, NFR-01 | Not run | Pass |
 | RES-03 Expired or stale warning | U1 | FR-13 | Not run | Blocked: none listed |
@@ -109,8 +111,8 @@ Each row names the target user (section 3) and the state of the run so far. "Dem
 | STU-01 Group notice without geography | U2 | FR-09, FR-11 | Not run | Blocked: no group notice listed; interest steps pass |
 | ACC-01 Register, onboard, role reads Pengguna | U1, U2, U3 | FR-12, NFR-07 | Not run | Pass for commuter, student, worker and resident |
 | ACC-02 Sign out | U1, U2, U3 | FR-12 | Not run | Pass; stale header menu after sign-out (R-06) |
-| MOD-00 No moderation access before the role change | U3 | FR-12, NFR-07 | Not run | Skipped by decision (13 Nov 2026); U3 not run yet |
-| MOD-02 History shows reviewed versions only | U3 | FR-13 | T3 pass | Skipped by decision (13 Nov 2026); U3 not run yet |
+| MOD-00 No moderation access before the role change | U3 | FR-12, NFR-07 | Not run | Skipped by decision (13 Nov 2026) on the local live app. No hosted run (section 9.2) |
+| MOD-02 History shows reviewed versions only | U3 | FR-13 | T3 pass | Skipped by decision (13 Nov 2026) on the local live app. No hosted run (section 9.2) |
 
 **Success cases named in the report.** Section 1.3 of the report names four success cases: copied reports, ambiguous locations, expired warnings and corrections. Copied reports are covered by WRK-01, expired warnings by RES-03 and WRK-02, and ambiguous locations by VIS-02. Corrections are covered only as MOD-02 (reviewed versions only), because section 1.3 defers correction to a later release. **Decision needed:** keep correction as a success case, or remove it from section 1.3.
 
@@ -199,8 +201,8 @@ Each row names the target user (section 3) and the state of the run so far. "Dem
 - The demo moderation queue holds no proposal, so T4 is blocked (R-04). A demo proposal fixture would let T4 run. This needs a decision.
 - Repeated demo logins in one session returned HTTP 429 (R-03). Space the logins out, or split the runs.
 - T3: the note 'Riwayat sintetis ini bukan keadaan terkini' shows only while history loads (`EventDetail.tsx:147`). The check is skipped and the kicker is checked instead.
-- R-05, R-06 and R-08 were found in the persona runs (section 9.1). Their entries are in `DEFECTS.md` section D.
-- Moderator (U3) and administrator steps were skipped by decision on 13 November 2026 and are not yet run.
+- R-05, R-06 and R-08 were found in the persona runs (section 9.1). Their entries are in `DEFECTS.md` section D. R-05 and R-06 are fixed in `7cf6c0f` (16 Nov 2026) and need a persona re-run.
+- Moderator (U3) and administrator steps were skipped in the local persona runs by decision on 13 November 2026. The hosted site ran T4 and T5 read-only on 17 November 2026 (section 9.2). Persona cases MOD-00 and MOD-02 have not been run.
 - Skipped checks in the logs are listed with their reasons. They are not passes.
 
 ## 7 Viewports
@@ -237,13 +239,13 @@ Result values: pass, fail, blocked (precondition not met), pending (live data ne
 | T4 | Desktop 1440 × 900 | Blocked (precondition not met, R-04) | 61.9 | The demo moderation queue is empty. The precondition step failed (step 6), and the select and decision steps timed out (steps 7 to 9). The run JSON records four fatal failures on desktop and six on phone, ten in total. The label Blocked is the register's, while the JSON status is fail; the owner decides the label. | `.codex-build/uat/run-02/t4-moderator.json` |
 | T4 | Phone 390 × 844 | Blocked, login rate-limited (R-03) | 75.9 | Login returned HTTP 429 after repeated demo logins in this session. The queue is also empty. Six fatal failures on phone: the login, then the empty queue and timeouts. | `.codex-build/uat/run-02/t4-moderator.json` |
 | T5 | Desktop 1440 × 900 | Pass, after a script correction (R-02) | 4.6 | Run 02: 11 steps passed on desktop (22 in total across both viewports, including setup). Two source-copy checks are skipped because that copy is display:none on the map view. Run 01 failed 8 steps (4 desktop, 4 phone); the register attributes this to source-copy wording (R-02). | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-01/t5-admin-sources.json` |
-| T5 | Phone 390 × 844 | Fail, 1 step (R-01) | 18.5 | Run 02: 10 steps passed on phone; 1 fatal failure. The drawer shows 'Mode demo terisolasi'. At 390 px the admin header shows only a dot for 'Data contoh', and the 'Pratinjau sumber (demo)' label is hidden. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` |
+| T5 | Phone 390 × 844 | Fail, 1 step (R-01; fix proposed in `7cf6c0f`, not yet re-run) | 18.5 | Run 02: 10 steps passed on phone; 1 fatal failure. The drawer shows 'Mode demo terisolasi'. At 390 px the admin header shows only a dot for 'Data contoh', and the 'Pratinjau sumber (demo)' label is hidden. | `.codex-build/uat/run-02/t5-admin-sources.json`; `run-02/phone-19-fail.png` |
 | T1 and T2 | 320 px (manual) | Not run | — | Manual check, not scripted. | — |
 | T1 and T2 | 200% text (manual) | Not run | — | Manual check, not scripted. | — |
 
 ### 9.2 Live hosted site (HOSTED-23, 17 Nov 2026)
 
-Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers.dev` (`UAT_TARGET=live`), automated walkthroughs (browser subagent), read-only. T4 made no decision (`UAT_T4_ACTION` unset). T5 never clicks approve or revoke.
+Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers.dev` (`UAT_TARGET=live`), automated walkthroughs (browser subagent), read-only. T4 made no decision (`UAT_T4_ACTION` unset). T5 never clicks approve or revoke. These runs used the HOSTED-23 deploy of 17 Nov 2026. No UAT run is recorded after the 18 Nov redeploy (HOSTED-25).
 
 | Task | Viewport | Result | Seconds | Notes | Evidence |
 | --- | --- | --- | --- | --- | --- |
@@ -251,9 +253,9 @@ Target: the production Worker at `https://waspada-jakarta.waspada-worker.workers
 | T4 | Phone 390 × 844 | Pass (read-only) | 4.9 | 7 steps passed. | `.codex-build/uat/hosted23-live/t4-moderator.json` |
 | T5 | Desktop 1440 × 900 | Pass (read-only) | 5.9 | 11 steps passed (23 in total, including setup). External host while on `#admin/sumber`: `tile.openstreetmap.org` (note, not a fail). | `.codex-build/uat/hosted23-live-warp/t5-admin-sources.json` |
 | T5 | Phone 390 × 844 | Pass (read-only) | 4.2 | 11 steps passed. An earlier attempt (`hosted23-live`) failed on phone only because repeated admin logins hit the login throttle (HTTP 429, 12 per username per 10 min); it was re-run after the window. | `.codex-build/uat/hosted23-live-warp/t5-admin-sources.json` |
-| U3 (public views) | Phone 390 × 844 | Pass, 2 findings | — | Scripted public check, no sign-in. Map: no pin for the agent event (whole view), list count 1, no horizontal scroll, no page errors. Detail: "Waktu kejadian tidak disebutkan", "Dipublikasikan sumber" with the source time, whole-Jakarta location text, source links. Findings: R-09 the detail header reads "Detail dari API lokal" on the hosted site; R-10 each claim lists DETIK UTAMA twice (one attribution line per evidence item from the same source). | `.codex-build/uat/hosted23-u3/01-jelajah-phone.png`, `02-detail-phone.png` |
+| PUB-01 public phone check (not a target user; see section 3) | Phone 390 × 844 | Pass, 2 findings, both fixed | — | Scripted public check, no sign-in. Map: no pin for the agent event (whole view), list count 1, no horizontal scroll, no page errors. Detail: "Waktu kejadian tidak disebutkan", "Dipublikasikan sumber" with the source time, whole-Jakarta location text, source links. Findings: R-09 (the detail header read "Detail dari API lokal" on the hosted site) and R-10 (each claim listed DETIK UTAMA twice, one attribution line per evidence item from the same source). Both are fixed in `88bcf69` (HOSTED-24A, 17 Nov 2026) and were verified on the live site (ADR-065, 18 Nov 2026 amendment). See `docs/testing/DEFECTS.md` section D. | `.codex-build/uat/hosted23-u3/01-jelajah-phone.png`, `02-detail-phone.png` |
 
-Network note: the tester's ISP resolver (XL Axiata) answered `*.workers.dev` with a block page, which appears as a TLS name mismatch. The first T4 run used a DNS-over-HTTPS workaround; the T5 re-run and U3 used Cloudflare WARP with no workaround.
+Network note: the tester's ISP resolver (XL Axiata) answered `*.workers.dev` with a block page, which appears as a TLS name mismatch. The first T4 run used a DNS-over-HTTPS workaround; the T5 re-run and PUB-01 used Cloudflare WARP with no workaround. The block is tracked as F-17 in `docs/testing/DEFECTS.md`.
 
 ### 9.1 Persona walkthroughs on the local live app (13 Nov 2026)
 
@@ -269,10 +271,10 @@ Each run is an automated walkthrough by a browser agent that acts as one target 
 
 The commuter JSON labels its run a real-user GUI walkthrough, while this table treats every persona run as automated (TEST-EVALUATION item 23). That label is not resolved here.
 
-Not run: U3 (moderator) and the administrator steps, skipped by decision on 13 November 2026. The 320 px and 200% text checks were not run.
+Not run on the local live app: U3 (moderator) and the administrator steps, skipped by decision on 13 November 2026. The hosted site ran T4 and T5 read-only on 17 November 2026 (section 9.2). The 320 px and 200% text checks were not run.
 
 ## 10 Defects
 
-- Every failed step is logged in `docs/testing/DEFECTS.md` by the orchestrator, which is written after the runs. Each entry gives the task and step, the viewport, what was observed, what was expected, the run ID and the evidence path. `DEFECTS.md` is not created in this phase.
+- Every failed step is logged in `docs/testing/DEFECTS.md` by the orchestrator, which is written after the runs. Each entry gives the task and step, the viewport, what was observed, what was expected, the run ID and the evidence path. `docs/testing/DEFECTS.md` exists, and section D holds the run defects R-01 to R-10.
 - Blocked results (precondition not met) and pending results (live data needed) are not defects. They are tracked under section 6.6.
 - A fatal failure sets the script's exit code to 1. A non-fatal check (a label not confirmed, or a proposed time limit) is reported in the log but does not change the exit code.

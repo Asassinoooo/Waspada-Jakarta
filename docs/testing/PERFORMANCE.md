@@ -1,6 +1,6 @@
 # Performance results
 
-Status: first HTTP run, 13 November 2026. This is a baseline. No target has been set (SDP section 4).
+Status: first HTTP run, 13 November 2026, with a hosted note added on 18 November 2026. This is a baseline. No target has been set (SDP section 4).
 
 ## Method
 
@@ -33,6 +33,8 @@ Status: first HTTP run, 13 November 2026. This is a baseline. No target has been
 | `/api/v1/updates` | 10 | 200 | 503 x200 | 6.17 | 2.65 | 5.39 | 10.91 | 10.18 to 12.13 | 12.90 | 14.89 | 1572.33 |
 | `/api/v1/updates` | 25 | 200 | 503 x200 | 14.35 | 5.47 | 12.41 | 23.92 | 20.65 to 27.85 | 36.35 | 36.47 | 1643.41 |
 
+**Note on `/api/v1/updates`.** On the local live app, every request at each concurrency returned 503. These three rows are not successful reads and are not valid latency evidence. The local run (13 Nov 2026) predates `1a11d3c` (HOSTED-02, 16 Nov 2026), which fixed F-ALERT-02 (`docs/DEFECTS.md`). `docs/SOFTWARE_DEVELOPMENT_PLAN.md` (line 399) ties the 503 to that finding. The cause is not measured here. On the hosted site the same route returned 200 on 17 Nov 2026 (`docs/DEPLOYMENT.md` §6). That was one status check, not a timed run, so it gives no latency figure.
+
 ## Figure
 
 ![HTTP read latency of the public routes, at 1 and 25 clients](figures/perf-http-latency.png)
@@ -40,7 +42,12 @@ Status: first HTTP run, 13 November 2026. This is a baseline. No target has been
 Figure: p50 and p95 by route at 1 and 25 clients, from the table above. Whiskers show the 95% bootstrap interval for p95. Rendered by `tools/perf/chart.ts`.
 ## Not in this run
 
-- The web first load on desktop and phone (ST-P-03).
-- Cold start (first request after a restart), and reads while polling and inference run (ST-P-04).
+- The web first load on desktop and phone (ST-N-04 in `docs/testing/SYSTEM-TEST.md`).
+- Cold start (first request after a restart), and reads while polling and inference run (ST-N-04 in `docs/testing/SYSTEM-TEST.md`).
 - Datasets of 50, 500 and 5,000 events. The live server holds only the events it has published, so a larger dataset needs more data loaded into it.
 - Any route that does not return 200 is reported with its status in the table, and is not a successful read.
+
+## Hosted site
+
+- No timed latency run exists for the hosted site. The 17 Nov 2026 smoke check (`docs/DEPLOYMENT.md` §6) recorded status codes only. Do not compare the local numbers above with the hosted site.
+- Login CPU time on production. This is not a public read. Three logins at 100,000 PBKDF2 iterations used 25, 32 and 38 ms of CPU, with wall times of 153–183 ms and outcome `ok` (`wrangler tail`, 17 Nov 2026; `docs/decisions/ADR-065-hosted-topology.md`, 17 Nov amendment). These values are above the nominal 10 ms Workers Free CPU allowance. No request failed for CPU, so the iteration count was not lowered. This is a measurement, not a target.

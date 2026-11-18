@@ -1,5 +1,16 @@
 # Test evaluation: integration and system
 
+## Update 18 Nov 2026 (TG-DOCS-02)
+
+Superseded items. The text below is kept as written; these statements are no longer true:
+- The hosted topology is implemented and deployed (17 Nov 2026, HOSTED-23): https://waspada-jakarta.waspada-worker.workers.dev on Cloudflare Workers Free and Neon Free via Hyperdrive. `npm run deploy:prod` is the deploy script.
+- A cron trigger exists: the production Worker cron (`7,37 * * * *`, HOSTED-25) starts the GitHub Actions ingest (`.github/workflows/ingest.yml`), which also runs the freshness pass.
+- PBKDF2 login CPU is measured: 25–38 ms at 100,000 iterations, no CPU-limit failure (ADR-065).
+- A missing event time no longer blocks auto-publish; it is waived as `event_time_unknown` (HOSTED-21, f8463b6). Corrections still need a time.
+- The SDP section 10 rights wording was aligned with ADR-065 (5ea3c83).
+- Current CI evidence: run 44211263890 on 6fff929 (18 Nov 2026), 2,555 tests passed, 0 failed. The current per-level status is in `TEST-SUMMARY.md`, `INTEGRATION-TEST.md` and `SYSTEM-TEST.md`.
+- Still open: no off-provider backup (ADR-065 limitation 2), no source-rights clearance.
+
 ## Update 14 Nov 2026 (TEST-GAP-02)
 
 Basis: main at abe7bf6. The analysis below (basis ab862c3) is kept as it was written. This update records what changed since then. It used file reads, grep, git show stats, ancestry checks and the UAT run JSON counts. No test, typecheck, build, browser run, CI run, serve:live run or model call was made for it. The local pass statuses in test-cases.csv for the new files are the implementing runs' reports and were not re-run. Three files added by abe7bf6 have no reported local pass.
@@ -299,7 +310,7 @@ Merged from the not-verified lists of all five scratch reports. The brief refers
 
 - No test, typecheck, build, npm command, browser run, CI run, serve:live run, smoke or e2e run, perf run, model call or network call was run in any report or in this one.
 - Whether tsx skips or fails the step for the four joined test paths. The claim rests on the package scripts and on git show.
-- The overall CI result for run 117086838832 (commit cec9358). No CI log for 4f1c344 or for 6e8a59e is in the repository.
+- The overall CI result for commit cec9358 (cited at the time as run 117086838832, which does not exist; the real run is 43238566925, success, confirmed 18 Nov 2026). No CI log for 4f1c344 or for 6e8a59e is in the repository.
 - TI-01 and TI-02 pass status. The CSV records a local pass that was not re-run.
 - The record-page "no geometry" message in a browser (V3 is code reading only). No persona run recorded it.
 - Current UI against the BR-03 and BR-04 figures. No dev server or browser was used.

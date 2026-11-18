@@ -1,6 +1,6 @@
 # CI visibility of the test files
 
-Source: the GitHub Actions run 117086838832 on commit `cec9358` (`.github/workflows/ci.yml`), kept locally at `.codex-build/ci-logs/cec9358/`. A file is "visible" when its test names (or, for the database and pipeline steps, its `PASS` line) appear in that step's log. The run conclusion is not in the log: confirm it on the GitHub Actions page.
+Source: the GitHub Actions run 43238566925 on commit `cec9358` (12 Nov 2026, conclusion `success`, confirmed with `gh`), with its local log summary in `.codex-build/ci-logs/cec9358/`. The local summary cites a wrong run ID; see `INTEGRATION-TEST.md` section 9. The "Test files" table below is the cec9358 history. The current run is 44211263890 on commit `6fff929` (18 Nov 2026, conclusion `success`, confirmed with `gh`). See "Current run" below. A file is "visible" when its test names (or, for the database step, its `PASS` line) appear in that step's log.
 
 ## Steps of the run
 
@@ -11,7 +11,7 @@ Source: the GitHub Actions run 117086838832 on commit `cec9358` (`.github/workfl
 | 7 | Run Web Tests | each test name with a tick, and totals |
 | 8 | Run Worker Tests | each test name with a tick, and totals |
 | 9 | Run Intelligence Tests | each test name with a tick, and totals |
-| 10 | Run Pipeline Tests | one `PASS` line per case |
+| 10 | Run Pipeline Tests | one `Pipeline case:` line and one tick per case, then `Pipeline cases: N/N passed.` (run 44211263890) |
 | 11 | Run Accounts Tests | each test name with a tick, and totals |
 | 12 | Run Evaluation and AI Tool Tests | each test name with a tick, and totals |
 | 13 | Build Web and Worker Bundles | Wrangler dry-run output |
@@ -20,7 +20,7 @@ Steps 1 to 4 (job setup, checkout, Node.js, install) and the post steps print no
 
 ## Test files
 
-| Suite | Test file | Step | Visible in the run |
+| Suite | Test file | Step | Visible in run 43238566925 (cec9358) |
 | --- | --- | --- | --- |
 | accounts | `composition.test.ts` | 11 | yes |
 | accounts | `local-accounts.test.ts` | 11 | yes |
@@ -243,8 +243,115 @@ Steps 1 to 4 (job setup, checkout, Node.js, install) and the post steps print no
 | worker | `traffic-gazetteer.test.ts` | 8 | yes |
 | worker | `webhook-ingest.test.ts` | 8 | yes |
 
-## Files not in the run
+## Files not visible in run 43238566925 (cec9358)
 
-- `benchmark-runner.test.ts` (tools/evaluation): not in any test script, so no CI step runs it.
-- `l3-investigation-publication-gate.test.ts` (TEST-INT-01): merged after the run. It sits in the database directory scan, so it runs in step 6 of the next run.
-- `map-motion.test.ts`, `map-severity.test.tsx`, `pipeline-flow-client.test.ts` (web) and `public-severity.test.ts` (worker): added after the run and listed in their package test scripts, so they run in the next run.
+- `benchmark-runner.test.ts` (tools/evaluation): not in any test script, so no CI step runs it. Still true at 6fff929: no script or workflow names it.
+- `l3-investigation-publication-gate.test.ts` (TEST-INT-01): merged after the run. It is in the database directory scan. Run 44211263890 printed its `PASS` line in step 6.
+- `map-motion.test.ts`, `map-severity.test.tsx`, `pipeline-flow-client.test.ts` (web) and `public-severity.test.ts` (worker): added after the run and listed in their package test scripts. Run 44211263890 shows passed titles for all four.
+
+## Current run 44211263890 (6fff929)
+
+Run 44211263890 is the `main` push run for commit `6fff929` (18 Nov 2026, conclusion `success`, confirmed with `gh`). Its job log was read with `gh run view 44211263890 --log`. The database step prints one `===== PASS: <file> =====` line per file. The other steps print test titles, so a file counts as visible when at least one of its titles printed as passed in its step.
+
+On disk there are 266 test files: 58 database, 119 worker, 41 web, 26 intelligence, 4 accounts, 9 pipeline, 6 evaluation and AI tool files (`tools/evaluation`, `tools/ai`) and 3 `tools/live-*` test files. The table above names 220 of them, and the 46 below are the rest.
+
+Result for the 220 files in the table above:
+
+- 219 are visible in their listed step.
+- 1 is not visible: `tools/evaluation/benchmark-runner.test.ts`. No script or workflow runs it.
+
+Five files changed since run 43238566925. `l3-investigation-publication-gate.test.ts`, `map-motion.test.ts`, `map-severity.test.tsx`, `pipeline-flow-client.test.ts` and `public-severity.test.ts` are now visible.
+
+## Test files added after run 43238566925 (on disk at 6fff929)
+
+Each file below runs in CI through a listed script, a glob or a `ci.yml` step. All 46 are visible in run 44211263890. The worker and web test scripts list every test file on disk (119 and 41). No listed file is missing from disk.
+
+### accounts (2)
+
+Runs in CI: yes (listed script: `accounts:test` in the root `package.json`, step 11).
+
+| Test file | Step |
+| --- | --- |
+| `hosted-ingest.test.ts` | 11 |
+| `hosted-once-publication.test.ts` | 11 |
+
+### db (1)
+
+Runs in CI: yes (glob: `apps/db/test/run-db-tests.ts` runs every `*.test.ts` in the directory, step 6).
+
+| Test file | Step |
+| --- | --- |
+| `source-approval-store.test.ts` | 6 |
+
+### intel (9)
+
+Runs in CI: yes (glob: `test/*.test.ts` in the `test` script of `apps/intelligence/package.json`, step 9).
+
+| Test file | Step |
+| --- | --- |
+| `agent-output-leak.test.ts` | 9 |
+| `event-time-unknown.test.ts` | 9 |
+| `google-ai-adapter.test.ts` | 9 |
+| `google-ai-run-budget.test.ts` | 9 |
+| `hosted17-petabencana-label.test.ts` | 9 |
+| `hosted22-published-at.test.ts` | 9 |
+| `live-lineage.test.ts` | 9 |
+| `location-grounding.test.ts` | 9 |
+| `nfr02-generation-budget.test.ts` | 9 |
+
+### live (tools/live-*, 3)
+
+Runs in CI: yes (listed script: `ci.yml` step 12 names each file. `live-freshness-job.test.ts` was added to that list in 3df81e9. The root `test` script also lists them).
+
+| Test file | Step |
+| --- | --- |
+| `live-db-lock.test.ts` | 12 |
+| `live-db-restore.test.ts` | 12 |
+| `live-freshness-job.test.ts` | 12 |
+
+No CI step runs a `tools/live-*` file as a script. The helpers without `.test.` in their name are imported by these tests (`live-db-lock.ts`, `live-db-restore.ts`, `live-freshness-job.ts`) or by `tools/accounts/hosted-ingest.test.ts` (step 11: `live-source-coverage.ts`, `live-sources-seed.ts`).
+
+### web (9)
+
+Runs in CI: yes (listed script: the `test` script of `apps/web/package.json`, step 7).
+
+| Test file | Step |
+| --- | --- |
+| `event-detail-claim-sources.test.tsx` | 7 |
+| `event-detail-dataset-wording.test.tsx` | 7 |
+| `event-detail-geometry.test.tsx` | 7 |
+| `event-time-unknown.test.tsx` | 7 |
+| `fetch-mode-controls.test.tsx` | 7 |
+| `interest-removal.test.ts` | 7 |
+| `provider-fetch-access.test.ts` | 7 |
+| `published-event-moderation.test.tsx` | 7 |
+| `source-approval.test.tsx` | 7 |
+
+### worker (22)
+
+Runs in CI: yes (listed script: the `test` script of `apps/worker/package.json`, step 8).
+
+| Test file | Step |
+| --- | --- |
+| `adr061-gate-db.test.ts` | 8 |
+| `agent-origin-writer.test.ts` | 8 |
+| `agent-point-geometry.test.ts` | 8 |
+| `briefing-interest-removal.test.ts` | 8 |
+| `event-withdrawal-correction-db.test.ts` | 8 |
+| `fetch-mode-moderator-gate.test.ts` | 8 |
+| `hosted14-no-invent.test.ts` | 8 |
+| `hosted17-petabencana-label.test.ts` | 8 |
+| `hosted22-public-attribution.test.ts` | 8 |
+| `hosted22-rss-published-at.test.ts` | 8 |
+| `ingest-dispatch.test.ts` | 8 |
+| `internal-proposals-route.test.ts` | 8 |
+| `l4-event-time-unknown.test.ts` | 8 |
+| `layer-import-boundary.test.ts` | 8 |
+| `moderation-event-actions.test.ts` | 8 |
+| `poller-redirect-guard.test.ts` | 8 |
+| `repeated-coverage-alerts.test.ts` | 8 |
+| `source-approval-api.test.ts` | 8 |
+| `synthetic-fixture-pipeline.test.ts` | 8 |
+| `synthetic-poll-schedule-runtime.test.ts` | 8 |
+| `synthetic-source-poll-process-runtime.test.ts` | 8 |
+| `trace-id-chain.test.ts` | 8 |

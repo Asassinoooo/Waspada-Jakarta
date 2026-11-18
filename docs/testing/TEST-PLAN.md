@@ -1,7 +1,7 @@
 # Master test plan
 
 Project: Waspada Jakarta (Team 12, RPL course).
-Document: TEST-PLAN. Status: draft for review, 13 November 2026.
+Document: TEST-PLAN. Status: draft for review, 18 November 2026. Baseline: `main` at 6fff929.
 Basis: Braude and Bernstein, *Software Engineering: Modern Approaches*, Part VII (Chapters 25–28); Software Development Plan (SDP) section 10 and requirement tables; `.github/workflows/ci.yml`.
 
 ## 1. Purpose and scope
@@ -10,7 +10,7 @@ This plan sets out how the local live mode and the synthetic demo of Waspada Jak
 
 Out of scope for this plan:
 
-- Hosted deployment on Cloudflare Workers and Neon. The target is designed, not deployed, and hosted behaviour is not tested.
+- Automated tests of the hosted deployment on Cloudflare Workers and Neon. The Worker was deployed on 17 Nov 2026 (HOSTED-23) on Workers Free and Neon Free, through Hyperdrive. No automated test calls it. Its manual and walkthrough checks are in `UAT.md` section 9.2 and `SYSTEM-TEST.md` section 6A (register rows ST-H-01 to ST-H-10).
 - Android device testing and release validation. The Flutter analysis and unit tests are local evidence only.
 - The held-out evaluation with labelled cases (SDP section 10). It depends on source rights and human labels, which are not yet available.
 
@@ -19,7 +19,7 @@ Out of scope for this plan:
 | Item | Role | Test runner |
 | --- | --- | --- |
 | `apps/worker` | Cloudflare Worker API, L4 publication gate, public routes | Node test runner |
-| `apps/db` | PostgreSQL and PostGIS schema, 47 migrations, repositories | Node test runner on PGlite, one process per file |
+| `apps/db` | PostgreSQL and PostGIS schema, 53 migrations, repositories, 58 test files | Node test runner on PGlite, one process per file |
 | `apps/intelligence` | Mastra job runner and model workflow | Node test runner |
 | `apps/web` | React client (map, incident detail, administrator workspace) | Node test runner |
 | `apps/mobile` | Flutter public reader (local only) | `flutter test` |
@@ -52,15 +52,28 @@ Tests that cover behaviour the requirements do not name are not added to the pla
 
 - **Synthetic fixtures** committed to the repository and labelled as synthetic. These are the main inputs for unit and integration tests.
 - **The demo dataset** (`DATASET_MODE=demo`) for system and UAT runs. Its accounts are `demo.warga`, `demo.moderator` and `demo.admin`, defined in `tools/accounts/demo-accounts.ts`. Passwords come from that file and are never printed in reports.
-- **Live feeds** (PetaBencana, BMKG and 14 RSS feeds) are used only in the local live run (`npm run serve:live`). They are never used as inputs to automated tests, and CI does not poll them.
+- **Live feeds** (PetaBencana, BMKG and 14 RSS feeds) are used by the local live run (`npm run serve:live`) and by the hosted ingest workflow (`.github/workflows/ingest.yml`). That workflow polls all 16 sources once per run. The production Worker cron (`apps/worker/wrangler.toml`, `7,37 * * * *`) starts it every 30 minutes (HOSTED-25). Live feeds are never used as inputs to automated tests, and CI (`.github/workflows/ci.yml`) does not poll them.
 - **Model responses** in automated tests come from authored doubles and simulated providers. Real model calls use quota and are not part of routine testing.
 
 ## 6. Test environment
 
 - WSL Ubuntu 26.04, with Node 24 (CI uses Node 24 on ubuntu-24.04). Lockfiles are authoritative.
 - PGlite for database tests. The production target, Neon PostgreSQL, is not used in tests.
-- Playwright (Chromium) for browser checks and UAT walkthroughs.
+- Playwright (Chromium) for manual browser checks (`npm run test:e2e`) and UAT walkthroughs. CI runs no browser step.
 - GitHub Actions runs the full suites on every push and pull request to `main`.
+
+Integration environment, checked 18 Nov 2026:
+
+| Item | Value | Where it is set |
+| --- | --- | --- |
+| CI runner | `ubuntu-24.04` | `.github/workflows/ci.yml` |
+| Node.js and install | Node 24 (`node-version: 24`); `npm ci` from the lockfile | `.github/workflows/ci.yml` |
+| Database in tests | PGlite 0.5.8, with `@electric-sql/pglite-postgis` 0.2.8 and `@electric-sql/pglite-pgvector` 0.0.9 | `apps/db/package.json`, `package-lock.json`, `apps/db/test/harness.ts` |
+| Database test runner | One child process per file | `apps/db/test/run-db-tests.ts` |
+| Hosted database (system checks only) | Neon Free, Postgres 17 with PostGIS and pgvector, reached through Hyperdrive | `docs/DEPLOYMENT.md` prerequisites (item 3); `apps/worker/wrangler.toml` |
+| Hosted Worker (system checks only) | Cloudflare Workers Free; production sets `DATASET_MODE=live` | `docs/DEPLOYMENT.md` prerequisites (item 1); `apps/worker/wrangler.toml` |
+| Network in automated tests | None. Mocks, fixtures, fakes and PGlite | Test file headers, for example `tools/accounts/hosted-once-publication.test.ts` |
+| Browser | None in CI | `.github/workflows/ci.yml` |
 
 Local test policy (owner decision, 12 November 2026): locally, run only `npm run typecheck` and the new or changed test files, one at a time. The full worker suite, `db:test`, `test:intelligence`, `pipeline:test`, `npm test` and `npm run build` run in CI, because the 7 GB WSL host has crashed under them.
 
@@ -95,6 +108,14 @@ Braude (Figure 25.9) lists the criteria. This plan uses:
 - Every release-blocking defect in SDP section 10 is closed before release. These are: unsupported publication, exposed personal data, wrong active warning geometry, budget bypass, and unauthorised moderation.
 - A coverage goal is not used, because the project does not measure coverage.
 
+### 10.1 Integration level: entry, suspension and exit
+
+| Criterion | Rule | Status at 6fff929 (18 Nov 2026) |
+| --- | --- | --- |
+| Entry | `npm run typecheck` passes. The unit tests of the components pass. Migrations apply on PGlite (`apps/db/test/migrations.test.ts` asserts 53). | Met. In run 44211263890 the typecheck step passed, every test step passed, and `migrations.test.ts` printed a `PASS` line. |
+| Suspension | A PGlite or WASM crash, an out-of-memory failure, or a CI infrastructure failure. A suspended run is not counted as a pass. Re-run it. | None in run 44211263890. Runs on `main` that failed on 16 Nov (`8324c11`, `5717d37`) and 17 Nov (`181d331`) were fixed forward. |
+| Exit | All integration files listed in `INTEGRATION-TEST.md` pass in one CI run on `main`. No open High defect on an integration path. Untested paths are listed. | Met for the run and the listing. All 42 test files cited in `INTEGRATION-TEST.md` are in run 44211263890 on `main`, and they passed. The High check cannot be read from `DEFECTS.md`, which has no severity field. The open integration findings are F-05 and F-06, and the owner decision on each is pending. The untested paths are listed in `INTEGRATION-TEST.md` section 7. |
+
 ## 11. Regression rule
 
 Braude's rule (Figure 25.3): if a test target C depends on changed code N, C is retested. If C is known to be independent of N, it need not be retested. Otherwise retest C.
@@ -107,7 +128,7 @@ In practice, every change triggers the full CI suite on push to `main`. For a ch
 | --- | --- | --- |
 | No human usability sessions | NFR-03 and user acceptance are not evidenced | Stated in Chapter 5; the UAT protocol is ready if sessions are run later |
 | Local memory limit | Full suites cannot run on the 7 GB host | CI runs them; local runs are limited by policy |
-| PGlite is not Neon | Hosted behaviour is not tested | Stated as a limitation; hosted tests are planned work |
+| PGlite is not Neon | No automated test calls the deployed Worker or Neon | Stated as a limitation. Hosted checks are walkthroughs (`UAT.md` section 9.2) and the hosted ingest runs |
 | Intermittent failures | Flaky tests were recorded in the unit report | Each recurrence is logged in `DEFECTS.md` and fixed at the root |
 | Partial independence (three-person team) | Authors review work close to their own | Reviewer sign-off is recorded per task |
 
@@ -126,4 +147,12 @@ In practice, every change triggers the full CI suite on push to `main`. For a ch
 
 ## 14. Approval
 
-No approval is recorded yet. This plan is a draft for review.
+This plan is a draft until the block below is signed.
+
+Prepared by: Team 12 (TG-DOCS-02, 18 Nov 2026)
+
+Reviewed by: ____
+
+Approved by: ____
+
+Date: ____
