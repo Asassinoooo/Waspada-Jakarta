@@ -89,6 +89,7 @@ Each entry carries a status line as of 18 November 2026. An entry without a fixe
 - **Observation:** `SOFTWARE_DEVELOPMENT_PLAN.md` line 155 says the moderator evidence review is read-only, with no sign-in and no review mutations, and defers those to a later authenticated release. This is stale. Password accounts exist (ADR-060), and moderation is authenticated (`apps/worker/test/moderation-api.test.ts`).
 - **Evidence:** `docs/testing/SYSTEM-TEST.md` section 1 (documentation conflict); `docs/decisions/ADR-060-password-accounts.md`.
 - **Decision needed:** the owner or root planner updates the SDP section 3.1 text. The test documents do not change the SDP.
+- **Status (18 Nov 2026): fixed in docs (owner decision).** SDP section 3.1 now describes the signed-in moderator review that the app implements.
 
 ### F-08: WSL distribution and CI Node version are stated inconsistently
 
@@ -139,7 +140,7 @@ Each entry carries a status line as of 18 November 2026. An entry without a fixe
 
 - **Observation:** a resolver on one Indonesian mobile network (XL Axiata) answers `*.workers.dev` with a block page. The browser then shows a TLS "certificate name does not match" error. The site itself is fine.
 - **Evidence:** `docs/DEPLOYMENT.md` (note at the top); `docs/testing/UAT.md` section 9.2, network note.
-- **Status (18 Nov 2026): open.** Another resolver reaches the site, such as Cloudflare WARP or 1.1.1.1. Decision needed (owner): whether the public site should use a custom domain.
+- **Status (18 Nov 2026): accepted limitation (owner decision: no custom domain).** Another resolver reaches the site, such as Cloudflare WARP or 1.1.1.1. The limitation is recorded in ADR-065 (18 Nov amendment).
 
 ### F-18: ANTARA feeds failed from one PC network
 
