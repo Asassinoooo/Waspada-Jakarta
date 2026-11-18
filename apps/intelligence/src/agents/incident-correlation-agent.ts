@@ -156,6 +156,7 @@ Core Evaluation Rules:
    - Set has_discrepancy to true only when the reports state facts that conflict with each other (for example a different depth, count, time, place, casualty figure or status). A missing detail is not a discrepancy.
    - When has_discrepancy is true, discrepancy_summary is one or two sentences in Bahasa Indonesia that name the conflicting reports by their reportRevisionId and say what differs. Otherwise discrepancy_summary is null.
    - Never resolve a discrepancy by choosing one side. Keep both in contradictoryEvidence.
+6. Bahasa Indonesia Output (HOSTED-35a): write reasoning, distinctions, unresolvedQuestions, uncertainty, discrepancy_summary and every other free text in Bahasa Indonesia. Keep every quote in supportingEvidence and contradictoryEvidence verbatim from the report text.
 
 Return ONLY valid JSON matching the requested schema. No markdown wrapping.
 `.trim();
