@@ -76,6 +76,20 @@ const webhookIngest = createWebhookIngestHandler({
 // `runtime/news-triage-composition.ts`; `syncLivePipelineProposals` only
 // warmed an in-memory map no read path consults after the DB cutover.
 // Webhook ingestion is unaffected.
+/**
+ * HOSTED-37 (owner decision, 18 Nov 2026): moderation, admin, account/auth, pipeline flow and every write read
+ * through the no-cache Hyperdrive config (FRESH_HYPERDRIVE). Without FRESH_HYPERDRIVE (tests, dev) this is HYPERDRIVE.
+ * A configured FRESH_HYPERDRIVE without a connection string fails closed: it never falls back to the cached config.
+ */
+export function freshDatabase(env: Pick<WorkerEnvironment, "FRESH_HYPERDRIVE" | "HYPERDRIVE">): { readonly connectionString?: string } | undefined {
+  return env.FRESH_HYPERDRIVE ?? env.HYPERDRIVE;
+}
+
+/** HOSTED-37: public GET reads keep the cached Hyperdrive config (query caching on). */
+export function publicReadDatabase(env: Pick<WorkerEnvironment, "HYPERDRIVE">): { readonly connectionString?: string } | undefined {
+  return env.HYPERDRIVE;
+}
+
 async function withSqlExecutor<Result>(
   env: WorkerEnvironment,
   operation: (executor: SqlExecutor) => Promise<Result>,
@@ -83,8 +97,9 @@ async function withSqlExecutor<Result>(
   if (env.SQL_EXECUTOR) {
     return operation(env.SQL_EXECUTOR);
   }
-  if (env.HYPERDRIVE?.connectionString) {
-    return withPostgresSqlExecutor(env.HYPERDRIVE.connectionString, operation);
+  const database = freshDatabase(env);
+  if (database?.connectionString) {
+    return withPostgresSqlExecutor(database.connectionString, operation);
   }
   throw new Error("No database executor or connection string configured in environment");
 }
@@ -102,8 +117,9 @@ async function withTransactionalSqlExecutor<Result>(
     }
     return operation(env.SQL_EXECUTOR as unknown as TransactionalSqlExecutor);
   }
-  if (env.HYPERDRIVE?.connectionString) {
-    return withPostgresTransactionalSqlExecutor(env.HYPERDRIVE.connectionString, operation);
+  const database = freshDatabase(env);
+  if (database?.connectionString) {
+    return withPostgresTransactionalSqlExecutor(database.connectionString, operation);
   }
   throw new Error("No database executor or connection string configured in environment");
 }
@@ -126,7 +142,7 @@ const pipelineFlowHandler = createPipelineFlowHandler({
  * Exported for the hosted publication sweep (HOSTED-20), which runs the same rights check as the route.
  */
 export async function checkSourcePublicDisplay(env: WorkerEnvironment, sourceId: string): Promise<boolean> {
-  if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
+  if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) return false;
   try {
     return await withSqlExecutor(env, async (executor) => {
       const res = await executor.query<{
@@ -191,7 +207,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
   const datasetKind = config.datasetKind as DatasetKind;
   return createModerationApiHandler({
     listPendingProposals: async () => {
-      if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
+      if (env.SQL_EXECUTOR || freshDatabase(env)?.connectionString) {
         return withSqlExecutor(env, async (executor) => {
           const writer = createEventProposalWriter(executor);
           return writer.readPendingProposals(datasetKind);
@@ -200,7 +216,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       return Array.from(activeProposals.values());
     },
     listUncertainTriage: async ({ limit }: { limit?: number } = {}) => {
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return [];
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) return [];
       return withSqlExecutor(env, async (executor) => {
         const rows = await readUncertainTriage(executor, datasetKind, limit ?? 100);
         return rows.map((row) => ({
@@ -222,7 +238,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       });
     },
     markTriageReviewed: async (itemIdentityHash: string, actorId: string) => {
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return false;
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) return false;
       return withSqlExecutor(env, (executor) => markTriageReviewed(executor, datasetKind, itemIdentityHash, actorId));
     },
     // WJ-INT-02B: live public-display rights check against current registry
@@ -230,7 +246,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
     // denies publication. Moderator approval never overrides this.
     checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
     getProposalDetail: async (id: string) => {
-      if (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString) {
+      if (env.SQL_EXECUTOR || freshDatabase(env)?.connectionString) {
         return withSqlExecutor(env, async (executor) => {
           const writer = createEventProposalWriter(executor);
           const proposal = await writer.readProposalById(id, datasetKind);
@@ -277,7 +293,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
     datasetScope: config.datasetKind,
     csrfProtection: true,
     rejectProposal: async (proposalId: string, _command, principal) => {
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
         return { status: "denied", code: "proposal_unavailable" };
       }
       const outcome = await withSqlExecutor(env, (executor) => decideProposal(
@@ -299,7 +315,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
     // TG-FR12: a moderator withdraws a published event. One transaction writes the withdrawn version, its decision and
     // its audit record. Public reads drop the event on their own, and the in-memory model drops it after COMMIT.
     withdrawEvent: async (eventId: string, command, principal) => {
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
         return { status: "denied", code: "withdrawal_failed" };
       }
       const outcome = await withSqlExecutor(env, (executor) => withdrawPublishedEvent(
@@ -336,7 +352,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
     // TG-FR12: a moderator correction is a stored proposal decided through the same gate, with the moderator
     // gate (time and source checks) applied. A refusal publishes nothing and is returned with its reasons.
     submitCorrection: async (eventId: string, command, principal) => {
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
         return { status: "refused", code: "publication_failed", reasons: [] };
       }
       const outcome = await withSqlExecutor(env, (executor) => submitEventCorrection(
@@ -391,7 +407,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
         if (!id || typeof actorId !== "string" || actorId.length === 0) {
           return { status: "denied", code: "proposal_not_found" };
         }
-        if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+        if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
           return { status: "denied", code: "proposal_unavailable" };
         }
         const outcome = await withSqlExecutor(env, (executor) => decideProposal(
@@ -464,7 +480,7 @@ export default {
       const denied = await serviceKeyDenial(request, env.WEBHOOK_SERVICE_KEY);
       if (denied) return denied;
       const response = await webhookIngest(request);
-      if (response.ok && (env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) {
+      if (response.ok && (env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
         try {
           const resBody = (await response.clone().json().catch(() => null)) as {
             report_revision_id?: string;
@@ -586,7 +602,7 @@ export default {
           headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
         });
       }
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return unavailableJson();
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) return unavailableJson();
       const proposalId = body.proposal_id;
       const config = moderationAccountConfig(env);
       if (!config) return unavailableJson();
@@ -676,7 +692,7 @@ export default {
         && url.pathname === "/api/v1/events"
         ? await createPublicEventListRuntime({
           datasetMode: env.DATASET_MODE,
-          connectionString: env.HYPERDRIVE?.connectionString,
+          connectionString: publicReadDatabase(env)?.connectionString,
           cursorHmacKeyHex: env.PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX,
         })
         : undefined;
@@ -686,7 +702,7 @@ export default {
         && isPublicEventDetailPath(url.pathname)
         ? createPublicEventDetailRuntime({
           datasetMode: env.DATASET_MODE,
-          connectionString: env.HYPERDRIVE?.connectionString,
+          connectionString: publicReadDatabase(env)?.connectionString,
         })
         : undefined;
     const eventHistoryProjectionService =
@@ -695,7 +711,7 @@ export default {
         && isPublicEventHistoryPath(url.pathname)
         ? createPublicEventHistoryRuntime({
           datasetMode: env.DATASET_MODE,
-          connectionString: env.HYPERDRIVE?.connectionString,
+          connectionString: publicReadDatabase(env)?.connectionString,
         })
         : undefined;
     const eventGeoJSONRuntime =
@@ -704,7 +720,7 @@ export default {
         && url.pathname === "/api/v1/events.geojson"
         ? createPublicEventGeoJSONRuntime({
           datasetMode: env.DATASET_MODE,
-          connectionString: env.HYPERDRIVE?.connectionString,
+          connectionString: publicReadDatabase(env)?.connectionString,
         })
         : undefined;
     const publicBriefingRuntime =
@@ -713,7 +729,7 @@ export default {
         && url.pathname === "/api/v1/briefings"
         ? createPublicBriefingRuntime({
           datasetMode: env.DATASET_MODE,
-          connectionString: env.HYPERDRIVE?.connectionString,
+          connectionString: publicReadDatabase(env)?.connectionString,
         })
         : undefined;
     let publicEventUpdatesRuntime;
@@ -723,7 +739,7 @@ export default {
       try {
         publicEventUpdatesRuntime = await createPublicEventUpdatesRuntime({
           datasetMode: env.DATASET_MODE,
-          connectionString: env.HYPERDRIVE?.connectionString,
+          connectionString: publicReadDatabase(env)?.connectionString,
           cursorHmacKeyHex: env.PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX,
         });
       } catch {
@@ -783,7 +799,7 @@ export default {
       const pbResult = await pbRunner.poll(controller.scheduledTime);
       const bmkgRunner = createBmkgPollRuntime();
       const bmkgResult = await bmkgRunner.poll();
-      if (!(env.SQL_EXECUTOR || env.HYPERDRIVE?.connectionString)) return;
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) return;
       await withSqlExecutor(env, async (executor) => {
         const datasetKind = ((env.DATASET_MODE as string) || "live") as DatasetKind;
         const repo = createSqlIncidentRepository(executor);

@@ -37,15 +37,24 @@ INGEST_DISPATCH_REF = "main"
 [env.production.triggers]
 crons = ["7,37 * * * *"]
 
-# Hyperdrive config waspada-public (HOSTED-23). Same Neon database as the scheduled ingest (owner decision).
+# Hyperdrive config waspada-public (HOSTED-23), query caching ON. Public GET reads only (HOSTED-37).
+# Same Neon database as the scheduled ingest (owner decision).
 [[env.production.hyperdrive]]
 binding = "HYPERDRIVE"
 id = "7dad8907f83b4ab9b7499e0de586b222"
 
-# Same config for auth: the runtime switches into the NOLOGIN auth role granted by the bootstrap.
+# HOSTED-37 (owner decision, 18 Nov 2026): no-cache config, same Neon database. Moderation, admin, account/auth,
+# pipeline flow and all writes read through it, so a write is visible on the next read (the cached config
+# could serve a stale read for up to about a minute).
+[[env.production.hyperdrive]]
+binding = "FRESH_HYPERDRIVE"
+id = "4e16ee874a1349589a764189d54856ba"
+
+# Auth uses the no-cache config too (HOSTED-37): session reads after logout or revoke must not be stale.
+# The runtime switches into the NOLOGIN auth role granted by the bootstrap.
 [[env.production.hyperdrive]]
 binding = "AUTH_HYPERDRIVE"
-id = "7dad8907f83b4ab9b7499e0de586b222"
+id = "4e16ee874a1349589a764189d54856ba"
 
 # Static web build served from the same Worker. Every Worker route is under /api/v1/*, so only those
 # paths run the Worker; everything else is an asset or, when missing, the SPA index.html.
