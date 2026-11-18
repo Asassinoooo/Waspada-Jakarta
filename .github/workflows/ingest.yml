@@ -30,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: "24.21.0" # D-04: pinned; 24.22.2 crashed in PGlite WASM (run 44220257264)
           cache: npm
 
       # No secrets on this step: install scripts run here, and the repository is public.
