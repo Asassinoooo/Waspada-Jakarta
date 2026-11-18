@@ -51,8 +51,16 @@ import {
 // HOSTED-24C: the attribution backfill, its step in the --once order, and the publish fixtures it is tested with.
 import { backfillSourceAttributions, supportKeysOf } from "../hosted/attribution-backfill.js";
 import {
+  backfillPublishedLocations,
+  LOCATION_BACKFILL_LIMIT,
+  LOCATION_BACKFILL_MAX_CONSECUTIVE_FAILURES,
+  type LocationRefresh,
+} from "../hosted/location-backfill.js";
+import {
   formatAttributionLine,
+  formatLocationLine,
   runOnceSequence,
+  type LocationBackfillResult,
   type AttributionBackfillResult,
   type DrainResult,
   type OnceSteps,
@@ -71,6 +79,7 @@ import {
   AGENT_AUTO_PUBLISHER_ID,
   attributionDecisionIdFor,
   decideProposal,
+  type LocationRefreshOutcome,
   type ProposalDecisionDependencies,
 } from "../../apps/worker/src/layers/l4-application-integration/proposal-publication.js";
 
@@ -1225,6 +1234,110 @@ describe("HOSTED-24C attribution backfill (PGlite, real publish path)", () => {
     };
     assert.deepEqual(await backfill(down), { candidates: 0, attributed: 0, skipped: 0, failed: 1 });
   });
+
+  // HOSTED-26: the location backfill over the real candidate query and the real refresh. The legacy versions are written as
+  // migrations 054 and 055 left them: a publication decision and version 1 with no point and no label text. The public list
+  // is not called after these rows exist, because a fabricated record is not a valid projection and the list reads every
+  // published version.
+  it("HOSTED-26 the location backfill refreshes the legacy candidates once, skips a nothing-to-add event, and a repeat finds only that one", async () => {
+    const legacyDecidedAt = "2026-11-10T08:05:00.000Z";
+    const locationBackfill = () => backfillPublishedLocations({
+      executor: db.executor,
+      checkPublicDisplay,
+      deadlineMs: Number.POSITIVE_INFINITY,
+      now: () => 0,
+    });
+    const legacy = async (
+      key: string,
+      incidentId: string,
+      proposalOverrides: Partial<EventProposalDto>,
+      decisionRecord: Record<string, unknown>,
+    ): Promise<void> => {
+      const lineage = await seedProposalLineage(db.executor, key, "live", H24C_RETRIEVED_AT, H24C_SOURCE_PUBLISHED_AT);
+      permitted.add(h24cSource(key));
+      await createEventProposalWriter(db.executor).persistProposal(
+        { ...h24cProposal(lineage, key, incidentId), ...proposalOverrides },
+        "live",
+      );
+      await db.executor.transaction(async (tx) => {
+        await tx.execute("SET CONSTRAINTS ALL DEFERRED");
+        await tx.query(
+          `INSERT INTO waspada.publication_decisions
+             (dataset_kind, decision_id, trace_id, proposal_id, policy_version, event_id, event_version, reviewer_id, decided_at, record_json)
+           VALUES ('live', $1, $2, $3, 'merge-review-v1', $4, 1, $5, $6::timestamptz, $7::jsonb)`,
+          [`dec-legacy-${incidentId}`, lineage.trace_id, `prop-${incidentId}`, incidentId, AGENT_AUTO_PUBLISHER_ID, legacyDecidedAt, JSON.stringify({
+            disposition: "publish",
+            actor_kind: "agent",
+            actor_id: AGENT_AUTO_PUBLISHER_ID,
+            publication_mode: "agent_auto",
+            gate: "agent_auto_publication",
+            source_count: 1,
+            ...decisionRecord,
+          })],
+        );
+        await tx.query(
+          `INSERT INTO waspada.event_versions
+             (dataset_kind, event_id, version, trace_id, supersedes_version, title, summary, category, lifecycle,
+              publication_status, publication_decision_id, published_at, record_json)
+           VALUES ('live', $1, 1, $2, NULL, 'Genangan di Cawang (fiktif)', $3, 'disasters_weather', 'ongoing',
+              'published', $4, $5::timestamptz, $6::jsonb)`,
+          [incidentId, lineage.trace_id, H24C_CLAIM_TEXT, `dec-legacy-${incidentId}`, legacyDecidedAt, JSON.stringify({
+            schema_version: "2.0",
+            record_type: "Event",
+            event_id: incidentId,
+            version: 1,
+            claims: [{ claim_id: "claim-1" }],
+            scope: { place_ids: [], service_ids: [], institution_ids: [], audience_ids: [], geometry_ids: [] },
+            impact_refs: [],
+          })],
+        );
+      });
+    };
+
+    // A point and no label: the candidate because its geometry was never written.
+    await legacy("h24c-loc-point", "inc-h24c-loc-point", { coordinates: [106.871, -6.244] }, {
+      geometry_status: "pending_geometry_writer",
+      location_label_present: true,
+      geometry_source: "model_approximate",
+    });
+    // A label and no point: the candidate because its label text was never stored.
+    await legacy("h24c-loc-label", "inc-h24c-loc-label", { location_label: "Kebayoran Baru, Jakarta Selatan" }, {
+      geometry_status: "whole_view",
+      location_label_present: true,
+    });
+    // A generic label: the flag is true but no label text can be stored, so nothing can be added.
+    await legacy("h24c-loc-generic", "inc-h24c-loc-generic", { location_label: "DKI Jakarta (Lokasi spesifik belum teridentifikasi)" }, {
+      geometry_status: "whole_view",
+      location_label_present: true,
+    });
+
+    const countsBefore = await counts();
+    assert.deepEqual(await locationBackfill(), { candidates: 3, refreshed: 2, skipped: 1, failed: 0 });
+    assert.deepEqual(
+      await counts(),
+      { versions: countsBefore.versions + 2, decisions: countsBefore.decisions + 2 },
+      "two new versions and decisions, none for the event that had nothing to add",
+    );
+
+    const labelOfVersionTwo = async (eventId: string): Promise<string | null | undefined> => (await db.executor.query<{ location_label: string | null }>(
+      `SELECT location_label FROM waspada.public_event_location_status
+       WHERE dataset_kind = 'live' AND event_id = $1 AND version = 2`,
+      [eventId],
+    )).rows[0]?.location_label;
+    assert.equal(await labelOfVersionTwo("inc-h24c-loc-point"), "Cawang, Jakarta Timur");
+    assert.equal(await labelOfVersionTwo("inc-h24c-loc-label"), "Kebayoran Baru, Jakarta Selatan");
+    assert.equal(await labelOfVersionTwo("inc-h24c-loc-generic"), undefined, "no version 2 for the generic label");
+
+    const pointGeometry = await db.executor.query<{ geometry_status: string }>(
+      `SELECT record_json->>'geometry_status' AS geometry_status FROM waspada.publication_decisions
+       WHERE dataset_kind = 'live' AND event_id = 'inc-h24c-loc-point' AND event_version = 2`,
+    );
+    assert.deepEqual(pointGeometry.rows, [{ geometry_status: "point_written" }]);
+
+    // The generic-label event stays a candidate, because its flag is true and it has no label text. It is attempted and
+    // skipped on every run. The two refreshed events are no longer candidates.
+    assert.deepEqual(await locationBackfill(), { candidates: 1, refreshed: 0, skipped: 1, failed: 0 });
+  });
 });
 
 describe("HOSTED-24C attribution backfill helpers and the --once order (fakes)", () => {
@@ -1333,5 +1446,187 @@ describe("HOSTED-24C attribution backfill helpers and the --once order (fakes)",
       relation: "supports",
     });
     assert.deepEqual(supportKeysOf({}), { keys: [], malformed: 0 }, "a record with no claims has no support");
+  });
+
+  it("HOSTED-26 runs the location backfill after attribution and before freshness, and logs one location line", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence({
+      ...onceSteps(order, logged, async () => {
+        order.push("attribution");
+        return { candidates: 0, attributed: 0, skipped: 0, failed: 0 };
+      }),
+      location: async (): Promise<LocationBackfillResult> => {
+        order.push("location");
+        return { candidates: 2, refreshed: 1, skipped: 1, failed: 0 };
+      },
+    });
+    assert.deepEqual(order, ["poll", "drain", "sweep", "attribution", "location", "freshness"]);
+    assert.equal(logged.filter((line) => line.startsWith("[Once] Location backfill:")).length, 1);
+    assert.equal(logged.at(-1), "[Once] Location backfill: candidates=2 refreshed=1 skipped=1 failed=0");
+  });
+
+  it("HOSTED-26 a location step that throws is counted as one failed step, reaches freshness, and no error text is logged", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence({
+      ...onceSteps(order, logged),
+      location: async (): Promise<LocationBackfillResult> => {
+        order.push("location");
+        throw new Error("connection lost to a source URL");
+      },
+    });
+    assert.deepEqual(order, ["poll", "drain", "sweep", "location", "freshness"]);
+    assert.equal(logged.at(-1), "[Once] Location backfill: candidates=0 refreshed=0 skipped=0 failed=1");
+    assert.equal(logged.some((line) => line.includes("connection lost") || line.includes("URL")), false, "the error text never reaches the log");
+  });
+
+  it("HOSTED-26 a run without a location step keeps its order and logs no location line", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence(onceSteps(order, logged));
+    assert.deepEqual(order, ["poll", "drain", "sweep", "freshness"]);
+    assert.equal(logged.some((line) => line.includes("Location backfill")), false);
+  });
+
+  it("HOSTED-26 the location count line has a fixed shape with no event text", () => {
+    assert.equal(
+      formatLocationLine({ candidates: 3, refreshed: 2, skipped: 1, failed: 0 }),
+      "[Once] Location backfill: candidates=3 refreshed=2 skipped=1 failed=0",
+    );
+  });
+});
+
+describe("HOSTED-26 location backfill tool (fakes, no database)", () => {
+  type Plan = LocationRefreshOutcome | "throw";
+
+  /** A candidate query that returns the given event ids and records the parameters it was called with. */
+  function candidateExecutor(eventIds: readonly string[], calls: unknown[][]): TransactionalSqlExecutor {
+    return {
+      query: <Row extends object>(_sql: string, parameters?: readonly unknown[]): Promise<{ readonly rows: readonly Row[] }> => {
+        calls.push([...(parameters ?? [])]);
+        return Promise.resolve({ rows: eventIds.map((event_id) => ({ event_id }) as unknown as Row) });
+      },
+      execute: () => Promise.reject(new Error("not used by these tests")),
+      transaction: <Result>(): Promise<Result> => Promise.reject(new Error("not used by these tests")),
+    };
+  }
+
+  /** A candidate query that fails, as a dropped connection would. */
+  const downExecutor: TransactionalSqlExecutor = {
+    query: <Row extends object>(): Promise<{ readonly rows: readonly Row[] }> => Promise.reject(new Error("connection lost")),
+    execute: () => Promise.reject(new Error("connection lost")),
+    transaction: <Result>(): Promise<Result> => Promise.reject(new Error("connection lost")),
+  };
+
+  /** A refresh that gives each event its planned outcome. An event with no plan, or a "throw" plan, throws. */
+  function plannedRefresh(plan: Record<string, Plan>, seen: string[]): LocationRefresh {
+    return async (_executor, input) => {
+      seen.push(input.eventId);
+      const step = plan[input.eventId];
+      if (step === undefined || step === "throw") throw new Error("refresh failed with a source URL");
+      return step;
+    };
+  }
+
+  const noDisplay = async (): Promise<boolean> => true;
+  const backfillWith = (
+    executor: TransactionalSqlExecutor,
+    refresh: LocationRefresh,
+    extra: { limit?: number; deadlineMs?: number; now?: () => number } = {},
+  ) => backfillPublishedLocations({
+    executor,
+    checkPublicDisplay: noDisplay,
+    deadlineMs: Number.POSITIVE_INFINITY,
+    now: () => 0,
+    refresh,
+    ...extra,
+  });
+
+  it("HOSTED-26 counts each outcome once, counts a thrown refresh as failed, and passes the live dataset and the rights check through", async () => {
+    const seen: string[] = [];
+    const calls: unknown[][] = [];
+    const checked: string[] = [];
+    const datasets: string[] = [];
+    const inner = plannedRefresh({
+      "ev-a": { status: "refreshed", version: 2 },
+      "ev-b": { status: "skipped", reason: "nothing_to_add" },
+      "ev-c": "throw",
+      "ev-d": { status: "skipped", reason: "withdrawn" },
+    }, seen);
+    const result = await backfillPublishedLocations({
+      executor: candidateExecutor(["ev-a", "ev-b", "ev-c", "ev-d"], calls),
+      checkPublicDisplay: async (sourceId) => {
+        checked.push(sourceId);
+        return true;
+      },
+      deadlineMs: Number.POSITIVE_INFINITY,
+      now: () => 0,
+      refresh: async (executor, input) => {
+        datasets.push(input.datasetKind);
+        await input.checkPublicDisplay("src-probe");
+        return inner(executor, input);
+      },
+    });
+    assert.deepEqual(result, { candidates: 4, refreshed: 1, skipped: 2, failed: 1 });
+    assert.deepEqual(seen, ["ev-a", "ev-b", "ev-c", "ev-d"], "each candidate is attempted once, in the order returned");
+    assert.deepEqual(datasets, ["live", "live", "live", "live"]);
+    assert.deepEqual(checked, ["src-probe", "src-probe", "src-probe", "src-probe"], "the rights check passed in is the one used");
+    assert.deepEqual(calls, [[LOCATION_BACKFILL_LIMIT]], "one candidate query, with the default limit");
+    assert.equal(LOCATION_BACKFILL_LIMIT, 100);
+  });
+
+  it("HOSTED-26 passes a given limit to the candidate query", async () => {
+    const calls: unknown[][] = [];
+    await backfillWith(candidateExecutor([], calls), plannedRefresh({}, []), { limit: 2 });
+    assert.deepEqual(calls, [[2]]);
+  });
+
+  it("HOSTED-26 stops after three failures in a row, and a success in between resets the count", async () => {
+    assert.equal(LOCATION_BACKFILL_MAX_CONSECUTIVE_FAILURES, 3);
+    const stopSeen: string[] = [];
+    const stopped = await backfillWith(
+      candidateExecutor(["a", "b", "c", "d", "e"], []),
+      plannedRefresh({
+        a: "throw",
+        b: "throw",
+        c: "throw",
+        d: { status: "refreshed", version: 2 },
+        e: { status: "refreshed", version: 2 },
+      }, stopSeen),
+    );
+    assert.deepEqual(stopped, { candidates: 3, refreshed: 0, skipped: 0, failed: 3 });
+    assert.deepEqual(stopSeen, ["a", "b", "c"], "no attempt after the third failure in a row");
+
+    const resetSeen: string[] = [];
+    const reset = await backfillWith(
+      candidateExecutor(["a", "b", "c", "d", "e"], []),
+      plannedRefresh({
+        a: "throw",
+        b: { status: "refreshed", version: 2 },
+        c: "throw",
+        d: "throw",
+        e: { status: "refreshed", version: 2 },
+      }, resetSeen),
+    );
+    assert.deepEqual(reset, { candidates: 5, refreshed: 2, skipped: 0, failed: 3 });
+    assert.deepEqual(resetSeen, ["a", "b", "c", "d", "e"], "a success resets the count, so every candidate is attempted");
+  });
+
+  it("HOSTED-26 attempts nothing at or after the deadline, and a failed candidate query is one failed step", async () => {
+    const seen: string[] = [];
+    const past = await backfillWith(
+      candidateExecutor(["a", "b"], []),
+      plannedRefresh({ a: { status: "refreshed", version: 2 }, b: { status: "refreshed", version: 2 } }, seen),
+      { deadlineMs: 10, now: () => 10 },
+    );
+    assert.deepEqual(past, { candidates: 0, refreshed: 0, skipped: 0, failed: 0 });
+    assert.deepEqual(seen, []);
+
+    assert.deepEqual(
+      await backfillWith(downExecutor, plannedRefresh({}, seen)),
+      { candidates: 0, refreshed: 0, skipped: 0, failed: 1 },
+    );
+    assert.deepEqual(seen, [], "no refresh is attempted when the candidate query fails");
   });
 });

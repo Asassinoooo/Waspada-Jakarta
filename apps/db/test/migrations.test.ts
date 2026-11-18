@@ -191,6 +191,7 @@ describe('DATA-01 migrations', () => {
         '052_public_event_location_status',
         '053_public_attribution_publication_grants',
         '054_publication_point_geometry_writer',
+        '055_public_event_location_label',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -359,6 +360,7 @@ describe('DATA-01 migrations', () => {
       '052_public_event_location_status',
       '053_public_attribution_publication_grants',
       '054_publication_point_geometry_writer',
+      '055_public_event_location_label',
     ]);
   });
 
@@ -411,12 +413,13 @@ describe('DATA-01 migrations', () => {
       '052_public_event_location_status',
       '053_public_attribution_publication_grants',
       '054_publication_point_geometry_writer',
+      '055_public_event_location_label',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '54');
+    assert.equal(count.rows[0]?.count, '55');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -435,7 +438,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 054_publication_point_geometry_writer/,
+      /Cannot apply migration 000_late_backfill before already applied migration 055_public_event_location_label/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -496,6 +499,7 @@ describe('DATA-01 migrations', () => {
       { version: '052_public_event_location_status' },
       { version: '053_public_attribution_publication_grants' },
       { version: '054_publication_point_geometry_writer' },
+      { version: '055_public_event_location_label' },
     ]);
   });
 
@@ -545,6 +549,7 @@ describe('DATA-01 migrations', () => {
       '052_public_event_location_status',
       '053_public_attribution_publication_grants',
       '054_publication_point_geometry_writer',
+      '055_public_event_location_label',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -2437,7 +2442,7 @@ describe('DATA-01 migrations', () => {
       );
 
       const applied = await applyMigrations(migrationDatabase.executor, migrations);
-      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals', '050_publication_writer_review_grant', '051_publication_origin_writes', '052_public_event_location_status', '053_public_attribution_publication_grants', '054_publication_point_geometry_writer']);
+      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals', '050_publication_writer_review_grant', '051_publication_origin_writes', '052_public_event_location_status', '053_public_attribution_publication_grants', '054_publication_point_geometry_writer', '055_public_event_location_label']);
       await insertIncident('inc-f14-after-048', null);
       const stored = await migrationDatabase.executor.query<{ incident_id: string; first_observed_at: string | null }>(
         `SELECT incident_id, first_observed_at FROM waspada.incidents WHERE incident_id = 'inc-f14-after-048'`,

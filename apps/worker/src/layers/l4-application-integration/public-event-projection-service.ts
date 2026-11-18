@@ -114,6 +114,8 @@ export interface PreparedPublicEventProjectionSnapshot {
   readonly eventRecord: Record<string, unknown>;
   readonly impactRecords: readonly unknown[];
   readonly locationLabelPresent: boolean;
+  /** HOSTED-26: the decision's sanitized location label, or null. */
+  readonly locationLabel: string | null;
   readonly query: PublicEventProjectionLookupQuery;
 }
 
@@ -167,7 +169,7 @@ export function createPublicEventProjectionService(ports: {
           scopeNames: validatedLookupResult.scopeNames,
           publicAttributions: validatedLookupResult.publicAttributions,
           impacts: prepared.impactRecords,
-        }, { locationLabelPresent: prepared.locationLabelPresent });
+        }, { locationLabelPresent: prepared.locationLabelPresent, locationLabel: prepared.locationLabel });
       } catch (error) {
         throw new PublicEventProjectionServiceError(
           "PROJECTION_FAILED",
@@ -283,6 +285,7 @@ export function preparePublicEventProjectionSnapshot(value: unknown, requestedEv
     eventRecord,
     impactRecords,
     locationLabelPresent: value.locationLabelPresent === true,
+    locationLabel: typeof value.locationLabel === "string" ? value.locationLabel : null,
     query: {
       scopeKeys: [...scopeKeys.values()].sort(compareScopeKeys),
       supportReferences: [...supportReferences.values()].sort(compareSupportReferences),

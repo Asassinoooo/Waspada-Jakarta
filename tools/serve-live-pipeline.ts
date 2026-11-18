@@ -47,6 +47,7 @@ import { resolveLiveDbBackupDir, restoreLiveDbFromBackup } from "./live-db-resto
 import { startLiveFreshness } from "./live-freshness-job.js";
 import { createHostedSession, type HostedSession } from "./hosted/hosted-session.js";
 import { backfillSourceAttributions } from "./hosted/attribution-backfill.js";
+import { backfillPublishedLocations } from "./hosted/location-backfill.js";
 import {
   checkLiveSourceCoverage,
   expectedLiveSourceIds,
@@ -890,7 +891,8 @@ async function main() {
     process.once("SIGINT", onSignal);
     let hardError = false;
     try {
-      // Order: poll, drain, publication sweep, freshness. A thrown drain, sweep or freshness error is a hard error.
+      // Order: poll, drain, publication sweep, attribution, location, freshness. A thrown drain, sweep or freshness error is
+      // a hard error. The attribution and location backfills never fail the run.
       await runOnceSequence({
         // One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A failed source is logged inside pollLiveFeeds.
         poll: () => pollLiveFeeds(),
@@ -926,6 +928,14 @@ async function main() {
         // HOSTED-24C: published versions whose supporting evidence has no attribution row get it here (idempotent,
         // capped). Events published before HOSTED-22 are otherwise skipped from the public list.
         attribution: () => backfillSourceAttributions({
+          executor,
+          checkPublicDisplay: (sourceId) => checkSourcePublicDisplay(env, sourceId),
+          deadlineMs: sweepDeadlineMs,
+          now: () => Date.now(),
+        }),
+        // HOSTED-26: a published event whose latest version lacks its point or its public label gets one new version
+        // here (idempotent, capped). The proposal is reused, so no gate runs again.
+        location: () => backfillPublishedLocations({
           executor,
           checkPublicDisplay: (sourceId) => checkSourcePublicDisplay(env, sourceId),
           deadlineMs: sweepDeadlineMs,

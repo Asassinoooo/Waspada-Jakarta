@@ -1,6 +1,6 @@
 import type { EventView, Freshness, Lifecycle, PublicClaim, PublicImpact, TimeScope, Validity } from "../../contracts/public-api.js";
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
-import { GROUP_NOTICE_CATEGORY } from "./public-point.js";
+import { GROUP_NOTICE_CATEGORY, publicLocationLabel } from "./public-point.js";
 
 /**
  * Lookup rows are deliberately runtime-checked. They are supplied by trusted
@@ -112,6 +112,8 @@ interface ValidatedEvent {
   readonly impactRefs: readonly { readonly impactId: string; readonly version: number }[];
   readonly publishedAt: string;
   readonly wholeView: boolean;
+  /** HOSTED-26: the public label text, or null when the label is absent or names no specific place. */
+  readonly locationLabel: string | null;
 }
 
 interface ValidatedImpact {
@@ -174,9 +176,13 @@ const impactTypes = new Set<ImpactType>([
   "audience_notice",
   "other",
 ]);
-/** HOSTED-18: the publication decision's location flag. Missing or false keeps the strict place-or-geometry rule. */
+/**
+ * HOSTED-18: the publication decision's location flag. Missing or false keeps the strict place-or-geometry rule.
+ * HOSTED-26: the decision's sanitized location label. It is sanitized again here, and shown only when it names a place.
+ */
 export interface PublicEventProjectionContext {
   readonly locationLabelPresent?: boolean;
+  readonly locationLabel?: string | null;
 }
 
 /**
@@ -257,6 +263,7 @@ function projectValidatedEvent(
   return {
     event_id: event.eventId,
     ...(event.wholeView ? { location_display: "whole_view" as const } : {}),
+    ...(event.locationLabel !== null ? { location_label: event.locationLabel } : {}),
     version: event.version,
     title: event.title,
     summary: event.summary,
@@ -329,6 +336,7 @@ function validateEvent(
   // whole view. Group notices keep their own rule. The label is not in the Event record; the decision records its presence.
   const hasTarget = scopeHasPublicTarget(scope);
   const wholeView = !hasTarget && !groupNoticeWithoutTarget && context.locationLabelPresent === true;
+  const locationLabel = publicLocationLabel(context.locationLabel);
   requireEqual(value.withdrawal_reason, null, "INVALID_EVENT");
   readId(value.publication_decision_id, "INVALID_EVENT");
   if (value.withdrawn_at !== null) fail("INVALID_EVENT");
@@ -376,6 +384,7 @@ function validateEvent(
     impactRefs,
     publishedAt,
     wholeView,
+    locationLabel,
   };
 }
 
