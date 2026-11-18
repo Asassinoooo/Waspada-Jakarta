@@ -342,7 +342,7 @@ async function insertLinkedProposal(db: TestDatabase, s: Scenario, proposalId: s
     schema_version: '2.0',
     proposal_id: proposalId,
     incident_id: `event-${proposalId}`,
-    title: 'Authored synthetic fixture incident',
+    title: 'Kejadian fiktif di Jakarta untuk uji gerbang',
     primary_category: 'transport_road_incidents',
     severity: 'medium',
     event_time: { precision: 'exact', value: NOW },
