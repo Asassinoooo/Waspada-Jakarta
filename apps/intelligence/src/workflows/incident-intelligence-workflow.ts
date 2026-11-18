@@ -33,7 +33,9 @@ import {
   PETABENCANA_SOURCE_ID,
   deterministicStructuredInterpretation,
   groundInterpretationLocation,
+  groundInterpretationTime,
 } from "../structured-interpretation.js";
+import { truncateAtWord } from "../text-limits.js";
 import { getNineRouterConfig, type NineRouterConfig } from "../providers/ninerouter-adapter.js";
 import { persistReportLineage, recordModelConfiguration } from "./proposal-lineage.js";
 import { Agent } from "@mastra/core/agent";
@@ -141,6 +143,32 @@ export function distinctPublisherCount(claims: readonly ProposalClaim[]): number
     if (key) publishers.add(key);
   }
   return publishers.size;
+}
+
+/** Case, whitespace and trailing punctuation do not make two statements different. */
+function normalizeStatement(text: string): string {
+  return text.normalize("NFC").toLowerCase().replace(/\s+/gu, " ").trim().replace(/[\s.,;:!?]+$/u, "");
+}
+
+/**
+ * HOSTED-35a: one claim per distinct statement from one article. The evidence items of a revision share its URL and
+ * publisher, and the model often cites the same statement from several chunks. Items with the same URL and the same
+ * normalised statement keep only the first one, so the article is not repeated as a claim. A claim carries one evidence
+ * reference, so a different statement from the same article stays a claim of its own, with its own chunk. Pure.
+ */
+export function distinctEvidenceForClaims<T extends { readonly supports: string }>(
+  evidence: readonly T[],
+  sourceUrl: string | null,
+): T[] {
+  const seen = new Set<string>();
+  const kept: T[] = [];
+  for (const item of evidence) {
+    const key = `${sourceUrl ?? ""}\u0000${normalizeStatement(item.supports)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(item);
+  }
+  return kept;
 }
 
 function joinDiscrepancySummaries(...parts: ReadonlyArray<string | null | undefined>): string | null {
@@ -280,7 +308,12 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
       );
       // HOSTED-14: the model's place and coordinate are kept only when the report text states the place.
       // Raw checkpoints from before this change are grounded on read too. Structured sources return early above.
-      const interpretation = groundInterpretationLocation(modelInterpretation, inputData.reportText);
+      // HOSTED-35a: the event time is kept only when the report text states it. The publish time is never an event time.
+      const interpretation = groundInterpretationTime(
+        groundInterpretationLocation(modelInterpretation, inputData.reportText),
+        inputData.reportText,
+        inputData.publishedAt,
+      );
       if (!checkpointed) {
         if (!usesFixtureLineage(inputData.datasetKind)) {
           await recordCall(inputData, "interpretation", dependencies.agentOverrides?.interpreter ? "override" : "factory");
@@ -507,7 +540,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
           incident: {
             incidentId: targetIncidentId,
             datasetKind,
-            title: interpretation.summary.slice(0, 150),
+            title: truncateAtWord(interpretation.summary, 150),
             description: interpretation.summary,
             incidentType: interpretation.incidentType,
             primaryCategory: authoritativeCategory,
@@ -547,7 +580,8 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         source_url: input.sourceUrl ?? null,
       };
 
-      const newClaims: ProposalClaim[] = interpretation.evidence.map((ev, idx) => ({
+      // HOSTED-35a: a statement cited from several chunks of the same article is one claim (see distinctEvidenceForClaims).
+      const newClaims: ProposalClaim[] = distinctEvidenceForClaims(interpretation.evidence, input.sourceUrl ?? null).map((ev, idx) => ({
         claim_id: `claim-${idx + 1}`,
         claim_text: ev.supports,
         evidence_label: claimLabel,
@@ -639,7 +673,7 @@ export function createIncidentIntelligenceWorkflow(dependencies: {
         schema_version: "2.0",
         proposal_id: proposalId,
         incident_id: targetIncidentId,
-        title: interpretation.summary.slice(0, 120),
+        title: truncateAtWord(interpretation.summary, 120),
         incident_type: interpretation.incidentType,
         primary_category: authoritativeCategory,
         compatibility_category: compatibilityCat,
