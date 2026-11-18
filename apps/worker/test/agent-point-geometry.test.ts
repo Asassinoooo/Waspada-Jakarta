@@ -565,11 +565,10 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
     const page = await list.read();
     assert.deepEqual(page.events, []);
   });
-  // Runs after the list check on purpose. The public list reads every published version in the database. A version
-  // with no single-revision support, like this one, is rejected by preparePublicEventProjectionSnapshot (every claim
-  // must cite a persisted span), and the list then fails the whole page. That is a pre-existing gap, reported to the
-  // owner, not fixed here. Keeping this case after the list check lets the list check keep its assertion unchanged.
-  it("(a4) a coordinate with support from more than one revision writes no row and stays a whole view", async () => {
+  // HOSTED-31 (18 Nov 2026): a proposal from more than one revision gives each claim the reference of the chunk it
+  // cites. This claim cites a chunk with no persisted reference, so the version is refused before any write: no version,
+  // no decision and no geometry row. Before HOSTED-31 it published with empty support and failed the public list.
+  it("(a4) a merged proposal whose claim has no exact support is refused, and writes no row", async () => {
     const rowsBefore = await geometryRowCount();
     await persist(proposal("prop-h10-db-a4", {
       coordinates: MODEL_POINT,
@@ -577,15 +576,13 @@ describe("HOSTED-10 publication writes the point and its evidence", () => {
       reportRevisionIds: ["rev-lineage-hosted10", "rev-h10-other"],
     }));
     const outcome = await auto("prop-h10-db-a4");
-    assert.equal(outcome.status, "published", JSON.stringify(outcome));
+    assert.deepEqual(outcome, { status: "denied", code: "publication_failed" });
 
-    const record = await versionRecord("inc-prop-h10-db-a4", 1);
-    assert.deepEqual(record.scope.geometry_ids, [], "no single-revision support, so no Point is written");
-    assert.deepEqual(record.claims[0].scope.geometry_ids, []);
-    assert.deepEqual(record.claims[0].support, [], "no claim cites a span from one revision");
-    const decision = await decisionRecord("prop-h10-db-a4");
-    assert.equal(decision.geometry_status, "pending_geometry_writer");
-    assert.equal(decision.geometry_source, "model_approximate");
+    const versions = await db.executor.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM waspada.event_versions WHERE dataset_kind = 'live' AND event_id = $1",
+      ["inc-prop-h10-db-a4"],
+    );
+    assert.equal(versions.rows[0]!.n, 0, "no version is written");
     assert.equal(await geometryRowCount(), rowsBefore, "no geometry row is written");
     assert.deepEqual(await claimGeometryLinks("inc-prop-h10-db-a4", 1), []);
   });

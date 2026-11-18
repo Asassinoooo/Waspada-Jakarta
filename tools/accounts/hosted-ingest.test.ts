@@ -1302,7 +1302,8 @@ describe("HOSTED-24C attribution backfill (PGlite, real publish path)", () => {
             record_type: "Event",
             event_id: incidentId,
             version: 1,
-            claims: [{ claim_id: "claim-1" }],
+            // A non-empty support, so only the location gap makes the version a candidate (HOSTED-31 selects unsupported claims).
+            claims: [{ claim_id: "claim-1", support: [{ report_revision_id: `rev-lineage-${key}` }] }],
             scope: { place_ids: [], service_ids: [], institution_ids: [], audience_ids: [], geometry_ids: [] },
             impact_refs: [],
           })],

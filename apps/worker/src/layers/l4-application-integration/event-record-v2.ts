@@ -288,6 +288,8 @@ export function domainClaimsFor(
   claims: readonly { readonly text: string; readonly evidence_label: DomainPublishedClaim["evidence_label"] }[],
   links: {
     readonly support?: readonly DomainEvidenceRef[];
+    /** HOSTED-31: the support of each claim, by claim index. It replaces `support` for the claims it covers. */
+    readonly supportByClaim?: readonly (readonly DomainEvidenceRef[])[];
     readonly geometryIds?: readonly string[];
     readonly originIdsByClaim?: readonly (readonly string[])[];
   } = {},
@@ -300,7 +302,7 @@ export function domainClaimsFor(
     validity: NULL_VALIDITY,
     scope: { ...EMPTY_SCOPE, geometry_ids: [...geometryIds] },
     qualifiers: [],
-    support: [...(links.support ?? [])],
+    support: [...(links.supportByClaim?.[index] ?? links.support ?? [])],
     contradictions: [],
     context_evidence: [],
     origin_ids: [...(links.originIdsByClaim?.[index] ?? [])],
