@@ -83,15 +83,15 @@ Results on 17 Nov 2026 (HOSTED-23): `/`, `/api/v1/events`, `/api/v1/context`, `/
 ## Known limitations
 
 - No off-provider backup. Neon Free is the only copy of the hosted data. Export it yourself if you need one.
-- The site is only as live as the GitHub Actions schedule. GitHub may delay or skip scheduled runs under load; at the time of the deploy no scheduled run had fired yet.
+- The site is only as live as the ingest runs. GitHub's own schedule fired once in about 18 hours (17 to 18 Nov 2026), so since HOSTED-25 the Worker cron starts each run instead (section 7).
 - The hosted ingest does not update `source_registry.health_status`, `last_checked_at` or `last_success_at`, so per-source health is read from the run log counts, not from the registry.
 - SSE is per isolate. A client sees updates only from its own isolate, so the web app polls instead.
-- No Worker cron trigger is configured. The Worker's `scheduled()` handler therefore never runs; scheduling is done by GitHub Actions.
+- The production Worker has a cron trigger (`7,37 * * * *`, HOSTED-25). With `SCHEDULED_MODE=github_dispatch` its `scheduled()` handler only sends one `workflow_dispatch` request to GitHub and logs `[ingest-dispatch] outcome=<code>`. It never polls or ingests in the Worker.
 - Rollback to the previous Worker version: `npx wrangler rollback --env production`.
 
 ## 7. Scheduled hosted ingest (GitHub Actions, HOSTED-13)
 
-This replaces the PC ingest node in section 5 for the hosted site. `.github/workflows/ingest.yml` runs every 30 minutes (cron `7,37 * * * *`, UTC; off-peak minutes because GitHub delays or drops scheduled runs at :00 and :30) and can also be started by hand. Each run does one bounded cycle against Neon and exits:
+This replaces the PC ingest node in section 5 for the hosted site. `.github/workflows/ingest.yml` runs every 30 minutes. The production Worker cron (`7,37 * * * *`, UTC) starts it through `workflow_dispatch`, and it can also be started by hand (`gh workflow run ingest.yml --ref main`). The workflow has no `schedule:` of its own any more, so runs are not doubled. The Worker needs the secret `GITHUB_DISPATCH_TOKEN`: a fine-grained GitHub token for this repository only, with **Actions: Read and write** and nothing else (`npx wrangler secret put GITHUB_DISPATCH_TOKEN --env production`). Without it the cron logs `outcome=not_configured` and nothing runs. On the hosted database only GitHub Actions runs write `source_registry` health; a PC run logs `skipped` instead (HOSTED-25). Each run does one bounded cycle against Neon and exits:
 
 1. Coverage guard: the 16 live sources must exist in `source_registry`. If one is missing, the run exits 1.
 2. One poll cycle: 14 RSS feeds, PetaBencana and BMKG. A source that fails is logged and the run goes on.
@@ -121,7 +121,7 @@ Lock and timing:
 
 - The concurrency group `waspada-ingest` is the only lock. Runs never overlap, and a queued run waits for the one in progress.
 - Local PC mode (`serve:live`, or `serve:hosted-ingest` without `--once`) has no lock. Do not run it on the PC while the schedule is on.
-- GitHub can delay or skip scheduled runs under load, and `*/30` falls on the top and bottom of the hour, which is busy. Public repositories disable scheduled workflows after 60 days with no repository activity. Re-enable them from the Actions tab.
+- GitHub's own `schedule:` trigger was unreliable (delayed or skipped runs) and is disabled for public repositories after 60 days without activity, so it is not used. `workflow_dispatch` from the Worker cron has neither problem. Rotate the token before it expires; an expired token shows as `outcome=rejected_auth`.
 - A run is capped at 30 minutes. If a model call is still running at the cap, the run is stopped. Its job lease expires after 5 minutes, and a later run then reclaims that job.
 - The workflow uploads no artifacts and caches only npm packages. Nothing from the database is written to a cache or an artifact.
 - Neon Free compute: each run wakes the database for the coverage check, the poll cycle and the freshness pass. Watch the compute hours on the free plan.

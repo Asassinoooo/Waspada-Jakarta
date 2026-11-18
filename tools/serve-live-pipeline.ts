@@ -111,6 +111,9 @@ const HEADLESS = RUN_FLAGS.headless;
 const ONCE = RUN_FLAGS.once;
 // HOSTED-24B: log prefix for the per-cycle source health summary. Counts and fixed codes only.
 const HEALTH_TAG = ONCE ? "[Once] Source health" : "[Source Health]";
+// HOSTED-25 (owner, 18 Nov 2026): on the hosted database only the GitHub Actions run writes source health, so a PC
+// whose ISP cannot reach a feed never marks that source degraded. Local PGlite (not headless) still records it.
+const WRITE_SOURCE_HEALTH = !HEADLESS || process.env.GITHUB_ACTIONS === "true";
 
 /** Message in local mode (as before). Code or class only in headless mode, because messages can carry hosts. */
 function logDetail(error: unknown): string {
@@ -825,8 +828,12 @@ async function main() {
       // HOSTED-24B: fetch health for the sources this cycle tried, one UPDATE each. Counts and fixed codes only.
       // It sits in finally, so it must never throw: a throw here would skip the isPolling reset below.
       try {
-        const healthSummary = await recordSourceHealth(executor, fetchResults);
-        for (const line of formatSourceHealthLines(healthSummary, HEALTH_TAG)) console.log(line);
+        if (WRITE_SOURCE_HEALTH) {
+          const healthSummary = await recordSourceHealth(executor, fetchResults);
+          for (const line of formatSourceHealthLines(healthSummary, HEALTH_TAG)) console.log(line);
+        } else {
+          console.log(`${HEALTH_TAG}: skipped (hosted database, not a GitHub Actions run)`);
+        }
       } catch {
         console.warn(`${HEALTH_TAG}: write_failed`);
       }

@@ -1,14 +1,13 @@
 name: Hosted live ingest
 
-# HOSTED-13: one bounded ingest cycle against the hosted Neon database every 30 minutes, then exit.
+# HOSTED-13: one bounded ingest cycle against the hosted Neon database every 30 minutes (started by the Worker cron), then exit.
 # The repository is public, so every log line here is public. The step prints counts and fixed stop reasons only.
 # The concurrency group below is the only lock. Local PC mode (serve:live or serve:hosted-ingest without --once)
 # has no lock, so it must not run alongside this schedule.
 
 on:
-  schedule:
-    # Off-peak minutes (HOSTED-24D): GitHub delays or drops many scheduled runs at :00 and :30.
-    - cron: "7,37 * * * *"
+  # HOSTED-25: the production Worker cron (apps/worker/wrangler.toml, :07 and :37) starts this workflow through
+  # workflow_dispatch. GitHub's own schedule fired once in about 18 hours, and two timers would double the runs.
   workflow_dispatch:
 
 permissions:

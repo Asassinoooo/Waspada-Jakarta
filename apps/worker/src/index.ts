@@ -1,3 +1,4 @@
+import { dispatchIngestWorkflow, isGithubDispatchMode } from "./ingest-dispatch.js";
 import { createHash } from "node:crypto";
 import { createPublicEventListRuntime } from "./runtime/public-event-list-runtime.js";
 import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-runtime.js";
@@ -746,6 +747,14 @@ export default {
     controller: { readonly scheduledTime: number },
     env: WorkerEnvironment,
   ): Promise<void> {
+    // HOSTED-25: hosted production ingests on GitHub Actions; its cron only starts that workflow.
+    if (isGithubDispatchMode(env)) {
+      const result = await dispatchIngestWorkflow(env);
+      const line = `[ingest-dispatch] outcome=${result.outcome}${result.status ? ` status=${result.status}` : ""}`;
+      if (result.outcome === "dispatched") console.log(line);
+      else console.warn(line);
+      return;
+    }
     await handleSyntheticPollScheduleTrigger(controller.scheduledTime, env);
     await handleSyntheticSourcePollProcessTrigger(
       controller.scheduledTime,
