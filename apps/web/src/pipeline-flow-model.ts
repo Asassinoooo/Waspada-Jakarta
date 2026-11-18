@@ -167,6 +167,16 @@ export const PIPELINE_COUNT_LABELS: Readonly<Record<string, string>> = {
   new_items_cap: "Batas item baru",
   feeds_failed: "Feed gagal",
   duration_ms: "Durasi (ms)",
+  // HOSTED-30: the hosted runtime reads the last recorded `--once` run and its per-source check times.
+  checked_24h: "Dicek 24 jam",
+  succeeded_24h: "Berhasil dicek 24 jam",
+  never_checked: "Belum pernah dicek",
+  feeds_ok: "Feed berhasil (siklus terakhir)",
+  items_new: "Revisi baru (siklus terakhir)",
+  ai_completed: "AI selesai (siklus terakhir)",
+  ai_not_completed: "AI belum selesai (siklus terakhir)",
+  published: "Terbit otomatis (siklus terakhir)",
+  held: "Ditahan gerbang (siklus terakhir)",
 };
 
 export const PIPELINE_ITEM_STATUS_LABELS: Readonly<Record<string, string>> = {

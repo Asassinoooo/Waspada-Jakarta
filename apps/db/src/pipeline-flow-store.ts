@@ -27,6 +27,37 @@ export interface PipelineFlowSourceAggregate {
   readonly acquisition_running: number;
   readonly acquisition_failed_15m: number;
   readonly acquisition_failed_24h: number;
+  /** HOSTED-30: approved, active sources whose last check (last_checked_at) is inside the window. */
+  readonly checked_24h?: number;
+  /** HOSTED-30: approved, active sources whose last successful check (last_success_at) is inside the window. */
+  readonly succeeded_24h?: number;
+  /** HOSTED-30: approved, active sources that have no recorded check at all. */
+  readonly never_checked?: number;
+}
+
+/**
+ * HOSTED-30: the latest row of waspada.pipeline_cycle_runs (migration 057) for the dataset. Counts and timings only.
+ * `new_items_cap` and `new_items_used` come from record_json and are null when that row does not carry them.
+ */
+export interface PipelineFlowCycleRunAggregate {
+  readonly run_id: string;
+  readonly started_at: string;
+  readonly finished_at: string;
+  readonly elapsed_ms: number;
+  readonly feeds_ok: number;
+  readonly feeds_failed: number;
+  readonly feeds_not_fetched: number;
+  readonly items_new: number;
+  readonly ai_completed: number;
+  readonly ai_not_completed: number;
+  readonly published: number;
+  readonly held: number;
+  readonly exit_code: number;
+  readonly poll_errors: number;
+  readonly new_items_cap: number | null;
+  readonly new_items_used: number | null;
+  /** Rows recorded for the dataset. It stands in for the in-process cycle sequence on the hosted runtime. */
+  readonly runs_recorded: number;
 }
 
 /**
@@ -95,6 +126,8 @@ export interface PipelineFlowAggregates {
     readonly versions_agent_24h: number;
     readonly versions_moderator_24h: number;
   };
+  /** HOSTED-30: the latest recorded hosted cycle, or null when none is recorded. Absent in older fixtures. */
+  readonly cycle_run?: PipelineFlowCycleRunAggregate | null;
 }
 
 export interface PipelineFlowStoredItem {
@@ -133,6 +166,59 @@ function toInstant(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value.toISOString();
   return String(value);
+}
+
+/** A whole count from a JSON record, or null when the key is absent or not a number. */
+function optionalCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function cycleRunFromRow(row: {
+  readonly run_id: string;
+  readonly started_at: unknown;
+  readonly finished_at: unknown;
+  readonly elapsed_ms: unknown;
+  readonly feeds_ok: unknown;
+  readonly feeds_failed: unknown;
+  readonly items_new: unknown;
+  readonly ai_completed: unknown;
+  readonly ai_not_completed: unknown;
+  readonly published: unknown;
+  readonly held: unknown;
+  readonly exit_code: unknown;
+  readonly record_json: unknown;
+  readonly runs_recorded: unknown;
+}): PipelineFlowCycleRunAggregate {
+  const record = (typeof row.record_json === "string" ? parseRecord(row.record_json) : row.record_json) ?? {};
+  const fields = record as Record<string, unknown>;
+  return {
+    run_id: String(row.run_id),
+    started_at: toInstant(row.started_at) ?? "",
+    finished_at: toInstant(row.finished_at) ?? "",
+    elapsed_ms: toCount(row.elapsed_ms),
+    feeds_ok: toCount(row.feeds_ok),
+    feeds_failed: toCount(row.feeds_failed),
+    feeds_not_fetched: toCount(fields.feeds_not_fetched),
+    items_new: toCount(row.items_new),
+    ai_completed: toCount(row.ai_completed),
+    ai_not_completed: toCount(row.ai_not_completed),
+    published: toCount(row.published),
+    held: toCount(row.held),
+    exit_code: toCount(row.exit_code),
+    poll_errors: toCount(fields.poll_errors),
+    new_items_cap: optionalCount(fields.new_items_cap),
+    new_items_used: optionalCount(fields.new_items_used),
+    runs_recorded: toCount(row.runs_recorded),
+  };
+}
+
+function parseRecord(text: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
 }
 
 async function beginReadOnly(tx: Queryable): Promise<void> {
@@ -185,14 +271,21 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
           sources: unknown;
           healthy: unknown;
           unhealthy: unknown;
+          checked_24h: unknown;
+          succeeded_24h: unknown;
+          never_checked: unknown;
         }>(
           `SELECT ${FAMILY_SQL} AS family,
                   count(*) AS sources,
                   count(*) FILTER (WHERE sr.health_status = 'healthy') AS healthy,
-                  count(*) FILTER (WHERE sr.health_status IN ('degraded', 'unavailable')) AS unhealthy
+                  count(*) FILTER (WHERE sr.health_status IN ('degraded', 'unavailable')) AS unhealthy,
+                  count(*) FILTER (WHERE sr.last_checked_at >= $1::timestamptz) AS checked_24h,
+                  count(*) FILTER (WHERE sr.last_success_at >= $1::timestamptz) AS succeeded_24h,
+                  count(*) FILTER (WHERE sr.last_checked_at IS NULL) AS never_checked
              FROM waspada.source_registry sr
             WHERE sr.registry_status = 'active' AND sr.approval_status = 'approved'
             GROUP BY 1`,
+          [sinceWindow],
         );
 
         const revisionRows = await tx.query<{ family: string; revisions_24h: unknown; revisions_15m: unknown }>(
@@ -323,6 +416,34 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
           [datasetKind, sinceWindow, since15m],
         );
 
+        // HOSTED-30: the latest recorded hosted cycle (one row per `--once` run, migration 057). Counts and timings only.
+        const cycleRows = await tx.query<{
+          run_id: string;
+          started_at: unknown;
+          finished_at: unknown;
+          elapsed_ms: unknown;
+          feeds_ok: unknown;
+          feeds_failed: unknown;
+          items_new: unknown;
+          ai_completed: unknown;
+          ai_not_completed: unknown;
+          published: unknown;
+          held: unknown;
+          exit_code: unknown;
+          record_json: unknown;
+          runs_recorded: unknown;
+        }>(
+          `SELECT pcr.run_id, pcr.started_at, pcr.finished_at, pcr.elapsed_ms, pcr.feeds_ok, pcr.feeds_failed,
+                  pcr.items_new, pcr.ai_completed, pcr.ai_not_completed, pcr.published, pcr.held, pcr.exit_code,
+                  pcr.record_json,
+                  (SELECT count(*) FROM waspada.pipeline_cycle_runs c WHERE c.dataset_kind = $1) AS runs_recorded
+             FROM waspada.pipeline_cycle_runs pcr
+            WHERE pcr.dataset_kind = $1
+            ORDER BY pcr.finished_at DESC, pcr.run_id DESC
+            LIMIT 1`,
+          [datasetKind],
+        );
+
         const byKey = <T extends { n: unknown }>(rows: readonly T[], key: (row: T) => string) => {
           const out: Record<string, number> = {};
           for (const row of rows) out[key(row)] = (out[key(row)] ?? 0) + toCount(row.n);
@@ -363,6 +484,9 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                 acquisition_running: toCount(jobsFor?.running),
                 acquisition_failed_15m: toCount(jobsFor?.failed_15m),
                 acquisition_failed_24h: toCount(jobsFor?.failed_24h),
+                checked_24h: toCount(row.checked_24h),
+                succeeded_24h: toCount(row.succeeded_24h),
+                never_checked: toCount(row.never_checked),
               };
             }),
           revisions: {
@@ -424,6 +548,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
             versions_agent_24h: toCount(versions.versions_agent_24h),
             versions_moderator_24h: toCount(versions.versions_moderator_24h),
           },
+          cycle_run: cycleRows.rows[0] ? cycleRunFromRow(cycleRows.rows[0]) : null,
         };
       });
     },

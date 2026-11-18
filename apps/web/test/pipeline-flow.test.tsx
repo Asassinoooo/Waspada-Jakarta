@@ -92,7 +92,7 @@ test("the drawer explains the stage, lists counts and says when there are no rec
 });
 
 test("the NineRouter meters show RPM use and a cooldown, and the layer legend is in Indonesian", () => {
-  const runtime = demoSnapshot().runtime!.ninerouter;
+  const runtime = demoSnapshot().runtime!.ninerouter!;
   const markup = renderToStaticMarkup(<NineRouterMeters runtime={runtime} generatedAt="2026-11-11T09:00:00.000Z" />);
   assert.match(markup, /role="meter"/u);
   assert.match(markup, /6 dari 10 \/ menit/u);

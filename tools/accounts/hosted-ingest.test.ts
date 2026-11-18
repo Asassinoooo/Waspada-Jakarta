@@ -58,14 +58,18 @@ import {
 } from "../hosted/location-backfill.js";
 import {
   formatAttributionLine,
+  formatCycleRecordLine,
   formatLocationLine,
   runOnceSequence,
   type LocationBackfillResult,
   type AttributionBackfillResult,
   type DrainResult,
+  type OnceCycleRecord,
   type OnceSteps,
+  type PollCycleCounts,
   type PublicationSweepResult,
 } from "../hosted/ingest-once.js";
+import { insertPipelineCycleRun, pipelineCycleRunRecordJson } from "../../apps/db/src/pipeline-cycle-runs.js";
 import { createTestDatabase, type TestDatabase } from "../../apps/db/test/harness.js";
 import { seedProposalLineage, type ProposalLineage } from "../../apps/db/test/proposal-lineage-fixture.js";
 import { applyMigrations, readMigrations } from "../../apps/db/src/migrations.js";
@@ -1640,5 +1644,239 @@ describe("HOSTED-26 location backfill tool (fakes, no database)", () => {
       { candidates: 0, refreshed: 0, skipped: 0, failed: 1 },
     );
     assert.deepEqual(seen, [], "no refresh is attempted when the candidate query fails");
+  });
+});
+
+describe("HOSTED-30 cycle record in the --once sequence (fakes, no database)", () => {
+  const RUN_START = 1_000_000;
+  const drain: DrainResult = { completed: 2, notCompleted: 1, stop: "empty" };
+  const sweep: PublicationSweepResult = {
+    assessed: 3,
+    published: 1,
+    unchanged: 0,
+    held: 2,
+    denied: 0,
+    skipped: 0,
+    failed: 0,
+    heldReasons: {},
+    deniedCodes: {},
+    failedCodes: {},
+    stop: "done",
+  };
+  const counts: PollCycleCounts = { feedsOk: 15, feedsFailed: 1, feedsNotFetched: 1, itemsNew: 6, newItemsCap: 40, newItemsUsed: 12 };
+
+  /** One run with a fixed clock that reads 90 s after the start. Each override replaces one step. */
+  function cycleSteps(order: string[], logged: string[], overrides: Partial<OnceSteps> = {}): OnceSteps {
+    return {
+      runStartedAtMs: RUN_START,
+      now: () => RUN_START + 90_000,
+      poll: async () => {
+        order.push("poll");
+        return counts;
+      },
+      onPollError: () => order.push("poll-error"),
+      drain: async () => {
+        order.push("drain");
+        return drain;
+      },
+      sweep: async () => {
+        order.push("sweep");
+        return sweep;
+      },
+      freshness: async () => {
+        order.push("freshness");
+      },
+      log: (line) => logged.push(line),
+      ...overrides,
+    };
+  }
+
+  it("HOSTED-30 writes one cycle record as the last step, with the counts the run already logged", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    const written: OnceCycleRecord[] = [];
+    await runOnceSequence(cycleSteps(order, logged, {
+      recordCycle: async (record) => {
+        order.push("record");
+        written.push(record);
+      },
+    }));
+    assert.deepEqual(order, ["poll", "drain", "sweep", "freshness", "record"]);
+    assert.deepEqual(written, [{
+      startedAt: new Date(RUN_START).toISOString(),
+      finishedAt: new Date(RUN_START + 90_000).toISOString(),
+      elapsedMs: 90_000,
+      feedsOk: 15,
+      feedsFailed: 1,
+      feedsNotFetched: 1,
+      itemsNew: 6,
+      aiCompleted: 2,
+      aiNotCompleted: 1,
+      published: 1,
+      held: 2,
+      exitCode: 0,
+      pollErrors: 0,
+      newItemsCap: 40,
+      newItemsUsed: 12,
+    }]);
+    assert.equal(logged.at(-1), formatCycleRecordLine(written[0]!), "the record is logged as one count line");
+  });
+
+  it("HOSTED-30 a failed record write is one fixed code: the run still ends, and no error text is logged", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence(cycleSteps(order, logged, {
+      recordCycle: async () => {
+        throw new Error("SECRET-SQL-TEXT insert into waspada.pipeline_cycle_runs");
+      },
+    }));
+    assert.deepEqual(order, ["poll", "drain", "sweep", "freshness"], "the run reaches freshness as before");
+    assert.equal(logged.at(-1), "[Once] Cycle record: write_failed.");
+    assert.equal(logged.join("\n").includes("SECRET"), false, "the error text never reaches the log");
+  });
+
+  it("HOSTED-30 a hard error is still recorded with exit 1, and the error still reaches the caller", async () => {
+    const written: OnceCycleRecord[] = [];
+    const order: string[] = [];
+    await assert.rejects(
+      runOnceSequence(cycleSteps(order, [], {
+        freshness: async () => {
+          throw new Error("freshness unavailable");
+        },
+        recordCycle: async (record) => {
+          written.push(record);
+        },
+      })),
+      /freshness unavailable/u,
+    );
+    assert.equal(written.length, 1, "one row, even after a hard error");
+    assert.equal(written[0]?.exitCode, 1);
+    assert.equal(written[0]?.aiCompleted, 2, "the drain had already finished before freshness failed");
+  });
+
+  it("HOSTED-30 a poll that throws is one poll error with zero feed counts, and the drain still runs", async () => {
+    const order: string[] = [];
+    const written: OnceCycleRecord[] = [];
+    await runOnceSequence(cycleSteps(order, [], {
+      poll: async () => {
+        order.push("poll");
+        throw new Error("feed unavailable");
+      },
+      recordCycle: async (record) => {
+        written.push(record);
+      },
+    }));
+    assert.deepEqual(order, ["poll", "poll-error", "drain", "sweep", "freshness"]);
+    assert.equal(written[0]?.pollErrors, 1);
+    assert.equal(written[0]?.feedsOk, 0);
+    assert.equal(written[0]?.itemsNew, 0);
+    assert.equal(written[0]?.newItemsCap, null);
+    assert.equal(written[0]?.exitCode, 0, "a poll error alone is not a hard error");
+  });
+
+  it("HOSTED-30 a run without a record step keeps its order and logs no cycle line", async () => {
+    const order: string[] = [];
+    const logged: string[] = [];
+    await runOnceSequence(cycleSteps(order, logged));
+    assert.deepEqual(order, ["poll", "drain", "sweep", "freshness"]);
+    assert.equal(logged.some((line) => line.includes("Cycle record")), false);
+  });
+
+  it("HOSTED-30 the cycle line has a fixed shape with no run id or source text", () => {
+    const line = formatCycleRecordLine({
+      startedAt: "2026-11-18T08:00:00.000Z",
+      finishedAt: "2026-11-18T08:01:30.000Z",
+      elapsedMs: 90_000,
+      feedsOk: 15,
+      feedsFailed: 1,
+      feedsNotFetched: 1,
+      itemsNew: 6,
+      aiCompleted: 2,
+      aiNotCompleted: 1,
+      published: 1,
+      held: 2,
+      exitCode: 0,
+      pollErrors: 0,
+      newItemsCap: 40,
+      newItemsUsed: 12,
+    });
+    assert.equal(
+      line,
+      "[Once] Cycle record: feeds_ok=15 feeds_failed=1 feeds_not_fetched=1 items_new=6 ai_completed=2 " +
+        "ai_not_completed=1 published=1 held=2 poll_errors=0 exit=0 elapsed_ms=90000.",
+    );
+  });
+});
+
+describe("HOSTED-30 cycle row writer (fake executor, validation first)", () => {
+  const runInput = {
+    datasetKind: "live" as const,
+    runId: "once-test",
+    startedAt: "2026-11-18T08:00:00.000Z",
+    finishedAt: "2026-11-18T08:01:30.000Z",
+    elapsedMs: 90_000,
+    feedsOk: 15,
+    feedsFailed: 1,
+    itemsNew: 6,
+    aiCompleted: 2,
+    aiNotCompleted: 1,
+    published: 1,
+    held: 2,
+    exitCode: 0,
+    record: { new_items_cap: 40, new_items_used: 12, feeds_not_fetched: 1, poll_errors: 0 },
+  };
+
+  function recordingExecutor() {
+    const calls: Array<{ text: string; values: readonly unknown[] | undefined }> = [];
+    const executor = {
+      query: async (text: string, values?: readonly unknown[]) => {
+        calls.push({ text, values });
+        return { rows: [] };
+      },
+    };
+    return { executor, calls };
+  }
+
+  it("HOSTED-30 writes one parameterised INSERT with the counts, the instants and only the allowed record keys", async () => {
+    const { executor, calls } = recordingExecutor();
+    await insertPipelineCycleRun(executor, runInput);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.text ?? "", /INSERT INTO waspada\.pipeline_cycle_runs/u);
+    assert.deepEqual(calls[0]?.values, [
+      "live",
+      "once-test",
+      "2026-11-18T08:00:00.000Z",
+      "2026-11-18T08:01:30.000Z",
+      90_000,
+      15,
+      1,
+      6,
+      2,
+      1,
+      1,
+      2,
+      0,
+      '{"new_items_cap":40,"new_items_used":12,"feeds_not_fetched":1,"poll_errors":0}',
+    ]);
+  });
+
+  it("HOSTED-30 refuses an invalid count before any statement, and names the field without its value", async () => {
+    const { executor, calls } = recordingExecutor();
+    await assert.rejects(insertPipelineCycleRun(executor, { ...runInput, held: -7 }), (error: unknown) => {
+      assert.ok(error instanceof RangeError);
+      assert.match(error.message, /held must be a whole number/u);
+      assert.equal(error.message.includes("-7"), false, "the value is never in the message");
+      return true;
+    });
+    assert.equal(calls.length, 0, "no statement was sent");
+  });
+
+  it("HOSTED-30 a null record key is left out, and a text key never reaches record_json", () => {
+    assert.deepEqual(
+      pipelineCycleRunRecordJson({ new_items_cap: null, poll_errors: 0 }),
+      { poll_errors: 0 },
+    );
+    const smuggled = { new_items_cap: 40, title: "judul", url: "https://example.invalid" } as unknown as Parameters<typeof pipelineCycleRunRecordJson>[0];
+    assert.deepEqual(pipelineCycleRunRecordJson(smuggled), { new_items_cap: 40 });
   });
 });

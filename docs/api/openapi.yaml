@@ -614,8 +614,10 @@ paths:
       description: >
         Moderators and admins only (`review_evidence`). Counts and metadata only: no permitted text,
         claim text, prompts, model output, vectors, keys or endpoints. `dataset_mode` is `demo` for the
-        fixture snapshot and `live` for the database. `runtime` is null when the local live server has
-        not attached its status; runtime-only nodes then report `unavailable`. A zero count means no
+        fixture snapshot and `live` for the database. `runtime` is null when neither the attached status
+        nor a recorded hosted cycle is available. The hosted runtime (HOSTED-30) reads its cycle from the
+        latest `--once` run in the database and reports `ninerouter` as null; runtime-only nodes report
+        `unavailable`. A zero count means no
         data in the 24-hour window, never that a place is safe.
       security: [{ AccountSessionCookie: [] }]
       responses:
@@ -777,8 +779,8 @@ components:
       properties:
         generated_at: { type: string, format: date-time }
         ninerouter:
-          type: object
-          description: Rate-gate pacing, cooldown and in-flight counts per bucket, and call counts since start. No content.
+          type: [object, 'null']
+          description: Rate-gate pacing, cooldown and in-flight counts per bucket, and call counts since start. No content. Null on the hosted runtime, whose process holds no rate gate (HOSTED-30).
           properties:
             chat: { $ref: '#/components/schemas/PipelineFlowBucket' }
             embed: { $ref: '#/components/schemas/PipelineFlowBucket' }
