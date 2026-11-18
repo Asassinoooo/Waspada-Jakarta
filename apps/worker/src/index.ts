@@ -34,6 +34,7 @@ import { type StoredReportRevision, generateProposalFromReport } from "./layers/
 import { generateCorrelatedProposal } from "./layers/l2-model-grounding/correlated-proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
 import { createBmkgPollRuntime } from "./runtime/bmkg-poll-runtime.js";
+import { structuredSourceDisplayName } from "./runtime/structured-source-display.js";
 import { createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS } from "./runtime/news-poll-runtime.js";
 import { TRIAGE_POLICY_VERSION, evaluateSourcePermissions } from "./layers/l1-data-knowledge/news-triage.js";
 import { buildLiveTriageGate } from "./runtime/news-triage-composition.js";
@@ -513,7 +514,7 @@ export default {
                      VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
                              ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
                      ON CONFLICT (source_id) DO NOTHING`,
-                    [rev.source_id, traceId, rev.source_id],
+                    [rev.source_id, traceId, structuredSourceDisplayName(rev.source_id)],
                   );
 
                   // Persist revision
@@ -850,7 +851,7 @@ export default {
            VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
                    ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
            ON CONFLICT (source_id) DO NOTHING`,
-          [rev.source_id, traceId, rev.source_id],
+          [rev.source_id, traceId, structuredSourceDisplayName(rev.source_id)],
         );
         await executor.query(
           `INSERT INTO waspada.report_revisions (

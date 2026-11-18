@@ -75,7 +75,8 @@ function buildPetaBencana(input: StructuredInterpretationInput): ReportInterpret
     entities: [],
     impacts: [],
     operationalStatus: "unknown",
-    evidence: evidenceFromFirstChunk(input, "Teks laporan PetaBencana."),
+    // HOSTED-36: the claim text is the report's own sentence (summary), which is a substring of the chunk. Not a placeholder.
+    evidence: evidenceFromFirstChunk(input, summary),
     conflictingInfo: [],
     uncertaintyNotes: [
       "Tingkat keparahan tidak tersedia dari sumber.",
@@ -108,7 +109,8 @@ function buildBmkgGempa(input: StructuredInterpretationInput): ReportInterpretat
     entities: [],
     impacts: [],
     operationalStatus: "unknown",
-    evidence: evidenceFromFirstChunk(input, "Teks gempa BMKG."),
+    // HOSTED-36: the claim text is the quake's own sentence (summary), which is a substring of the chunk. Not a placeholder.
+    evidence: evidenceFromFirstChunk(input, summary),
     conflictingInfo: [],
     uncertaintyNotes: [
       "Waktu kejadian tidak tersedia dalam teks sumber.",

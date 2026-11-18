@@ -8,6 +8,7 @@
 // Legacy rows that still carry only ['public'] are upgraded by upgradeStructuredPublicDisplayGrants, and nothing else.
 import type { SqlExecutor } from "../apps/db/src/sql.js";
 import { BMKG_GEMPA_SOURCE_ID } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
+import { structuredSourceDisplayName } from "../apps/worker/src/runtime/structured-source-display.js";
 import { DEFAULT_NEWS_FEEDS } from "../apps/worker/src/runtime/news-poll-runtime.js";
 import { PETABENCANA_SOURCE_ID } from "../apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.js";
 import { STRUCTURED_LIVE_SOURCE_IDS } from "./live-source-coverage.js";
@@ -103,11 +104,11 @@ export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promi
          approval_status, health_status, auto_acquisition_enabled, auto_publication_policy,
          polling_interval_seconds
        )
-       VALUES ($1, $2, 1, $1, 'authority', ARRAY['all'], 'manual_fixture',
+       VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
                ARRAY[]::text[], ARRAY[]::text[], ${PUBLIC_DISPLAY_REUSE_BASIS_SQL}, 'active', 'approved', 'healthy', true, 'never', 600)
        ON CONFLICT (source_id) DO NOTHING
        RETURNING source_id`,
-      [sourceId, HOSTED_SEED_TRACE_ID],
+      [sourceId, HOSTED_SEED_TRACE_ID, structuredSourceDisplayName(sourceId)],
     );
     inserted += result.rows.length;
   }
