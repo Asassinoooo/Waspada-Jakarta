@@ -237,7 +237,7 @@ function projectValidatedEvent(
   for (const claim of event.claims) {
     projectedClaims.push({
       claim_id: claim.claimId,
-      text: claim.text,
+      text: repairLegacyPublicText(claim.text),
       event_time: claim.eventTime,
       validity: claim.validity,
       scope: projectScope(claim.scope, lookups.scopeNames),
@@ -265,8 +265,8 @@ function projectValidatedEvent(
     ...(event.wholeView ? { location_display: "whole_view" as const } : {}),
     ...(event.locationLabel !== null ? { location_label: event.locationLabel } : {}),
     version: event.version,
-    title: event.title,
-    summary: event.summary,
+    title: repairLegacyTitle(event.title),
+    summary: repairLegacyPublicText(event.summary),
     category: event.category,
     tags: event.tags,
     lifecycle: event.lifecycle,
@@ -278,6 +278,43 @@ function projectValidatedEvent(
     impacts: projectedImpacts,
     published_at: event.publishedAt,
   };
+}
+
+/** HOSTED-35b: the length an earlier pipeline cut a title to (`interpretation.summary.slice(0, 120)`). */
+const LEGACY_TITLE_CODE_POINTS = 120;
+
+/**
+ * HOSTED-35b: read-time repair of public text written before the summary join was fixed. It runs only in the public
+ * projection and on the in-memory public outputs, and a stored record keeps its own text. A run of periods collapses to
+ * one period, except a run of exactly three, which is an ellipsis. "…" is untouched. The result is trimmed. A text that
+ * is empty after trimming is returned unchanged.
+ */
+export function repairLegacyPublicText(text: string): string {
+  const collapsed = text.replace(/\.{2,}/gu, (run) => (run.length === 3 ? run : "."));
+  const trimmed = collapsed.trim();
+  return trimmed.length > 0 ? trimmed : text;
+}
+
+/**
+ * HOSTED-35b: a title that an earlier pipeline cut to exactly 120 code points, ending in the middle of a word, is cut
+ * back to its last whitespace and ends with "…". Any other title gets only repairLegacyPublicText. A title with no
+ * whitespace to cut back to is returned unchanged, so no word is cut in the middle.
+ */
+export function repairLegacyTitle(title: string): string {
+  const text = repairLegacyPublicText(title);
+  const points = Array.from(text);
+  if (points.length !== LEGACY_TITLE_CODE_POINTS || !/\p{L}$/u.test(text)) return text;
+  let cut = points.length - 1;
+  while (cut > 0 && !/\s/u.test(points[cut]!)) cut -= 1;
+  if (cut === 0) return text;
+  const head = points.slice(0, cut).join("").replace(/[\s,;:.]+$/u, "");
+  return head.length > 0 ? `${head}…` : text;
+}
+
+/** HOSTED-35b: an attribution's earliest time is its publication time, else its observation time. Unknown sorts last. */
+function sourceTimeMs(source: PublicClaim["sources"][number]): number {
+  const time = source.published_at ?? source.observed_at;
+  return time === null ? Number.POSITIVE_INFINITY : Date.parse(time);
 }
 
 function validateLookups(value: unknown): {
@@ -604,12 +641,21 @@ function projectSources(
     sources.push(projectAttribution(matches[0]));
   }
   if (sources.length === 0) fail("ATTRIBUTION_FAILED");
-  sources.sort((left, right) => compareStrings(left.display_name, right.display_name)
+  // HOSTED-35b: one article shows once per claim. Several evidence spans of one article share a (url, display name), so
+  // each pair keeps its earliest attribution.
+  const earliest = new Map<string, PublicClaim["sources"][number]>();
+  for (const source of sources) {
+    const key = `${source.url}\u0000${source.display_name}`;
+    const kept = earliest.get(key);
+    if (kept === undefined || sourceTimeMs(source) < sourceTimeMs(kept)) earliest.set(key, source);
+  }
+  const unique = [...earliest.values()];
+  unique.sort((left, right) => compareStrings(left.display_name, right.display_name)
     || compareStrings(left.url, right.url)
     || compareNullable(left.published_at, right.published_at)
     || compareNullable(left.observed_at, right.observed_at)
     || compareNullable(left.excerpt, right.excerpt));
-  return sources;
+  return unique;
 }
 
 function isExactAttributionMatch(value: unknown, datasetKind: "live", reference: EvidenceReference): value is Record<string, unknown> {

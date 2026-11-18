@@ -28,6 +28,7 @@ const GATE_REASON_LABELS: Readonly<Record<string, string>> = {
   source_rights_missing: "Sumber klaim belum memiliki izin tampil publik.",
   time_missing: "Waktu kejadian belum jelas. Koreksi harus tetap mencantumkan waktu.",
   investigation_stopped_for_review: "Kasus terkait masih ditahan untuk tinjauan.",
+  language_review: "Perlu tinjauan bahasa: judul atau klaim tidak berbahasa Indonesia.",
   publication_not_authorized: "Gerbang publikasi menolak koreksi ini.",
 };
 

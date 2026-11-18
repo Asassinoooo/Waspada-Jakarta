@@ -19,6 +19,7 @@ import type { EventProposalDto, StoredEvidenceChunk } from "./moderation-api.js"
 import { missingPlaceOrLabel, publicLocationLabel, publicPointLabel, publicPointOutcomeFor } from "./public-point.js";
 import { aggregateEventFreshnessStatus } from "./freshness-aggregate-policy.js";
 import { projectPublicFeatureCollection } from "./public-geometry-projection.js";
+import { repairLegacyPublicText, repairLegacyTitle } from "./public-projection.js";
 import { syntheticEventFixtures } from "./synthetic-fixtures.js";
 import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../../db/src/incident-categories.js";
 import { isCalendarDate } from "../l2-model-grounding/proposal-engine.js";
@@ -207,7 +208,7 @@ export class PublicReadModel {
     const offset = this.readCursor(search.get("cursor"));
     const filters = this.readFilters(search);
 
-    const matches = this.getActiveEvents().map(withAggregateFreshness).filter((event) => {
+    const matches = this.getActiveEvents().map((event) => withPublicText(withAggregateFreshness(event))).filter((event) => {
       if (filters.category && event.category !== filters.category) return false;
       if (filters.lifecycle && event.lifecycle !== filters.lifecycle) return false;
       if (filters.freshness && event.freshness.status !== filters.freshness) return false;
@@ -262,7 +263,7 @@ export class PublicReadModel {
   detail(eventId: string): EventDetail | null {
     const published = this.findPublishedEvent(eventId);
     if (published) {
-      const event = withAggregateFreshness(published);
+      const event = withPublicText(withAggregateFreshness(published));
       return {
         event_id: event.event_id,
         version: event.version,
@@ -286,7 +287,7 @@ export class PublicReadModel {
     }
     const fixture = this.findFixture(eventId);
     if (!fixture) return null;
-    const event = withAggregateFreshness(fixture);
+    const event = withPublicText(withAggregateFreshness(fixture));
 
     return {
       event_id: event.event_id,
@@ -377,7 +378,7 @@ export class PublicReadModel {
   }
 
   private toEventDetail(event: EventView | EventDetail): EventDetail {
-    const withFreshness = withAggregateFreshness(event);
+    const withFreshness = withPublicText(withAggregateFreshness(event));
     const publication = "publication" in event ? event.publication : undefined;
     const geometries = hasPublicGeometries(event) ? [...event.geometries] : [];
     return {
@@ -525,6 +526,19 @@ function withAggregateFreshness<T extends EventView>(event: T): T {
   };
 }
 
+/**
+ * HOSTED-35b: the public text of a listed or detailed event. Legacy text is repaired on read, so the stored event keeps
+ * its own title, summary and claim text.
+ */
+function withPublicText<T extends EventView | EventDetail>(event: T): T {
+  return {
+    ...event,
+    title: repairLegacyTitle(event.title),
+    summary: repairLegacyPublicText(event.summary),
+    claims: event.claims.map((claim) => ({ ...claim, text: repairLegacyPublicText(claim.text) })),
+  };
+}
+
 function sanitizeEventId(id: string): string {
   const sanitized = id.replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 128);
   if (/^[A-Za-z0-9]/.test(sanitized)) return sanitized;
@@ -634,6 +648,38 @@ export function publicClaimIdFor(claim: { readonly claim_id?: string | null }, e
   return sanitizeEventId(claim.claim_id || `${eventId}-claim-${index + 1}`);
 }
 
+const SUMMARY_MAX_CODE_POINTS = 500;
+
+/**
+ * HOSTED-35b: the event summary from the claim texts. Each text loses trailing periods, ellipses and whitespace. The texts
+ * are joined with ". " and the result ends with ".". A summary over 500 code points is cut at a word boundary and ends
+ * with "…". Null means the summary is the title: no claim has text, or no word boundary falls in range.
+ */
+export function summaryFromClaimTexts(claimTexts: readonly unknown[]): string | null {
+  const sentences = claimTexts
+    .filter((text): text is string => typeof text === "string")
+    .map((text) => text.replace(/[\s.…]+$/u, "").trim())
+    .filter((text) => text.length > 0);
+  if (sentences.length === 0) return null;
+  return cutAtWordBoundary(`${sentences.join(". ")}.`, SUMMARY_MAX_CODE_POINTS);
+}
+
+/**
+ * Returns the text unchanged when it fits. Otherwise keeps the longest body that ends before a whitespace, so the result,
+ * including "…", is at most `maxCodePoints`. Trailing commas, semicolons, colons and periods are dropped from the body.
+ * Null when there is no whitespace to cut at.
+ */
+function cutAtWordBoundary(text: string, maxCodePoints: number): string | null {
+  const points = Array.from(text);
+  if (points.length <= maxCodePoints) return text;
+  // The ellipsis takes one code point, so the body may keep maxCodePoints - 1.
+  let end = maxCodePoints - 1;
+  while (end > 0 && !/\s/u.test(points[end]!)) end -= 1;
+  if (end === 0) return null;
+  const body = points.slice(0, end).join("").replace(/[\s,;:.]+$/u, "");
+  return body.length > 0 ? `${body}…` : null;
+}
+
 export function proposalToEventDetail(
   proposal: EventProposalDto,
   _chunks?: readonly StoredEvidenceChunk[],
@@ -658,7 +704,7 @@ export function proposalToEventDetail(
   const title = proposal.title ? proposal.title.slice(0, 240) : `Insiden ${category}`;
 
   const summary = proposal.claims && proposal.claims.length > 0
-    ? proposal.claims.map((c) => c.claim_text).join(". ").slice(0, 500)
+    ? summaryFromClaimTexts(proposal.claims.map((c) => c.claim_text)) ?? title
     : title;
 
   // F-14: no fallback to proposed_at, published_at or now. See publicEventStart.
@@ -761,10 +807,16 @@ export function proposalToEventDetail(
 
 const timePrecisions: ReadonlySet<string> = new Set(["exact", "date", "range", "unknown"]);
 
+/** HOSTED-35b: the RFC 3339 date-time pattern domainEventTime (event-record-v2.ts) accepts for an exact time. */
+const RFC3339_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
+
 /**
  * F-14: the event start is only a time the source gave. A missing value or an unknown precision
  * gives no start and precision "unknown". Publish, processing and "now" times are never used as
  * the event start, so a record without an event time is not dated by its own publication.
+ * HOSTED-35b: an exact time is an instant only when it is an RFC 3339 date-time. A calendar date with precision exact
+ * is a date, and any other exact text gives no start, so no hour or zone is invented.
  */
 function publicEventStart(eventTime: unknown): {
   readonly start: string | null;
@@ -775,13 +827,21 @@ function publicEventStart(eventTime: unknown): {
   if (record.precision === "unknown" || raw === null || raw.length === 0) {
     return { start: null, precision: "unknown" };
   }
-  const precision: TimeScope["precision"] = typeof record.precision === "string" && timePrecisions.has(record.precision)
+  const declared: TimeScope["precision"] = typeof record.precision === "string" && timePrecisions.has(record.precision)
     ? record.precision as TimeScope["precision"]
     : "exact";
+  const precision: TimeScope["precision"] = declared === "exact" && CALENDAR_DATE_PATTERN.test(raw) ? "date" : declared;
   // HOSTED-29: a date keeps its calendar day as YYYY-MM-DD. Turning it into an instant would invent an hour
   // (UTC midnight), so a value that is not a real calendar day gives no start.
   if (precision === "date") {
     return isCalendarDate(raw) ? { start: raw, precision } : { start: null, precision: "unknown" };
+  }
+  if (precision === "exact") {
+    if (!RFC3339_DATE_TIME_PATTERN.test(raw)) return { start: null, precision: "unknown" };
+    const parsed = Date.parse(raw);
+    return Number.isNaN(parsed)
+      ? { start: null, precision: "unknown" }
+      : { start: new Date(parsed).toISOString(), precision };
   }
   const parsed = Date.parse(raw);
   return {
