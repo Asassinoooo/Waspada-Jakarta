@@ -1,7 +1,7 @@
 # Master test plan
 
 Project: Waspada Jakarta (Team 12, RPL course).
-Document: TEST-PLAN. Status: draft for review, 18 November 2026. Baseline: `main` at 062aac6 (TG-DOCS-03; earlier 6fff929).
+Document: TEST-PLAN. Status: draft for review, 19 November 2026 (TG-DOCS-04). Baseline: `main` at a7ba558 (TG-DOCS-04; earlier 062aac6 (TG-DOCS-03) and 6fff929).
 Basis: Braude and Bernstein, *Software Engineering: Modern Approaches*, Part VII (Chapters 25–28); Software Development Plan (SDP) section 10 and requirement tables; `.github/workflows/ci.yml`.
 
 ## 1. Purpose and scope
@@ -10,7 +10,7 @@ This plan sets out how the local live mode and the synthetic demo of Waspada Jak
 
 Out of scope for this plan:
 
-- Automated tests of the hosted deployment on Cloudflare Workers and Neon. The Worker was deployed on 17 Nov 2026 (HOSTED-23) on Workers Free and Neon Free, through Hyperdrive. No automated test calls it. Its manual and walkthrough checks are in `UAT.md` section 9.2 and `SYSTEM-TEST.md` section 6A (register rows ST-H-01 to ST-H-10).
+- Automated tests of the hosted deployment on Cloudflare Workers and Neon. The Worker was deployed on 17 Nov 2026 (HOSTED-23) on Workers Free and Neon Free, through Hyperdrive. No automated test calls it. Its manual and walkthrough checks are in `UAT.md` section 9.2 and `SYSTEM-TEST.md` section 6A (register rows ST-H-01 to ST-H-20).
 - Android device testing and release validation. The Flutter analysis and unit tests are local evidence only.
 - The held-out evaluation with labelled cases (SDP section 10). It depends on source rights and human labels, which are not yet available.
 
@@ -19,7 +19,7 @@ Out of scope for this plan:
 | Item | Role | Test runner |
 | --- | --- | --- |
 | `apps/worker` | Cloudflare Worker API, L4 publication gate, public routes | Node test runner |
-| `apps/db` | PostgreSQL and PostGIS schema, 57 migrations, repositories, 59 test files | Node test runner on PGlite, one process per file |
+| `apps/db` | PostgreSQL and PostGIS schema, 59 migrations, repositories, 61 test files | Node test runner on PGlite, one process per file |
 | `apps/intelligence` | Mastra job runner and model workflow | Node test runner |
 | `apps/web` | React client (map, incident detail, administrator workspace) | Node test runner |
 | `apps/mobile` | Flutter public reader (local only) | `flutter test` |
@@ -110,11 +110,11 @@ Braude (Figure 25.9) lists the criteria. This plan uses:
 
 ### 10.1 Integration level: entry, suspension and exit
 
-| Criterion | Rule | Status at 062aac6 (18 Nov 2026, evening) |
+| Criterion | Rule | Status at a7ba558 (19 Nov 2026), and at 062aac6 (18 Nov 2026, evening) |
 | --- | --- | --- |
-| Entry | `npm run typecheck` passes. The unit tests of the components pass. Migrations apply on PGlite (`apps/db/test/migrations.test.ts` asserts 57). | Met. In run 44314452973 the typecheck step passed, every test step passed, and `migrations.test.ts` passed in the database step. |
+| Entry | `npm run typecheck` passes. The unit tests of the components pass. Migrations apply on PGlite (`apps/db/test/migrations.test.ts` asserts 59). | Met. In run 44314452973 the typecheck step passed, every test step passed, and `migrations.test.ts` passed in the database step. At `a7ba558` (19 Nov 2026), run 44372632858 passed every step. |
 | Suspension | A PGlite or WASM crash, an out-of-memory failure, or a CI infrastructure failure. A suspended run is not counted as a pass. Re-run it. | None in run 44314452973. One crash suspended run 44220257264 (D-04); its re-run passed, and Node is now pinned. Runs on `main` that failed on 16 Nov (`8324c11`, `5717d37`), 17 Nov (`181d331`) and 18 Nov (`7f1c0ac`, `0eaf0f7`, `34b831f`; test fixtures, D-05) were fixed forward. |
-| Exit | All integration files listed in `INTEGRATION-TEST.md` pass in one CI run on `main`. No open High defect on an integration path. Untested paths are listed. | Met. Every integration file cited in `INTEGRATION-TEST.md` is in run 44319579284 on `main` (`2d9d442`), and the run passed. The one High defect of 18 Nov 2026 (F-19, on the path from publication to the public read) is fixed and verified on the hosted site. The open integration findings F-05 and F-06 are test gaps. The untested paths are listed in `INTEGRATION-TEST.md` section 7. |
+| Exit | All integration files listed in `INTEGRATION-TEST.md` pass in one CI run on `main`. No open High defect on an integration path. Untested paths are listed. | Met. Every integration file cited in `INTEGRATION-TEST.md` is in run 44319579284 on `main` (`2d9d442`), and the run passed. At `a7ba558`, run 44372632858 passed every step. The High defects of 18 Nov 2026 are F-19 (on the path from publication to the public read; fixed, ST-H-12) and, from EXPLORE-18, F-20, F-22 and F-23 (fixed and checked on the hosted site, ST-H-13, ST-H-15 and ST-H-16). The open integration findings F-05 and F-06 are test gaps. The untested paths are listed in `INTEGRATION-TEST.md` section 7. |
 
 ## 11. Regression rule
 

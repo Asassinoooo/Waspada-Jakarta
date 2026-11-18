@@ -3,11 +3,11 @@
 | Field | Value |
 | --- | --- |
 | Identifier | TEST-DOC-01 (report Chapter 5, section 5.3) |
-| Status date | 18 Nov 2026 (updated in the evening, TG-DOCS-03) |
-| Baseline | `main` at 062aac6 (18 Nov 2026, TG-DOCS-03). Earlier baselines: 6fff929 (18 Nov 2026, TG-DOCS-02) and ae75527 (13 Nov 2026) |
+| Status date | 19 Nov 2026 (TG-DOCS-04). Earlier: 18 Nov 2026 (updated in the evening, TG-DOCS-03) |
+| Baseline | `main` at a7ba558 (19 Nov 2026, TG-DOCS-04; CI run 44372632858). Earlier baselines: 062aac6 (18 Nov 2026, TG-DOCS-03), 6fff929 (18 Nov 2026, TG-DOCS-02) and ae75527 (13 Nov 2026) |
 | Method | Static checks of file existence, test titles, imports, package scripts and workflow files. CI results come from GitHub Actions run 44314452973 (`gh api` job log; earlier rows cite 44211263890), matched to files by test title or by the database `PASS` line. No test, build or server was run locally for this update. |
 | Structure | IEEE 829 test-plan sections, with the integration approach of Braude, Ch 27 (build order, facades, state tests, acyclic dependencies) |
-| Update | 18 Nov 2026 (TG-DOCS-02). Header table and sections 1, 3.2 to 3.5, 4, 6, 7, 8, 9, 10.3 and 11 changed. Section 9 cites run 44211263890 at 6fff929 and keeps the earlier cec9358 run (43238566925). Previous update: 14 Nov 2026 (TEST-GAP-02), rows changed by commits 588e375 to abe7bf6 |
+| Update | 19 Nov 2026 (TG-DOCS-04): §3.5 rows for IT-HOST-13 to IT-HOST-15, the extended-files note after §3.5, and the latest-run line in §9. Before that, 18 Nov 2026 (TG-DOCS-02). Header table and sections 1, 3.2 to 3.5, 4, 6, 7, 8, 9, 10.3 and 11 changed. Section 9 cites run 44211263890 at 6fff929 and keeps the earlier cec9358 run (43238566925). Previous update: 14 Nov 2026 (TEST-GAP-02), rows changed by commits 588e375 to abe7bf6 |
 
 ## 1 Scope and levels
 
@@ -117,7 +117,7 @@ Files added by the same commits that already have rows in section 3.3 (`briefing
 
 ### 3.5 Integration tests added after 14 Nov 2026 (hosted work)
 
-Each file below is in run 44211263890 (6fff929) and again in run 44314452973 (062aac6). Rows marked TG-DOCS-03 were added on 18 Nov 2026 and are only in the later run (HOSTED-31: see its row). "Pass" means the suite passed in that run and at least one title from the file printed as passed (section 9). The "What it proves" column comes from the file header or the test titles.
+Each file below is in run 44211263890 (6fff929) and again in run 44314452973 (062aac6). Rows marked TG-DOCS-03 were added on 18 Nov 2026 and are only in the later run (HOSTED-31: see its row). "Pass" means the suite passed in that run and at least one title from the file printed as passed (section 9). The "What it proves" column comes from the file header or the test titles. Rows marked TG-DOCS-04 were added on 19 Nov 2026 and are in run 44372632858 (`a7ba558`).
 
 | File | HOSTED ID | What it proves | CI result |
 | --- | --- | --- | --- |
@@ -142,6 +142,11 @@ Each file below is in run 44211263890 (6fff929) and again in run 44314452973 (06
 | `apps/worker/test/pipeline-flow-cycle.test.ts` (TG-DOCS-03) | HOSTED-30 | On hosted, `#alur-agen` reads the latest live ingest run and the per-source check times from the database. 10 tests. | Pass (44314452973) |
 | `apps/db/test/pipeline-flow-cycle-store.test.ts` (TG-DOCS-03) | HOSTED-30 | One `pipeline_cycle_runs` row per ingest run, with validated counts and role grants (migration 057). 9 tests, PGlite. | Pass (44314452973, `PASS` line) |
 | `apps/worker/test/hosted31-merged-claim-support.test.ts` (TG-DOCS-03) | HOSTED-31 | A proposal merged from several reports gives each claim the persisted reference of the chunk it cites, from the proposal's own revisions only. A claim without exact support refuses the version before any write. The backfill re-writes a legacy unsupported version, and the public list reads again. 4 tests, PGlite. | Pass (44319579284) |
+| `apps/worker/test/hosted37-fresh-hyperdrive.test.ts` (TG-DOCS-04) | HOSTED-37 | Moderation, admin, account and auth, pipeline flow and all writes read through the no-cache Hyperdrive binding (`FRESH_HYPERDRIVE`); public GET reads keep the cached binding. A scheduled review expiry (a write) passes its guard on the fresh binding. The production `wrangler.toml` binds the no-cache config. No database is opened (fake labels). 10 tests. | Pass (44372632858) |
+| `apps/db/test/hosted38-history-review-metadata.test.ts` (TG-DOCS-04) | HOSTED-38 | Migration 059 keeps the public history review view's rows identical to the migration 014 definition on seeded data: the newest approved decision per visible exact version, once. The reader keeps its SELECT grant, with no write grant and the security barrier. 3 tests, PGlite. | Pass (44372632858) |
+| `apps/db/test/source-display-names.test.ts` (TG-DOCS-04) | HOSTED-36 | Migration 058 names the BMKG and PetaBencana registry rows only while their display name still equals the source id, so an owner-chosen name is never overwritten. The names match the worker's names, and running the statements again changes no row. Every assertion reads the rows back. 3 tests, PGlite. | Pass (44372632858) |
+
+Extended on 19 Nov 2026 (no new row): `apps/worker/test/l4-public-briefing-projection.test.ts` (+7, HOSTED-32), `apps/worker/test/public-briefing-runtime.test.ts` (+2, HOSTED-32), `apps/db/test/public-briefing-candidates.test.ts` (HOSTED-32) and `apps/worker/test/bmkg-poll-runtime.test.ts` (14 tests in total, HOSTED-36). The nine unit-level files added on 19 Nov 2026 (HOSTED-33, HOSTED-34, HOSTED-35 and HOSTED-36) are not integration files; they are listed in `CI-VISIBILITY.md`.
 
 ## 4 Interface tests (facade)
 
@@ -255,7 +260,9 @@ Overall status: partially evidenced. This document does not claim that M5 is com
 
 ## 9 Test run evidence
 
-Latest green run: CI run 44314452973 on commit 062aac6 (`main`, push event, 18 Nov 2026). The conclusion is `success`, read with `gh run view` on 18 Nov 2026. The job runs on `ubuntu-24.04` with Node 24.21.0 (pinned since `e41e11d`, D-04). Counts are summed from the `ℹ tests`, `ℹ pass` and `ℹ fail` lines of each step in the job log.
+Latest run: CI run 44372632858 on commit `a7ba558` (`main`, 19 Nov 2026). Every step passed (typecheck, database, web, worker, intelligence, pipeline, accounts, evaluation and AI tools, build). Per-step counts for this run were not recorded in this update, so the counts below are those of the earlier runs.
+
+Green run with recorded counts: CI run 44314452973 on commit 062aac6 (`main`, push event, 18 Nov 2026). The conclusion is `success`, read with `gh run view` on 18 Nov 2026. The job runs on `ubuntu-24.04` with Node 24.21.0 (pinned since `e41e11d`, D-04). Counts are summed from the `ℹ tests`, `ℹ pass` and `ℹ fail` lines of each step in the job log.
 
 | CI step | Command | Result in run 44314452973 |
 | --- | --- | --- |
@@ -271,7 +278,7 @@ Latest green run: CI run 44314452973 on commit 062aac6 (`main`, push event, 18 N
 
 Steps 6 to 12 total 2,650 passing tests and 0 failing. The three runs before it on `main` (44248122378, 44250372908, 44250662007) failed on test fixtures (D-05 in `DEFECTS.md`).
 
-Latest run: CI run 44319579284 on commit `2d9d442` (HOSTED-31), conclusion `success`. Database 59 of 59 files and 411 tests, web 457, worker 1,364 (1,360 plus the four HOSTED-31 tests), intelligence 190, pipeline 58, accounts 100, evaluation and AI 74: 2,654 pass, 0 fail. The four titles of `hosted31-merged-claim-support.test.ts` and the changed (a4) title of `agent-point-geometry.test.ts` printed as passed.
+Run 44319579284 on commit `2d9d442` (HOSTED-31), conclusion `success`. Database 59 of 59 files and 411 tests, web 457, worker 1,364 (1,360 plus the four HOSTED-31 tests), intelligence 190, pipeline 58, accounts 100, evaluation and AI 74: 2,654 pass, 0 fail. The four titles of `hosted31-merged-claim-support.test.ts` and the changed (a4) title of `agent-point-geometry.test.ts` printed as passed.
 
 Previous green run: CI run 44211263890 on commit 6fff929 (18 Nov 2026 00:51Z), 2,555 passing and 0 failing (DB 399, web 443, worker 1,311, intelligence 189, pipeline 58, accounts 81, evaluation and AI 74).
 
@@ -293,6 +300,7 @@ Points on the evidence:
 - The database file count is now 59: 59 `*.test.ts` files in `apps/db/test` and 59 passed files in run 44314452973 (`pipeline-flow-cycle-store.test.ts` is new). It was 58 in run 44211263890 and 56 at cec9358.
 - The cec9358 commit is an ancestor of `main` (checked with git).
 - For this update only the changed test files of 18 Nov 2026 were run locally (section 7, item 9).
+- At `a7ba558` there are 61 `*.test.ts` files in `apps/db/test`. Two of them, `hosted38-history-review-metadata.test.ts` and `source-display-names.test.ts`, were added on 19 Nov 2026. The per-file check of run 44372632858 was not done in this update.
 
 ## 10 Detail for the report
 
@@ -314,7 +322,7 @@ The composition test TEST-INT-01 (`l3-investigation-publication-gate.test.ts`) r
 
 ## 11 Approval
 
-Prepared by: Team 12 (TG-DOCS-02 and TG-DOCS-03, 18 Nov 2026)
+Prepared by: Team 12 (TG-DOCS-02 and TG-DOCS-03, 18 Nov 2026; TG-DOCS-04, 19 Nov 2026)
 
 Reviewed by: ____
 

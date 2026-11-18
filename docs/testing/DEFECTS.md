@@ -1,8 +1,9 @@
 # Defect and finding log
 
-Project: Waspada Jakarta (Team 12, RPL course). Status date: 18 November 2026. Branch: `work/TEST-DOC-01-chapter5`.
+Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026. Branch: `work/TEST-DOC-01-chapter5`.
 Updated 16 November 2026 (HOSTED-01 documentation decisions): status lines on F-01, F-03, F-04, F-12, F-13 and F-14; F-13 and F-14 added to section B.
 Updated 18 November 2026 (TG-DOCS-02): status for R-01, R-05, R-06, R-09 and R-10; CI status on F-03, F-04, F-13 and F-14; the F-14 residual; new entries D-03, F-16, F-17, F-18 and F-ALERT-02.
+Updated 19 November 2026 (TG-DOCS-04): F-20 to F-28 and the EXPLORE-18 open items (section B); R-11 to R-13 (section D).
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules
@@ -11,6 +12,7 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - A **finding** is an observation that needs a decision. Section B lists findings, and each entry has a status line: open, fixed (with the commit SHA), mitigated (with the commit SHA, where the cause is outside the repository) or decided (with the owner's decision). A finding keeps its F-nn ID after a fix, so that the backlog and the gap reports still resolve. Findings are not moved to section A and are not renumbered.
 - Commit SHAs in this file were checked with `git -C <worktree> show -s --format='%h %s' <sha>` on 13 November 2026. SHAs checked on 13 November 2026 (the six in sections A and C) all resolved. The fix SHAs for F-03, F-04, F-13 and F-14 (section B) were checked on 16 November 2026 with `git show -s` and `git branch -r --contains`; each is on `origin/main`.
 - SHAs and run IDs added on 18 November 2026 were checked with `git show -s`, `git merge-base --is-ancestor` and `gh run view` on that date.
+- SHAs added on 19 November 2026 (F-20 to F-28, R-11 to R-13) were read from `git log` at `a7ba558` (`git show --stat` for the files each fix changed). The CI run IDs and the hosted check results were not re-read with `gh` in this update.
 - Blocked and pending UAT results are not defects (`docs/testing/UAT.md` section 10).
 
 ## Section A: Verified defects (fixed)
@@ -53,7 +55,9 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 
 ## Section B: Findings and their status
 
-Each entry carries a status line as of 18 November 2026. An entry without a fixed, mitigated or decided status is open. F-15 is not used here, because `REQUIREMENTS-GAP.md` uses it for a proposed CI item.
+Each entry carries a status line. An entry without a fixed, mitigated or decided status is open. F-15 is not used here, because `REQUIREMENTS-GAP.md` uses it for a proposed CI item. The status lines of F-01 to F-19 and F-ALERT-02 are as of 18 November 2026; those of F-20 to F-28 and the open items are as of 19 November 2026.
+
+F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write walkthroughs of the hosted site (an anonymous visitor at 1440, 390 and 320 px and at 200% zoom; two self-registered residents; the moderator; the administrator) and an API data audit of the 21 published events. Each entry says what was seen. Evidence is under `.codex-build/explore/` (gitignored, not committed). The open items from EXPLORE-18 are listed at the end of this section.
 
 ### F-01: the public map shows no warning-boundary display
 
@@ -167,11 +171,122 @@ Each entry carries a status line as of 18 November 2026. An entry without a fixe
 - **Verification (18 Nov 2026, 14:07 UTC):** ingest run 44319612423 (code at `2d9d442`) logged `Location backfill: candidates=4 refreshed=4 skipped=0 failed=0`. Afterwards `/api/v1/events` answered 200 with 21 events over two pages (12 with a point, 9 whole view, 21 with a location label), `/api/v1/events.geojson` answered 200 with 12 features, and the detail of a repaired event answered 200 (ST-H-12).
 - **Status (18 Nov 2026): fixed and verified on the hosted site.** Residual: no automated check reads the hosted public API, so a similar fault would again be found only by a manual read (`SYSTEM-TEST.md` §7, item 17). The Worker was redeployed from `f9cb7a0` on 18 Nov 2026 (version `bddb82f4`, owner approval), so the moderator publish path has the fix too. After the deploy, `/`, `/api/v1/events`, `/api/v1/events.geojson`, `/api/v1/context`, `/api/v1/updates` and one event detail answered 200, and a register request without `Origin` answered 403.
 
+### F-20: the hosted briefing answered 503 for interest sets that reach whole-view events (High)
+
+- **Observation:** on the hosted site, `POST /api/v1/briefings` answered 503 for interest sets whose matches include an event shown on the whole view (no point).
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/worker/src/layers/l4-application-integration/public-briefing-projection.ts`; `apps/db/src/public-briefing-candidates.ts`.
+- **Cause:** the response validator refused the `location_display` value of a whole-view event, so the whole briefing failed with 503.
+- **Severity:** High.
+- **Fix:** `d1e2be1` (`fix(HOSTED-32)`, 19 Nov 2026). Tests: `apps/worker/test/l4-public-briefing-projection.test.ts` (+7), `apps/worker/test/public-briefing-runtime.test.ts` (+2), `apps/db/test/public-briefing-candidates.test.ts`.
+- **Verification (hosted, 19 Nov 2026):** three category interests gave 200 with 19 items (ST-H-13).
+- **Status (19 Nov 2026): fixed and verified on the hosted site.**
+
+### F-21: place interests never matched the briefing (Medium)
+
+- **Observation:** a saved place interest matched no event, so a briefing never returned an item for it (observed in EXPLORE-18).
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/db/src/public-briefing-candidates.ts`; `apps/worker/src/layers/l4-application-integration/public-briefing-projection.ts`.
+- **Cause:** the scope lists of the events were empty, and the place was not compared with the report's location label.
+- **Severity:** Medium.
+- **Fix:** `d1e2be1` (`fix(HOSTED-32)`). A place interest now matches the report's location label, either the whole label or one comma segment of it. The reason reads "Nama tempat ini disebut di laporan (perkiraan, bukan konfirmasi)", meaning the place is named in the report and the match is an estimate, not a confirmation. Owner decision, 18 Nov 2026.
+- **Verification (hosted):** the place interest "Jakarta Timur" gave 3 items (ST-H-14).
+- **Status (19 Nov 2026): fixed and verified on the hosted site.**
+
+### F-22: the web showed only the first page of published events (High)
+
+- **Observation:** the web list showed 20 of the 21 published events. A deep link to the 21st event said it was not published.
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/web/src/api-client.ts` (`listAllEvents`); `apps/web/src/App.tsx`; `apps/web/src/MapPanel.tsx`.
+- **Cause:** the web read only the first page of `/api/v1/events` and did not follow `next_cursor` to the later pages.
+- **Severity:** High.
+- **Fix:** `f26de6e` (`fix(HOSTED-33)`, 19 Nov 2026). Test: `apps/web/test/event-list-pages.test.ts` (6).
+- **Verification (hosted):** the list and the API both showed 18 events after the withdrawals (ST-H-15).
+- **Status (19 Nov 2026): fixed and verified on the hosted site.**
+
+### F-23: the detail-page map pin was about 18 km off (High)
+
+- **Observation:** the map pin on an event's detail page was about 18 km from the event's own point.
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/web/src/SourcePointMap.tsx` (`coordinateToWorldPixels`, `getVisibleMapTiles`); `apps/web/src/MapPanel.tsx`.
+- **Cause:** the projection was equirectangular over hard-coded tiles, so the pin was placed about 18 km away.
+- **Severity:** High.
+- **Fix:** `f26de6e` (`fix(HOSTED-33)`). The pin uses Web Mercator over the tiles, with OpenStreetMap attribution. Test: `apps/web/test/record-map-layout.test.tsx` (10).
+- **Verification (hosted):** pin error 0.00 km on `inc-rep-source-antara-terkini-0beb1790308ab5dc` (ST-H-16).
+- **Status (19 Nov 2026): fixed and verified on the hosted site.**
+
+### F-24: the moderator queue and the admin source list were stale after writes (Medium)
+
+- **Observation:** after a write, the moderator queue and the admin source list showed the old state for up to about 1 minute.
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/worker/src/index.ts` (Hyperdrive binding per route); `apps/worker/wrangler.toml`.
+- **Cause:** the moderation, admin and write paths read through the same Hyperdrive configuration as public reads, and that configuration caches query results.
+- **Severity:** Medium.
+- **Fix:** `2c75643` (`fix(HOSTED-37)`, 19 Nov 2026). A second Hyperdrive configuration with caching disabled is bound as `FRESH_HYPERDRIVE` and `AUTH_HYPERDRIVE`. Moderation, admin, account and auth, pipeline flow and all writes read through it. Public GET reads keep the cached `HYPERDRIVE` (owner decision, 18 Nov 2026). Test: `apps/worker/test/hosted37-fresh-hyperdrive.test.ts` (10).
+- **Verification (hosted):** revoke then an immediate read showed revoked; approve then an immediate read showed approved (ST-H-17). The moderator queue was not read as a separate check.
+- **Status (19 Nov 2026): fixed and verified for the admin source list. The moderator queue is not separately verified.**
+
+### F-25: the public history route took 13 to 41 s on the first call (Medium)
+
+- **Observation:** the public history route took 13 to 41 s on the first call, and sometimes answered 500 or 1101.
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** the public history review metadata view (migration 014, rewritten by migration 059).
+- **Cause:** measured read-only on Neon. The disclosure query took 39.7 s, because the review metadata view was re-evaluated for each decision row.
+- **Severity:** Medium.
+- **Fix:** `ecdbf13` (`fix(HOSTED-38)`, 19 Nov 2026). Migration 059 (`apps/db/migrations/059_public_history_review_metadata_speed.sql`) rewrites the view history-first with a LATERAL join; 0.83 s in EXPLAIN. Test: `apps/db/test/hosted38-history-review-metadata.test.ts` (3).
+- **Verification (hosted):** first calls took 0.17 to 0.58 s (ST-H-18). Migrations 058 and 059 were applied to Neon on 19 Nov 2026 with `npm run hosted:bootstrap` (2 applied, 57 already applied; 59 files).
+- **Status (19 Nov 2026): fixed and verified on the hosted site.**
+
+### F-26: BMKG earthquakes outside Jakarta were published, with placeholder text (Medium)
+
+- **Observation:** earthquakes outside Jakarta were published (NTT, Papua and Lampung). Their claim text was the placeholder `Teks gempa BMKG.`, the outlet was shown as `source-bmkg-gempa`, and the source link answered 404.
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/worker/src/runtime/bmkg-poll-runtime.ts`; `apps/worker/src/runtime/structured-source-display.ts`; `apps/db/migrations/058_source_display_names.sql`; `apps/intelligence/src/structured-interpretation.ts`.
+- **Cause:** the poll kept quakes without a Jakarta check. The claim text was the placeholder, the registry row showed the raw source id, and the source link pointed to a page that answered 404.
+- **Severity:** Medium.
+- **Fix:** `5d5c938` (`fix(HOSTED-36)`, 19 Nov 2026). A quake is kept only when its `Dirasakan` or `Wilayah` names Jakarta, or its epicentre is in the Jakarta envelope (owner decision, 18 Nov 2026). The claim is the quake's own sentence. Migration 058 gives the BMKG and PetaBencana rows their display names. The source link goes to BMKG's felt-earthquake page. The test order was fixed in `d5da34e` (R-11). Tests: `apps/worker/test/bmkg-poll-runtime.test.ts` (14 in total), `apps/worker/test/hosted36-source-display-names.test.ts` (2), `apps/intelligence/test/hosted36-structured-claim-text.test.ts` (3), `apps/db/test/source-display-names.test.ts` (3).
+- **Verification (hosted, 19 Nov 2026):** the moderator withdrew the three published quakes (category `other`). Their detail now answers 404 (ST-H-19). No test asserts that 404 at HTTP (`INTEGRATION-TEST.md` section 7, item 12).
+- **Status (19 Nov 2026): fixed in code. The three published quakes were withdrawn on the hosted site.**
+
+### F-27: public text was in English, joined with "..", cut mid-word, with invented times and repeated source lines (Medium)
+
+- **Observation:** on the published events, claims were in English; summaries joined claim texts with `..`; titles were cut mid-word at 120 characters; event times were invented (an exact time, or the publication date); and the same outlet appeared on one source line for each evidence item.
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/intelligence/src/agents/report-interpretation-agent.ts`; `apps/intelligence/src/agents/incident-correlation-agent.ts`; `apps/intelligence/src/structured-interpretation.ts`; `apps/intelligence/src/text-limits.ts`; `apps/intelligence/src/workflows/incident-intelligence-workflow.ts`; `apps/worker/src/layers/l4-application-integration/public-projection.ts`; `apps/worker/src/layers/l4-application-integration/public-read-model.ts`; `apps/worker/src/layers/l4-application-integration/publication-policy.ts`.
+- **Cause:** the agent prompts did not ask for Bahasa Indonesia; event times were not checked against the report text; titles were cut at a fixed length; the summary joined claim texts with `..`; source lines were not deduplicated per claim; and the automatic gate did not hold non-Indonesian text.
+- **Severity:** Medium.
+- **Fix:** `fc64d3b` (`fix(HOSTED-35)`, intelligence: Indonesian prompts, event times grounded in the report text, titles cut at a word boundary) and `6c93b8e` (`fix(HOSTED-35)`, L4: summary join, one source per claim, `language_review` holds non-Indonesian text for a moderator, read-time repair of legacy text). The test fixture fixes `a5744ba` and `307ac31` are recorded as R-12 and R-13. Tests: `apps/intelligence/test/hosted35a-title-truncation.test.ts` (8), `apps/intelligence/test/hosted35a-event-time-grounding.test.ts` (21), `apps/intelligence/test/hosted35a-claim-text.test.ts` (9), `apps/worker/test/hosted35-public-text.test.ts` (13).
+- **Verification:** tests only. No hosted check of F-27 is recorded in this update.
+- **Status (19 Nov 2026): fixed for new proposals (tests). Legacy English claims and times on published events are not rewritten; moderators may correct them.**
+
+### F-28: UI wording and labels on public pages (Low)
+
+- **Observation:** the revoke dialog said that collection stops, but HOSTED-28 made revoke stop publication only. Internal terms (`CRS84`, `equirectangular`, "record") appeared on public pages. Labels were English ("Username", "Email"). The tab title read "demo sintetis" on the live site. Moderator screens showed raw codes. `#alur-agen` had no last cycle time, and its legend was clipped.
+- **Found by:** EXPLORE-18 (18 Nov 2026).
+- **Where:** `apps/web/src/SourceApprovalPanel.tsx`; `apps/web/src/EventDetail.tsx`; `apps/web/src/ModeratorReview.tsx`; `apps/web/src/PipelineFlow.tsx`; `apps/web/src/display.ts`; `apps/web/src/moderation-labels.ts`.
+- **Cause:** the revoke dialog text was not updated when HOSTED-28 changed revoke to stop publication only. The other items are copy and labels; no separate cause is recorded.
+- **Severity:** Low.
+- **Fix:** `c68cdcc` (`fix(HOSTED-34)`): Indonesian wording and labels in the live UI. Test: `apps/web/test/hosted34-ui-copy.test.tsx` (9).
+- **Verification (hosted, 19 Nov 2026):** the four event detail pages and `#masuk`, at 1440 px and 390 px, had no banned term. The tab title was "Waspada Jakarta", and the username label read "Nama pengguna" (ST-H-20).
+- **Status (19 Nov 2026): fixed. Verified on four detail pages and `#masuk` at 1440 and 390 px.**
+
 ### F-ALERT-02: a published version did not reach `/api/v1/updates`
 
 - **Observation:** a published version was not listed in `/api/v1/updates`. The test for it was a todo in `apps/worker/test/repeated-coverage-alerts.test.ts`. The local `serve:live` answered 503 for updates (`docs/testing/PERFORMANCE.md`). This ID is the one used in `SOFTWARE_DEVELOPMENT_PLAN.md`, `docs/testing/TEST-EVALUATION.md` and `docs/IMPLEMENTATION_BACKLOG.md`. It is kept so that those references still resolve.
 - **Evidence:** the test "a newly published version appears in the public views and the updates feed (F-ALERT-02, HOSTED-02)" in `apps/worker/test/repeated-coverage-alerts.test.ts` is active, with no todo left. CI run 44211263890 is green at `6fff929`. The hosted `/api/v1/updates` returned 200 on 17 Nov 2026 (`docs/DEPLOYMENT.md` section 6).
 - **Status (18 Nov 2026): fixed in `1a11d3c`** (`feat(HOSTED-02)`, 16 Nov 2026): a publish writes a v2.0 event record and review row.
+
+### EXPLORE-18 open items (not fixed, 19 Nov 2026)
+
+These came from EXPLORE-18 and were not fixed. They have no F-nn ID yet.
+
+- **Duplicate events:** Kampung Melayu and the Jl. Tanah Rendah fire; Menteng and Dukuh Atas. Status: open. Left to moderators (owner decision 4).
+- **Machine refresh in history:** a machine refresh is labelled "Versi dikoreksi" in the event history. Status: open. Needs a contract field.
+- **#peta list map:** the list-map component (`EventFeed`) cannot be reached on the live site. Status: open.
+- **Phone layout at 390 px:** the admin tabs and the 44 px touch targets. Status: open.
+- **Sign-in heading:** the wording of "Masuk dengan username" is open. Status: open.
+- **Superseded proposals:** a superseded proposal stays pending in the moderator queue. Status: open.
+- **Updates feed:** the updates-feed view (migration 016) may have the same slow shape as F-25. It is not measured. Status: open.
 
 ## Section C: Removed from the defect list (not fixes)
 
@@ -184,7 +299,7 @@ These commits were in an earlier draft of the defect list. The corrected unit re
 
 ## Section D: Test run defects
 
-Runs on 13 November 2026: T1 to T5 on the demo dataset (`docs/testing/UAT.md` section 9), and persona walkthroughs on the local live app (section 9.1). No CI failure is recorded for `cec9358`. Hosted run on 17 November 2026: R-09 and R-10 (`docs/testing/UAT.md` section 9.2).
+Runs on 13 November 2026: T1 to T5 on the demo dataset (`docs/testing/UAT.md` section 9), and persona walkthroughs on the local live app (section 9.1). No CI failure is recorded for `cec9358`. Hosted run on 17 November 2026: R-09 and R-10 (`docs/testing/UAT.md` section 9.2). CI runs that failed on test code (R-11 to R-13) were fixed forward on 19 November 2026, each with a test-only commit.
 
 | ID | Date | Run ID | Step | Symptom | Evidence path | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -198,6 +313,9 @@ Runs on 13 November 2026: T1 to T5 on the demo dataset (`docs/testing/UAT.md` se
 | R-08 | 13 Nov 2026 | commuter-run-01 (attempt 1) | COM-02, both viewports | The script waited for `#detail/api/`, which was a wrong route assumption. Results from attempt 2 stand. | `.codex-build/worktrees/uat-personas/.codex-build/uat/persona-commuter-run-01/` | Not a defect (script). Corrected in attempt 2. |
 | R-09 | 17 Nov 2026 | hosted23-u3 (UAT §9.2, PUB-01 public phone check) | Event detail, phone 390 px, hosted site | The detail header reads "Detail dari API lokal" on the hosted site, which holds live records. | `.codex-build/uat/hosted23-u3/02-detail-phone.png` | Closed. Fixed in `88bcf69` (HOSTED-24A, 17 Nov 2026); verified on the live site (ADR-065, 18 Nov 2026 amendment). |
 | R-10 | 17 Nov 2026 | hosted23-u3 (UAT §9.2, PUB-01 public phone check) | Event detail, phone 390 px, source lines per claim | Each claim lists the same outlet (DETIK UTAMA) twice, one attribution line per evidence item from that source. | `.codex-build/uat/hosted23-u3/02-detail-phone.png` | Closed. Fixed in `88bcf69` (HOSTED-24A, 17 Nov 2026); verified on the live site (ADR-065, 18 Nov 2026 amendment). |
+| R-11 | Nov 2026 (fixed 19 Nov 2026) | GitHub Actions runs 44362671695 and 44363328129 | Database step (step 6), `apps/db/test/source-display-names.test.ts` | The test applied migration 058 after 059. The migration order guard refuses a lower number after a higher one (`CLAUDE.md`), so the step failed. | CI runs 44362671695 and 44363328129 | Fixed (`d5da34e`, `test(HOSTED-36)`, 19 Nov 2026). Test order only. |
+| R-12 | Nov 2026 (fixed 19 Nov 2026) | GitHub Actions run 44366440688 | Database step (step 6), `apps/db/test/l3-investigation-publication-gate.test.ts` | The fixture's English title was held by the language review, which holds non-Indonesian text for a moderator. | CI run 44366440688 | Fixed (`a5744ba`, `test(HOSTED-35)`, 19 Nov 2026). Fixture only. |
+| R-13 | Nov 2026 (fixed 19 Nov 2026) | GitHub Actions run 44369506277 | Intelligence step (step 9), `apps/intelligence/test/ai-call-profile.test.ts` | The test expected PetaBencana's creation time as the event time. HOSTED-35 no longer treats it as an event time. | CI run 44369506277 | Fixed (`307ac31`, `test(HOSTED-35)`, 19 Nov 2026). Expectation only. |
 
 Entry format for later use:
 

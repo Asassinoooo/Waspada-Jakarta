@@ -1,6 +1,6 @@
 # CI visibility of the test files
 
-Source: the GitHub Actions run 43238566925 on commit `cec9358` (12 Nov 2026, conclusion `success`, confirmed with `gh`), with its local log summary in `.codex-build/ci-logs/cec9358/`. The local summary cites a wrong run ID; see `INTEGRATION-TEST.md` section 9. The "Test files" table below is the cec9358 history. The current run is 44211263890 on commit `6fff929` (18 Nov 2026, conclusion `success`, confirmed with `gh`). See "Current run" below. A file is "visible" when its test names (or, for the database step, its `PASS` line) appear in that step's log.
+Source: the GitHub Actions run 43238566925 on commit `cec9358` (12 Nov 2026, conclusion `success`, confirmed with `gh`), with its local log summary in `.codex-build/ci-logs/cec9358/`. The local summary cites a wrong run ID; see `INTEGRATION-TEST.md` section 9. The "Test files" table below is the cec9358 history. The latest run is 44372632858 on commit `a7ba558` (19 Nov 2026, conclusion `success`; every step passed). The files added on 19 Nov 2026 are in the section "Test files added after run 44319579284" below. The earlier current run, 44211263890 on commit `6fff929` (18 Nov 2026, conclusion `success`, confirmed with `gh`), is in "Current run" below. A file is "visible" when its test names (or, for the database step, its `PASS` line) appear in that step's log.
 
 ## Steps of the run
 
@@ -262,6 +262,29 @@ Seven files were added on 18 Nov 2026. Each is in its package test list (worker 
 | `apps/worker/test/hosted29-date-precision.test.ts` | HOSTED-29 | 8 | Yes, run 44314452973 |
 | `apps/worker/test/pipeline-flow-cycle.test.ts` | HOSTED-30 | 8 | Yes, run 44314452973 |
 | `apps/worker/test/hosted31-merged-claim-support.test.ts` | HOSTED-31 | 8 | Yes, run 44319579284 (`2d9d442`) |
+
+## Test files added after run 44319579284 (TG-DOCS-04, 19 Nov 2026)
+
+Twelve test files were added on 19 Nov 2026 (HOSTED-33 to HOSTED-38), and four existing files were extended. Each new file is in a listed package test script (worker and web), in the database directory glob, or in the intelligence `test/*.test.ts` glob. All twelve are in run 44372632858 (`a7ba558`), which passed every step. The per-title visibility check was not done for this run, so the Step column says where each file runs, not which titles printed.
+
+On disk there are 285 test files at `a7ba558`: 61 database, 127 worker, 45 web, 30 intelligence, 4 accounts, 9 pipeline, 6 evaluation and AI tool files and 3 `tools/live-*` files. At `2d9d442` there were 273.
+
+| Test file | HOSTED ID | Step | Runs through | Tests |
+| --- | --- | --- | --- | --- |
+| `apps/worker/test/hosted37-fresh-hyperdrive.test.ts` | HOSTED-37 | 8 | worker package test script | 10 |
+| `apps/worker/test/hosted36-source-display-names.test.ts` | HOSTED-36 | 8 | worker package test script | 2 |
+| `apps/worker/test/hosted35-public-text.test.ts` | HOSTED-35 | 8 | worker package test script | 13 |
+| `apps/db/test/hosted38-history-review-metadata.test.ts` | HOSTED-38 | 6 | database directory glob | 3 |
+| `apps/db/test/source-display-names.test.ts` | HOSTED-36 | 6 | database directory glob | 3 |
+| `apps/web/test/event-list-pages.test.ts` | HOSTED-33 | 7 | web package test script | 6 |
+| `apps/web/test/record-map-layout.test.tsx` | HOSTED-33 | 7 | web package test script | 10 |
+| `apps/web/test/hosted34-ui-copy.test.tsx` | HOSTED-34 | 7 | web package test script | 9 |
+| `apps/intelligence/test/hosted35a-title-truncation.test.ts` | HOSTED-35 | 9 | intelligence `test/*.test.ts` glob | 8 |
+| `apps/intelligence/test/hosted35a-event-time-grounding.test.ts` | HOSTED-35 | 9 | intelligence `test/*.test.ts` glob | 21 |
+| `apps/intelligence/test/hosted35a-claim-text.test.ts` | HOSTED-35 | 9 | intelligence `test/*.test.ts` glob | 9 |
+| `apps/intelligence/test/hosted36-structured-claim-text.test.ts` | HOSTED-36 | 9 | intelligence `test/*.test.ts` glob | 3 |
+
+Extended on 19 Nov 2026 (no new file): `apps/worker/test/l4-public-briefing-projection.test.ts` (+7, HOSTED-32), `apps/worker/test/public-briefing-runtime.test.ts` (+2, HOSTED-32), `apps/db/test/public-briefing-candidates.test.ts` (HOSTED-32) and `apps/worker/test/bmkg-poll-runtime.test.ts` (14 tests in total, HOSTED-36).
 
 ## Current run 44211263890 (6fff929)
 
