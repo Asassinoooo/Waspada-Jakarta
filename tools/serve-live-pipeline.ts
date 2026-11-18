@@ -16,6 +16,7 @@ import { GOOGLE_AI_PROVIDER, getAiProviderKind } from "../apps/intelligence/src/
 import { getNineRouterCallCounts, getNineRouterRateGateSnapshot } from "../apps/db/src/ninerouter-rate-gate.js";
 import { createPetaBencanaPollRuntime } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
 import { BMKG_GEMPA_SOURCE_ID, createBmkgPollRuntime } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
+import { structuredSourceDisplayName } from "../apps/worker/src/runtime/structured-source-display.js";
 import { PETABENCANA_SOURCE_ID } from "../apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.js";
 import { createCycleRevisionDedupe, createLiveNewsPollRuntime, DEFAULT_NEWS_FEEDS, type StoredReportRevision } from "../apps/worker/src/runtime/news-poll-runtime.js";
 import { buildLiveTriageGate } from "../apps/worker/src/runtime/news-triage-composition.js";
@@ -756,7 +757,7 @@ async function main() {
          VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
                  ARRAY[]::text[], ARRAY[]::text[], ARRAY['public'], 'active', 'approved', 'healthy', false, 'never')
          ON CONFLICT (source_id) DO NOTHING`,
-        [rev.source_id, traceId, rev.source_id],
+        [rev.source_id, traceId, structuredSourceDisplayName(rev.source_id)],
       );
 
       // Persist report revision

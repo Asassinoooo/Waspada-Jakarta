@@ -6,7 +6,7 @@
  * - AutoGempa (latest automated sensor-detected earthquake)
  * - GempaTerkini (latest 15 verified felt earthquakes)
  *
- * Converts seismic events proximate to Greater Jakarta / Western Java into
+ * Converts earthquakes felt in Jakarta or affecting Jakarta (HOSTED-36) into
  * immutable L1 StoredReportRevision records for cross-verification against
  * news wire reports and citizen observations.
  */
@@ -22,8 +22,17 @@ import {
 export const BMKG_GEMPA_SOURCE_ID = "source-bmkg-gempa";
 export const DEFAULT_BMKG_AUTOGEMPA_ENDPOINT = "https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json";
 export const DEFAULT_BMKG_GEMPATERKINI_ENDPOINT = "https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json";
-export const BMKG_CANONICAL_BASE = "https://www.bmkg.go.id/gempabumi-terkini.html";
+/**
+ * HOSTED-36: every BMKG revision links to this page, with no fragment. The fragment never kept an earthquake's identity:
+ * report_revision_id (from DateTime) does. The old gempabumi-terkini.html page returns 404 (checked in a browser, 19 Nov 2026); this is the felt-earthquake page.
+ */
+export const BMKG_CANONICAL_BASE = "https://www.bmkg.go.id/gempabumi/gempabumi-dirasakan";
 export const DEFAULT_POLL_TIMEOUT_MS = 20_000;
+
+/** HOSTED-36: place names that keep an earthquake, matched as whole words, case-insensitively. "Jakarta Pusat" etc. contain "Jakarta". */
+const JAKARTA_PLACE_NAME = /\b(?:jakarta|kepulauan\s+seribu)\b/iu;
+/** HOSTED-36: the epicentre envelope around Jakarta (lon 106.65..107.05, lat -6.40..-6.05). */
+const JAKARTA_EPICENTRE = { west: 106.65, east: 107.05, south: -6.4, north: -6.05 } as const;
 
 export interface BmkgGempaRawItem {
   readonly Tanggal: string;
@@ -66,48 +75,30 @@ function sha256(text: string): string {
 }
 
 /**
- * Checks if an earthquake is geographically relevant to Greater Jakarta / Western Java
- * or has magnitude >= 4.0 within the impact corridor.
+ * HOSTED-36 (owner decision, 18 Nov 2026): keeps only an earthquake that is felt in Jakarta or affects Jakarta. It is
+ * kept when one of these holds:
+ *   (a) Dirasakan (the felt-intensity list) names Jakarta or a Jakarta city or regency;
+ *   (b) Wilayah (the region text) names Jakarta or a Jakarta city or regency;
+ *   (c) the epicentre (Coordinates "lat,lon") lies inside the Jakarta envelope.
+ * Magnitude, a neighbouring province, "Jawa", and any non-empty Dirasakan do not keep it. This is a filter only: nothing
+ * here draws a radius, polygon or danger zone.
  */
 export function isSeismicEventRelevant(item: BmkgGempaRawItem): boolean {
-  const wilayah = (item.Wilayah || "").toLowerCase();
-  const dirasakan = (item.Dirasakan || "").toLowerCase();
+  if (JAKARTA_PLACE_NAME.test(item.Dirasakan || "")) return true;
+  if (JAKARTA_PLACE_NAME.test(item.Wilayah || "")) return true;
 
-  // 1. Explicit mention of Jakarta, Banten, Selat Sunda, or Western Java
-  if (
-    wilayah.includes("jakarta") ||
-    dirasakan.includes("jakarta") ||
-    wilayah.includes("banten") ||
-    wilayah.includes("selat sunda") ||
-    wilayah.includes("sukabumi") ||
-    wilayah.includes("cianjur") ||
-    wilayah.includes("bogor") ||
-    wilayah.includes("bekasi") ||
-    wilayah.includes("tangerang")
-  ) {
-    return true;
-  }
-
-  // 2. Coordinate distance check
-  const parts = item.Coordinates.split(",");
-  if (parts.length === 2) {
-    const lat = parseFloat(parts[0]!.trim());
-    const lon = parseFloat(parts[1]!.trim());
-    if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      // Bounding corridor: lat -8.5 to -5.0, lon 104.5 to 108.5
-      if (lat >= -8.5 && lat <= -5.0 && lon >= 104.5 && lon <= 108.5) {
-        return true;
-      }
-    }
-  }
-
-  // 3. Significant felt earthquake with Mag >= 5.0
-  const mag = parseFloat(item.Magnitude);
-  if (Number.isFinite(mag) && mag >= 5.0 && (wilayah.includes("jawa") || dirasakan.length > 0)) {
-    return true;
-  }
-
-  return false;
+  const parts = (item.Coordinates || "").split(",");
+  if (parts.length !== 2) return false;
+  const lat = parseFloat(parts[0]!.trim());
+  const lon = parseFloat(parts[1]!.trim());
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lon >= JAKARTA_EPICENTRE.west &&
+    lon <= JAKARTA_EPICENTRE.east &&
+    lat >= JAKARTA_EPICENTRE.south &&
+    lat <= JAKARTA_EPICENTRE.north
+  );
 }
 
 /**
@@ -159,7 +150,7 @@ export function mapBmkgGempaToRevision(
   return {
     report_revision_id: reportRevisionId,
     source_id: BMKG_GEMPA_SOURCE_ID,
-    canonical_url: `${BMKG_CANONICAL_BASE}#${reportRevisionId}`,
+    canonical_url: BMKG_CANONICAL_BASE,
     permitted_text: permittedText,
     permitted_text_hash: hash,
     published_at: feedPublishedAt(item.DateTime, retrievedAt),
