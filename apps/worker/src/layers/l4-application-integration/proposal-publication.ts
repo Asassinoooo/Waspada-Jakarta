@@ -11,6 +11,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { SqlExecutor } from "../../../../db/src/sql.js";
 import type { EventProposalWriter } from "../../../../db/src/event-proposal-writer.js";
+import { persistGeometryInCallerTransaction } from "../../../../db/src/geometry-writer.js";
 import type { EventProposalDto } from "./moderation-api.js";
 import {
   PublicReadModel,
@@ -30,7 +31,7 @@ import {
   NULL_VALIDITY,
   reviewSummaryFor,
 } from "./event-record-v2.js";
-import { publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
+import { publicPointLabel, publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
 import {
   assessCorrectionGate,
   assessProposalSourceGate,
@@ -461,19 +462,19 @@ async function resolvePublicDisplay(
 }
 
 /**
- * HOSTED-10: what a publication adds to the stored record, from persisted rows only. No geometry row is written here:
- * the publication role cannot write geometries (owner decision, 17 Nov 2026).
+ * HOSTED-10 and HOSTED-26: what a publication adds to the stored record, from persisted rows only. A coordinate-bearing
+ * event with support gets one Point geometry in the same transaction (see writePointGeometry).
  */
 interface PublicationEnrichment {
   /** Support for each claim. Filled only when the proposal was built from one report revision. */
   readonly support: readonly DomainEvidenceRef[];
   /** HOSTED-15: the evidence_references ids of the same support, in the same order. They link the origin rows. */
   readonly supportEvidenceRefIds: readonly string[];
-  /** Always empty in this change. */
+  /** HOSTED-26: the event's one Point geometry id, or empty. Every claim of the version links to it. */
   readonly geometryIds: readonly string[];
-  /** Set only for a coordinate-bearing event. It records the source of the point that is pending. */
+  /** Set only for a coordinate-bearing event. It records the source of the point. */
   readonly geometrySource: PublicPointSource | null;
-  readonly geometryStatus: "pending_geometry_writer" | "whole_view" | "not_required_group_notice";
+  readonly geometryStatus: "point_written" | "pending_geometry_writer" | "whole_view" | "not_required_group_notice";
 }
 
 /**
@@ -584,10 +585,77 @@ async function ownEvidence(
 }
 
 /**
- * HOSTED-10: the support and the location status of a publication. It never refuses and never writes a geometry row.
- * A coordinate-bearing event records geometry_status "pending_geometry_writer". An event with no usable coordinate
- * records "whole_view". A group notice with no location records "not_required_group_notice". The support of a claim is
- * filled only when the proposal came from one report revision, so no claim is given evidence from another revision.
+ * HOSTED-26: the id of the one Point a published event gets at one coordinate. It is a pure function of the dataset, the
+ * event and the exact coordinate, so a later version at the same place names the same row. Only the publication writes
+ * "geo-pub-" ids.
+ */
+export function pointGeometryIdFor(datasetKind: string, eventId: string, coordinates: readonly [number, number]): string {
+  const hash = createHash("sha256")
+    .update(`${datasetKind}|${eventId}|${coordinates[0]}|${coordinates[1]}`)
+    .digest("hex");
+  return `geo-pub-${hash.slice(0, 32)}`;
+}
+
+interface PointWriteInput {
+  readonly datasetKind: string;
+  readonly traceId: string;
+  readonly eventId: string;
+  readonly coordinates: readonly [number, number];
+  readonly source: PublicPointSource;
+  readonly locationLabel: unknown;
+  readonly support: readonly DomainEvidenceRef[];
+}
+
+/**
+ * HOSTED-26: writes the event's one Point, or reuses the row an earlier version wrote. It returns the geometry id, or
+ * null when there is no row and no support to write one, so the event stays a whole view. It runs inside the caller's
+ * savepoint, which also covers the geometry's own evidence links.
+ *
+ * A row that already exists under this id is the same point of the same event, so it is reused whatever its trace,
+ * label or evidence. The writer's own comparison would refuse a later version, because that version's trace and
+ * support differ. So this path checks existence first, and the point keeps the trace, label and evidence of the first
+ * version that wrote it.
+ */
+async function writePointGeometry(tx: SqlExecutor, input: PointWriteInput): Promise<string | null> {
+  const geometryId = pointGeometryIdFor(input.datasetKind, input.eventId, input.coordinates);
+  const existing = await tx.query<{ geometry_id: string }>(
+    "SELECT geometry_id FROM waspada.geometries WHERE dataset_kind = $1 AND geometry_id = $2",
+    [input.datasetKind, geometryId],
+  );
+  if (existing.rows.length > 0) return geometryId;
+  if (input.support.length === 0) return null;
+
+  await persistGeometryInCallerTransaction(tx, {
+    schema_version: "2.0",
+    trace_id: input.traceId,
+    record_type: "Geometry",
+    dataset_kind: input.datasetKind,
+    geometry_id: geometryId,
+    role: "approximate_place",
+    geojson: { type: "Point", coordinates: [input.coordinates[0], input.coordinates[1]] },
+    coordinate_reference_system: "OGC:CRS84",
+    precision_m: null,
+    precision_basis: input.source === "source_text" ? "source_supplied" : "unknown",
+    display_label: publicPointLabel(input.locationLabel),
+    source_evidence: input.support.map((ref) => ({
+      report_revision_id: ref.report_revision_id,
+      permitted_text_hash: ref.permitted_text_hash,
+      span_start: ref.span_start,
+      span_end: ref.span_end,
+      offset_unit: ref.offset_unit,
+      relation: ref.relation,
+    })),
+  });
+  return geometryId;
+}
+
+/**
+ * HOSTED-10 and HOSTED-26: the support and the location status of a publication. It never refuses. A coordinate-bearing
+ * event with support gets one Point geometry (geometry_status "point_written"). A coordinate-bearing event with no
+ * support, and no row written earlier, records "pending_geometry_writer" and stays a whole view. An event with no usable
+ * coordinate records "whole_view". A group notice with no location records "not_required_group_notice". The support of a
+ * claim is filled only when the proposal came from one report revision, so no claim is given evidence from another
+ * revision.
  */
 async function enrichPublication(
   tx: SqlExecutor,
@@ -617,12 +685,22 @@ async function enrichPublication(
     claimSourceIds: (proposal.claims ?? []).map((claim) => claim.source_id),
   });
   if (outcome.status === "point") {
+    const point = await withOptionalSavepoint(tx, "hosted26_point", () => writePointGeometry(tx, {
+      datasetKind: input.datasetKind,
+      traceId: input.traceId,
+      eventId: input.eventId,
+      coordinates: outcome.coordinates,
+      source: outcome.source,
+      locationLabel: proposal.location_label,
+      support,
+    }));
+    const geometryId = point.ok ? point.value : null;
     return {
       support,
       supportEvidenceRefIds,
-      geometryIds: [],
+      geometryIds: geometryId === null ? [] : [geometryId],
       geometrySource: outcome.source,
-      geometryStatus: "pending_geometry_writer",
+      geometryStatus: geometryId === null ? "pending_geometry_writer" : "point_written",
     };
   }
   if (outcome.status === "not_required_group_notice") {
@@ -1066,8 +1144,9 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
     }
   }
 
-  // HOSTED-10: the support and the location status are read only after the unchanged check. No geometry row is written
-  // by the publication role, and an event with no usable coordinate is published as a whole view, never refused for it.
+  // HOSTED-10 and HOSTED-26: the support and the location status are read only after the unchanged check. A point gets
+  // its one geometry row here, inside this transaction. An event with no usable coordinate is published as a whole view,
+  // never refused for it.
   const enrichment = await enrichPublication(tx, { datasetKind, traceId, eventId, version, category: detail.category, proposal });
   const scope = { ...EMPTY_SCOPE, geometry_ids: [...enrichment.geometryIds] };
   // HOSTED-18: the public list needs whether a label was present. The Event record has no label slot, so the label text is not stored here.
@@ -1100,7 +1179,8 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
         reason: core.reason,
         ...(waivers.length > 0 ? { waivers } : {}),
         ...(action === "correct" ? { base_version: core.baseVersion ?? null } : {}),
-        // HOSTED-10: the pending point's source and the location status live here. No geometry row is written.
+        // HOSTED-10 and HOSTED-26: the point's source and the location status live here. "point_written" means the
+        // version's claims link one geometry row (event_claim_geometries).
         geometry_source: enrichment.geometrySource,
         geometry_status: enrichment.geometryStatus,
       }),
@@ -1196,6 +1276,19 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
         JSON.stringify(claim),
       ],
     );
+  }
+  // HOSTED-26: each claim links the geometry ids its claim scope names, which are the version's point. Only a version
+  // with a point writes links. The public detail and the GeoJSON feed both need these rows to show the pin.
+  if (enrichment.geometryIds.length > 0) {
+    for (const claim of record.claims) {
+      for (const geometryId of claim.scope.geometry_ids) {
+        await tx.query(
+          `INSERT INTO waspada.event_claim_geometries (dataset_kind, event_id, event_version, claim_id, geometry_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [datasetKind, eventId, version, claim.claim_id, geometryId],
+        );
+      }
+    }
   }
   // HOSTED-02: the approved review row is what the public history and updates views read. Its summary is a fixed
   // template (ADR-020 amendment). Only the live dataset has review rows: its CHECK allows no other dataset_kind.

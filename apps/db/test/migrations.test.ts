@@ -4,6 +4,15 @@ import { after, before, describe, it } from 'node:test';
 import { applyMigrations, readMigrations, type SqlMigration } from '../src/migrations.js';
 import { createTestDatabase, type TestDatabase } from './harness.js';
 
+/** HOSTED-26: every column of waspada.geometries. The publication roles read and insert all of them (migration 054). */
+const POINT_GEOMETRY_COLUMNS = [
+  'dataset_kind', 'geometry_id', 'trace_id', 'role', 'shape', 'coordinate_reference_system',
+  'precision_m', 'precision_basis', 'display_label', 'record_json',
+];
+/** HOSTED-26: every column of waspada.geometry_evidence. */
+const POINT_GEOMETRY_EVIDENCE_COLUMNS = ['dataset_kind', 'geometry_id', 'evidence_ref_id'];
+const PUBLICATION_ROLES = ['waspada_l4_publication_writer', 'waspada_l4_moderator_publication_writer'] as const;
+
 describe('DATA-01 migrations', () => {
   let testDatabase: TestDatabase;
   let migrations: SqlMigration[];
@@ -181,6 +190,7 @@ describe('DATA-01 migrations', () => {
         '051_publication_origin_writes',
         '052_public_event_location_status',
         '053_public_attribution_publication_grants',
+        '054_publication_point_geometry_writer',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -348,6 +358,7 @@ describe('DATA-01 migrations', () => {
       '051_publication_origin_writes',
       '052_public_event_location_status',
       '053_public_attribution_publication_grants',
+      '054_publication_point_geometry_writer',
     ]);
   });
 
@@ -399,12 +410,13 @@ describe('DATA-01 migrations', () => {
       '051_publication_origin_writes',
       '052_public_event_location_status',
       '053_public_attribution_publication_grants',
+      '054_publication_point_geometry_writer',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '53');
+    assert.equal(count.rows[0]?.count, '54');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -423,7 +435,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 053_public_attribution_publication_grants/,
+      /Cannot apply migration 000_late_backfill before already applied migration 054_publication_point_geometry_writer/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -483,6 +495,7 @@ describe('DATA-01 migrations', () => {
       { version: '051_publication_origin_writes' },
       { version: '052_public_event_location_status' },
       { version: '053_public_attribution_publication_grants' },
+      { version: '054_publication_point_geometry_writer' },
     ]);
   });
 
@@ -531,6 +544,7 @@ describe('DATA-01 migrations', () => {
       '051_publication_origin_writes',
       '052_public_event_location_status',
       '053_public_attribution_publication_grants',
+      '054_publication_point_geometry_writer',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -1538,7 +1552,9 @@ describe('DATA-01 migrations', () => {
       'span_start', 'span_end', 'offset_unit', 'relation',
     ]);
     expect('geometry_evidence', 'select', ['dataset_kind', 'geometry_id', 'evidence_ref_id']);
-    expect('geometries', 'select', ['dataset_kind', 'geometry_id']);
+    expect('geometries', 'select', POINT_GEOMETRY_COLUMNS);
+    expect('geometries', 'insert', POINT_GEOMETRY_COLUMNS);
+    expect('geometry_evidence', 'insert', ['dataset_kind', 'geometry_id', 'evidence_ref_id']);
     expect('event_versions', 'select', ['dataset_kind', 'event_id', 'version']);
     expect('impact_versions', 'select', ['dataset_kind', 'impact_id', 'version']);
     expect('publication_write_receipts', 'select', [
@@ -1648,6 +1664,63 @@ describe('DATA-01 migrations', () => {
       can_read_queue_key: true, can_insert_queue_url: true, can_insert_event_version: true,
     }, 'the accepted shared L4 responsibilities remain available');
   });
+  it('grants both publication roles exactly the point geometry write and read, and no report text (HOSTED-26)', async () => {
+    for (const role of PUBLICATION_ROLES) {
+      const columns = await testDatabase.executor.query<{
+        table_name: string;
+        column_name: string;
+        can_select: boolean;
+        can_insert: boolean;
+        can_update: boolean;
+      }>(
+        `SELECT table_class.relname AS table_name, column_meta.attname AS column_name,
+                has_column_privilege('${role}', table_class.oid, column_meta.attnum, 'SELECT') AS can_select,
+                has_column_privilege('${role}', table_class.oid, column_meta.attnum, 'INSERT') AS can_insert,
+                has_column_privilege('${role}', table_class.oid, column_meta.attnum, 'UPDATE') AS can_update
+         FROM pg_class AS table_class
+         JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+         JOIN pg_attribute AS column_meta ON column_meta.attrelid = table_class.oid
+         WHERE table_schema.nspname = 'waspada'
+           AND table_class.relname IN ('geometries', 'geometry_evidence')
+           AND column_meta.attnum > 0 AND NOT column_meta.attisdropped`,
+      );
+      const granted = new Set<string>();
+      for (const row of columns.rows) {
+        if (row.can_select) granted.add(`${row.table_name}.${row.column_name}.select`);
+        if (row.can_insert) granted.add(`${row.table_name}.${row.column_name}.insert`);
+        if (row.can_update) granted.add(`${row.table_name}.${row.column_name}.update`);
+      }
+      const expected = [
+        ...POINT_GEOMETRY_COLUMNS.flatMap((name) => [`geometries.${name}.select`, `geometries.${name}.insert`]),
+        ...POINT_GEOMETRY_EVIDENCE_COLUMNS.flatMap((name) => [`geometry_evidence.${name}.select`, `geometry_evidence.${name}.insert`]),
+      ].sort();
+      assert.deepEqual([...granted].sort(), expected, `${role} reads and inserts only the point geometry columns`);
+
+      const tablePrivileges = await testDatabase.executor.query<{ table_name: string; can_update: boolean; can_delete: boolean; can_truncate: boolean }>(
+        `SELECT table_class.relname AS table_name,
+                has_table_privilege('${role}', table_class.oid, 'UPDATE') AS can_update,
+                has_table_privilege('${role}', table_class.oid, 'DELETE') AS can_delete,
+                has_table_privilege('${role}', table_class.oid, 'TRUNCATE') AS can_truncate
+         FROM pg_class AS table_class
+         JOIN pg_namespace AS table_schema ON table_schema.oid = table_class.relnamespace
+         WHERE table_schema.nspname = 'waspada' AND table_class.relname IN ('geometries', 'geometry_evidence')
+         ORDER BY table_class.relname`,
+      );
+      assert.equal(
+        tablePrivileges.rows.some((row) => row.can_update || row.can_delete || row.can_truncate),
+        false,
+        `${role} may not update, delete or truncate geometry rows`,
+      );
+
+      const reportText = await testDatabase.executor.query<{ can_read_text: boolean; can_read_hash: boolean }>(
+        `SELECT has_column_privilege('${role}', 'waspada.report_revisions', 'permitted_text', 'SELECT') AS can_read_text,
+                has_column_privilege('${role}', 'waspada.report_revisions', 'permitted_text_hash', 'SELECT') AS can_read_hash`,
+      );
+      assert.deepEqual(reportText.rows[0], { can_read_text: false, can_read_hash: false },
+        `${role} still cannot read the permitted text or its hash (migration 053)`);
+    }
+  });
+
   it('grants the L1 pipeline only the chunk and embedding metadata columns it reads', async () => {
     const privileges = await testDatabase.executor.query<{
       table_name: string;
@@ -2364,7 +2437,7 @@ describe('DATA-01 migrations', () => {
       );
 
       const applied = await applyMigrations(migrationDatabase.executor, migrations);
-      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals', '050_publication_writer_review_grant', '051_publication_origin_writes', '052_public_event_location_status', '053_public_attribution_publication_grants']);
+      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals', '050_publication_writer_review_grant', '051_publication_origin_writes', '052_public_event_location_status', '053_public_attribution_publication_grants', '054_publication_point_geometry_writer']);
       await insertIncident('inc-f14-after-048', null);
       const stored = await migrationDatabase.executor.query<{ incident_id: string; first_observed_at: string | null }>(
         `SELECT incident_id, first_observed_at FROM waspada.incidents WHERE incident_id = 'inc-f14-after-048'`,

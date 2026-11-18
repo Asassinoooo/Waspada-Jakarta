@@ -101,8 +101,11 @@ interface ResolvedSupport {
   readonly evidenceRefId: string;
 }
 
-interface SupportEvidenceRow {
+interface SupportReferenceRow {
   readonly evidence_ref_id: string;
+}
+
+interface SupportEvidenceRow extends SupportReferenceRow {
   readonly permitted_text: string;
   readonly permitted_text_hash: string;
 }
@@ -132,14 +135,14 @@ class SqlGeometryWriter implements GeometryWriter {
 
     try {
       return await this.transactions.transaction((transaction) =>
-        this.persistInTransaction(transaction, record, recordJson, geoJson));
+        persistRecordRows(transaction, record, recordJson, geoJson, "full_text"));
     } catch (error) {
       if (!isUniqueViolation(error, "geometries_pkey")) throw error;
 
       // A concurrent identical insert can win after our initial read. Re-read
       // after the failed transaction, then accept only the complete same record.
       const retry = await this.transactions.transaction(async (transaction) => {
-        const supports = await resolveSupportingEvidence(transaction, record);
+        const supports = await resolveSupportingEvidence(transaction, record, "full_text");
         const existing = await findExistingGeometry(transaction, record, recordJson, geoJson);
         return existing
           ? compareExistingGeometry(transaction, record, supports, existing)
@@ -149,49 +152,74 @@ class SqlGeometryWriter implements GeometryWriter {
       return retry;
     }
   }
+}
 
-  private async persistInTransaction(
-    transaction: SqlExecutor,
-    record: GeometryRecord,
-    recordJson: string,
-    geoJson: string,
-  ): Promise<GeometryWriteResult> {
-    await assertPostgisTopology(transaction, geoJson);
-    const supports = await resolveSupportingEvidence(transaction, record);
-    const existing = await findExistingGeometry(transaction, record, recordJson, geoJson);
-    if (existing) return compareExistingGeometry(transaction, record, supports, existing);
+/**
+ * HOSTED-26: the same validation and append as persist, run inside a transaction the caller already holds (the
+ * publication transaction). It opens no transaction of its own, so the caller's savepoint covers the write, and a
+ * failure rolls back only that savepoint.
+ *
+ * Its support check reads no permitted text. The publication role cannot read report_revisions.permitted_text or its
+ * hash (migration 053), so the check confirms only that each support is a persisted supports reference with the exact
+ * span. The evidence_references foreign key already ties the reference's hash to its revision, and
+ * createEvidenceReference checked the span against the immutable text when it wrote the row. Use this path only for
+ * support taken from evidence_references. persist keeps the full text check for every other caller.
+ */
+export async function persistGeometryInCallerTransaction(
+  transaction: SqlExecutor,
+  input: unknown,
+): Promise<GeometryWriteResult> {
+  const record = parseGeometryRecord(input);
+  const recordJson = JSON.stringify(record);
+  const geoJson = JSON.stringify(record.geojson);
+  return persistRecordRows(transaction, record, recordJson, geoJson, "reference_only");
+}
 
+/** How a support reference is checked: against the immutable report text, or against the persisted reference only. */
+type SupportCheck = "full_text" | "reference_only";
+
+async function persistRecordRows(
+  transaction: SqlExecutor,
+  record: GeometryRecord,
+  recordJson: string,
+  geoJson: string,
+  supportCheck: SupportCheck,
+): Promise<GeometryWriteResult> {
+  await assertPostgisTopology(transaction, geoJson);
+  const supports = await resolveSupportingEvidence(transaction, record, supportCheck);
+  const existing = await findExistingGeometry(transaction, record, recordJson, geoJson);
+  if (existing) return compareExistingGeometry(transaction, record, supports, existing);
+
+  await transaction.query(
+    [
+      "INSERT INTO waspada.geometries",
+      "  (dataset_kind, geometry_id, trace_id, role, shape, coordinate_reference_system,",
+      "   precision_m, precision_basis, display_label, record_json)",
+      "VALUES ($1, $2, $3, $4,",
+      "  ST_SetSRID(ST_GeomFromGeoJSON($5::text), 4326), $6, $7, $8, $9, $10::jsonb)",
+    ].join("\n"),
+    [
+      record.dataset_kind,
+      record.geometry_id,
+      record.trace_id,
+      record.role,
+      geoJson,
+      record.coordinate_reference_system,
+      record.precision_m,
+      record.precision_basis,
+      record.display_label,
+      recordJson,
+    ],
+  );
+
+  for (const support of supports) {
     await transaction.query(
-      [
-        "INSERT INTO waspada.geometries",
-        "  (dataset_kind, geometry_id, trace_id, role, shape, coordinate_reference_system,",
-        "   precision_m, precision_basis, display_label, record_json)",
-        "VALUES ($1, $2, $3, $4,",
-        "  ST_SetSRID(ST_GeomFromGeoJSON($5::text), 4326), $6, $7, $8, $9, $10::jsonb)",
-      ].join("\n"),
-      [
-        record.dataset_kind,
-        record.geometry_id,
-        record.trace_id,
-        record.role,
-        geoJson,
-        record.coordinate_reference_system,
-        record.precision_m,
-        record.precision_basis,
-        record.display_label,
-        recordJson,
-      ],
+      "INSERT INTO waspada.geometry_evidence (dataset_kind, geometry_id, evidence_ref_id) VALUES ($1, $2, $3)",
+      [record.dataset_kind, record.geometry_id, support.evidenceRefId],
     );
-
-    for (const support of supports) {
-      await transaction.query(
-        "INSERT INTO waspada.geometry_evidence (dataset_kind, geometry_id, evidence_ref_id) VALUES ($1, $2, $3)",
-        [record.dataset_kind, record.geometry_id, support.evidenceRefId],
-      );
-    }
-
-    return { geometryId: record.geometry_id, outcome: "created" };
   }
+
+  return { geometryId: record.geometry_id, outcome: "created" };
 }
 
 function parseGeometryRecord(input: unknown): GeometryRecord {
@@ -391,53 +419,60 @@ async function assertPostgisTopology(transaction: SqlExecutor, geoJson: string):
   }
 }
 
+const SUPPORT_REFERENCE_FILTER = [
+  "WHERE reference.dataset_kind = $1",
+  "  AND reference.report_revision_id = $2",
+  "  AND reference.permitted_text_hash = $3",
+  "  AND reference.span_start = $4",
+  "  AND reference.span_end = $5",
+  "  AND reference.offset_unit = $6",
+  "  AND reference.relation = $7",
+  "LIMIT 2",
+].join("\n");
+
+const FULL_TEXT_SUPPORT_QUERY = [
+  "SELECT reference.evidence_ref_id::text AS evidence_ref_id,",
+  "       revision.permitted_text, revision.permitted_text_hash",
+  "FROM waspada.evidence_references AS reference",
+  "JOIN waspada.report_revisions AS revision",
+  "  ON revision.dataset_kind = reference.dataset_kind",
+  " AND revision.report_revision_id = reference.report_revision_id",
+  " AND revision.permitted_text_hash = reference.permitted_text_hash",
+  SUPPORT_REFERENCE_FILTER,
+].join("\n");
+
+const REFERENCE_ONLY_SUPPORT_QUERY = [
+  "SELECT reference.evidence_ref_id::text AS evidence_ref_id",
+  "FROM waspada.evidence_references AS reference",
+  SUPPORT_REFERENCE_FILTER,
+].join("\n");
+
 async function resolveSupportingEvidence(
   transaction: SqlExecutor,
   record: GeometryRecord,
+  supportCheck: SupportCheck,
 ): Promise<readonly ResolvedSupport[]> {
   const resolved: ResolvedSupport[] = [];
   for (const reference of record.source_evidence) {
-    const result = await transaction.query<SupportEvidenceRow>(
-      [
-        "SELECT reference.evidence_ref_id::text AS evidence_ref_id,",
-        "       revision.permitted_text, revision.permitted_text_hash",
-        "FROM waspada.evidence_references AS reference",
-        "JOIN waspada.report_revisions AS revision",
-        "  ON revision.dataset_kind = reference.dataset_kind",
-        " AND revision.report_revision_id = reference.report_revision_id",
-        " AND revision.permitted_text_hash = reference.permitted_text_hash",
-        "WHERE reference.dataset_kind = $1",
-        "  AND reference.report_revision_id = $2",
-        "  AND reference.permitted_text_hash = $3",
-        "  AND reference.span_start = $4",
-        "  AND reference.span_end = $5",
-        "  AND reference.offset_unit = $6",
-        "  AND reference.relation = $7",
-        "LIMIT 2",
-      ].join("\n"),
-      [
-        record.dataset_kind,
-        reference.report_revision_id,
-        reference.permitted_text_hash,
-        reference.span_start,
-        reference.span_end,
-        reference.offset_unit,
-        reference.relation,
-      ],
+    const parameters = [
+      record.dataset_kind,
+      reference.report_revision_id,
+      reference.permitted_text_hash,
+      reference.span_start,
+      reference.span_end,
+      reference.offset_unit,
+      reference.relation,
+    ];
+    if (supportCheck === "reference_only") {
+      const persisted = singleSupportRow(
+        (await transaction.query<SupportReferenceRow>(REFERENCE_ONLY_SUPPORT_QUERY, parameters)).rows,
+      );
+      resolved.push({ evidenceRefId: persisted.evidence_ref_id });
+      continue;
+    }
+    const row = singleSupportRow(
+      (await transaction.query<SupportEvidenceRow>(FULL_TEXT_SUPPORT_QUERY, parameters)).rows,
     );
-    if (result.rows.length === 0) {
-      throw new GeometryWriteError(
-        "geometry_support_invalid",
-        "source_evidence reference is not a persisted supports reference in the geometry dataset",
-      );
-    }
-    if (result.rows.length !== 1) {
-      throw new GeometryWriteError(
-        "geometry_support_invalid",
-        "source_evidence reference resolves to more than one persisted evidence reference",
-      );
-    }
-    const row = result.rows[0]!;
     if (sha256(row.permitted_text) !== row.permitted_text_hash
       || row.permitted_text_hash !== reference.permitted_text_hash) {
       throw new GeometryWriteError(
@@ -454,6 +489,22 @@ async function resolveSupportingEvidence(
     resolved.push({ evidenceRefId: row.evidence_ref_id });
   }
   return resolved;
+}
+
+function singleSupportRow<Row>(rows: readonly Row[]): Row {
+  if (rows.length === 0) {
+    throw new GeometryWriteError(
+      "geometry_support_invalid",
+      "source_evidence reference is not a persisted supports reference in the geometry dataset",
+    );
+  }
+  if (rows.length !== 1) {
+    throw new GeometryWriteError(
+      "geometry_support_invalid",
+      "source_evidence reference resolves to more than one persisted evidence reference",
+    );
+  }
+  return rows[0]!;
 }
 
 async function findExistingGeometry(
