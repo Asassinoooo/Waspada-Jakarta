@@ -1,4 +1,4 @@
-import type { EventView, FreshnessStatus, Lifecycle } from "@waspada/worker/public-contracts";
+import type { EventView, FreshnessStatus, Lifecycle, TimeScope } from "@waspada/worker/public-contracts";
 
 const instantFormatter = new Intl.DateTimeFormat("id-ID", {
   dateStyle: "medium",
@@ -26,28 +26,35 @@ export function formatDate(value: string | null | undefined) {
   return dateFormatter.format(date);
 }
 
-export function formatEventTime(event: Pick<EventView, "event_time">, options: { fixtureWording?: boolean } = {}) {
-  const time = event.event_time;
-  if (time.precision === "unknown" || !time.start) return "Waktu kejadian tidak diketahui";
-  const value = time.precision === "date" ? formatDate(time.start) : formatInstant(time.start);
-  if (time.end) {
-    const end = time.precision === "date" ? formatDate(time.end) : formatInstant(time.end);
-    return value + " sampai " + end + " (" + precisionLabel(time.precision, options) + ")";
-  }
-  return value + " (" + precisionLabel(time.precision, options) + ")";
+/** F-11 (owner decision 18 Nov 2026): the one wording for an event time that is not known, on every surface. */
+export const UNKNOWN_EVENT_TIME_TEXT = "Waktu kejadian tidak disebutkan";
+
+/** Added after a calendar day. The hour is not known, so none is shown. */
+const DATE_ONLY_TIME_NOTE = ", jam tidak disebutkan";
+
+/** A "YYYY-MM-DD" value is a calendar day with no clock time. */
+function isCalendarDay(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/u.test(value);
 }
 
-export function precisionLabel(value: "exact" | "date" | "range" | "unknown", options: { fixtureWording?: boolean } = {}) {
-  switch (value) {
-    case "exact":
-      return options.fixtureWording === false ? "waktu tepat" : "waktu tepat menurut fixture";
-    case "date":
-      return "tanggal saja";
-    case "range":
-      return "rentang waktu";
-    case "unknown":
-      return "tidak diketahui";
-  }
+/**
+ * The event time (waktu kejadian) as text. Every surface that shows an event time uses this helper.
+ * - exact: the instant in Jakarta time, e.g. "17 Nov 2026, 07.00 WIB" (id-ID writes the time with a dot).
+ * - date: the day with the hour left out, e.g. "17 Nov 2026, jam tidak disebutkan". An hour is never invented.
+ * - range: start – end.
+ * - unknown, or no start: UNKNOWN_EVENT_TIME_TEXT.
+ * A calendar day is read as its Jakarta midnight, so the day does not move with the host timezone.
+ */
+export function eventTimeText(time: Pick<TimeScope, "start" | "end" | "precision">): string {
+  if (time.precision === "unknown" || !time.start) return UNKNOWN_EVENT_TIME_TEXT;
+  const bound = (value: string) => (isCalendarDay(value) ? formatDate(`${value}T00:00:00+07:00`) : formatInstant(value));
+  const text = time.end ? `${bound(time.start)} – ${bound(time.end)}` : bound(time.start);
+  return time.precision === "date" ? text + DATE_ONLY_TIME_NOTE : text;
+}
+
+/** An event's time, through the same helper as eventTimeText. Kept for the admin and feed call sites. */
+export function formatEventTime(event: Pick<EventView, "event_time">): string {
+  return eventTimeText(event.event_time);
 }
 
 export function lifecycleLabel(value: Lifecycle, options: { fixtureWording?: boolean } = {}) {
@@ -74,7 +81,7 @@ export function freshnessLabel(value: FreshnessStatus, options: { fixtureWording
     case "needs_update":
       return "Perlu diperbarui";
     case "expired":
-      return "Lewat batas tinjau";
+      return "Lewat masa berlaku sumber";
   }
 }
 

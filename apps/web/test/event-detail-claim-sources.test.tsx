@@ -153,11 +153,12 @@ test("HOSTED-24A: different sources of one claim each keep their own line", () =
   assert.equal(countOf(html, "<h3>ANTARA</h3>"), 1);
 });
 
-test("HOSTED-24A: the media count is the publication's own count and is not changed by the collapsed source lines", () => {
+// F-09 (18 Nov 2026): the detail page counts media with the card's helper. Two quotes from one outlet are one media.
+test("F-09: two quotes from one outlet are one media on the detail page, whatever the server's own count says", () => {
   const html = renderLive(record([claim([source({ excerpt: "A" }), source({ excerpt: "B" })])], {
     mode: "agent_auto",
     source_count: 2,
   }));
   assert.equal(countOf(html, "Buka sumber publik"), 1);
-  assert.match(html, /<dt>Cara penerbitan<\/dt><dd>Diringkas otomatis oleh agen AI · dilaporkan oleh 2 media<\/dd>/u);
+  assert.match(html, /<dt>Cara penerbitan<\/dt><dd>Diringkas otomatis oleh agen AI · dilaporkan oleh 1 media<\/dd>/u);
 });

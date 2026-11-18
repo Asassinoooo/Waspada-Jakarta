@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { BriefingInterests, BriefingResponse, EventView, PublicContext, TimeScope } from "@waspada/worker/public-contracts";
-import { categoryLabel } from "./display.js";
+import type { BriefingInterests, BriefingResponse, EventView, PublicContext } from "@waspada/worker/public-contracts";
+import { categoryLabel, eventTimeText } from "./display.js";
 import { requestBriefing } from "./api-client.js";
 import { normalizeInterests } from "./preferences-store.js";
 
@@ -72,24 +72,6 @@ function formatBriefingInstant(value: string | null | undefined) {
   }).format(date) + " WIB";
 }
 
-function formatBriefingDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Tanggal tidak valid";
-  return new Intl.DateTimeFormat("id-ID", {
-    dateStyle: "medium",
-    timeZone: "Asia/Jakarta",
-  }).format(date);
-}
-
-function formatBriefingEventTime(time: TimeScope) {
-  if (time.precision === "unknown" || !time.start) return "Tidak diketahui";
-  const format = time.precision === "date" ? formatBriefingDate : formatBriefingInstant;
-  const start = format(time.start);
-  const value = time.end ? start + " sampai " + format(time.end) : start;
-  const precision = time.precision === "date" ? "tanggal saja" : time.precision === "range" ? "rentang waktu" : "waktu tepat";
-  return value + " (" + precision + ")";
-}
-
 function lifecycleLabel(value: EventView["lifecycle"]) {
   switch (value) {
     case "planned": return "Direncanakan";
@@ -104,7 +86,7 @@ function freshnessLabel(value: EventView["freshness"]["status"]) {
   switch (value) {
     case "current": return "Dalam batas tinjau";
     case "needs_update": return "Perlu diperbarui";
-    case "expired": return "Batas tinjau lewat";
+    case "expired": return "Lewat masa berlaku sumber";
   }
 }
 
@@ -130,7 +112,7 @@ function BriefingItemCard({ item }: { item: BriefingResponse["items"][number] })
       <dl className="briefing-result__facts">
         <div><dt>Siklus</dt><dd>{lifecycleLabel(event.lifecycle)}</dd></div>
         <div><dt>Kesegaran</dt><dd>{freshnessLabel(event.freshness.status)}</dd></div>
-        <div><dt>Waktu kejadian</dt><dd>{formatBriefingEventTime(event.event_time)}</dd></div>
+        <div><dt>Waktu kejadian</dt><dd>{eventTimeText(event.event_time)}</dd></div>
         <div><dt>Waktu terbit</dt><dd>{formatBriefingInstant(event.published_at)}</dd></div>
       </dl>
     </article>

@@ -112,7 +112,7 @@ export function MapEventList({
                   </span>
                   <strong className="map-card__title">{event.title}</strong>
                   <span className="map-card__meta">{areaText(event)}</span>
-                  <span className="map-card__meta">{eventHasTime(event) ? `Waktu kejadian: ${eventTimeText(event)}` : eventTimeText(event)}</span>
+                  <span className="map-card__meta">{eventHasTime(event) ? `Waktu kejadian: ${eventTimeText(event.event_time)}` : eventTimeText(event.event_time)}</span>
                   {!eventHasTime(event) && sourcePublishedAtText(event) !== null && (
                     <span className="map-card__meta">Dipublikasikan sumber: {sourcePublishedAtText(event)}</span>
                   )}

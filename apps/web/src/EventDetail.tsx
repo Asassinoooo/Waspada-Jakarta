@@ -1,17 +1,17 @@
 import type { EventDetail as EventDetailRecord, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
 import type { ApiReadState } from "./api-client.js";
-import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
+import { categoryLabel, evidenceLabel, eventTimeText, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
 import { MapPanel, RecordMapPanel } from "./MapPanel.js";
 import { SeverityChip } from "./MapSeverity.js";
 import {
   collapseClaimSources,
+  countIndependentSources,
   eventHasTime,
   publicationPathText,
   SEVERITY_NOTE,
   severityOf,
   sourcePublishedAtText,
-  UNKNOWN_EVENT_TIME_TEXT,
 } from "./published-events.js";
 
 interface EventDetailProps {
@@ -60,7 +60,7 @@ function PresentationDetail() {
             <blockquote>{claim.text}</blockquote>
             <p className="qualifier">{claim.qualifier}</p>
             <dl className="detail-facts">
-              <div><dt>Waktu kejadian</dt><dd>{formatInstant(event.eventTime.start)} · presisi tepat menurut fixture</dd></div>
+              <div><dt>Waktu kejadian</dt><dd>{eventTimeText(event.eventTime)}</dd></div>
               <div><dt>Siklus event</dt><dd>{lifecycleLabel(event.lifecycle)}</dd></div>
               <div><dt>Status dukungan</dt><dd>Span fixture ditandai mendukung klaim</dd></div>
               <div><dt>Bukti bertentangan</dt><dd>Daftar fixture kosong; tidak menilai keadaan nyata</dd></div>
@@ -90,7 +90,7 @@ function PresentationDetail() {
 
           <dl className="detail-facts detail-facts--spacious">
             <div><dt>Kategori</dt><dd>{categoryLabel(event.category)}</dd></div>
-            <div><dt>Waktu event</dt><dd><time dateTime={event.eventTime.start}>{formatInstant(event.eventTime.start)}</time> · {event.eventTime.precision}</dd></div>
+            <div><dt>Waktu event</dt><dd><time dateTime={event.eventTime.start}>{eventTimeText(event.eventTime)}</time> · {event.eventTime.precision}</dd></div>
             <div><dt>Validitas issuer</dt><dd><time dateTime={event.validity.validFrom}>{formatInstant(event.validity.validFrom)}</time> sampai <time dateTime={event.validity.validUntil}>{formatInstant(event.validity.validUntil)}</time></dd></div>
             <div><dt>Peristiwa diterbitkan</dt><dd><time dateTime={event.publishedAt}>{formatInstant(event.publishedAt)}</time></dd></div>
             <div><dt>Evaluasi freshness fixture</dt><dd><time dateTime={event.freshness.evaluatedAt}>{formatInstant(event.freshness.evaluatedAt)}</time></dd></div>
@@ -216,6 +216,8 @@ function ApiEventDetail({
   const severity = event === null ? null : severityOf(event);
   // HOSTED-21: with no event time, the source's own publish time is shown on its own row, never as the event time.
   const sourceTime = event === null || eventHasTime(event) ? null : sourcePublishedAtText(event);
+  // F-09: the outlet count the card and popup show. Syndicated copies are labelled, never counted as sources.
+  const sourceCounts = event === null ? null : countIndependentSources(event);
   // R-05: only a demo dataset may be called synthetic or fixture. Live and unknown modes get neutral wording.
   const demo = context?.dataset_mode === "demo";
   const noun = demo ? "fixture" : "record";
@@ -280,14 +282,14 @@ function ApiEventDetail({
                 <span className="synthetic-label">{wording(demo, "Contoh API", "Data API")}</span>
               </div>
               <dl className="detail-facts detail-facts--spacious">
-                <div><dt>Waktu kejadian</dt><dd>{eventHasTime(event) ? formatEventTime(event, { fixtureWording: demo }) : UNKNOWN_EVENT_TIME_TEXT}</dd></div>
+                <div><dt>Waktu kejadian</dt><dd>{eventTimeText(event.event_time)}</dd></div>
                 {sourceTime !== null && <div><dt>Dipublikasikan sumber</dt><dd>{sourceTime}</dd></div>}
                 <div><dt>Validitas pada record</dt><dd>{event.validity.valid_from || event.validity.valid_until
                   ? <>{event.validity.valid_from ? formatInstant(event.validity.valid_from) : "Tidak ada waktu awal"} sampai {event.validity.valid_until ? formatInstant(event.validity.valid_until) : "Tidak ada waktu akhir"}</>
                   : `Tidak tersedia pada ${noun}`}</dd></div>
                 <div><dt>Versi publik diterbitkan{wording(demo, " (waktu fixture)", "")}</dt><dd><time dateTime={event.published_at}>{formatInstant(event.published_at)}</time></dd></div>
-                {publicationPathText(event.publication) !== null && (
-                  <div><dt>Cara penerbitan</dt><dd>{publicationPathText(event.publication)}</dd></div>
+                {event.publication && sourceCounts !== null && (
+                  <div><dt>Cara penerbitan</dt><dd>{publicationPathText({ mode: event.publication.mode, source_count: sourceCounts.outlets }, sourceCounts.copies)}</dd></div>
                 )}
                 <div><dt>Respons konteks API dibuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
                 <div><dt>Waktu pengambilan sumber</dt><dd>Tidak disediakan dalam proyeksi EventDetail</dd></div>
@@ -305,7 +307,7 @@ function ApiEventDetail({
                       <span className="claim-card__label">Dampak · {lifecycleLabel(impact.lifecycle)} · {freshnessLabel(impact.freshness.status)}</span>
                       <strong>{impact.title}</strong>
                       <p>{impact.description}</p>
-                      <p>Waktu dampak: {formatEventTime({ event_time: impact.event_time }, { fixtureWording: demo })}</p>
+                      <p>Waktu dampak: {eventTimeText(impact.event_time)}</p>
                     </article>
                   ))}
                 </div>
@@ -327,17 +329,27 @@ function ApiEventDetail({
                     <article className="claim-card" key={claim.claim_id}>
                       <span className="claim-card__label">{evidenceLabel(claim.evidence_label)}</span>
                       <blockquote>{claim.text}</blockquote>
-                      <p>Waktu kejadian klaim: {formatEventTime({ event_time: claim.event_time })}</p>
+                      <p>Waktu kejadian klaim: {eventTimeText(claim.event_time)}</p>
                       {claim.qualifiers.length > 0 && <p className="qualifier">{claim.qualifiers.join(" ")}</p>}
                       {claim.sources.length === 0 && <p>Atribusi sumber tidak tersedia pada record ini.</p>}
-                      {collapseClaimSources(claim.sources).map(({ source, excerpts }, index) => (
-                        <div className="source-record" key={`${index}:${source.url}`}>
-                          <h3>{source.display_name}</h3>
-                          <p>Waktu sumber diterbitkan: {formatInstant(source.published_at)} · waktu observasi: {formatInstant(source.observed_at)}</p>
-                          {excerpts.map((excerpt) => <blockquote className="source-excerpt" key={excerpt}>{excerpt}</blockquote>)}
-                          <a className="text-link" href={source.url} target="_blank" rel="noreferrer">Buka sumber publik</a>
-                        </div>
-                      ))}
+                      {collapseClaimSources(claim.sources).map(({ source, excerpts }, index) => {
+                        // Every distinct excerpt is kept. The first shows; the rest sit in a disclosure under the same source.
+                        const [firstExcerpt, ...moreExcerpts] = excerpts;
+                        return (
+                          <div className="source-record" key={`${index}:${source.url}`}>
+                            <h3>{source.display_name}</h3>
+                            <p>Waktu sumber diterbitkan: {formatInstant(source.published_at)} · waktu observasi: {formatInstant(source.observed_at)}</p>
+                            {firstExcerpt !== undefined && <blockquote className="source-excerpt">{firstExcerpt}</blockquote>}
+                            {moreExcerpts.length > 0 && (
+                              <details>
+                                <summary>{`Lihat ${moreExcerpts.length} kutipan lainnya`}</summary>
+                                {moreExcerpts.map((excerpt) => <blockquote className="source-excerpt" key={excerpt}>{excerpt}</blockquote>)}
+                              </details>
+                            )}
+                            <a className="text-link" href={source.url} target="_blank" rel="noreferrer">Buka sumber publik</a>
+                          </div>
+                        );
+                      })}
                     </article>
                   ))}
                 </div>

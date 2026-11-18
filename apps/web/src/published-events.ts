@@ -2,7 +2,7 @@
  * Published public events for the map home (UI-V2-B). One hook reads the list
  * (/api/v1/events) and the geometry (/api/v1/events.geojson). Everything else
  * here is pure: filters, labels and marker selection. Nothing is invented: a
- * missing time reads "Tidak diketahui", and a count is a count of distinct
+ * missing event time reads UNKNOWN_EVENT_TIME_TEXT, and a count is a count of distinct
  * named outlets (syndicated copies are labelled, not counted), never a verification.
  */
 import { useEffect, useState } from "react";
@@ -23,7 +23,10 @@ import {
   listEvents,
   type ApiReadState,
 } from "./api-client.js";
-import { categoryLabel, formatDate, formatInstant } from "./display.js";
+import { categoryLabel, formatInstant } from "./display.js";
+
+/** The event time helper lives in display.ts (no import cycle); published pages use it from here. */
+export { eventTimeText, UNKNOWN_EVENT_TIME_TEXT } from "./display.js";
 
 export type MapCoordinate = readonly [longitude: number, latitude: number];
 
@@ -213,21 +216,6 @@ export function deepLinkTarget(
   return { event, marker: markers.get(eventId) ?? null };
 }
 
-function formatTime(value: string, precision: EventView["event_time"]["precision"]): string {
-  return precision === "date" ? formatDate(value) : formatInstant(value);
-}
-
-/** HOSTED-21: shown when an event has no event time. The time is never filled in from another field. */
-export const UNKNOWN_EVENT_TIME_TEXT = "Waktu kejadian tidak disebutkan";
-
-/** Event time (waktu kejadian) only. Never the publication time. */
-export function eventTimeText(event: EventView): string {
-  if (!eventHasTime(event) || event.event_time.start === null) return UNKNOWN_EVENT_TIME_TEXT;
-  const start = formatTime(event.event_time.start, event.event_time.precision);
-  if (!event.event_time.end) return start;
-  return `${start} – ${formatTime(event.event_time.end, event.event_time.precision)}`;
-}
-
 /**
  * HOSTED-21: the source's own publish time, shown separately when the event has no event time. It is the earliest
  * publish time the claim sources give. It is never the event's publication time or a processing time. Null when no
@@ -364,12 +352,17 @@ export function lifecycleText(lifecycle: Lifecycle): string {
   }
 }
 
-/** How a version was published. Null when the list does not say, so no path is claimed. */
+/**
+ * How a version was published. Null when the list does not say, so no path is claimed. Pass the outlet count from
+ * countIndependentSources as source_count and its copies as `copies`, so the detail page counts like the card does (F-09).
+ */
 export function publicationPathText(
   publication: { readonly mode: "agent_auto" | "moderator_reviewed"; readonly source_count: number } | undefined,
+  copies = 0,
 ): string | null {
   if (!publication) return null;
-  const reach = ` · dilaporkan oleh ${publication.source_count} media`;
+  const copyNote = copies > 0 ? ` (${copies} salinan)` : "";
+  const reach = ` · dilaporkan oleh ${publication.source_count} media${copyNote}`;
   return publication.mode === "moderator_reviewed"
     ? `Ditinjau moderator${reach}`
     : `Diringkas otomatis oleh agen AI${reach}`;

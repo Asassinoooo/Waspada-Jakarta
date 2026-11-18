@@ -10,7 +10,7 @@ import type {
   TimeScope,
 } from "@waspada/worker/public-contracts";
 import { ApiHttpError, ApiPayloadError, getEventDetailWithSignal, getPublicUpdates, type PublicUpdatePage } from "./api-client.js";
-import { categoryLabel } from "./display.js";
+import { categoryLabel, eventTimeText } from "./display.js";
 import { PageHeader } from "./ui/PageHeader.js";
 import {
   browserPreferencesStorage,
@@ -592,17 +592,6 @@ function formatJakartaInstant(value: string | null) {
   }).format(date) + " WIB";
 }
 
-function formatEventTime(value: TimeScope) {
-  if (value.precision === "unknown" || value.start === null) return "Tidak diketahui";
-  const dateFormatter = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "UTC" });
-  const formatDateOnly = (date: string) => dateFormatter.format(new Date(date + "T00:00:00.000Z"));
-  const formatBound = (bound: string) => isDateOnly(bound) ? formatDateOnly(bound) : formatJakartaInstant(bound);
-  const start = formatBound(value.start);
-  const end = value.end === null ? null : formatBound(value.end);
-  const precision = value.precision === "date" ? "tanggal saja" : value.precision === "range" ? "rentang waktu" : "waktu tepat";
-  return (end === null ? start : start + " sampai " + end) + " (" + precision + ")";
-}
-
 function changeTypeLabel(value: HistoryEntry["change_type"]) {
   switch (value) {
     case "published": return "Versi dipublikasikan";
@@ -632,7 +621,7 @@ function UpdateCard({ item }: { item: MatchedPublicUpdate }) {
         <div><dt>Kategori saat ini</dt><dd>{categoryLabel(item.event.category)}</dd></div>
         <div><dt>Siklus saat ini</dt><dd>{lifecycleLabel(item.event.lifecycle)}</dd></div>
         <div><dt>Kesegaran saat ini</dt><dd>{freshnessLabel(item.event.freshness.status)}</dd></div>
-        <div><dt>Waktu kejadian saat ini</dt><dd>{formatEventTime(item.event.event_time)}</dd></div>
+        <div><dt>Waktu kejadian saat ini</dt><dd>{eventTimeText(item.event.event_time)}</dd></div>
         <div><dt>Waktu perubahan dipublikasikan</dt><dd><time dateTime={item.change.changed_at}>{formatJakartaInstant(item.change.changed_at)}</time></dd></div>
       </dl>
       <section className="update-center-card__relevance" aria-label="Alasan kecocokan lokal">
@@ -746,7 +735,7 @@ function freshnessLabel(value: FreshnessStatus) {
   switch (value) {
     case "current": return "Dalam batas tinjau";
     case "needs_update": return "Perlu diperbarui";
-    case "expired": return "Batas tinjau lewat";
+    case "expired": return "Lewat masa berlaku sumber";
   }
 }
 

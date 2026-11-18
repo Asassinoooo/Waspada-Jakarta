@@ -73,15 +73,15 @@ function popup(overrides: Partial<EventView> = {}) {
 }
 
 test("F-14: an event with no start reads as an unknown event time", () => {
-  assert.equal(formatEventTime(event()), "Waktu kejadian tidak diketahui");
+  assert.equal(formatEventTime(event()), "Waktu kejadian tidak disebutkan");
   assert.equal(UNKNOWN_EVENT_TIME_TEXT, "Waktu kejadian tidak disebutkan");
-  assert.equal(eventTimeText(event()), UNKNOWN_EVENT_TIME_TEXT);
+  assert.equal(eventTimeText(event().event_time), UNKNOWN_EVENT_TIME_TEXT);
 });
 
 test("F-14: a null start with a non-unknown precision still reads as unknown, not as Invalid Date", () => {
   const dated = event({ event_time: { start: null, end: null, precision: "exact" } });
-  assert.equal(formatEventTime(dated), "Waktu kejadian tidak diketahui");
-  assert.equal(eventTimeText(dated), UNKNOWN_EVENT_TIME_TEXT);
+  assert.equal(formatEventTime(dated), "Waktu kejadian tidak disebutkan");
+  assert.equal(eventTimeText(dated.event_time), UNKNOWN_EVENT_TIME_TEXT);
 });
 
 test("F-14: the popup time row of an event with no start shows the unknown wording, not the publish time", () => {
@@ -127,7 +127,7 @@ test("HOSTED-21 control: a dated event keeps its event time and shows no separat
     event_time: { start: "2026-11-12T08:30:00.000Z", end: null, precision: "exact" },
     claims: [claimWithSources([sourceAt])],
   });
-  assert.notEqual(eventTimeText(dated), UNKNOWN_EVENT_TIME_TEXT);
+  assert.notEqual(eventTimeText(dated.event_time), UNKNOWN_EVENT_TIME_TEXT);
   assert.match(formatEventTime(dated), /WIB/u);
   const list = renderToStaticMarkup(createElement(MapEventList, {
     headingId: "list-f14",
@@ -165,6 +165,6 @@ test("HOSTED-21: the list card of an unknown-time event reads the unknown wordin
 
 test("F-14 control: an event with a start still shows its event time", () => {
   const dated = event({ event_time: { start: "2026-11-12T08:30:00.000Z", end: null, precision: "exact" } });
-  assert.notEqual(eventTimeText(dated), UNKNOWN_EVENT_TIME_TEXT);
+  assert.notEqual(eventTimeText(dated.event_time), UNKNOWN_EVENT_TIME_TEXT);
   assert.match(formatEventTime(dated), /WIB/u);
 });
