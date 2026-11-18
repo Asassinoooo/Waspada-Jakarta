@@ -500,6 +500,17 @@ interface PublicationEnrichment {
   readonly support: readonly DomainEvidenceRef[];
   /** HOSTED-15: the evidence_references ids of the same support, in the same order. They link the origin rows. */
   readonly supportEvidenceRefIds: readonly string[];
+  /**
+   * HOSTED-31: the support of each claim, by proposal claim index. A one-revision proposal gives every claim `support`.
+   * A proposal built from several revisions gives each claim only the persisted reference that exactly matches the chunk
+   * the claim cites, from one of the proposal's own revisions. A claim with no such reference has an empty entry, and
+   * writePublishedVersion refuses to write the version (the public reader rejects a claim with no support).
+   */
+  readonly claimSupport: readonly (readonly DomainEvidenceRef[])[];
+  /** HOSTED-31: the evidence_references ids of claimSupport, by claim index, in the same order. */
+  readonly claimSupportRefIds: readonly (readonly string[])[];
+  /** HOSTED-31: true for a proposal built from several revisions. Its version is written only when every claim has support. */
+  readonly requiresClaimSupport: boolean;
   /** HOSTED-26: the event's one Point geometry id, or empty. Every claim of the version links to it. */
   readonly geometryIds: readonly string[];
   /** Set only for a coordinate-bearing event. It records the source of the point. */
@@ -615,6 +626,78 @@ async function ownEvidence(
 }
 
 /**
+ * HOSTED-31: the persisted evidence of the chunk each claim cites, by claim index. The claim's evidence_ref_id names an
+ * evidence chunk; its reference is the evidence_references row with the same revision, text hash, span and offset unit
+ * and relation "supports". Only a chunk of one of the proposal's own revisions counts. No match gives null: the claim is
+ * never given evidence from another revision or a nearby span.
+ */
+async function claimChunkEvidence(
+  tx: SqlExecutor,
+  datasetKind: string,
+  proposal: EventProposalDto,
+  revisions: readonly string[],
+): Promise<({ readonly ref: DomainEvidenceRef; readonly refId: string } | null)[]> {
+  const allowed = new Set(revisions);
+  const results: ({ readonly ref: DomainEvidenceRef; readonly refId: string } | null)[] = [];
+  for (const claim of proposal.claims ?? []) {
+    const chunkId = typeof claim.evidence_ref_id === "string" ? claim.evidence_ref_id : "";
+    if (chunkId.length === 0) {
+      results.push(null);
+      continue;
+    }
+    const row = await tx.query<{
+      evidence_ref_id: string;
+      report_revision_id: string;
+      permitted_text_hash: string;
+      span_start: number;
+      span_end: number;
+    }>(
+      `SELECT ref.evidence_ref_id::text AS evidence_ref_id, ref.report_revision_id, ref.permitted_text_hash,
+              ref.span_start, ref.span_end
+         FROM waspada.evidence_chunks AS chunk
+         JOIN waspada.evidence_references AS ref
+           ON ref.dataset_kind = chunk.dataset_kind
+          AND ref.report_revision_id = chunk.report_revision_id
+          AND ref.permitted_text_hash = chunk.permitted_text_hash
+          AND ref.span_start = chunk.span_start
+          AND ref.span_end = chunk.span_end
+          AND ref.offset_unit = chunk.offset_unit
+        WHERE chunk.dataset_kind = $1 AND chunk.chunk_id = $2
+          AND chunk.offset_unit = 'unicode_code_points' AND ref.relation = 'supports'
+        ORDER BY ref.evidence_ref_id
+        LIMIT 1`,
+      [datasetKind, chunkId],
+    );
+    const found = row.rows[0];
+    if (!found || !allowed.has(found.report_revision_id)) {
+      results.push(null);
+      continue;
+    }
+    results.push({
+      ref: {
+        report_revision_id: found.report_revision_id,
+        permitted_text_hash: found.permitted_text_hash,
+        span_start: Number(found.span_start),
+        span_end: Number(found.span_end),
+        offset_unit: "unicode_code_points",
+        relation: "supports",
+      },
+      refId: found.evidence_ref_id,
+    });
+  }
+  return results;
+}
+
+/** HOSTED-31: thrown before any write when a claim of the version has no support. The transaction rolls back. */
+export class PublicationUnsupportedClaimError extends Error {
+  readonly code = "PUBLICATION_UNSUPPORTED_CLAIM";
+  constructor() {
+    super("PUBLICATION_UNSUPPORTED_CLAIM");
+    this.name = "PublicationUnsupportedClaimError";
+  }
+}
+
+/**
  * HOSTED-26: the id of the one Point a published event gets at one coordinate. It is a pure function of the dataset, the
  * event and the exact coordinate, so a later version at the same place names the same row. Only the publication writes
  * "geo-pub-" ids.
@@ -706,6 +789,16 @@ async function enrichPublication(
     : [];
   const support = supportIndexes.map((index) => own.refs[index]!);
   const supportEvidenceRefIds = supportIndexes.map((index) => own.refIds[index]!);
+  const claimCount = (proposal.claims ?? []).length;
+  let claimSupport: (readonly DomainEvidenceRef[])[] = Array.from({ length: claimCount }, () => support);
+  let claimSupportRefIds: (readonly string[])[] = Array.from({ length: claimCount }, () => supportEvidenceRefIds);
+  if (own.revisions.length > 1) {
+    const perClaim = await withOptionalSavepoint(tx, "hosted31_claim_support", () =>
+      claimChunkEvidence(tx, input.datasetKind, proposal, own.revisions));
+    claimSupport = perClaim.ok ? perClaim.value.map((entry) => (entry ? [entry.ref] : [])) : claimSupport;
+    claimSupportRefIds = perClaim.ok ? perClaim.value.map((entry) => (entry ? [entry.refId] : [])) : claimSupportRefIds;
+  }
+  const claimLinks = { claimSupport, claimSupportRefIds, requiresClaimSupport: own.revisions.length > 1 };
 
   // HOSTED-14: the point's source comes from the claims' own source ids (source_text only for PetaBencana or BMKG).
   const outcome = publicPointOutcomeFor({
@@ -728,6 +821,7 @@ async function enrichPublication(
     return {
       support,
       supportEvidenceRefIds,
+      ...claimLinks,
       geometryIds: geometryId === null ? [] : [geometryId],
       geometrySource: outcome.source,
       geometryStatus: geometryId === null ? "pending_geometry_writer" : "point_written",
@@ -737,6 +831,7 @@ async function enrichPublication(
     return {
       support,
       supportEvidenceRefIds,
+      ...claimLinks,
       geometryIds: [],
       geometrySource: null,
       geometryStatus: "not_required_group_notice",
@@ -745,6 +840,7 @@ async function enrichPublication(
   return {
     support,
     supportEvidenceRefIds,
+    ...claimLinks,
     geometryIds: [],
     geometrySource: null,
     geometryStatus: "whole_view",
@@ -790,6 +886,8 @@ export async function writeOriginRows(
     readonly traceId: string;
     readonly claims: readonly { readonly sourceId: string | null; readonly evidenceLabel: string | null }[];
     readonly supportEvidenceRefIds: readonly string[];
+    /** HOSTED-31: the support ids of each claim, by claim index. When given, a source's origin links only its claims' ids. */
+    readonly evidenceRefIdsByClaim?: readonly (readonly string[])[];
   },
 ): Promise<OriginWriteResult> {
   const sourceIds = [...new Set(input.claims.map((claim) => claim.sourceId).filter((id): id is string => !!id))];
@@ -826,7 +924,11 @@ export async function writeOriginRows(
         JSON.stringify({ public_hosts: [...source.approvedHosts].slice(0, 10) }),
       ],
     );
-    for (const evidenceRefId of input.supportEvidenceRefIds) {
+    const linkedRefIds = input.evidenceRefIdsByClaim
+      ? [...new Set(input.claims.flatMap((claim, index) =>
+        claim.sourceId === sourceId ? [...(input.evidenceRefIdsByClaim?.[index] ?? [])] : []))]
+      : input.supportEvidenceRefIds;
+    for (const evidenceRefId of linkedRefIds) {
       await tx.query(
         `INSERT INTO waspada.origin_evidence (dataset_kind, origin_id, evidence_ref_id)
          VALUES ($1, $2, $3::bigint)
@@ -1061,6 +1163,15 @@ interface PublishedVersionWrite {
  */
 async function writePublishedVersion(tx: SqlExecutor, input: PublishedVersionWrite): Promise<void> {
   const { datasetKind, traceId, eventId, version, decisionId, decidedAt, proposal, detail, enrichment } = input;
+  // HOSTED-31: the public reader refuses a version with an unsupported claim, and one such version fails the whole public
+  // list. So a version is written only when every claim has support. The throw comes before the first insert.
+  // A one-revision proposal keeps its earlier behaviour: its claims share the revision's support.
+  const claimCount = (proposal.claims ?? []).length;
+  if (enrichment.requiresClaimSupport && (claimCount === 0 || enrichment.claimSupport.length !== claimCount
+    || enrichment.claimSupport.some((refs) => refs.length === 0))) {
+    throw new PublicationUnsupportedClaimError();
+  }
+  const allSupportRefIds = [...new Set(enrichment.claimSupportRefIds.flat())];
   await tx.query(
     `INSERT INTO waspada.publication_decisions (
        dataset_kind, decision_id, trace_id, proposal_id, policy_version,
@@ -1092,14 +1203,15 @@ async function writePublishedVersion(tx: SqlExecutor, input: PublishedVersionWri
       evidenceLabel: detail.claims[index]?.evidence_label ?? null,
     })),
     supportEvidenceRefIds: enrichment.supportEvidenceRefIds,
+    evidenceRefIdsByClaim: enrichment.claimSupportRefIds,
   });
   if (origins.origins > 0) {
-    console.info(JSON.stringify({ event: "publication_origins", origins: origins.origins, support_refs: enrichment.supportEvidenceRefIds.length }));
+    console.info(JSON.stringify({ event: "publication_origins", origins: origins.origins, support_refs: allSupportRefIds.length }));
   }
   // HOSTED-22: the approved attribution of each supporting reference, from the source's approval at publication. Live only.
   const attributions = await writeSourceAttributions(tx, {
     datasetKind,
-    evidenceRefIds: enrichment.supportEvidenceRefIds,
+    evidenceRefIds: allSupportRefIds,
     publicDisplaySourceIds: input.publicDisplaySourceIds,
     decidedAt,
   });
@@ -1131,6 +1243,7 @@ async function writePublishedVersion(tx: SqlExecutor, input: PublishedVersionWri
       evidence_label: claim.evidence_label,
     })), {
       support: enrichment.support,
+      supportByClaim: enrichment.claimSupport,
       geometryIds: enrichment.geometryIds,
       originIdsByClaim: origins.originIdsByClaim,
     }),
@@ -1780,6 +1893,10 @@ const LOCATION_REFRESH_GATE = "location_refresh";
 const LOCATION_REFRESH_REASON = "Lokasi peta diperbarui (HOSTED-26)";
 /** HOSTED-26: the fixed public update summary. It says what changed, and nothing about the facts. */
 const LOCATION_REFRESH_SUMMARY = "Lokasi peta diperbarui.";
+/** HOSTED-31: the gate, reason and public summary of a refresh that only adds the claims' missing support. */
+const SUPPORT_REFRESH_GATE = "support_refresh";
+const SUPPORT_REFRESH_REASON = "Bukti klaim dilengkapi (HOSTED-31)";
+const SUPPORT_REFRESH_SUMMARY = "Rujukan sumber klaim dilengkapi.";
 
 /** Why a location refresh wrote no version. Fixed codes only. */
 export type LocationRefreshSkipReason =
@@ -1789,7 +1906,9 @@ export type LocationRefreshSkipReason =
   | "publication_failed"
   | "event_changed"
   /** HOSTED-28: a claim's source is no longer approved, so the event gets no new public version. */
-  | "source_revoked";
+  | "source_revoked"
+  /** HOSTED-31: a claim of the proposal still has no exact support, so no new version is written. */
+  | "unsupported_claim";
 
 export type LocationRefreshOutcome =
   | { readonly status: "refreshed"; readonly version: number }
@@ -1809,6 +1928,17 @@ class LocationRefreshSkip extends Error {
     super(reason);
     this.name = "LocationRefreshSkip";
   }
+}
+
+/** HOSTED-31: true when a claim in the stored record of one version of an event has no support. */
+async function versionHasUnsupportedClaim(tx: SqlExecutor, datasetKind: string, eventId: string, version: number): Promise<boolean> {
+  const row = await tx.query<{ record_json: unknown }>(
+    "SELECT record_json FROM waspada.event_versions WHERE dataset_kind = $1 AND event_id = $2 AND version = $3",
+    [datasetKind, eventId, version],
+  );
+  const record = parseJsonObject(row.rows[0]?.record_json);
+  const claims = record && Array.isArray(record.claims) ? record.claims : [];
+  return claims.some((claim) => !isRecordValue(claim) || !Array.isArray(claim.support) || claim.support.length === 0);
 }
 
 /** HOSTED-26: the geometry ids in the stored record of one version of an event. */
@@ -1887,7 +2017,13 @@ export async function refreshPublishedLocation(
       const locationLabel = publicLocationLabel(proposal.location_label);
       const addsPoint = enrichment.geometryStatus === "point_written" && latestGeometryIds.length === 0;
       const addsLabel = locationLabel !== null && latest.decisionRecord.location_label === undefined;
-      if (!addsPoint && !addsLabel) throw new LocationRefreshSkip("nothing_to_add");
+      // HOSTED-31: a latest version with an unsupported claim is re-written once every claim has exact support.
+      const addsSupport = (await versionHasUnsupportedClaim(tx, datasetKind, eventId, latest.version))
+        && enrichment.claimSupport.length > 0 && enrichment.claimSupport.every((refs) => refs.length > 0);
+      if (!addsPoint && !addsLabel && !addsSupport) {
+        throw new LocationRefreshSkip(enrichment.claimSupport.some((refs) => refs.length === 0) ? "unsupported_claim" : "nothing_to_add");
+      }
+      const supportOnly = addsSupport && !addsPoint && !addsLabel;
 
       await writePublishedVersion(tx, {
         datasetKind,
@@ -1911,20 +2047,21 @@ export async function refreshPublishedLocation(
           // HOSTED-26: always written (null for none or a generic label), so the location backfill never re-selects it.
       location_label: locationLabel,
           publication_mode: publicationMode,
-          gate: LOCATION_REFRESH_GATE,
+          gate: supportOnly ? SUPPORT_REFRESH_GATE : LOCATION_REFRESH_GATE,
           source_count: sourceCount,
-          reason: LOCATION_REFRESH_REASON,
+          reason: supportOnly ? SUPPORT_REFRESH_REASON : LOCATION_REFRESH_REASON,
           ...(waivers.length > 0 ? { waivers } : {}),
           base_version: latest.version,
           geometry_source: enrichment.geometrySource,
           geometry_status: enrichment.geometryStatus,
         },
-        review: { changeType: "corrected", summary: LOCATION_REFRESH_SUMMARY },
+        review: { changeType: "corrected", summary: supportOnly ? SUPPORT_REFRESH_SUMMARY : LOCATION_REFRESH_SUMMARY },
       });
       return { version, detail };
     });
   } catch (error) {
     if (error instanceof LocationRefreshSkip) return { status: "skipped", reason: error.reason };
+    if (error instanceof PublicationUnsupportedClaimError) return { status: "skipped", reason: "unsupported_claim" };
     throw error;
   }
   // Only after COMMIT: the in-memory public read model never shows a version that rolled back.

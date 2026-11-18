@@ -35,13 +35,14 @@ export interface LocationBackfillDeps {
 
 /**
  * The live events whose latest decision is a publication and still lacks a location the publication can now give: the
- * geometry was never written (pending_geometry_writer), or the decision says a label was present but stores none. The
+ * geometry was never written (pending_geometry_writer), or the decision says a label was present but stores none, or
+ * (HOSTED-31) the latest version has a claim with no support. The
  * latest decision is the one with the highest event version. Oldest publication first, at most `limit` events.
  */
 export const LOCATION_CANDIDATE_SQL = `
   WITH latest AS (
     SELECT DISTINCT ON (decision.event_id)
-           decision.event_id, decision.decided_at, decision.record_json
+           decision.event_id, decision.event_version, decision.decided_at, decision.record_json
     FROM waspada.publication_decisions AS decision
     WHERE decision.dataset_kind = 'live'
       AND decision.event_id IS NOT NULL
@@ -52,9 +53,21 @@ export const LOCATION_CANDIDATE_SQL = `
   FROM latest
   WHERE latest.record_json->>'disposition' = 'publish'
     AND (
-      NOT (latest.record_json ? 'location_label')
-      AND (latest.record_json->>'geometry_status' = 'pending_geometry_writer'
-        OR latest.record_json->>'location_label_present' = 'true')
+      (
+        NOT (latest.record_json ? 'location_label')
+        AND (latest.record_json->>'geometry_status' = 'pending_geometry_writer'
+          OR latest.record_json->>'location_label_present' = 'true')
+      )
+      -- HOSTED-31: the latest version has a claim with no support, which the public reader refuses.
+      OR EXISTS (
+        SELECT 1
+        FROM waspada.event_versions AS version_row,
+             jsonb_array_elements(COALESCE(version_row.record_json->'claims', '[]'::jsonb)) AS claim
+        WHERE version_row.dataset_kind = 'live'
+          AND version_row.event_id = latest.event_id
+          AND version_row.version = latest.event_version
+          AND jsonb_array_length(COALESCE(claim->'support', '[]'::jsonb)) = 0
+      )
     )
   ORDER BY latest.decided_at ASC, latest.event_id ASC
   LIMIT $1`;
