@@ -133,6 +133,7 @@ function makeFixture(
     version,
     record_json: event,
     location_label_present: false,
+    location_label: null,
   };
   return { eventId, version, geometryId, event, geometry, candidate, snapshotRow, supportReferences, scopeIds };
 }

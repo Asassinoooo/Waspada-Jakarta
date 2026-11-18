@@ -378,24 +378,23 @@ describe('DATA-01 relational persistence', () => {
     assert.equal(count.rows[0]?.count, '0');
   });
 
-  it('enables automatic acquisition only for active, approved sources', async () => {
-    await assert.rejects(
-      insertSourceRegistryCandidate(testDatabase, 'source-pending', 'active', 'pending'),
-      /source_registry_auto_acquisition_eligible_check/,
-    );
+  it('enables automatic acquisition only for active sources, whatever the approval (HOSTED-28)', async () => {
+    // Migration 056: approval controls publication only (FR-16); collection is refused only for a
+    // paused or retired registry entry.
     await assert.rejects(
       insertSourceRegistryCandidate(testDatabase, 'source-paused', 'paused', 'approved'),
       /source_registry_auto_acquisition_eligible_check/,
     );
 
+    await insertSourceRegistryCandidate(testDatabase, 'source-pending', 'active', 'pending');
     await insertSourceRegistryCandidate(testDatabase, 'source-enabled', 'active', 'approved');
-    const eligible = await testDatabase.executor.query<{ source_id: string }>(
+    const collecting = await testDatabase.executor.query<{ source_id: string }>(
       `SELECT source_id FROM waspada.source_registry
        WHERE auto_acquisition_enabled
-         AND approval_status = 'approved'
-         AND registry_status = 'active'`,
+         AND registry_status = 'active'
+       ORDER BY source_id`,
     );
-    assert.deepEqual(eligible.rows, [{ source_id: 'source-enabled' }]);
+    assert.deepEqual(collecting.rows, [{ source_id: 'source-enabled' }, { source_id: 'source-pending' }]);
   });
 
   it('stores only valid WGS 84 geometry, links evidence and supports spatial queries', async () => {
