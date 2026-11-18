@@ -13,6 +13,8 @@ export interface ReviewExpiryEnvironment {
   readonly PROPOSAL_REVIEW_TTL_HOURS?: string;
   readonly SQL_EXECUTOR?: unknown;
   readonly HYPERDRIVE?: { readonly connectionString?: string };
+  /** HOSTED-37: the sweep is a write, so it checks the no-cache config first (same rule as freshDatabase in index.ts). */
+  readonly FRESH_HYPERDRIVE?: { readonly connectionString?: string };
 }
 
 export type ReviewExpiryOutcome =
@@ -25,7 +27,7 @@ export async function runScheduledReviewExpiry(input: {
   readonly withSqlExecutor: <Result>(operation: (executor: SqlExecutor) => Promise<Result>) => Promise<Result>;
 }): Promise<ReviewExpiryOutcome> {
   if (input.env.DATASET_MODE !== "live") return { ran: false, reason: "not_live" };
-  if (!(input.env.SQL_EXECUTOR || input.env.HYPERDRIVE?.connectionString)) {
+  if (!(input.env.SQL_EXECUTOR || (input.env.FRESH_HYPERDRIVE ?? input.env.HYPERDRIVE)?.connectionString)) {
     return { ran: false, reason: "no_database" };
   }
   const ttlHours = parseProposalReviewTtlHours(input.env.PROPOSAL_REVIEW_TTL_HOURS);

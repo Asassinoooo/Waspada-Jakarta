@@ -45,7 +45,10 @@ export interface WorkerEnvironment {
   AUTH_HYPERDRIVE?: { readonly connectionString?: string };
   DATASET_MODE?: string;
   SOURCE_PREVIEW_ENABLED?: string;
+  /** Cached Hyperdrive config: public GET reads only (HOSTED-37). */
   HYPERDRIVE?: { readonly connectionString?: string };
+  /** HOSTED-37: no-cache Hyperdrive config for moderation, admin, pipeline flow and writes. Unset means HYPERDRIVE. */
+  FRESH_HYPERDRIVE?: { readonly connectionString?: string };
   L1_HYPERDRIVE?: { readonly connectionString?: string };
   SYNTHETIC_POLL_SCHEDULER_ENABLED?: string;
   SYNTHETIC_POLL_PROCESSOR_ENABLED?: string;
