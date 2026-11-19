@@ -601,7 +601,10 @@ function orderedReasonCodes(reasons: ReadonlySet<ReasonCode>): readonly ReasonCo
  * permission is checked per claim source through the caller-supplied set of public-display sources.
  */
 
-/** Stored claim labels an agent-written claim may carry on automatic publication. */
+/**
+ * Stored claim labels a claim may carry when it publishes. The automatic gate and the moderator source gate
+ * (claim_label_not_allowed) both check against this one list.
+ */
 export const AUTO_PUBLICATION_LABELS = ["attributed_report", "issuer_notice", "crowdsourced_observation"] as const;
 
 export type ProposalGateReason =
@@ -843,6 +846,10 @@ function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, 
   const seenClaimIds = new Set<string>();
   for (const raw of record.claims) {
     const claim = gateRecord(raw);
+    // The label is checked before the schema check, so a malformed claim still reports its label.
+    if (!claim || !(AUTO_PUBLICATION_LABELS as readonly unknown[]).includes(claim.evidence_label)) {
+      reasons.add("claim_label_not_allowed");
+    }
     if (!claim || !isNonEmptyText(claim.claim_id) || seenClaimIds.has(claim.claim_id) || !isNonEmptyText(claim.claim_text)) {
       reasons.add("schema_invalid");
       continue;
@@ -867,11 +874,12 @@ function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, 
 
 /**
  * Checks that every proposal is well formed, that each claim is supported and quoted, and that each
- * claim's source has a link and public-display permission. It does not check labels, discrepancies or
- * correlation. Moderator publication uses this check. It has no waiver, so ADR-061's local relaxation
- * never reaches moderator publication. It also refuses a proposal linked to a stopped_for_review
- * investigation (F-04), which the automatic gate shares. HOSTED-28: a claim from a revoked source is
- * refused with `source_revoked`.
+ * claim's source has a link and public-display permission. Each claim's stored label must be one of
+ * AUTO_PUBLICATION_LABELS (`claim_label_not_allowed`), so a claim still labelled under_review cannot publish
+ * as attributed_report. It does not check discrepancies or correlation. Moderator publication uses this check.
+ * It has no waiver, so ADR-061's local relaxation never reaches moderator publication. It also refuses a
+ * proposal linked to a stopped_for_review investigation (F-04), which the automatic gate shares. HOSTED-28: a
+ * claim from a revoked source is refused with `source_revoked`.
  */
 export function assessProposalSourceGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
   return runProposalSourceGate(proposal, options, false).reasons;
@@ -894,15 +902,7 @@ export function evaluateAutoPublication(proposal: unknown, options: AutoPublicat
   const record = gateRecord(proposal);
   if (!record) return { reasons: sortedReasons(reasons), waivers };
 
-  if (Array.isArray(record.claims)) {
-    for (const raw of record.claims) {
-      const claim = gateRecord(raw);
-      if (!claim || !(AUTO_PUBLICATION_LABELS as readonly unknown[]).includes(claim.evidence_label)) {
-        reasons.add("claim_label_not_allowed");
-      }
-    }
-  }
-
+  // The claim label check (claim_label_not_allowed) is in runProposalSourceGate, shared with the moderator gate.
   const relationship = record.correlation_relationship;
   if (relationship !== "primary_initial" && relationship !== "corroborating") {
     reasons.add("correlation_unresolved");
@@ -940,8 +940,8 @@ export function assessAutoPublication(proposal: unknown, options: AutoPublicatio
 /**
  * TG-FR12: the gate for a moderator correction. It is the moderator source gate plus an event-time check. A
  * correction must keep an event time, so it cannot remove one. HOSTED-21 waives a missing time only on the
- * automatic path; this check is unchanged. Labels, correlation and discrepancy checks do not apply to a
- * moderator's own correction.
+ * automatic path; this check is unchanged. The source gate's label check applies to a correction too, but
+ * correlation and discrepancy checks do not apply to a moderator's own correction.
  */
 export function assessCorrectionGate(proposal: unknown, options: ProposalGateOptions): ProposalGateReason[] {
   const reasons = new Set<ProposalGateReason>(assessProposalSourceGate(proposal, options));
