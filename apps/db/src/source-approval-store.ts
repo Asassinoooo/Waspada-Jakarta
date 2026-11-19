@@ -45,6 +45,14 @@ export interface SourceApprovalRecord {
   readonly reuse_reviewer: string | null;
   readonly reuse_reviewed_at: string | null;
   readonly reuse_expires_at: string | null;
+  /** Free-text registry restriction notes (migration 001). Admin read only. */
+  readonly access_restrictions: readonly string[];
+  readonly polling_interval_seconds: number | null;
+  /** Hosted health written by the ingest: unknown, healthy, degraded or unavailable (migration 001). */
+  readonly health_status: string;
+  /** ISO instants. Health times are read only; the approval write never changes them. */
+  readonly last_checked_at: string | null;
+  readonly last_success_at: string | null;
 }
 
 export interface SourceApprovalWriteInput {
@@ -82,11 +90,25 @@ interface SourceRow {
   reuse_reviewer: string | null;
   reuse_reviewed_at: string | null;
   reuse_expires_at: string | null;
+  access_restrictions: string[] | null;
+  polling_interval_seconds: number | null;
+  health_status: string;
+  last_checked_at: string | null;
+  last_success_at: string | null;
 }
 
 const SOURCE_COLUMNS = `source_id, display_name, source_kind, access_method, registry_status, approval_status,
   auto_acquisition_enabled, auto_publication_policy, reuse_basis, reuse_license_url, reuse_scope,
-  reuse_reviewer, reuse_reviewed_at::text AS reuse_reviewed_at, reuse_expires_at::text AS reuse_expires_at`;
+  reuse_reviewer, reuse_reviewed_at::text AS reuse_reviewed_at, reuse_expires_at::text AS reuse_expires_at,
+  access_restrictions, polling_interval_seconds, health_status,
+  last_checked_at::text AS last_checked_at, last_success_at::text AS last_success_at`;
+
+/** A Postgres timestamptz text such as "2026-11-13 08:00:00+00" as an ISO instant, or null when absent or unreadable. */
+function isoInstantOrNull(value: string | null): string | null {
+  if (value === null) return null;
+  const milliseconds = Date.parse(value);
+  return Number.isNaN(milliseconds) ? null : new Date(milliseconds).toISOString();
+}
 
 function toRecord(row: SourceRow): SourceApprovalRecord {
   return {
@@ -104,6 +126,11 @@ function toRecord(row: SourceRow): SourceApprovalRecord {
     reuse_reviewer: row.reuse_reviewer,
     reuse_reviewed_at: row.reuse_reviewed_at,
     reuse_expires_at: row.reuse_expires_at,
+    access_restrictions: Array.isArray(row.access_restrictions) ? row.access_restrictions : [],
+    polling_interval_seconds: row.polling_interval_seconds ?? null,
+    health_status: row.health_status,
+    last_checked_at: isoInstantOrNull(row.last_checked_at),
+    last_success_at: isoInstantOrNull(row.last_success_at),
   };
 }
 

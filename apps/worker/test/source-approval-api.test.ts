@@ -284,6 +284,57 @@ describe("FR-12 admin source approval route", () => {
     assert.equal(afterApproval.find((source) => source.source_id === "source-route-pending")?.public_display_granted, false);
   });
 
+  it("the admin list adds the restriction and health fields and nothing else, and the health states follow the hosted writer", async () => {
+    const readSources = async () => {
+      const list = await send("GET", "/api/v1/admin/sources", { principal: "admin" });
+      assert.equal(list?.status, 200);
+      return (await list?.json() as { sources: Array<Record<string, unknown>> }).sources;
+    };
+    const expectedFields = [
+      "access_method", "access_restrictions", "approval_status", "auto_acquisition_enabled", "auto_publication_policy",
+      "display_name", "health_status", "last_checked_at", "last_failure_at", "last_success_at", "polling_interval_seconds",
+      "public_display_granted", "registry_status", "reuse_basis", "source_id", "source_kind",
+    ];
+
+    // Never checked: the seeded row has no health time, so the admin page shows the no-data line.
+    const never = (await readSources()).find((source) => source.source_id === "source-route-pending");
+    assert.deepEqual(Object.keys(never ?? {}).sort(), [...expectedFields].sort(), "no license URL, scope or reviewer is added");
+    assert.deepEqual(never?.reuse_basis, ["model_triage"]);
+    assert.deepEqual(never?.access_restrictions, ["synthetic test fixture"]);
+    assert.equal(never?.polling_interval_seconds, null);
+    assert.equal(never?.health_status, "unknown");
+    assert.equal(never?.last_checked_at, null);
+    assert.equal(never?.last_success_at, null);
+    assert.equal(never?.last_failure_at, null);
+
+    // A failed check, written as the hosted writer writes it (tools/hosted/source-health.ts): degraded, last_checked_at
+    // at the failure, and an earlier success. The failure time is the last check.
+    await db.executor.query(
+      `UPDATE waspada.source_registry
+         SET health_status = 'degraded', last_checked_at = '2026-11-13T08:00:00Z',
+             last_success_at = '2026-11-13T07:00:00Z', polling_interval_seconds = 900
+       WHERE source_id = 'source-route-public'`,
+    );
+    const degraded = (await readSources()).find((source) => source.source_id === "source-route-public");
+    assert.equal(degraded?.health_status, "degraded");
+    assert.equal(degraded?.last_checked_at, "2026-11-13T08:00:00.000Z", "stored instants are returned as ISO");
+    assert.equal(degraded?.last_success_at, "2026-11-13T07:00:00.000Z");
+    assert.equal(degraded?.last_failure_at, "2026-11-13T08:00:00.000Z");
+    assert.equal(degraded?.polling_interval_seconds, 900);
+    assert.deepEqual(degraded?.reuse_basis, ["public_display"]);
+
+    // A later success: healthy again, and no failure time is reported.
+    await db.executor.query(
+      `UPDATE waspada.source_registry
+         SET health_status = 'healthy', last_checked_at = '2026-11-13T08:15:00Z', last_success_at = '2026-11-13T08:15:00Z'
+       WHERE source_id = 'source-route-public'`,
+    );
+    const healthy = (await readSources()).find((source) => source.source_id === "source-route-public");
+    assert.equal(healthy?.health_status, "healthy");
+    assert.equal(healthy?.last_failure_at, null);
+    assert.equal(healthy?.last_success_at, "2026-11-13T08:15:00.000Z");
+  });
+
   it("maps a storage failure to 503 with a generic body", async () => {
     const failing = createSourceApprovalApiHandler({
       authenticate: async () => principals.admin ?? null,

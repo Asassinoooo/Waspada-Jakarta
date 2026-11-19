@@ -202,7 +202,22 @@ function toItem(record: SourceApprovalRecord, nowIso: string): AdminSourceApprov
     auto_acquisition_enabled: record.auto_acquisition_enabled,
     auto_publication_policy: record.auto_publication_policy,
     public_display_granted: permissions.publicDisplay === true,
+    reuse_basis: record.reuse_basis ?? [],
+    access_restrictions: [...record.access_restrictions],
+    polling_interval_seconds: record.polling_interval_seconds,
+    health_status: record.health_status,
+    last_checked_at: record.last_checked_at,
+    last_success_at: record.last_success_at,
+    last_failure_at: failedHealth(record.health_status) ? record.last_checked_at : null,
   };
+}
+
+/**
+ * The hosted writer sets `degraded` or `unavailable` on every failed check and `healthy` on a success, so while a source
+ * has either failure status its last_checked_at is the time of the latest failed check.
+ */
+function failedHealth(healthStatus: string): boolean {
+  return healthStatus === "degraded" || healthStatus === "unavailable";
 }
 
 /**

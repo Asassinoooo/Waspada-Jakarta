@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AdminSourceApprovalItem, AdminSourceApprovalStatus } from "@waspada/worker/source-approval-contracts";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
 import { Dialog } from "./ui/Dialog.js";
+import { formatInstant } from "./display.js";
 import {
   SourceApprovalHttpError,
   canManageSourceApprovals,
@@ -40,8 +41,68 @@ const REGISTRY_LABEL: Readonly<Record<string, string>> = {
   retired: "Registri dipensiunkan",
 };
 
+/** Reuse tokens as admin text. Unknown tokens get a generic label, so no raw registry token is printed. */
+const REUSE_BASIS_LABEL: Readonly<Record<string, string>> = {
+  public_display: "Tampil publik",
+  model_triage: "Triase model",
+  ai_processing: "Pemrosesan AI",
+  model_title: "Judul oleh model",
+  model_description: "Deskripsi oleh model",
+  retain_title: "Simpan judul",
+  retain_description: "Simpan deskripsi",
+  retain_derived: "Simpan turunan",
+  excerpt_permitted: "Kutipan diizinkan",
+  // Legacy grants never allow public display alone (WJ-INT-02B); they need reviewer-recorded license evidence.
+  public: "Dasar lama: publik (perlu bukti lisensi)",
+  open_access: "Dasar lama: akses terbuka (perlu bukti lisensi)",
+};
+
+const HEALTH_LABEL: Readonly<Record<string, string>> = {
+  healthy: "Sehat",
+  degraded: "Menurun",
+  unavailable: "Tidak tersedia",
+  unknown: "Belum diketahui",
+};
+
 function approvalLabel(status: string): string {
   return APPROVAL_LABEL[status] ?? "Status tidak dikenal";
+}
+
+export function publicDisplayText(granted: boolean): string {
+  return granted ? "Tampil publik: diizinkan" : "Tampil publik: tidak diizinkan";
+}
+
+export function reuseBasisText(tokens: readonly string[]): string {
+  if (tokens.length === 0) return "Dasar penggunaan: belum tercatat";
+  const labels = [...new Set(tokens.map((token) => REUSE_BASIS_LABEL[token] ?? "Dasar lain (belum diberi label)"))];
+  return `Dasar penggunaan: ${labels.join(", ")}`;
+}
+
+export function accessRestrictionsText(notes: readonly string[]): string {
+  return notes.length === 0 ? "Pembatasan akses: tidak ada catatan" : `Pembatasan akses: ${notes.join("; ")}`;
+}
+
+export function pollingIntervalText(seconds: number | null): string {
+  if (seconds === null) return "Interval pengambilan: belum diatur";
+  if (seconds % 3600 === 0) return `Interval pengambilan: setiap ${seconds / 3600} jam`;
+  if (seconds % 60 === 0) return `Interval pengambilan: setiap ${seconds / 60} menit`;
+  return `Interval pengambilan: setiap ${seconds} detik`;
+}
+
+/**
+ * Health lines for one source, in Jakarta time. A source that was never checked gets one line and no times.
+ * The failure line names no error code, because the hosted writer stores none for these sources.
+ */
+export function sourceHealthLines(source: Pick<AdminSourceApprovalItem, "health_status" | "last_checked_at" | "last_success_at" | "last_failure_at">): string[] {
+  if (source.last_checked_at === null) return ["Belum ada data kesehatan"];
+  const lines = [`Status: ${HEALTH_LABEL[source.health_status] ?? "Status tidak dikenal"}`];
+  lines.push(source.last_success_at === null
+    ? "Pengambilan berhasil terakhir: belum pernah"
+    : `Pengambilan berhasil terakhir: ${formatInstant(source.last_success_at)}`);
+  lines.push(source.last_failure_at === null
+    ? "Galat aktif: tidak ada"
+    : `Galat terakhir: ${formatInstant(source.last_failure_at)}, penyebab belum dicatat`);
+  return lines;
 }
 
 function requestedStatus(source: AdminSourceApprovalItem): AdminSourceApprovalStatus {
@@ -89,12 +150,26 @@ export function SourceApprovalList({ sources, onRequestChange }: SourceApprovalL
               <h3 className="source-approval__name">{name}</h3>
               <p className="source-approval__id"><code>{source.source_id}</code> · {source.source_kind} · {source.access_method}</p>
             </div>
-            <ul className="source-approval__facts" aria-label={`Status ${name}`}>
+            <ul className="source-approval__facts" aria-label={`Persetujuan ${name}`}>
               <li>{approvalLabel(source.approval_status)}</li>
-              <li>{REGISTRY_LABEL[source.registry_status] ?? "Registri tidak dikenal"}</li>
-              <li>{source.auto_acquisition_enabled ? "Pengumpulan otomatis aktif" : "Pengumpulan otomatis nonaktif"}</li>
-              <li>{source.public_display_granted ? "Tampil publik diizinkan" : "Tampil publik belum diizinkan"}</li>
             </ul>
+            <section className="source-approval__block" aria-label={`Pembatasan ${name}`}>
+              <h4 className="source-approval__subtitle">Pembatasan</h4>
+              <ul className="source-approval__details">
+                <li>{REGISTRY_LABEL[source.registry_status] ?? "Registri tidak dikenal"}</li>
+                <li>{source.auto_acquisition_enabled ? "Pengumpulan otomatis aktif" : "Pengumpulan otomatis nonaktif"}</li>
+                <li>{publicDisplayText(source.public_display_granted)}</li>
+                <li>{reuseBasisText(source.reuse_basis)}</li>
+                <li>{accessRestrictionsText(source.access_restrictions)}</li>
+                <li>{pollingIntervalText(source.polling_interval_seconds)}</li>
+              </ul>
+            </section>
+            <section className="source-approval__block" aria-label={`Kesehatan ${name}`}>
+              <h4 className="source-approval__subtitle">Kesehatan sumber</h4>
+              <ul className="source-approval__details">
+                {sourceHealthLines(source).map((line) => <li key={line}>{line}</li>)}
+              </ul>
+            </section>
             {onRequestChange && (
               <button
                 type="button"
