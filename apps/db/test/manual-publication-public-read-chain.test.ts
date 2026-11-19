@@ -943,7 +943,7 @@ async function assertPublishedCorrectionHandlers(
       assert.deepEqual(claim.scope, expectedPublicScope);
       assert.equal(claim.sources.length, 1);
       assert.deepEqual(Object.keys(claim.sources[0]!).sort(), [
-        'display_name', 'excerpt', 'observed_at', 'published_at', 'url',
+        'display_name', 'excerpt', 'observed_at', 'published_at', 'retrieved_at', 'url',
       ]);
       assert.equal(claim.sources[0]?.display_name, PUBLIC_SOURCE_DISPLAY_NAME);
       assert.equal(claim.sources[0]?.url, PUBLIC_SOURCE_URL);
