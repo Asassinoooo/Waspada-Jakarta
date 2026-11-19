@@ -635,3 +635,78 @@ test("the public catalog shows one plain moderator-only message for 401 and 403 
     /^Gagal memuat katalog laporan terpercaya: Failed to fetch moderation proposals: HTTP 500$/u,
   );
 });
+
+test("ST-F-03: each claim shows its origin on the review screen", () => {
+  const originProposal: EventProposalDto = {
+    schema_version: "2.0",
+    proposal_id: "proposal-origin-001",
+    title: "Genangan 50 cm di Cawang Jakarta Timur",
+    incident_type: "flood",
+    severity: "high",
+    event_time: { precision: "exact", value: "2026-10-30T10:00:00.000Z" },
+    location_label: "Cawang, Jakarta Timur",
+    coordinates: [106.871, -6.244],
+    claims: [
+      {
+        claim_id: "claim-alfa",
+        claim_text: "Genangan 50 cm di Cawang.",
+        evidence_label: "under_review",
+        support_assessment: "supported",
+        quote_text: "Genangan 50 cm di Cawang",
+        evidence_ref_id: "chk-origin-alfa",
+        outlet: "Outlet Alfa",
+        source_id: "source-public-a",
+        source_url: "https://news.example/alfa-origin",
+      },
+      {
+        claim_id: "claim-beta",
+        claim_text: "Warga melapor satu jalan tergenang.",
+        evidence_label: "under_review",
+        support_assessment: "supported",
+        quote_text: "satu jalan tergenang",
+        evidence_ref_id: "chk-origin-beta",
+        outlet: "Outlet Beta",
+        source_id: "source-public-b",
+        source_url: "https://news.example/beta-origin",
+      },
+      {
+        claim_id: "claim-gamma",
+        claim_text: "Petugas dikerahkan ke lokasi.",
+        evidence_label: "under_review",
+        support_assessment: "supported",
+        quote_text: "Petugas dikerahkan ke lokasi",
+        evidence_ref_id: "chk-origin-gamma",
+      },
+    ],
+    proposed_at: "2026-10-30T10:15:00.000Z",
+  };
+
+  const html = renderToStaticMarkup(
+    createElement(ModeratorReviewQueue, {
+      proposals: [originProposal],
+      initialSelectedId: "proposal-origin-001",
+      initialChunks: {},
+    })
+  );
+  // React's server markup puts a comment between a literal and an interpolated value; drop those markers to read the text.
+  const plain = html.replace(/<!--[\s\S]*?-->/gu, "");
+  const cardFor = (claimId: string): string => {
+    const card = plain
+      .split("<article")
+      .find((part) => part.includes("claim-card-row") && part.includes(`ID: ${claimId}</span>`));
+    assert.ok(card, `the review screen renders a card for ${claimId}`);
+    return card;
+  };
+
+  const alfa = cardFor("claim-alfa");
+  assert.match(alfa, /<span class="claim-origin-label">Asal: Outlet Alfa<\/span>/);
+  assert.doesNotMatch(alfa, /Outlet Beta/, "the Alfa card names only its own origin");
+
+  const beta = cardFor("claim-beta");
+  assert.match(beta, /<span class="claim-origin-label">Asal: Outlet Beta<\/span>/);
+  assert.doesNotMatch(beta, /Outlet Alfa/, "the Beta card names only its own origin");
+
+  const gamma = cardFor("claim-gamma");
+  assert.match(gamma, /<span class="claim-origin-label">Asal: tidak tercatat<\/span>/,
+    "a claim with no recorded origin says so, and names no source");
+});
