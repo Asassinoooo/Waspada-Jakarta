@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { SqlExecutor, SqlTransactionRunner } from './sql.js';
 
 import type { OfficialIncidentCategory } from './incident-categories.js';
@@ -131,6 +131,27 @@ const VALID_DATASETS: Record<string, true> = {
 };
 
 const DUMMY_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
+
+/**
+ * POLISH-03 (ADR-062 amendment): the decision row that supersedes an older undecided proposal. The actor
+ * follows the agent:<role> convention of agent:auto-publisher and agent:review-expiry.
+ */
+export const AGENT_PROPOSAL_WRITER_ID = 'agent:proposal-writer';
+export const SUPERSEDE_REASON = 'newer_proposal_same_incident';
+/** Kept equal to PUBLICATION_POLICY_VERSION in apps/worker (proposal-publication.ts). The column is NOT NULL. */
+const SUPERSEDE_POLICY_VERSION = 'merge-review-v1';
+
+/**
+ * The per-proposal decision lock. It uses the same key as lockProposalDecisions in apps/worker
+ * (proposal-publication.ts), so a supersede and a moderator or agent decision on one proposal serialize.
+ */
+async function lockProposalDecisionKey(tx: SqlExecutor, datasetKind: string, proposalId: string): Promise<void> {
+  const hash = createHash('sha256').update(datasetKind).update(':').update(proposalId).digest();
+  await tx.query('SELECT pg_advisory_xact_lock($1::integer, $2::integer)', [
+    hash.readInt32BE(0),
+    hash.readInt32BE(4),
+  ]);
+}
 
 async function runInTransaction<Result>(
   executor: SqlExecutor,
@@ -319,15 +340,7 @@ export async function persistProposalWithTx(
   );
 
   // Advisory transaction lock on (dataset_kind, proposal_id)
-  const hash = createHash('sha256')
-    .update(datasetKind)
-    .update(':')
-    .update(proposal.proposal_id)
-    .digest();
-  await tx.query('SELECT pg_advisory_xact_lock($1::integer, $2::integer)', [
-    hash.readInt32BE(0),
-    hash.readInt32BE(4),
-  ]);
+  await lockProposalDecisionKey(tx, datasetKind, proposal.proposal_id);
 
   // Idempotency check: does the proposal already exist?
   const existing = await tx.query<{ proposal_id: string }>(
@@ -363,6 +376,7 @@ export async function persistProposalWithTx(
   }
 
   // Insert proposal into waspada.event_proposals
+  const proposedAt = proposal.proposed_at || new Date().toISOString();
   const inserted = await tx.query<{ proposal_id: string }>(
     `INSERT INTO waspada.event_proposals
      (dataset_kind, proposal_id, trace_id, candidate_id, context_id, event_id, base_event_version, investigation_id, proposed_at, record_json)
@@ -375,7 +389,7 @@ export async function persistProposalWithTx(
       traceId,
       candidateId,
       contextId,
-      proposal.proposed_at || new Date().toISOString(),
+      proposedAt,
       JSON.stringify(proposal),
     ],
   );
@@ -428,7 +442,99 @@ export async function persistProposalWithTx(
     }
   }
 
+  // POLISH-03: the newer proposal replaces older undecided proposals of the same incident, in this transaction.
+  const incidentId = nonEmptyId(extra.incident_id);
+  if (incidentId !== null) {
+    await supersedeOlderUndecidedProposals(tx, {
+      datasetKind,
+      proposalId: proposal.proposal_id,
+      incidentId,
+      proposedAt,
+    });
+  }
+
   return { proposalId: proposal.proposal_id, outcome: 'created' };
+}
+
+/**
+ * POLISH-03 (ADR-062 amendment): a newer proposal for an incident supersedes every older proposal of that
+ * incident that has no decision yet. Each one gets one append-only publication_decisions row with
+ * disposition "supersede". It publishes nothing, writes no event version or claim, and touches no incident.
+ * Superseded is not resolution and not a safety claim. Decided proposals are never touched.
+ *
+ * "Older" uses (proposed_at, proposal_id), the order the intelligence chain head uses. Each candidate is
+ * locked and then checked again, so a moderator or agent decision that commits first wins, and the candidate
+ * is skipped. Candidates are locked in ascending order, so two writers cannot wait on each other in a cycle.
+ * Returns how many proposals were superseded.
+ */
+async function supersedeOlderUndecidedProposals(
+  tx: SqlExecutor,
+  input: {
+    readonly datasetKind: string;
+    readonly proposalId: string;
+    readonly incidentId: string;
+    readonly proposedAt: string;
+  },
+): Promise<number> {
+  const candidates = await tx.query<{ proposal_id: string; trace_id: string; proposed_at: unknown }>(
+    `SELECT ep.proposal_id, ep.trace_id, ep.proposed_at
+       FROM waspada.event_proposals ep
+      WHERE ep.dataset_kind = $1
+        AND ep.record_json->>'incident_id' = $2
+        AND ep.proposal_id <> $3::text
+        AND (ep.proposed_at, ep.proposal_id) < ($4::timestamptz, $3::text)
+        AND NOT EXISTS (
+          SELECT 1 FROM waspada.publication_decisions pd
+           WHERE pd.dataset_kind = ep.dataset_kind AND pd.proposal_id = ep.proposal_id)
+      ORDER BY ep.proposed_at ASC, ep.proposal_id ASC`,
+    [input.datasetKind, input.incidentId, input.proposalId, input.proposedAt],
+  );
+
+  // The supersede time is the newer proposal's proposed_at: the same clock the candidates were proposed on, and
+  // never before any candidate's own proposed_at.
+  const supersededAt = input.proposedAt;
+  let superseded = 0;
+  for (const candidate of candidates.rows) {
+    await lockProposalDecisionKey(tx, input.datasetKind, candidate.proposal_id);
+    const decided = await tx.query<{ decision_id: string }>(
+      `SELECT decision_id FROM waspada.publication_decisions
+        WHERE dataset_kind = $1 AND proposal_id = $2
+        LIMIT 1`,
+      [input.datasetKind, candidate.proposal_id],
+    );
+    if (decided.rows.length > 0) continue;
+
+    const candidateProposedAt = candidate.proposed_at instanceof Date
+      ? candidate.proposed_at.toISOString()
+      : String(candidate.proposed_at);
+    await tx.query(
+      `INSERT INTO waspada.publication_decisions (
+         dataset_kind, decision_id, trace_id, proposal_id, policy_version,
+         event_id, event_version, reviewer_id, decided_at, record_json)
+       VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6, $7::timestamptz, $8::jsonb)`,
+      [
+        input.datasetKind,
+        `dec-${randomUUID()}`,
+        candidate.trace_id,
+        candidate.proposal_id,
+        SUPERSEDE_POLICY_VERSION,
+        AGENT_PROPOSAL_WRITER_ID,
+        supersededAt,
+        JSON.stringify({
+          disposition: 'supersede',
+          actor_kind: 'agent',
+          actor_id: AGENT_PROPOSAL_WRITER_ID,
+          reason: SUPERSEDE_REASON,
+          superseded_by: input.proposalId,
+          incident_id: input.incidentId,
+          proposed_at: candidateProposedAt,
+          superseded_at: supersededAt,
+        }),
+      ],
+    );
+    superseded += 1;
+  }
+  return superseded;
 }
 
 export function createEventProposalWriter(executor: SqlExecutor): EventProposalWriter {
