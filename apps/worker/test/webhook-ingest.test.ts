@@ -406,3 +406,56 @@ test("inbound event correlates with active reports when spatial and temporal ove
 
   broadcaster.close();
 });
+
+// ST-F-11 (FR-02 to FR-04): a malformed webhook item is set aside at intake. Every write point the Worker
+// wires into the webhook path (the revision callback that feeds report_revisions and the AI job, the proposal
+// callback, and the moderation broadcast) must stay silent, and a batch is all-or-nothing.
+test("ST-F-11: a malformed webhook item creates no revision, proposal, broadcast or AI-job callback", async () => {
+  const writes = { revisions: 0, proposals: 0, broadcasts: 0 };
+  const countingOptions = {
+    ...engineWiring,
+    broadcaster: { broadcastModeration: (): void => { writes.broadcasts += 1; } },
+    onRevisionCreated: (): void => { writes.revisions += 1; },
+    onProposalCreated: (): void => { writes.proposals += 1; },
+  };
+  const send = (body: unknown) => webhookIngestHandler(new Request("http://localhost/api/v1/ingestion/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  }), countingOptions);
+  const valid = {
+    source_id: "source-dishub",
+    title: "Genangan air di Kemang Raya",
+    text: "Genangan setinggi lutut terlihat di Jalan Kemang Raya, lalu lintas melambat.",
+    location_hint: "Kemang Raya",
+  };
+
+  // Control: a well-formed item does reach every callback once.
+  const control = await send(valid);
+  assert.equal(control.status, 201);
+  assert.deepEqual(writes, { revisions: 1, proposals: 1, broadcasts: 1 });
+
+  const malformed: unknown[] = [
+    { ...valid, source_id: "   " },
+    { ...valid, title: "" },
+    { ...valid, text: "pendek" },
+    { ...valid, severity: "extreme" },
+    { ...valid, timestamp: "bukan tanggal" },
+    { ...valid, coordinates: [106.8, "lintang"] },
+    { ...valid, category: 42 },
+    { ...valid, location_hint: "   " },
+    "bukan objek json",
+    null,
+  ];
+  for (const item of malformed) {
+    const response = await send(item);
+    assert.equal(response.status, 400, `refused: ${JSON.stringify(item)}`);
+    assert.deepEqual(writes, { revisions: 1, proposals: 1, broadcasts: 1 }, "no callback ran for a malformed item");
+  }
+
+  // A batch is all-or-nothing: the valid first item is not written when a later item is malformed.
+  const batch = await send({ events: [valid, { ...valid, title: "" }] });
+  assert.equal(batch.status, 400);
+  assert.match(((await batch.json()) as { error: string }).error, /Event at index 1/);
+  assert.deepEqual(writes, { revisions: 1, proposals: 1, broadcasts: 1 }, "the valid item in a refused batch is not written");
+});

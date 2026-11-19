@@ -346,4 +346,54 @@ describe("ADR-061 automatic gate: database-level checks", () => {
       assert.equal(await versionCount("inc-race-publish-first"), 1, "exactly one event version");
     });
   });
+
+  describe("ST-F-07: a moderator reject records a decision and never publishes", () => {
+    async function outboxCount(eventId: string): Promise<number> {
+      const result = await db.executor.query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM waspada.publication_outbox
+         WHERE dataset_kind = 'live' AND event_id = $1`,
+        [eventId],
+      );
+      return result.rows[0]?.count ?? 0;
+    }
+
+    async function auditRowsForModeratorTrace(proposalId: string): Promise<number> {
+      const result = await db.executor.query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM waspada.audit_records
+         WHERE dataset_kind = 'live' AND actor_id = $2
+           AND trace_id = (SELECT trace_id FROM waspada.event_proposals WHERE dataset_kind = 'live' AND proposal_id = $1)`,
+        [proposalId, MODERATOR.actorId],
+      );
+      return result.rows[0]?.count ?? 0;
+    }
+
+    it("a reject records one reject decision with the reviewer, writes no version or outbox row, and leaves nothing public", async () => {
+      await writer().persistProposal(validProposal("inc-reject-only"), "live");
+      const proposalId = "prop-inc-reject-only";
+
+      const outcome = await decideProposal(deps, { proposalId, action: "reject", actor: MODERATOR, reason: "Laporan duplikat, tidak diterbitkan." });
+      assert.equal(outcome.status, "rejected");
+
+      const decisions = await decisionsFor(proposalId);
+      assert.deepEqual(decisionDispositions(decisions), ["reject"]);
+      assert.equal(decisions[0]?.record_json.actor_id, MODERATOR.actorId);
+      assert.equal(decisions[0]?.record_json.reason, "Laporan duplikat, tidak diterbitkan.");
+      assert.equal(await versionCount("inc-reject-only"), 0, "a reject writes no event version");
+      assert.equal(await outboxCount("inc-reject-only"), 0, "a reject queues no publication notice");
+      assert.equal(publishedEvent("inc-reject-only"), null, "nothing is public after a reject");
+      assert.equal((await writer().readPendingProposals("live")).some((item) => item.proposal_id === proposalId), false,
+        "the rejected proposal leaves the moderator queue");
+    });
+
+    it("a reject writes one audit record for the moderator who rejected", async () => {
+      await writer().persistProposal(validProposal("inc-reject-audit"), "live");
+      const proposalId = "prop-inc-reject-audit";
+      const auditBefore = await auditRowsForModeratorTrace(proposalId);
+
+      await decideProposal(deps, { proposalId, action: "reject", actor: MODERATOR });
+
+      assert.equal(await auditRowsForModeratorTrace(proposalId) - auditBefore, 1,
+        "each decision writes an audit record (SYSTEM-TEST ST-F-07)");
+    });
+  });
 });
