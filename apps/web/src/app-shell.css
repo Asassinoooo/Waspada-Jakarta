@@ -252,9 +252,34 @@
   margin-top: var(--space-2);
 }
 
-/* Tablet: subtitle hidden, theme choice moves into the account menu (see AppShell). */
+/* Tablet: subtitle hidden, theme choice moves into the account menu (see AppShell). From 601px to 900px the nav, the
+   dataset badge and Akun share one row, so gaps and padding tighten here. The nav scrolls inside itself as the last
+   fallback, so a nav item is never drawn behind the dataset badge (a 1440 px screen at 200% zoom is a 720 px viewport). */
 @media (max-width: 900px) {
   .brand__text small { display: none; }
+
+  .site-header {
+    column-gap: var(--space-3);
+    padding-inline: var(--space-3) var(--space-2);
+  }
+
+  .primary-nav {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .primary-nav::-webkit-scrollbar { display: none; }
+
+  .primary-nav a { padding: 0 var(--space-2); }
+
+  .site-header__badge,
+  .site-header__account { padding-inline: var(--space-2); }
+}
+
+/* Below 768px the brand name is hidden. The brand mark keeps the link and the accessible name ("Waspada Jakarta, ke peta"). */
+@media (max-width: 768px) {
+  .brand__text { display: none; }
 }
 
 /* Phone: one row, at most 56px. Brand mark, icon nav, dataset badge and Akun. */
@@ -287,7 +312,7 @@
     flex-direction: column;
     justify-content: center;
     gap: 2px;
-    padding: 0 var(--space-2);
+    padding: 0 var(--space-1);
     border-bottom: 0;
     font-size: var(--text-2xs);
     line-height: 1.1;
