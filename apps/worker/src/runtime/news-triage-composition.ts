@@ -33,6 +33,7 @@ import {
   type HeldTriageDecision,
   type StoredReportRevision,
 } from "./news-poll-runtime.js";
+import { normalizeApprovedHosts } from "./outbound-host-policy.js";
 import type { RecentItemIndex } from "../layers/l1-data-knowledge/news-title-dedupe.js";
 /**
  * WJ-INT-02A live triage gate composition. Single shared source for all live
@@ -189,11 +190,12 @@ export function buildLiveTriageGate(
           reuse_reviewed_at: string | null;
           reuse_expires_at: string | null;
           remit: string | null;
+          approved_hosts: readonly string[] | null;
         }>(
           `SELECT approval_status, auto_acquisition_enabled, registry_status,
                   reuse_basis, reuse_license_url, reuse_scope, reuse_reviewer,
                   reuse_reviewed_at::text AS reuse_reviewed_at,
-                  reuse_expires_at::text AS reuse_expires_at, remit
+                  reuse_expires_at::text AS reuse_expires_at, remit, approved_hosts
            FROM waspada.source_registry WHERE source_id = $1 LIMIT 1`,
           [sourceId],
         );
@@ -223,7 +225,13 @@ export function buildLiveTriageGate(
         if (!(permissions.titleModel || permissions.descriptionModel)) {
           return { cleared: false, reason: "model_use_not_permitted" };
         }
-        return { cleared: true, reuseBasis: basis ? [...basis] : [], permissions };
+        // NFR-07 F-42: the registry's declared hosts. The poller refuses any request to another host.
+        return {
+          cleared: true,
+          reuseBasis: basis ? [...basis] : [],
+          permissions,
+          approvedHosts: normalizeApprovedHosts(row.approved_hosts),
+        };
       } catch {
         return { cleared: false, reason: "source_not_cleared" };
       }

@@ -6,6 +6,7 @@ import { DEFAULT_NEWS_FEEDS, type NewsTriageCounts } from "../apps/worker/src/ru
 import { BMKG_GEMPA_SOURCE_ID } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
 import { PETABENCANA_SOURCE_ID } from "../apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.js";
 import { BLOCKED_REDIRECT_ERROR } from "../apps/worker/src/runtime/outbound-fetch-policy.js";
+import { normalizeApprovedHosts } from "../apps/worker/src/runtime/outbound-host-policy.js";
 
 export const STRUCTURED_LIVE_SOURCE_IDS: readonly string[] = [PETABENCANA_SOURCE_ID, BMKG_GEMPA_SOURCE_ID];
 
@@ -24,6 +25,8 @@ export interface RegistryRow {
   readonly approval_status: string;
   readonly registry_status: string;
   readonly auto_acquisition_enabled: boolean;
+  /** NFR-07 F-42: the declared hosts. Read by loadRegistryRows; absent in rows built by tests. */
+  readonly approved_hosts?: readonly string[] | null;
 }
 
 export interface CoverageReport {
@@ -115,12 +118,20 @@ export function formatNotFetchedLine(sourceIds: readonly string[]): string {
 
 export async function loadRegistryRows(executor: SqlExecutor, sourceIds: readonly string[]): Promise<RegistryRow[]> {
   const result = await executor.query<RegistryRow>(
-    `SELECT source_id, approval_status, registry_status, auto_acquisition_enabled
+    `SELECT source_id, approval_status, registry_status, auto_acquisition_enabled, approved_hosts
      FROM waspada.source_registry
      WHERE source_id = ANY($1::text[])`,
     [sourceIds],
   );
   return [...result.rows];
+}
+
+/**
+ * NFR-07 F-42: the hosts the registry declares for one source, normalised. A missing row declares none, so the poller
+ * refuses every request for it (fail closed).
+ */
+export function registryApprovedHosts(rows: readonly RegistryRow[], sourceId: string): string[] {
+  return [...normalizeApprovedHosts(rows.find((row) => row.source_id === sourceId)?.approved_hosts)];
 }
 
 const ERROR_LABEL_PATTERN = /^[A-Za-z0-9_]{1,40}$/u;

@@ -1,4 +1,4 @@
-// HOSTED-03: the NOLOGIN layer roles created by migrations 001-049. The owner login is granted each one
+// HOSTED-03: the NOLOGIN layer roles created by migrations 001-062. The owner login is granted each one
 // (WITH SET TRUE) so the hosted runtime can SET ROLE into them. The test checks this list against the
 // CREATE ROLE statements in the migrations, so a new role cannot be added silently.
 
@@ -16,6 +16,7 @@ export const LAYER_ROLES: readonly string[] = [
   "waspada_l4_report_revision_impact_reader",
   "waspada_l4_pipeline_flow_reader",
   "waspada_auth_service",
+  "waspada_retention_purger",
 ];
 
 export const LAYER_ROLE_NAME_PATTERN = /^waspada_[a-z0-9_]+$/u;

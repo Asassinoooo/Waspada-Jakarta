@@ -6,6 +6,7 @@ import { parseModelOutput } from "./model-output.js";
 import type { ReportInterpretation } from "./report-interpretation-agent.js";
 import type { CandidateIncidentMatch } from "../services/semantic-retrieval-service.js";
 import { PETABENCANA_SOURCE_LABEL } from "../structured-interpretation.js";
+import { neutraliseSourceText, quoteAppearsInSource } from "./source-text-isolation.js";
 
 /**
  * AI-RPM-01: a retrieved candidate only reaches the correlation model when its
@@ -108,7 +109,7 @@ export function validateCorrelationDecision(
     if (!quote) continue;
 
     if (ev.reportRevisionId === input.incomingReportRevisionId) {
-      if (!input.incomingReportText.includes(quote)) {
+      if (!quoteAppearsInSource(input.incomingReportText, quote)) {
         throw new EvidenceProvenanceError("evidence_quote_not_in_incoming_report");
       }
     } else {
@@ -120,7 +121,7 @@ export function validateCorrelationDecision(
       }
       const matchedText = candidate.matchedText ?? "";
       const incDesc = candidate.incident.description ?? "";
-      if (!matchedText.includes(quote) && !incDesc.includes(quote)) {
+      if (!quoteAppearsInSource(matchedText, quote) && !quoteAppearsInSource(incDesc, quote)) {
         throw new EvidenceProvenanceError("evidence_quote_not_in_candidate");
       }
     }
@@ -222,14 +223,14 @@ export async function correlateIncident(
           const inc = match.incident;
           return `
 [Candidate #${idx + 1}] ID: ${inc.incidentId} (Similarity Score: ${match.similarityScore.toFixed(3)})
-Title: ${inc.title}
-Type: ${inc.incidentType}
+Title: ${neutraliseSourceText(inc.title)}
+Type: ${neutraliseSourceText(inc.incidentType)}
 Status: ${inc.status} | Severity: ${inc.severity}
-Location: ${inc.locationLabel ?? "Unknown"} (${inc.coordinates ? inc.coordinates.join(", ") : "no coordinates"})
+Location: ${neutraliseSourceText(inc.locationLabel ?? "Unknown")} (${inc.coordinates ? inc.coordinates.join(", ") : "no coordinates"})
 First Observed: ${inc.firstObservedAt ?? "unknown"} | Last Updated: ${inc.lastUpdatedAt}
-Description: ${inc.description}
+Description: ${neutraliseSourceText(inc.description)}
 ${match.matchedReportRevisionId ? `Evidence Report Revision ID: ${match.matchedReportRevisionId}` : ""}
-${match.matchedText ? `Matched Historical Evidence: "${match.matchedText}"` : ""}
+${match.matchedText ? `Matched Historical Evidence: "${neutraliseSourceText(match.matchedText)}"` : ""}
 `.trim();
         })
         .join("\n\n---\n\n");
@@ -238,13 +239,13 @@ ${match.matchedText ? `Matched Historical Evidence: "${match.matchedText}"` : ""
 Compare the incoming report with the candidate incidents and decide correlation.
 
 === INCOMING REPORT (${input.incomingReportRevisionId}) ===
-Text: ${input.incomingReportText}
-Extracted Summary: ${input.incomingInterpretation.summary}
-Extracted Incident Type: ${input.incomingInterpretation.incidentType}
+Text: ${neutraliseSourceText(input.incomingReportText)}
+Extracted Summary: ${neutraliseSourceText(input.incomingInterpretation.summary)}
+Extracted Incident Type: ${neutraliseSourceText(input.incomingInterpretation.incidentType)}
 Severity: ${input.incomingInterpretation.severity}
-Location: ${input.incomingInterpretation.location.label ?? "Unspecified"} (${input.incomingInterpretation.location.approximateCoordinates ? input.incomingInterpretation.location.approximateCoordinates.join(", ") : "none"})
-Time: ${input.incomingInterpretation.eventTime.value ?? "Unspecified"}
-Impacts: ${input.incomingInterpretation.impacts.join("; ")}
+Location: ${neutraliseSourceText(input.incomingInterpretation.location.label ?? "Unspecified")} (${input.incomingInterpretation.location.approximateCoordinates ? input.incomingInterpretation.location.approximateCoordinates.join(", ") : "none"})
+Time: ${neutraliseSourceText(input.incomingInterpretation.eventTime.value ?? "Unspecified")}
+Impacts: ${input.incomingInterpretation.impacts.map((impact) => neutraliseSourceText(impact)).join("; ")}
 
 === CANDIDATE INCIDENTS IN DATABASE ===
 ${candidatesContext}

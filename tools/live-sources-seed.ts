@@ -7,10 +7,11 @@
 // Owner decision (17 Nov): all 16 sources are approved with public display. PetaBencana and BMKG get the RSS grant.
 // Legacy rows that still carry only ['public'] are upgraded by upgradeStructuredPublicDisplayGrants, and nothing else.
 import type { SqlExecutor } from "../apps/db/src/sql.js";
-import { BMKG_GEMPA_SOURCE_ID } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
+import { BMKG_GEMPA_SOURCE_ID, DEFAULT_BMKG_AUTOGEMPA_ENDPOINT } from "../apps/worker/src/runtime/bmkg-poll-runtime.js";
 import { structuredSourceDisplayName } from "../apps/worker/src/runtime/structured-source-display.js";
 import { DEFAULT_NEWS_FEEDS } from "../apps/worker/src/runtime/news-poll-runtime.js";
 import { PETABENCANA_SOURCE_ID } from "../apps/worker/src/layers/l1-data-knowledge/petabencana-ingest.js";
+import { DEFAULT_PETABENCANA_ENDPOINT } from "../apps/worker/src/runtime/petabencana-poll-runtime.js";
 import { STRUCTURED_LIVE_SOURCE_IDS } from "./live-source-coverage.js";
 
 export const LOCAL_RSS_SEED_TRACE_ID = "trace-seed-rss-sources";
@@ -21,6 +22,24 @@ const PUBLIC_DISPLAY_REUSE_BASIS_SQL =
   "ARRAY['model_triage', 'model_description', 'retain_title', 'retain_description', 'retain_derived', 'public_display']";
 /** The legacy structured grant. It has no public_display token, so the public list never showed these sources. */
 const LEGACY_STRUCTURED_REUSE_BASIS_SQL = "ARRAY['public']::text[]";
+
+/**
+ * NFR-07 F-42: the host each structured source declares in source_registry.approved_hosts. Derived from the endpoint
+ * constants the pollers use, so the registry and the code cannot drift apart. BMKG's two endpoints share one host.
+ */
+export const STRUCTURED_APPROVED_HOST: Readonly<Record<string, string>> = {
+  [PETABENCANA_SOURCE_ID]: new URL(DEFAULT_PETABENCANA_ENDPOINT).host.toLowerCase(),
+  [BMKG_GEMPA_SOURCE_ID]: new URL(DEFAULT_BMKG_AUTOGEMPA_ENDPOINT).host.toLowerCase(),
+};
+
+/**
+ * NFR-07 F-42: every source whose host is declared in code, the structured pair above plus each default RSS feed's own
+ * host. The one-time upgrade below uses it, so a row seeded before its host existed gets that host once.
+ */
+export const DECLARED_APPROVED_HOSTS: Readonly<Record<string, string>> = {
+  ...STRUCTURED_APPROVED_HOST,
+  ...Object.fromEntries(DEFAULT_NEWS_FEEDS.map((feed) => [feed.sourceId, new URL(feed.url).host.toLowerCase()])),
+};
 
 function rssDisplayName(sourceId: string): string {
   return sourceId.replace(/^source-/, "").replace(/-/g, " ").toUpperCase();
@@ -105,10 +124,10 @@ export async function seedLiveSourcesInsertMissing(executor: SqlExecutor): Promi
          polling_interval_seconds
        )
        VALUES ($1, $2, 1, $3, 'authority', ARRAY['all'], 'manual_fixture',
-               ARRAY[]::text[], ARRAY[]::text[], ${PUBLIC_DISPLAY_REUSE_BASIS_SQL}, 'active', 'approved', 'healthy', true, 'never', 600)
+               ARRAY[$4]::text[], ARRAY[]::text[], ${PUBLIC_DISPLAY_REUSE_BASIS_SQL}, 'active', 'approved', 'healthy', true, 'never', 600)
        ON CONFLICT (source_id) DO NOTHING
        RETURNING source_id`,
-      [sourceId, HOSTED_SEED_TRACE_ID, structuredSourceDisplayName(sourceId)],
+      [sourceId, HOSTED_SEED_TRACE_ID, structuredSourceDisplayName(sourceId), STRUCTURED_APPROVED_HOST[sourceId] ?? ""],
     );
     inserted += result.rows.length;
   }
@@ -134,6 +153,31 @@ export async function upgradeStructuredPublicDisplayGrants(executor: SqlExecutor
           AND reuse_basis = ${LEGACY_STRUCTURED_REUSE_BASIS_SQL}
         RETURNING source_id`,
       [sourceId],
+    );
+    upgraded += result.rows.length;
+  }
+  return upgraded;
+}
+
+/**
+ * NFR-07 F-42 (owner-approved with the outbound host allow-list, 19 Nov 2026): a PetaBencana, BMKG or RSS row seeded
+ * before its declared host existed gets that host, once. A row changes only when it is still approved, active and
+ * auto-acquisition enabled, and its approved_hosts is empty. Revoked, disabled, paused and already-declared rows are
+ * never touched. Returns how many rows changed.
+ */
+export async function upgradeDeclaredApprovedHosts(executor: SqlExecutor): Promise<number> {
+  let upgraded = 0;
+  for (const [sourceId, host] of Object.entries(DECLARED_APPROVED_HOSTS)) {
+    const result = await executor.query<{ source_id: string }>(
+      `UPDATE waspada.source_registry
+          SET approved_hosts = ARRAY[$2]::text[]
+        WHERE source_id = $1
+          AND approval_status = 'approved'
+          AND registry_status = 'active'
+          AND auto_acquisition_enabled = true
+          AND cardinality(approved_hosts) = 0
+        RETURNING source_id`,
+      [sourceId, host],
     );
     upgraded += result.rows.length;
   }

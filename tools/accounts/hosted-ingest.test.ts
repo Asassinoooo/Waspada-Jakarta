@@ -18,12 +18,19 @@ import {
   formatCoverageSkips,
   formatNotFetchedLine,
   formatSourceHealthLine,
+  registryApprovedHosts,
   rssFeedHealthEntry,
   shouldPollFeed,
   structuredHealthEntry,
   type RegistryRow,
 } from "../live-source-coverage.js";
-import { seedLiveSourcesInsertMissing, seedRssSources, upgradeStructuredPublicDisplayGrants } from "../live-sources-seed.js";
+import {
+  seedLiveSourcesInsertMissing,
+  seedRssSources,
+  STRUCTURED_APPROVED_HOST,
+  upgradeDeclaredApprovedHosts,
+  upgradeStructuredPublicDisplayGrants,
+} from "../live-sources-seed.js";
 import {
   buildHostedClientConfig,
   createHostedSession,
@@ -50,6 +57,7 @@ import {
 } from "../hosted/source-health.js";
 // HOSTED-24C: the attribution backfill, its step in the --once order, and the publish fixtures it is tested with.
 import { backfillSourceAttributions, supportKeysOf } from "../hosted/attribution-backfill.js";
+import { DEFAULT_NEWS_FEEDS } from "../../apps/worker/src/runtime/news-poll-runtime.js";
 import {
   backfillPublishedLocations,
   LOCATION_BACKFILL_LIMIT,
@@ -1879,5 +1887,94 @@ describe("HOSTED-30 cycle row writer (fake executor, validation first)", () => {
     );
     const smuggled = { new_items_cap: 40, title: "judul", url: "https://example.invalid" } as unknown as Parameters<typeof pipelineCycleRunRecordJson>[0];
     assert.deepEqual(pipelineCycleRunRecordJson(smuggled), { new_items_cap: 40 });
+  });
+});
+
+describe("NFR-07 F-42: structured sources declare their approved host", () => {
+  const PETABENCANA = "petabencana";
+  const BMKG = "source-bmkg-gempa";
+
+  interface HostRow {
+    source_id: string;
+    approval_status: string;
+    registry_status: string;
+    auto_acquisition_enabled: boolean;
+    approved_hosts: string[];
+  }
+
+  it("NFR-07: the seed declares the host of each structured endpoint, the same host the poller requests", async () => {
+    const statements: Array<{ text: string; params?: readonly unknown[] }> = [];
+    const executor: SqlExecutor = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        statements.push({ text, params });
+        return { rows: [{ source_id: "inserted" } as unknown as Row] };
+      },
+      execute: async () => undefined,
+    };
+    await seedLiveSourcesInsertMissing(executor);
+    const structured = statements.filter((statement) => /manual_fixture/u.test(statement.text));
+    assert.equal(structured.length, 2, "the two structured sources are seeded");
+    const declared = Object.fromEntries(structured.map((statement) => [statement.params?.[0], statement.params?.[3]]));
+    assert.deepEqual(declared, { [PETABENCANA]: "api.petabencana.id", [BMKG]: "data.bmkg.go.id" });
+    assert.deepEqual(STRUCTURED_APPROVED_HOST, { [PETABENCANA]: "api.petabencana.id", [BMKG]: "data.bmkg.go.id" });
+  });
+
+  it("NFR-07: the upgrade declares a host only on an approved, active, auto-acquisition row that has none", async () => {
+    const rows: HostRow[] = [
+      { source_id: PETABENCANA, approval_status: "approved", registry_status: "active", auto_acquisition_enabled: true, approved_hosts: [] },
+      { source_id: BMKG, approval_status: "revoked", registry_status: "active", auto_acquisition_enabled: true, approved_hosts: [] },
+    ];
+    const executor: SqlExecutor = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        const row = rows.find((candidate) => candidate.source_id === params?.[0]);
+        const eligible = row !== undefined
+          && row.approval_status === "approved"
+          && row.registry_status === "active"
+          && row.auto_acquisition_enabled === true
+          && row.approved_hosts.length === 0;
+        if (!/^\s*UPDATE waspada\.source_registry/u.test(text) || row === undefined || !eligible) {
+          return { rows: [] as unknown as Row[] };
+        }
+        row.approved_hosts = [String(params?.[1])];
+        return { rows: [{ source_id: row.source_id } as unknown as Row] };
+      },
+      execute: async () => undefined,
+    };
+    assert.equal(await upgradeDeclaredApprovedHosts(executor), 1, "only the approved row is upgraded");
+    assert.deepEqual(rows[0]?.approved_hosts, ["api.petabencana.id"]);
+    assert.deepEqual(rows[1]?.approved_hosts, [], "a revoked row keeps its empty list");
+    assert.equal(await upgradeDeclaredApprovedHosts(executor), 0, "a second run changes nothing");
+  });
+
+  it("NFR-07: a source with no registry row declares no host, so its poll is refused (fail closed)", () => {
+    assert.deepEqual(registryApprovedHosts([], PETABENCANA), []);
+    assert.deepEqual(
+      registryApprovedHosts([{ source_id: BMKG, approval_status: "approved", registry_status: "active", auto_acquisition_enabled: true, approved_hosts: [" Data.BMKG.go.id "] }], BMKG),
+      ["data.bmkg.go.id"],
+      "the declared host is normalised, so it matches the parsed request host",
+    );
+  });
+  it("NFR-07: the one-time upgrade declares the host of a default RSS feed as well, and only once", async () => {
+    const feed = DEFAULT_NEWS_FEEDS[0];
+    assert.ok(feed, "at least one default RSS feed");
+    const row: HostRow = {
+      source_id: feed.sourceId, approval_status: "approved", registry_status: "active", auto_acquisition_enabled: true, approved_hosts: [],
+    };
+    const executor: SqlExecutor = {
+      query: async <Row extends object>(text: string, params?: readonly unknown[]) => {
+        if (!/^\s*UPDATE waspada\.source_registry/u.test(text) || params?.[0] !== row.source_id) {
+          return { rows: [] as unknown as Row[] };
+        }
+        const eligible = row.approval_status === "approved" && row.registry_status === "active"
+          && row.auto_acquisition_enabled && row.approved_hosts.length === 0;
+        if (!eligible) return { rows: [] as unknown as Row[] };
+        row.approved_hosts = [String(params[1])];
+        return { rows: [{ source_id: row.source_id } as unknown as Row] };
+      },
+      execute: async () => undefined,
+    };
+    assert.equal(await upgradeDeclaredApprovedHosts(executor), 1);
+    assert.deepEqual(row.approved_hosts, [new URL(feed.url).host.toLowerCase()], "the feed's own host, as the seed declares it");
+    assert.equal(await upgradeDeclaredApprovedHosts(executor), 0, "a second run changes nothing");
   });
 });
