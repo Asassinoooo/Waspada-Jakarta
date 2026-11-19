@@ -170,6 +170,18 @@ export function isProposalCrowdsourced(proposal: EventProposalDto): boolean {
 }
 
 /**
+ * ST-F-03: the origin a claim shows on the review screen, named by its outlet, else its registry source id. A claim
+ * with neither shows "tidak tercatat". The name is never invented.
+ */
+export function claimOriginName(claim: Pick<ProposalClaim, "outlet" | "source_id">): string {
+  const outlet = claim.outlet?.trim();
+  if (outlet) return outlet;
+  const sourceId = claim.source_id?.trim();
+  if (sourceId) return sourceId;
+  return "tidak tercatat";
+}
+
+/**
  * MERGE-REVIEW-01: never pre-selects independent_corroboration. Only a moderator's explicit
  * choice may set it, and this build does not offer that choice.
  */
@@ -1189,6 +1201,7 @@ export function ModeratorReviewQueue({
                                   <span className="claim-ref-badge">ID: {claim.claim_id}</span>
                                   <div className="claim-badges-group">
                                     <span className="claim-status-badge" title="under_review">Menunggu tinjauan</span>
+                                    <span className="claim-origin-label">Asal: {claimOriginName(claim)}</span>
                                   </div>
                                 </header>
                                 <blockquote className="review-claim">
