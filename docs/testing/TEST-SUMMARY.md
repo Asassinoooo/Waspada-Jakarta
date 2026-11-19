@@ -113,6 +113,44 @@ Register status counts (`test-cases.csv`), before and after: Evidence exists 82 
 
 Defects: F-30 (a moderator reject wrote no audit record; fixed in `f3373c0`), F-31 (the webhook AI job had no trace id; fixed in `f3373c0`) and F-32 (header nav under the dataset badge at 601 to 900 px, 200% zoom; fixed in `b3ca26d`; severity not recorded). F-29 is fixed in `b4a0d0f`. F-05 is partly closed and F-06 is closed by test. Hosted re-checks for F-29, F-32 and the reject audit row (F-30) are pending.
 
+## 7C 19 Nov 2026 (TEST-GAP-04, ST-F-09, NFR-04/06/07, SEC-HEADERS-01)
+
+TG-DOCS-08 updates the register from the evidence in `docs/testing/evidence/2026-11-19/` (index in its README). Single-file test runs were on `main` at `e68aefd`. CI runs: 44498555647 (`e68aefd`, success, 2,917 tests, 2,913 passing, 0 failing, 4 todo) and 44502344276 (`9f6a456`, success, checked with `gh`). No heavy suite was run locally. The hosted checks are read-only, except that the scripted checklist signs in and out with existing test accounts and makes failed login attempts, and writes no content.
+
+Status counts from `test-cases.csv`, the 165 rows that existed before this update (the seven new hosted rows, ST-H-21 to ST-H-27, are not counted here):
+
+| Status | Before | After |
+| --- | --- | --- |
+| Evidence exists | 84 | 89 |
+| Partial | 43 | 39 |
+| Pass (local run reported; not re-run in TG-DOCS) | 21 | 21 |
+| Blocked | 5 | 5 |
+| Pass (CI run 44319579284) | 3 | 3 |
+| Points only (owner, 16 Nov 2026) | 3 | 3 |
+| Pass (hosted, read-only, 17 Nov 2026) | 2 | 2 |
+| Pending run | 2 | 2 |
+| Not evidenced | 2 | 1 |
+| **Total** | **165** | **165** |
+
+Rows changed (status):
+
+| Row | Was | Now | Why |
+| --- | --- | --- | --- |
+| ST-F-04 | Partial | Evidence exists | Every clause is named: anonymous reads (hosted ST-H-01, ST-H-12), the filters, the empty and unavailable states, and the demo or live label (`map-home.test.tsx`). The one-filtered-set clause is checked by source text only |
+| ST-F-05 | Partial | Evidence exists | The four times are each named from their own field (`event-detail-claim-sources.test.tsx`), and the hosted record page shows them (ST-H-23) |
+| ST-F-09 | Partial | Evidence exists | Restrictions and health are named on the admin page (`source-approval.test.tsx`, `source-approval-api.test.ts`); the moderator tab, the demo wording and the role-change audit are named too |
+| ST-N-02 | Partial | Evidence exists | Worker ledger limits are named (four reasoning calls, 60 s, 12,000 tokens, five attempts, resume keeps usage); the live caps are named under the reworded expected result |
+| ST-N-06 | Not evidenced | Partial | The restore rehearsal is recorded (`nfr06/restore-report.json`), but deletion-tombstone behaviour and the demo rebuild are not recorded |
+| ST-N-08 | Partial | Evidence exists | CI run 44498555647: clean checkout, `npm ci`, typecheck and build all succeed; Free-plan deploy is ST-H-01 |
+
+Rows whose notes changed, with status unchanged: ST-F-02, ST-F-03, ST-F-08, ST-F-11, ST-F-12, ST-F-13, ST-F-15, ST-F-16, ST-N-04, ST-N-05 and ST-N-07 stay Partial. ST-N-03 stays Not evidenced (no human sessions).
+
+Reworded expected results (owner decisions, 19 Nov 2026), each marked in its row: ST-F-11 (no quarantine), ST-F-12 and ST-F-16 (the live path does not use the Worker's L2 or L3, a design limit), ST-N-02 (the live path clause), ST-N-04 (the target: p50 under 500 ms, p95 under 1 s), and ST-N-07 (the approach: automated tests, an OWASP ZAP passive baseline and a scripted checklist, no active scan).
+
+Defects: F-33 to F-38 added and fixed (proposed severities: F-33 High; F-34, F-35, F-36 and F-38 Medium; F-37 Low). Open items F-39 to F-45. F-45 (refused webhook items are not recorded or counted) is added by this update from the ST-F-11 review.
+
+Still Partial after this update, and why: ST-F-02 (the hosted matched update in Pembaruan was not observed, ST-H-27); ST-F-03 (origin on screen and the draft's visibility after a stale write are not named); ST-F-08 (no-body/no-prompt text is not asserted; no 390 px check); ST-F-11 (refused items are not recorded or counted, F-45; no same-path test); ST-F-12 (nearby distinct incidents are not named on the live path); ST-F-13 and ST-N-05 (the HTTP stale-write tests mirror the Worker mapping, and the proposal decision route's stale path is only stubbed); ST-F-15 (no 'no coverage' wording is asserted); ST-F-16 (no test names the automatic decision's trace id); ST-N-04 (warm and cold start not separated; briefings not timed); ST-N-06 (deletion-tombstone behaviour not recorded; the rehearsal restored live data into PGlite); ST-N-07 (approved hosts not enforced, F-42; retention, F-39 and F-40; correlation prompt, F-43; no penetration test).
+
 ## 7 Partial rows: what moved and what did not
 
 The question for this update was whether rows that were Partial are now fully proven. Moving a row needs new evidence for the part that was missing.

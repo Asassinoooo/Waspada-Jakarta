@@ -1,0 +1,18 @@
+✔ omitted cursor bootstraps to an empty page at the current watermark (23.458359ms)
+✔ projects all reviewed change labels through the exact HistoryEntry allowlist (13.905182ms)
+✔ sets automatic only for an agent:auto-publisher correction and keeps other entries unchanged (4.151977ms)
+✔ continues a full page from the last candidate without converting sequences to numbers (4.132891ms)
+✔ advances an empty or short completed page to the watermark across sequence gaps (8.760399ms)
+✔ rejects malformed request bounds before making reader calls (9.066854ms)
+✔ requires a fresh baseline for expired and ahead-of-watermark cursors (6.136511ms)
+✔ fails closed on malformed, unordered, oversized, or inconsistent reader candidates (19.253134ms)
+✔ rejects malformed watermark and reader failures with fixed redacted errors (5.025464ms)
+✔ maps cursor signing and clock failures without leaking details (2.899268ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1343.087902

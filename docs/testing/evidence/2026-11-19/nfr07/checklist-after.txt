@@ -1,0 +1,37 @@
+PASS [H] / header strict-transport-security — max-age=31536000; includeSubDomains
+PASS [H] / header content-security-policy — default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; connect-sr
+PASS [H] / header x-content-type-options — nosniff
+PASS [H] / header x-frame-options — DENY
+PASS [H] / header referrer-policy — strict-origin-when-cross-origin
+PASS [H] / header permissions-policy — camera=(), microphone=(), geolocation=()
+PASS [H] / server/x-powered-by leak — server=cloudflare x-powered-by=-
+PASS [H] /api/v1/events header strict-transport-security — max-age=31536000; includeSubDomains
+PASS [H] /api/v1/events header content-security-policy — default-src 'none'; frame-ancestors 'none'
+PASS [H] /api/v1/events header x-content-type-options — nosniff
+PASS [H] /api/v1/events header x-frame-options — DENY
+PASS [H] /api/v1/events header referrer-policy — strict-origin-when-cross-origin
+FAIL [H] /api/v1/events header permissions-policy — missing
+PASS [H] /api/v1/events server/x-powered-by leak — server=cloudflare x-powered-by=-
+PASS [C] CORS does not reflect a foreign Origin — ACAO=- ACAC=-
+PASS [C] Preflight from a foreign Origin to login is not allowed — status=405 ACAO=-
+PASS [X] Login POST without Origin is refused — status=403
+PASS [X] Login POST from a foreign Origin is refused — status=403
+PASS [Z] /api/v1/moderation/proposals without a session is refused — status=401
+PASS [Z] /api/v1/pipeline/flow without a session is refused — status=401
+PASS [Z] /api/v1/admin/sources without a session is refused — status=401
+PASS [S] Moderator login succeeds — status=200 cookies=1
+PASS [S] Session cookies are HttpOnly — httponly+max-age+path+samesite+secure
+PASS [S] Session cookies are Secure — 
+PASS [S] Session cookies set SameSite — SameSite=Strict
+PASS [X] Signed-in write without X-CSRF-Token is refused — status=403
+PASS [X] Signed-in write from a foreign Origin is refused — status=403
+PASS [Z] Moderator is refused the administrator source route — status=403
+PASS [S] Sign-out with Origin and token succeeds — status=204
+PASS [S] The old session cookie is refused after sign-out — status=401
+PASS [A] Unknown user and wrong password give the same response — unknown=401 ["code","message","request_id"]:invalid_credentials | known+wrong=401 ["code","message","request_id"]:invalid_credentials
+PASS [A] Login error body has no stack trace or SQL — {"code":"invalid_credentials","message":"The username or password is not correct.","request_id":"2838a66e-6262-455f-a80a
+FAIL [T] Plain HTTP redirects to HTTPS — status=200 location=-
+PASS [E] Malformed event id gives a clean error, no stack or reflection — status=400 body={"code":"INVALID_REQUEST","message":"event_id is invalid","request_id":"e2c90fb3-525e-4eab-97c9-af7a
+PASS [E] Oversized limit is refused or capped — status=400
+PASS [A] Repeated failed logins (14, unknown user) are throttled — statuses=401,401,401,401,401,401,401,401,401,429,429,429,429,429
+summary: 36 checks, 34 pass, 2 fail, 0 info

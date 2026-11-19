@@ -16,6 +16,7 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - SHAs and run IDs added on 18 November 2026 were checked with `git show -s`, `git merge-base --is-ancestor` and `gh run view` on that date.
 - SHAs added on 19 November 2026 (F-20 to F-28, R-11 to R-13) were read from `git log` at `a7ba558` (`git show --stat` for the files each fix changed). The CI run IDs and the hosted check results were not re-read with `gh` in this update.
 - Fix commits cited for F-29 to F-32 (`b4a0d0f`, `ab4533a`, `f3373c0`, `b3ca26d`) and the test commit `f155822` are on `main` (checked with `git merge-base --is-ancestor` on 19 November 2026). None is in CI baseline `a7ba558`, so no CI run covers them yet; `test-cases.csv` holds `44484348615` until a run is read.
+- SHAs and run IDs added on 19 November 2026 for F-33 to F-38 were checked with `git show -s` and `git merge-base --is-ancestor` on that date, and CI run 44502344276 with `gh run view`. `ea955b9f` is a Cloudflare Worker version id, not a git SHA. Open items F-39 to F-45 have no fix commit.
 - Blocked and pending UAT results are not defects (`docs/testing/UAT.md` section 10).
 
 ## Section A: Verified defects (fixed)
@@ -74,6 +75,8 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Evidence:** `docs/testing/UAT.md` section 6, T2 step 7 and open item; section 6.6. Affects ST-F-02 and AT-02. T2 is Partial in `test-cases.csv`.
 - **Decision needed:** either run T2 step 7 on a live dataset (this needs `serve:live`, real feeds and model quota, under explicit authorisation), or record the US-02 matched-update criterion as not evidenced.
 - **Status (19 Nov 2026): open for one part.** The briefing part is fixed and checked on the hosted site: a place interest matches, and its reason is returned (ST-H-13, ST-H-14; F-20 and F-21). The updates-feed step (a matched update in Pembaruan, read on live data) is still open. It has tests (`updates-center.test.tsx`, `public-event-updates.test.ts`, `publication-outbox-delivery-runtime.test.ts`) but no live browser run, so T2 step 7 has not run.
+
+- **Update (19 Nov 2026, TG-DOCS-08):** the once-only correction in Pembaruan is now named by a test (`apps/web/test/updates-center.test.tsx`, 'ST-F-02: a correction re-polled in a later cycle is shown once'). The hosted matched update in Pembaruan on live data was not observed (SYSTEM-TEST ST-H-27: the updates feed lists only changes made after a browser's first visit, and no matching change happened in the window). This finding stays open for that part.
 
 ### F-03: L1 webhook ingest imports L2 and L4 modules at runtime
 
@@ -315,6 +318,110 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Fix:** `b3ca26d` (`fix(POLISH-01)`, 19 November 2026). At 601 to 900 px the header gaps and padding tighten, and the nav scrolls inside itself as the last fallback. Below 768 px the brand name is hidden and the brand mark keeps its link and accessible name. Test: `apps/web/test/header-reflow.test.tsx` (2 tests). The test checks the CSS rules and the header markup, not a rendered layout.
 - **Verification:** a local browser check at 375 to 1440 px (its record is not in the repository). Deployed on 19 November 2026. The hosted re-check is pending.
 - **Status (19 Nov 2026): fixed locally and deployed; hosted re-check pending.** BR-02 stays Partial: the account and moderator screens at 200% are not recorded.
+
+### F-33: a moderator publish or correction accepted a claim labelled under_review (High, proposed)
+
+- **Observation:** a moderator publish or correction could publish a claim whose label was still under_review. The automatic gate refuses that label; the moderator path did not.
+- **Found by:** TEST-GAP-04 tests, 19 November 2026 (the commit that carries the fix).
+- **Where:** `apps/worker/src/layers/l4-application-integration/publication-policy.ts`.
+- **Cause:** the moderator gate did not refuse a non-public claim label, which the automatic gate does.
+- **Severity:** High, proposed by TG-DOCS-08 (publishes unreviewed content, the rule in SYSTEM-TEST section 9). Not yet reviewed by the owner.
+- **Fix:** `01a61ec` (`test(TEST-GAP-04)`, 19 November 2026): the moderator gate refuses non-public claim labels. Test: `apps/worker/test/draft-privacy-public-routes-db.test.ts`, 'a moderator publish refuses a claim still labelled under_review'.
+- **Status (19 Nov 2026): fixed (`01a61ec`), on `main`; covered by CI run 44498555647 (`e68aefd`), which includes it.**
+
+### F-34: RSS intake stored javascript: and credential links (Medium, proposed)
+
+- **Observation:** RSS intake kept source links with a non-web scheme (javascript:) or with user information (credentials).
+- **Found by:** NFR-07 malicious-source tests at `e68aefd`, where three were todo (TG-DOCS-08, 19 November 2026).
+- **Where:** `apps/worker/src/layers/l1-data-knowledge/rss-news-ingest.ts`; `apps/worker/src/security/source-link.ts`.
+- **Cause:** no single public source-link rule applied at intake and at the gates.
+- **Severity:** Medium, proposed by TG-DOCS-08 (a public source link with a script scheme; the public page escapes text and CSP applies). Not yet reviewed by the owner.
+- **Fix:** `9f6a456` (`fix(NFR-07)`, 19 November 2026): one public source-link rule for RSS intake and the gates. Tests: `apps/worker/test/nfr07-malicious-source-gate.test.ts` (11 of 11).
+- **Status (19 Nov 2026): fixed (`9f6a456`); CI run 44502344276 (`9f6a456`) concluded success (checked with `gh`).**
+
+### F-35: the gate accepted http and user-info claim links that attribution dropped (Medium, proposed)
+
+- **Observation:** the automatic gate accepted a claim whose link was http or carried user information; the attribution step then dropped the link, so the claim went out with less source than the gate had checked.
+- **Found by:** NFR-07 malicious-source tests (TG-DOCS-08, 19 November 2026).
+- **Where:** `apps/worker/src/layers/l4-application-integration/publication-policy.ts`; `proposal-publication.ts`.
+- **Cause:** the gate and the attribution step applied different link rules.
+- **Severity:** Medium, proposed by TG-DOCS-08 (the claim kept its source record; only the link was lost). Not yet reviewed by the owner.
+- **Fix:** `9f6a456` (same commit as F-34). Test: `apps/worker/test/nfr07-malicious-source-gate.test.ts` (the non-web scheme refusal and the link tests).
+- **Status (19 Nov 2026): fixed (`9f6a456`); CI run 44502344276 concluded success.**
+
+### F-36: source text could forge prompt section headers in report interpretation (Medium, proposed)
+
+- **Observation:** source text could contain lines that look like prompt section headers, which the model could read as its own instructions.
+- **Found by:** NFR-07 source-text isolation tests (TG-DOCS-08, 19 November 2026).
+- **Where:** `apps/intelligence/src/agents/report-interpretation-agent.ts` (the report interpretation prompt).
+- **Cause:** section headers in the prompt were not neutralised in source text.
+- **Severity:** Medium, proposed by TG-DOCS-08 (input isolation under NFR-07). Not yet reviewed by the owner.
+- **Fix:** `9f6a456` (`fix(NFR-07)`, 19 November 2026). Test: `apps/intelligence/test/nfr07-source-text-isolation.test.ts` (6 of 6). The incident-correlation prompt is not changed by this fix; see F-43.
+- **Status (19 Nov 2026): fixed for report interpretation (`9f6a456`).**
+
+### F-37: a briefing repeated an event, and a null source publish time read "Tidak tersedia" (Low, proposed)
+
+- **Observation:** a briefing could list one event twice. A source with no publish time read "Tidak tersedia", which reads as a checked gap.
+- **Found by:** TEST-GAP-04 web tests (19 November 2026).
+- **Where:** `apps/web/src/BriefingResults.tsx`; `apps/web/src/EventDetail.tsx`; `apps/web/src/api-client.ts`.
+- **Cause:** the briefing did not collapse repeated events; an unstated source publish time used the availability wording.
+- **Severity:** Low, proposed by TG-DOCS-08 (display only; no unsupported claim). Not yet reviewed by the owner.
+- **Fix:** `35ab16e` (`test(TEST-GAP-04)`, 19 November 2026): a briefing event shows once, at its first position, and an unstated source publish time reads "Tidak disebutkan". Tests: `apps/web/test/preferences.test.tsx` ('ST-F-02: a briefing that repeats one event ...'); `apps/web/test/event-detail-claim-sources.test.tsx` ('ST-F-05: a null source publish time reads Tidak disebutkan ...').
+- **Status (19 Nov 2026): fixed (`35ab16e`), covered by CI run 44498555647 (`e68aefd`), which includes it.**
+
+### F-38: security headers missing and plain-HTTP API requests served (Medium, proposed)
+
+- **Observation:** pages and API responses lacked Content-Security-Policy, Strict-Transport-Security, anti-clickjacking, X-Content-Type-Options, Referrer-Policy and Permissions-Policy, and plain-HTTP API requests were served rather than redirected.
+- **Found by:** the OWASP ZAP passive baseline (2 Medium, 3 Low) and the scripted checklist (24 of 36), both run on 19 November 2026 before the fix (`nfr07/zap-before`, `nfr07/checklist-before`).
+- **Where:** `apps/worker/src/security/security-headers.ts`; `apps/worker/src/index.ts`; `apps/web/public/_headers`.
+- **Cause:** no security headers were set on pages or API responses, and no redirect applied to the API over HTTP.
+- **Severity:** Medium, proposed by TG-DOCS-08 (two Medium ZAP alerts on the public site). Not yet reviewed by the owner.
+- **Fix:** `db5bf13` (`fix(SEC-HEADERS-01)`, 19 November 2026), deployed as Worker version `ea955b9f` (a Cloudflare version id, not a git SHA). Tests: `apps/worker/test/security-headers.test.ts` (11); `apps/web/test/public-headers.test.ts` (7).
+- **Status (19 Nov 2026): fixed (`db5bf13`) and deployed. Hosted: ZAP after the fix 0 High and 0 Medium; checklist 34 of 36, with two recorded exceptions (ST-H-25, ST-H-26). Plain-HTTP static pages are still not redirected (a Cloudflare zone setting is unavailable on workers.dev; HSTS limits exposure).**
+
+### F-39: source-text and embedding purge (ADR-005) is not implemented (Medium, proposed; open)
+
+- **Observation:** ADR-005 calls for purging source text and embeddings. No purge of source text or embeddings was found in the repository during the TG-DOCS-08 review. The only purge tested is for sessions and login state (`apps/worker/test/nfr07-session-retention.test.ts`).
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026).
+- **Status (19 Nov 2026): open.** Needs an owner decision on the retention rule before implementation. Not a fix in this update.
+
+### F-40: 24-month audit retention is not implemented (Medium, proposed; open)
+
+- **Observation:** the 24-month audit retention in the requirements has no purge job in the repository.
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026).
+- **Status (19 Nov 2026): open.**
+
+### F-41: news_triage_decisions.expires_at is never purged (Low, proposed; open)
+
+- **Observation:** the expiry column on `news_triage_decisions` is written but no job purges rows past it.
+- **Found by:** TG-DOCS-08 review (19 November 2026).
+- **Status (19 Nov 2026): open.** Depends on the decision in F-39.
+
+### F-42: the approved-host list is not enforced at fetch (Medium, proposed; open)
+
+- **Observation:** the approved outbound host list is recorded for sources, but the fetch path does not check each request against it.
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026); the redirect guard and the moderator-only provider fetch are tested, the host list is not.
+- **Status (19 Nov 2026): open.**
+
+### F-43: the incident-correlation prompt has unescaped section headers (Medium, proposed; open)
+
+- **Observation:** the incident-correlation prompt does not neutralise section headers in source text, so a forged header could appear as a prompt section. F-36 fixed only report interpretation (`9f6a456`).
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026). `apps/intelligence/test/nfr07-source-text-isolation.test.ts` passes for the correlation prompt, but it does not test header forgery.
+- **Status (19 Nov 2026): open.**
+
+### F-44: the register reveals taken usernames, by design (Low, proposed; open)
+
+- **Observation:** the registration response says whether a username is taken, so anyone can test which usernames exist.
+- **Found by:** TG-DOCS-08 review (19 November 2026).
+- **Status (19 Nov 2026): open, recorded as a design choice. No owner decision on it is recorded in this file.**
+
+### F-45: refused webhook items are neither recorded nor counted (Medium, proposed; open; added by TG-DOCS-08)
+
+- **Observation:** the reworded ST-F-11 expected result (owner, 19 November 2026) says a malformed item is "refused and recorded (counted)". A malformed webhook item is refused with 400 and writes nothing. The batch success response counts accepted items only. No record or count of a refused item exists.
+- **Found by:** TG-DOCS-08 review of ST-F-11 against the code (19 November 2026).
+- **Where:** `apps/worker/src/layers/l1-data-knowledge/webhook-ingest.ts`.
+- **Severity:** Medium, proposed (a traceability and operations gap with no public effect). Not yet reviewed by the owner.
+- **Status (19 Nov 2026): open.** Needs a decision on whether refusals are logged or counted, and where.
 
 ### F-ALERT-02: a published version did not reach `/api/v1/updates`
 

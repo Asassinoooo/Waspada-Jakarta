@@ -1,0 +1,23 @@
+▶ FR-12 admin source approval route
+  ✔ answers anonymous list and approval requests with 401 and changes nothing (43.802067ms)
+  ✔ answers moderators, users and inactive administrators with 403 and writes nothing (11.701838ms)
+  ✔ refuses browser writes without the exact Origin or with a missing or wrong CSRF token (8.673632ms)
+  ✔ approval by an administrator updates the registry and writes one trace and audit row, read back from the database (18.18716ms)
+  ✔ revocation stops auto-publication only: collection stays on (FR-16) and the audit row records the change (23.5846ms)
+  ✔ answers an approval that repeats the current status with 409 and writes nothing (6.982162ms)
+  ✔ answers an unknown source with 404 and writes nothing (4.913965ms)
+  ✔ refuses malformed bodies with 400 before any write (8.844259ms)
+  ✔ re-approval and a second revocation both leave collection on (FR-16), and the audit log counts each transition (23.221778ms)
+  ✔ the list shows public display as granted only for an approved, collecting source whose reuse basis carries public_display (16.610051ms)
+  ✔ the admin list adds the restriction and health fields and nothing else, and the health states follow the hosted writer (17.755451ms)
+  ✔ maps a storage failure to 503 with a generic body (1.236218ms)
+  ✔ answers other methods with 405 and unknown subpaths with 404, and ignores unrelated paths (0.717769ms)
+✔ FR-12 admin source approval route (17767.952032ms)
+ℹ tests 13
+ℹ suites 1
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20008.536085

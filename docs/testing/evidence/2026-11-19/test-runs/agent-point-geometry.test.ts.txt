@@ -1,0 +1,38 @@
+▶ HOSTED-10 point rule
+  ✔ (a) an agent coordinate inside the box is the one Point, labelled model_approximate (4.043353ms)
+  ✔ (b) no usable coordinate gives no geometry, location_display whole_view, and the event is listed (0.959366ms)
+  ✔ (c) a non-group event with neither a place id nor a label is INVALID_EVENT, with or without a coordinate (0.642058ms)
+  ✔ (d) a group-specific critical notice with no location is listed as a whole view, with no point (0.493894ms)
+  ✔ a group notice with a label but no coordinate is a whole view, not a fallback point (0.293483ms)
+  ✔ the point label is the event's own label, or a neutral one (0.249071ms)
+✔ HOSTED-10 point rule (8.811798ms)
+▶ HOSTED-10 projector target rule
+  ✔ (c) a non-group event with no place and no geometry is INVALID_EVENT (2.052209ms)
+  ✔ a geometry alone is a public target, so an event needs no gazetteer place id (1.679007ms)
+  ✔ (d) a group notice with no location is listed without a target (0.732856ms)
+✔ HOSTED-10 projector target rule (5.067208ms)
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"public_event_list_skipped","skipped":3}
+▶ HOSTED-10 publication writes the point and its evidence
+  ✔ (a) an agent coordinate inside the box is one Point geometry, linked by every claim of the version (232.820276ms)
+  ✔ (a2) the Point reaches the public detail reader and the GeoJSON candidates, with its label (120.213977ms)
+  ✔ (a3) a later version at the same coordinate reuses the row, from another trace and revision, without error (78.869719ms)
+  ✔ (a5) the Point write runs as the publication role: create, repeat, and no read of the report text (21.880953ms)
+  ✔ (b) no usable coordinate publishes as a whole view, with no geometry row (41.74531ms)
+  ✔ (c) an event with neither a place id nor a label is refused and writes nothing (16.147661ms)
+  ✔ (c2) a non-group event with neither a place id nor a label and no coordinate is INVALID_EVENT at publish (27.540405ms)
+  ✔ (d) a group notice with no location is listed by a moderator as a whole view, with no point (33.763038ms)
+  ✔ the DB list lists none of these events yet and the page does not fail (93.810438ms)
+  ✔ (a4) a merged proposal whose claim has no exact support is refused, and writes no row (33.388226ms)
+✔ HOSTED-10 publication writes the point and its evidence (17417.806743ms)
+ℹ tests 19
+ℹ suites 3
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20523.651147

@@ -1,0 +1,738 @@
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 7
+Run Database Tests	ℹ pass 7
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 11
+Run Database Tests	ℹ pass 11
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 9
+Run Database Tests	ℹ pass 9
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 11
+Run Database Tests	ℹ pass 11
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 7
+Run Database Tests	ℹ pass 7
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 19
+Run Database Tests	ℹ pass 19
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 9
+Run Database Tests	ℹ pass 9
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 2
+Run Database Tests	ℹ pass 2
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 2
+Run Database Tests	ℹ pass 2
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 8
+Run Database Tests	ℹ pass 8
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 11
+Run Database Tests	ℹ pass 11
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 7
+Run Database Tests	ℹ pass 7
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 14
+Run Database Tests	ℹ pass 14
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 21
+Run Database Tests	ℹ pass 21
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 4
+Run Database Tests	ℹ pass 4
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 4
+Run Database Tests	ℹ pass 4
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 5
+Run Database Tests	ℹ pass 5
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 22
+Run Database Tests	ℹ pass 22
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 8
+Run Database Tests	ℹ pass 8
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 9
+Run Database Tests	ℹ pass 9
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 9
+Run Database Tests	ℹ pass 9
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 5
+Run Database Tests	ℹ pass 5
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 11
+Run Database Tests	ℹ pass 11
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 8
+Run Database Tests	ℹ pass 8
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 9
+Run Database Tests	ℹ pass 9
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 8
+Run Database Tests	ℹ pass 8
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 7
+Run Database Tests	ℹ pass 7
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 7
+Run Database Tests	ℹ pass 7
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 11
+Run Database Tests	ℹ pass 11
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 4
+Run Database Tests	ℹ pass 4
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 7
+Run Database Tests	ℹ pass 7
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 15
+Run Database Tests	ℹ pass 15
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 17
+Run Database Tests	ℹ pass 17
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 6
+Run Database Tests	ℹ pass 6
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 7
+Run Database Tests	ℹ pass 7
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 11
+Run Database Tests	ℹ pass 11
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 3
+Run Database Tests	ℹ pass 3
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 9
+Run Database Tests	ℹ pass 9
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 5
+Run Database Tests	ℹ pass 5
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 5
+Run Database Tests	ℹ pass 5
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 5
+Run Database Tests	ℹ pass 5
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 4
+Run Database Tests	ℹ pass 4
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	ℹ tests 1
+Run Database Tests	ℹ pass 1
+Run Database Tests	ℹ fail 0
+Run Database Tests	ℹ skipped 0
+Run Database Tests	ℹ todo 0
+Run Database Tests	DB test files: 66/66 passed.
+Run Database Tests	PASS account-role-change-audit.test.ts
+Run Database Tests	PASS accounts.test.ts
+Run Database Tests	PASS ai-job-rate-limit.test.ts
+Run Database Tests	PASS embedding-generation-composition.test.ts
+Run Database Tests	PASS embedding-runs.test.ts
+Run Database Tests	PASS event-proposal-reader.test.ts
+Run Database Tests	PASS event-proposal-writer.test.ts
+Run Database Tests	PASS event-proposals.test.ts
+Run Database Tests	PASS evidence-chunks.test.ts
+Run Database Tests	PASS evidence-retrieval.test.ts
+Run Database Tests	PASS extraction-results.test.ts
+Run Database Tests	PASS facility-repository.test.ts
+Run Database Tests	PASS freshness-due-evaluator-composition.test.ts
+Run Database Tests	PASS freshness-due-run-traces.test.ts
+Run Database Tests	PASS freshness-due-schedule-runtime-composition.test.ts
+Run Database Tests	PASS freshness-due-target-reader.test.ts
+Run Database Tests	PASS freshness-transition-ledger.test.ts
+Run Database Tests	PASS geometry-writer.test.ts
+Run Database Tests	PASS grounding-contexts.test.ts
+Run Database Tests	PASS hosted38-history-review-metadata.test.ts
+Run Database Tests	PASS incident-repository.test.ts
+Run Database Tests	PASS investigation-ledger.test.ts
+Run Database Tests	PASS l2-context-resumption-composition.test.ts
+Run Database Tests	PASS l3-investigation-publication-gate.test.ts
+Run Database Tests	PASS l3-reasoning-budget.test.ts
+Run Database Tests	PASS l3-tool-attempt-budget.test.ts
+Run Database Tests	PASS manual-publication-gate-composition.test.ts
+Run Database Tests	PASS manual-publication-public-read-chain.test.ts
+Run Database Tests	PASS migrations.test.ts
+Run Database Tests	PASS news-triage-decisions.test.ts
+Run Database Tests	PASS nfr07-session-retention.test.ts
+Run Database Tests	PASS password-accounts.test.ts
+Run Database Tests	PASS persistence.test.ts
+Run Database Tests	PASS petabencana-ingest-pglite.test.ts
+Run Database Tests	PASS pipeline-flow-cycle-store.test.ts
+Run Database Tests	PASS pipeline-flow-store.test.ts
+Run Database Tests	PASS postgres-sql-executor.test.ts
+Run Database Tests	PASS proposal-expiry.test.ts
+Run Database Tests	PASS proposal-supersede.test.ts
+Run Database Tests	PASS public-briefing-candidates.test.ts
+Run Database Tests	PASS public-event-geojson-candidates.test.ts
+Run Database Tests	PASS public-event-geometries.test.ts
+Run Database Tests	PASS public-event-history-disclosure.test.ts
+Run Database Tests	PASS public-event-history.test.ts
+Run Database Tests	PASS public-event-list.test.ts
+Run Database Tests	PASS public-event-snapshot.test.ts
+Run Database Tests	PASS public-event-updates.test.ts
+Run Database Tests	PASS public-projection-lookups.test.ts
+Run Database Tests	PASS publication-outbox-delivery.test.ts
+Run Database Tests	PASS publication-writer.test.ts
+Run Database Tests	PASS queue.test.ts
+Run Database Tests	PASS rag-grounded-proposal-roundtrip.test.ts
+Run Database Tests	PASS report-revision-impact-reader.test.ts
+Run Database Tests	PASS report-revision-source-observations.test.ts
+Run Database Tests	PASS retrieval-limits.test.ts
+Run Database Tests	PASS source-approval-store.test.ts
+Run Database Tests	PASS source-display-names.test.ts
+Run Database Tests	PASS source-revision-freshness-run-state.test.ts
+Run Database Tests	PASS source-revision-freshness-target-reader.test.ts
+Run Database Tests	PASS source-revision-freshness-transition-composition.test.ts
+Run Database Tests	PASS source-revision-review-candidate-reader.test.ts
+Run Database Tests	PASS synthetic-fixture-pipeline.test.ts
+Run Database Tests	PASS synthetic-poll-schedule-runtime.test.ts
+Run Database Tests	PASS synthetic-publication-isolation-composition.test.ts
+Run Database Tests	PASS synthetic-schedule-process-runtime-composition.test.ts
+Run Database Tests	PASS synthetic-source-poll-process-runtime.test.ts
+Run Web Tests	✔ quake origins retain their source description when passed to the default map (4.747796ms)
+Run Web Tests	ℹ tests 514
+Run Web Tests	ℹ pass 514
+Run Web Tests	ℹ fail 0
+Run Web Tests	ℹ skipped 0
+Run Web Tests	ℹ todo 0
+Run Worker Tests	    ✔ a publish that passed its pre-check before another publish committed publishes nothing (F-CONC-01) (33.78617ms)
+Run Worker Tests	✔ one bounded due page: passed review date needs update, ended validity expires, a missing feed stays current (13.107374ms)
+Run Worker Tests	✔ an SSE stream is passed through unread, so its chunks arrive intact and in order (1.749499ms)
+Run Worker Tests	ℹ tests 1481
+Run Worker Tests	ℹ pass 1478
+Run Worker Tests	ℹ fail 0
+Run Worker Tests	ℹ skipped 0
+Run Worker Tests	ℹ todo 3
+Run Intelligence Tests	ℹ tests 239
+Run Intelligence Tests	ℹ pass 238
+Run Intelligence Tests	ℹ fail 0
+Run Intelligence Tests	ℹ skipped 0
+Run Intelligence Tests	ℹ todo 1
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	ℹ tests 1
+Run Pipeline Tests	ℹ pass 1
+Run Pipeline Tests	ℹ fail 0
+Run Pipeline Tests	ℹ skipped 0
+Run Pipeline Tests	ℹ todo 0
+Run Pipeline Tests	Pipeline cases: 58/58 passed.
+Run Accounts Tests	ℹ tests 2
+Run Accounts Tests	ℹ pass 2
+Run Accounts Tests	ℹ fail 0
+Run Accounts Tests	ℹ skipped 0
+Run Accounts Tests	ℹ todo 0
+Run Accounts Tests	ℹ tests 1
+Run Accounts Tests	ℹ pass 1
+Run Accounts Tests	ℹ fail 0
+Run Accounts Tests	ℹ skipped 0
+Run Accounts Tests	ℹ todo 0
+Run Accounts Tests	ℹ tests 83
+Run Accounts Tests	ℹ pass 83
+Run Accounts Tests	ℹ fail 0
+Run Accounts Tests	ℹ skipped 0
+Run Accounts Tests	ℹ todo 0
+Run Accounts Tests	ℹ tests 14
+Run Accounts Tests	ℹ pass 14
+Run Accounts Tests	ℹ fail 0
+Run Accounts Tests	ℹ skipped 0
+Run Accounts Tests	ℹ todo 0
+Run Accounts Tests	ℹ tests 15
+Run Accounts Tests	ℹ pass 15
+Run Accounts Tests	ℹ fail 0
+Run Accounts Tests	ℹ skipped 0
+Run Accounts Tests	ℹ todo 0
+Run Evaluation and AI Tool Tests	  ✔ a passed review_due_at records needs_update and writes nothing else (8.852822ms)
+Run Evaluation and AI Tool Tests	ℹ tests 74
+Run Evaluation and AI Tool Tests	ℹ pass 74
+Run Evaluation and AI Tool Tests	ℹ fail 0
+Run Evaluation and AI Tool Tests	ℹ skipped 0
+Run Evaluation and AI Tool Tests	ℹ todo 0

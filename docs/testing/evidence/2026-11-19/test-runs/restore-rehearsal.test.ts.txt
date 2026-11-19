@@ -1,0 +1,27 @@
+▶ restore rehearsal
+  ✔ excludes account and session state, recording only counts (9.270198ms)
+  ✔ keeps password hashes, session token hashes and usernames out of every dump file (326.445954ms)
+  ✔ records the migration ids and checksums from the ledger, matching the repository (43.062099ms)
+  ✔ writes manifest row counts that match the source database (34.16948ms)
+  ✔ restores every table to the manifest counts and the same published events (0.18938ms)
+  ✔ reads the same public event digest from the source and from the restored database (13.539247ms)
+  ✔ writes restore-report.json next to the dump with timings and counts (7.464686ms)
+  ✔ reads the export in one read-only snapshot and rejects a write attempt made inside it (428.196371ms)
+  ✔ refuses to write into a directory that already has files (4.617647ms)
+  ✔ refuses a dump whose file was changed, before any restore database exists (1129.446959ms)
+  ✔ refuses a dump whose migration checksum differs, before any restore database exists (1732.131956ms)
+✔ restore rehearsal (40468.269184ms)
+▶ restore rehearsal helpers
+  ✔ accepts only a directory strictly inside .codex-build/restore (3.009729ms)
+  ✔ orders parents before children and reports the cyclic remainder (0.286721ms)
+  ✔ excludes any table with a credential-style column, and nothing else (0.214276ms)
+  ✔ refuses a dump directory outside the restore root before any connection (2.041299ms)
+✔ restore rehearsal helpers (6.050318ms)
+ℹ tests 15
+ℹ suites 2
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 44237.209662

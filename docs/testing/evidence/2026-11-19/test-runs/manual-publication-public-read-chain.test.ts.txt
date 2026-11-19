@@ -1,0 +1,13 @@
+▶ PUB-01 manual publication and public read-chain PGlite composition
+  ✔ publishes both versions through the gate, then reads the correction through public handlers, history, and updates (604.557831ms)
+  ✔ denies a stale evidence assessment before publication writes (71.284555ms)
+  ✔ does not register the manual gate in Worker routes, scheduled handlers, or demo runtime (1060.912341ms)
+✔ PUB-01 manual publication and public read-chain PGlite composition (19198.108965ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23580.769355

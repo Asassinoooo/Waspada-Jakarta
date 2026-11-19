@@ -1,0 +1,19 @@
+✔ projects the exact OpenAPI EventView allowlist with synthetic test lookups (7.475876ms)
+✔ projection ordering is stable when stored and lookup arrays arrive in another order (1.808126ms)
+✔ event freshness aggregation covers each status combination and preserves the empty-impact status (2.288365ms)
+✔ event freshness aggregation is order independent and rejects invalid inputs (1.063348ms)
+✔ non-live and withdrawn event versions fail closed (0.747003ms)
+✔ invalid consumed event, claim, freshness, time, and version fields fail closed (1.364846ms)
+✔ range times preserve mixed date/date-time endpoints and reject inverted same-type endpoints (1.300968ms)
+✔ missing, ambiguous, or invalid scope names fail closed (1.123219ms)
+✔ support attributions must match exact span, be approved, and use HTTPS (2.831479ms)
+✔ impacts must exactly match every event reference and have no extras (2.556722ms)
+✔ malformed lookup container returns a bounded typed error without echoing input (0.358263ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1461.952206

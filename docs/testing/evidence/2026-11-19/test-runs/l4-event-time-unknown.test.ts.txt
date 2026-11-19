@@ -1,0 +1,19 @@
+✔ F-14: a proposal without an event time has no event start and unknown precision (3.723731ms)
+✔ F-14: a proposal with unknown precision keeps no event start even if a value is present (0.564214ms)
+✔ F-14: an exact time without a value is treated as no event time, not as proposed_at (0.343205ms)
+✔ F-14: a proposal without an event time is not marked current and invents no validity start (0.36749ms)
+✔ F-14: claims of a proposal without an event time carry no event start (0.337776ms)
+✔ F-14 control: a proposal with a source event time keeps its start, precision and current freshness (1.055434ms)
+✔ F-14: a raw input without an event time is listed and detailed with no event start (3.029407ms)
+✔ F-14: a raw input keeps its own source event time as the event start (0.832141ms)
+✔ F-14: a date filter does not match an event that has no event start (1.629806ms)
+✔ HOSTED-21: the stored v2 record of an event with no event time is accepted by the public projection (3.762254ms)
+✔ HOSTED-21: a source publish time is never the processing time, and no source time is invented (0.35145ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1733.607158

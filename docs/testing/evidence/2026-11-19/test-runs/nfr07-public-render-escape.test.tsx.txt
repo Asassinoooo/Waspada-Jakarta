@@ -1,0 +1,10 @@
+✔ NFR-07 A3: a script, an image handler and a javascript: link in source text never reach the public page as markup (20.626594ms)
+✔ NFR-07 A3: the hostile text is shown escaped, so the reader sees the words and the browser runs nothing (5.136017ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1857.68348

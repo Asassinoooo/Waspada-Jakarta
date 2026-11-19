@@ -1,0 +1,13 @@
+✔ an exact-live detail read projects approved fields and exact geometry in one SQL operation (50.051687ms)
+✔ an absent or currently withdrawn public event maps to the existing not-found envelope (2.16104ms)
+✔ missing and malformed configuration never invokes the SQL executor (0.50792ms)
+✔ invalid event IDs are rejected before opening the request-scoped SQL executor (1.293374ms)
+✔ database and projection failures stay generic and redact event and connection details (1.187107ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3158.01177

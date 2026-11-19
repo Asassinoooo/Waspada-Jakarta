@@ -1,0 +1,52 @@
+✔ reads one current snapshot, requests only deduplicated public keys, and returns the strict EventView (10.230404ms)
+✔ returns missing without asking the lookup port (0.487843ms)
+✔ rejects an invalid event identifier without reading either port (1.179232ms)
+▶ rejects snapshot and record identity mismatches before reviewed lookup
+  ✔ requested ID does not match snapshot ID (0.425317ms)
+  ✔ snapshot version does not match event record (0.374603ms)
+  ✔ event record ID does not match snapshot (1.817684ms)
+  ✔ event record version does not match snapshot (0.989231ms)
+  ✔ impact envelope event ID does not match snapshot (0.475229ms)
+  ✔ impact envelope event version does not match snapshot (0.515144ms)
+  ✔ impact envelope ID does not match impact record (0.625217ms)
+  ✔ impact envelope version does not match impact record (0.45913ms)
+  ✔ impact record event ID does not match snapshot (0.569695ms)
+  ✔ impact record event version does not match snapshot (0.352352ms)
+  ✔ impact record ID does not match envelope (0.505986ms)
+  ✔ impact record version does not match envelope (0.424136ms)
+  ✔ event impact reference does not match snapshot impacts (0.284206ms)
+  ✔ synthetic snapshot is rejected before lookup (0.149767ms)
+✔ rejects snapshot and record identity mismatches before reviewed lookup (11.180432ms)
+▶ rejects malformed scope and support keys before lookup
+  ✔ invalid scope identifier (0.278595ms)
+  ✔ invalid support relation (0.195692ms)
+  ✔ missing claim scope (0.170536ms)
+✔ rejects malformed scope and support keys before lookup (1.358414ms)
+▶ rejects more than 100 deduplicated scope keys or support references before lookup
+  ✔ scope keys (0.338005ms)
+  ✔ support references (0.436648ms)
+✔ rejects more than 100 deduplicated scope keys or support references before lookup (1.057446ms)
+▶ fails closed on missing or ambiguous reviewed names and support attributions
+  ✔ missing scope name (0.881632ms)
+  ✔ duplicate scope name (0.537104ms)
+  ✔ missing support attribution (0.733858ms)
+  ✔ duplicate support attribution (0.533838ms)
+✔ fails closed on missing or ambiguous reviewed names and support attributions (3.368895ms)
+▶ rejects every lookup attribution row that is not excerpt-free
+  ✔ approved excerpt (0.822212ms)
+  ✔ non-null excerpt without approval (0.359886ms)
+  ✔ non-record attribution row (0.418114ms)
+✔ rejects every lookup attribution row that is not excerpt-free (2.555951ms)
+▶ maps port and projector failures to stable redacted errors
+  ✔ snapshot reader failure (0.297882ms)
+  ✔ lookup reader failure (0.442809ms)
+  ✔ projector validation failure (0.654832ms)
+✔ maps port and projector failures to stable redacted errors (2.055825ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1369.971471

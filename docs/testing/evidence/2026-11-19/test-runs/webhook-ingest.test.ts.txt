@@ -1,0 +1,20 @@
+✔ isWebhookIngestPath matches exact ingestion route (2.146363ms)
+✔ validateEnvelopeCoordinates validates and normalizes Jakarta bounds (1.479549ms)
+✔ validateInboundIncidentEvent checks required fields and formats (0.794871ms)
+✔ webhookIngestHandler rejects non-POST requests with 405 Method Not Allowed (45.757517ms)
+✔ webhookIngestHandler rejects invalid JSON bodies with 400 Bad Request (5.50589ms)
+✔ webhookIngestHandler rejects events outside Jakarta envelope with 400 (2.198058ms)
+✔ single inbound event push generates proposal and broadcasts to moderation SSE (36.440944ms)
+✔ batch inbound event push validates all events and generates proposals (21.039199ms)
+✔ batch push rejects entire batch if one event is invalid (1.276142ms)
+✔ convertInboundEventToRevision produces valid chunk span offsets (3.38226ms)
+✔ inbound event correlates with active reports when spatial and temporal overlap matches (15.841679ms)
+✔ ST-F-11: a malformed webhook item creates no revision, proposal, broadcast or AI-job callback (8.075756ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1803.060594

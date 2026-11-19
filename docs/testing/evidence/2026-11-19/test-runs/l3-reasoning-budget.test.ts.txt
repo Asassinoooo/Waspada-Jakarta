@@ -1,0 +1,15 @@
+▶ NFR-02 L3 reasoning, active-time and token budget (database)
+  ✔ four planning calls run and the fifth is refused as budget_exhausted before the model is called (275.630348ms)
+  ✔ the 60-second active-time budget stops the case before a call that would pass it (130.790958ms)
+  ✔ a failed call is charged its full active-time reservation, so two failures use 60 seconds and a third is refused (121.091776ms)
+  ✔ the 12,000-token budget stops the case: failed calls are charged their token reservation, and a third is refused (104.266298ms)
+  ✔ a restarted executor and repository resume with the prior usage, so the same case stays refused (127.708324ms)
+✔ NFR-02 L3 reasoning, active-time and token budget (database) (17728.41541ms)
+ℹ tests 5
+ℹ suites 1
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20016.315771
