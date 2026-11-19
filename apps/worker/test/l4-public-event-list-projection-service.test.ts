@@ -10,6 +10,7 @@ import {
 import {
   PublicEventProjectionServiceError,
   type PublicEventProjectionReadResult,
+  type PublicEventProjectionService,
 } from "../src/layers/l4-application-integration/public-event-projection-service.js";
 
 type RecordValue = Record<string, unknown>;
@@ -69,6 +70,26 @@ function cursorFor(candidate: RecordValue): PublicEventListCursor {
   };
 }
 
+/**
+ * The page's batch projection port, built from a per-event projector. A projector throw is that event's own error,
+ * as it is for the real projector's readMany. A throw from readMany itself is a failed batch read.
+ */
+function projectionPort(
+  project: (eventId: unknown) => unknown | Promise<unknown>,
+): Pick<PublicEventProjectionService, "readMany"> {
+  return {
+    async readMany(eventIds) {
+      return Promise.all(eventIds.map(async (eventId) => {
+        try {
+          return { value: await project(eventId) as PublicEventProjectionReadResult };
+        } catch (error) {
+          return { error: error as PublicEventProjectionServiceError };
+        }
+      }));
+    },
+  };
+}
+
 function createService(
   candidateResult: unknown,
   project: (eventId: unknown) => unknown | Promise<unknown> = (eventId) => ({
@@ -84,11 +105,7 @@ function createService(
         return candidateResult;
       },
     },
-    projections: {
-      async read(eventId) {
-        return await project(eventId) as PublicEventProjectionReadResult;
-      },
-    },
+    projections: projectionPort(project),
   });
 }
 
@@ -262,12 +279,10 @@ test("rejects closed request violations before calling either injected port", as
   let projectionCalls = 0;
   const service = createPublicEventListProjectionService({
     candidates: { async read() { candidateCalls += 1; return makePage([]); } },
-    projections: {
-      async read() {
-        projectionCalls += 1;
-        return { kind: "missing" };
-      },
-    },
+    projections: projectionPort(async () => {
+      projectionCalls += 1;
+      return { kind: "missing" };
+    }),
   });
   const invalidRequests: unknown[] = [
     null,
@@ -417,7 +432,7 @@ test("redacts candidate and projector port failures and never returns a partial 
         throw new Error("private SQL content " + eventA);
       },
     },
-    projections: { async read() { return { kind: "missing" }; } },
+    projections: projectionPort(async () => ({ kind: "missing" })),
   });
   await assertServiceError(
     candidateFailure.read({ limit: 1 }),
@@ -475,28 +490,39 @@ test("fails a filtered page when a current projection advances beyond its candid
   );
 });
 
-test("caps projector fan-out at four while retaining original candidate order", async () => {
+test("PERF-01: a page is projected in one batch call that names the candidates in their original order", async () => {
   const candidates = Array.from({ length: 9 }, (_, index) => {
     const minute = String(9 - index).padStart(2, "0");
-    return makeCandidate("event-concurrency-" + index, "2026-09-27T03:" + minute + ":00.000000Z");
+    return makeCandidate("event-batch-" + index, "2026-09-27T03:" + minute + ":00.000000Z");
   });
-  let active = 0;
-  let maximumActive = 0;
-  const service = createService(
-    makePage(candidates, cursorFor(candidates.at(-1)!)),
-    async (eventId) => {
-      active += 1;
-      maximumActive = Math.max(maximumActive, active);
-      await new Promise<void>((resolve) => setTimeout(resolve, 1));
-      active -= 1;
-      return { kind: "found", event: makeEventView(String(eventId)) };
+  const batches: unknown[][] = [];
+  const service = createPublicEventListProjectionService({
+    candidates: { async read() { return makePage(candidates, cursorFor(candidates.at(-1)!)); } },
+    projections: {
+      async readMany(eventIds) {
+        batches.push([...eventIds]);
+        return eventIds.map((eventId) => ({
+          value: { kind: "found" as const, event: makeEventView(String(eventId)) },
+        }));
+      },
     },
-  );
+  });
 
   const result = await service.read({ limit: candidates.length });
-  assert.equal(maximumActive, 4);
+  assert.deepEqual(batches, [candidates.map((candidate) => candidate.eventId)]);
   assert.deepEqual(
     result.events.map((event) => event.event_id),
     candidates.map((candidate) => candidate.eventId),
   );
+});
+
+test("PERF-01: a failed batch read fails the whole page and never leaks the batch error", async () => {
+  const service = createPublicEventListProjectionService({
+    candidates: { async read() { return makePage([makeCandidate(eventA, firstTime)], null); } },
+    projections: {
+      async readMany() { throw new Error("private batch detail " + eventA); },
+    },
+  });
+
+  await assertServiceError(service.read({ limit: 1 }), "PROJECTION_READ_FAILED", [eventA, "private batch detail"]);
 });

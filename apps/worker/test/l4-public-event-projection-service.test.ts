@@ -220,11 +220,24 @@ function makeHarness(
         snapshotCalls.push(id);
         return snapshotResult as PublicEventProjectionSnapshotReadResult;
       },
+      async readMany(ids) {
+        snapshotCalls.push(...ids);
+        const found = snapshotResult as PublicEventProjectionSnapshotReadResult | undefined;
+        return found?.kind === "found" && ids.includes(found.snapshot.eventId) ? [found.snapshot] : [];
+      },
     },
     lookups: {
       async resolve(query) {
         lookupCalls.push(query);
         return await resolve(query) as PublicEventProjectionLookupResult;
+      },
+      async resolveMany(requests) {
+        const results: PublicEventProjectionLookupResult[] = [];
+        for (const query of requests) {
+          lookupCalls.push(query);
+          results.push(await resolve(query) as PublicEventProjectionLookupResult);
+        }
+        return results;
       },
     },
   });
@@ -575,8 +588,14 @@ test("maps port and projector failures to stable redacted errors", async (t) => 
   await t.test("snapshot reader failure", async () => {
     const harness = makeHarness(undefined);
     harness.service = createPublicEventProjectionService({
-      snapshots: { async read() { throw new Error(`PRIVATE_EVENT_ID ${eventId}`); } },
-      lookups: { async resolve(query) { return defaultLookupResult(query); } },
+      snapshots: {
+        async read() { throw new Error(`PRIVATE_EVENT_ID ${eventId}`); },
+        async readMany() { throw new Error(`PRIVATE_EVENT_ID ${eventId}`); },
+      },
+      lookups: {
+        async resolve(query) { return defaultLookupResult(query); },
+        async resolveMany(requests) { return requests.map((query) => defaultLookupResult(query)); },
+      },
     });
     await assert.rejects(harness.service.read(eventId), (error: unknown) => {
       assertServiceError(error, "SNAPSHOT_READ_FAILED", eventId);

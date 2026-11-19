@@ -1,9 +1,13 @@
 import type { EventView } from "../../contracts/public-api.js";
 import {
   PublicEventProjectionServiceError,
+  type PublicEventProjectionBatchOutcome,
   type PublicEventProjectionService,
 } from "./public-event-projection-service.js";
 
+/**
+ * maxConcurrentProjections is the batch size the briefing projector still uses. The list projects its page in one call.
+ */
 export const PUBLIC_EVENT_LIST_PROJECTION_LIMITS = Object.freeze({
   defaultPageSize: 20,
   maxPageSize: 100,
@@ -143,7 +147,7 @@ export const optionalEventViewKeys: readonly string[] = ["severity", "location_d
  */
 export function createPublicEventListProjectionService(ports: {
   readonly candidates: PublicEventListCandidateReadPort;
-  readonly projections: PublicEventProjectionService;
+  readonly projections: Pick<PublicEventProjectionService, "readMany">;
 }): PublicEventListProjectionService {
   return {
     async read(request?: unknown): Promise<PublicEventListProjectionResult> {
@@ -165,38 +169,35 @@ export function createPublicEventListProjectionService(ports: {
       const events: EventView[] = [];
       let skipped = 0;
 
-      for (let offset = 0; offset < page.candidates.length; offset += PUBLIC_EVENT_LIST_PROJECTION_LIMITS.maxConcurrentProjections) {
-        const batch = page.candidates.slice(
-          offset,
-          offset + PUBLIC_EVENT_LIST_PROJECTION_LIMITS.maxConcurrentProjections,
-        );
-        // Each candidate settles on its own. A candidate the strict projector rejects as INVALID_EVENT or as
-        // ATTRIBUTION_FAILED is skipped (fail closed for that event only). Any other projection error still fails the page.
-        const outcomes = await Promise.all(batch.map(async (candidate) => {
-          try {
-            return { value: await ports.projections.read(candidate.eventId) };
-          } catch (error) {
-            return { error };
-          }
-        }));
-        if (outcomes.some((outcome) => "error" in outcome && !isSkippableEventProjection(outcome.error))) {
-          fail("PROJECTION_READ_FAILED");
-        }
+      // PERF-01: the whole page is projected in one readMany call, so its snapshots and lookups are read set-wise
+      // rather than once per event. Each candidate still settles on its own. A candidate the strict projector rejects
+      // as INVALID_EVENT or as ATTRIBUTION_FAILED is skipped (fail closed for that event only). Any other projection
+      // error, or a failed batch read, fails the page.
+      let outcomes: readonly PublicEventProjectionBatchOutcome[];
+      try {
+        outcomes = await ports.projections.readMany(page.candidates.map((candidate) => candidate.eventId));
+      } catch {
+        fail("PROJECTION_READ_FAILED");
+      }
+      if (!Array.isArray(outcomes) || outcomes.length !== page.candidates.length) fail("PROJECTION_READ_FAILED");
+      for (const outcome of outcomes) {
+        if (typeof outcome !== "object" || outcome === null) fail("PROJECTION_READ_FAILED");
+        if ("error" in outcome && !isSkippableEventProjection(outcome.error)) fail("PROJECTION_READ_FAILED");
+      }
 
-        for (let index = 0; index < batch.length; index += 1) {
-          const candidate = batch[index]!;
-          const outcome = outcomes[index]!;
-          if ("error" in outcome) {
-            skipped += 1;
-            continue;
-          }
-          try {
-            const event = validateProjectionResult(outcome.value, candidate, validatedRequest.hasFilters);
-            if (event !== null) events.push(event);
-          } catch (error) {
-            if (error instanceof PublicEventListProjectionServiceError) throw error;
-            fail("PROJECTION_RESULT_INVALID");
-          }
+      for (let index = 0; index < page.candidates.length; index += 1) {
+        const candidate = page.candidates[index]!;
+        const outcome = outcomes[index]!;
+        if ("error" in outcome) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          const event = validateProjectionResult(outcome.value, candidate, validatedRequest.hasFilters);
+          if (event !== null) events.push(event);
+        } catch (error) {
+          if (error instanceof PublicEventListProjectionServiceError) throw error;
+          fail("PROJECTION_RESULT_INVALID");
         }
       }
 

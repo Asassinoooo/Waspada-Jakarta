@@ -53,12 +53,19 @@ export interface PublicProjectionLookupResult {
 export interface PublicProjectionLookupRepository {
   /** Resolves only caller-requested exact keys. Missing or withdrawn keys are omitted. */
   resolve(input: unknown): Promise<PublicProjectionLookupResult>;
+  /**
+   * PERF-01: resolves several requests with at most one scope-name read and one attribution read. Entry i equals
+   * resolve(inputs[i]). Every request is validated against its own limits.
+   */
+  resolveMany(inputs: unknown): Promise<readonly PublicProjectionLookupResult[]>;
 }
 
 export const PUBLIC_PROJECTION_LOOKUP_LIMITS = Object.freeze({
   scopeKeys: 100,
   supportReferences: 100,
   identifierLength: 200,
+  /** PERF-01: the most requests one resolveMany call accepts (one per event of a page). */
+  batchRequests: 100,
 });
 
 export type PublicProjectionLookupErrorCode = 'INVALID_QUERY' | 'QUERY_LIMIT_EXCEEDED' | 'LOOKUP_RESULT_INVALID';
@@ -111,16 +118,64 @@ export function createPublicProjectionLookupRepository(
 ): PublicProjectionLookupRepository {
   return {
     async resolve(input: unknown): Promise<PublicProjectionLookupResult> {
-      const query = validateQuery(input);
-      const [scopeNames, publicAttributions] = await Promise.all([
-        query.scopeKeys.length === 0 ? Promise.resolve([]) : readScopeNames(executor, query.scopeKeys),
-        query.supportReferences.length === 0
-          ? Promise.resolve([])
-          : readSourceAttributions(executor, query.supportReferences),
-      ]);
-      return { scopeNames, publicAttributions };
+      const [result] = await resolveQueries(executor, [validateQuery(input)]);
+      return result!;
+    },
+    async resolveMany(inputs: unknown): Promise<readonly PublicProjectionLookupResult[]> {
+      if (!Array.isArray(inputs)) fail('INVALID_QUERY');
+      if (inputs.length > PUBLIC_PROJECTION_LOOKUP_LIMITS.batchRequests) fail('QUERY_LIMIT_EXCEEDED');
+      if (inputs.length === 0) return [];
+      return resolveQueries(executor, inputs.map(validateQuery));
     },
   };
+}
+
+/**
+ * Reads the union of the requested keys once per kind, then gives each request exactly the rows its own keys name, in
+ * the same sorted order a single read would return. A request therefore gets the same result alone or in a batch.
+ */
+async function resolveQueries(
+  executor: SqlExecutor,
+  queries: readonly PublicProjectionLookupQuery[],
+): Promise<PublicProjectionLookupResult[]> {
+  const scopeKeys = uniqueByIdentity(queries.flatMap((query) => query.scopeKeys), scopeKey);
+  const supportReferences = uniqueByIdentity(queries.flatMap((query) => query.supportReferences), supportKey);
+  const [scopeRows, attributionRows] = await Promise.all([
+    scopeKeys.length === 0 ? Promise.resolve([]) : readScopeNames(executor, scopeKeys),
+    supportReferences.length === 0 ? Promise.resolve([]) : readSourceAttributions(executor, supportReferences),
+  ]);
+  const scopeEntries = scopeRows.map((row) => ({
+    identity: scopeKey({ entityType: row.entity_type, entityId: row.id }),
+    row,
+  }));
+  const attributionEntries = attributionRows.map((row) => ({
+    identity: supportKey({
+      reportRevisionId: row.report_revision_id,
+      permittedTextHash: row.permitted_text_hash,
+      spanStart: row.span_start,
+      spanEnd: row.span_end,
+      offsetUnit: row.offset_unit,
+      relation: row.relation,
+    }),
+    row,
+  }));
+
+  return queries.map((query) => {
+    const wantedScopes = new Set(query.scopeKeys.map(scopeKey));
+    const wantedSupports = new Set(query.supportReferences.map(supportKey));
+    return {
+      scopeNames: scopeEntries.filter((entry) => wantedScopes.has(entry.identity)).map((entry) => entry.row),
+      publicAttributions: attributionEntries
+        .filter((entry) => wantedSupports.has(entry.identity))
+        .map((entry) => entry.row),
+    };
+  });
+}
+
+function uniqueByIdentity<Item>(items: readonly Item[], identity: (item: Item) => string): Item[] {
+  const byIdentity = new Map<string, Item>();
+  for (const item of items) byIdentity.set(identity(item), item);
+  return [...byIdentity.values()];
 }
 
 function validateQuery(value: unknown): PublicProjectionLookupQuery {

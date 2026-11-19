@@ -812,9 +812,13 @@ function readDateTime(value: unknown, code: PublicProjectionErrorCode): string {
   return value;
 }
 
+// PERF-01: the patterns are built once, not on every per-event, per-field check.
+const dateTimePattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/u;
+const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
+
 function isDateTime(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/u.exec(value);
+  const match = dateTimePattern.exec(value);
   if (!match) return false;
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -835,7 +839,7 @@ function readDateOnly(value: unknown, code: PublicProjectionErrorCode): string {
 
 function isDateOnly(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  const match = dateOnlyPattern.exec(value);
   if (!match) return false;
   const year = Number(match[1]);
   const month = Number(match[2]);
