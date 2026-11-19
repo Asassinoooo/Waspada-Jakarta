@@ -197,6 +197,22 @@ test("the review node shows a kedaluwarsa chip, and its drawer says unreviewed p
   assert.equal(older.chips.some((row) => row.label === "kedaluwarsa"), false, "a snapshot without the count shows no chip");
 });
 
+test("POLISH-03: a superseded proposal reads digantikan versi baru, apart from kedaluwarsa, and the review chip counts it", () => {
+  const snapshot = demoSnapshot();
+  const review = nodeView({ ...nodeById(snapshot, "review"), counts: { waiting_discrepancy: 2, waiting_gate: 3, expired_24h: 2, supersede_24h: 4 } });
+  assert.deepEqual(review.chips.find((row) => row.label === "digantikan"), { label: "digantikan", value: 4, tone: "neutral" });
+  assert.equal(countLabel("supersede_24h"), "Digantikan versi baru 24 jam");
+  assert.equal(countLabel("supersede_24h", "7d"), "Digantikan versi baru 7 hari");
+  assert.equal(statusLabel("supersede"), "digantikan versi baru");
+  assert.equal(statusLabel("kedaluwarsa"), "kedaluwarsa", "the expiry status keeps its own label");
+  assert.notEqual(statusLabel("supersede"), statusLabel("kedaluwarsa"));
+  assert.equal(statusLabel("superseded"), "digantikan", "a superseded report revision keeps its own label");
+  assert.match(review.description, /Usulan lama untuk insiden yang sama diganti versi baru dan tidak diterbitkan\./u);
+
+  const older = nodeView({ ...nodeById(snapshot, "review"), counts: { waiting_discrepancy: 2, waiting_gate: 3, expired_24h: 2 } });
+  assert.equal(older.chips.some((row) => row.label === "digantikan"), false, "a snapshot without the count shows no chip");
+});
+
 test("FLOW-RANGE-01: keys ending in _24h name the selected window, and _15m labels never change", () => {
   assert.equal(countLabel("skipped_24h"), "Dilewati 24 jam", "the default window keeps today's wording");
   assert.equal(countLabel("skipped_24h", "7d"), "Dilewati 7 hari");

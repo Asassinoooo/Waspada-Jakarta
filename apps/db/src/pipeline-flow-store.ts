@@ -120,6 +120,12 @@ export interface PipelineFlowAggregates {
     readonly moderator_decisions_15m: number;
     /** REVIEW-EXPIRY-01: `expire` decisions in 24 h. Kept out of decisions_24h and decisions_15m. */
     readonly expired_24h: number;
+    /**
+     * POLISH-03 (ADR-062 amendment): `supersede` decisions in 24 h. A newer proposal for the same incident
+     * replaced this one. Kept out of decisions_24h, decisions_15m and the moderator count. Optional, so an
+     * older aggregate without it still builds.
+     */
+    readonly supersede_24h?: number;
     readonly events_published: number;
     readonly versions_24h: number;
     readonly versions_15m: number;
@@ -454,7 +460,8 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
         const versions = versionRows.rows[0] ?? {};
         // REVIEW-EXPIRY-01: expired proposals were never decided by a person or the publisher, so they
         // do not count as publication decisions. They are counted separately as expired_24h.
-        const publicationRows = decisionRows.rows.filter((row) => row.disposition !== "expire");
+        // POLISH-03: superseded proposals are not decisions either. They are counted as supersede_24h.
+        const publicationRows = decisionRows.rows.filter((row) => row.disposition !== "expire" && row.disposition !== "supersede");
         const triageAll = triageRows.rows;
         const skipped = triageAll.filter((row) => row.model_status === "skipped_stage_a");
         const modelled = triageAll.filter((row) => row.model_status !== "skipped_stage_a");
@@ -541,6 +548,9 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
               .reduce((total, row) => total + toCount(row.n_15m), 0),
             expired_24h: decisionRows.rows
               .filter((row) => row.disposition === "expire")
+              .reduce((total, row) => total + toCount(row.n), 0),
+            supersede_24h: decisionRows.rows
+              .filter((row) => row.disposition === "supersede")
               .reduce((total, row) => total + toCount(row.n), 0),
             events_published: toCount(versions.events_published),
             versions_24h: toCount(versions.versions_24h),
@@ -659,7 +669,8 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
             );
             return rows.rows.map((row) => ({
               ref: row.ref,
-              status: row.disposition === "expire" ? "kedaluwarsa" : row.decided ? "diputuskan" : "menunggu",
+              // POLISH-03: "supersede" is labelled "digantikan versi baru" by the web model, so the store sends no label.
+              status: row.disposition === "expire" ? "kedaluwarsa" : row.disposition === "supersede" ? "supersede" : row.decided ? "diputuskan" : "menunggu",
               failure_code: null,
               title: truncateTitle(row.title),
               at: toInstant(row.at),
@@ -672,6 +683,7 @@ export function createPipelineFlowStore(executor: TransactionalSqlExecutor): Pip
                  FROM waspada.pipeline_flow_decisions pd
                 WHERE pd.dataset_kind = $1 AND pd.decided_at >= $2::timestamptz
                   AND pd.disposition IS DISTINCT FROM 'expire'
+                  AND pd.disposition IS DISTINCT FROM 'supersede'
                 ORDER BY pd.decided_at DESC, pd.decision_id DESC
                 LIMIT $3`,
               [datasetKind, sinceWindow, cap],

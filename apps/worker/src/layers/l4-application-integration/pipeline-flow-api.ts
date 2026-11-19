@@ -364,6 +364,8 @@ export function buildPipelineFlowSnapshot(input: PipelineFlowBuildInput): Pipeli
       moderator_decisions_15m: a.publication.moderator_decisions_15m,
       // REVIEW-EXPIRY-01 (ADR-062): undecided proposals past the review TTL, 24 h.
       expired_24h: a.publication.expired_24h ?? 0,
+      // POLISH-03 (ADR-062 amendment): undecided proposals replaced by a newer proposal for the same incident, 24 h.
+      supersede_24h: a.publication.supersede_24h ?? 0,
     },
     throughput: a.publication.moderator_decisions_15m,
     failing: false,

@@ -65,6 +65,29 @@ describe("FLOW-VIS-01 pipeline flow snapshot", () => {
     assert.equal(nodeOf(legacy, "review").counts.expired_24h, 0);
   });
 
+  it("POLISH-03: the review node carries supersede_24h beside expired_24h, and a supersede is not a gate rejection", () => {
+    const base = zeroAggregates();
+    const withSuperseded = buildPipelineFlowSnapshot({
+      generatedAt: NOW.toISOString(),
+      datasetMode: "live",
+      aggregates: { ...base, publication: { ...base.publication, supersede_24h: 2 } },
+      runtime: null,
+    });
+    assert.equal(nodeOf(withSuperseded, "review").counts.supersede_24h, 2);
+    assert.equal(nodeOf(withSuperseded, "review").counts.expired_24h, 0, "a superseded proposal is not an expiry");
+    assert.equal(nodeOf(withSuperseded, "gate").counts.reject_24h, 0, "a supersede is not a gate rejection");
+
+    const publication = { ...base.publication };
+    delete publication.supersede_24h;
+    const legacy = buildPipelineFlowSnapshot({
+      generatedAt: NOW.toISOString(),
+      datasetMode: "live",
+      aggregates: { ...base, publication },
+      runtime: null,
+    });
+    assert.equal(nodeOf(legacy, "review").counts.supersede_24h, 0, "an aggregate without the count still builds with zero");
+  });
+
   it("places every stage in its layer and keeps the edges in pipeline order", () => {
     const snapshot = buildPipelineFlowSnapshot({ generatedAt: NOW.toISOString(), datasetMode: "demo", aggregates: zeroAggregates(), runtime: null });
     assert.deepEqual(snapshot.nodes.map((node) => node.id), [...PIPELINE_FLOW_NODE_IDS]);

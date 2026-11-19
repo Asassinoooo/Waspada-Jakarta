@@ -47,7 +47,7 @@ export const PIPELINE_NODE_META: Readonly<Record<PipelineFlowNodeId, PipelineNod
   correlate: { label: "Pengaitan insiden", description: "Keputusan sama, baru, atau belum jelas. Penggabungan dibuat AI dengan kutipan dari tiap sumber." },
   proposal: { label: "Usulan peristiwa", description: "Usulan yang belum tentu benar. Usulan bukan kejadian yang terbukti." },
   gate: { label: "Gerbang publikasi otomatis", description: "Lolos semua pemeriksaan deterministik: terbit oleh agen. Selain itu usulan menunggu moderator." },
-  review: { label: "Tinjauan diskrepansi", description: "Usulan dengan diskrepansi atau yang tidak lolos gerbang. Moderator yang memutuskan. Usulan yang tidak ditinjau dalam 48 jam ditandai kedaluwarsa dan tidak diterbitkan." },
+  review: { label: "Tinjauan diskrepansi", description: "Usulan dengan diskrepansi atau yang tidak lolos gerbang. Moderator yang memutuskan. Usulan yang tidak ditinjau dalam 48 jam ditandai kedaluwarsa dan tidak diterbitkan. Usulan lama untuk insiden yang sama diganti versi baru dan tidak diterbitkan." },
   published: { label: "Terbit ke publik", description: "Versi yang sudah terbit. Halaman publik hanya membaca versi ini." },
   ninerouter: { label: "NineRouter", description: "Kuota RPM chat dan embedding, masa tunggu (cooldown), dan jumlah panggilan sejak server berjalan." },
   cycle: { label: "Siklus polling", description: "Waktu siklus terakhir, jumlah galat, dan pemakaian batas item baru per siklus." },
@@ -151,6 +151,8 @@ export const PIPELINE_COUNT_LABELS: Readonly<Record<string, string>> = {
   waiting_gate: "Menunggu, gerbang",
   moderator_decisions_15m: "Keputusan moderator 15 menit",
   expired_24h: "Kedaluwarsa 24 jam",
+  // POLISH-03: a newer proposal for the same incident replaced this one. Not expiry, not a decision, not a safety claim.
+  supersede_24h: "Digantikan versi baru 24 jam",
   events_published: "Peristiwa terbit",
   versions_24h: "Versi 24 jam",
   agent_versions_24h: "Versi dari agen 24 jam",
@@ -202,6 +204,8 @@ export const PIPELINE_ITEM_STATUS_LABELS: Readonly<Record<string, string>> = {
   unresolved: "belum jelas",
   menunggu: "menunggu",
   diputuskan: "diputuskan",
+  // POLISH-03: the store's status for a superseded proposal. Distinct from kedaluwarsa (expired).
+  supersede: "digantikan versi baru",
   diskrepansi: "diskrepansi",
   antrean_gerbang: "antrean gerbang",
   publish_agent: "terbit oleh agen",
@@ -277,6 +281,7 @@ const CHIP_SPECS: Partial<Record<PipelineFlowNodeId, readonly { key: string; lab
     { key: "waiting_discrepancy", label: "diskrepansi", tone: "warning" },
     { key: "waiting_gate", label: "gerbang", tone: "neutral" },
     { key: "expired_24h", label: "kedaluwarsa", tone: "neutral" },
+    { key: "supersede_24h", label: "digantikan", tone: "neutral" },
   ],
   gate: [
     { key: "auto_publish_24h", label: "agen", tone: "active" },

@@ -78,7 +78,9 @@ export interface PipelineFlowNodeDto {
   readonly health: PipelineFlowHealth;
   /**
    * Stable machine keys mapped to counts. Zero means "no data in the window", never "safe".
-   * REVIEW-EXPIRY-01 added `expired_24h` to the review node. Clients must treat a missing key as absent.
+   * REVIEW-EXPIRY-01 added `expired_24h` to the review node. POLISH-03 (ADR-062 amendment) added `supersede_24h`
+   * to the same node, and the proposal drill-down status `supersede`. Both are additive. Clients must treat a
+   * missing key or status as absent or unknown, never as a publication or a safety claim.
    */
   readonly counts: Readonly<Record<string, number>>;
   readonly throughput_15m: number;
