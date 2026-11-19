@@ -20,8 +20,15 @@
 // so cycles and self references are checked at commit and the load order does not depend on row order. User triggers
 // are disabled during the load, as pg_restore --disable-triggers does, so insert-time sequence assignment does not
 // rewrite the saved values. Foreign-key checks stay on. Afterwards the constraints go back to their original
-// definitions, and the row counts and the public event digest are compared with the manifest. restore-report.json is
-// written next to the dump.
+// definitions, and the row counts, the public event digest and the tombstone summary are compared with the manifest.
+// restore-report.json is written next to the dump.
+//
+// Tombstones (NFR-06: deletion behaviour must survive a restore) are read in the same snapshot as the export. They are
+// three sets: withdrawn public events (the latest version of an event is a withdrawn tombstone), withdrawn source
+// revisions (retracted by revision status, or the target of an observation asserted retracted or withdrawn) and
+// revoked sources (approval revoked). Each set is recorded as a count and a SHA-256 over its sorted keys, never as row
+// content. A restore recomputes the sets on the restored database. tombstonesPreserved is true only when every set
+// matches and no withdrawn event is shown by the public views.
 //
 // Dumps contain live source text and embeddings. Keep them under .codex-build/restore/ (gitignored) and delete them
 // after the rehearsal. Output messages carry counts, file names and error codes only, never a URL or host.
@@ -41,8 +48,8 @@ import { createTestDatabase } from "../../apps/db/test/harness.js";
 import { safeErrorLabel } from "../live-source-coverage.js";
 import { createHostedSession } from "./hosted-session.js";
 
-export const REHEARSAL_FORMAT = "waspada-restore-rehearsal-v1";
-export const REHEARSAL_REPORT_FORMAT = "waspada-restore-rehearsal-report-v1";
+export const REHEARSAL_FORMAT = "waspada-restore-rehearsal-v2";
+export const REHEARSAL_REPORT_FORMAT = "waspada-restore-rehearsal-report-v2";
 export const REPO_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 /** Dumps and reports may be written only under this gitignored directory. */
 export const RESTORE_ROOT = resolve(REPO_ROOT, ".codex-build", "restore");
@@ -134,6 +141,23 @@ export interface PublicEventDigest {
   readonly sha256: string;
 }
 
+/** A set of tombstone keys, recorded as its size and the SHA-256 of its sorted keys (one per line). Never the keys. */
+export interface TombstoneSet {
+  readonly count: number;
+  readonly sha256: string;
+}
+
+export interface TombstoneSummary {
+  /** Events whose latest version is a withdrawn tombstone. Key: dataset kind, event id, tombstone version. */
+  readonly withdrawnEvents: TombstoneSet;
+  /** Report revisions retracted by status, or targeted by an observation asserted retracted or withdrawn. */
+  readonly withdrawnRevisions: TombstoneSet;
+  /** Sources whose approval is revoked. Revoking stops publication only; collection continues. */
+  readonly revokedSources: TombstoneSet;
+  /** Withdrawn events that a public read view shows. Must be 0 in a restored database. */
+  readonly withdrawnVisibleInPublic: number;
+}
+
 export interface RehearsalManifest {
   readonly format: typeof REHEARSAL_FORMAT;
   readonly exportedAt: string;
@@ -145,6 +169,7 @@ export interface RehearsalManifest {
   readonly loadOrder: readonly string[];
   readonly cyclicTables: readonly string[];
   readonly publicEvents: PublicEventDigest;
+  readonly tombstones: TombstoneSummary;
 }
 
 export interface ExportSummary {
@@ -163,6 +188,12 @@ export interface RestoreTarget {
 
 export interface TableCountCheck {
   readonly name: string;
+  readonly expected: number;
+  readonly actual: number;
+  readonly match: boolean;
+}
+
+export interface TombstoneSetCheck {
   readonly expected: number;
   readonly actual: number;
   readonly match: boolean;
@@ -187,6 +218,14 @@ export interface RestoreReport {
     readonly actualCount: number;
     readonly match: boolean;
   };
+  readonly tombstones: {
+    readonly withdrawnEvents: TombstoneSetCheck;
+    readonly withdrawnRevisions: TombstoneSetCheck;
+    readonly revokedSources: TombstoneSetCheck;
+    /** Withdrawn events the public views show after the restore. Must be 0. */
+    readonly withdrawnVisibleInPublic: number;
+  };
+  readonly tombstonesPreserved: boolean;
   readonly foreignKeysDeferredDuringLoad: number;
   readonly foreignKeysRestored: boolean;
   readonly triggersDisabledDuringLoad: number;
@@ -325,6 +364,68 @@ export async function publicEventDigest(executor: SqlExecutor): Promise<PublicEv
   return { count: keys.length, sha256: hash.digest("hex") };
 }
 
+// ---- Tombstones ----------------------------------------------------------------------------------------------------
+
+/** The latest version of every event. A withdrawal writes a newer version with publication_status 'withdrawn'. */
+const LATEST_EVENT_VERSIONS_CTE = `
+WITH latest AS (
+  SELECT DISTINCT ON (dataset_kind, event_id) dataset_kind, event_id, version, publication_status
+  FROM ${SCHEMA}.event_versions
+  ORDER BY dataset_kind, event_id, version DESC
+)`;
+
+const WITHDRAWN_EVENTS_SQL = `${LATEST_EVENT_VERSIONS_CTE}
+SELECT dataset_kind, event_id, version FROM latest WHERE publication_status = 'withdrawn'`;
+
+const WITHDRAWN_REVISIONS_SQL = `
+SELECT dataset_kind, report_revision_id AS revision_id FROM ${SCHEMA}.report_revisions WHERE revision_status = 'retracted'
+UNION
+SELECT dataset_kind, target_report_revision_id AS revision_id FROM ${SCHEMA}.report_revision_source_observations
+WHERE asserted_state IN ('retracted', 'withdrawn')`;
+
+const REVOKED_SOURCES_SQL = `SELECT source_id FROM ${SCHEMA}.source_registry WHERE approval_status = 'revoked'`;
+
+/** Counts withdrawn events that the public event view or the public history view still shows. */
+const WITHDRAWN_VISIBLE_SQL = `${LATEST_EVENT_VERSIONS_CTE}
+SELECT count(*)::text AS n FROM latest AS tomb
+WHERE tomb.publication_status = 'withdrawn'
+  AND (EXISTS (SELECT 1 FROM ${SCHEMA}.public_event_versions AS shown
+                WHERE shown.dataset_kind = tomb.dataset_kind AND shown.event_id = tomb.event_id)
+    OR EXISTS (SELECT 1 FROM ${SCHEMA}.public_event_history_versions AS history
+                WHERE history.dataset_kind = tomb.dataset_kind AND history.event_id = tomb.event_id))`;
+
+function digestSet(keys: readonly string[]): TombstoneSet {
+  // Sorted in JavaScript, not by the database, so the digest does not depend on the collation of the database.
+  const sorted = [...keys].sort();
+  const hash = createHash("sha256");
+  for (const key of sorted) hash.update(`${key}\n`);
+  return { count: sorted.length, sha256: hash.digest("hex") };
+}
+
+/** Reads the three tombstone sets and the public visibility of withdrawn events. Read only. */
+export async function tombstoneSummary(executor: SqlExecutor): Promise<TombstoneSummary> {
+  const events = await executor.query<{ dataset_kind: string; event_id: string; version: number }>(WITHDRAWN_EVENTS_SQL);
+  const revisions = await executor.query<{ dataset_kind: string; revision_id: string }>(WITHDRAWN_REVISIONS_SQL);
+  const sources = await executor.query<{ source_id: string }>(REVOKED_SOURCES_SQL);
+  const visible = await executor.query<{ n: string }>(WITHDRAWN_VISIBLE_SQL);
+  const visibleCount = Number(visible.rows[0]?.n);
+  if (!Number.isSafeInteger(visibleCount)) throw new RehearsalError("count_unreadable");
+  return {
+    withdrawnEvents: digestSet(events.rows.map((row) => [row.dataset_kind, row.event_id, String(row.version)].join("\t"))),
+    withdrawnRevisions: digestSet(revisions.rows.map((row) => [row.dataset_kind, row.revision_id].join("\t"))),
+    revokedSources: digestSet(sources.rows.map((row) => row.source_id)),
+    withdrawnVisibleInPublic: visibleCount,
+  };
+}
+
+function sameTombstoneSet(left: TombstoneSet, right: TombstoneSet): boolean {
+  return left.count === right.count && left.sha256 === right.sha256;
+}
+
+function tombstoneSetCheck(expected: TombstoneSet, actual: TombstoneSet): TombstoneSetCheck {
+  return { expected: expected.count, actual: actual.count, match: sameTombstoneSet(expected, actual) };
+}
+
 // ---- Export --------------------------------------------------------------------------------------------------
 
 /** Accepts only a directory strictly inside .codex-build/restore, so dumps never land in a tracked path. */
@@ -451,6 +552,13 @@ export async function exportDatabase(options: {
     const counts = new Map<string, number>();
     for (const table of dataTables) counts.set(table.name, await countRows(tx, table.name));
     const publicEvents = await publicEventDigest(tx);
+    const tombstones = await tombstoneSummary(tx);
+    log(
+      `[export] tombstones: ${tombstones.withdrawnEvents.count} withdrawn event(s), `
+        + `${tombstones.withdrawnRevisions.count} withdrawn source revision(s), `
+        + `${tombstones.revokedSources.count} revoked source(s), `
+        + `${tombstones.withdrawnVisibleInPublic} withdrawn event(s) visible in public views`,
+    );
 
     const entries: ManifestTable[] = [];
     for (const table of dataTables) {
@@ -473,7 +581,16 @@ export async function exportDatabase(options: {
       log(`[export] ${name}: ${written.rows} row(s)`);
     }
 
-    return { migrations, entries, loadOrder: [...order.order, ...order.cyclic], cyclicTables: order.cyclic, publicEvents, rows, bytes };
+    return {
+      migrations,
+      entries,
+      loadOrder: [...order.order, ...order.cyclic],
+      cyclicTables: order.cyclic,
+      publicEvents,
+      tombstones,
+      rows,
+      bytes,
+    };
   });
 
   const seconds = roundSeconds(performance.now() - started);
@@ -487,6 +604,7 @@ export async function exportDatabase(options: {
     loadOrder: snapshot.loadOrder,
     cyclicTables: snapshot.cyclicTables,
     publicEvents: snapshot.publicEvents,
+    tombstones: snapshot.tombstones,
   };
   await writeFile(join(options.outDir, MANIFEST_FILE), `${JSON.stringify(document, null, 2)}\n`, { flag: "wx" });
 
@@ -518,6 +636,15 @@ function isCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isTombstoneSet(value: unknown): value is TombstoneSet {
+  return isRecord(value) && isCount(value.count) && typeof value.sha256 === "string" && SHA256_PATTERN.test(value.sha256);
+}
+
+function isTombstoneSummary(value: unknown): value is TombstoneSummary {
+  return isRecord(value) && isTombstoneSet(value.withdrawnEvents) && isTombstoneSet(value.withdrawnRevisions)
+    && isTombstoneSet(value.revokedSources) && isCount(value.withdrawnVisibleInPublic);
+}
+
 /** Validates the manifest shape before anything is trusted. A file name must be a bare `<table>.ndjson`. */
 export function parseManifest(value: unknown): RehearsalManifest {
   if (!isRecord(value) || value.format !== REHEARSAL_FORMAT || value.schema !== SCHEMA) {
@@ -530,6 +657,7 @@ export function parseManifest(value: unknown): RehearsalManifest {
     || typeof value.publicEvents.sha256 !== "string" || !SHA256_PATTERN.test(value.publicEvents.sha256)) {
     throw new RehearsalError("manifest_invalid");
   }
+  if (!isTombstoneSummary(value.tombstones)) throw new RehearsalError("manifest_invalid");
   for (const migration of value.migrations) {
     if (!isRecord(migration) || typeof migration.version !== "string"
       || typeof migration.checksum_sha256 !== "string" || !SHA256_PATTERN.test(migration.checksum_sha256)) {
@@ -742,6 +870,23 @@ export async function restoreDatabase(options: {
     const countsMatch = tableChecks.every((check) => check.match);
     const publicNow = await publicEventDigest(target.executor);
     const publicMatch = publicNow.count === manifest.publicEvents.count && publicNow.sha256 === manifest.publicEvents.sha256;
+    const tombstonesNow = await tombstoneSummary(target.executor);
+    const tombstoneChecks = {
+      withdrawnEvents: tombstoneSetCheck(manifest.tombstones.withdrawnEvents, tombstonesNow.withdrawnEvents),
+      withdrawnRevisions: tombstoneSetCheck(manifest.tombstones.withdrawnRevisions, tombstonesNow.withdrawnRevisions),
+      revokedSources: tombstoneSetCheck(manifest.tombstones.revokedSources, tombstonesNow.revokedSources),
+      withdrawnVisibleInPublic: tombstonesNow.withdrawnVisibleInPublic,
+    };
+    const tombstonesPreserved = tombstoneChecks.withdrawnEvents.match
+      && tombstoneChecks.withdrawnRevisions.match
+      && tombstoneChecks.revokedSources.match
+      && tombstonesNow.withdrawnVisibleInPublic === 0;
+    log(
+      `[restore] tombstones: withdrawn events ${tombstoneChecks.withdrawnEvents.actual} `
+        + `(expected ${tombstoneChecks.withdrawnEvents.expected}), withdrawn revisions ${tombstoneChecks.withdrawnRevisions.actual} `
+        + `(expected ${tombstoneChecks.withdrawnRevisions.expected}), revoked sources ${tombstoneChecks.revokedSources.actual} `
+        + `(expected ${tombstoneChecks.revokedSources.expected}), withdrawn visible in public views ${tombstonesNow.withdrawnVisibleInPublic}.`,
+    );
     const verifySeconds = roundSeconds(performance.now() - verifyStarted);
 
     const report: RestoreReport = {
@@ -759,11 +904,13 @@ export async function restoreDatabase(options: {
       tables: tableChecks,
       countsMatch,
       publicEvents: { expectedCount: manifest.publicEvents.count, actualCount: publicNow.count, match: publicMatch },
+      tombstones: tombstoneChecks,
+      tombstonesPreserved,
       foreignKeysDeferredDuringLoad: toDefer.length,
       foreignKeysRestored,
       triggersDisabledDuringLoad: triggersDisabled,
       timingsSeconds: { verifyFiles, restore: restoreSeconds, verify: verifySeconds },
-      ok: countsMatch && publicMatch && foreignKeysRestored,
+      ok: countsMatch && publicMatch && foreignKeysRestored && tombstonesPreserved,
     };
     await writeFile(join(options.fromDir, REPORT_FILE), `${JSON.stringify(report, null, 2)}\n`);
     return report;
@@ -850,6 +997,7 @@ export async function runCli(
       countsMatch: report.countsMatch,
       publicEventsMatch: report.publicEvents.match,
       publicEvents: report.publicEvents.actualCount,
+      tombstonesPreserved: report.tombstonesPreserved,
       foreignKeysRestored: report.foreignKeysRestored,
       restoreSeconds: report.timingsSeconds.restore,
       exportBytes: report.export.bytes,
