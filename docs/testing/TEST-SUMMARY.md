@@ -1,7 +1,7 @@
 # Test summary: Waspada Jakarta
 
-Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026 (TG-DOCS-04; updated the same evening by TG-DOCS-05). Draft for review. Baseline: `main` at `a7ba558`.
-Later update: TG-DOCS-05 (19 November 2026, evening): section 7A, and the open items in sections 8 and 10. Earlier versions: TG-DOCS-03 (18 November 2026 evening, baseline `2d9d442`), TG-DOCS-02 (18 November 2026 morning, baseline `6fff929`) and the 13 November 2026 summary. Section 3 is as of 13 November 2026.
+Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026 (TG-DOCS-04; updated the same evening by TG-DOCS-05 and TG-DOCS-07). Draft for review. Baseline: `main` at `a7ba558`.
+Later update: TG-DOCS-07 (19 November 2026): section 7B, the register counts in section 1, and the open items in sections 4, 8 and 9. Earlier update: TG-DOCS-05 (19 November 2026, evening): section 7A, and the open items in sections 8 and 10. Earlier versions: TG-DOCS-03 (18 November 2026 evening, baseline `2d9d442`), TG-DOCS-02 (18 November 2026 morning, baseline `6fff929`) and the 13 November 2026 summary. Section 3 is as of 13 November 2026.
 Related: `docs/testing/TEST-PLAN.md`, `docs/testing/SYSTEM-TEST.md`, `docs/testing/INTEGRATION-TEST.md`, `docs/testing/UAT.md`, `docs/testing/test-cases.csv`, `docs/testing/DEFECTS.md`.
 
 This summary compiles records that exist, and each figure is cited to its source. For TG-DOCS-03 the CI logs were read with `gh`, the hosted public API was read without signing in, and the hosted database was read (read-only) to find the cause of F-19. Only the changed test files of the 18 November fixes were run locally (owner test policy, 12 November 2026).
@@ -10,8 +10,8 @@ This summary compiles records that exist, and each figure is cited to its source
 
 - **What was tested.** The local live mode (`npm run serve:live`, LIVE-LOCAL-01), the synthetic demo (`DATASET_MODE=demo`) and, since 17 November 2026, the hosted site on Cloudflare Workers Free and Neon Free (`DATASET_MODE=live`). The scope covers `apps/web`, `apps/worker`, `apps/db` and `apps/intelligence` (`TEST-PLAN.md` sections 1 and 2; `SYSTEM-TEST.md` sections 1, 2 and 6A).
 - **Against which requirements.** FR-02 to FR-16 (FR-01 withdrawn on 13 Nov 2026), NFR-01 to NFR-08 (`SOFTWARE_DEVELOPMENT_PLAN.md` section 4), and user stories US-01 to US-03 (SDP section 2).
-- **Register.** `docs/testing/test-cases.csv` has 165 rows (every row has 15 fields). TG-DOCS-04 (19 November 2026) added 20: ST-H-13 to ST-H-20, IT-HOST-13 to IT-HOST-15 and UT-HOST-13 to UT-HOST-21. TG-DOCS-03 had added 9: IT-HOST-07 to IT-HOST-12, UT-HOST-12, ST-H-11 and ST-H-12. By status after TG-DOCS-05 (exact `status` values in test-cases.csv): Evidence exists 82, Partial 45, Pass (local run reported; not re-run in TG-DOCS) 21, Blocked 5, Points only (owner, 16 Nov 2026) 3, Pass (CI run 44319579284) 3, Not evidenced 2, Pass (hosted, read-only, 17 Nov 2026) 2, Pending run 2. By actual_result: Pass 137, Partial 15, Not run 8, Blocked 5.
-- **Result columns.** `actual_result` is Pass when every automated file cited in the row is in a suite that passed in the cited run. Since TG-DOCS-03 the automated rows cite run 44319579284, a green run, which contains all their files. The later green run 44372632858 also passed all 61 database files; nothing was removed from the suites. The 20 rows added on 19 November 2026 cite run 44372632858 (`a7ba558`). Manual rows show Partial, Blocked or Not run.
+- **Register.** `docs/testing/test-cases.csv` has 165 rows (every row has 15 fields). TG-DOCS-04 (19 November 2026) added 20: ST-H-13 to ST-H-20, IT-HOST-13 to IT-HOST-15 and UT-HOST-13 to UT-HOST-21. TG-DOCS-03 had added 9: IT-HOST-07 to IT-HOST-12, UT-HOST-12, ST-H-11 and ST-H-12. By status after TG-DOCS-07 (section 7B; exact `status` values in test-cases.csv): Evidence exists 84, Partial 43 (after TG-DOCS-05: 82 and 45), Pass (local run reported; not re-run in TG-DOCS) 21, Blocked 5, Points only (owner, 16 Nov 2026) 3, Pass (CI run 44319579284) 3, Not evidenced 2, Pass (hosted, read-only, 17 Nov 2026) 2, Pending run 2. By actual_result (unchanged by TG-DOCS-07): Pass 137, Partial 15, Not run 8, Blocked 5.
+- **Result columns.** `actual_result` is Pass when every automated file cited in the row is in a suite that passed in the cited run. Since TG-DOCS-03 the automated rows cite run 44319579284, a green run, which contains all their files. The later green run 44372632858 also passed all 61 database files; nothing was removed from the suites. The 20 rows added on 19 November 2026 cite run 44372632858 (`a7ba558`). Manual rows show Partial, Blocked or Not run. Fourteen rows changed by TG-DOCS-07 cite CI run `44484348615`, which has not been read. Their actual_result stays Pass and holds only if that run is green. IT-B1-07 cites no new run, and BR-02 names the placeholder in its CI-visibility cell only. The fixes these rows cite are on `main` but not in commit `a7ba558` (run 44372632858).
 - **Not complete.** No human session is planned. No automated test reads the hosted site. The release checks in SDP section 10 are not met (section 8).
 
 ## 2 What changed on 18 November 2026 (evening)
@@ -67,6 +67,8 @@ Points on this evidence:
 - **Browser checks at 320 px and 200% text.** `docs/DELIVERY_LOG.md` line 31. Screenshots not kept (BR-01, BR-02).
 - **Changed-file runs on 18 November 2026.** For the CI fixture fix (`e64d281`): `apps/db/test/persistence.test.ts` 9 of 9, `public-briefing-runtime` 17 of 17, `public-event-detail-runtime` 5 of 5, `public-event-geojson-runtime` 6 of 6. For HOSTED-31 (`5b64a29`): `hosted31-merged-claim-support` 4 of 4, `agent-point-geometry` 19 of 19, `hosted26-location-label` 12 of 12, `tools/accounts/hosted-ingest` 83 of 83, `adr061-gate-db` 15 of 15, `event-withdrawal-correction-db` 12 of 12, `merge-review-publication` 13 of 13, `agent-origin-writer` 7 of 7, `hosted22-public-attribution` 7 of 7. `npm run typecheck` passed.
 
+- **Flutter, POLISH-02 (19 Nov 2026, reported with `b4a0d0f`).** `apps/mobile/test/public_models_test.dart`: 22 of 22 for the new source collection time key. Local only; not in CI, and not re-run for this update.
+
 ## 5 Hosted results
 
 `SYSTEM-TEST.md` section 6A has 20 rows (ST-H-01 to ST-H-20):
@@ -96,6 +98,21 @@ Points on this evidence:
 
 Still Partial, with new evidence recorded in the row: ST-F-02, ST-F-03, ST-F-04, ST-F-05, ST-F-07, ST-F-08, ST-F-09, ST-F-11, ST-F-13, ST-F-14, ST-F-15, ST-N-02, ST-N-04, ST-N-05, ST-N-07, AT-02 and AT-03. Each row now names only what is still missing. ST-N-02 and ST-N-05 had wrong wording, which is corrected (ST-N-02: the 5-attempt and 4-turn limits are set in two files; ST-N-05: the stale-write conflict is named in `publication-writer.test.ts`).
 
+## 7B 19 Nov 2026 (TEST-GAP-03, POLISH-01 to POLISH-03)
+
+TG-DOCS-07 records the evidence from TEST-GAP-03 and POLISH-01 to POLISH-03 in the register. No test was run and no hosted site was read for this update.
+
+| Row | Was | Now | Why |
+| --- | --- | --- | --- |
+| ST-F-07 | Partial | Evidence exists | A reject records its decision and writes no version or public event. The reject audit record (F-30, `f3373c0`) is tested in `adr061-gate-db.test.ts` |
+| ST-F-14 | Partial | Evidence exists | Each expected result now has a file: `freshness-missing-update-feed.test.ts` (4 tests) and `freshness-aggregate-policy.test.ts` (7 tests). F-06 closed by test |
+
+Still Partial, with new evidence in the row (status unchanged): ST-F-03, ST-F-04, ST-F-05, ST-F-08, ST-F-09, ST-F-11, ST-F-13, ST-F-16, ST-N-02, ST-N-05, BR-02 and IT-B1-06. ST-F-10 gained POLISH-03 supersede tests and stays Evidence exists. IT-B1-07 changed its notes only (the BMKG CAP gap is explained, not closed) and stays Evidence exists.
+
+Register status counts (`test-cases.csv`), before and after: Evidence exists 82 to 84; Partial 45 to 43; the other seven statuses unchanged; 165 rows in both. The actual_result counts are unchanged. The fixes cited are on `main` (`f155822`) but not in CI baseline `a7ba558` (run 44372632858), so no CI run yet covers F-29 to F-32.
+
+Defects: F-30 (a moderator reject wrote no audit record; fixed in `f3373c0`), F-31 (the webhook AI job had no trace id; fixed in `f3373c0`) and F-32 (header nav under the dataset badge at 601 to 900 px, 200% zoom; fixed in `b3ca26d`; severity not recorded). F-29 is fixed in `b4a0d0f`. F-05 is partly closed and F-06 is closed by test. Hosted re-checks for F-29, F-32 and the reject audit row (F-30) are pending.
+
 ## 7 Partial rows: what moved and what did not
 
 The question for this update was whether rows that were Partial are now fully proven. Moving a row needs new evidence for the part that was missing.
@@ -117,8 +134,8 @@ The other Partial rows have the same gap as before: no live data for the case, a
 Details in [DEFECTS.md](DEFECTS.md).
 
 - **Fixed or decided on 18 November 2026:** F-07 (SDP section 3.1), F-09 (copies), F-10 and F-11 (wording), F-16 (scheduler, mitigated), F-17 (accepted limitation), F-18 (mitigated), F-19 (outage, verified), D-04 (mitigated), D-05 (closed).
-- **Fixed on 19 November 2026:** F-20 to F-26 and F-28 (checked on the hosted site in ST-H-13 to ST-H-20); F-27 (tests only). R-11 to R-13 (CI test-code failures, fixed forward).
-- **Still open:** F-02 (open for the matched-update step on live data in the browser; the briefing part is fixed and checked on hosted, ST-H-13 and ST-H-14), F-29 (the acquisition time on the detail page is always "Tidak disebutkan"; found in code review, not checked on hosted), F-05 (no PGlite test for the webhook route or BMKG CAP), F-06 (no test for `freshness-aggregate-policy.ts`), F-08 (Node and WSL statements), R-01 (phone demo label), R-04 (demo queue for T4). F-01 and F-12 are closed by the points-only scope decision. The EXPLORE-18 open items (duplicate events, the history "Versi dikoreksi" label, the #peta list map, the phone layout of the admin tabs, the sign-in heading and superseded proposals) are listed in `DEFECTS.md` section B.
+- **Fixed on 19 November 2026:** F-20 to F-26 and F-28 (checked on the hosted site in ST-H-13 to ST-H-20); F-27 (tests only). R-11 to R-13 (CI test-code failures, fixed forward). On 19 November 2026 (TG-DOCS-07): F-06 closed by test; F-29 (`b4a0d0f`), F-30 and F-31 (`f3373c0`) and F-32 (`b3ca26d`) fixed, with no CI run and no hosted re-check yet (section 7B).
+- **Still open:** F-02 (open for the matched-update step on live data in the browser; the briefing part is fixed and checked on hosted, ST-H-13 and ST-H-14), F-05 (partly closed on 19 November 2026: the webhook route has a PGlite test; the BMKG CAP parser has none, and no production caller), F-08 (Node and WSL statements), R-01 (phone demo label), R-04 (demo queue for T4). F-01 and F-12 are closed by the points-only scope decision. The EXPLORE-18 items still open are duplicate events, the #peta list map on the live site, the phone layout of the admin tabs and the sign-in heading (`DEFECTS.md` section B). The "Versi dikoreksi" label and superseded proposals were fixed on 19 November 2026 (POLISH-02 and POLISH-03).
 - **Re-run pending:** R-05 and R-06 (fixed in `7cf6c0f`).
 
 ## 9 Release-blocking checks (SDP section 10)
@@ -130,9 +147,9 @@ No check is evidenced as passed for release.
 | Unsupported publication | ST-F-03, ST-F-07, ST-N-01, IT-B3-02, TI-02, IT-HOST-12 | Partial | Gate and policy tests exist. F-19 showed one path that published claims with empty support (merged proposals); HOSTED-31 closes it and adds a test. No adjudicated release scenarios (ST-N-01). |
 | Exposed personal data | ST-N-07, ST-F-06, IT-B2-06 | Partial | No retention test is named. Log output of two model adapters is tested for secrets; nothing else is (ST-N-07). |
 | Wrong active warning geometry | ST-F-01, ST-N-01, IT-B1-07, IT-HOST-03, ST-H-11 | Partial | Points only, by decision. Points are now written on hosted and match the GeoJSON feed (ST-H-11, ST-H-12). |
-| Budget bypass | ST-N-02, IT-B1-04, IT-B2-08, IT-B3-01 | Partial | Worker or local only. The live path bypasses L3. |
-| Unauthorised moderation | ST-F-06, ST-F-07, ST-N-07, IT-B3-08 | Partial | Route and role tests exist. Hosted: a moderator rejected one proposal (18 Nov) and withdrew three events (19 Nov). No publish through the gate has run on hosted. |
-| Stale or retracted evidence reinstated | ST-F-13, ST-F-14, ST-N-05 | Partial | F-14 fixed. The stale-write conflict is asserted at database level (`publication-writer.test.ts`); the HTTP response to it is not tested. The hosted withdrawals (ST-H-19) are event withdrawals, not source-revision withdrawals. |
+| Budget bypass | ST-N-02, IT-B1-04, IT-B2-08, IT-B3-01 | Partial | Worker or local only. The live path bypasses L3. The ledger refuses a sixth tool attempt (`l3-tool-attempt-budget.test.ts`, 19 Nov 2026). |
+| Unauthorised moderation | ST-F-06, ST-F-07, ST-N-07, IT-B3-08 | Partial | Route and role tests exist. Hosted: a moderator rejected one proposal (18 Nov) and withdrew three events (19 Nov). No publish through the gate has run on hosted. The reject audit row is tested (F-30, `f3373c0`, 19 Nov 2026); the 18 Nov hosted reject predates the fix and has no audit row. |
+| Stale or retracted evidence reinstated | ST-F-13, ST-F-14, ST-N-05 | Partial | F-14 fixed. The stale-write conflict is asserted at database level (`publication-writer.test.ts`). Over HTTP, a stale correction answers 409 (`moderation-stale-version-http.test.ts`, 19 Nov 2026); the publish route's stale path is only stubbed. The hosted withdrawals (ST-H-19) are event withdrawals, not source-revision withdrawals. |
 
 ## 10 Decisions and actions still open
 
@@ -142,3 +159,4 @@ No check is evidenced as passed for release.
 4. **F-02.** The briefing part is fixed and checked on hosted (ST-H-13, ST-H-14). Still open: run T2 step 7 in the browser on live data, or record the matched-update criterion as not evidenced.
 5. **F-08.** Correct the CI Node statement in `CLAUDE.md`.
 6. **A hosted API check.** No automated check reads the hosted public routes (`SYSTEM-TEST.md` section 7, item 17).
+7. **Hosted re-check of the 19 November fixes.** F-29 (acquisition time on the record page), F-32 (header at 200% zoom), the "Diperbarui otomatis" label and the reject audit row (F-30) are not checked on hosted. Whether the hosted Worker runs `f3373c0` is not recorded.

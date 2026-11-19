@@ -37,6 +37,8 @@ Out of scope:
 
 This protocol is kept so that sessions can be run later without redesign. It is not scheduled. A session would use the tasks in section 6 on a phone and on a desktop, with think-aloud, a facilitator who does not help with the task, and an observer. The observer records the step where the participant stopped, the seconds per task and short quotes, with no personal data. Results would be labelled "human session" and reported separately from the automated walkthrough.
 
+A written guide for public volunteers who try the app on their own is in `docs/testing/UAT-PUBLIC.md` (in Bahasa Indonesia, titled "Uji Coba Waspada Jakarta: Panduan untuk Umum"). Results from it would be human sessions. None is recorded in this plan.
+
 ## 3 Target users
 
 The UAT covers three target users, which is the limit for this plan. Each one corresponds to a user story in section 1.4 of the report.

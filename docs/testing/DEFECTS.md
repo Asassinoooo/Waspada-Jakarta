@@ -5,6 +5,7 @@ Updated 16 November 2026 (HOSTED-01 documentation decisions): status lines on F-
 Updated 18 November 2026 (TG-DOCS-02): status for R-01, R-05, R-06, R-09 and R-10; CI status on F-03, F-04, F-13 and F-14; the F-14 residual; new entries D-03, F-16, F-17, F-18 and F-ALERT-02.
 Updated 19 November 2026 (TG-DOCS-04): F-20 to F-28 and the EXPLORE-18 open items (section B); R-11 to R-13 (section D).
 Updated 19 November 2026 (TG-DOCS-05): status line on F-02, and new F-29 (section B).
+Updated 19 November 2026 (TG-DOCS-07): F-05 (partly closed), F-06 (closed by test), F-29 and F-32 (fixed, hosted re-check pending), new F-30 and F-31 (fixed, TEST-GAP-03), and the two EXPLORE-18 open items fixed by POLISH-02 and POLISH-03 (section B).
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules
@@ -14,6 +15,7 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - Commit SHAs in this file were checked with `git -C <worktree> show -s --format='%h %s' <sha>` on 13 November 2026. SHAs checked on 13 November 2026 (the six in sections A and C) all resolved. The fix SHAs for F-03, F-04, F-13 and F-14 (section B) were checked on 16 November 2026 with `git show -s` and `git branch -r --contains`; each is on `origin/main`.
 - SHAs and run IDs added on 18 November 2026 were checked with `git show -s`, `git merge-base --is-ancestor` and `gh run view` on that date.
 - SHAs added on 19 November 2026 (F-20 to F-28, R-11 to R-13) were read from `git log` at `a7ba558` (`git show --stat` for the files each fix changed). The CI run IDs and the hosted check results were not re-read with `gh` in this update.
+- Fix commits cited for F-29 to F-32 (`b4a0d0f`, `ab4533a`, `f3373c0`, `b3ca26d`) and the test commit `f155822` are on `main` (checked with `git merge-base --is-ancestor` on 19 November 2026). None is in CI baseline `a7ba558`, so no CI run covers them yet; `test-cases.csv` holds `44484348615` until a run is read.
 - Blocked and pending UAT results are not defects (`docs/testing/UAT.md` section 10).
 
 ## Section A: Verified defects (fixed)
@@ -56,7 +58,7 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 
 ## Section B: Findings and their status
 
-Each entry carries a status line. An entry without a fixed, mitigated or decided status is open. F-15 is not used here, because `REQUIREMENTS-GAP.md` uses it for a proposed CI item. The status lines of F-01 to F-19 and F-ALERT-02 are as of 18 November 2026; those of F-20 to F-28 and the open items are as of 19 November 2026.
+Each entry carries a status line. An entry without a fixed, mitigated or decided status is open. F-15 is not used here, because `REQUIREMENTS-GAP.md` uses it for a proposed CI item. The status lines of F-01 to F-19 and F-ALERT-02 are as of 18 November 2026; those of F-20 to F-32 and the open items are as of 19 November 2026.
 
 F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write walkthroughs of the hosted site (an anonymous visitor at 1440, 390 and 320 px and at 200% zoom; two self-registered residents; the moderator; the administrator) and an API data audit of the 21 published events. Each entry says what was seen. Evidence is under `.codex-build/explore/` (gitignored, not committed). The open items from EXPLORE-18 are listed at the end of this section.
 
@@ -90,12 +92,14 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Observation:** `apps/worker/test/webhook-ingest.test.ts` and `apps/worker/test/bmkg-cap.test.ts` do not import PGlite or `createTestDatabase`. The CAP tests are parser-level.
 - **Evidence:** `docs/testing/INTEGRATION-TEST.md` section 7, items 1 and 2. Affects IT-B1-06 and IT-B1-07.
 - **Decision needed:** add PGlite composition tests for both, or accept the handler and parser tests for the course release and record that decision.
+- **Status (19 Nov 2026): partly closed.** The webhook route has a PGlite test now (`apps/worker/test/webhook-ingest-db.test.ts`, TEST-GAP-03). The BMKG CAP parser still has none, and it has no production caller either: its only importer is `apps/worker/test/bmkg-cap.test.ts`, and BMKG polling is JSON inside the scheduled handler, so no production path would be covered by such a test. The BMKG gap is explained here, not closed: no owner decision to accept it is recorded.
 
 ### F-06: no dedicated test for `freshness-aggregate-policy.ts`
 
 - **Observation:** the aggregate rules are tested only as cases inside `apps/worker/test/l4-public-projection.test.ts`.
 - **Evidence:** `docs/testing/INTEGRATION-TEST.md` section 5 (gap paragraph) and section 7, item 3. File: `apps/worker/src/layers/l4-application-integration/freshness-aggregate-policy.ts`.
 - **Decision needed:** add a dedicated test file and list it in `apps/worker/package.json`, or accept the current cases as sufficient.
+- **Status (19 Nov 2026): closed by test.** `apps/worker/test/freshness-aggregate-policy.test.ts` (7 tests, listed in `apps/worker/package.json`) checks the four written rules, that the order of impact statuses does not matter, and every claim status with every impact list of up to three statuses (120 cases). Impact lists longer than three are not enumerated.
 
 ### F-07: SDP section 3.1 describes a read-only moderator view with no sign-in
 
@@ -279,7 +283,38 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Where:** `apps/web/src/EventDetail.tsx`, API branch (the fixed row near line 296).
 - **Cause:** the row text is a fixed string, not read from the record. The fixture branch shows a retrieval time (`source.retrievedAt`, the same file, about line 76); the API branch shows only the fixed row.
 - **Severity:** Low.
-- **Status (19 Nov 2026): open.** Decision needed: whether the public record carries an acquisition time to show, or the row should be removed.
+- **Status (19 Nov 2026): fixed in `b4a0d0f` (POLISH-02); tests in `f155822`. Hosted re-check pending.** The record page now shows the source's collection time (`retrieved_at`, migration 060) when a source gives one, and 'Tidak disebutkan' when none does. The decision question above is answered by this fix; no separate owner decision is recorded for it.
+
+### F-30: a moderator reject wrote no audit record (Medium)
+
+- **Observation:** a moderator reject of a proposal recorded its decision but no audit record. A publish did write one. SYSTEM-TEST ST-F-07 expects each decision to write an audit record.
+- **Found by:** TEST-GAP-03 (19 November 2026), the "ST-F-07" block of `apps/worker/test/adr061-gate-db.test.ts`.
+- **Where:** `apps/worker/src/layers/l4-application-integration/proposal-publication.ts`, the reject branch of `decideProposal`.
+- **Cause:** the reject branch wrote the decision row and nothing else. The publish branch writes an audit record.
+- **Severity:** Medium, set by TG-DOCS-07 (an audit gap with no public effect; a reject never publishes). Not yet reviewed by the owner.
+- **Fix:** `f3373c0` (`fix(TEST-GAP-03)`, 19 November 2026). The reject writes one audit record, action `proposal_rejected`, with the actor and the reason, and the decision id and outcome in its details. Test: `apps/worker/test/adr061-gate-db.test.ts` (2 tests).
+- **Status (19 Nov 2026): fixed (`f3373c0`).** The reject of 18 November 2026 on the hosted site came before the fix, so it has no audit row. Whether the hosted Worker runs this fix is not recorded here.
+
+### F-31: the webhook AI job was queued with no trace id (Medium)
+
+- **Observation:** an AI job queued from a webhook report had a NULL trace id, so it could not be linked to its report revision's trace (FR-14).
+- **Found by:** TEST-GAP-03 (19 November 2026), `apps/worker/test/webhook-ingest-db.test.ts`, the case "the webhook AI job carries the same trace id as its revision".
+- **Where:** `apps/worker/src/index.ts`, the webhook enqueue block (`traceId`, line 569).
+- **Cause:** the enqueue read `trace_id` from the in-memory revision that `onRevisionCreated` stores. The webhook handler does not set trace_id on that object, so the job got no trace id. The chunk write in the same block already falls back to `trace-<report_revision_id>`.
+- **Severity:** Medium, set by TG-DOCS-07 (a traceability gap under FR-14, with no public effect). Not yet reviewed by the owner.
+- **Fix:** `f3373c0` (`fix(TEST-GAP-03)`, 19 November 2026). The job takes the revision's trace id, or `trace-<report_revision_id>` when none is present, the same id the chunks use. Test: `apps/worker/test/webhook-ingest-db.test.ts`.
+- **Status (19 Nov 2026): fixed (`f3373c0`), tested at PGlite level.** Not checked on the hosted site.
+
+### F-32: the header nav sat under the dataset badge at 601 to 900 px, 200% zoom (severity not recorded)
+
+- **Observation:** at 200% text enlargement, a viewport of 601 to 900 px (a 1440 px screen at 200% is 720 px wide) drew header nav items under the dataset badge.
+- **Found by:** not recorded in the repository. The fix commit names the case.
+- **Where:** `apps/web/src/app-shell.css`, the header rules at 601 to 900 px.
+- **Cause:** at tablet width the nav, the dataset badge and "Akun" share one row, and the header kept its wide-layout gaps and padding.
+- **Severity:** not recorded.
+- **Fix:** `b3ca26d` (`fix(POLISH-01)`, 19 November 2026). At 601 to 900 px the header gaps and padding tighten, and the nav scrolls inside itself as the last fallback. Below 768 px the brand name is hidden and the brand mark keeps its link and accessible name. Test: `apps/web/test/header-reflow.test.tsx` (2 tests). The test checks the CSS rules and the header markup, not a rendered layout.
+- **Verification:** a local browser check at 375 to 1440 px (its record is not in the repository). Deployed on 19 November 2026. The hosted re-check is pending.
+- **Status (19 Nov 2026): fixed locally and deployed; hosted re-check pending.** BR-02 stays Partial: the account and moderator screens at 200% are not recorded.
 
 ### F-ALERT-02: a published version did not reach `/api/v1/updates`
 
@@ -287,16 +322,16 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Evidence:** the test "a newly published version appears in the public views and the updates feed (F-ALERT-02, HOSTED-02)" in `apps/worker/test/repeated-coverage-alerts.test.ts` is active, with no todo left. CI run 44211263890 is green at `6fff929`. The hosted `/api/v1/updates` returned 200 on 17 Nov 2026 (`docs/DEPLOYMENT.md` section 6).
 - **Status (18 Nov 2026): fixed in `1a11d3c`** (`feat(HOSTED-02)`, 16 Nov 2026): a publish writes a v2.0 event record and review row.
 
-### EXPLORE-18 open items (not fixed, 19 Nov 2026)
+### EXPLORE-18 open items (19 Nov 2026)
 
-These came from EXPLORE-18 and were not fixed. They have no F-nn ID yet.
+These came from EXPLORE-18. Two were fixed on 19 November 2026 (POLISH-02 and POLISH-03) and are marked below; the others are open. They have no F-nn ID yet.
 
 - **Duplicate events:** Kampung Melayu and the Jl. Tanah Rendah fire; Menteng and Dukuh Atas. Status: open. Left to moderators (owner decision 4).
-- **Machine refresh in history:** a machine refresh is labelled "Versi dikoreksi" in the event history. Status: open. Needs a contract field.
+- **Machine refresh in history:** a machine refresh is labelled "Versi dikoreksi" in the event history. Status: fixed on 19 Nov 2026 (POLISH-02, `b4a0d0f`). An automatic refresh by `agent:auto-publisher` is marked `automatic` (migration 061) and reads "Diperbarui otomatis" on the web and in the Android reader; a moderator correction keeps "Versi dikoreksi". Hosted re-check pending.
 - **#peta list map:** the list-map component (`EventFeed`) cannot be reached on the live site. Status: open.
 - **Phone layout at 390 px:** the admin tabs and the 44 px touch targets. Status: open.
 - **Sign-in heading:** the wording of "Masuk dengan username" is open. Status: open.
-- **Superseded proposals:** a superseded proposal stays pending in the moderator queue. Status: open.
+- **Superseded proposals:** a superseded proposal stays pending in the moderator queue. Status: fixed on 19 Nov 2026 (POLISH-03, `ab4533a`, ADR-062 amendment). A newer proposal of the same incident supersedes an older undecided one. The superseded proposal leaves the moderator queue and the expiry sweep, and no decision publishes it (`apps/worker/test/proposal-supersede.test.ts`, `apps/db/test/proposal-supersede.test.ts`). The flow reads it as "digantikan versi baru". No hosted check is recorded.
 - **Updates feed:** the updates-feed view (migration 016) may have the same slow shape as F-25. It is not measured. Status: open.
 
 ## Section C: Removed from the defect list (not fixes)
