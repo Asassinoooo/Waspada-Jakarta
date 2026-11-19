@@ -775,3 +775,63 @@ test("POLISH-02: an automatic refresh in the updates feed reads Diperbarui otoma
   assert.equal(markup.split("Diperbarui otomatis").length - 1, 1);
   assert.equal(markup.split("Versi dikoreksi").length - 1, 1);
 });
+
+function occurrences(text: string, needle: string): number {
+  return text.split(needle).length - 1;
+}
+
+test("ST-F-02: a correction re-polled in a later cycle is shown once, and a newer version of that event is its own card", async (t) => {
+  const storage = new MemoryStorage();
+  storage.values.set(UPDATE_CURSOR_STORAGE_KEY, "cursor-0");
+  const scheduler = new FakeScheduler();
+  const captured = captureStates();
+  const requested: string[] = [];
+  const feed = new Map<string, PublicUpdatePage>([
+    ["cursor-0", page([change("fictional-correction", 2, "Koreksi pertama.")], "cursor-1")],
+    // The same version is offered again from the next cursor, as a re-poll delivers it.
+    ["cursor-1", page([change("fictional-correction", 2, "Koreksi pertama.")], "cursor-2")],
+    ["cursor-2", page([change("fictional-correction", 3, "Koreksi kedua.")], "cursor-3")],
+  ]);
+  const poller = createUpdateCenterPoller({
+    interests: interests({ categories: ["disasters_weather"] }),
+    storage,
+    scheduler,
+    onState: captured.onState,
+    refreshCurrentEvents: async () => {},
+    getUpdates: async (cursor) => {
+      const next = feed.get(cursor ?? "");
+      if (next === undefined) throw new Error("unexpected synthetic cursor");
+      requested.push(cursor ?? "");
+      return next;
+    },
+    getDetail: async (eventId) => detail(eventId),
+  });
+  t.after(() => poller.stop());
+
+  const latest = () => {
+    const state = captured.states.at(-1);
+    assert.ok(state, "a state was published");
+    return state;
+  };
+  const markupOf = (state: UpdateCenterState) => renderToStaticMarkup(<UpdateCenterContent gate="live" state={state} onRefresh={() => {}} />);
+
+  poller.start(true);
+  await poller.refresh();
+  await poller.refresh();
+  const rePolled = latest();
+  assert.equal(rePolled.items.length, 1, "the re-delivered version is kept once in memory");
+  const afterRepoll = markupOf(rePolled);
+  assert.equal(occurrences(afterRepoll, 'class="update-center-card"'), 1, "one card after the re-poll");
+  assert.equal(occurrences(afterRepoll, "Koreksi pertama."), 1, "the correction is rendered once");
+  assert.match(afterRepoll, /1 pembaruan cocok/u);
+  assert.doesNotMatch(afterRepoll, /role="alert"/u, "a repeated delivery raises no alert");
+
+  await poller.refresh();
+  const newer = latest();
+  assert.deepEqual(newer.items.map((item) => item.change.version), [2, 3], "the newer version is added after the earlier one");
+  const afterNewer = markupOf(newer);
+  assert.equal(occurrences(afterNewer, 'class="update-center-card"'), 2, "one card per version");
+  assert.equal(occurrences(afterNewer, "Koreksi kedua."), 1, "the newer correction is shown once");
+  assert.equal(occurrences(afterNewer, "Koreksi pertama."), 1, "the earlier correction is not repeated");
+  assert.deepEqual(requested, ["cursor-0", "cursor-1", "cursor-2"]);
+});

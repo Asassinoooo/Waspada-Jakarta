@@ -347,7 +347,7 @@ function ApiEventDetail({
                         return (
                           <div className="source-record" key={`${index}:${source.url}`}>
                             <h3>{source.display_name}</h3>
-                            <p>Waktu sumber diterbitkan: {formatInstant(source.published_at)} · waktu observasi: {formatInstant(source.observed_at)}</p>
+                            <p>Waktu sumber diterbitkan: {source.published_at ? formatInstant(source.published_at) : "Tidak disebutkan"} · waktu observasi: {formatInstant(source.observed_at)}</p>
                             {firstExcerpt !== undefined && <blockquote className="source-excerpt">{firstExcerpt}</blockquote>}
                             {moreExcerpts.length > 0 && (
                               <details>

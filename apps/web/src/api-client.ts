@@ -130,6 +130,19 @@ function isSafePublicEventId(value: unknown): value is string {
   }
 }
 
+/**
+ * A briefing shows each event once. A repeated event_id keeps its first position and later copies are dropped, so the
+ * order of the first occurrences is kept. The worker already rejects duplicates; this is the client's own guard.
+ */
+export function collapseRepeatedBriefingEvents<T extends { event: { event_id: string } }>(items: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.event.event_id)) return false;
+    seen.add(item.event.event_id);
+    return true;
+  });
+}
+
 function parseBriefingResponse(value: unknown): BriefingResponse {
   if (!isRecord(value) || !isInstant(value.generated_at) || !Array.isArray(value.items) || value.items.length > MAX_BRIEFING_ITEMS) {
     throw new ApiPayloadError();
@@ -159,7 +172,8 @@ function parseBriefingResponse(value: unknown): BriefingResponse {
     }
   }
 
-  return value as unknown as BriefingResponse;
+  const response = value as unknown as BriefingResponse;
+  return { ...response, items: collapseRepeatedBriefingEvents(response.items) };
 }
 
 async function readBoundedResponseText(response: Response, maximumBytes = MAX_GEOJSON_BYTES): Promise<string> {

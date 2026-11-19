@@ -95,6 +95,35 @@ test("briefing client rejects malformed or partial response data as one generic 
   });
 });
 
+test("briefing client returns each event once, keeping the first occurrence in place", async (t) => {
+  const briefingItem = (eventId: string) => ({
+    event: {
+      event_id: eventId,
+      version: 1,
+      title: "Perubahan fiktif",
+      category: "disasters_weather",
+      lifecycle: "ongoing",
+      freshness: { status: "current" },
+      event_time: { start: "2026-09-25T04:00:00.000Z", end: null, precision: "exact" },
+      published_at: "2026-09-25T04:06:00.000Z",
+    },
+    relevance_reasons: ["Cocok dengan lokasi yang Anda pilih."],
+  });
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    generated_at: "2026-09-25T04:06:00.000Z",
+    items: [briefingItem("fictional-a"), briefingItem("fictional-b"), briefingItem("fictional-a")],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const response = await requestBriefing({ places: ["Pondok Labu"], services: [], institutions: [], audiences: [], categories: [] });
+  assert.deepEqual(response.items.map((item) => item.event.event_id), ["fictional-a", "fictional-b"]);
+});
+
 test("updates client sends only the opaque cursor and fixed page size and validates a closed page", async (t) => {
   const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
   const page = {

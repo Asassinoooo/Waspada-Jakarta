@@ -220,3 +220,43 @@ test("POLISH-02: an automatic refresh reads Diperbarui otomatis, and a moderator
   assert.equal(countOf(html, "Diperbarui otomatis"), 1);
   assert.equal(countOf(html, "Versi dikoreksi"), 1);
 });
+
+const eventAt = "2026-11-12T02:30:00.000Z";
+const issuerAt = "2026-11-12T01:50:00.000Z";
+const collectedAt = "2026-11-12T02:45:00.000Z";
+const publishedAt = "2026-11-12T09:05:00.000Z";
+const observedAt = "2026-11-12T03:10:00.000Z";
+
+test("ST-F-05: the record page shows the event, issuer, collection and publication times, each from its own field", () => {
+  const html = renderLive(record([claim([source({ published_at: issuerAt, observed_at: observedAt, retrieved_at: collectedAt })])]));
+
+  assert.equal(countOf(html, `<dt>Waktu kejadian</dt><dd>${formatInstant(eventAt)}</dd>`), 1, "event time row");
+  assert.equal(
+    countOf(html, `Waktu sumber diterbitkan: ${formatInstant(issuerAt)} · waktu observasi: ${formatInstant(observedAt)}`),
+    1,
+    "issuer time on its own source line",
+  );
+  assert.equal(countOf(html, `<dt>Waktu pengambilan sumber</dt><dd>${formatInstant(collectedAt)}</dd>`), 1, "collection time row");
+  assert.equal(
+    countOf(html, `<dt>Versi publik diterbitkan</dt><dd><time dateTime="${publishedAt}">${formatInstant(publishedAt)}</time></dd>`),
+    1,
+    "publication time row",
+  );
+  assert.equal(new Set([eventAt, issuerAt, collectedAt, publishedAt].map(formatInstant)).size, 4, "four different instants, so a swapped field would show");
+  assert.equal(countOf(html, "<dt>Dipublikasikan sumber</dt>"), 0,"the source time is not repeated as an event-level row when the event has a time");
+});
+
+test("ST-F-05: a null collection time reads Tidak disebutkan, and no other time fills that row", () => {
+  const html = renderLive(record([claim([source({ published_at: issuerAt, retrieved_at: null })])]));
+  assert.equal(countOf(html, "<dt>Waktu pengambilan sumber</dt><dd>Tidak disebutkan</dd>"), 1);
+  assert.equal(countOf(html, `<dt>Waktu pengambilan sumber</dt><dd>${formatInstant(issuerAt)}</dd>`), 0, "the issuer time is not used");
+  assert.equal(countOf(html, `<dt>Waktu pengambilan sumber</dt><dd>${formatInstant(publishedAt)}</dd>`), 0, "the publication time is not used");
+  assert.equal(countOf(html, `<dt>Waktu kejadian</dt><dd>${formatInstant(eventAt)}</dd>`), 1, "the event time keeps its own row");
+  assert.equal(countOf(html, `<dt>Versi publik diterbitkan</dt><dd><time dateTime="${publishedAt}">`), 1, "the publication time keeps its own row");
+});
+
+test("ST-F-05: a null source publish time reads Tidak disebutkan on its source line", () => {
+  const html = renderLive(record([claim([source({ published_at: null, retrieved_at: null })])]));
+  assert.equal(countOf(html, "Waktu sumber diterbitkan: Tidak disebutkan"), 1);
+  assert.equal(countOf(html, `Waktu sumber diterbitkan: ${formatInstant(eventAt)}`), 0, "the event time does not fill the issuer line");
+});

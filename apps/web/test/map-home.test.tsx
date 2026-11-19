@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { EventView, PublicFeatureCollection } from "@waspada/worker/public-contracts";
+import type { EventView, PublicContext, PublicFeatureCollection } from "@waspada/worker/public-contracts";
+import { SiteHeader } from "../src/AppShell.js";
 import { routeFromHash } from "../src/App.js";
-import { MapEventList, EMPTY_LIST_TITLE } from "../src/MapEventList.js";
+import { MapEventList, EMPTY_LIST_NOTE, EMPTY_LIST_TITLE } from "../src/MapEventList.js";
 import { MapFilterSheet, DEFAULT_MAP_FILTER_VALUE, FACILITY_NOTE } from "../src/MapFilterSheet.js";
 import { MapHome } from "../src/MapHome.js";
 import { buildEventHash, parseEventIdFromHash } from "../src/map-links.js";
@@ -315,4 +316,93 @@ test("ST-F-04: the map markers and the list draw from one filtered set, and an e
   assert.match(source, /const canvasMarkers = useMemo<CanvasMarker\[\]>\(\(\) => visibleEvents\.flatMap\(/u,
     "the canvas markers are built from the filtered set, not from every event");
   assert.match(source, /<MapEventList[\s\S]*?events=\{visibleEvents\}/u, "the list receives the same filtered set");
+});
+
+const demoScreenContext: PublicContext = { dataset_mode: "demo", dataset_label: "synthetic", generated_at: "2026-11-12T08:00:00.000Z", sources: [] };
+const liveScreenContext: PublicContext = { dataset_mode: "live", dataset_label: "live", generated_at: "2026-11-12T08:00:00.000Z", sources: [] };
+
+/** The map screen as App renders it for #peta: the header with its dataset badge, then the map home with its list. */
+function mapScreen(context: PublicContext, events: readonly EventView[], pins: typeof markers = markers): string {
+  return renderToStaticMarkup(createElement(SiteHeader, { route: { screen: "discover" }, context }))
+    + renderToStaticMarkup(createElement(MapHome, { initialEvents: events, initialMarkers: pins, context }));
+}
+
+function minWidthMatches(query: string, width: number): boolean {
+  const minimum = /^\(min-width:\s*(\d+)px\)$/u.exec(query);
+  return minimum !== null && width >= Number(minimum[1]);
+}
+
+/** Runs a render with window.matchMedia answering the min-width queries of a viewport this wide. The tests have no DOM. */
+function atViewportWidth<T>(width: number, render: () => T): T {
+  const scope = globalThis as { window?: unknown };
+  const hadWindow = Object.prototype.hasOwnProperty.call(globalThis, "window");
+  const previous = scope.window;
+  scope.window = {
+    matchMedia: (query: string) => ({
+      matches: minWidthMatches(query, width),
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    }),
+  };
+  try {
+    return render();
+  } finally {
+    if (hadWindow) scope.window = previous;
+    else delete scope.window;
+  }
+}
+
+test("ST-F-04: the demo or live label sits on the map screen that holds the list, and each mode shows only its own", () => {
+  const demo = mapScreen(demoScreenContext, [event("evt-1")]);
+  assert.match(demo, /<span class="site-header__badge-label">Data contoh<\/span>/u);
+  assert.match(demo, /aria-label="Daftar laporan, 1"/u);
+  assert.match(demo, /aria-label="Laporan terbit"/u, "the list is on the same screen as the label");
+  assert.doesNotMatch(demo, /site-header__badge-label">Langsung</u);
+
+  const live = mapScreen(liveScreenContext, [event("evt-1")]);
+  assert.match(live, /<span class="site-header__badge-label">Langsung<\/span>/u);
+  assert.match(live, /aria-label="Laporan terbit"/u, "the live list is on the same screen as the label");
+  assert.doesNotMatch(live, /Data contoh/u);
+});
+
+test("ST-F-04: at 390 px the list is a closed bottom sheet behind the Daftar toggle, and the side panel opens only from 900 px", () => {
+  const render = (width: number) => atViewportWidth(width, () => renderToStaticMarkup(
+    createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }),
+  ));
+  const toggleOf = (html: string) => html.match(/<button[^>]*aria-label="Daftar laporan, 1"[^>]*>/u)?.[0] ?? "";
+
+  const phone = render(390);
+  assert.match(toggleOf(phone), /aria-expanded="false"/u, "the toggle reads closed on a phone");
+  assert.doesNotMatch(phone, /class="map-home__panel"/u, "no side panel on a phone");
+  assert.doesNotMatch(phone, /aria-label="Laporan terbit"/u, "the list is not in the page until the toggle opens it");
+  assert.doesNotMatch(phone, /class="sheet map-list-sheet"/u, "the bottom sheet starts closed");
+
+  assert.doesNotMatch(render(899), /class="map-home__panel"/u, "899 px is still the phone layout");
+
+  const atBreakpoint = render(900);
+  assert.match(atBreakpoint, /class="map-home__panel"/u, "from 900 px the list is a left panel");
+  assert.match(atBreakpoint, /class="map-home map-home--island"/u);
+  assert.match(toggleOf(atBreakpoint), /aria-expanded="true"/u);
+
+  const source = readFileSync(new URL("../src/MapHome.tsx", import.meta.url), "utf8");
+  assert.match(source, /onClick=\{\(\) => setListOpen\(\(open\) => !open\)\}/u, "the Daftar toggle opens and closes the list");
+  assert.match(source, /onClose=\{\(\) => setListOpen\(false\)\}/u, "the bottom sheet closes back to the map");
+});
+
+test("ST-F-15: a live map with no published events says an empty list is not an all-clear, and carries the live label", () => {
+  const html = mapScreen(liveScreenContext, []);
+  assert.ok(html.includes(EMPTY_LIST_TITLE));
+  assert.ok(html.includes(EMPTY_LIST_NOTE), "the note says an empty result does not mean nothing happened");
+  assert.doesNotMatch(html, /\baman\b/iu);
+  assert.doesNotMatch(html, /semua baik|tidak ada bahaya|situasi normal|kondisi normal/iu);
+  assert.match(html, /<span class="site-header__badge-label">Langsung<\/span>/u);
+  assert.doesNotMatch(html, /Data contoh|DEMO —/u, "no demo label on a live map");
+});
+
+test("ST-F-15: a demo map with no published events carries the demo label and never the live one", () => {
+  const html = mapScreen(demoScreenContext, []);
+  assert.match(html, /<span class="site-header__badge-label">Data contoh<\/span>/u);
+  assert.doesNotMatch(html, /site-header__badge-label">Langsung</u);
+  assert.ok(html.includes(EMPTY_LIST_TITLE));
 });

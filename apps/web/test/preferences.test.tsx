@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { BriefingInterests, PublicContext } from "@waspada/worker/public-contracts";
+import type { BriefingInterests, BriefingResponse, EventView, PublicContext } from "@waspada/worker/public-contracts";
 import { SiteHeader } from "../src/AppShell.js";
 import { routeFromHash } from "../src/App.js";
-import { requestBriefingIfEligible } from "../src/BriefingResults.js";
+import { BriefingResultsView, requestBriefingIfEligible } from "../src/BriefingResults.js";
 import { Preferences } from "../src/Preferences.js";
 import {
   addInterestValue,
@@ -285,4 +285,54 @@ test("preferences have a direct hash route and public navigation link", () => {
   assert.match(markup, /<span>Area saya<\/span><\/a>/u);
   assert.doesNotMatch(markup, /Minat tersimpan|aria-label="Untuk Anda"/u);
   assert.match(markup, /Status dataset tidak tersedia/);
+});
+
+function briefingEvent(eventId: string, version: number, title: string): EventView {
+  return {
+    event_id: eventId,
+    version,
+    title,
+    category: "disasters_weather",
+    lifecycle: "ongoing",
+    freshness: { status: "current", evaluated_at: "2026-11-12T09:00:00.000Z", review_due_at: null, basis: "fast_observation_review" },
+    event_time: { start: "2026-11-12T08:00:00.000Z", end: null, precision: "exact" },
+    published_at: "2026-11-12T09:05:00.000Z",
+  } as unknown as EventView;
+}
+
+function briefingMarkup(items: BriefingResponse["items"]): string {
+  const interests: BriefingInterests = { places: ["Cawang"], services: [], institutions: [], audiences: [], categories: [] };
+  return renderToStaticMarkup(<BriefingResultsView
+    context={liveContext}
+    interests={interests}
+    state={{ status: "loaded", data: { items, generated_at: "2026-11-12T08:00:00.000Z" } }}
+    onRequest={() => {}}
+  />);
+}
+
+function countCards(text: string, needle: string): number {
+  return text.split(needle).length - 1;
+}
+
+test("ST-F-02: Ringkasan saya lists each matched event once, each with its reason", () => {
+  const reason = "Cocok dengan lokasi yang Anda pilih.";
+  const markup = briefingMarkup([
+    { event: briefingEvent("fictional-correction", 2, "Koreksi Cawang"), relevance_reasons: [reason] },
+    { event: briefingEvent("fictional-other", 1, "Genangan lain"), relevance_reasons: [reason] },
+  ]);
+  assert.equal(countCards(markup, 'class="briefing-result"'), 2, "one card per matched event");
+  assert.equal(countCards(markup, "Koreksi Cawang"), 1, "the corrected event is shown once");
+  assert.equal(countCards(markup, reason), 2, "each card names its reason");
+  assert.match(markup, /2 informasi terbit cocok dengan pilihan Anda\./u);
+});
+
+test("ST-F-02: a briefing that repeats one event shows that event once, at its first position", () => {
+  const reason = "Cocok dengan lokasi yang Anda pilih.";
+  const first = { event: briefingEvent("fictional-correction", 2, "Koreksi Cawang"), relevance_reasons: [reason] };
+  const other = { event: briefingEvent("fictional-other", 1, "Genangan lain"), relevance_reasons: [reason] };
+  const markup = briefingMarkup([first, other, first]);
+  assert.equal(countCards(markup, 'class="briefing-result"'), 2, "the repeated event is not a third card");
+  assert.equal(countCards(markup, "Koreksi Cawang"), 1);
+  assert.ok(markup.indexOf("Koreksi Cawang") < markup.indexOf("Genangan lain"), "the first occurrence keeps its place");
+  assert.match(markup, /2 informasi terbit cocok dengan pilihan Anda\./u);
 });

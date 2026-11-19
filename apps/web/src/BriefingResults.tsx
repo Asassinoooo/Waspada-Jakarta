@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BriefingInterests, BriefingResponse, EventView, PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel, eventTimeText } from "./display.js";
-import { requestBriefing } from "./api-client.js";
+import { collapseRepeatedBriefingEvents, requestBriefing } from "./api-client.js";
 import { normalizeInterests } from "./preferences-store.js";
 
 export type BriefingDisplayState =
@@ -130,6 +130,8 @@ export function BriefingResultsView({ context, interests, state, onRequest }: Br
   const hasInterests = hasEffectiveBriefingInterest(interests);
   const canRequest = context?.dataset_mode === "live" && hasInterests;
   const responseState = canRequest ? state : { status: "idle" as const };
+  // Each event is shown once, even if a response repeats it (the first occurrence keeps its place).
+  const briefingItems = responseState.status === "loaded" ? collapseRepeatedBriefingEvents(responseState.data.items) : [];
 
   return (
     <section className="preferences-briefing" aria-labelledby="briefing-status-title">
@@ -170,17 +172,17 @@ export function BriefingResultsView({ context, interests, state, onRequest }: Br
           <p>Briefing belum dapat dimuat. Minat Anda tetap tersimpan di browser ini.</p>
           <button className="button button--quiet" type="button" onClick={onRequest}>Coba lagi</button>
         </div>
-      ) : responseState.data.items.length === 0 ? (
+      ) : briefingItems.length === 0 ? (
         <div className="briefing-empty">
           <p className="briefing-status" role="status">Belum ada informasi terbit yang cocok dengan minat Anda.</p>
           <button className="button button--quiet" type="button" onClick={onRequest}>Perbarui ringkasan</button>
         </div>
       ) : (
         <div className="briefing-matched">
-          <p className="briefing-status" role="status">{responseState.data.items.length} informasi terbit cocok dengan pilihan Anda.</p>
+          <p className="briefing-status" role="status">{briefingItems.length} informasi terbit cocok dengan pilihan Anda.</p>
           <button className="button button--quiet" type="button" onClick={onRequest}>Perbarui ringkasan</button>
           <ol className="briefing-results" aria-label="Hasil briefing live">
-            {responseState.data.items.map((item) => (
+            {briefingItems.map((item) => (
               <li key={item.event.event_id + ":" + item.event.version}><BriefingItemCard item={item} /></li>
             ))}
           </ol>
