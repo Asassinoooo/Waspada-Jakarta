@@ -10,7 +10,15 @@ import {
   createSourceApprovalClient,
   sourceApprovalNoteError,
 } from "../src/source-approval-client.js";
-import { SourceApprovalList, SourceApprovalPanel } from "../src/SourceApprovalPanel.js";
+import {
+  SourceApprovalList,
+  SourceApprovalPanel,
+  accessRestrictionsText,
+  pollingIntervalText,
+  publicDisplayText,
+  reuseBasisText,
+  sourceHealthLines,
+} from "../src/SourceApprovalPanel.js";
 
 const CSRF = "csrf-token-with-enough-entropy";
 const NOTE = "Syarat penggunaan diperiksa ulang oleh administrator.";
@@ -53,13 +61,30 @@ function source(overrides: Partial<AdminSourceApprovalItem>): AdminSourceApprova
     auto_acquisition_enabled: false,
     auto_publication_policy: "never",
     public_display_granted: false,
+    reuse_basis: [],
+    access_restrictions: [],
+    polling_interval_seconds: null,
+    health_status: "unknown",
+    last_checked_at: null,
+    last_success_at: null,
+    last_failure_at: null,
     ...overrides,
   };
 }
 
 const SOURCES: AdminSourceApprovalItem[] = [
   source({ source_id: "source-menunggu", display_name: "Sumber menunggu", approval_status: "pending" }),
-  source({ source_id: "source-disetujui", display_name: "Sumber disetujui", approval_status: "approved", auto_acquisition_enabled: true, public_display_granted: true }),
+  source({
+    source_id: "source-disetujui",
+    display_name: "Sumber disetujui",
+    approval_status: "approved",
+    auto_acquisition_enabled: true,
+    public_display_granted: true,
+    reuse_basis: ["public_display"],
+    health_status: "healthy",
+    last_checked_at: "2026-11-19T09:05:00.000Z",
+    last_success_at: "2026-11-19T09:05:00.000Z",
+  }),
   source({ source_id: "source-dicabut", display_name: "Sumber dicabut", approval_status: "revoked" }),
 ];
 
@@ -178,8 +203,8 @@ test("the list shows the approval, collection and public display state, and an a
   assert.match(withActions, /Disetujui/u);
   assert.match(withActions, /Dicabut/u);
   assert.match(withActions, /Pengumpulan otomatis aktif/u);
-  assert.match(withActions, /Tampil publik diizinkan/u);
-  assert.match(withActions, /Tampil publik belum diizinkan/u);
+  assert.match(withActions, /Tampil publik: diizinkan/u);
+  assert.match(withActions, /Tampil publik: tidak diizinkan/u);
   assert.match(withActions, /aria-label="Setujui Sumber menunggu"/u);
   assert.match(withActions, /aria-label="Cabut persetujuan Sumber disetujui"/u, "an approved source offers revocation");
   assert.match(withActions, /aria-label="Setujui Sumber dicabut"/u, "a revoked source may be approved again");
@@ -209,4 +234,99 @@ test("the panel shows approval controls to an administrator only and loads the l
   const noToken = renderToStaticMarkup(<SourceApprovalPanel session={authenticated("admin", { role: "admin" }, null)} />);
   assert.match(noToken, /Muat ulang halaman/u, "an administrator without a session token is asked to reload, not told the role is wrong");
   assert.doesNotMatch(noToken, /<button|Memuat daftar sumber|Setujui|Cabut/u);
+});
+
+test("the restriction block shows public display, reuse basis, access notes and the polling interval, and never a raw registry token", () => {
+  const restricted = source({
+    source_id: "source-terbatas",
+    display_name: "Sumber terbatas",
+    approval_status: "approved",
+    auto_acquisition_enabled: true,
+    public_display_granted: false,
+    reuse_basis: ["public", "model_triage", "token_internal_xyz"],
+    access_restrictions: ["Atribusi wajib"],
+    polling_interval_seconds: 900,
+  });
+  const markup = renderToStaticMarkup(<SourceApprovalList sources={[restricted]} />);
+  assert.match(markup, /aria-label="Pembatasan Sumber terbatas"/u);
+  assert.match(markup, /Tampil publik: tidak diizinkan/u, "a legacy grant alone does not show public display");
+  assert.match(markup, /Dasar penggunaan: Dasar lama: publik \(perlu bukti lisensi\), Triase model, Dasar lain \(belum diberi label\)/u);
+  assert.match(markup, /Pembatasan akses: Atribusi wajib/u);
+  assert.match(markup, /Interval pengambilan: setiap 15 menit/u);
+  assert.doesNotMatch(markup, /token_internal_xyz/u, "an unlabelled registry token is never printed");
+
+  assert.equal(publicDisplayText(true), "Tampil publik: diizinkan");
+  assert.equal(reuseBasisText([]), "Dasar penggunaan: belum tercatat");
+  assert.equal(reuseBasisText(["public_display", "public_display"]), "Dasar penggunaan: Tampil publik", "a repeated token is shown once");
+  assert.equal(accessRestrictionsText([]), "Pembatasan akses: tidak ada catatan");
+  assert.equal(pollingIntervalText(null), "Interval pengambilan: belum diatur");
+  assert.equal(pollingIntervalText(3600), "Interval pengambilan: setiap 1 jam");
+  assert.equal(pollingIntervalText(45), "Interval pengambilan: setiap 45 detik");
+});
+
+test("the health block shows Jakarta times for a checked source, a failure line without an error code, and the no-data line when never checked", () => {
+  const healthy = source({
+    source_id: "source-sehat",
+    display_name: "Sumber sehat",
+    approval_status: "approved",
+    health_status: "healthy",
+    last_checked_at: "2026-11-19T09:05:00.000Z",
+    last_success_at: "2026-11-19T09:05:00.000Z",
+  });
+  const degraded = source({
+    source_id: "source-menurun",
+    display_name: "Sumber menurun",
+    approval_status: "approved",
+    health_status: "degraded",
+    last_checked_at: "2026-11-19T10:00:00.000Z",
+    last_success_at: "2026-11-18T09:00:00.000Z",
+    last_failure_at: "2026-11-19T10:00:00.000Z",
+  });
+  const neverChecked = source({ source_id: "source-baru", display_name: "Sumber baru", approval_status: "pending" });
+
+  const markup = renderToStaticMarkup(<SourceApprovalList sources={[healthy, degraded, neverChecked]} />);
+  assert.match(markup, /aria-label="Kesehatan Sumber sehat"/u);
+  assert.match(markup, /Status: Sehat/u);
+  assert.match(markup, /Pengambilan berhasil terakhir: 19 Nov 2026, 16\.05 WIB/u, "the instant is shown in WIB");
+  assert.match(markup, /Galat aktif: tidak ada/u);
+  assert.match(markup, /Status: Menurun/u);
+  assert.match(markup, /Pengambilan berhasil terakhir: 18 Nov 2026, 16\.00 WIB/u);
+  assert.match(markup, /Galat terakhir: 19 Nov 2026, 17\.00 WIB, penyebab belum dicatat/u);
+  assert.equal((markup.match(/Belum ada data kesehatan/gu) ?? []).length, 1, "only the never-checked source gets the no-data line");
+
+  assert.deepEqual(sourceHealthLines(neverChecked), ["Belum ada data kesehatan"]);
+  assert.deepEqual(sourceHealthLines(degraded), [
+    "Status: Menurun",
+    "Pengambilan berhasil terakhir: 18 Nov 2026, 16.00 WIB",
+    "Galat terakhir: 19 Nov 2026, 17.00 WIB, penyebab belum dicatat",
+  ]);
+  assert.deepEqual(sourceHealthLines(source({ health_status: "unavailable", last_checked_at: "2026-11-19T10:00:00.000Z", last_failure_at: "2026-11-19T10:00:00.000Z" })), [
+    "Status: Tidak tersedia",
+    "Pengambilan berhasil terakhir: belum pernah",
+    "Galat terakhir: 19 Nov 2026, 17.00 WIB, penyebab belum dicatat",
+  ]);
+});
+
+test("the list parser accepts the restriction and health fields, null health included, and refuses an unknown status or an unreadable instant", async () => {
+  const neverChecked = await createSourceApprovalClient(fakeFetch([{ status: 200, body: { sources: [SOURCES[0]] } }]).fetch).listSources();
+  assert.equal(neverChecked.sources[0]?.last_checked_at, null);
+  assert.equal(neverChecked.sources[0]?.health_status, "unknown");
+
+  const checked = await createSourceApprovalClient(fakeFetch([{ status: 200, body: listBody }]).fetch).listSources();
+  assert.equal(checked.sources[1]?.last_success_at, "2026-11-19T09:05:00.000Z");
+
+  const unknownHealth = fakeFetch([{ status: 200, body: { sources: [{ ...SOURCES[0], health_status: "down" }] } }]);
+  await assert.rejects(createSourceApprovalClient(unknownHealth.fetch).listSources(), SourceApprovalPayloadError);
+
+  const unreadableInstant = fakeFetch([{ status: 200, body: { sources: [{ ...SOURCES[1], last_success_at: "kemarin" }] } }]);
+  await assert.rejects(createSourceApprovalClient(unreadableInstant.fetch).listSources(), SourceApprovalPayloadError);
+
+  const zeroInterval = fakeFetch([{ status: 200, body: { sources: [{ ...SOURCES[0], polling_interval_seconds: 0 }] } }]);
+  await assert.rejects(createSourceApprovalClient(zeroInterval.fetch).listSources(), SourceApprovalPayloadError);
+
+  const scalarBasis = fakeFetch([{ status: 200, body: { sources: [{ ...SOURCES[0], reuse_basis: "public_display" }] } }]);
+  await assert.rejects(createSourceApprovalClient(scalarBasis.fetch).listSources(), SourceApprovalPayloadError);
+
+  const missingHealth = fakeFetch([{ status: 200, body: { sources: [{ ...SOURCES[0], health_status: undefined }] } }]);
+  await assert.rejects(createSourceApprovalClient(missingHealth.fetch).listSources(), SourceApprovalPayloadError);
 });

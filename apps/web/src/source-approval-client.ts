@@ -46,7 +46,21 @@ const SOURCE_KEYS = [
   "auto_acquisition_enabled",
   "auto_publication_policy",
   "public_display_granted",
+  "reuse_basis",
+  "access_restrictions",
+  "polling_interval_seconds",
+  "health_status",
+  "last_checked_at",
+  "last_success_at",
+  "last_failure_at",
 ] as const;
+
+const HEALTH_STATUSES: ReadonlySet<string> = new Set(["unknown", "healthy", "degraded", "unavailable"]);
+const MAX_TOKEN_LENGTH = 64;
+const MAX_TOKENS = 32;
+const MAX_RESTRICTION_LENGTH = 200;
+const MAX_RESTRICTIONS = 32;
+const MAX_INSTANT_LENGTH = 64;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -61,6 +75,16 @@ function isShortText(value: unknown, maximum: number): value is string {
   return typeof value === "string" && value.length >= 1 && value.length <= maximum;
 }
 
+function isTextList(value: unknown, maximumItems: number, maximumLength: number): value is string[] {
+  return Array.isArray(value) && value.length <= maximumItems && value.every((item) => isShortText(item, maximumLength));
+}
+
+/** An ISO instant from the server, or null. A value that does not parse is refused rather than shown. */
+function isNullableInstant(value: unknown): value is string | null {
+  if (value === null) return true;
+  return typeof value === "string" && value.length >= 1 && value.length <= MAX_INSTANT_LENGTH && !Number.isNaN(Date.parse(value));
+}
+
 function parseSource(value: unknown): AdminSourceApprovalItem {
   if (!isRecord(value) || !hasExactKeys(value, SOURCE_KEYS)) throw new SourceApprovalPayloadError();
   if (
@@ -72,7 +96,15 @@ function parseSource(value: unknown): AdminSourceApprovalItem {
     !isShortText(value.approval_status, 64) ||
     typeof value.auto_acquisition_enabled !== "boolean" ||
     !isShortText(value.auto_publication_policy, 64) ||
-    typeof value.public_display_granted !== "boolean"
+    typeof value.public_display_granted !== "boolean" ||
+    !isTextList(value.reuse_basis, MAX_TOKENS, MAX_TOKEN_LENGTH) ||
+    !isTextList(value.access_restrictions, MAX_RESTRICTIONS, MAX_RESTRICTION_LENGTH) ||
+    !(value.polling_interval_seconds === null || (Number.isInteger(value.polling_interval_seconds) && (value.polling_interval_seconds as number) > 0)) ||
+    typeof value.health_status !== "string" ||
+    !HEALTH_STATUSES.has(value.health_status) ||
+    !isNullableInstant(value.last_checked_at) ||
+    !isNullableInstant(value.last_success_at) ||
+    !isNullableInstant(value.last_failure_at)
   ) {
     throw new SourceApprovalPayloadError();
   }

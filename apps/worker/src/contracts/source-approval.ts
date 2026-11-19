@@ -18,6 +18,24 @@ export interface AdminSourceApprovalItem {
   readonly auto_publication_policy: string;
   /** Result of the existing public-display permission model for this source (not a stored flag). */
   readonly public_display_granted: boolean;
+  /** Reuse tokens from the registry (for example public_display, model_triage). The admin page labels them. */
+  readonly reuse_basis: readonly string[];
+  /** Free-text registry restriction notes. Empty when none are recorded. */
+  readonly access_restrictions: readonly string[];
+  /** Registry polling interval in seconds, or null when none is set. */
+  readonly polling_interval_seconds: number | null;
+  /** Hosted health from the ingest: unknown, healthy, degraded or unavailable. */
+  readonly health_status: string;
+  /** ISO instant of the last check (success or failure), or null when the source was never checked. */
+  readonly last_checked_at: string | null;
+  /** ISO instant of the last successful collection, or null when none is recorded. */
+  readonly last_success_at: string | null;
+  /**
+   * ISO instant of the last failed check, or null. The hosted writer stores no separate failure time: a failed check
+   * sets the status to degraded or unavailable and writes last_checked_at, and the next success sets healthy. So this
+   * is last_checked_at only while the status is degraded or unavailable. No error code is stored for these sources.
+   */
+  readonly last_failure_at: string | null;
 }
 
 export interface AdminSourceListResponse {
