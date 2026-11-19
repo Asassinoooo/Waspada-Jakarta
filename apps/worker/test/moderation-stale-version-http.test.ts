@@ -240,3 +240,142 @@ describe("ST-F-03 / ST-F-13: a stale-version correction over HTTP (database)", (
     assert.equal(publicTitle(), "Genangan 50 cm di Cawang, Jakarta Barat");
   });
 });
+
+/**
+ * ST-F-13 (FR-08, NFR-05): the moderator PUBLISH route over HTTP, against a proposal that already has a decision and
+ * against a proposal that a newer proposal of its incident superseded (POLISH-03). Each refusal is 409 ALREADY_DECIDED
+ * and writes no decision and no event version. The publisher mapping mirrors the publisher adapter in
+ * apps/worker/src/index.ts (decideProposal outcome to the handler's result), as the correction adapter does above.
+ */
+const PUBLISH_EVENT_B = "evt-stale-publish-b";
+
+describe("ST-F-13: a publish against a decided or superseded proposal over HTTP (database)", () => {
+  let db: TestDatabase;
+  let deps: ProposalDecisionDependencies;
+  const writer = () => createEventProposalWriter(db.executor);
+
+  before(async () => {
+    db = await createTestDatabase();
+    const migrations = await readMigrations(new URL("../../db/migrations/", import.meta.url));
+    await applyMigrations(db.executor, migrations);
+    lineage = await seedProposalLineage(db.executor, "stale-publish-http");
+    deps = {
+      executor: db.executor,
+      datasetKind: "live",
+      checkPublicDisplay: async (sourceId: string) => PERMITTED.has(sourceId),
+    };
+    PublicReadModel.clearPublishedEvents();
+  });
+
+  after(async () => {
+    await db?.close();
+  });
+
+  async function publishedVersionCount(eventId: string): Promise<number> {
+    const result = await db.executor.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM waspada.event_versions WHERE dataset_kind = 'live' AND event_id = $1",
+      [eventId],
+    );
+    return result.rows[0]?.n ?? 0;
+  }
+
+  async function dispositions(proposalId: string): Promise<string[]> {
+    const result = await db.executor.query<{ disposition: string }>(
+      `SELECT record_json->>'disposition' AS disposition FROM waspada.publication_decisions
+       WHERE dataset_kind = 'live' AND proposal_id = $1 ORDER BY decided_at ASC, decision_id ASC`,
+      [proposalId],
+    );
+    return result.rows.map((row) => row.disposition);
+  }
+
+  /** The Worker's publisher adapter: decideProposal outcome to the handler's publisher result (index.ts, publisher.publish). */
+  async function publishLikeWorker(input: unknown): Promise<unknown> {
+    const command = input as { proposal_id?: string; actorId?: string };
+    const outcome = await decideProposal(deps, {
+      proposalId: command.proposal_id!,
+      action: "publish",
+      actor: { kind: "moderator", actorId: command.actorId! },
+    });
+    if (outcome.status === "published") {
+      return { status: "written", receipt: { decision_id: outcome.decisionId } };
+    }
+    if (outcome.status === "unchanged") {
+      return { status: "unchanged", receipt: { decision_id: outcome.decisionId }, event_id: outcome.eventId, version: outcome.version };
+    }
+    if (outcome.status === "already_decided") return { status: "conflict", code: "ALREADY_DECIDED" };
+    if (outcome.status === "denied") {
+      return { status: "denied", code: outcome.code === "publication_failed" ? "writer_failed" : outcome.code };
+    }
+    return { status: "denied", code: "publication_not_authorized" };
+  }
+
+  const publishHandler = () => createModerationApiHandler({
+    authenticate: async () => principal(),
+    appOrigin: APP_ORIGIN,
+    csrfProtection: true,
+    datasetScope: "live",
+    getProposalDetail: async (proposalId: string) => {
+      const found = await writer().readProposalById(proposalId, "live");
+      return found ? { proposal: found, chunks: [] } : null;
+    },
+    checkPublicDisplay: async (sourceId: string) => PERMITTED.has(sourceId),
+    publicationService: { publish: publishLikeWorker },
+  });
+
+  function publishRequest(proposalId: string): Request {
+    return new Request(`https://app.test/api/v1/moderation/proposals/${proposalId}/publish`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: APP_ORIGIN, "x-csrf-token": CSRF },
+      body: JSON.stringify({ action: "publish", evidence_label: "attributed_report" }),
+    });
+  }
+
+  it("control: a first publish of an undecided proposal answers 200 written and creates version 1", async () => {
+    await writer().persistProposal(proposal("inc-publish-first"), "live");
+    const response = await publishHandler()(publishRequest("prop-inc-publish-first"));
+
+    assert.equal(response?.status, 200);
+    const body = (await response?.json()) as { ok: boolean; status: string };
+    assert.equal(body.ok, true);
+    assert.equal(body.status, "written");
+    assert.equal(await publishedVersionCount("inc-publish-first"), 1);
+  });
+
+  it("a second publish of the already-decided proposal answers 409 ALREADY_DECIDED and writes no decision or version", async () => {
+    const before = {
+      versions: await publishedVersionCount("inc-publish-first"),
+      decisions: await dispositions("prop-inc-publish-first"),
+    };
+    const response = await publishHandler()(publishRequest("prop-inc-publish-first"));
+
+    assert.equal(response?.status, 409);
+    const body = (await response?.json()) as { ok: boolean; status: string; code: string };
+    assert.equal(body.ok, false);
+    assert.equal(body.status, "conflict");
+    assert.equal(body.code, "ALREADY_DECIDED");
+    assert.equal(await publishedVersionCount("inc-publish-first"), before.versions, "no new event version");
+    assert.deepEqual(await dispositions("prop-inc-publish-first"), before.decisions, "no second decision row");
+  });
+
+  it("a publish of a superseded proposal answers 409 ALREADY_DECIDED, and the newer proposal still publishes", async () => {
+    await writer().persistProposal(proposal(PUBLISH_EVENT_B), "live");
+    await writer().persistProposal({
+      ...proposal(PUBLISH_EVENT_B),
+      proposal_id: `prop-${PUBLISH_EVENT_B}-newer`,
+      proposed_at: "2026-11-10T09:05:00.000Z",
+    } as EventProposalDto, "live");
+    assert.deepEqual(await dispositions(`prop-${PUBLISH_EVENT_B}`), ["supersede"], "the newer proposal superseded the older one");
+
+    const refused = await publishHandler()(publishRequest(`prop-${PUBLISH_EVENT_B}`));
+    assert.equal(refused?.status, 409);
+    const body = (await refused?.json()) as { code: string; status: string };
+    assert.equal(body.status, "conflict");
+    assert.equal(body.code, "ALREADY_DECIDED");
+    assert.equal(await publishedVersionCount(PUBLISH_EVENT_B), 0, "the superseded publish writes no version");
+    assert.deepEqual(await dispositions(`prop-${PUBLISH_EVENT_B}`), ["supersede"], "no publish or reject row is added");
+
+    const newer = await publishHandler()(publishRequest(`prop-${PUBLISH_EVENT_B}-newer`));
+    assert.equal(newer?.status, 200);
+    assert.equal(await publishedVersionCount(PUBLISH_EVENT_B), 1, "the newer proposal is the one version written");
+  });
+});

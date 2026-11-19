@@ -316,6 +316,63 @@ describe("FR-11 repeated coverage and re-delivery", () => {
     assert.equal(status.rows[0]?.geometry_source, null);
   });
 
+  it("NFR-05: repeated deliveries of one publication leave one decision, one updates-feed entry and one public event", async () => {
+    await persist(proposal("prop-rep-notice-a", "inc-rep-notice", "source-detik"));
+    assert.deepEqual(outcomeSummary(await auto("prop-rep-notice-a")), {
+      status: "published", eventId: "inc-rep-notice", version: 1,
+    });
+
+    // Each repeat is a decision outcome that is not "published". The Worker broadcasts (SSE) and feeds the
+    // notice only on a "published" outcome, so none of these repeats can notify anyone a second time.
+    const repeats: ProposalDecisionOutcome[] = [];
+    repeats.push(await auto("prop-rep-notice-a"));
+    repeats.push(await moderate("prop-rep-notice-a"));
+    await persist(proposal("prop-rep-notice-b", "inc-rep-notice", "source-antara", { relationship: "corroborating" }));
+    repeats.push(await auto("prop-rep-notice-b"));
+    assert.deepEqual(repeats.map((outcome) => outcome.status), ["already_decided", "already_decided", "unchanged"]);
+
+    assert.equal(
+      (await feedEventIds()).filter((eventId) => eventId === "inc-rep-notice").length,
+      1,
+      "one updates-feed entry for the one published version",
+    );
+    const reviewRows = await db.executor.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM waspada.public_event_history_review_decisions
+       WHERE dataset_kind = 'live' AND event_id = 'inc-rep-notice' AND change_type = 'published'`,
+    );
+    assert.equal(reviewRows.rows[0]?.n, 1, "one approved review row, so one history disclosure");
+    const publishDecisions = await db.executor.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM waspada.publication_decisions
+       WHERE dataset_kind = 'live' AND event_id = 'inc-rep-notice' AND record_json->>'disposition' = 'publish'`,
+    );
+    assert.equal(publishDecisions.rows[0]?.n, 1, "one publish decision for the event");
+    assert.equal(
+      PublicReadModel.getPublishedEvents().filter((event) => event.event_id === "inc-rep-notice").length,
+      1,
+      "the public read model lists the event once",
+    );
+  });
+
+  // The publication_outbox table belongs to the SqlPublicationWriter path only (writeOutbox in
+  // apps/db/src/publication-writer.ts), which the Worker does not call. By design the Worker path notifies
+  // through the SSE broadcast and the updates feed. So this test checks what a repeat can add, not an absolute
+  // outbox count. On the Worker path that count stays at its starting value, so the feed check carries the weight.
+  it("NFR-05: a repeated delivery adds no publication_outbox row and no second updates-feed entry", async () => {
+    await persist(proposal("prop-rep-outbox-a", "inc-rep-outbox", "source-detik"));
+    assert.equal((await auto("prop-rep-outbox-a")).status, "published");
+    const outboxRows = async () => (await db.executor.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM waspada.publication_outbox WHERE dataset_kind = 'live' AND event_id = 'inc-rep-outbox'",
+    )).rows[0]?.n;
+    const feedEntries = async () => (await feedEventIds()).filter((eventId) => eventId === "inc-rep-outbox").length;
+    const outboxBefore = await outboxRows();
+    assert.equal(await feedEntries(), 1, "the published version is in the updates feed once");
+
+    assert.equal((await auto("prop-rep-outbox-a")).status, "already_decided");
+    assert.equal((await moderate("prop-rep-outbox-a")).status, "already_decided");
+    assert.equal(await outboxRows(), outboxBefore, "the repeated deliveries add no outbox row");
+    assert.equal(await feedEntries(), 1, "the repeated deliveries add no second updates-feed entry");
+  });
+
   it("the publication writer role inserts only the review row it needs and cannot change it", async () => {
     await db.executor.execute("BEGIN");
     try {
