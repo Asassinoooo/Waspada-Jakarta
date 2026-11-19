@@ -55,9 +55,29 @@ export interface PublicEventProjectionLookupReadPort {
   resolve(input: PublicEventProjectionLookupQuery): Promise<PublicEventProjectionLookupResult>;
 }
 
+/** PERF-01: the batch snapshot port. The repository reads the current version of each id in one set-based read. */
+export interface PublicEventProjectionSnapshotBatchReadPort {
+  readMany(eventIds: readonly string[]): Promise<readonly PublicEventProjectionSnapshot[]>;
+}
+
+/** PERF-01: the batch lookup port. Entry i is the result for requests[i], with the same content a single resolve gives. */
+export interface PublicEventProjectionLookupBatchReadPort {
+  resolveMany(requests: readonly PublicEventProjectionLookupQuery[]): Promise<readonly PublicEventProjectionLookupResult[]>;
+}
+
 export interface PublicEventProjectionService {
   read(eventId: unknown): Promise<PublicEventProjectionReadResult>;
+  /**
+   * PERF-01: projects several current events with one batch snapshot read and one batch lookup read. The result keeps
+   * the input order. A projector rejection is that event's error, and every other failure rejects the whole call.
+   */
+  readMany(eventIds: readonly unknown[]): Promise<readonly PublicEventProjectionBatchOutcome[]>;
 }
+
+/** One event of readMany: its projected result (missing is a result, not an error), or its own projector error. */
+export type PublicEventProjectionBatchOutcome =
+  | { readonly value: PublicEventProjectionReadResult }
+  | { readonly error: PublicEventProjectionServiceError };
 
 export type PublicEventProjectionReadResult =
   | { readonly kind: "found"; readonly event: EventView }
@@ -124,10 +144,81 @@ export interface PreparedPublicEventProjectionSnapshot {
  * then delegates the public allowlist and record validation to projectPublicEvent.
  */
 export function createPublicEventProjectionService(ports: {
-  readonly snapshots: PublicEventProjectionSnapshotReadPort;
-  readonly lookups: PublicEventProjectionLookupReadPort;
+  readonly snapshots: PublicEventProjectionSnapshotReadPort & PublicEventProjectionSnapshotBatchReadPort;
+  readonly lookups: PublicEventProjectionLookupReadPort & PublicEventProjectionLookupBatchReadPort;
 }): PublicEventProjectionService {
   return {
+    async readMany(eventIds: readonly unknown[]): Promise<readonly PublicEventProjectionBatchOutcome[]> {
+      if (!Array.isArray(eventIds)) fail("INVALID_EVENT_ID");
+      const requested: string[] = eventIds.map((eventId) => {
+        if (!isIdentifier(eventId)) fail("INVALID_EVENT_ID");
+        return eventId;
+      });
+      if (requested.length === 0) return [];
+      const distinct = [...new Set(requested)];
+      const distinctSet = new Set(distinct);
+
+      let snapshotResults: unknown;
+      try {
+        snapshotResults = await ports.snapshots.readMany(distinct);
+      } catch {
+        fail("SNAPSHOT_READ_FAILED");
+      }
+
+      const preparedById = new Map<string, PreparedPublicEventProjectionSnapshot>();
+      try {
+        if (!Array.isArray(snapshotResults) || snapshotResults.length > distinct.length) fail("SNAPSHOT_INVALID");
+        for (const snapshot of snapshotResults) {
+          if (!isRecord(snapshot)
+            || typeof snapshot.eventId !== "string"
+            || !distinctSet.has(snapshot.eventId)
+            || preparedById.has(snapshot.eventId)) {
+            fail("SNAPSHOT_INVALID");
+          }
+          preparedById.set(snapshot.eventId, preparePublicEventProjectionSnapshot(snapshot, snapshot.eventId));
+        }
+      } catch (error) {
+        if (error instanceof PublicEventProjectionServiceError) throw error;
+        fail("SNAPSHOT_INVALID");
+      }
+
+      // An event with no current snapshot is missing, so it has no lookup request.
+      const foundIds = distinct.filter((eventId) => preparedById.has(eventId));
+      const requests = foundIds.map((eventId) => preparedById.get(eventId)!.query);
+      let lookupResults: unknown = [];
+      if (requests.length > 0) {
+        try {
+          lookupResults = await ports.lookups.resolveMany(requests);
+        } catch {
+          fail("LOOKUP_READ_FAILED");
+        }
+      }
+
+      let validatedLookups: PublicEventProjectionLookupResult[];
+      try {
+        if (!Array.isArray(lookupResults) || lookupResults.length !== requests.length) fail("LOOKUP_RESULT_INVALID");
+        validatedLookups = lookupResults.map((result) => validateLookupResult(result));
+      } catch {
+        fail("LOOKUP_RESULT_INVALID");
+      }
+
+      // Projection is per event. A projector rejection belongs to that event alone, and the caller decides on it.
+      const outcomes = new Map<string, PublicEventProjectionBatchOutcome>();
+      foundIds.forEach((eventId, index) => {
+        try {
+          const event = projectPreparedEvent(preparedById.get(eventId)!, validatedLookups[index]!);
+          outcomes.set(eventId, { value: { kind: "found", event } });
+        } catch (error) {
+          outcomes.set(eventId, {
+            error: error instanceof PublicEventProjectionServiceError
+              ? error
+              : new PublicEventProjectionServiceError("PROJECTION_FAILED"),
+          });
+        }
+      });
+      return requested.map((eventId) => outcomes.get(eventId) ?? { value: { kind: "missing" } });
+    },
+
     async read(eventId: unknown): Promise<PublicEventProjectionReadResult> {
       if (!isIdentifier(eventId)) fail("INVALID_EVENT_ID");
 
@@ -163,23 +254,27 @@ export function createPublicEventProjectionService(ports: {
         fail("LOOKUP_RESULT_INVALID");
       }
 
-      let event: EventView;
-      try {
-        event = projectPublicEvent(prepared.eventRecord, {
-          scopeNames: validatedLookupResult.scopeNames,
-          publicAttributions: validatedLookupResult.publicAttributions,
-          impacts: prepared.impactRecords,
-        }, { locationLabelPresent: prepared.locationLabelPresent, locationLabel: prepared.locationLabel });
-      } catch (error) {
-        throw new PublicEventProjectionServiceError(
-          "PROJECTION_FAILED",
-          error instanceof PublicProjectionError ? error.code : undefined,
-        );
-      }
-
-      return { kind: "found", event };
+      return { kind: "found", event: projectPreparedEvent(prepared, validatedLookupResult) };
     },
   };
+}
+
+function projectPreparedEvent(
+  prepared: PreparedPublicEventProjectionSnapshot,
+  lookupResult: PublicEventProjectionLookupResult,
+): EventView {
+  try {
+    return projectPublicEvent(prepared.eventRecord, {
+      scopeNames: lookupResult.scopeNames,
+      publicAttributions: lookupResult.publicAttributions,
+      impacts: prepared.impactRecords,
+    }, { locationLabelPresent: prepared.locationLabelPresent, locationLabel: prepared.locationLabel });
+  } catch (error) {
+    throw new PublicEventProjectionServiceError(
+      "PROJECTION_FAILED",
+      error instanceof PublicProjectionError ? error.code : undefined,
+    );
+  }
 }
 
 function validateLookupResult(value: unknown): PublicEventProjectionLookupResult {
