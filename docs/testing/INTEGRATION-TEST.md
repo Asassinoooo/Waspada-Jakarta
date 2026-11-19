@@ -260,7 +260,7 @@ Overall status: partially evidenced. This document does not claim that M5 is com
 
 ## 9 Test run evidence
 
-Latest run: CI run 44372632858 on commit `a7ba558` (`main`, 19 Nov 2026). Every step passed (typecheck, database, web, worker, intelligence, pipeline, accounts, evaluation and AI tools, build). Per-step counts for this run were not recorded in this update, so the counts below are those of the earlier runs.
+Latest run: CI run 44372632858 on commit `a7ba558` (`main`, 19 Nov 2026, conclusion success). Counts are summed from the `ℹ tests`, `ℹ pass` and `ℹ fail` lines of each step in the job log, read with `gh api` on 19 Nov 2026: database 418 tests in 61 files, 418 pass; web 482 pass; Worker 1,407 pass; intelligence 233 pass; pipeline 58 cases pass; accounts 100 pass; evaluation and AI tools 74 pass. Typecheck and the build passed. Total 2,772 tests and cases, 2,772 pass, 0 fail. The docs-only head `b318254` (TG-DOCS-04 merge) also concluded success as run 44382241512.
 
 Green run with recorded counts: CI run 44314452973 on commit 062aac6 (`main`, push event, 18 Nov 2026). The conclusion is `success`, read with `gh run view` on 18 Nov 2026. The job runs on `ubuntu-24.04` with Node 24.21.0 (pinned since `e41e11d`, D-04). Counts are summed from the `ℹ tests`, `ℹ pass` and `ℹ fail` lines of each step in the job log.
 

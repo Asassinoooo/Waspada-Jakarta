@@ -11,7 +11,7 @@ This summary compiles records that exist, and each figure is cited to its source
 - **What was tested.** The local live mode (`npm run serve:live`, LIVE-LOCAL-01), the synthetic demo (`DATASET_MODE=demo`) and, since 17 November 2026, the hosted site on Cloudflare Workers Free and Neon Free (`DATASET_MODE=live`). The scope covers `apps/web`, `apps/worker`, `apps/db` and `apps/intelligence` (`TEST-PLAN.md` sections 1 and 2; `SYSTEM-TEST.md` sections 1, 2 and 6A).
 - **Against which requirements.** FR-02 to FR-16 (FR-01 withdrawn on 13 Nov 2026), NFR-01 to NFR-08 (`SOFTWARE_DEVELOPMENT_PLAN.md` section 4), and user stories US-01 to US-03 (SDP section 2).
 - **Register.** `docs/testing/test-cases.csv` has 165 rows (every row has 15 fields). TG-DOCS-04 (19 November 2026) added 20: ST-H-13 to ST-H-20, IT-HOST-13 to IT-HOST-15 and UT-HOST-13 to UT-HOST-21. TG-DOCS-03 had added 9: IT-HOST-07 to IT-HOST-12, UT-HOST-12, ST-H-11 and ST-H-12. By status: Evidence exists 82, Partial 44, Pass (local run reported; not re-run in TG-DOCS) 21, Blocked 5, points-only scope 4, Pass (CI run 44319579284) 3, Not evidenced 2, Pass (hosted, read-only, 17 Nov 2026) 2, Pending run 2. By actual_result: Pass 137, Partial 15, Not run 8, Blocked 5.
-- **Result columns.** `actual_result` is Pass when every automated file cited in the row is in a suite that passed in the cited run. Since TG-DOCS-03 the automated rows cite run 44319579284, the latest green run, which contains all their files; nothing was removed from the suites. The 20 rows added on 19 November 2026 cite run 44372632858 (`a7ba558`). Manual rows show Partial, Blocked or Not run.
+- **Result columns.** `actual_result` is Pass when every automated file cited in the row is in a suite that passed in the cited run. Since TG-DOCS-03 the automated rows cite run 44319579284, a green run, which contains all their files. The later green run 44372632858 also passed all 61 database files; nothing was removed from the suites. The 20 rows added on 19 November 2026 cite run 44372632858 (`a7ba558`). Manual rows show Partial, Blocked or Not run.
 - **Not complete.** No human session is planned. No automated test reads the hosted site. The release checks in SDP section 10 are not met (section 8).
 
 ## 2 What changed on 18 November 2026 (evening)
@@ -32,7 +32,7 @@ EXPLORE-18 (18 November 2026) walked the hosted site read and write: an anonymou
 
 ## 3 Automated evidence from CI
 
-**Latest run: 44372632858** (commit `a7ba558`, 19 November 2026, conclusion success). Every step passed. Per-step counts were not recorded in this summary, so the figures below are those of the earlier green runs.
+**Latest run: 44372632858** (commit `a7ba558`, 19 November 2026, conclusion success). Every step passed. Per-step counts, summed from the job log (read with `gh api` on 19 November 2026): database 418 tests in 61 files; web 482; Worker 1,407; intelligence 233; pipeline 58 cases; accounts 100; evaluation and AI tools 74. **Total: 2,772 tests and cases** (2,772 pass, 0 fail). The docs-only head `b318254` also concluded success (run 44382241512). The table below holds the counts of the earlier green run 44314452973.
 
 **Green run with recorded counts: 44314452973** (commit `062aac6`, 18 November 2026, conclusion success). Ubuntu 24.04 runner, Node 24.21.0 (pinned, D-04). Counts are summed from the `ℹ tests`, `ℹ pass` and `ℹ fail` lines of each step in the job log, read with `gh api` on 18 November 2026.
 

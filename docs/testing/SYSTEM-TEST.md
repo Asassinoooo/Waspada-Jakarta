@@ -187,7 +187,7 @@ Status on 18 Nov 2026 (evening). The criteria are the release-level checks for t
 
 | Criterion | Status on 18 Nov 2026 | Evidence |
 | --- | --- | --- |
-| 1. All CI suites pass on `main` | Met for `062aac6`: run 44314452973 concluded success, 2,650 tests passing and none failing. The latest push, `2d9d442`, also passed (run 44319579284, 2,654 passing). Each later push needs its own check | §2; §7 item 5; `docs/testing/DEFECTS.md` D-03, D-05 |
+| 1. All CI suites pass on `main` | Met for `a7ba558`: run 44372632858 concluded success, with 2,772 tests passing and none failing. The docs-only head `b318254` also concluded success (run 44382241512). Earlier, `062aac6` passed with 2,650 (run 44314452973) and `2d9d442` with 2,654 (run 44319579284). Each later push needs its own check | §2; §7 item 5; `docs/testing/DEFECTS.md` D-03, D-05 |
 | 2. Hosted smoke passes | Met for the 17 Nov deploy (ST-H-01 to ST-H-04). After the 18 Nov redeploys only the public read routes were checked (ST-H-11, ST-H-12); the sign-in and registration checks were not repeated | §6A |
 | 3. No open High defect | Met at 14:07 UTC on 18 Nov 2026, after a High defect earlier that day. F-19 (public list and map answered 500) is High on the rule below; it is fixed by HOSTED-31 and verified on the hosted site (ST-H-12). No other open item is High on that rule. The items that matter most are F-02 (needs live data), F-17 (an ISP resolver blocks `*.workers.dev`, accepted) and R-01 (phone demo label) | `docs/testing/DEFECTS.md` sections A, B and D |
 | 4. Untested items are listed | Met. §7 lists them, including hosted backup and restore, human sessions, the 320 px and 200% checks, and the missing automated hosted check | §7 |
