@@ -15,6 +15,7 @@ import type {
   RevisionStatus,
 } from "../l2-model-grounding/contracts.js";
 import { isOfficialIncidentCategory } from "../../../../db/src/incident-categories.js";
+import { publicSourceLinkFor } from "../../security/source-link.js";
 
 export type PublicationPolicyDisposition = "publish" | "hold" | "reject";
 export type EvidenceRemitStatus = "in_scope" | "out_of_scope" | "unknown";
@@ -803,16 +804,6 @@ export function looksIndonesian(text: string): boolean {
   return true;
 }
 
-function isHttpUrl(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0) return false;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
 function sortedReasons(reasons: ReadonlySet<ProposalGateReason>): ProposalGateReason[] {
   return [...reasons].sort();
 }
@@ -857,7 +848,8 @@ function runProposalSourceGate(proposal: unknown, options: ProposalGateOptions, 
     seenClaimIds.add(claim.claim_id);
     if (claim.support_assessment !== "supported") reasons.add("claim_unsupported");
     if (!isNonEmptyText(claim.quote_text)) reasons.add("claim_quote_missing");
-    if (!isHttpUrl(claim.source_url)) reasons.add("claim_source_link_missing");
+    // NFR-07 A4: the same https-only, no-credential rule that attribution applies, so a claim the gate passes can be attributed.
+    if (publicSourceLinkFor(claim.source_url) === null) reasons.add("claim_source_link_missing");
     // HOSTED-28: a revoked source is refused before the waiver branch, so local_relaxed never publishes it.
     if (isNonEmptyText(claim.source_id) && options.revokedSourceIds?.has(claim.source_id)) {
       reasons.add("source_revoked");

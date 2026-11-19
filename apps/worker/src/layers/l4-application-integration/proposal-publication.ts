@@ -33,6 +33,7 @@ import {
 } from "./event-record-v2.js";
 import { publicLocationLabel, publicPointLabel, publicPointOutcomeFor, type PublicPointSource } from "./public-point.js";
 import { countPublicationOutlets } from "./publication-source-count.js";
+import { publicSourceLinkFor } from "../../security/source-link.js";
 import {
   assessCorrectionGate,
   assessProposalSourceGate,
@@ -953,8 +954,6 @@ export async function writeOriginRows(
 const ATTRIBUTION_REVIEW_VERSION = 1;
 /** HOSTED-22: the fixed audit reason. It names the rule and carries no source text. */
 const ATTRIBUTION_DECISION_REASON = "Attribution follows the source's approval in source_registry at publication (owner decision, 17 Nov 2026).";
-/** HOSTED-22: a query parameter named like a credential. A link carrying one is never shown publicly. */
-const CREDENTIAL_PARAM_PATTERN = /^(api[-_]?key|apikey|key|token|access[-_]?token|auth|secret|signature|sig|password)$/iu;
 
 /**
  * HOSTED-22: the review decision id of one supporting evidence reference. It is a pure function of the two, so a
@@ -966,24 +965,11 @@ export function attributionDecisionIdFor(datasetKind: string, evidenceRefId: str
 }
 
 /**
- * HOSTED-22: the URL an attribution may show, or null. Only an https link with no credentials and no credential-like
- * query parameter passes. The schema requires https, so an http link gets no attribution rather than a changed scheme.
+ * HOSTED-22: the URL an attribution may show, or null. The rule is the shared source-link rule (NFR-07 A4, see
+ * security/source-link.ts). The schema requires https, so an http link gets no attribution rather than a changed scheme.
  */
 export function attributionUrlFor(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const url = value.trim();
-  if (url.length < 9 || url.length > 2048 || /\s/u.test(url) || !url.startsWith("https://")) return null;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") return null;
-  for (const name of parsed.searchParams.keys()) {
-    if (CREDENTIAL_PARAM_PATTERN.test(name)) return null;
-  }
-  return url;
+  return publicSourceLinkFor(value);
 }
 
 interface AttributionSupportRow {

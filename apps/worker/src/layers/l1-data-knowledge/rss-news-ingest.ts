@@ -8,6 +8,7 @@ import {
   matchDeterministicRelevance,
   loadDeterministicDatasets,
 } from "./deterministic-relevance.js";
+import { publicSourceLinkFor } from "../../security/source-link.js";
 
 /**
  * DET-FILTER-01: the versioned JSON datasets are the sole location/incident
@@ -140,7 +141,9 @@ export function parseAndFilterNewsRss(
   let rejectedCount = 0;
 
   for (const rawItem of parseResult.items) {
-    if (!rawItem.title || !rawItem.link) {
+    // NFR-07 A4: a link that attribution would refuse (javascript:, http:, credentials) makes the item malformed.
+    // It is counted with the other malformed items and never stored as the revision's canonical URL.
+    if (!rawItem.title || !rawItem.link || publicSourceLinkFor(rawItem.link) === null) {
       rejectedCount += 1;
       continue;
     }

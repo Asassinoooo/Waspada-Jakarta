@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseAndFilterNewsRss } from "../src/layers/l1-data-knowledge/rss-news-ingest.js";
+import { attributionUrlFor } from "../src/layers/l4-application-integration/proposal-publication.js";
 import {
   evaluateAutoPublication,
   type AutoPublicationGateOptions,
@@ -104,31 +105,46 @@ test("NFR-07 A4: the automatic gate refuses a claim link with a non-web scheme",
   }
 });
 
-test("todo: NFR-07 A4 gap: the automatic gate accepts a claim link that carries credentials", {
-  todo: "NFR-07 A4 gap: publication-policy.ts:803-810 isHttpUrl accepts any http(s) URL, including userinfo. The public attribution (proposal-publication.ts:972-990, attributionUrlFor) then refuses it, so the claim publishes with no origin link.",
-}, () => {
+test("NFR-07 A4: the automatic gate refuses a claim link that carries credentials", () => {
   const reasons = evaluateAutoPublication(proposal({}, { source_url: "https://user:secret@news.example/cawang" }), OPTIONS).reasons;
   assert.ok(reasons.includes("claim_source_link_missing"));
 });
 
-test("todo: NFR-07 A4 gap: the automatic gate accepts an http claim link that attribution later refuses", {
-  todo: "NFR-07 A4 gap: publication-policy.ts:803-810 accepts http:, while the schema and attributionUrlFor (proposal-publication.ts:972) require https. The claim publishes with no attribution.",
-}, () => {
+test("NFR-07 A4: the automatic gate refuses an http claim link that attribution would refuse", () => {
   const reasons = evaluateAutoPublication(proposal({}, { source_url: "http://news.example/cawang" }), OPTIONS).reasons;
   assert.ok(reasons.includes("claim_source_link_missing"));
 });
 
-test("todo: NFR-07 A4 gap: RSS intake keeps a non-https or credential-bearing item link as the revision's canonical URL", {
-  todo: "NFR-07 A4 gap: rss-discovery.ts only length-limits the link, and rss-news-ingest.ts:168 and :201 store it as canonical_url with no scheme or userinfo check. Attribution refuses these links later, but intake should refuse or strip them.",
-}, () => {
+test("NFR-07 A4: the gate and public attribution accept exactly the same claim links", () => {
+  const links = [
+    "https://news.example/cawang",
+    "http://news.example/cawang",
+    "https://user:secret@news.example/cawang",
+    "https://feed.example/rss?api_key=abc",
+    "https://news.example/berita cawang",
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+  ];
+  for (const link of links) {
+    const gateAccepts = !evaluateAutoPublication(proposal({}, { source_url: link }), OPTIONS).reasons.includes("claim_source_link_missing");
+    const attributionAccepts = attributionUrlFor(link) !== null;
+    assert.equal(gateAccepts, attributionAccepts, `gate and attribution agree on: ${link.split(":")[0]}`);
+  }
+  assert.equal(attributionUrlFor(links[0]), links[0], "the https control link is accepted by both");
+});
+
+test("NFR-07 A4: RSS intake refuses a non-https or credential-bearing item link and counts it as malformed", () => {
   const xml = `<rss version="2.0"><channel>
     <title>Uji NFR-07</title><link>https://www.antaranews.com/metro</link><description>uji</description>
     <item><title>Banjir di Cawang hari ini</title><link>javascript:alert(1)</link><guid>nfr07-js</guid><pubDate>Wed, 19 Nov 2026 07:00:00 +0700</pubDate></item>
     <item><title>Genangan di Tebet hari ini</title><link>https://user:secret@news.example/tebet</link><guid>nfr07-cred</guid><pubDate>Wed, 19 Nov 2026 07:00:00 +0700</pubDate></item>
     <item><title>Pohon tumbang di Kemang hari ini</title><link>http://news.example/kemang</link><guid>nfr07-http</guid><pubDate>Wed, 19 Nov 2026 07:00:00 +0700</pubDate></item>
+    <item><title>Genangan di Kemang hari ini</title><link>https://news.example/kemang-ok</link><guid>nfr07-ok</guid><pubDate>Wed, 19 Nov 2026 07:00:00 +0700</pubDate></item>
   </channel></rss>`;
   const result = parseAndFilterNewsRss(xml, "2026-11-19T08:00:00+07:00", "source-antara-metro");
   if ("error" in result) assert.fail("the feed parses");
+  assert.equal(result.rejectedCount, 3, "the javascript:, credential and http links are malformed items");
+  assert.deepEqual(result.revisions.map((revision) => revision.canonical_url), ["https://news.example/kemang-ok"]);
   for (const revision of result.revisions) {
     const url = new URL(revision.canonical_url);
     assert.equal(url.protocol, "https:", `kept link is https: ${revision.canonical_url}`);
