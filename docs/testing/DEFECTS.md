@@ -4,6 +4,7 @@ Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026. B
 Updated 16 November 2026 (HOSTED-01 documentation decisions): status lines on F-01, F-03, F-04, F-12, F-13 and F-14; F-13 and F-14 added to section B.
 Updated 18 November 2026 (TG-DOCS-02): status for R-01, R-05, R-06, R-09 and R-10; CI status on F-03, F-04, F-13 and F-14; the F-14 residual; new entries D-03, F-16, F-17, F-18 and F-ALERT-02.
 Updated 19 November 2026 (TG-DOCS-04): F-20 to F-28 and the EXPLORE-18 open items (section B); R-11 to R-13 (section D).
+Updated 19 November 2026 (TG-DOCS-05): status line on F-02, and new F-29 (section B).
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules
@@ -68,8 +69,9 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 ### F-02: matched-update checks cannot run on the demo dataset
 
 - **Observation:** T2 step 7 ("Mengapa muncul" and the duplicate-alert check) needs live data. On the demo dataset the page shows a gate message instead (`apps/web/src/BriefingResults.tsx` lines 164-166; `apps/web/src/UpdatesCenter.tsx` line 668).
-- **Evidence:** `docs/testing/UAT.md` section 6, T2 step 7 and open item; section 6.6. Affects ST-F-02 and AT-02. T2 is Blocked in `test-cases.csv`.
+- **Evidence:** `docs/testing/UAT.md` section 6, T2 step 7 and open item; section 6.6. Affects ST-F-02 and AT-02. T2 is Partial in `test-cases.csv`.
 - **Decision needed:** either run T2 step 7 on a live dataset (this needs `serve:live`, real feeds and model quota, under explicit authorisation), or record the US-02 matched-update criterion as not evidenced.
+- **Status (19 Nov 2026): open for one part.** The briefing part is fixed and checked on the hosted site: a place interest matches, and its reason is returned (ST-H-13, ST-H-14; F-20 and F-21). The updates-feed step (a matched update in Pembaruan, read on live data) is still open. It has tests (`updates-center.test.tsx`, `public-event-updates.test.ts`, `publication-outbox-delivery-runtime.test.ts`) but no live browser run, so T2 step 7 has not run.
 
 ### F-03: L1 webhook ingest imports L2 and L4 modules at runtime
 
@@ -269,6 +271,15 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Fix:** `c68cdcc` (`fix(HOSTED-34)`): Indonesian wording and labels in the live UI. Test: `apps/web/test/hosted34-ui-copy.test.tsx` (9).
 - **Verification (hosted, 19 Nov 2026):** the four event detail pages and `#masuk`, at 1440 px and 390 px, had no banned term. The tab title was "Waspada Jakarta", and the username label read "Nama pengguna" (ST-H-20).
 - **Status (19 Nov 2026): fixed. Verified on four detail pages and `#masuk` at 1440 and 390 px.**
+
+### F-29: the detail page always shows the acquisition time as "Tidak disebutkan" (Low)
+
+- **Observation:** on the API-backed event detail, the "Waktu pengambilan sumber" row always reads "Tidak disebutkan", whatever the record holds. So the acquisition time, one of the four times in SYSTEM-TEST ST-F-05, never comes from the data.
+- **Found by:** code review of the record page, 19 November 2026 (TG-DOCS-05). Found in code review; not yet checked on the hosted site.
+- **Where:** `apps/web/src/EventDetail.tsx`, API branch (the fixed row near line 296).
+- **Cause:** the row text is a fixed string, not read from the record. The fixture branch shows a retrieval time (`source.retrievedAt`, the same file, about line 76); the API branch shows only the fixed row.
+- **Severity:** Low.
+- **Status (19 Nov 2026): open.** Decision needed: whether the public record carries an acquisition time to show, or the row should be removed.
 
 ### F-ALERT-02: a published version did not reach `/api/v1/updates`
 
