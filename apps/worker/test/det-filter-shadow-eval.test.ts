@@ -653,11 +653,13 @@ test("runner imports no gated persistence, AI, embedding, or queue code", () => 
 test("runner imports only the allowed worker modules", () => {
   const imports = [...RUNNER_SOURCE.matchAll(/from "([^"]+)"/g)].map((match) => match[1]!);
   const workerImports = imports.filter((spec) => spec.startsWith("../../apps/worker/"));
+  // NFR-07 F-42: the outbound host policy is the one the live pollers use, so the eval refuses the same hosts.
   assert.deepEqual(workerImports, [
     "../../apps/worker/src/layers/l1-data-knowledge/rss-discovery.js",
     "../../apps/worker/src/layers/l1-data-knowledge/rss-news-ingest.js",
     "../../apps/worker/src/layers/l1-data-knowledge/deterministic-relevance.js",
     "../../apps/worker/src/runtime/news-poll-runtime.js",
+    "../../apps/worker/src/runtime/outbound-host-policy.js",
     "../../apps/worker/src/layers/l1-data-knowledge/news-triage.js",
   ]);
 });

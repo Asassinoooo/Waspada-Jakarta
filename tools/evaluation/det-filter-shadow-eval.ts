@@ -64,6 +64,7 @@ import {
   matchDeterministicRelevance,
 } from "../../apps/worker/src/layers/l1-data-knowledge/deterministic-relevance.js";
 import { DEFAULT_NEWS_FEEDS } from "../../apps/worker/src/runtime/news-poll-runtime.js";
+import { checkOutboundHost, declaredHostsOf } from "../../apps/worker/src/runtime/outbound-host-policy.js";
 import {
   evaluateSourcePermissions,
   type RegistryPermissionRow,
@@ -379,7 +380,7 @@ export interface EvalFetchResponse {
 
 export type EvalFetchFn = (
   url: string,
-  init: { readonly signal: AbortSignal; readonly headers: Record<string, string> },
+  init: { readonly signal: AbortSignal; readonly headers: Record<string, string>; readonly redirect: "manual" },
 ) => Promise<EvalFetchResponse>;
 
 export type FeedFetchResult =
@@ -391,7 +392,11 @@ export async function fetchFeedBody(
   fetchFn: EvalFetchFn,
   timeoutMs: number,
   maxBytes: number,
+  approvedHosts?: readonly string[],
 ): Promise<FeedFetchResult> {
+  // NFR-07 F-42: refused before any request unless the host is approved for the feed. Absent a registry list, the
+  // feed's own configured host is the allow-list. A redirect is never followed (redirect "manual" is a non-2xx).
+  if (!checkOutboundHost(url, approvedHosts ?? declaredHostsOf([url])).allowed) return { ok: false, code: "fetch_error" };
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -401,6 +406,7 @@ export async function fetchFeedBody(
   try {
     const response = await fetchFn(url, {
       signal: controller.signal,
+      redirect: "manual",
       headers: {
         "User-Agent": "WaspadaJakarta-DetFilterShadowEval/1.0 (+one-shot-evaluation)",
         Accept: "application/rss+xml, application/xml, text/xml, */*",

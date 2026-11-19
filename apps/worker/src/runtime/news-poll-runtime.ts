@@ -4,6 +4,7 @@ import {
   isBlockedRedirect,
   OUTBOUND_REDIRECT_POLICY,
 } from "./outbound-fetch-policy.js";
+import { checkOutboundHost, declaredHostsOf } from "./outbound-host-policy.js";
 import {
   buildAuthorizedRevision,
   parseAndFilterNewsRss,
@@ -259,7 +260,7 @@ export interface NewsPollRuntimeOptions {
     /** Source remit label for the prompt, e.g. "metro news". */
     readonly sourceRemit?: string;
     /** Authorization check against source_registry; defaults to cleared. */
-    readonly checkAuthorization?: (sourceId: string) => Promise<{ cleared: boolean }> | { cleared: boolean };
+    readonly checkAuthorization?: (sourceId: string) => Promise<{ cleared: boolean; approvedHosts?: readonly string[] }> | { cleared: boolean; approvedHosts?: readonly string[] };
     /** One structured chat completion; transport failures become uncertain. */
     readonly callChat?: (system: string, user: string) => Promise<unknown>;
     /** AI-RATE-01: ms left in the chat cooldown; fresh Stage B calls are held while > 0. */
@@ -792,6 +793,7 @@ async function pollSingleFeed(
   // when cleared is false, the lookup throws/returns nothing (fail closed),
   // or explicit permissions deny acquisition. Legacy callers returning a bare
   // { cleared: true } without permissions keep the old allow behavior.
+  let registryHosts: readonly string[] | undefined;
   if (triage?.checkAuthorization) {
     let authz: TriageAuthorization | null = null;
     try {
@@ -828,6 +830,25 @@ async function pollSingleFeed(
         },
       };
     }
+    // authz is non-null here: a null or denied answer returned above.
+    registryHosts = authz?.approvedHosts;
+  }
+  // NFR-07 F-42: the request goes only to a host the registry approves for this source (approved_hosts). Without a
+  // registry list, the configured feed's own host is the declared allow-list. Checked before any request is sent.
+  const hostDecision = checkOutboundHost(feed.url, registryHosts ?? declaredHostsOf([feed.url]));
+  if (!hostDecision.allowed) {
+    return {
+      url: feed.url,
+      sourceId: feed.sourceId,
+      status: "fetch_error",
+      error: hostDecision.error,
+      totalParsed: 0,
+      matchedCount: 0,
+      keptCount: 0,
+      rejectedCount: 0,
+      revisions: [],
+      held: [],
+    };
   }
   const controller = new AbortController();
   const timer = setTimeout(() => {

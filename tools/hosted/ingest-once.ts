@@ -394,6 +394,25 @@ export interface OnceCycleRecord {
   readonly newItemsUsed: number | null;
 }
 
+/**
+ * NFR-07 F-39..F-41 (ADR-005): the counts of one retention purge run (see tools/hosted/retention-purge.ts). Counts only.
+ * Source text and vectors are the rows that lost their content; audit and triage counts are the rows deleted.
+ */
+export interface RetentionPurgeCounts {
+  readonly sourceTextNulled: number;
+  readonly vectorsRemoved: number;
+  readonly auditRecordsRemoved: number;
+  readonly accountAdminAuditRemoved: number;
+  readonly triageDecisionsRemoved: number;
+}
+
+/** NFR-07: the one count line of the retention purge. Fixed fields, no source text, URL, title or error text. */
+export function formatRetentionLine(counts: RetentionPurgeCounts): string {
+  return `[Once] Retention purge: source_text_nulled=${counts.sourceTextNulled} vectors_removed=${counts.vectorsRemoved} ` +
+    `audit_records_removed=${counts.auditRecordsRemoved} account_admin_audit_removed=${counts.accountAdminAuditRemoved} ` +
+    `triage_decisions_removed=${counts.triageDecisionsRemoved}.`;
+}
+
 export interface OnceSteps {
   /**
    * One poll cycle. A throw is reported through onPollError and does not stop the run. HOSTED-30: a poll may return its
@@ -414,6 +433,11 @@ export interface OnceSteps {
    * exists before the location refresh writes the next one. The same failure rules apply.
    */
   readonly location?: () => Promise<LocationBackfillResult>;
+  /**
+   * NFR-07 F-39..F-41: optional, like attribution. It runs after the location backfill and before the freshness pass.
+   * A throw is logged as one fixed failure line and never fails the run, the same rule as the backfills.
+   */
+  readonly retention?: () => Promise<RetentionPurgeCounts>;
   readonly freshness: () => Promise<void>;
   readonly log: (line: string) => void;
   /** HOSTED-30: epoch ms when the whole run started (before the coverage guard). Omitted means the sequence's own start. */
@@ -484,6 +508,15 @@ export async function runOnceSequence(steps: OnceSteps): Promise<void> {
         backfill = { candidates: 0, refreshed: 0, skipped: 0, failed: 1 };
       }
       steps.log(formatLocationLine(backfill));
+    }
+    if (steps.retention !== undefined) {
+      let purge: RetentionPurgeCounts | undefined;
+      try {
+        purge = await steps.retention();
+      } catch {
+        purge = undefined;
+      }
+      steps.log(purge === undefined ? "[Once] Retention purge: failed." : formatRetentionLine(purge));
     }
     await steps.freshness();
   } catch (err) {

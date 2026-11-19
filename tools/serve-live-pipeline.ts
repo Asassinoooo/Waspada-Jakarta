@@ -60,14 +60,17 @@ import {
   formatSourceHealthLine,
   livePollSourceIds,
   loadRegistryRows,
+  registryApprovedHosts,
   rssFeedHealthEntry,
+  STRUCTURED_LIVE_SOURCE_IDS,
   safeErrorLabel,
   shouldPollFeed,
   structuredHealthEntry,
   type SourceHealthEntry,
   type StructuredPollInput,
 } from "./live-source-coverage.js";
-import { seedLiveSourcesInsertMissing, upgradeStructuredPublicDisplayGrants } from "./live-sources-seed.js";
+import { seedLiveSourcesInsertMissing, upgradeDeclaredApprovedHosts, upgradeStructuredPublicDisplayGrants } from "./live-sources-seed.js";
+import { runRetentionPurge } from "./hosted/retention-purge.js";
 import {
   drainAiJobs,
   drainDeadlineMs,
@@ -299,6 +302,9 @@ async function prepareLocalDatabase(executor: TransactionalSqlExecutor): Promise
   // approved, active and on are upgraded. Revoked, disabled and already-changed rows are never touched.
   const upgraded = await upgradeStructuredPublicDisplayGrants(executor);
   console.log(`✓ Public display grant upgraded on ${upgraded} legacy PetaBencana/BMKG row(s).`);
+  // NFR-07 F-42: the structured rows declare their host, so the approved-host check does not refuse them.
+  const hostsUpgraded = await upgradeDeclaredApprovedHosts(executor);
+  console.log(`✓ Approved host declared on ${hostsUpgraded} PetaBencana/BMKG row(s) that had none.`);
 
   // Triage attempts/decisions are an append-only audit ledger (WJ-INT-02B) and also the
   // dedupe cache that stops every restart re-sending the 48h window to the model, so they
@@ -565,10 +571,16 @@ async function main() {
     const discoveredRevisions: StoredReportRevision[] = [];
     const structuredPolls: StructuredPollInput[] = [];
 
+    // NFR-07 F-42: the hosts each structured source declares in source_registry. A read that fails declares none, so
+    // both pollers refuse their request (fail closed) for this cycle.
+    const structuredRegistryRows = await loadRegistryRows(executor, STRUCTURED_LIVE_SOURCE_IDS).catch(() => []);
+
     // A. PetaBencana
     let petabencanaOutcomeRecorded = false;
     try {
-      const pbRunner = createPetaBencanaPollRuntime();
+      const pbRunner = createPetaBencanaPollRuntime({
+        approvedHosts: registryApprovedHosts(structuredRegistryRows, PETABENCANA_SOURCE_ID),
+      });
       const pbRes = await pbRunner.poll();
       fetchResults.push({ sourceId: PETABENCANA_SOURCE_ID, outcome: structuredFetchOutcome(pbRes.outcome) });
       petabencanaOutcomeRecorded = true;
@@ -596,7 +608,9 @@ async function main() {
     // B. BMKG CAP Alerts
     let bmkgOutcomeRecorded = false;
     try {
-      const bmkgRunner = createBmkgPollRuntime();
+      const bmkgRunner = createBmkgPollRuntime({
+        approvedHosts: registryApprovedHosts(structuredRegistryRows, BMKG_GEMPA_SOURCE_ID),
+      });
       const bmkgRes = await bmkgRunner.poll();
       fetchResults.push({ sourceId: BMKG_GEMPA_SOURCE_ID, outcome: structuredFetchOutcome(bmkgRes.outcome) });
       bmkgOutcomeRecorded = true;
@@ -986,6 +1000,8 @@ async function main() {
           deadlineMs: sweepDeadlineMs,
           now: () => Date.now(),
         }),
+        // NFR-07 F-39..F-41 (ADR-005): one retention purge per run, after the backfills and before freshness. Counts only.
+        retention: () => runRetentionPurge(executor, new Date()),
         // One freshness pass. startLiveFreshness sets an interval, so it is stopped right after the startup pass.
         freshness: async () => {
           const freshness = startLiveFreshness({ executor, env: process.env });

@@ -242,6 +242,8 @@ export interface TriageAuthorization {
   readonly reuseBasis?: readonly string[];
   /** Explicit capability grants; absent when uncleared. */
   readonly permissions?: SourcePermissions;
+  /** NFR-07 F-42: the source_registry approved_hosts for this source. The poller fetches only these hosts. */
+  readonly approvedHosts?: readonly string[];
 }
 
 /** Function the poller supplies: checks source_registry approval for acquisition+model use. */
