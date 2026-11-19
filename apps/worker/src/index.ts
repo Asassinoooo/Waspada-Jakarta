@@ -30,6 +30,7 @@ import {
 import { parseAutoPublishSourcePermission } from "./layers/l4-application-integration/publication-policy.js";
 import { moderationAccountConfig, moderatorSurfaceDenial, readModeratorPrincipal } from "./runtime/moderator-session.js";
 import { checkServiceKey } from "./security/service-key.js";
+import { httpsApiRedirect, withSecurityHeaders } from "./security/security-headers.js";
 import { type StoredReportRevision, generateProposalFromReport } from "./layers/l2-model-grounding/proposal-engine.js";
 import { generateCorrelatedProposal } from "./layers/l2-model-grounding/correlated-proposal-engine.js";
 import { createPetaBencanaPollRuntime } from "./runtime/petabencana-poll-runtime.js";
@@ -472,7 +473,8 @@ async function serviceKeyDenial(request: Request, configuredKey: string | undefi
   });
 }
 
-export default {
+// SEC-HEADERS-01: the route table. The default export below wraps its fetch once, so every response gets the headers.
+const workerHandlers = {
   async fetch(request: Request, env: WorkerEnvironment, ctx?: { waitUntil?: (promise: Promise<unknown>) => void }): Promise<Response> {
     const url = new URL(request.url);
 
@@ -931,5 +933,14 @@ export default {
       });
     } catch {}
   },
+};
+
+export default {
+  async fetch(request: Request, env: WorkerEnvironment, ctx?: { waitUntil?: (promise: Promise<unknown>) => void }): Promise<Response> {
+    const redirect = httpsApiRedirect(request);
+    if (redirect) return redirect;
+    return withSecurityHeaders(await workerHandlers.fetch(request, env, ctx));
+  },
+  scheduled: workerHandlers.scheduled,
 };
 export { activeProposals, activeChunks };
