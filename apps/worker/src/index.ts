@@ -566,7 +566,7 @@ export default {
                   jobId: `job-${crypto.randomUUID()}`,
                   datasetKind,
                   reportRevisionId: revId,
-                  traceId: (rev as any)?.trace_id,
+                  traceId: (rev as any)?.trace_id || `trace-${revId}`,
                 }).catch(() => {});
               }
             });

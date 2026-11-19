@@ -62,6 +62,7 @@ export type WithdrawalReasonCategory = (typeof WITHDRAWAL_REASON_CATEGORIES)[num
 /** TG-FR12: audit actions for the two moderator actions on a published event. */
 export const AUDIT_ACTION_WITHDRAWN = "event_withdrawn";
 export const AUDIT_ACTION_CORRECTION = "event_correction";
+export const AUDIT_ACTION_REJECT = "proposal_rejected";
 
 type TransactionRunner = SqlExecutor & { transaction?: <Result>(work: (tx: SqlExecutor) => Promise<Result>) => Promise<Result> };
 
@@ -1579,6 +1580,17 @@ export async function decideProposal(
         reviewerId: input.actor.actorId,
         decidedAt,
         record: { disposition: "reject", ...actorRecord, reason: input.reason ?? null },
+      });
+      // ST-F-07: every moderator decision is audited, a reject included. The entity is the proposed event.
+      await writeAuditRecord(tx, {
+        datasetKind,
+        traceId: row.trace_id,
+        occurredAt: decidedAt,
+        actorId: input.actor.actorId,
+        action: AUDIT_ACTION_REJECT,
+        eventId: publicEventIdForProposal(proposal),
+        reason: input.reason ?? null,
+        details: { outcome: "rejected", proposal_id: input.proposalId, decision_id: decisionId },
       });
       return { status: "rejected", decisionId };
     });

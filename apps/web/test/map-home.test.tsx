@@ -291,3 +291,28 @@ test("the map screen has no page footer strip: the emergency notice floats over 
   assert.match(footer, /href="#bantuan"/u);
   assert.match(footer, /href="#privasi"/u);
 });
+
+test("ST-F-04: the map markers and the list draw from one filtered set, and an event without a point is listed but never pinned", () => {
+  const events = [event("evt-pin-a"), event("evt-pin-b"), event("evt-unpinned")];
+  const pins = new Map([
+    ["evt-pin-a", { coordinate: [106.8786, -6.2549] as const, role: "incident_scene" }],
+    ["evt-pin-b", { coordinate: [106.8801, -6.2561] as const, role: "incident_scene" }],
+  ]);
+  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: events, initialMarkers: pins }));
+
+  assert.match(html, /aria-label="Daftar laporan, 3"/, "the list counts every event that passes the filters");
+  const pinLabels = [...html.matchAll(/<button type="button" class="map-marker[^"]*"[^>]*aria-label="([^"]+)"/g)]
+    .map((match) => match[1] ?? "");
+  assert.equal(pinLabels.length, 2, "only events with a point from the API geometry are pinned");
+  assert.ok(pinLabels.some((label) => label.includes("Laporan evt-pin-a")));
+  assert.ok(pinLabels.some((label) => label.includes("Laporan evt-pin-b")));
+  assert.equal(pinLabels.some((label) => label.includes("evt-unpinned")), false, "the unpinned event never gets a marker");
+  assert.match(html, /Laporan evt-unpinned/, "the unpinned event is still listed");
+
+  const source = readFileSync(new URL("../src/MapHome.tsx", import.meta.url), "utf8");
+  assert.match(source, /const visibleEvents = useMemo\(\s*\(\) => filterPublishedEvents\(data\.events, query, applied\.filters, now\)/u,
+    "one filter call produces the visible set");
+  assert.match(source, /const canvasMarkers = useMemo<CanvasMarker\[\]>\(\(\) => visibleEvents\.flatMap\(/u,
+    "the canvas markers are built from the filtered set, not from every event");
+  assert.match(source, /<MapEventList[\s\S]*?events=\{visibleEvents\}/u, "the list receives the same filtered set");
+});
