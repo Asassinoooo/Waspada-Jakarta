@@ -396,4 +396,63 @@ describe("ADR-061 automatic gate: database-level checks", () => {
         "each decision writes an audit record (SYSTEM-TEST ST-F-07)");
     });
   });
+
+  it("ST-F-16: the automatic publication decision carries the proposal trace id", async () => {
+    await writer().persistProposal(validProposal("inc-st16-trace"), "live");
+    const proposalId = "prop-inc-st16-trace";
+    const traceId = lineage?.trace_id ?? "";
+    assert.notEqual(traceId, "", "the proposal lineage supplies a trace id");
+
+    const proposal = await db.executor.query<{ trace_id: string; investigation_id: string | null }>(
+      `SELECT trace_id, investigation_id FROM waspada.event_proposals
+       WHERE dataset_kind = 'live' AND proposal_id = $1`,
+      [proposalId],
+    );
+    assert.equal(proposal.rows[0]?.trace_id, traceId, "the proposal is stored under its trace id");
+    assert.equal(proposal.rows[0]?.investigation_id, null, "the proposal is not linked to an investigation");
+
+    const outcome = await decideProposal(deps, { proposalId, action: "auto_publish", actor: AGENT });
+    assert.equal(outcome.status, "published", "the automatic gate publishes the proposal");
+
+    const decision = await db.executor.query<{
+      decision_id: string;
+      trace_id: string;
+      reviewer_id: string;
+      record_json: Record<string, unknown>;
+    }>(
+      `SELECT decision_id, trace_id, reviewer_id, record_json FROM waspada.publication_decisions
+       WHERE dataset_kind = 'live' AND proposal_id = $1`,
+      [proposalId],
+    );
+    assert.equal(decision.rows.length, 1, "exactly one publication decision");
+    const [decided] = decision.rows;
+    assert.equal(decided?.trace_id, traceId, "the publication decision carries the proposal trace id");
+    assert.equal(decided?.reviewer_id, AGENT_AUTO_PUBLISHER_ID, "the decision names the automatic publisher");
+    assert.equal(decided?.record_json.gate, "agent_auto_publication");
+    assert.equal(decided?.record_json.publication_mode, "agent_auto");
+
+    // The published version and its stored record. ADR-061 writes no audit_records row on the automatic path (audit
+    // rows are written for moderator actions only), so the publication decision is the path's own record.
+    const version = await db.executor.query<{
+      trace_id: string;
+      publication_decision_id: string;
+      record_json: Record<string, unknown>;
+    }>(
+      `SELECT trace_id, publication_decision_id, record_json FROM waspada.event_versions
+       WHERE dataset_kind = 'live' AND event_id = $1 AND version = 1`,
+      ["inc-st16-trace"],
+    );
+    assert.equal(version.rows[0]?.trace_id, traceId, "the published version carries the trace id");
+    assert.equal(version.rows[0]?.record_json.trace_id, traceId, "the stored event record carries the trace id");
+    assert.equal(version.rows[0]?.publication_decision_id, decided?.decision_id, "the version names this decision");
+
+    const investigations = await db.executor.query<{ n: number }>(
+      `SELECT (
+         (SELECT count(*) FROM waspada.investigation_requests WHERE dataset_kind = 'live' AND trace_id = $1)
+         + (SELECT count(*) FROM waspada.investigation_checkpoints WHERE dataset_kind = 'live' AND trace_id = $1)
+       )::int AS n`,
+      [traceId],
+    );
+    assert.equal(investigations.rows[0]?.n, 0, "the live path writes no investigation row");
+  });
 });
