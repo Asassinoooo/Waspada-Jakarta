@@ -2,6 +2,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waspada_jakarta_mobile/src/public_api.dart';
 import 'package:waspada_jakarta_mobile/src/public_models.dart';
+import 'package:waspada_jakarta_mobile/src/ui_helpers.dart';
 
 import 'support/fakes.dart';
 
@@ -384,6 +385,76 @@ void main() {
         'limit': '20',
         'category': 'disasters_weather',
       });
+    });
+  });
+
+  group('POLISH-02 additive public fields', () {
+    Map<String, Object?> source([Map<String, Object?> extra = const {}]) => {
+          'display_name': 'Sumber fiksi',
+          'url': 'https://example.invalid/synthetic-event-1',
+          'published_at': '2026-09-24T09:00:00+07:00',
+          'observed_at': null,
+          'excerpt': null,
+          ...extra,
+        };
+
+    Map<String, Object?> historyEntry([Map<String, Object?> extra = const {}]) => {
+          'event_id': 'synthetic-event-1',
+          'version': 2,
+          'change_type': 'corrected',
+          'changed_at': '2026-09-24T09:00:00+07:00',
+          'summary': 'Ringkasan fiksi.',
+          ...extra,
+        };
+
+    test('a source parses retrieved_at, and a null or absent value stays null', () {
+      final withTime = PublicSource.fromJson(
+          source({'retrieved_at': '2026-09-24T08:45:00+07:00'}));
+      expect(withTime.retrievedAt, '2026-09-24T08:45:00+07:00');
+      expect(PublicSource.fromJson(source({'retrieved_at': null})).retrievedAt, isNull);
+      expect(PublicSource.fromJson(source()).retrievedAt, isNull);
+    });
+
+    test('an event with a source that carries retrieved_at still parses its claims', () {
+      final claims = [
+        for (final claim in (syntheticEvent['claims'] as List<Object?>))
+          {
+            ...(claim as Map<String, Object?>),
+            'sources': [
+              source({'retrieved_at': '2026-09-24T08:45:00+07:00'}),
+            ],
+          },
+      ];
+      final event = EventRecord.fromJson({...syntheticEvent, 'claims': claims});
+      expect(event.claims.first.sources.first.retrievedAt, '2026-09-24T08:45:00+07:00');
+    });
+
+    test('a source rejects a malformed retrieved_at and any other unknown key', () {
+      expect(() => PublicSource.fromJson(source({'retrieved_at': 'kemarin'})),
+          throwsA(isA<ContractViolation>()));
+      expect(() => PublicSource.fromJson(source({'reviewer_id': 'moderator-fixture'})),
+          throwsA(isA<ContractViolation>()));
+    });
+
+    test('an automatic correction parses the flag and labels Diperbarui otomatis', () {
+      final entry = HistoryEntry.fromJson(historyEntry({'automatic': true}));
+      expect(entry.automatic, isTrue);
+      expect(changeLabel(entry.changeType, automatic: entry.automatic), 'Diperbarui otomatis');
+    });
+
+    test('a moderator correction without the flag keeps Versi dikoreksi', () {
+      final entry = HistoryEntry.fromJson(historyEntry());
+      expect(entry.automatic, isFalse);
+      expect(changeLabel(entry.changeType, automatic: entry.automatic), 'Versi dikoreksi');
+      expect(changeLabel('corrected'), 'Versi dikoreksi');
+      expect(changeLabel('published', automatic: true), 'Versi dipublikasikan');
+    });
+
+    test('automatic must be a boolean and other unknown history keys still throw', () {
+      expect(() => HistoryEntry.fromJson(historyEntry({'automatic': 'true'})),
+          throwsA(isA<ContractViolation>()));
+      expect(() => HistoryEntry.fromJson(historyEntry({'reviewer_id': 'agent:auto-publisher'})),
+          throwsA(isA<ContractViolation>()));
     });
   });
 }

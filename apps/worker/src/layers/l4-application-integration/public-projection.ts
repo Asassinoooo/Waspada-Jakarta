@@ -675,6 +675,8 @@ function projectAttribution(value: unknown): PublicClaim["sources"][number] {
   const url = readHttpsUrl(value.url, "ATTRIBUTION_FAILED");
   const publishedAt = value.published_at === null ? null : readDateTime(value.published_at, "ATTRIBUTION_FAILED");
   const observedAt = value.observed_at === null ? null : readDateTime(value.observed_at, "ATTRIBUTION_FAILED");
+  // POLISH-02: the source collection time. Null stays null; a missing or malformed value fails closed, never invented.
+  const retrievedAt = value.retrieved_at === null ? null : readDateTime(value.retrieved_at, "ATTRIBUTION_FAILED");
   if (typeof value.excerpt_public_use_approved !== "boolean") fail("ATTRIBUTION_FAILED");
   let excerpt: string | null = null;
   if (value.excerpt_public_use_approved === true) {
@@ -685,6 +687,7 @@ function projectAttribution(value: unknown): PublicClaim["sources"][number] {
     url,
     published_at: publishedAt,
     observed_at: observedAt,
+    retrieved_at: retrievedAt,
     excerpt,
   };
 }

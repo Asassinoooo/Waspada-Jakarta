@@ -592,8 +592,10 @@ function formatJakartaInstant(value: string | null) {
   }).format(date) + " WIB";
 }
 
-function changeTypeLabel(value: HistoryEntry["change_type"]) {
-  switch (value) {
+function changeTypeLabel(entry: HistoryEntry) {
+  // POLISH-02: an automatic refresh is written as "corrected" by the auto-publisher. It is not a moderator correction.
+  if (entry.automatic === true) return "Diperbarui otomatis";
+  switch (entry.change_type) {
     case "published": return "Versi dipublikasikan";
     case "corrected": return "Versi dikoreksi";
     case "impact_changed": return "Dampak diperbarui";
@@ -611,7 +613,7 @@ function UpdateCard({ item }: { item: MatchedPublicUpdate }) {
     <article className="update-center-card" aria-labelledby={"update-" + eventId + "-" + item.change.version}>
       <div className="update-center-card__heading">
         <div>
-          <p className="section-kicker">{changeTypeLabel(item.change.change_type)} · versi {item.change.version}</p>
+          <p className="section-kicker">{changeTypeLabel(item.change)} · versi {item.change.version}</p>
           <h3 id={"update-" + eventId + "-" + item.change.version}>{item.event.title}</h3>
         </div>
         <a className="text-link" href={"#detail/api/" + eventId}>Buka detail, bukti, dan riwayat</a>

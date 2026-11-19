@@ -183,6 +183,7 @@ function makeAttribution(
     url: "https://source.example.invalid/synthetic-detail",
     published_at: "2026-09-26T02:50:00Z",
     observed_at: null,
+    retrieved_at: null,
     excerpt_public_use_approved: false,
     excerpt: null,
   };

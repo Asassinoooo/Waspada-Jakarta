@@ -49,13 +49,18 @@ String evidenceCaption(PublicClaim claim) {
   };
 }
 
-String changeLabel(String value) => switch (value) {
-      'published' => 'Versi dipublikasikan',
-      'corrected' => 'Versi dikoreksi',
-      'impact_changed' => 'Dampak diperbarui',
-      'retracted' => 'Versi ditarik',
-      _ => 'Perubahan publik',
-    };
+// POLISH-02: an automatic refresh is written as "corrected". It reads
+// "Diperbarui otomatis", never "Versi dikoreksi".
+String changeLabel(String value, {bool automatic = false}) {
+  if (automatic && value == 'corrected') return 'Diperbarui otomatis';
+  return switch (value) {
+        'published' => 'Versi dipublikasikan',
+        'corrected' => 'Versi dikoreksi',
+        'impact_changed' => 'Dampak diperbarui',
+        'retracted' => 'Versi ditarik',
+        _ => 'Perubahan publik',
+      };
+}
 
 String sourceHealthLabel(SourceHealth health) => switch (health) {
       SourceHealth.unknown => 'Status sumber belum diketahui',

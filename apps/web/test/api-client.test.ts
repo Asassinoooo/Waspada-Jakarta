@@ -185,3 +185,38 @@ test("updates client rejects extra fields, malformed timestamps, oversized pages
   await assert.rejects(getPublicUpdates(), ApiPayloadError);
   await assert.rejects(getPublicUpdates("x".repeat(2_049)), ApiPayloadError);
 });
+
+test("POLISH-02: the updates client keeps the optional automatic flag only when it is a boolean", async (t) => {
+  const entry = {
+    event_id: "fictional-event-1",
+    version: 2,
+    change_type: "corrected",
+    changed_at: "2026-09-25T04:05:00.000Z",
+    summary: "Synthetic automatic refresh for a test.",
+  };
+  const pageWith = (item: Record<string, unknown>) => ({
+    items: [item],
+    next_cursor: "opaque-cursor-value",
+    cursor_expires_at: "2026-10-25T04:05:00.000Z",
+    checked_at: "2026-09-25T04:06:00.000Z",
+  });
+  const respond = (body: unknown) => (async () => new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = respond(pageWith({ ...entry, automatic: true }));
+  assert.deepEqual((await getPublicUpdates()).items, [{ ...entry, automatic: true }]);
+
+  globalThis.fetch = respond(pageWith(entry));
+  assert.deepEqual((await getPublicUpdates()).items, [entry]);
+
+  globalThis.fetch = respond(pageWith({ ...entry, automatic: "yes" }));
+  await assert.rejects(getPublicUpdates(), ApiPayloadError);
+
+  globalThis.fetch = respond(pageWith({ ...entry, reviewer_id: "agent:auto-publisher" }));
+  await assert.rejects(getPublicUpdates(), ApiPayloadError);
+});

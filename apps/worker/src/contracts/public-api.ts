@@ -61,6 +61,11 @@ export interface PublicClaim {
     url: string;
     published_at: string | null;
     observed_at: string | null;
+    /**
+     * POLISH-02 (additive, optional): the source collection time (waktu pengambilan sumber), RFC 3339. Null when the
+     * revision has no collection time. Never invented and never the publication or processing time.
+     */
+    retrieved_at?: string | null;
     excerpt: string | null;
   }>;
 }
@@ -202,6 +207,11 @@ export interface HistoryEntry {
   change_type: "published" | "corrected" | "impact_changed" | "retracted";
   changed_at: string;
   summary: string;
+  /**
+   * POLISH-02 (additive, optional): true only for an automatic refresh by agent:auto-publisher (written as "corrected").
+   * Omitted otherwise. The reviewer identifier is never exposed.
+   */
+  automatic?: boolean;
 }
 
 export interface HistoryPage {

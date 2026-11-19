@@ -63,7 +63,7 @@ const changeTypes = new Set<HistoryEntry["change_type"]>([
 const requestKeys = ["cursor", "limit"] as const;
 const pageKeys = ["candidates", "hasMore"] as const;
 const candidateKeys = [
-  "datasetKind", "eventId", "eventVersion", "changeSequence", "changeType", "summary", "publishedAt",
+  "datasetKind", "eventId", "eventVersion", "changeSequence", "changeType", "summary", "publishedAt", "automatic",
 ] as const;
 
 interface ValidatedRequest {
@@ -78,6 +78,7 @@ interface ValidatedCandidate {
   readonly changeType: HistoryEntry["change_type"];
   readonly summary: string;
   readonly publishedAt: string;
+  readonly automatic: boolean;
 }
 
 interface ValidatedCandidatePage {
@@ -168,6 +169,8 @@ export function createPublicEventUpdatesService(options: {
           change_type: candidate.changeType,
           changed_at: candidate.publishedAt,
           summary: candidate.summary,
+          // POLISH-02: present only when true, so every other update keeps the unchanged entry shape.
+          ...(candidate.automatic ? { automatic: true } : {}),
         }));
         if (page.hasMore) {
           const lastCandidate = page.candidates[page.candidates.length - 1];
@@ -250,7 +253,8 @@ function validateCandidatePage(
         || compareSequences(candidate.changeSequence, throughSequence) > 0
         || !isChangeType(candidate.changeType)
         || !isValidSummary(candidate.summary)
-        || !isDateTime(candidate.publishedAt)) {
+        || !isDateTime(candidate.publishedAt)
+        || typeof candidate.automatic !== "boolean") {
         fail("READER_RESULT_INVALID");
       }
 
@@ -261,6 +265,7 @@ function validateCandidatePage(
         changeType: candidate.changeType,
         summary: candidate.summary,
         publishedAt: candidate.publishedAt,
+        automatic: candidate.automatic,
       });
       previousSequence = candidate.changeSequence;
     }

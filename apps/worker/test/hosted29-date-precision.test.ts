@@ -213,6 +213,7 @@ function lookups(): PublicProjectionLookups {
       url: "https://example.invalid/berita/29",
       published_at: null,
       observed_at: null,
+      retrieved_at: null,
       excerpt_public_use_approved: false,
       excerpt: null,
     }],

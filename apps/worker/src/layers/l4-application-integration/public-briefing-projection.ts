@@ -301,11 +301,14 @@ function isPublicImpact(value: unknown): value is PublicImpact {
 }
 
 function isPublicSource(value: unknown): value is PublicClaim["sources"][number] {
-  if (!hasExactKeys(value, ["display_name", "url", "published_at", "observed_at", "excerpt"])) return false;
+  // POLISH-02: retrieved_at is optional. A source without it (for example an in-memory read-model source) stays valid.
+  if (!hasExactKeys(value, ["display_name", "url", "published_at", "observed_at", "retrieved_at", "excerpt"])
+    && !hasExactKeys(value, ["display_name", "url", "published_at", "observed_at", "excerpt"])) return false;
   return isDisplayName(value.display_name)
     && isHttpsUrl(value.url)
     && isNullableDateTime(value.published_at)
     && isNullableDateTime(value.observed_at)
+    && (!("retrieved_at" in value) || isNullableDateTime(value.retrieved_at))
     && (value.excerpt === null || isBoundedText(value.excerpt, 300));
 }
 

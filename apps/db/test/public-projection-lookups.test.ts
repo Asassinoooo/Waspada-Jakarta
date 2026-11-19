@@ -182,6 +182,7 @@ describe('API-PUBLIC-LOOKUPS-CORE reviewed lookup persistence and read port', ()
       url: 'https://synthetic.invalid/current',
       published_at: '2026-09-25T20:15:00.000000Z',
       observed_at: '2026-09-25T20:20:00.000000Z',
+      retrieved_at: '2026-09-25T20:21:00.000000Z',
       excerpt_public_use_approved: false,
       excerpt: null,
     }]);
@@ -189,7 +190,7 @@ describe('API-PUBLIC-LOOKUPS-CORE reviewed lookup persistence and read port', ()
     assert.deepEqual(Object.keys(result.publicAttributions[0] ?? {}).sort(), [
       'dataset_kind', 'display_name', 'excerpt', 'excerpt_public_use_approved', 'observed_at',
       'offset_unit', 'permitted_text_hash', 'public_use_approved', 'published_at',
-      'relation', 'report_revision_id', 'span_end', 'span_start', 'url',
+      'relation', 'report_revision_id', 'retrieved_at', 'span_end', 'span_start', 'url',
     ]);
     assert.equal('rights_basis_ref' in (result.publicAttributions[0] ?? {}), false);
     assert.equal('permitted_text' in (result.publicAttributions[0] ?? {}), false);
@@ -370,6 +371,7 @@ describe('API-PUBLIC-LOOKUPS-CORE reviewed lookup persistence and read port', ()
       { table_name: 'public_source_attributions', column_name: 'observed_at' },
       { table_name: 'public_source_attributions', column_name: 'excerpt_public_use_approved' },
       { table_name: 'public_source_attributions', column_name: 'excerpt' },
+      { table_name: 'public_source_attributions', column_name: 'retrieved_at' },
     ]);
 
     const privileges = await database.executor.query<{

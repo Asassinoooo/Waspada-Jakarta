@@ -189,6 +189,7 @@ function makeAttribution(reference: PublicEventProjectionLookupQuery["supportRef
     url: `https://source.example.invalid/${reference.reportRevisionId}`,
     published_at: isFirst ? "2026-09-25T20:00:00Z" : null,
     observed_at: isFirst ? "2026-09-26T03:10:00+07:00" : "2026-09-26T03:12:00Z",
+    retrieved_at: null,
     excerpt_public_use_approved: false,
     excerpt: null,
     private_attribution_marker: "PRIVATE_ATTRIBUTION_MARKER",
@@ -294,7 +295,7 @@ test("reads one current snapshot, requests only deduplicated public keys, and re
   assert.equal(result.event.claims[0]?.sources[0]?.excerpt, null);
   assert.equal(result.event.claims[1]?.sources.length, 2);
   assert.deepEqual(Object.keys(result.event.claims[0]!.sources[0]!).sort(), [
-    "display_name", "excerpt", "observed_at", "published_at", "url",
+    "display_name", "excerpt", "observed_at", "published_at", "retrieved_at", "url",
   ]);
   assert.equal(result.event.impacts.length, 1);
   assert.equal(result.event.impacts[0]?.impact_id, "impact-synthetic-01");

@@ -223,16 +223,30 @@ export function deepLinkTarget(
  * source gives one.
  */
 export function sourcePublishedAtText(event: EventView): string | null {
+  return earliestSourceTimeText(event, "published_at");
+}
+
+/**
+ * POLISH-02: the source collection time (waktu pengambilan sumber), the earliest one the claim sources give. It is never
+ * the event time, the publication time or a processing time. Null when no source gives one, so the detail keeps its
+ * "Tidak disebutkan" wording.
+ */
+export function sourceRetrievedAtText(event: EventView): string | null {
+  return earliestSourceTimeText(event, "retrieved_at");
+}
+
+function earliestSourceTimeText(event: EventView, field: "published_at" | "retrieved_at"): string | null {
   let earliestMs: number | null = null;
   let earliest: string | null = null;
   for (const claim of event.claims) {
     for (const source of claim.sources) {
-      if (typeof source.published_at !== "string" || source.published_at.length === 0) continue;
-      const ms = Date.parse(source.published_at);
+      const value = source[field];
+      if (typeof value !== "string" || value.length === 0) continue;
+      const ms = Date.parse(value);
       if (Number.isNaN(ms)) continue;
       if (earliestMs === null || ms < earliestMs) {
         earliestMs = ms;
-        earliest = source.published_at;
+        earliest = value;
       }
     }
   }

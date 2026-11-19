@@ -469,12 +469,15 @@ function parsePublicUpdatePage(value: unknown): PublicUpdatePage {
   }
 
   const items: HistoryEntry[] = value.items.map((item) => {
-    if (!isRecord(item) || !hasExactKeys(item, ["event_id", "version", "change_type", "changed_at", "summary"])
+    // POLISH-02: automatic is optional and additive. It is present only on an automatic refresh.
+    const entryKeys = ["event_id", "version", "change_type", "changed_at", "summary"];
+    if (!isRecord(item) || !(hasExactKeys(item, entryKeys) || hasExactKeys(item, [...entryKeys, "automatic"]))
       || !isSafePublicEventId(item.event_id)
       || !Number.isSafeInteger(item.version) || (item.version as number) < 1
       || !isMember(item.change_type, ["published", "corrected", "impact_changed", "retracted"] as const)
       || !isStrictInstant(item.changed_at)
-      || typeof item.summary !== "string" || item.summary.length > MAX_UPDATE_SUMMARY_LENGTH) {
+      || typeof item.summary !== "string" || item.summary.length > MAX_UPDATE_SUMMARY_LENGTH
+      || (Object.hasOwn(item, "automatic") && typeof item.automatic !== "boolean")) {
       throw new ApiPayloadError();
     }
     return {
@@ -483,6 +486,7 @@ function parsePublicUpdatePage(value: unknown): PublicUpdatePage {
       change_type: item.change_type,
       changed_at: item.changed_at,
       summary: item.summary,
+      ...(item.automatic === true ? { automatic: true } : {}),
     };
   });
 

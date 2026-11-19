@@ -196,6 +196,8 @@ describe('DATA-01 migrations', () => {
         '057_pipeline_cycle_runs',
         '058_source_display_names',
         '059_public_history_review_metadata_speed',
+        '060_public_source_attribution_retrieved_at',
+        '061_public_event_updates_automatic',
       ]);
       assert.deepEqual(applied.skipped, beforeRelationMigration.map(({ version }) => version));
       assert.deepEqual((await readEvidenceRows()).rows, originalRows.rows,
@@ -369,6 +371,8 @@ describe('DATA-01 migrations', () => {
       '057_pipeline_cycle_runs',
       '058_source_display_names',
       '059_public_history_review_metadata_speed',
+      '060_public_source_attribution_retrieved_at',
+      '061_public_event_updates_automatic',
     ]);
   });
 
@@ -426,12 +430,14 @@ describe('DATA-01 migrations', () => {
       '057_pipeline_cycle_runs',
       '058_source_display_names',
       '059_public_history_review_metadata_speed',
+      '060_public_source_attribution_retrieved_at',
+      '061_public_event_updates_automatic',
     ]);
 
     const count = await testDatabase.executor.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM waspada.schema_migrations',
     );
-    assert.equal(count.rows[0]?.count, '59');
+    assert.equal(count.rows[0]?.count, '61');
 
     const tampered = migrations.map((migration) => ({
       ...migration,
@@ -450,7 +456,7 @@ describe('DATA-01 migrations', () => {
     ];
     await assert.rejects(
       applyMigrations(testDatabase.executor, outOfOrder),
-      /Cannot apply migration 000_late_backfill before already applied migration 059_public_history_review_metadata_speed/,
+      /Cannot apply migration 000_late_backfill before already applied migration 061_public_event_updates_automatic/,
     );
 
     const ledger = await testDatabase.executor.query<{ version: string }>(
@@ -516,6 +522,8 @@ describe('DATA-01 migrations', () => {
       { version: '057_pipeline_cycle_runs' },
       { version: '058_source_display_names' },
       { version: '059_public_history_review_metadata_speed' },
+      { version: '060_public_source_attribution_retrieved_at' },
+      { version: '061_public_event_updates_automatic' },
     ]);
   });
 
@@ -570,6 +578,8 @@ describe('DATA-01 migrations', () => {
       '057_pipeline_cycle_runs',
       '058_source_display_names',
       '059_public_history_review_metadata_speed',
+      '060_public_source_attribution_retrieved_at',
+      '061_public_event_updates_automatic',
     ]);
     const version = await testDatabase.executor.query<{ version: string; server_version: string }>(
       "SELECT extversion AS version, current_setting('server_version') AS server_version FROM pg_extension WHERE extname = 'postgis'",
@@ -2462,7 +2472,7 @@ describe('DATA-01 migrations', () => {
       );
 
       const applied = await applyMigrations(migrationDatabase.executor, migrations);
-      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals', '050_publication_writer_review_grant', '051_publication_origin_writes', '052_public_event_location_status', '053_public_attribution_publication_grants', '054_publication_point_geometry_writer', '055_public_event_location_label', '056_source_revoke_keeps_collection', '057_pipeline_cycle_runs', '058_source_display_names', '059_public_history_review_metadata_speed']);
+      assert.deepEqual(applied.applied, [migration.version, '049_moderator_correction_proposals', '050_publication_writer_review_grant', '051_publication_origin_writes', '052_public_event_location_status', '053_public_attribution_publication_grants', '054_publication_point_geometry_writer', '055_public_event_location_label', '056_source_revoke_keeps_collection', '057_pipeline_cycle_runs', '058_source_display_names', '059_public_history_review_metadata_speed', '060_public_source_attribution_retrieved_at', '061_public_event_updates_automatic']);
       await insertIncident('inc-f14-after-048', null);
       const stored = await migrationDatabase.executor.query<{ incident_id: string; first_observed_at: string | null }>(
         `SELECT incident_id, first_observed_at FROM waspada.incidents WHERE incident_id = 'inc-f14-after-048'`,

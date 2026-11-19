@@ -175,10 +175,14 @@ function parsePublicClaim(value: unknown): PublicClaim {
     || !stringArray(value.qualifiers, 50, 500) || !isMember(value.evidence_label, evidenceLabels)
     || !Array.isArray(value.sources) || value.sources.length > MAX_SOURCES) throw new MonitorPayloadError();
   const sources = value.sources.map((source) => {
-    if (!isRecord(source) || !hasExactKeys(source, ["display_name", "url", "published_at", "observed_at", "excerpt"])
+    // POLISH-02: retrieved_at is optional and additive. A source without it stays valid.
+    if (!isRecord(source)
+      || !(hasExactKeys(source, ["display_name", "url", "published_at", "observed_at", "excerpt"])
+        || hasExactKeys(source, ["display_name", "url", "published_at", "observed_at", "retrieved_at", "excerpt"]))
       || !isString(source.display_name, 200, false) || !isString(source.url, 2_000, false)
       || !/^https?:\/\//iu.test(source.url) || !nullableInstant(source.published_at)
-      || !nullableInstant(source.observed_at) || !(source.excerpt === null || isString(source.excerpt, 1_000))) {
+      || !nullableInstant(source.observed_at) || !(source.excerpt === null || isString(source.excerpt, 1_000))
+      || (Object.hasOwn(source, "retrieved_at") && !nullableInstant(source.retrieved_at))) {
       throw new MonitorPayloadError();
     }
     return {

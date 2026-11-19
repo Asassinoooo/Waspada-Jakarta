@@ -762,3 +762,16 @@ test("update cards distinguish current event time, published-change time, and sy
   assert.match(expiredMarkup, /Lewat masa berlaku sumber/u);
   assert.doesNotMatch(expiredMarkup, /Batas tinjau lewat|Lewat batas tinjau/u);
 });
+
+test("POLISH-02: an automatic refresh in the updates feed reads Diperbarui otomatis, and a moderator correction keeps Versi dikoreksi", () => {
+  const automatic = matchedEvent("fictional/id?auto");
+  automatic.change = { ...automatic.change, automatic: true };
+  const moderated = matchedEvent("fictional/id?moderated");
+  const markup = renderToStaticMarkup(<UpdateCenterContent
+    gate="live"
+    state={{ status: "ready", phase: "updates", items: [automatic, moderated], checkedAt, resetNotice: false, failure: null }}
+    onRefresh={() => {}}
+  />);
+  assert.equal(markup.split("Diperbarui otomatis").length - 1, 1);
+  assert.equal(markup.split("Versi dikoreksi").length - 1, 1);
+});

@@ -5,6 +5,7 @@ import {
   PublicEventHistoryProjectionServiceError,
   type PublicEventHistoryProjectionReadOptions,
 } from "../src/layers/l4-application-integration/public-event-history-projection-service.js";
+import { AGENT_AUTO_PUBLISHER_ID } from "../src/layers/l4-application-integration/proposal-publication.js";
 
 type RecordValue = Record<string, unknown>;
 
@@ -567,4 +568,40 @@ test("converts reader exceptions into stable redacted errors", async () => {
     "DISCLOSURE_READ_FAILED",
     ["reviewer-private-details"],
   );
+});
+
+test("marks only an agent:auto-publisher correction as automatic and never exposes the reviewer", async () => {
+  // POLISH-02: an automatic refresh is written as "corrected" by the auto-publisher. Only that pair sets the flag.
+  assert.equal(AGENT_AUTO_PUBLISHER_ID, "agent:auto-publisher");
+  const candidates = [1, 2, 3, 4].map((version) => makeCandidate(version));
+  const disclosures = [
+    makeDisclosure(1, { reviewOverrides: {
+      changeType: "corrected",
+      reviewerId: AGENT_AUTO_PUBLISHER_ID,
+      summary: "Fictional automatic location refresh.",
+    } }),
+    makeDisclosure(2, { reviewOverrides: { changeType: "corrected", reviewerId: "moderator-synthetic-01" } }),
+    makeDisclosure(3, { reviewOverrides: { changeType: "impact_changed", reviewerId: AGENT_AUTO_PUBLISHER_ID } }),
+    makeDisclosure(4, { reviewOverrides: { changeType: "published", reviewerId: AGENT_AUTO_PUBLISHER_ID } }),
+  ];
+  const service = createService(makeCandidateResult(candidates), makeDisclosureResult(disclosures));
+
+  const result = await service.read(eventId, { limit: 4, afterVersion: null });
+  assert.equal(result.kind, "found");
+  if (result.kind !== "found") return;
+
+  assert.deepEqual(result.page.data[0], {
+    event_id: eventId,
+    version: 1,
+    change_type: "corrected",
+    changed_at: "2026-09-21T03:04:05+07:30",
+    summary: "Fictional automatic location refresh.",
+    automatic: true,
+  });
+  for (const entry of result.page.data.slice(1)) {
+    assert.equal("automatic" in entry, false, "a moderator correction, an impact change or a publish carries no flag");
+    assert.deepEqual(Object.keys(entry).sort(), ["change_type", "changed_at", "event_id", "summary", "version"]);
+  }
+  assert.equal(JSON.stringify(result.page).includes(AGENT_AUTO_PUBLISHER_ID), false);
+  assert.equal(JSON.stringify(result.page).includes("moderator-synthetic-01"), false);
 });

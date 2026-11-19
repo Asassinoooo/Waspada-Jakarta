@@ -43,6 +43,7 @@ interface CandidateRow {
   readonly change_type: unknown;
   readonly summary: unknown;
   readonly published_at: unknown;
+  readonly automatic: unknown;
 }
 
 let database: TestDatabase;
@@ -124,7 +125,8 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     });
     const approvedSequence = await insertReview(database.executor, {
       eventId: 'event-later', eventVersion: 1, status: 'approved',
-      changeType: 'published', summary: 'Authored fictional later update.',
+      changeType: 'corrected', summary: 'Authored fictional later update.',
+      reviewerId: 'agent:auto-publisher',
     });
     assert.deepEqual([heldSequence, approvedSequence], ['9', '10'],
       'committed review decisions receive consecutive global sequences regardless of supplied values');
@@ -146,7 +148,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
     assert.equal(first.hasMore, true, 'the limit-plus-one probe reports remaining candidates');
     assert.equal(first.candidates[0]?.publishedAt, TEST_TIME);
     assert.deepEqual(Object.keys(first.candidates[0] ?? {}).sort(), [
-      'changeSequence', 'changeType', 'datasetKind', 'eventId', 'eventVersion', 'publishedAt', 'summary',
+      'automatic', 'changeSequence', 'changeType', 'datasetKind', 'eventId', 'eventVersion', 'publishedAt', 'summary',
     ]);
 
     const second = await reader.readCandidates({ afterSequence: '7', throughSequence: watermark, limit: 2 });
@@ -156,6 +158,9 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       ['event-later', 1, '10'],
     ]);
     assert.equal(second.hasMore, false);
+    // POLISH-02: automatic is true only for the agent:auto-publisher correction. A moderator correction and a publish stay false.
+    assert.deepEqual(first.candidates.map(({ automatic }) => automatic), [false, false]);
+    assert.deepEqual(second.candidates.map(({ automatic }) => automatic), [false, true]);
 
     const bounded = await reader.readCandidates({ afterSequence: '0', throughSequence: '7', limit: 100 });
     assert.deepEqual(bounded.candidates.map(({ changeSequence }) => changeSequence), ['1', '7']);
@@ -212,6 +217,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
       { ...makeCandidateRow(), summary: '   ' },
       { ...makeCandidateRow(), published_at: 'not-a-time' },
       { ...makeCandidateRow(), change_sequence: '11' },
+      { ...makeCandidateRow(), automatic: 'true' },
     ];
     for (const row of malformedRows) {
       await assert.rejects(
@@ -267,7 +273,7 @@ describe('API-PUBLIC-UPDATES-READER-CORE', () => {
        ORDER BY ordinal_position`,
     );
     assert.deepEqual(candidateColumns.rows.map(({ column_name }) => column_name), [
-      'dataset_kind', 'event_id', 'event_version', 'change_sequence', 'change_type', 'summary', 'published_at',
+      'dataset_kind', 'event_id', 'event_version', 'change_sequence', 'change_type', 'summary', 'published_at', 'automatic',
     ]);
     assert.equal(candidateColumns.rows.some(({ column_name }) => column_name === 'reviewer_id'), false);
 
@@ -393,9 +399,9 @@ async function seedReviewBeforeMigration(input: ReviewInput): Promise<void> {
     `INSERT INTO waspada.public_event_history_review_decisions
        (dataset_kind, event_id, event_version, review_status, change_type,
         summary, reviewer_id, reviewed_at)
-     VALUES ('live', $1, $2, $3, $4, $5, 'moderator-fixture', $6)`,
+     VALUES ('live', $1, $2, $3, $4, $5, $7, $6)`,
     [input.eventId, input.eventVersion, input.status, input.changeType ?? null,
-      input.summary ?? null, TEST_TIME],
+      input.summary ?? null, TEST_TIME, input.reviewerId ?? 'moderator-fixture'],
   );
 }
 
@@ -404,10 +410,11 @@ async function insertReview(executor: SqlExecutor, input: ReviewInput): Promise<
     `INSERT INTO waspada.public_event_history_review_decisions
        (dataset_kind, event_id, event_version, review_status, change_type,
         summary, reviewer_id, reviewed_at, change_sequence)
-     VALUES ('live', $1, $2, $3, $4, $5, 'moderator-fixture', $6, $7)
+     VALUES ('live', $1, $2, $3, $4, $5, $8, $6, $7)
      RETURNING change_sequence::text AS change_sequence`,
     [input.eventId, input.eventVersion, input.status, input.changeType ?? null,
-      input.summary ?? null, TEST_TIME, input.changeSequence ?? '999999'],
+      input.summary ?? null, TEST_TIME, input.changeSequence ?? '999999',
+      input.reviewerId ?? 'moderator-fixture'],
   );
   assert.equal(result.rows.length, 1);
   return result.rows[0]!.change_sequence;
@@ -451,6 +458,7 @@ function makeCandidateRow(): CandidateRow {
     change_type: 'corrected',
     summary: 'Authored fictional update.',
     published_at: TEST_TIME,
+    automatic: false,
   };
 }
 

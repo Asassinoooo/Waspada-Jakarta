@@ -529,7 +529,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                  Text(changeLabel(entry.changeType),
+                                  Text(
+                                      changeLabel(entry.changeType,
+                                          automatic: entry.automatic),
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleMedium),

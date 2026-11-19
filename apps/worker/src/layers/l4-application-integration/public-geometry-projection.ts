@@ -434,7 +434,7 @@ function readCandidateLookupBatch(
   for (const scopeName of scopeNames) preflightKnownStrings(scopeName, [["display_name", 400]]);
   for (const attribution of publicAttributions) {
     preflightKnownStrings(attribution, [
-      ["display_name", 400], ["url", 2048], ["published_at", 64], ["observed_at", 64],
+      ["display_name", 400], ["url", 2048], ["published_at", 64], ["observed_at", 64], ["retrieved_at", 64],
     ]);
     if (isRecord(attribution) && attribution.excerpt_public_use_approved === true) {
       preflightKnownStrings(attribution, [["excerpt", 600]]);

@@ -40,6 +40,7 @@ export interface PublicSourceAttributionLookup {
   readonly url: string;
   readonly published_at: string | null;
   readonly observed_at: string | null;
+  readonly retrieved_at: string | null;
   readonly excerpt_public_use_approved: false;
   readonly excerpt: null;
 }
@@ -95,6 +96,7 @@ interface SourceAttributionRow {
   readonly url: unknown;
   readonly published_at: unknown;
   readonly observed_at: unknown;
+  readonly retrieved_at: unknown;
   readonly excerpt_public_use_approved: unknown;
   readonly excerpt: unknown;
 }
@@ -212,7 +214,8 @@ async function readSourceAttributions(
             attribution.permitted_text_hash, attribution.span_start, attribution.span_end,
             attribution.offset_unit, attribution.relation, attribution.public_use_approved,
             attribution.display_name, attribution.url, attribution.published_at,
-            attribution.observed_at, attribution.excerpt_public_use_approved, attribution.excerpt
+            attribution.observed_at, attribution.retrieved_at, attribution.excerpt_public_use_approved,
+            attribution.excerpt
      FROM waspada.public_source_attributions AS attribution
      JOIN unnest($1::text[], $2::text[], $3::integer[], $4::integer[])
        AS requested(report_revision_id, permitted_text_hash, span_start, span_end)
@@ -248,6 +251,7 @@ async function readSourceAttributions(
       || !isDisplayName(row.display_name)
       || !isHttpsUrl(row.url)
       || !isOptionalDateTime(row.published_at) || !isOptionalDateTime(row.observed_at)
+      || !isOptionalDateTime(row.retrieved_at)
       || row.excerpt_public_use_approved !== false || row.excerpt !== null) {
       fail('LOOKUP_RESULT_INVALID');
     }
@@ -275,6 +279,7 @@ async function readSourceAttributions(
       url: row.url,
       published_at: row.published_at,
       observed_at: row.observed_at,
+      retrieved_at: row.retrieved_at,
       excerpt_public_use_approved: false,
       excerpt: null,
     });

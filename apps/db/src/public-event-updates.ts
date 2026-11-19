@@ -27,6 +27,8 @@ export interface PublicEventUpdateCandidate {
   readonly summary: string;
   /** Exact publication timestamp input from the current-public history view. */
   readonly publishedAt: string;
+  /** POLISH-02: true only for an automatic refresh (corrected by agent:auto-publisher). Never the reviewer identifier. */
+  readonly automatic: boolean;
 }
 
 export interface PublicEventUpdateCandidatePage {
@@ -82,6 +84,7 @@ interface CandidateRow {
   readonly change_type: unknown;
   readonly summary: unknown;
   readonly published_at: unknown;
+  readonly automatic: unknown;
 }
 
 interface ValidatedOptions {
@@ -97,7 +100,7 @@ const timestampPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\
 const watermarkKeys = ['through_sequence'] as const;
 const candidateKeys = [
   'dataset_kind', 'event_id', 'event_version', 'change_sequence',
-  'change_type', 'summary', 'published_at',
+  'change_type', 'summary', 'published_at', 'automatic',
 ] as const;
 
 export function createPublicEventUpdatesReader(executor: SqlExecutor): PublicEventUpdatesReader {
@@ -123,7 +126,7 @@ export function createPublicEventUpdatesReader(executor: SqlExecutor): PublicEve
       const result = await queryRows<CandidateRow>(executor, [
         'SELECT candidates.dataset_kind, candidates.event_id, candidates.event_version,',
         '       candidates.change_sequence::text AS change_sequence, candidates.change_type,',
-        '       candidates.summary, candidates.published_at',
+        '       candidates.summary, candidates.published_at, candidates.automatic',
         'FROM waspada.public_event_updates_candidates AS candidates',
         'WHERE candidates.change_sequence > $1::bigint AND candidates.change_sequence <= $2::bigint',
         'ORDER BY candidates.change_sequence ASC',
@@ -178,7 +181,8 @@ function validateCandidates(
       || compareSequences(value.change_sequence, options.throughSequence) > 0
       || !isChangeType(value.change_type)
       || !isValidSummary(value.summary)
-      || !isTimestamp(value.published_at)) {
+      || !isTimestamp(value.published_at)
+      || typeof value.automatic !== 'boolean') {
       fail('RESULT_INVALID');
     }
 
@@ -190,6 +194,7 @@ function validateCandidates(
       changeType: value.change_type,
       summary: value.summary,
       publishedAt: value.published_at,
+      automatic: value.automatic,
     });
     previousSequence = value.change_sequence;
   }

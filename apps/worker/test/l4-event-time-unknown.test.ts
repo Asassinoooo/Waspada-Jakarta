@@ -203,6 +203,7 @@ test("HOSTED-21: the stored v2 record of an event with no event time is accepted
       url: "https://example.invalid/berita/1",
       published_at: null,
       observed_at: null,
+      retrieved_at: null,
       excerpt_public_use_approved: false,
       excerpt: null,
     }],

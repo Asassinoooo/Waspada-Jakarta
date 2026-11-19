@@ -228,6 +228,7 @@ function makeSyntheticLookups(): PublicProjectionLookups {
         url: "https://office-one.example.invalid/synthetic-notice",
         published_at: "2026-09-24T20:00:00Z",
         observed_at: "2026-09-25T03:10:00+07:00",
+        retrieved_at: "2026-09-25T03:12:00+07:00",
         excerpt_public_use_approved: true,
         excerpt: "Synthetic excerpt one.",
         report_revision_id_private: "PRIVATE_REVISION_MARKER",
@@ -246,6 +247,7 @@ function makeSyntheticLookups(): PublicProjectionLookups {
         url: "https://office-two.example.invalid/synthetic-notice",
         published_at: "2026-09-25T02:00:00+07:00",
         observed_at: null,
+        retrieved_at: null,
         excerpt_public_use_approved: false,
         excerpt: "SYNTHETIC_UNAPPROVED_EXCERPT_MARKER",
       },
@@ -262,6 +264,7 @@ function makeSyntheticLookups(): PublicProjectionLookups {
         url: "https://office-three.example.invalid/synthetic-notice",
         published_at: null,
         observed_at: "2026-09-25T03:15:00Z",
+        retrieved_at: null,
         excerpt_public_use_approved: true,
         excerpt: null,
       },
@@ -278,6 +281,7 @@ function makeSyntheticLookups(): PublicProjectionLookups {
         url: "https://contrary.example.invalid/synthetic-note",
         published_at: null,
         observed_at: null,
+        retrieved_at: null,
         excerpt_public_use_approved: true,
         excerpt: "Synthetic contrary excerpt.",
       },
@@ -307,7 +311,7 @@ function assertProjectionError(action: () => unknown, code: PublicProjectionErro
 const openApiKeys = {
   eventView: ["event_id", "version", "title", "summary", "category", "tags", "lifecycle", "freshness", "event_time", "validity", "scope", "claims", "impacts", "published_at"],
   publicClaim: ["claim_id", "text", "event_time", "validity", "scope", "qualifiers", "evidence_label", "sources"],
-  publicSource: ["display_name", "url", "published_at", "observed_at", "excerpt"],
+  publicSource: ["display_name", "url", "published_at", "observed_at", "retrieved_at", "excerpt"],
   publicImpact: ["impact_id", "version", "impact_type", "title", "description", "lifecycle", "freshness", "event_time", "validity", "scope"],
   publicScope: ["places", "services", "institutions", "audiences"],
   tag: ["namespace", "value"],
@@ -345,6 +349,7 @@ test("projects the exact OpenAPI EventView allowlist with synthetic test lookups
     url: "https://office-one.example.invalid/synthetic-notice",
     published_at: "2026-09-24T20:00:00Z",
     observed_at: "2026-09-25T03:10:00+07:00",
+    retrieved_at: "2026-09-25T03:12:00+07:00",
     excerpt: "Synthetic excerpt one.",
   });
   assert.notEqual(result.claims[0]?.sources[0]?.published_at, result.claims[0]?.sources[0]?.observed_at);
@@ -572,6 +577,8 @@ test("support attributions must match exact span, be approved, and use HTTPS", (
     (record: Record<string, unknown>) => { record.url = "http://office-one.example.invalid/not-approved"; },
     (record: Record<string, unknown>) => { record.published_at = "not-a-timestamp"; },
     (record: Record<string, unknown>) => { record.span_end = 15; },
+    (record: Record<string, unknown>) => { delete record.retrieved_at; },
+    (record: Record<string, unknown>) => { record.retrieved_at = "2026-09-25"; },
   ]) {
     const broken = clone(lookups);
     const attributions = broken.publicAttributions as Array<Record<string, unknown>>;

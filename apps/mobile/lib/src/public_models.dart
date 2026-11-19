@@ -415,20 +415,27 @@ class PublicSource {
       required this.url,
       required this.publishedAt,
       required this.observedAt,
-      required this.excerpt});
+      required this.excerpt,
+      this.retrievedAt});
   final String displayName;
   final String url;
   final String? publishedAt;
   final String? observedAt;
   final String? excerpt;
+  // POLISH-02 (additive, optional): the source collection time (waktu pengambilan sumber). Null when absent.
+  final String? retrievedAt;
 
   factory PublicSource.fromJson(Object? json) {
-    final map = _object(json,
-        {'display_name', 'url', 'published_at', 'observed_at', 'excerpt'});
+    final map = _object(
+        json,
+        {'display_name', 'url', 'published_at', 'observed_at', 'excerpt'},
+        {'retrieved_at'});
     final published = _nullableString(map['published_at'], maxLength: 100);
     final observed = _nullableString(map['observed_at'], maxLength: 100);
+    final retrieved = _nullableString(map['retrieved_at'], maxLength: 100);
     if (!(published == null || _isInstant(published)) ||
-        !(observed == null || _isInstant(observed))) {
+        !(observed == null || _isInstant(observed)) ||
+        !(retrieved == null || _isInstant(retrieved))) {
       throw const ContractViolation();
     }
     return PublicSource(
@@ -438,6 +445,7 @@ class PublicSource {
       publishedAt: published,
       observedAt: observed,
       excerpt: _nullableString(map['excerpt'], maxLength: 300),
+      retrievedAt: retrieved,
     );
   }
 }
@@ -1146,12 +1154,15 @@ class HistoryEntry {
       required this.version,
       required this.changeType,
       required this.changedAt,
-      required this.summary});
+      required this.summary,
+      this.automatic = false});
   final String eventId;
   final int version;
   final String changeType;
   final String changedAt;
   final String summary;
+  // POLISH-02 (additive, optional): true only for an automatic refresh by agent:auto-publisher. Absent means false.
+  final bool automatic;
 
   factory HistoryEntry.fromJson(Object? json) {
     final map = _object(
@@ -1164,17 +1175,21 @@ class HistoryEntry {
         'dataset_kind',
         'supersedes_version',
         'published_at',
+        'automatic',
       },
     );
     const changes = {'published', 'corrected', 'impact_changed', 'retracted'};
     final type = _string(map['change_type'], maxLength: 40, allowEmpty: false);
     if (!changes.contains(type)) throw const ContractViolation();
+    final automaticValue = map['automatic'];
+    if (automaticValue != null && automaticValue is! bool) throw const ContractViolation();
     return HistoryEntry(
       eventId: _string(map['event_id'], maxLength: 128, allowEmpty: false),
       version: _positiveInt(map['version']),
       changeType: type,
       changedAt: _requiredInstant(map['changed_at']),
       summary: _string(map['summary'], maxLength: 500),
+      automatic: automaticValue == true,
     );
   }
 }

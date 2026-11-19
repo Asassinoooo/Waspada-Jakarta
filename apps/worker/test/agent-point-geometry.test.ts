@@ -246,6 +246,7 @@ const attributionLookups = {
     url: "https://news.example/h10",
     published_at: null,
     observed_at: null,
+    retrieved_at: null,
     excerpt_public_use_approved: false,
     excerpt: null,
   }],

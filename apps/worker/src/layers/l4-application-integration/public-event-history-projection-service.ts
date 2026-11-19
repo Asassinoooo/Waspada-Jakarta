@@ -75,6 +75,8 @@ interface ValidatedCandidatePage {
 interface ValidatedDisclosureMetadata {
   readonly changeType: HistoryEntry["change_type"];
   readonly summary: string;
+  /** POLISH-02: true only for an automatic refresh. The reviewer identifier itself is never kept or projected. */
+  readonly automatic: boolean;
 }
 
 interface ValidatedDisclosureVersion {
@@ -95,6 +97,11 @@ interface ValidatedPageRequest {
 
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const reviewerIdentifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
+/**
+ * The reviewer that AGENT_AUTO_PUBLISHER_ID in proposal-publication.ts writes. This module keeps its own copy so the
+ * projection does not import the publication module; a test pins the two values together.
+ */
+const AUTOMATIC_REVIEWER_ID = "agent:auto-publisher";
 const maxDatabaseInteger = 2_147_483_647;
 const historyChangeTypes = new Set<HistoryEntry["change_type"]>([
   "published",
@@ -182,6 +189,8 @@ export function createPublicEventHistoryProjectionService(ports: {
           change_type: disclosure.changeType,
           changed_at: candidate.publishedAt,
           summary: disclosure.summary,
+          // POLISH-02: the flag is present only when true, so moderator corrections keep the unchanged entry shape.
+          ...(disclosure.automatic ? { automatic: true } : {}),
         };
       });
 
@@ -333,9 +342,11 @@ function validateDisclosure(
     || !isDateTime(value.reviewedAt)) {
     fail("DISCLOSURE_RESULT_INVALID");
   }
+  const changeType = value.changeType as HistoryEntry["change_type"];
   return {
-    changeType: value.changeType as HistoryEntry["change_type"],
+    changeType,
     summary: value.summary,
+    automatic: changeType === "corrected" && value.reviewerId === AUTOMATIC_REVIEWER_ID,
   };
 }
 

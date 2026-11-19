@@ -112,6 +112,7 @@ function makeAttribution(hash = syntheticHash): Record<string, unknown> {
     url: "https://source.example.invalid/synthetic-record",
     published_at: "2026-09-27T02:50:00Z",
     observed_at: null,
+    retrieved_at: null,
     excerpt_public_use_approved: false,
     excerpt: null,
     permitted_text: "PRIVATE_SOURCE_TEXT_MARKER",

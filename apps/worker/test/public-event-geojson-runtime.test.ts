@@ -200,6 +200,7 @@ function makeRuntime(
           url: `https://source.example.invalid/${reportRevisionId}`,
           published_at: "2026-09-27T02:50:00Z",
           observed_at: null,
+          retrieved_at: null,
           excerpt_public_use_approved: false,
           excerpt: null,
         }));

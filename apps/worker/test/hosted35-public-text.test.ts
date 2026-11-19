@@ -222,6 +222,7 @@ function attribution(
     url,
     published_at: publishedAt,
     observed_at: null,
+    retrieved_at: null,
     excerpt_public_use_approved: false,
     excerpt: null,
   };
@@ -252,6 +253,7 @@ test("HOSTED-35b: a claim lists one source per (url, display name), keeping the 
       url: "https://news.example.invalid/cawang",
       published_at: "2026-11-18T08:00:00+07:00",
       observed_at: null,
+      retrieved_at: null,
       excerpt: null,
     },
     {
@@ -259,6 +261,7 @@ test("HOSTED-35b: a claim lists one source per (url, display name), keeping the 
       url: "https://kompas.example.invalid/cawang",
       published_at: "2026-11-18T07:00:00+07:00",
       observed_at: null,
+      retrieved_at: null,
       excerpt: null,
     },
   ], "one article shows once, with its earliest attribution, and the source order is unchanged");

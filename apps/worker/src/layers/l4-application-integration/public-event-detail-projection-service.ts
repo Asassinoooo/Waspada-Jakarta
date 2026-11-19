@@ -89,6 +89,7 @@ const attributionLookupKeys = [
   "url",
   "published_at",
   "observed_at",
+  "retrieved_at",
   "excerpt_public_use_approved",
   "excerpt",
 ] as const;
@@ -273,6 +274,7 @@ function validateLookupResult(
       || !isHttpsUrl(candidate.url)
       || !isOptionalDateTime(candidate.published_at)
       || !isOptionalDateTime(candidate.observed_at)
+      || !isOptionalDateTime(candidate.retrieved_at)
       || candidate.excerpt_public_use_approved !== false
       || candidate.excerpt !== null) {
       fail("LOOKUP_RESULT_INVALID");
@@ -300,6 +302,7 @@ function validateLookupResult(
       url: candidate.url,
       published_at: candidate.published_at,
       observed_at: candidate.observed_at,
+      retrieved_at: candidate.retrieved_at,
       excerpt_public_use_approved: false,
       excerpt: null,
     });

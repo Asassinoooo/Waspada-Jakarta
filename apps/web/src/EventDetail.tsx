@@ -12,6 +12,7 @@ import {
   SEVERITY_NOTE,
   severityOf,
   sourcePublishedAtText,
+  sourceRetrievedAtText,
   LOCATION_LABEL_NOTE,
 } from "./published-events.js";
 
@@ -133,8 +134,10 @@ function wording(demo: boolean, demoText: string, otherText: string): string {
   return demo ? demoText : otherText;
 }
 
-function historyChangeLabel(changeType: HistoryPage["data"][number]["change_type"]) {
-  switch (changeType) {
+function historyChangeLabel(entry: HistoryPage["data"][number]) {
+  // POLISH-02: an automatic refresh is written as "corrected" by the auto-publisher. It is not a moderator correction.
+  if (entry.automatic === true) return "Diperbarui otomatis";
+  switch (entry.change_type) {
     case "published": return "Versi dipublikasikan";
     case "corrected": return "Versi dikoreksi";
     case "impact_changed": return "Dampak diperbarui";
@@ -187,7 +190,7 @@ function ApiHistory({
         <ol className="claims-list" aria-label={wording(demo, "Entri riwayat fixture sintetis", "Entri riwayat")}>
           {state.data.data.map((entry) => (
             <li className="claim-card" key={`${entry.event_id}:${entry.version}:${entry.change_type}:${entry.changed_at}`}>
-              <span className="claim-card__label">{historyChangeLabel(entry.change_type)} · versi {entry.version}{wording(demo, " · fixture demo", "")}</span>
+              <span className="claim-card__label">{historyChangeLabel(entry)} · versi {entry.version}{wording(demo, " · fixture demo", "")}</span>
               <p>{entry.summary}</p>
               <p>{wording(demo, "Waktu pada fixture: ", "Waktu: ")}<time dateTime={entry.changed_at}>{formatInstant(entry.changed_at)}</time></p>
             </li>
@@ -217,6 +220,8 @@ function ApiEventDetail({
   const severity = event === null ? null : severityOf(event);
   // HOSTED-21: with no event time, the source's own publish time is shown on its own row, never as the event time.
   const sourceTime = event === null || eventHasTime(event) ? null : sourcePublishedAtText(event);
+  // POLISH-02: the source collection time, shown only when a source gives one. Otherwise the row keeps "Tidak disebutkan".
+  const sourceRetrieved = event === null ? null : sourceRetrievedAtText(event);
   // F-09: the outlet count the card and popup show. Syndicated copies are labelled, never counted as sources.
   const sourceCounts = event === null ? null : countIndependentSources(event);
   // R-05: only a demo dataset may be called synthetic or fixture. Live and unknown modes get neutral wording.
@@ -293,7 +298,7 @@ function ApiEventDetail({
                   <div><dt>Cara penerbitan</dt><dd>{publicationPathText({ mode: event.publication.mode, source_count: sourceCounts.outlets }, sourceCounts.copies)}</dd></div>
                 )}
                 <div><dt>Data dimuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
-                <div><dt>Waktu pengambilan sumber</dt><dd>Tidak disebutkan</dd></div>
+                <div><dt>Waktu pengambilan sumber</dt><dd>{sourceRetrieved ?? "Tidak disebutkan"}</dd></div>
                 {typeof event.location_label === "string" && event.location_label.trim().length > 0 && (
                   <div><dt>Lokasi menurut laporan</dt><dd>{event.location_label.trim()}{LOCATION_LABEL_NOTE}</dd></div>
                 )}

@@ -24,6 +24,7 @@ interface Candidate {
   readonly changeType: unknown;
   readonly summary: unknown;
   readonly publishedAt: unknown;
+  readonly automatic: unknown;
 }
 
 interface ReaderCall {
@@ -97,6 +98,7 @@ function makeCandidate(
     changeType: "corrected",
     summary: "Authored fictional reviewed summary.",
     publishedAt: "2026-09-27T03:59:59.123456Z",
+    automatic: false,
     ...overrides,
   };
 }
@@ -183,6 +185,29 @@ test("projects all reviewed change labels through the exact HistoryEntry allowli
   assert.equal((await createPublicEventUpdatesCursorCodec({ key, now: () => nowAtIssue })
     .decode(page.next_cursor)).sequence, "10",
   "a completed page advances over any non-public sequence gaps to the watermark");
+});
+
+test("sets automatic only for an agent:auto-publisher correction and keeps other entries unchanged", async () => {
+  const key = await generateTestKey();
+  const cursor = await makeCursor(key, "0", () => nowAtIssue);
+  const candidates = [
+    makeCandidate("1", { changeType: "corrected", automatic: true }),
+    makeCandidate("2", { changeType: "corrected", automatic: false }),
+    makeCandidate("3", { changeType: "published", automatic: false }),
+  ];
+  const reader = makeReader("10", { candidates, hasMore: false });
+  const page = await createService(reader.port, key, () => nowAtIssue).read({ cursor });
+
+  assert.deepEqual(page.items[0], {
+    event_id: "fictional-event-1",
+    version: 1,
+    change_type: "corrected",
+    changed_at: candidates[0]?.publishedAt,
+    summary: "Authored fictional reviewed summary.",
+    automatic: true,
+  });
+  for (const item of page.items.slice(1)) assertHistoryEntry(item);
+  assert.equal(JSON.stringify(page).includes("reviewer"), false);
 });
 
 test("continues a full page from the last candidate without converting sequences to numbers", async () => {

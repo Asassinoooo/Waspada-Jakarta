@@ -937,6 +937,7 @@ components:
         url: { type: string, format: uri }
         published_at: { type: [string, 'null'], format: date-time }
         observed_at: { type: [string, 'null'], format: date-time }
+        retrieved_at: { type: [string, 'null'], format: date-time, description: "POLISH-02 (additive, optional). The source collection time (waktu pengambilan sumber) of the revision the attribution points to. Null when unavailable. Never invented and never the publication or processing time." }
         excerpt: { type: [string, 'null'], maxLength: 300, description: A permitted short excerpt only; null if disallowed or unavailable. }
     PublicClaim:
       type: object
@@ -1100,6 +1101,7 @@ components:
         change_type: { type: string, enum: [published, corrected, impact_changed, retracted] }
         changed_at: { type: string, format: date-time }
         summary: { type: string, maxLength: 500 }
+        automatic: { type: boolean, description: "POLISH-02 (additive, optional). True only for an automatic refresh by agent:auto-publisher, which is written as change_type corrected. Omitted otherwise. The reviewer identifier is never exposed." }
     HistoryPage:
       type: object
       additionalProperties: false

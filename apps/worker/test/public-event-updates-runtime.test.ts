@@ -36,6 +36,7 @@ function makeCandidate(sequence: string, eventId: string) {
     change_type: "corrected",
     summary: "Authored fictional moderator-reviewed update summary.",
     published_at: "2026-09-26T23:59:00.000Z",
+    automatic: false,
   };
 }
 
