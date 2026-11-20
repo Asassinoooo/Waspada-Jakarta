@@ -162,7 +162,7 @@ async function seedSource(
        reuse_license_url, reuse_scope, reuse_reviewer, reuse_reviewed_at, reuse_expires_at
      )
      VALUES ('${sourceId}', 'trace-seed', 1, 'Synthetic Gate', 'newsroom', ARRAY['test'],
-             'rss', ARRAY[]::text[], ARRAY[]::text[], $1,
+             'rss', ARRAY['example.test']::text[], ARRAY[]::text[], $1,
              'active', 'approved', 'healthy', true, 'never',
              $2, $3, $4, $5::timestamptz, $6::timestamptz)
      ON CONFLICT (source_id) DO NOTHING`,

@@ -18,6 +18,12 @@ import {
   isBlockedRedirect,
   OUTBOUND_REDIRECT_POLICY,
 } from "./outbound-fetch-policy.js";
+import {
+  checkOutboundHost,
+  declaredHostsOf,
+  HOST_NOT_APPROVED_ERROR,
+  normalizeApprovedHosts,
+} from "./outbound-host-policy.js";
 
 export const BMKG_GEMPA_SOURCE_ID = "source-bmkg-gempa";
 export const DEFAULT_BMKG_AUTOGEMPA_ENDPOINT = "https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json";
@@ -64,6 +70,8 @@ export interface BmkgPollRuntimeOptions {
   readonly fetch?: typeof fetch;
   readonly now?: () => string;
   readonly onRevisions?: (revisions: readonly StoredReportRevision[]) => Promise<void> | void;
+  /** NFR-07 F-42: hosts the source registry approves. Absent: the configured endpoints' own hosts. */
+  readonly approvedHosts?: readonly string[];
 }
 
 export interface BmkgPollRuntime {
@@ -168,6 +176,10 @@ export function createBmkgPollRuntime(
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const nowFn = options.now ?? (() => new Date().toISOString());
+  // NFR-07 F-42: an endpoint whose host is not approved is never requested.
+  const approvedHosts = options.approvedHosts !== undefined
+    ? normalizeApprovedHosts(options.approvedHosts)
+    : declaredHostsOf([autogempaEndpoint, gempaterkiniEndpoint]);
 
   async function poll(): Promise<BmkgPollResult> {
     const retrievedAt = nowFn();
@@ -179,10 +191,13 @@ export function createBmkgPollRuntime(
     let totalFetched = 0;
     let totalFiltered = 0;
     let blockedRedirects = 0;
+    let refusedHosts = 0;
 
     try {
       // 1. Fetch autogempa (latest automated alert)
-      try {
+      if (!checkOutboundHost(autogempaEndpoint, approvedHosts).allowed) {
+        refusedHosts += 1;
+      } else try {
         const res = await fetchImpl(autogempaEndpoint, {
           signal: controller.signal,
           // NFR-07: a redirect is refused, not followed to a host BMKG did not name here.
@@ -209,7 +224,9 @@ export function createBmkgPollRuntime(
       } catch {}
 
       // 2. Fetch gempaterkini (latest felt earthquakes)
-      try {
+      if (!checkOutboundHost(gempaterkiniEndpoint, approvedHosts).allowed) {
+        refusedHosts += 1;
+      } else try {
         const res = await fetchImpl(gempaterkiniEndpoint, {
           signal: controller.signal,
           // NFR-07: a redirect is refused, not followed.
@@ -241,14 +258,18 @@ export function createBmkgPollRuntime(
         await options.onRevisions(revisions);
       }
 
-      // A refused redirect is a failed fetch, not a silent empty result.
-      const blocked = blockedRedirects > 0;
+      // A refused redirect or host is a failed fetch, not a silent empty result.
+      const blockedError = refusedHosts > 0
+        ? HOST_NOT_APPROVED_ERROR
+        : blockedRedirects > 0
+          ? BLOCKED_REDIRECT_ERROR
+          : undefined;
       return {
-        outcome: revisions.length > 0 ? "success" : blocked ? "error" : "empty",
+        outcome: revisions.length > 0 ? "success" : blockedError !== undefined ? "error" : "empty",
         fetchedCount: totalFetched,
         filteredCount: totalFiltered,
         revisions,
-        ...(blocked ? { error: BLOCKED_REDIRECT_ERROR } : {}),
+        ...(blockedError !== undefined ? { error: blockedError } : {}),
       };
     } catch (err) {
       return {

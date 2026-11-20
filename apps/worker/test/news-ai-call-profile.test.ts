@@ -218,7 +218,7 @@ async function seedSource(db: TestDatabase, sourceId: string): Promise<void> {
        approval_status, health_status, auto_acquisition_enabled, auto_publication_policy
      )
      VALUES ($1, 'trace-seed', 1, 'Dedupe Fixture', 'newsroom', ARRAY['test'],
-             'rss', ARRAY[]::text[], ARRAY[]::text[], $2,
+             'rss', ARRAY['example.test']::text[], ARRAY[]::text[], $2,
              'active', 'approved', 'healthy', true, 'never')
      ON CONFLICT (source_id) DO NOTHING`,
     [sourceId, [...FULL_BASIS]],

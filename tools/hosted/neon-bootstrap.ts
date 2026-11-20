@@ -22,7 +22,7 @@ import {
   loadRegistryRows,
   safeErrorLabel,
 } from "../live-source-coverage.js";
-import { seedLiveSourcesInsertMissing, upgradeStructuredPublicDisplayGrants } from "../live-sources-seed.js";
+import { seedLiveSourcesInsertMissing, upgradeDeclaredApprovedHosts, upgradeStructuredPublicDisplayGrants } from "../live-sources-seed.js";
 import { createHostedSession, HostedConfigError } from "./hosted-session.js";
 import { diffLayerRoles, LAYER_ROLES, LAYER_ROLE_NAME_PATTERN } from "./layer-roles.js";
 import { verifyLayerRoleAttributes, withRoleAttributeCompat } from "./role-attribute-compat.js";
@@ -146,6 +146,8 @@ export async function runHostedBootstrap(env: NodeJS.ProcessEnv, log: Log = cons
     log(`[5/6] Live sources: ${sources.inserted} inserted, ${sources.existing} already present (never modified).`);
     const upgraded = await upgradeStructuredPublicDisplayGrants(executor);
     log(`[5/6] Public display grant upgraded on ${upgraded} legacy PetaBencana/BMKG row(s) (approved, active and on only).`);
+    const hostsUpgraded = await upgradeDeclaredApprovedHosts(executor);
+    log(`[5/6] Approved host declared on ${hostsUpgraded} PetaBencana/BMKG row(s) that had none (approved, active and on only).`);
     const expectedIds = expectedLiveSourceIds();
     const coverage = checkLiveSourceCoverage({
       expectedIds,

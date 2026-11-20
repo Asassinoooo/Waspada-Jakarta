@@ -4,6 +4,7 @@ import { OFFICIAL_INCIDENT_CATEGORIES } from "../../../db/src/incident-categorie
 import { createNineRouterMastraAgent } from "../providers/ninerouter-adapter.js";
 import { generateWithinBudget } from "./generation-budget.js";
 import { parseModelOutput } from "./model-output.js";
+import { neutraliseSourceText } from "./source-text-isolation.js";
 
 /**
  * The severity levels the model is asked to output (rubric in REPORT_INTERPRETER_INSTRUCTIONS,
@@ -125,21 +126,6 @@ export function createReportInterpretationAgent(agentOverride?: Agent): Agent {
     instructions: REPORT_INTERPRETER_INSTRUCTIONS,
     mockRole: "interpreter",
   });
-}
-
-/** A line of source text that imitates a prompt section header or the output template. Tested one line at a time. */
-const SECTION_LOOKALIKE_LINE = /^\s*(?:={3,}.*={3,}\s*$|format your output)/iu;
-const LINE_BREAK = /(\r\n|[\n\r\u2028\u2029])/u;
-
-/**
- * NFR-07 A1: marks each source line that looks like a section header or the output template, so the model reads it as
- * quoted source and not as a second section. The prefix is the only change; every other character is kept.
- */
-function neutraliseSourceText(text: string): string {
-  return text
-    .split(LINE_BREAK)
-    .map((part) => (SECTION_LOOKALIKE_LINE.test(part) ? `[teks sumber] ${part}` : part))
-    .join("");
 }
 
 export async function interpretReport(

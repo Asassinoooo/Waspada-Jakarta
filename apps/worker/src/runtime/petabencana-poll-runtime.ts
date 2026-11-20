@@ -12,6 +12,7 @@ import {
   isBlockedRedirect,
   OUTBOUND_REDIRECT_POLICY,
 } from "./outbound-fetch-policy.js";
+import { checkOutboundHost, declaredHostsOf, normalizeApprovedHosts } from "./outbound-host-policy.js";
 
 export { parsePetaBencanaReports };
 
@@ -54,6 +55,8 @@ export interface PetaBencanaPollRuntimeOptions {
   readonly canonicalBase?: string;
   /** Custom fetch implementation for testing or custom transport */
   readonly fetch?: typeof fetch;
+  /** NFR-07 F-42: hosts the source registry approves. Absent: the endpoint's own host. */
+  readonly approvedHosts?: readonly string[];
   /** Callback executed with parsed StoredReportRevision records after a successful poll */
   readonly onRevisions?: (revisions: readonly StoredReportRevision[]) => Promise<void> | void;
   /** Storage / persistence port for storing revisions */
@@ -201,6 +204,9 @@ export function createPetaBencanaPollRuntime(
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const nowFn = options.now ?? (() => new Date().toISOString());
+  const approvedHosts = options.approvedHosts !== undefined
+    ? normalizeApprovedHosts(options.approvedHosts)
+    : declaredHostsOf([endpoint]);
 
   async function executePoll(scheduledTime?: number): Promise<PetaBencanaPollResult> {
     if (options.leaseManager && scheduledTime !== undefined) {
@@ -230,6 +236,18 @@ export function createPetaBencanaPollRuntime(
     }
 
     const retrievedAt = nowFn();
+
+    // NFR-07 F-42: an endpoint whose host is not approved is never requested.
+    const hostDecision = checkOutboundHost(endpoint, approvedHosts);
+    if (!hostDecision.allowed) {
+      return {
+        outcome: "error",
+        fetchedCount: 0,
+        filteredCount: 0,
+        revisions: [],
+        error: hostDecision.error,
+      };
+    }
 
     let timeoutHandle: NodeJS.Timeout | number | undefined;
     const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;

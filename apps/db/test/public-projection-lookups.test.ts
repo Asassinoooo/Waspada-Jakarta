@@ -443,6 +443,52 @@ describe('API-PUBLIC-LOOKUPS-CORE reviewed lookup persistence and read port', ()
       await database.executor.execute('RESET ROLE');
     }
   });
+
+  it('PERF-01: resolveMany answers each request exactly as resolve does, with one scope read and one attribution read for the batch', async () => {
+    const statements: string[] = [];
+    const countingExecutor: SqlExecutor = {
+      async query<Row extends object>(statement: string, parameters?: readonly unknown[]) {
+        statements.push(statement);
+        return database.executor.query<Row>(statement, parameters);
+      },
+      async execute(statement: string) {
+        await database.executor.execute(statement);
+      },
+    };
+    const repository = createPublicProjectionLookupRepository(countingExecutor);
+    const requests = [
+      { scopeKeys: [scopeApproved, scopeHeld], supportReferences: [supportOne] },
+      { scopeKeys: [scopeWithdrawn, scopeApproved], supportReferences: [supportThree, supportTwo] },
+      { scopeKeys: [], supportReferences: [] },
+      { scopeKeys: [{ entityType: 'institution' as const, entityId: 'institution-lookup-en-only' }], supportReferences: [] },
+      { scopeKeys: [], supportReferences: [supportTwo] },
+    ];
+
+    const expected = await Promise.all(requests.map((request) => repository.resolve(request)));
+    statements.length = 0;
+    const batched = await repository.resolveMany(requests);
+
+    assert.deepEqual(batched, expected);
+    assert.equal(statements.length, 2, 'one scope-name read and one attribution read serve the whole batch');
+    assert.deepEqual(await repository.resolveMany([]), []);
+
+    await assert.rejects(
+      repository.resolveMany({ scopeKeys: [], supportReferences: [] }),
+      (error: unknown) => error instanceof PublicProjectionLookupError && error.code === 'INVALID_QUERY',
+    );
+    await assert.rejects(
+      repository.resolveMany(Array.from({ length: PUBLIC_PROJECTION_LOOKUP_LIMITS.batchRequests + 1 }, () => requests[2])),
+      (error: unknown) => error instanceof PublicProjectionLookupError && error.code === 'QUERY_LIMIT_EXCEEDED',
+    );
+    const excessive = Array.from({ length: PUBLIC_PROJECTION_LOOKUP_LIMITS.scopeKeys + 1 }, (_, index) => ({
+      entityType: 'place' as const, entityId: `place-batch-over-limit-${index}`,
+    }));
+    await assert.rejects(
+      repository.resolveMany([requests[0], { scopeKeys: excessive, supportReferences: [] }]),
+      (error: unknown) => error instanceof PublicProjectionLookupError
+        && error.code === 'QUERY_LIMIT_EXCEEDED' && !error.message.includes('place-batch-over-limit'),
+    );
+  });
 });
 
 async function insertEvidence(key: PublicSupportingEvidenceKey): Promise<number> {

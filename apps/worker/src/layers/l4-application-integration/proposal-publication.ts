@@ -1297,6 +1297,16 @@ async function writePublishedVersion(tx: SqlExecutor, input: PublishedVersionWri
 }
 
 /**
+ * NFR-05: true when a proposal was made before the proposal behind the event's current version. A time that cannot be
+ * read is not treated as stale, so this never blocks a proposal on a malformed timestamp alone.
+ */
+function isOlderThanCurrentVersion(proposal: EventProposalDto, current: EventProposalDto): boolean {
+  const own = Date.parse(String(proposal.proposed_at));
+  const currentAt = Date.parse(String(current.proposed_at));
+  return Number.isFinite(own) && Number.isFinite(currentAt) && own < currentAt;
+}
+
+/**
  * The publish transaction body. It runs inside a transaction the caller opened, and takes the proposal lock and
  * the event lock in that order. A correction refusal is recorded (rejected decision plus audit record) in the same
  * transaction, so the proposal the moderator submitted never stays undecided.
@@ -1441,6 +1451,31 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
       }
       return { outcome: { status: "unchanged", decisionId, eventId, version: latest.version } };
     }
+  }
+
+  // NFR-05 and DOMAIN_MODEL: a stale proposal is never applied over a newer version. A publish or auto-publish of a
+  // proposal made before the one behind the current version is superseded by it: one supersede decision, no version,
+  // no claim and no outbox row. Corrections keep their own base-version check above.
+  if (action !== "correct" && latest && isOlderThanCurrentVersion(proposal, latest.proposal)) {
+    await insertUnpublishedDecision(tx, {
+      datasetKind,
+      decisionId,
+      traceId,
+      proposalId,
+      reviewerId: actor.actorId,
+      decidedAt,
+      record: {
+        disposition: "supersede",
+        ...actorRecord,
+        reason: core.reason,
+        superseded_by: latest.proposalId,
+        superseded_at: decidedAt,
+        superseded_by_decision_id: latest.decisionId,
+        superseded_by_version: latest.version,
+        stale_reason: "older_than_current_version",
+      },
+    });
+    return { outcome: { status: "already_decided", disposition: "supersede" } };
   }
 
   // HOSTED-10 and HOSTED-26: the support and the location status are read only after the unchanged check. A point gets

@@ -26,7 +26,7 @@
     "ai:requeue": "tsx tools/requeue-ai-jobs.ts",
     "pipeline:test": "tsx tools/local-pipeline/run-tests.ts",
     "accounts:local": "tsx tools/accounts/run-local-accounts.ts",
-    "accounts:test": "tsx --test tools/accounts/local-accounts.test.ts && tsx --test tools/accounts/composition.test.ts && tsx --test tools/accounts/hosted-ingest.test.ts && tsx --test tools/accounts/hosted-once-publication.test.ts && tsx --test tools/hosted/restore-rehearsal.test.ts",
+    "accounts:test": "tsx --test tools/accounts/local-accounts.test.ts && tsx --test tools/accounts/composition.test.ts && tsx --test tools/accounts/hosted-ingest.test.ts && tsx --test tools/accounts/hosted-once-publication.test.ts && tsx --test tools/hosted/restore-rehearsal.test.ts && tsx --test tools/hosted/nfr07-retention-purge.test.ts",
     "accounts:seed-admin": "node --env-file-if-exists=.env.local --import tsx tools/accounts/seed-admin.ts",
     "ai:smoke": "tsx tools/ai/run-ninerouter-smoke.ts",
     "ai:smoke:live": "node --env-file=.env.local --import tsx tools/ai/run-ninerouter-smoke.ts --live",

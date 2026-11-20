@@ -51,13 +51,7 @@ export async function createPublicEventListRuntime(
 
   let key: CryptoKey;
   try {
-    key = await globalThis.crypto.subtle.importKey(
-      "raw",
-      decodeHex(configuration.cursorHmacKeyHex),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign", "verify"],
-    );
+    key = await importCursorKey(configuration.cursorHmacKeyHex);
   } catch {
     return undefined;
   }
@@ -108,6 +102,28 @@ export function isValidHyperdriveConnectionString(value: unknown): value is stri
 
 function isValidCursorSecret(value: unknown): value is string {
   return typeof value === "string" && cursorSecretPattern.test(value);
+}
+
+/**
+ * PERF-01: the cursor HMAC key is imported once per secret and reused by later page reads in the same isolate, instead
+ * of once per request. The key stays non-extractable, and a different secret replaces the cached import.
+ */
+let cursorKeyImport: { readonly hex: string; readonly key: Promise<CryptoKey> } | undefined;
+
+function importCursorKey(hex: string): Promise<CryptoKey> {
+  if (cursorKeyImport?.hex !== hex) {
+    cursorKeyImport = {
+      hex,
+      key: globalThis.crypto.subtle.importKey(
+        "raw",
+        decodeHex(hex),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign", "verify"],
+      ),
+    };
+  }
+  return cursorKeyImport.key;
 }
 
 function decodeHex(value: string): Uint8Array<ArrayBuffer> {
