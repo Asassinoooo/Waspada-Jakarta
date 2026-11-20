@@ -1,0 +1,443 @@
+{
+  "format": "waspada-restore-rehearsal-report-v2",
+  "restoredAt": "2026-11-19T13:10:10.018Z",
+  "sourceExportedAt": "2026-11-19T13:09:48.278Z",
+  "export": {
+    "bytes": 8188054,
+    "seconds": 18.14,
+    "exportedTables": 64,
+    "excludedTables": [
+      "account_admin_audit",
+      "account_login_attempts",
+      "account_login_throttles",
+      "account_sessions",
+      "accounts"
+    ],
+    "rows": 11229
+  },
+  "migrations": {
+    "expected": 61,
+    "applied": 61,
+    "match": true
+  },
+  "tables": [
+    {
+      "name": "acquisition_jobs",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "ai_jobs",
+      "expected": 53,
+      "actual": 53,
+      "match": true
+    },
+    {
+      "name": "audit_records",
+      "expected": 106,
+      "actual": 106,
+      "match": true
+    },
+    {
+      "name": "dataset_namespace_config",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "name": "embedding_runs",
+      "expected": 52,
+      "actual": 52,
+      "match": true
+    },
+    {
+      "name": "embedding_vectors",
+      "expected": 52,
+      "actual": 52,
+      "match": true
+    },
+    {
+      "name": "event_claim_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "event_claim_geometries",
+      "expected": 40,
+      "actual": 40,
+      "match": true
+    },
+    {
+      "name": "event_claim_origins",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "event_claims",
+      "expected": 150,
+      "actual": 150,
+      "match": true
+    },
+    {
+      "name": "event_impact_refs",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "event_proposals",
+      "expected": 51,
+      "actual": 51,
+      "match": true
+    },
+    {
+      "name": "event_versions",
+      "expected": 63,
+      "actual": 63,
+      "match": true
+    },
+    {
+      "name": "evidence_chunks",
+      "expected": 103,
+      "actual": 103,
+      "match": true
+    },
+    {
+      "name": "evidence_origins",
+      "expected": 6,
+      "actual": 6,
+      "match": true
+    },
+    {
+      "name": "evidence_references",
+      "expected": 80,
+      "actual": 80,
+      "match": true
+    },
+    {
+      "name": "extraction_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "extraction_results",
+      "expected": 51,
+      "actual": 51,
+      "match": true
+    },
+    {
+      "name": "freshness_transition_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "freshness_transitions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "geometries",
+      "expected": 17,
+      "actual": 17,
+      "match": true
+    },
+    {
+      "name": "geometry_evidence",
+      "expected": 30,
+      "actual": 30,
+      "match": true
+    },
+    {
+      "name": "grounding_candidate_events",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "grounding_contexts",
+      "expected": 51,
+      "actual": 51,
+      "match": true
+    },
+    {
+      "name": "grounding_evidence",
+      "expected": 80,
+      "actual": 80,
+      "match": true
+    },
+    {
+      "name": "grounding_prior_decisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "impact_claim_support",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "impact_versions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "incident_correlation_decisions",
+      "expected": 51,
+      "actual": 51,
+      "match": true
+    },
+    {
+      "name": "incident_processing_records",
+      "expected": 51,
+      "actual": 51,
+      "match": true
+    },
+    {
+      "name": "incident_reports",
+      "expected": 51,
+      "actual": 51,
+      "match": true
+    },
+    {
+      "name": "incidents",
+      "expected": 30,
+      "actual": 30,
+      "match": true
+    },
+    {
+      "name": "investigation_action_reservations",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_advance_review_pending",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_checkpoints",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_progress_snapshots",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_requests",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "news_triage_attempts",
+      "expected": 4714,
+      "actual": 4714,
+      "match": true
+    },
+    {
+      "name": "news_triage_decisions",
+      "expected": 4659,
+      "actual": 4659,
+      "match": true
+    },
+    {
+      "name": "origin_dependencies",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "origin_evidence",
+      "expected": 64,
+      "actual": 64,
+      "match": true
+    },
+    {
+      "name": "origin_report_revisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "pipeline_cycle_runs",
+      "expected": 62,
+      "actual": 62,
+      "match": true
+    },
+    {
+      "name": "proposal_claim_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "proposal_claim_origins",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "proposal_claims",
+      "expected": 153,
+      "actual": 153,
+      "match": true
+    },
+    {
+      "name": "public_attribution_review_decisions",
+      "expected": 64,
+      "actual": 64,
+      "match": true
+    },
+    {
+      "name": "public_event_history_review_decisions",
+      "expected": 60,
+      "actual": 60,
+      "match": true
+    },
+    {
+      "name": "public_event_updates_counter",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "name": "publication_claim_decisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_decision_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_decisions",
+      "expected": 66,
+      "actual": 66,
+      "match": true
+    },
+    {
+      "name": "publication_outbox",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_outbox_delivery_attempts",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_outbox_delivery_results",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_write_receipts",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "report_revision_source_observations",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "report_revisions",
+      "expected": 53,
+      "actual": 53,
+      "match": true
+    },
+    {
+      "name": "scope_name_review_decisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "source_registry",
+      "expected": 16,
+      "actual": 16,
+      "match": true
+    },
+    {
+      "name": "source_revision_freshness_cursor_checkpoint",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "name": "source_revision_freshness_run_advances",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "source_revision_freshness_run_inputs",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "traces",
+      "expected": 147,
+      "actual": 147,
+      "match": true
+    }
+  ],
+  "countsMatch": true,
+  "publicEvents": {
+    "expectedCount": 24,
+    "actualCount": 24,
+    "match": true
+  },
+  "tombstones": {
+    "withdrawnEvents": {
+      "expected": 3,
+      "actual": 3,
+      "match": true
+    },
+    "withdrawnRevisions": {
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    "revokedSources": {
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    "withdrawnVisibleInPublic": 0
+  },
+  "tombstonesPreserved": true,
+  "foreignKeysDeferredDuringLoad": 103,
+  "foreignKeysRestored": true,
+  "triggersDisabledDuringLoad": 64,
+  "timingsSeconds": {
+    "verifyFiles": 0.527,
+    "restore": 16.596,
+    "verify": 1.026
+  },
+  "ok": true
+}

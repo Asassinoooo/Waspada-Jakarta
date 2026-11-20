@@ -1,0 +1,20 @@
+2026-11-20T01:10:04.7276219Z   [Source Health] collection_off_not_fetched count=0 source_ids=none
+2026-11-20T01:10:04.7277202Z   [RSS Feeds (14)] Total: 2 articles (ingest), 120 held, 0 duplicate, 0 deferred by cycle cap.
+2026-11-20T01:10:04.7280614Z   [Source Health] source-antara-metro fetched=20 new=0 deduped=0 triage_accepted=0 triage_rejected=0 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7281670Z   [Source Health] source-antara-hukum fetched=20 new=0 deduped=0 triage_accepted=0 triage_rejected=0 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7282494Z   [Source Health] source-antara-terkini fetched=50 new=1 deduped=0 triage_accepted=1 triage_rejected=17 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7283502Z   [Source Health] source-antara-topnews fetched=30 new=0 deduped=0 triage_accepted=0 triage_rejected=2 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7284349Z   [Source Health] source-antara-humaniora fetched=20 new=0 deduped=0 triage_accepted=0 triage_rejected=0 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7285453Z   [Source Health] source-antara-wartabumi fetched=20 new=0 deduped=0 triage_accepted=0 triage_rejected=0 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7286494Z   [Source Health] source-detik-news fetched=100 new=1 deduped=0 triage_accepted=1 triage_rejected=7 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7287347Z   [Source Health] source-detik-utama fetched=0 new=0 deduped=0 triage_accepted=na triage_rejected=na source_not_cleared=0 blocked_fetch=0 error=fetch_error
+2026-11-20T01:10:04.7288205Z   [Source Health] source-cnn-nasional fetched=100 new=0 deduped=0 triage_accepted=0 triage_rejected=9 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7289296Z   [Source Health] source-cnn-utama fetched=100 new=0 deduped=0 triage_accepted=0 triage_rejected=43 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7290393Z   [Source Health] source-cnbc-news fetched=100 new=0 deduped=0 triage_accepted=0 triage_rejected=7 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7291547Z   [Source Health] source-sindonews-nasional fetched=30 new=0 deduped=0 triage_accepted=0 triage_rejected=4 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7292742Z   [Source Health] source-sindonews-daerah fetched=30 new=0 deduped=0 triage_accepted=0 triage_rejected=0 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7294316Z   [Source Health] source-tempo-nasional fetched=50 new=0 deduped=0 triage_accepted=0 triage_rejected=0 source_not_cleared=0 blocked_fetch=0 error=none
+2026-11-20T01:10:04.7295600Z   [Source Health] petabencana fetched=0 new=0 deduped=0 triage_accepted=na triage_rejected=na source_not_cleared=0 blocked_fetch=0 error=poll_error
+2026-11-20T01:10:04.7296882Z   [Source Health] source-bmkg-gempa fetched=0 new=0 deduped=0 triage_accepted=na triage_rejected=na source_not_cleared=0 blocked_fetch=0 error=poll_error
+2026-11-20T01:10:21.1020810Z [Once] Retention purge: failed.
+2026-11-20T01:10:22.4706471Z [Once] Cycle record: feeds_ok=13 feeds_failed=3 feeds_not_fetched=0 items_new=2 ai_completed=0 ai_not_completed=0 published=0 held=10 poll_errors=0 exit=0 elapsed_ms=159830.

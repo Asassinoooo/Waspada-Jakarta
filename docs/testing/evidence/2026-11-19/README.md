@@ -41,6 +41,7 @@ Commands below are the forms the scripts take. Where a file in this folder does 
   - The dump directory is not in this folder. `restore-report.json` and `manifest.json` are the records.
 - **When.** Exported 19 Nov 2026 09:40:34 UTC; restored 09:41:01 UTC.
 - **Result.** 64 tables exported and 10,386 rows (7,598,267 bytes; export 16.396 s). The manifest lists 69 tables; 5 account and session tables are excluded and recorded by count only. Restore 18.818 s; verify 0.461 s. Migrations 61 of 61 applied. `countsMatch` true; 22 of 22 public events matched; foreign keys restored; `ok` true.
+- **Superseded.** `restore-report.json` and `manifest.json` (v1, kept above) are superseded by `restore-report-v2.json` and `manifest-v2.json`: tombstonesPreserved true, the 3 withdrawn events stay withdrawn, and 24 of 24 public events match.
 - **Limits.** This is a logical restore, not a Neon point-in-time restore. The target is PGlite, not Postgres. The demo fixtures were not restored. Deletion tombstones are not recorded.
 - **Supports.** ST-N-06 (Partial).
 
