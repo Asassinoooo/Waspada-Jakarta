@@ -16,6 +16,8 @@
     "test:intelligence": "npm run test --workspace=@waspada/intelligence",
     "ai:pipeline-smoke": "node --env-file=.env.local --import tsx apps/intelligence/test/pipeline-smoke.ts",
     "test:e2e": "node --env-file=.env.local --import tsx tools/e2e/browser-journey.ts",
+    "test:e2e:ci": "node --import tsx tools/e2e/browser-journey.ts",
+    "a11y:audit": "node --import tsx tools/e2e/a11y-audit.ts",
     "pipeline:local": "tsx tools/local-pipeline/run-local-pipeline.ts",
     "pipeline:serve": "tsx tools/local-pipeline/run-local-server.ts",
     "serve:live": "node --env-file=.env.local --import tsx tools/serve-live-pipeline.ts",
@@ -42,6 +44,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "axe-core": "4.14.0",
     "concurrently": "^10.0.5",
     "playwright": "^1.64.1",
     "tsx": "^4.23.15",
