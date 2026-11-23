@@ -6,6 +6,7 @@ import 'preferences_screen.dart';
 import 'public_api.dart';
 import 'public_models.dart';
 import 'read_guide_screen.dart';
+import 'recency.dart';
 import 'theme.dart';
 import 'ui_helpers.dart';
 
@@ -14,9 +15,13 @@ class EventListScreen extends StatefulWidget {
       {super.key,
       required this.api,
       required this.preferences,
-      this.embedded = false});
+      this.embedded = false,
+      this.clock = DateTime.now});
   final PublicApi api;
   final PreferencesRepository preferences;
+
+  /// The clock for the 24-hour window (tests pass a fixed one).
+  final DateTime Function() clock;
 
   /// True inside the bottom navigation: the screen is a tab, so it shows no back control.
   final bool embedded;
@@ -41,6 +46,16 @@ class _EventListScreenState extends State<EventListScreen> {
   bool _loadingPage = false;
   bool _loadingMore = false;
   int _requestGeneration = 0;
+  RecencyWindow _window = RecencyWindow.last24h;
+
+  /// MOBILE-RECENT-01: loaded events inside the window. Paging and the server filters are unchanged.
+  List<EventRecord> get _visible {
+    if (_window == RecencyWindow.all) return _events;
+    final now = widget.clock();
+    return _events
+        .where((event) => publishedRecently(event.publishedAt, now))
+        .toList();
+  }
 
   @override
   void initState() {
@@ -264,12 +279,20 @@ class _EventListScreenState extends State<EventListScreen> {
                           const BoxConstraints(minWidth: 52, minHeight: 52)),
                 ]),
                 const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: ActionChip(
-                      onPressed: _openFilters,
-                      avatar: const Icon(Icons.tune_rounded, size: 18),
-                      label: Text(_filterSummary)),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    ActionChip(
+                        onPressed: _openFilters,
+                        avatar: const Icon(Icons.tune_rounded, size: 18),
+                        label: Text(_filterSummary)),
+                    RecencySwitch(
+                        value: _window,
+                        onChanged: (window) =>
+                            setState(() => _window = window)),
+                  ],
                 ),
               ]),
             ),
@@ -294,8 +317,13 @@ class _EventListScreenState extends State<EventListScreen> {
                       Text(
                           _loadingPage
                               ? 'Memuat daftar publik…'
-                              : '${_events.length} laporan pada halaman ini',
+                              : '${_visible.length} laporan pada halaman ini',
                           style: Theme.of(context).textTheme.titleMedium),
+                      if (_window == RecencyWindow.last24h && !_loadingPage) ...[
+                        const SizedBox(height: 4),
+                        RecencyCaption(
+                            olderHidden: _events.length - _visible.length),
+                      ],
                       const SizedBox(height: 3),
                       Text(
                           'Konteks dibuat ${formatWib(_contextInfo!.generatedAt)}. Waktu laporan dan terbit sumber ditampilkan terpisah.',
@@ -343,8 +371,19 @@ class _EventListScreenState extends State<EventListScreen> {
                   _pageFailure == null &&
                   _cursor == null)
                 const _EmptyResults(),
+              if (!_loadingPage &&
+                  _events.isNotEmpty &&
+                  _visible.isEmpty &&
+                  _pageFailure == null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                  child: EmptyRecentNotice(
+                      olderHidden: _events.length,
+                      onShowAll: () =>
+                          setState(() => _window = RecencyWindow.all)),
+                ),
               if (!_loadingPage)
-                ..._events.map((event) => Padding(
+                ..._visible.map((event) => Padding(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
                       child: _EventCard(
                           event: event,

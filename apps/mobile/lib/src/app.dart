@@ -19,6 +19,7 @@ class WaspadaApp extends StatelessWidget {
     required this.api,
     required this.preferences,
     this.showMapTiles = true,
+    this.clock = DateTime.now,
   });
 
   final PublicApi api;
@@ -26,6 +27,9 @@ class WaspadaApp extends StatelessWidget {
 
   /// Tests turn map tiles off so no network request is made.
   final bool showMapTiles;
+
+  /// The clock for the 24-hour window on the map and list (tests pass a fixed one).
+  final DateTime Function() clock;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -38,7 +42,10 @@ class WaspadaApp extends StatelessWidget {
         supportedLocales: const [Locale('id'), Locale('en')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: HomeShell(
-            api: api, preferences: preferences, showMapTiles: showMapTiles),
+            api: api,
+            preferences: preferences,
+            showMapTiles: showMapTiles,
+            clock: clock),
       );
 }
 
@@ -50,10 +57,12 @@ class HomeShell extends StatefulWidget {
     required this.api,
     required this.preferences,
     this.showMapTiles = true,
+    this.clock = DateTime.now,
   });
   final PublicApi api;
   final PreferencesRepository preferences;
   final bool showMapTiles;
+  final DateTime Function() clock;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -79,9 +88,13 @@ class _HomeShellState extends State<HomeShell> {
         1 => MapScreen(
             api: widget.api,
             preferences: widget.preferences,
-            showTiles: widget.showMapTiles),
+            showTiles: widget.showMapTiles,
+            clock: widget.clock),
         2 => EventListScreen(
-            api: widget.api, preferences: widget.preferences, embedded: true),
+            api: widget.api,
+            preferences: widget.preferences,
+            embedded: true,
+            clock: widget.clock),
         _ => PreferencesScreen(repository: widget.preferences, embedded: true),
       };
 

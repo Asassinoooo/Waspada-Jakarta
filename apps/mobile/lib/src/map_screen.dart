@@ -6,6 +6,7 @@ import 'event_detail_screen.dart';
 import 'preferences.dart';
 import 'public_api.dart';
 import 'public_models.dart';
+import 'recency.dart';
 import 'theme.dart';
 import 'ui_helpers.dart';
 
@@ -22,6 +23,7 @@ class MapScreen extends StatefulWidget {
     required this.api,
     required this.preferences,
     this.showTiles = true,
+    this.clock = DateTime.now,
   });
 
   final PublicApi api;
@@ -29,6 +31,9 @@ class MapScreen extends StatefulWidget {
 
   /// Tests turn tiles off so no network request is made.
   final bool showTiles;
+
+  /// The clock for the 24-hour window (tests pass a fixed one).
+  final DateTime Function() clock;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -45,6 +50,37 @@ class _MapScreenState extends State<MapScreen> {
   bool _partial = false;
   String? _selectedId;
   int _generation = 0;
+  RecencyWindow _window = RecencyWindow.last24h;
+
+  /// Loaded events inside the current window.
+  List<EventRecord> get _visibleEvents {
+    if (_window == RecencyWindow.all) return _events;
+    final now = widget.clock();
+    return _events
+        .where((event) => publishedRecently(event.publishedAt, now))
+        .toList();
+  }
+
+  /// Pins inside the window. With "24 jam", a pin whose event is not loaded has no known publication time, so it is
+  /// shown only under "Semua".
+  List<MapPoint> get _visiblePoints {
+    if (_window == RecencyWindow.all) return _points;
+    final ids = {for (final event in _visibleEvents) event.id};
+    return _points.where((point) => ids.contains(point.eventId)).toList();
+  }
+
+  int get _olderHidden =>
+      _window == RecencyWindow.all ? 0 : _events.length - _visibleEvents.length;
+
+  void _setWindow(RecencyWindow window) {
+    setState(() {
+      _window = window;
+      if (_selectedId != null &&
+          !_visiblePoints.any((point) => point.eventId == _selectedId)) {
+        _selectedId = null;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -114,7 +150,7 @@ class _MapScreenState extends State<MapScreen> {
 
   List<EventRecord> get _withoutPoint {
     final pinned = {for (final point in _points) point.eventId};
-    return _events.where((event) => !pinned.contains(event.id)).toList();
+    return _visibleEvents.where((event) => !pinned.contains(event.id)).toList();
   }
 
   Future<void> _openDetail(String eventId) async {
@@ -139,7 +175,10 @@ class _MapScreenState extends State<MapScreen> {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final selected = _selectedId == null
         ? null
-        : _points.where((point) => point.eventId == _selectedId).firstOrNull;
+        : _visiblePoints
+            .where((point) => point.eventId == _selectedId)
+            .firstOrNull;
+    final visiblePoints = _visiblePoints;
     return Scaffold(
       body: Stack(children: [
         Positioned.fill(
@@ -163,7 +202,7 @@ class _MapScreenState extends State<MapScreen> {
               else
                 ColoredBox(color: p.surfaceAlt),
               MarkerLayer(markers: [
-                for (final point in _points)
+                for (final point in visiblePoints)
                   Marker(
                     point: LatLng(point.latitude, point.longitude),
                     width: 44,
@@ -188,10 +227,13 @@ class _MapScreenState extends State<MapScreen> {
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
             child: _MapHeader(
               loading: _loading,
-              pinned: _points.length,
+              pinned: visiblePoints.length,
               unpinned: _withoutPoint.length,
               contextInfo: _contextInfo,
               onRefresh: _load,
+              window: _window,
+              onWindowChanged: _setWindow,
+              olderHidden: _olderHidden,
             ),
           ),
         ),
@@ -223,6 +265,11 @@ class _MapScreenState extends State<MapScreen> {
             partial: _partial,
             loading: _loading,
             onOpen: _openDetail,
+            emptyWindow: _window == RecencyWindow.last24h &&
+                !_loading &&
+                _visibleEvents.isEmpty,
+            olderHidden: _olderHidden,
+            onShowAll: () => _setWindow(RecencyWindow.all),
           ),
       ]),
     );
@@ -236,12 +283,18 @@ class _MapHeader extends StatelessWidget {
     required this.unpinned,
     required this.contextInfo,
     required this.onRefresh,
+    required this.window,
+    required this.onWindowChanged,
+    required this.olderHidden,
   });
   final bool loading;
   final int pinned;
   final int unpinned;
   final PublicContext? contextInfo;
   final VoidCallback onRefresh;
+  final RecencyWindow window;
+  final ValueChanged<RecencyWindow> onWindowChanged;
+  final int olderHidden;
 
   @override
   Widget build(BuildContext context) {
@@ -282,6 +335,12 @@ class _MapHeader extends StatelessWidget {
                         : '$pinned bertitik · $unpinned tanpa titik lokasi',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  const SizedBox(height: 8),
+                  RecencySwitch(value: window, onChanged: onWindowChanged),
+                  if (window == RecencyWindow.last24h && !loading) ...[
+                    const SizedBox(height: 6),
+                    RecencyCaption(olderHidden: olderHidden),
+                  ],
                 ]),
           ),
           IconButton(
@@ -357,7 +416,13 @@ class _MapSheet extends StatelessWidget {
     required this.partial,
     required this.loading,
     required this.onOpen,
+    required this.emptyWindow,
+    required this.olderHidden,
+    required this.onShowAll,
   });
+  final bool emptyWindow;
+  final int olderHidden;
+  final VoidCallback onShowAll;
   final MapPoint? selected;
   final EventRecord? selectedEvent;
   final List<EventRecord> withoutPoint;
@@ -369,7 +434,7 @@ class _MapSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return DraggableScrollableSheet(
-      initialChildSize: selected == null ? 0.22 : 0.34,
+      initialChildSize: selected == null ? (emptyWindow ? 0.4 : 0.22) : 0.34,
       minChildSize: 0.12,
       maxChildSize: 0.85,
       snap: true,
@@ -403,6 +468,10 @@ class _MapSheet extends StatelessWidget {
                   point: selected!,
                   event: selectedEvent,
                   onOpen: () => onOpen(selected!.eventId)),
+              const SizedBox(height: 18),
+            ],
+            if (emptyWindow) ...[
+              EmptyRecentNotice(olderHidden: olderHidden, onShowAll: onShowAll),
               const SizedBox(height: 18),
             ],
             const _Legend(),
