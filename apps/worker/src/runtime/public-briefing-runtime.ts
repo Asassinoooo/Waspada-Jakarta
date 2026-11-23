@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   createPublicBriefingCandidateRepository,
   type PublicBriefingCandidate,
@@ -13,10 +14,9 @@ import {
 } from "../layers/l4-application-integration/public-briefing-projection.js";
 import {
   createPublicEventProjectionService,
-  type PublicEventProjectionReadResult,
 } from "../layers/l4-application-integration/public-event-projection-service.js";
-import { PUBLIC_EVENT_LIST_PROJECTION_LIMITS } from "../layers/l4-application-integration/public-event-list-projection-service.js";
 import { isValidHyperdriveConnectionString } from "./public-event-list-runtime.js";
+import { createPublicReadMemo } from "./public-read-memo.js";
 
 const maxCandidates = 100;
 const candidateIdentifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -37,6 +37,11 @@ export interface PublicBriefingRuntimeDependencies {
   /** Test seam for one fake client/executor; production uses the PostgreSQL adapter. */
   readonly withSqlExecutor?: PublicBriefingSqlExecutorRunner;
   readonly now?: () => number;
+  /**
+   * PERF-04 in-isolate memo. It is on for the production adapter and off for an injected executor, so a test seam that
+   * changes its data between reads never sees a cached body. A memo test opts in with true.
+   */
+  readonly readMemo?: boolean;
 }
 
 export interface PublicBriefingRuntime {
@@ -71,6 +76,8 @@ export function createPublicBriefingRuntime(
   const connectionString = configuration.connectionString;
   const withSqlExecutor = dependencies.withSqlExecutor ?? withPostgresSqlExecutor;
   const now = dependencies.now ?? Date.now;
+  const memo = createPublicReadMemo<BriefingResponse>(withSqlExecutor, "briefing");
+  const memoEnabled = dependencies.readMemo ?? dependencies.withSqlExecutor === undefined;
 
   return {
     async read(request: unknown): Promise<BriefingResponse> {
@@ -80,14 +87,52 @@ export function createPublicBriefingRuntime(
         return projectRequestWithoutDatabase(request, generatedAt);
       }
 
+      // PERF-04: a repeat of the same normalised request within the TTL returns the stored 200 body, with the
+      // generated_at of the read that produced it. The body is never re-stamped with a later time.
+      const memoKey = memoEnabled ? briefingMemoKey(request as BriefingRequest) : "";
+      if (memoEnabled) {
+        const cached = memo.get(memoKey, now());
+        if (cached !== undefined) return cached;
+      }
+
+      let response: BriefingResponse;
       try {
-        return await withSqlExecutor(connectionString, (executor) =>
+        response = await withSqlExecutor(connectionString, (executor) =>
           readBriefingInTransaction(executor, request as BriefingRequest, generatedAt));
       } catch {
         throw new PublicBriefingRuntimeError("READ_FAILED");
       }
+      if (memoEnabled) memo.set(memoKey, response, now());
+      return response;
     },
   };
+}
+
+/**
+ * PERF-04: the SHA-256 of the validated request in a normal form. Each list is NFC-normalised and trimmed, empty and
+ * repeated entries are dropped, and the lists are sorted, since interests act as sets. The candidate reader and the
+ * projector both apply NFC and trim to each interest, so requests with the same key select and match the same events.
+ * Case is kept, so the key never relies on a lowercasing rule of its own.
+ */
+function briefingMemoKey(request: BriefingRequest): string {
+  const { interests } = request;
+  const canonical = JSON.stringify({
+    audiences: normalizedInterestList(interests.audiences),
+    categories: [...interests.categories].sort(compareStrings),
+    institutions: normalizedInterestList(interests.institutions),
+    places: normalizedInterestList(interests.places),
+    services: normalizedInterestList(interests.services),
+  });
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
+
+function normalizedInterestList(values: readonly string[]): string[] {
+  const normalized = new Set<string>();
+  for (const value of values) {
+    const text = value.normalize("NFC").trim();
+    if (text.length > 0) normalized.add(text);
+  }
+  return [...normalized].sort(compareStrings);
 }
 
 function projectRequestWithoutDatabase(request: unknown, generatedAt: string): BriefingResponse {
@@ -142,31 +187,17 @@ async function readBriefingInTransaction(
       lookups: createPublicProjectionLookupRepository(executor),
     });
 
-    const events: EventView[] = [];
-    const batchSize = PUBLIC_EVENT_LIST_PROJECTION_LIMITS.maxConcurrentProjections;
-    for (let offset = 0; offset < orderedCandidates.length; offset += batchSize) {
-      const batch = orderedCandidates.slice(offset, offset + batchSize);
-      const settledResults = await Promise.allSettled(
-        batch.map((candidate) => eventProjection.read(candidate.eventId)),
-      );
-      if (settledResults.length !== batch.length
-        || settledResults.some((result) => result.status !== "fulfilled")) {
+    // PERF-04: one batch read projects every candidate with a constant number of statements. Outcomes are checked
+    // against their candidates in order. A missing, stale, invalid or failed event fails the whole briefing.
+    const outcomes = await eventProjection.readMany(orderedCandidates.map((candidate) => candidate.eventId));
+    if (outcomes.length !== orderedCandidates.length) throw new PublicBriefingRuntimeError("READ_FAILED");
+    const events: EventView[] = orderedCandidates.map((candidate, index) => {
+      const outcome = outcomes[index];
+      if (outcome === undefined || !("value" in outcome) || !isExactCandidateProjection(outcome.value, candidate)) {
         throw new PublicBriefingRuntimeError("READ_FAILED");
       }
-      const results: PublicEventProjectionReadResult[] = settledResults.map((result) => {
-        if (result.status !== "fulfilled") throw new PublicBriefingRuntimeError("READ_FAILED");
-        return result.value;
-      });
-
-      for (let index = 0; index < batch.length; index += 1) {
-        const candidate = batch[index];
-        const result = results[index];
-        if (candidate === undefined || !isExactCandidateProjection(result, candidate)) {
-          throw new PublicBriefingRuntimeError("READ_FAILED");
-        }
-        events.push(result.event);
-      }
-    }
+      return outcome.value.event;
+    });
 
     const response = projectPublicBriefing({
       datasetMode: "live",
