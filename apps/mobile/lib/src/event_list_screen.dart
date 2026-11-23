@@ -11,9 +11,15 @@ import 'ui_helpers.dart';
 
 class EventListScreen extends StatefulWidget {
   const EventListScreen(
-      {super.key, required this.api, required this.preferences});
+      {super.key,
+      required this.api,
+      required this.preferences,
+      this.embedded = false});
   final PublicApi api;
   final PreferencesRepository preferences;
+
+  /// True inside the bottom navigation: the screen is a tab, so it shows no back control.
+  final bool embedded;
   @override
   State<EventListScreen> createState() => _EventListScreenState();
 }
@@ -198,11 +204,14 @@ class _EventListScreenState extends State<EventListScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text('Jelajahi laporan'),
-          leading: IconButton(
-              tooltip: 'Kembali',
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(Icons.arrow_back)),
+          title: const Text('Laporan publik'),
+          automaticallyImplyLeading: false,
+          leading: widget.embedded
+              ? null
+              : IconButton(
+                  tooltip: 'Kembali',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.arrow_back)),
           actions: [
             IconButton(
                 tooltip: 'Buka panduan membaca',
@@ -220,8 +229,11 @@ class _EventListScreenState extends State<EventListScreen> {
                 icon: const Icon(Icons.tune)),
           ],
         ),
-        body: ListView(
-          padding: const EdgeInsets.only(bottom: 20),
+        body: RefreshIndicator(
+          onRefresh: _refresh,
+          color: context.palette.brand,
+          child: ListView(
+          padding: const EdgeInsets.only(bottom: 24),
           children: [
             if (_contextInfo != null) ModeNotice(contextInfo: _contextInfo!),
             Padding(
@@ -240,24 +252,31 @@ class _EventListScreenState extends State<EventListScreen> {
                         prefixIcon: Icon(Icons.search)),
                   )),
                   const SizedBox(width: 8),
-                  IconButton.filledTonal(
+                  IconButton.filled(
                       tooltip: 'Cari',
                       onPressed: _submitSearch,
-                      icon: const Icon(Icons.arrow_forward),
+                      style: IconButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                  WaspadaShape.control))),
+                      icon: const Icon(Icons.arrow_forward_rounded),
                       constraints:
-                          const BoxConstraints(minWidth: 48, minHeight: 48)),
+                          const BoxConstraints(minWidth: 52, minHeight: 52)),
                 ]),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                      child: OutlinedButton.icon(
-                          onPressed: _openFilters,
-                          icon: const Icon(Icons.filter_list),
-                          label: Text(_filterSummary))),
-                ]),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ActionChip(
+                      onPressed: _openFilters,
+                      avatar: const Icon(Icons.tune_rounded, size: 18),
+                      label: Text(_filterSummary)),
+                ),
               ]),
             ),
-            if (_loadingContext) const LinearProgressIndicator(minHeight: 3),
+            if (_loadingContext)
+              const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: LinearProgressIndicator(minHeight: 3)),
             if (_contextFailure != null)
               Padding(
                   padding: const EdgeInsets.all(16),
@@ -309,9 +328,16 @@ class _EventListScreenState extends State<EventListScreen> {
                         message: _pageFailure!.userMessage,
                         onRetry: () => _loadPage(reset: true))),
               if (_loadingPage)
-                const SizedBox(
-                    height: 220,
-                    child: Center(child: CircularProgressIndicator())),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(children: [
+                    SkeletonCard(),
+                    SizedBox(height: 10),
+                    SkeletonCard(),
+                    SizedBox(height: 10),
+                    SkeletonCard(),
+                  ]),
+                ),
               if (!_loadingPage &&
                   _events.isEmpty &&
                   _pageFailure == null &&
@@ -338,6 +364,7 @@ class _EventListScreenState extends State<EventListScreen> {
                             _loadPage(reset: false, cursor: _cursor))),
             ],
           ],
+        ),
         ),
       );
 }
@@ -487,97 +514,131 @@ class _EventCard extends StatelessWidget {
     final hasMatch = preferencesAvailable && locallyMatches(event, interests);
     final reasons =
         hasMatch ? localMatchReasons(event, interests) : const <String>[];
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-            padding: const EdgeInsets.all(16),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(event.title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Row(children: [
-                if (event.incidentCategory != null) ...[
-                  Text(event.icon, style: const TextStyle(fontSize: 16)),
-                  const SizedBox(width: 6),
-                ],
-                Expanded(
-                  child: Text(
-                    event.category.label,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: WaspadaColors.teal),
-                    overflow: TextOverflow.ellipsis,
+    final p = context.palette;
+    final text = Theme.of(context).textTheme;
+    final published = relativeWib(event.publishedAt);
+    return SurfaceCard(
+      padding: EdgeInsets.zero,
+      onTap: onTap,
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 16, 0, 16),
+            child: SeverityRail(severity: event.severity),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 16, 16, 14),
+              child:
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  if (event.incidentCategory != null) ...[
+                    Text(event.icon, style: const TextStyle(fontSize: 15)),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Text(
+                      event.category.label.toUpperCase(),
+                      style: text.labelSmall?.copyWith(color: p.brand),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 7, children: [
-                if (event.severity != null)
+                  if (published != null)
+                    Text(published, style: text.labelMedium),
+                ]),
+                const SizedBox(height: 8),
+                Text(event.title, style: text.titleLarge),
+                const SizedBox(height: 10),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  if (event.severity != null)
+                    StatusPill(
+                      icon: Icons.warning_amber_rounded,
+                      label: 'Keparahan: ${event.severity!.label}',
+                      color: severityColor(context, event.severity),
+                      foreground: severityForeground(context, event.severity),
+                    ),
+                  StatusPill(icon: Icons.timeline, label: event.lifecycle.label),
                   StatusPill(
-                    icon: Icons.warning_amber_rounded,
-                    label: 'Keparahan: ${event.severity!.label}',
-                    color: event.severity == IncidentSeverity.critical
-                        ? WaspadaColors.marker
-                        : event.severity == IncidentSeverity.high
-                            ? WaspadaColors.caution
-                            : WaspadaColors.softPanel,
-                  ),
-                StatusPill(icon: Icons.timeline, label: event.lifecycle.label),
-                StatusPill(
-                    icon: Icons.update,
-                    label: event.freshness.status.label,
-                    color: event.freshness.status == FreshnessStatus.expired
-                        ? WaspadaColors.caution
-                        : WaspadaColors.softPanel),
-              ]),
-              if (event.summary.isNotEmpty) ...[
+                      icon: Icons.update,
+                      label: event.freshness.status.label,
+                      color: event.freshness.status == FreshnessStatus.expired
+                          ? p.signalLow
+                          : null),
+                  if (event.locationDisplay == LocationDisplay.wholeView)
+                    const StatusPill(
+                        icon: Icons.crop_free_rounded,
+                        label: 'Tanpa titik lokasi'),
+                ]),
+                if (event.summary.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(event.summary,
+                      style: text.bodyMedium,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis),
+                ],
+                const SizedBox(height: 12),
+                Divider(color: p.line),
                 const SizedBox(height: 10),
-                Text(event.summary,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis),
-              ],
-              if (event.locationLabel != null &&
-                  event.locationLabel!.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text('Lokasi: ${event.locationLabel!}',
-                    style: Theme.of(context).textTheme.bodyMedium),
-              ],
-              const SizedBox(height: 10),
-              Text(
-                  'Waktu kejadian/observasi: ${formatEventTime(event.eventTime)}',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              if (event.claims.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text('Bukti: ${evidenceCaption(event.claims.first)}',
-                    style: Theme.of(context).textTheme.bodyMedium),
-              ],
-              const SizedBox(height: 3),
-              Text('Versi publik diterbitkan: ${formatWib(event.publishedAt)}',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              if (hasMatch) ...[
-                const SizedBox(height: 10),
-                StatusPill(
-                    icon: Icons.tune,
-                    label: 'Kecocokan minat lokal: ${reasons.join(' · ')}',
-                    color: WaspadaColors.softPanel),
+                if (event.locationLabel != null &&
+                    event.locationLabel!.isNotEmpty)
+                  _MetaLine(
+                      icon: Icons.place_outlined,
+                      text: 'Lokasi: ${event.locationLabel!}'),
+                _MetaLine(
+                    icon: Icons.schedule_rounded,
+                    text:
+                        'Waktu kejadian/observasi: ${formatEventTime(event.eventTime)}'),
+                if (event.claims.isNotEmpty)
+                  _MetaLine(
+                      icon: Icons.fact_check_outlined,
+                      text: 'Bukti: ${evidenceCaption(event.claims.first)}'),
+                _MetaLine(
+                    icon: Icons.publish_rounded,
+                    text:
+                        'Versi publik diterbitkan: ${formatWib(event.publishedAt)}'),
+                if (hasMatch) ...[
+                  const SizedBox(height: 8),
+                  StatusPill(
+                      icon: Icons.tune,
+                      label: 'Kecocokan minat lokal: ${reasons.join(' · ')}',
+                      color: p.brandSoft,
+                      foreground: p.ink),
+                  const SizedBox(height: 4),
+                  Text(
+                      'Kecocokan bukan bukti, tingkat bahaya, atau bukti lokasi fisikmu.',
+                      style: text.bodySmall),
+                ],
                 const SizedBox(height: 4),
-                const Text(
-                    'Kecocokan bukan bukti, tingkat bahaya, atau bukti lokasi fisikmu.',
-                    style: TextStyle(fontSize: 13, height: 1.4)),
-              ],
-              const SizedBox(height: 8),
-              const Align(
-                  alignment: Alignment.centerRight,
-                  child: Icon(Icons.arrow_forward,
-                      color: WaspadaColors.teal,
-                      semanticLabel: 'Buka detail laporan')),
-            ])),
+                Align(
+                    alignment: Alignment.centerRight,
+                    child: Icon(Icons.arrow_forward_rounded,
+                        color: p.brand, semanticLabel: 'Buka detail laporan')),
+              ]),
+            ),
+          ),
+        ]),
       ),
     );
   }
+}
+
+class _MetaLine extends StatelessWidget {
+  const _MetaLine({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 5),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(icon, size: 15, color: context.palette.inkMuted),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
+        ]),
+      );
 }
 
 EventCategory? _resolveCategory(String wire) {

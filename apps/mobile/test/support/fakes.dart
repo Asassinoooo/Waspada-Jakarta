@@ -84,6 +84,17 @@ class SyntheticPublicApi implements PublicApi {
     if (historyFailure != null) throw historyFailure!;
     return history;
   }
+
+  List<MapPoint> mapPoints = const [];
+  ApiFailure? mapFailure;
+  int mapCalls = 0;
+
+  @override
+  Future<List<MapPoint>> getEventMap() async {
+    mapCalls++;
+    if (mapFailure != null) throw mapFailure!;
+    return mapPoints;
+  }
 }
 
 const syntheticContext = <String, Object?>{

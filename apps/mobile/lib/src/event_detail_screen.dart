@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'preferences.dart';
 import 'preferences_screen.dart';
@@ -194,43 +196,72 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final reasons =
         matches ? localMatchReasons(event, _interests) : const <String>[];
     final scope = event.scope.all.toList();
+    final p = context.palette;
+    final points = [
+      for (final geometry in event.geometries)
+        if (geometry.point != null) geometry,
+    ];
+    final hasArea = event.geometries.any((geometry) => geometry.point == null);
     return [
-      Text(event.category.label.toUpperCase(),
-          style: const TextStyle(
-              fontSize: 12,
-              letterSpacing: .7,
-              fontWeight: FontWeight.w800,
-              color: WaspadaColors.teal)),
-      const SizedBox(height: 7),
-      Text(event.title, style: Theme.of(context).textTheme.headlineMedium),
-      if (event.summary.isNotEmpty) ...[
-        const SizedBox(height: 10),
-        Text(event.summary, style: Theme.of(context).textTheme.bodyLarge),
+      Container(
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(WaspadaShape.card + 4),
+          border: Border.all(color: p.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(
+              height: 6,
+              color: event.severity == null
+                  ? p.brand
+                  : severityColor(context, event.severity)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Kicker(event.category.label),
+                  const SizedBox(height: 8),
+                  Text(event.title,
+                      style: Theme.of(context).textTheme.headlineMedium),
+                  if (event.summary.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(event.summary,
+                        style: Theme.of(context).textTheme.bodyLarge),
+                  ],
+                  const SizedBox(height: 14),
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    if (event.incidentCategory != null)
+                      StatusPill(
+                          icon: Icons.category_outlined,
+                          label:
+                              '${event.icon} ${event.incidentCategory!.label}'),
+                    if (event.severity != null)
+                      StatusPill(
+                          icon: Icons.warning_amber_rounded,
+                          label: 'Keparahan: ${event.severity!.label}',
+                          color: severityColor(context, event.severity),
+                          foreground:
+                              severityForeground(context, event.severity)),
+                    StatusPill(
+                        icon: Icons.timeline,
+                        label: 'Siklus: ${event.lifecycle.label}'),
+                    StatusPill(
+                        icon: Icons.update,
+                        label: 'Kesegaran: ${event.freshness.status.label}',
+                        color: event.freshness.status == FreshnessStatus.expired
+                            ? p.signalLow
+                            : null),
+                  ]),
+                ]),
+          ),
+        ]),
+      ),
+      if (points.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        _DetailMiniMap(points: points, severity: event.severity),
       ],
-      const SizedBox(height: 14),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        if (event.incidentCategory != null)
-          StatusPill(
-              icon: Icons.category_outlined,
-              label: '${event.icon} ${event.incidentCategory!.label}'),
-        if (event.severity != null)
-          StatusPill(
-              icon: Icons.warning_amber_rounded,
-              label: 'Keparahan: ${event.severity!.label}',
-              color: event.severity == IncidentSeverity.critical
-                  ? WaspadaColors.marker
-                  : event.severity == IncidentSeverity.high
-                      ? WaspadaColors.caution
-                      : WaspadaColors.softPanel),
-        StatusPill(
-            icon: Icons.timeline, label: 'Siklus: ${event.lifecycle.label}'),
-        StatusPill(
-            icon: Icons.update,
-            label: 'Kesegaran: ${event.freshness.status.label}',
-            color: event.freshness.status == FreshnessStatus.expired
-                ? WaspadaColors.caution
-                : WaspadaColors.softPanel),
-      ]),
       const SizedBox(height: 16),
       Card(
           child: Padding(
@@ -252,7 +283,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         formatWib(event.freshness.reviewDueAt)),
                     labelledFact(context, 'Versi publik diterbitkan',
                         formatWib(event.publishedAt)),
-                    labelledFact(context, 'Respons konteks dibuat',
+                    labelledFact(context, 'Data layanan diperbarui',
                         formatWib(widget.contextInfo.generatedAt)),
                     labelledFact(
                         context,
@@ -278,8 +309,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     if (event.coordinates != null)
                       labelledFact(
                           context,
-                          'Koordinat',
-                          '${event.coordinates![0].toStringAsFixed(4)}, ${event.coordinates![1].toStringAsFixed(4)}'),
+                          'Koordinat (lintang, bujur)',
+                          'Lintang ${event.coordinates![1].toStringAsFixed(4)}, bujur ${event.coordinates![0].toStringAsFixed(4)}'),
                     if (event.supersedesVersion != null)
                       labelledFact(context, 'Menggantikan versi',
                           'v${event.supersedesVersion}'),
@@ -290,7 +321,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           event.publicationStatus == 'withdrawn'
                               ? 'Ditarik'
                               : event.publicationStatus),
-                    if (event.geometries.isEmpty)
+                    if (event.geometries.isEmpty ||
+                        event.locationDisplay == LocationDisplay.wholeView)
                       const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: ReadOnlyNotice(
@@ -298,7 +330,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                               message:
                                   'Tampilan ini tidak menurunkan titik atau area dari nama tempat. Informasi lokasi yang disebutkan tetap tersedia dalam teks.',
                               icon: Icons.location_off_outlined))
-                    else
+                    else if (hasArea && points.isEmpty)
                       const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: ReadOnlyNotice(
@@ -328,10 +360,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                                color: WaspadaColors.canvas,
+                                color: context.palette.surfaceAlt,
                                 borderRadius: BorderRadius.circular(10),
                                 border:
-                                    Border.all(color: WaspadaColors.concrete)),
+                                    Border.all(color: context.palette.line)),
                             child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -399,8 +431,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                                       fontWeight:
                                                           FontWeight.w600)),
                                               SelectableText(source.url,
-                                                  style: const TextStyle(
-                                                      color: WaspadaColors.teal,
+                                                  style: TextStyle(
+                                                      color: context.palette.brand,
                                                       decoration: TextDecoration
                                                           .underline)),
                                             ]),
@@ -428,7 +460,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                              color: WaspadaColors.canvas,
+                              color: context.palette.surfaceAlt,
                               borderRadius: BorderRadius.circular(10)),
                           child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,10 +551,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Padding(
-                                padding: EdgeInsets.only(top: 3),
+                            Padding(
+                                padding: const EdgeInsets.only(top: 3),
                                 child: Icon(Icons.history,
-                                    color: WaspadaColors.teal, size: 19)),
+                                    color: context.palette.brand, size: 19)),
                             const SizedBox(width: 10),
                             Expanded(
                                 child: Column(
@@ -635,9 +667,9 @@ class _ErrorCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-            color: WaspadaColors.white,
+            color: context.palette.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: WaspadaColors.concrete)),
+            border: Border.all(color: context.palette.line)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 5),
@@ -649,4 +681,86 @@ class _ErrorCard extends StatelessWidget {
               label: const Text('Coba lagi')),
         ]),
       );
+}
+
+/// MOBILE-V2: a small, non-interactive map of the event's own Point geometries. Only points the API returned are drawn;
+/// no radius, line or area is derived. An approximate place is a ring, a source point is filled.
+class _DetailMiniMap extends StatelessWidget {
+  const _DetailMiniMap({required this.points, required this.severity});
+  final List<PublicGeometry> points;
+  final IncidentSeverity? severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fill = severity == null ? p.brand : severityColor(context, severity);
+    final latLngs = [
+      for (final geometry in points)
+        LatLng(geometry.point![1], geometry.point![0]),
+    ];
+    final approximate =
+        points.every((geometry) => geometry.role == 'approximate_place');
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(WaspadaShape.card),
+        child: SizedBox(
+          height: 190,
+          child: FlutterMap(
+            options: MapOptions(
+              initialCenter: latLngs.first,
+              initialZoom: 14,
+              interactionOptions:
+                  const InteractionOptions(flags: InteractiveFlag.none),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'id.waspada.waspada_jakarta_mobile',
+                tileBuilder: dark ? darkModeTileBuilder : null,
+              ),
+              MarkerLayer(markers: [
+                for (final (i, point) in latLngs.indexed)
+                  Marker(
+                    point: point,
+                    width: 30,
+                    height: 30,
+                    child: Semantics(
+                      label: points[i].label ?? 'Titik laporan',
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: points[i].role == 'approximate_place'
+                              ? p.surface
+                              : fill,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: points[i].role == 'approximate_place'
+                                  ? fill
+                                  : Colors.white,
+                              width: 4),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ]),
+              const SimpleAttributionWidget(
+                  source: Text('OpenStreetMap contributors')),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+          approximate
+              ? 'Titik perkiraan dari nama tempat pada laporan. Bukan batas wilayah atau radius bahaya.'
+              : 'Titik dari sumber. Tidak ada radius atau batas bahaya yang digambar.',
+          style: Theme.of(context).textTheme.bodySmall),
+    ]);
+  }
 }
