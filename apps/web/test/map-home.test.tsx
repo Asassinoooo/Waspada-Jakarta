@@ -97,7 +97,7 @@ test("the toolbar and zoom group show at most five controls on the first screen"
 test("the toolbar buttons keep their names on phones, where their text is hidden", () => {
   const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
   assert.match(html, /aria-label="Filter"/);
-  assert.match(html, /aria-label="Daftar laporan, 1"/);
+  assert.match(html, /aria-label="Daftar 1 laporan"/);
   assert.match(html, /aria-label="Cari laporan"/);
 });
 
@@ -308,7 +308,7 @@ test("ST-F-04: the map markers and the list draw from one filtered set, and an e
   ]);
   const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: events, initialMarkers: pins }));
 
-  assert.match(html, /aria-label="Daftar laporan, 3"/, "the list counts every event that passes the filters");
+  assert.match(html, /aria-label="Daftar 3 laporan"/, "the list counts every event that passes the filters");
   const pinLabels = [...html.matchAll(/<button type="button" class="map-marker[^"]*"[^>]*aria-label="([^"]+)"/g)]
     .map((match) => match[1] ?? "");
   assert.equal(pinLabels.length, 2, "only events with a point from the API geometry are pinned");
@@ -363,7 +363,7 @@ function atViewportWidth<T>(width: number, render: () => T): T {
 test("ST-F-04: the demo or live label sits on the map screen that holds the list, and each mode shows only its own", () => {
   const demo = mapScreen(demoScreenContext, [event("evt-1")]);
   assert.match(demo, /<span class="site-header__badge-label">Data contoh<\/span>/u);
-  assert.match(demo, /aria-label="Daftar laporan, 1"/u);
+  assert.match(demo, /aria-label="Daftar 1 laporan"/u);
   assert.match(demo, /aria-label="Laporan terbit"/u, "the list is on the same screen as the label");
   assert.doesNotMatch(demo, /site-header__badge-label">Langsung</u);
 
@@ -377,7 +377,7 @@ test("ST-F-04: at 390 px the list is a closed bottom sheet behind the Daftar tog
   const render = (width: number) => atViewportWidth(width, () => renderToStaticMarkup(
     createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }),
   ));
-  const toggleOf = (html: string) => html.match(/<button[^>]*aria-label="Daftar laporan, 1"[^>]*>/u)?.[0] ?? "";
+  const toggleOf = (html: string) => html.match(/<button[^>]*aria-label="Daftar 1 laporan"[^>]*>/u)?.[0] ?? "";
 
   const phone = render(390);
   assert.match(toggleOf(phone), /aria-expanded="false"/u, "the toggle reads closed on a phone");
@@ -454,7 +454,7 @@ test("MAP-RECENT-01: an older event is hidden by default, counted, and one actio
     ["fresh-1", { coordinate: [106.8, -6.18] as const, role: "incident_scene" }],
   ]);
   const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: events, initialMarkers: pins }));
-  assert.match(html, /aria-label="Daftar laporan, 1"/u);
+  assert.match(html, /aria-label="Daftar 1 laporan"/u);
   assert.ok(html.includes(RECENT_SCOPE_TEXT), "the list and the map caption name the window");
   assert.ok(html.includes(showAllText(1)));
   // The desktop side panel already shows the window line, so the map caption stays hidden while it is open.
