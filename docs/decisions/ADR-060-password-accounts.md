@@ -25,7 +25,7 @@ Google sign-in needed a configured OAuth client, consent setup and a native SDK 
 
 ## Trade-offs and gates
 
-- There is no password reset, email recovery or multi-factor sign-in. A forgotten password cannot be recovered in this change, and no operator reset command exists.
+- There is no password reset, email recovery or multi-factor sign-in. A forgotten password cannot be recovered in this change, and no operator reset command exists. Amended 23 Nov 2026: an administrator can now issue a one-time reset code (AUTH-RESET-01; see the amendment of 23 Nov 2026 in [ADR-065](ADR-065-hosted-topology.md)).
 - PBKDF2 at 100,000 iterations is CPU-intensive. The Cloudflare Workers Free CPU budget has not been measured, so this is a hosted gate. Stored hashes carry their iteration count, so the count can change later without invalidating existing hashes. No rehash-on-login path exists yet.
 - Accounts created through Google before this change keep their identity and any email, and their login method is no longer offered. No path adds a password to such an account, so a password change for them returns the generic 403.
 - The first administrator is created by an operator with `npm run accounts:seed-admin`, or by the local live server's `WASPADA_ADMIN_*` variables. The seed never modifies an existing account.
