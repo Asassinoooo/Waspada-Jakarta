@@ -125,3 +125,20 @@ Lock and timing:
 - A run is capped at 30 minutes. If a model call is still running at the cap, the run is stopped. Its job lease expires after 5 minutes, and a later run then reclaims that job.
 - The workflow uploads no artifacts and caches only npm packages. Nothing from the database is written to a cache or an artifact.
 - Neon Free compute: each run wakes the database for the coverage check, the poll cycle and the freshness pass. Watch the compute hours on the free plan.
+
+## 8. Continuous deployment (GitHub Actions, CD-01, 23 Nov 2026)
+
+Every push to `main` runs the `CI` workflow (`.github/workflows/ci.yml`). When the `test` job passes, the `deploy` job runs `npm run deploy:prod` (Vite build, then `wrangler deploy --env production`), and then checks that `/`, `/api/v1/context` and `/api/v1/events?limit=1` return 200. Pull requests run the checks but never deploy, and a failed check means no deploy. A manual run of `CI` on `main` (Actions → CI → Run workflow) re-runs the checks and redeploys the current commit. Deploys run one at a time; a newer commit waiting in the queue replaces an older one that has not started.
+
+One-time setup, in GitHub → Settings → Secrets and variables → Actions → New repository secret:
+
+1. `CLOUDFLARE_ACCOUNT_ID`: the account id shown on the Cloudflare dashboard (Workers & Pages, right column).
+2. `CLOUDFLARE_API_TOKEN`: Cloudflare → My Profile → API Tokens → Create Token → template "Edit Cloudflare Workers". Add the permission Account → Hyperdrive → Edit (the Worker binds three Hyperdrive configs), keep Workers KV Storage → Edit, and limit Account Resources to this account. Without both secrets the deploy job fails at "Check deploy credentials" and nothing is deployed.
+
+What CD does not do:
+
+- It does not apply database migrations. Apply a new migration to Neon by hand before merging the code that needs it.
+- It does not change Worker secrets (`wrangler secret put --env production` stays manual); a deploy keeps the existing ones.
+- It does not build or publish the Android app.
+
+Rollback: revert the commit on `main` and push (CD deploys the revert), or run `npx wrangler rollback --env production` from `apps/worker` for an immediate rollback to the previous Worker version.
