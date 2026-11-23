@@ -116,3 +116,55 @@ export function moderatorAccessMessage(status: number | null): string | null {
   }
   return null;
 }
+
+// AUTH-RESET-01: reset with a one-time code from an administrator.
+
+export type PasswordResetField = "username" | "code" | "password" | "confirm";
+
+/** Crockford base32: the server ignores case, spaces and hyphens, and reads O as 0 and I or L as 1. */
+export const RESET_CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{10}$/u;
+
+export function normaliseResetCodeInput(value: string): string {
+  return value.toUpperCase().replace(/[\s-]+/gu, "").replace(/O/gu, "0").replace(/[IL]/gu, "1");
+}
+
+/** Shows a code as two groups of five, the way the administrator reads it out. */
+export function formatResetCode(code: string): string {
+  const clean = normaliseResetCodeInput(code);
+  return clean.length === 10 ? clean.slice(0, 5) + "-" + clean.slice(5) : clean;
+}
+
+export function validatePasswordReset(input: {
+  username: string;
+  code: string;
+  password: string;
+  confirm: string;
+}): FieldErrors<PasswordResetField> {
+  const errors: FieldErrors<PasswordResetField> = {};
+  if (!USERNAME_PATTERN.test(normaliseUsernameInput(input.username))) errors.username = USERNAME_RULE_MESSAGE;
+  if (!RESET_CODE_PATTERN.test(normaliseResetCodeInput(input.code))) errors.code = "Kode terdiri dari 10 huruf dan angka dari administrator.";
+  const passwordProblem = passwordPolicyProblem(input.password);
+  if (passwordProblem !== null) errors.password = passwordProblem;
+  if (input.confirm !== input.password) errors.confirm = "Konfirmasi kata sandi belum sama.";
+  return errors;
+}
+
+/** Generic on purpose: it never says whether the username exists or which part was wrong. */
+export function passwordResetFailureMessage(error: unknown): string {
+  if (error instanceof AccountHttpError) {
+    if (error.status === 400) {
+      return "Nama pengguna atau kode tidak cocok, sudah dipakai, atau sudah kedaluwarsa. Minta kode baru kepada administrator bila perlu.";
+    }
+    if (error.status === 429) return "Terlalu banyak percobaan. Tunggu beberapa menit, lalu coba lagi.";
+  }
+  return "Layanan akun sedang tidak tersedia. Coba lagi nanti.";
+}
+
+export function resetCodeIssueFailureMessage(error: unknown): string {
+  if (error instanceof AccountHttpError) {
+    if (error.status === 404) return "Akun ini tidak memakai kata sandi, jadi tidak ada kode yang dapat dibuat.";
+    if (error.status === 409) return "Kode tidak dapat dibuat untuk akun nonaktif atau akun Anda sendiri.";
+    if (error.status === 401 || error.status === 403) return "Sesi atau izin administrator berubah. Muat ulang halaman.";
+  }
+  return "Kode belum dapat dibuat. Coba lagi.";
+}
