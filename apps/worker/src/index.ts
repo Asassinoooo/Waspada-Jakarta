@@ -802,7 +802,7 @@ const workerHandlers = {
       pathname: url.pathname,
       datasetMode: env.DATASET_MODE,
       snapshotBinding: env.PUBLIC_SNAPSHOT,
-      databaseConfigured: Boolean(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString),
+      databaseConfigured: () => Boolean(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString),
     });
     const snapshotStore = snapshotRoute === null ? undefined : publicSnapshotStoreFor(env);
     if (snapshotRoute !== null && snapshotStore !== undefined) {

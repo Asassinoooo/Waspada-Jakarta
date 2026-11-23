@@ -30,21 +30,26 @@ export interface PublicSnapshotRouteSelection {
   /** The PUBLIC_SNAPSHOT binding. Absent means the route behaves exactly as before PERF-03. */
   readonly snapshotBinding?: unknown;
   /** True when the live database is configured (the SQL executor or the fresh Hyperdrive config). */
-  readonly databaseConfigured: boolean;
+  /** A function is called only after the cheaper checks pass, so other routes never read the database binding. */
+  readonly databaseConfigured: boolean | (() => boolean);
 }
 
 /** Selects the route only for a live GET of one of the three reads, with the binding and a database present. */
 export function publicSnapshotRouteFor(selection: PublicSnapshotRouteSelection): PublicSnapshotRouteKind | null {
   if (selection.method !== "GET"
     || selection.datasetMode !== "live"
-    || selection.snapshotBinding === undefined
-    || !selection.databaseConfigured) {
+    || selection.snapshotBinding === undefined) {
     return null;
   }
-  if (selection.pathname === "/api/v1/events") return "list";
-  if (selection.pathname === "/api/v1/events.geojson") return "geojson";
-  if (/^\/api\/v1\/events\/[^/]*$/u.test(selection.pathname)) return "detail";
-  return null;
+  let kind: PublicSnapshotRouteKind | null = null;
+  if (selection.pathname === "/api/v1/events") kind = "list";
+  else if (selection.pathname === "/api/v1/events.geojson") kind = "geojson";
+  else if (/^\/api\/v1\/events\/[^/]*$/u.test(selection.pathname)) kind = "detail";
+  if (kind === null) return null;
+  const configured = typeof selection.databaseConfigured === "function"
+    ? selection.databaseConfigured()
+    : selection.databaseConfigured;
+  return configured ? kind : null;
 }
 
 export interface PublicSnapshotRouteOptions {
