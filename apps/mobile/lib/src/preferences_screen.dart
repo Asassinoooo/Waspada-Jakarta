@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'notify_platform.dart';
+import 'notify_settings_card.dart';
 import 'preferences.dart';
 import 'public_models.dart';
 import 'read_guide_screen.dart';
@@ -311,6 +313,12 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                     Text(
                         'Menghapus data aplikasi atau perangkat juga dapat menghapus pilihan ini. Kegagalan penyimpanan tidak menghalangi akses ke laporan publik.',
                         style: Theme.of(context).textTheme.bodyMedium),
+                    if (NotifyScope.maybeOf(context) case final notify?) ...[
+                      const SizedBox(height: 24),
+                      NotifySettingsCard(
+                          controller: notify,
+                          hasSavedInterests: _saved && !_interests.isEmpty),
+                    ],
                   ]),
       );
 }

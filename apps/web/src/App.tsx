@@ -9,6 +9,7 @@ import { parseEventIdFromHash } from "./map-links.js";
 import { adminGateShell, adminWorkspaceTabFromHash, type AdminTab } from "./admin-workspace-model.js";
 import { Preferences } from "./Preferences.js";
 import { UpdatesCenter } from "./UpdatesCenter.js";
+import { useInterestNotifications } from "./useInterestNotifications.js";
 import type { MapSelection } from "./MapPanel.js";
 import { HelpPage } from "./HelpPage.js";
 import { AccountAccessGate, AccountPage, PasswordResetPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
@@ -207,6 +208,8 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
 }
 
 export function App() {
+  // NOTIFY-01: "Area saya" browser notifications while this tab is open (off unless the person turns them on).
+  useInterestNotifications();
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
   const [routeActivation, setRouteActivation] = useState(0);
   const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia("(max-width: 900px)").matches);

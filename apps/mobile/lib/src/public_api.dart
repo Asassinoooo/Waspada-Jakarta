@@ -38,6 +38,32 @@ abstract interface class PublicApi {
   Future<List<MapPoint>> getEventMap();
 }
 
+/// NOTIFY-01: one page of `/api/v1/updates`. The first call (no cursor) returns no items and a baseline cursor.
+class UpdatePage {
+  const UpdatePage({required this.items, required this.nextCursor});
+  final List<HistoryEntry> items;
+  final String nextCursor;
+
+  factory UpdatePage.fromJson(Object? json) {
+    if (json is! Map) throw const ContractViolation();
+    final items = json['items'];
+    final cursor = json['next_cursor'];
+    if (items is! List || items.length > 100) throw const ContractViolation();
+    if (cursor is! String || cursor.isEmpty || cursor.length > 2048) {
+      throw const ContractViolation();
+    }
+    return UpdatePage(
+        items: items.map(HistoryEntry.fromJson).toList(growable: false),
+        nextCursor: cursor);
+  }
+}
+
+/// NOTIFY-01: what the background notifier reads. Interests are never sent: both calls are public reads.
+abstract interface class NotifyApi {
+  Future<UpdatePage> getUpdates({String? cursor});
+  Future<EventDetail> getEventDetail(String eventId);
+}
+
 /// MOBILE-V2: the hosted public Worker. A build without `--dart-define=API_ORIGIN=...` reads from here.
 const defaultApiOrigin = 'https://waspada-jakarta.waspada-worker.workers.dev';
 
@@ -103,7 +129,7 @@ Uri? parseApiOrigin(
   return uri.replace(path: '', query: null, fragment: null);
 }
 
-class HttpPublicApi implements PublicApi {
+class HttpPublicApi implements PublicApi, NotifyApi {
   HttpPublicApi({required Uri? origin, required http.Client httpClient})
       : _origin = origin,
         _httpClient = httpClient;
@@ -229,6 +255,16 @@ class HttpPublicApi implements PublicApi {
         EventDetail.fromJson);
     if (detail.id != eventId) throw const ApiFailure(ApiFailureKind.payload);
     return detail;
+  }
+
+  @override
+  Future<UpdatePage> getUpdates({String? cursor}) async {
+    if (cursor != null && (cursor.isEmpty || cursor.length > 2048)) {
+      throw const ApiFailure(ApiFailureKind.payload);
+    }
+    final query = <String, String>{'limit': '20'};
+    if (cursor != null) query['cursor'] = cursor;
+    return _parse(await _get('/api/v1/updates', query), UpdatePage.fromJson);
   }
 
   @override
