@@ -630,13 +630,14 @@ test("detail not-found, unavailable, loading, and empty-history states are expli
     />,
   );
 
-  assert.match(notFound, /Record contoh tidak ditemukan/);
+  assert.match(notFound, /Catatan contoh tidak ditemukan/);
+  assert.doesNotMatch(notFound, /\brecord\b/i, "the demo not-found state says catatan (HOSTED-39)");
   assert.match(notFound, /Riwayat laporan tidak ditemukan/);
   assert.doesNotMatch(notFound, /Contoh fiktif: pemberitahuan kelompok/);
   assert.match(unavailable, /Detail contoh belum dapat dimuat/);
   assert.match(unavailable, /Keadaan keselamatan tidak diketahui/);
   assert.match(unavailable, />Coba lagi memuat detail</);
-  assert.match(loading, /Memuat record sintetis dari API lokal/);
+  assert.match(loading, /Memuat catatan sintetis dari API lokal/);
   assert.match(loading, /Memuat riwayat fixture/);
   assert.match(loading, /role="status"/);
   assert.match(emptyHistory, /Tidak ada entri riwayat pada fixture ini/);

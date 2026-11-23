@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { EventDetail as EventDetailRecord, PublicContext } from "@waspada/worker/public-contracts";
 import { presentationFallsThrough, type Route } from "../src/App.js";
 import { EventDetail } from "../src/EventDetail.js";
+import { MapPanel } from "../src/MapPanel.js";
 import { documentTitleFor, freshnessBasisLabel } from "../src/display.js";
 import { EMPTY_LIST_TITLE, EMPTY_SEARCH_TITLE, MapEventList } from "../src/MapEventList.js";
 import {
@@ -38,6 +39,32 @@ test("HOSTED-34: approve and revoke dialogs describe publication only, and colle
   }
   assert.match(SOURCE_APPROVAL_INTRO, /Pengumpulan otomatis tidak berubah/u);
   assert.match(SOURCE_APPROVAL_INTRO, /Mencabut menghentikan penerbitan/u);
+  // HOSTED-39: the intro matches the dialog. Revoking sets automatic publication to never and collection keeps running.
+  assert.match(SOURCE_APPROVAL_INTRO, /Pengumpulan otomatis tetap berjalan, dan terbit otomatis diatur ke tidak pernah\./u);
+  assert.match(SOURCE_APPROVAL_INTRO, /Kejadian yang sudah terbit tidak ditarik\./u);
+  assert.doesNotMatch(SOURCE_APPROVAL_INTRO, /baik saat disetujui maupun dicabut/u, "the old intro said collection never changes on revoke");
+  assert.doesNotMatch(SOURCE_APPROVAL_INTRO, /Pencabutan tidak menarik/u);
+});
+
+test("HOSTED-39: the approval copy and the edited map, detail and source copy use laporan or catatan, never record", () => {
+  for (const text of [SOURCE_APPROVAL_INTRO, sourceApprovalDialogBody("approved"), sourceApprovalDialogBody("revoked")]) {
+    assert.doesNotMatch(text, /\brecord\b/iu);
+  }
+  const markup = renderToStaticMarkup(createElement(MapPanel, {
+    selection: { kind: "presentation" },
+    onReturnToList: () => {},
+  }));
+  assert.match(markup, /Koordinat contoh/u);
+  assert.doesNotMatch(markup, /CRS84/u, "the fixture coordinates carry no projection name");
+  assert.doesNotMatch(markup, /\brecord\b/iu);
+  const demoDetail = renderToStaticMarkup(createElement(EventDetail, {
+    mode: "api-event",
+    apiDetail: { eventId: "demo-1", status: "loading" } as never,
+    apiHistory: { eventId: "demo-1", status: "loading" } as never,
+    context: { dataset_mode: "demo", dataset_label: "synthetic", generated_at: "2026-11-20T00:00:00.000Z", sources: [] } as unknown as PublicContext,
+  }));
+  assert.match(demoDetail, /Memuat catatan sintetis dari API lokal/u);
+  assert.doesNotMatch(demoDetail, /\brecord\b/iu);
 });
 
 test("HOSTED-34: the triage, discrepancy and precision labels map known codes and fall back to lainnya", () => {

@@ -188,6 +188,14 @@ test("simulation script is finite, immutable, fictional, and covers the operatio
   }, TypeError);
 });
 
+/** Every string in a monitoring value, so the copy can be checked without naming each field. */
+function stringsIn(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (value !== null && typeof value === "object") return Object.values(value).flatMap(stringsIn);
+  return [];
+}
+
 test("public monitoring reads only the bounded read paths and joins every exact event/version geometry", async () => {
   const scheduler = new FakeScheduler();
   const calls: Array<{ path: string; init: RequestInit | undefined }> = [];
@@ -261,6 +269,24 @@ test("public monitoring reads only the bounded read paths and joins every exact 
   monitor.pause();
   assert.deepEqual(scheduler.delays, []);
   assert.equal(latest.current?.status, "paused");
+  monitor.stop();
+});
+
+test("HOSTED-39: the public-projection copy in the admin monitor says laporan or catatan, never record", async () => {
+  const scheduler = new FakeScheduler();
+  const latest: { current: AdminMonitorState | null } = { current: null };
+  const monitor = createAdminMonitor({
+    onState: (state) => { latest.current = state; },
+    scheduler,
+    clock: () => NOW,
+    fetch: async (input) => payloadForPath(requestPath(input)),
+  });
+  await monitor.start();
+  const snapshot = latest.current?.snapshot;
+  assert.ok(snapshot, "the monitor produced a snapshot");
+  const copy = [...stringsIn(snapshot.layers), ...stringsIn(snapshot.items), ...stringsIn(snapshot.limitations)];
+  assert.ok(copy.some((text) => /laporan terbit/iu.test(text)), "the public-projection layer names laporan");
+  assert.deepEqual(copy.filter((text) => /\brecord\b/iu.test(text)), []);
   monitor.stop();
 });
 

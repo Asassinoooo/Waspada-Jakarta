@@ -11,7 +11,8 @@ import type {
 import { SiteHeader } from "../src/AppShell.js";
 import { ApiPayloadError, getEventGeoJSON, parsePublicGeoJSON } from "../src/api-client.js";
 import { DEFAULT_FEED_FILTERS, EventFeed } from "../src/EventFeed.js";
-import { MapPanel, projectCRS84Position, type GeoJSONMapState } from "../src/MapPanel.js";
+import { JAKARTA_MAP_VIEW, MapPanel, projectCRS84Position, type GeoJSONMapState } from "../src/MapPanel.js";
+import { coordinateToWorldPixels, createOsmTileUrl } from "../src/SourcePointMap.js";
 
 const liveContext: PublicContext = {
   dataset_mode: "live",
@@ -193,6 +194,70 @@ test("CRS84 projection is deterministic, centered, and leaves source geometry un
   assert.ok(first[1] > 0 && first[1] < 500);
 });
 
+const BASEMAP_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const TILE_PX = 256;
+const PIN: [number, number] = [106.845, -6.185];
+
+test("HOSTED-39: the Jakarta map draws the Web Mercator tiles from createOsmTileUrl, with the OpenStreetMap attribution", () => {
+  const event = makeEvent("tile-pin-1", 1, "Pin on tiles");
+  const feature = makeFeature(event, "tile-pin-feature", { type: "Point", coordinates: PIN });
+  const markup = renderToStaticMarkup(
+    <MapPanel
+      selection={{ kind: "none" }}
+      mapState={{ status: "loaded", data: makeCollection([feature]) }}
+      context={liveContext}
+      feedStatus="loaded"
+      visibleEvents={[event]}
+      onSelectApiEvent={() => {}}
+      onRetryMap={() => {}}
+      onReturnToList={() => {}}
+    />,
+  );
+
+  assert.ok(JAKARTA_MAP_VIEW.tiles.length > 0, "the view covers at least one tile");
+  for (const tile of JAKARTA_MAP_VIEW.tiles) {
+    assert.ok(markup.includes(`src="${createOsmTileUrl(BASEMAP_TEMPLATE, tile)}"`), `tile ${tile.key} is drawn`);
+  }
+  assert.doesNotMatch(markup, /tile\.openstreetmap\.org\/11\//u, "the old hard-coded z11 tiles are gone");
+  assert.match(
+    markup,
+    /<a class="map-attribution" href="https:\/\/www\.openstreetmap\.org\/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors<\/a>/u,
+  );
+  assert.doesNotMatch(markup, /Tanpa peta dasar/u);
+});
+
+test("HOSTED-39: the pin at 106.845, -6.185 sits inside the tile computed for it and is drawn at the projected pixel", () => {
+  const event = makeEvent("tile-pin-2", 1, "Pin inside its tile");
+  const feature = makeFeature(event, "tile-pin-feature-2", { type: "Point", coordinates: PIN });
+  const markup = renderToStaticMarkup(
+    <MapPanel
+      selection={{ kind: "none" }}
+      mapState={{ status: "loaded", data: makeCollection([feature]) }}
+      context={liveContext}
+      feedStatus="loaded"
+      visibleEvents={[event]}
+      onSelectApiEvent={() => {}}
+      onRetryMap={() => {}}
+      onReturnToList={() => {}}
+    />,
+  );
+
+  const world = coordinateToWorldPixels(PIN, JAKARTA_MAP_VIEW.zoom);
+  const expectedTile = { x: Math.floor(world.x / TILE_PX), y: Math.floor(world.y / TILE_PX) };
+  const tile = JAKARTA_MAP_VIEW.tiles.find((candidate) => candidate.x === expectedTile.x && candidate.y === expectedTile.y);
+  assert.ok(tile, "the tile that covers the pin is in the view");
+  assert.ok(markup.includes(`src="${createOsmTileUrl(BASEMAP_TEMPLATE, tile)}"`), "that tile is the one drawn");
+
+  const [pinX, pinY] = projectCRS84Position(PIN);
+  assert.ok(pinX >= tile.left && pinX < tile.left + TILE_PX, "the pin's x is inside its tile");
+  assert.ok(pinY >= tile.top && pinY < tile.top + TILE_PX, "the pin's y is inside its tile");
+
+  const pinMatch = markup.match(/<circle class="geo-feature__point" cx="([^"]+)" cy="([^"]+)"/u);
+  assert.ok(pinMatch, "the point is drawn as a pin");
+  assert.ok(Math.abs(Number(pinMatch[1]) - pinX) < 1e-6);
+  assert.ok(Math.abs(Number(pinMatch[2]) - pinY) < 1e-6);
+});
+
 test("map renders all six geometry types as keyboard-operable linked features", () => {
   const events = geometries.map((_, index) => makeEvent("geo-" + index, 1, "Map event " + index));
   const features = geometries.map((geometry, index) => makeFeature(events[index]!, "geometry-" + index, geometry));
@@ -216,9 +281,11 @@ test("map renders all six geometry types as keyboard-operable linked features", 
   assert.match(markup, /tabindex="0"/);
   assert.match(markup, /aria-label="Titik lokasi yang cocok dengan daftar laporan yang dimuat"/);
   assert.match(markup, /Peta lokasi/);
-  assert.match(markup, /Tanpa peta dasar/);
+  assert.doesNotMatch(markup, /Tanpa peta dasar/, "the no-basemap chip goes once tiles are drawn (HOSTED-39)");
+  assert.match(markup, /© OpenStreetMap contributors/);
   assert.match(markup, /Posisi titik sesuai koordinat dari laporan\./);
   assert.doesNotMatch(markup, /CRS84|Equirektangular|respons API/u, "the map copy names no projection or response");
+  assert.doesNotMatch(markup, /\brecord\b/iu, "the map copy says laporan, not record (HOSTED-39)");
 });
 
 test("map links only visible exact-version records and shows source coordinates plus the detail link", () => {
