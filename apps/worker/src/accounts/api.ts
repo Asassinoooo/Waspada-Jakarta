@@ -4,10 +4,12 @@ import {
   type AccountDatasetMode,
   type AccountRole,
   type AccountStore,
+  type AccountThrottleScope,
   type StoredAccount,
   type StoredAccountSession,
 } from '../../../db/src/accounts.js';
 import { hashPassword, normaliseUsername, validatePasswordPolicy, verifyPassword } from './password.js';
+import { generatePasswordResetCode, normalisePasswordResetCode, PASSWORD_RESET_CODE_TTL_MS } from './reset-code.js';
 import type { AccountApiHandler, AccountApiOptions, AccountCookieMode } from './types.js';
 
 const accountPrefix = '/api/v1/account';
@@ -20,8 +22,12 @@ const maxRegisterRequests = 6;
 const maxLoginRequestsPerClient = 12;
 const maxLoginRequestsPerUsername = 12;
 const maxPasswordChangeRequests = 6;
+const maxPasswordResetRequestsPerClient = 12;
+const maxPasswordResetRequestsPerUsername = 12;
 const sessionIdleMs = 30 * 60_000;
 const sessionAbsoluteMs = 8 * 60 * 60_000;
+/** Fixed text for the admin audit row. The admin route takes no free-text reason. */
+const passwordResetAuditReason = 'Administrator issued a one-time password reset code';
 const genericMessages: Record<string, string> = {
   INVALID_REQUEST: 'The account request is invalid.',
   UNAUTHORIZED: 'Sign in is required for this account action.',
@@ -37,6 +43,8 @@ const genericMessages: Record<string, string> = {
   password_too_short: 'The password must be at least 10 characters.',
   password_too_long: 'The password must be at most 256 characters.',
   invalid_current_password: 'The current password is not correct.',
+  // One message for an unknown username, a wrong, expired or used code. It must never say which one failed.
+  invalid_reset_code: 'The username or reset code is not correct, or the code is no longer valid.',
 };
 
 /** Session credential resolved from the browser cookie (web) or an existing bearer (mobile). */
@@ -62,10 +70,12 @@ type Route =
   | { readonly kind: 'register' }
   | { readonly kind: 'login' }
   | { readonly kind: 'password' }
+  | { readonly kind: 'password_reset' }
   | { readonly kind: 'logout' }
   | { readonly kind: 'onboarding' }
   | { readonly kind: 'users_list' }
   | { readonly kind: 'user_update'; readonly accountId: string }
+  | { readonly kind: 'user_password_reset_code'; readonly accountId: string }
   | { readonly kind: 'unknown' }
   | { readonly kind: 'method' };
 
@@ -120,6 +130,8 @@ export function createAccountApi(options: AccountApiOptions): AccountApiHandler 
           return await handleLogin(request, context);
         case 'password':
           return await handlePasswordChange(request, context);
+        case 'password_reset':
+          return await handlePasswordReset(request, context);
         case 'logout':
           return await handleLogout(request, context);
         case 'onboarding':
@@ -128,6 +140,8 @@ export function createAccountApi(options: AccountApiOptions): AccountApiHandler 
           return await handleUsersList(request, context);
         case 'user_update':
           return await handleUserUpdate(request, context, route.accountId);
+        case 'user_password_reset_code':
+          return await handlePasswordResetCodeIssue(request, context, route.accountId);
       }
     } catch {
       // SQL and hashing errors can contain credentials or table details, so the body stays generic.
@@ -209,6 +223,7 @@ function routeFor(pathname: string, method: string): Route {
     register: { path: `${authPrefix}/register`, method: 'POST', kind: 'register' },
     login: { path: `${authPrefix}/login`, method: 'POST', kind: 'login' },
     password: { path: `${authPrefix}/password`, method: 'POST', kind: 'password' },
+    password_reset: { path: `${authPrefix}/password-reset`, method: 'POST', kind: 'password_reset' },
     logout: { path: `${authPrefix}/logout`, method: 'POST', kind: 'logout' },
     onboarding: { path: `${accountPrefix}/onboarding`, method: 'POST', kind: 'onboarding' },
     users_list: { path: `${accountPrefix}/users`, method: 'GET', kind: 'users_list' },
@@ -228,6 +243,17 @@ function routeFor(pathname: string, method: string): Route {
       return { kind: 'unknown' };
     }
     return uuidPattern.test(accountId) ? { kind: 'user_update', accountId } : { kind: 'unknown' };
+  }
+  const resetCodeMatch = new RegExp(`^${accountPrefix}/users/([^/]+)/password-reset-code$`, 'u').exec(pathname);
+  if (resetCodeMatch) {
+    if (method !== 'POST') return { kind: 'method' };
+    let accountId: string;
+    try {
+      accountId = decodeURIComponent(resetCodeMatch[1] ?? '');
+    } catch {
+      return { kind: 'unknown' };
+    }
+    return uuidPattern.test(accountId) ? { kind: 'user_password_reset_code', accountId } : { kind: 'unknown' };
   }
   return { kind: 'unknown' };
 }
@@ -356,6 +382,103 @@ async function handlePasswordChange(request: Request, context: AccountApiContext
   });
   if (!changed) return jsonResponse(apiError('CONFLICT'), 409);
   return jsonResponse(sessionEnvelope(auth.session.account, auth.session.csrfToken, true, context.registrationAvailable), 200);
+}
+
+/**
+ * Signed-out password reset with an administrator-issued code. The pre-session marker is the CSRF guard here,
+ * as for login and registration: no session, and so no CSRF token, exists yet. A wrong code, an unknown
+ * username, an expired code and a used code all get the same 400 body. The code is the proof of possession.
+ */
+async function handlePasswordReset(request: Request, context: AccountApiContext): Promise<Response> {
+  if (!hasPreSessionMarker(request, context.appOrigin)) return jsonResponse(apiError('FORBIDDEN'), 403);
+  const clock = readClock(context.now);
+  if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+  await context.store.cleanupExpired(new Date(clock).toISOString(), 50);
+  const body = await readJson(request, 4_096);
+  if (!isPlainRecord(body) || !hasRequiredKeys(body, ['username', 'code', 'new_password'])
+    || typeof body.username !== 'string' || body.username.length > 256
+    || typeof body.code !== 'string' || body.code.length > 64) {
+    return jsonResponse(apiError('INVALID_REQUEST'), 400);
+  }
+  const username = normaliseUsername(body.username);
+  // Both throttles are consumed on every attempt, as on login. The username bucket counts unknown names too.
+  const throttleKey = username ?? body.username.trim().toLowerCase().slice(0, 64);
+  const clientAllowed = await consumeThrottle(context, 'password_reset', 'client', request, clock, maxPasswordResetRequestsPerClient);
+  const usernameAllowed = await consumeThrottle(
+    context,
+    'password_reset',
+    `username:${throttleKey}`,
+    request,
+    clock,
+    maxPasswordResetRequestsPerUsername,
+    false,
+  );
+  if (!clientAllowed || !usernameAllowed) return jsonResponse(apiError('TOO_MANY_REQUESTS'), 429);
+
+  // The password policy runs before any code is checked, so a too-short password never spends an attempt.
+  const policy = validatePasswordPolicy(body.new_password);
+  if (!policy.ok) return jsonResponse(apiError(policyErrorCode(policy.code)), 400);
+  const code = normalisePasswordResetCode(body.code);
+  if (username === null || code === null) return jsonResponse(apiError('invalid_reset_code'), 400);
+  const newPassword = body.new_password as string;
+
+  const outcome = await context.store.consumePasswordResetCode({
+    username,
+    now: new Date(clock).toISOString(),
+    verifyCode: async (storedHash) => {
+      if (storedHash === null) {
+        await verifyPassword(code, await dummyPasswordHash(context));
+        return false;
+      }
+      return verifyPassword(code, storedHash);
+    },
+    hashNewPassword: () => hashPassword(newPassword),
+  });
+  if (outcome.outcome !== 'reset') return jsonResponse(apiError('invalid_reset_code'), 400);
+  // No session is created. Every session of the account has ended, so the person signs in with the new password.
+  return new Response(null, {
+    status: 204,
+    headers: new Headers({ 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }),
+  });
+}
+
+/**
+ * Administrator-only. Issues one reset code for a password account and returns it once. The code is never
+ * logged or written to the audit trail. The audit row keeps the actor, the target and both roles.
+ */
+async function handlePasswordResetCodeIssue(
+  request: Request,
+  context: AccountApiContext,
+  targetAccountId: string,
+): Promise<Response> {
+  const auth = await authenticate(request, context);
+  if (!auth) return jsonResponse(apiError('UNAUTHORIZED'), 401);
+  if (auth.session.channel !== 'web' || auth.source !== 'cookie'
+    || !isCompletedAdmin(auth.session.account)) {
+    return jsonResponse(apiError('FORBIDDEN'), 403);
+  }
+  if (!isAuthorizedBrowserWrite(request, auth.session.csrfToken, context.appOrigin)) {
+    return jsonResponse(apiError('FORBIDDEN'), 403);
+  }
+  const clock = readClock(context.now);
+  if (clock === null) return jsonResponse(apiError('TEMPORARILY_UNAVAILABLE'), 503);
+  const code = generatePasswordResetCode();
+  const result = await context.store.issuePasswordResetCode({
+    actorAccountId: auth.session.account.id,
+    targetAccountId,
+    codeHash: await hashPassword(code),
+    reason: passwordResetAuditReason,
+    now: new Date(clock).toISOString(),
+    expiresAt: new Date(clock + PASSWORD_RESET_CODE_TTL_MS).toISOString(),
+  });
+  switch (result.outcome) {
+    case 'issued':
+      // The only response that carries the code. jsonResponse marks it no-store.
+      return jsonResponse({ code, expires_at: result.expiresAt, username: result.username }, 200);
+    case 'forbidden': return jsonResponse(apiError('FORBIDDEN'), 403);
+    case 'not_found': return jsonResponse(apiError('NOT_FOUND'), 404);
+    case 'conflict': return jsonResponse(apiError('CONFLICT'), 409);
+  }
 }
 
 async function startWebSession(
@@ -492,11 +615,13 @@ async function authenticate(request: Request, context: AccountApiContext): Promi
 
 async function consumeThrottle(
   context: AccountApiContext,
-  scope: 'register' | 'login_client' | 'login_username',
+  scope: AccountThrottleScope,
   keyKind: string,
   request: Request,
   now: number,
   maximum: number,
+  // Username buckets are shared across every client. Client buckets are bound to the trusted client key.
+  bindClient: boolean = scope !== 'login_username',
 ): Promise<boolean> {
   let trustedKey = 'unavailable-client-key';
   try {
@@ -508,7 +633,7 @@ async function consumeThrottle(
     // All requests share the fallback bucket if the trusted adapter is unavailable.
   }
   // The key kind keeps client and username buckets separate even when their text could match.
-  const keySource = scope === 'login_username' ? keyKind : `${keyKind}:${trustedKey}`;
+  const keySource = bindClient ? `${keyKind}:${trustedKey}` : keyKind;
   return context.store.consumeThrottle(
     scope,
     await sha256(keySource),

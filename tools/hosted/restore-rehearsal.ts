@@ -72,10 +72,12 @@ export const EXCLUDED_SECRET_TABLES: readonly string[] = [
   "account_login_attempts",
   "account_login_throttles",
   "account_admin_audit",
+  "password_reset_codes",
 ];
 /** Any other table with one of these columns is excluded too (fails closed for a new credential table). */
 export const SECRET_COLUMNS: ReadonlySet<string> = new Set([
   "password_hash",
+  "code_hash",
   "token_sha256",
   "prior_session_token_sha256",
   "csrf_token",

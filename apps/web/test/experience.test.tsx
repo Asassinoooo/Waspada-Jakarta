@@ -116,7 +116,10 @@ test("privacy page lists only known local values and waits for a second confirma
   assert.match(html, /versi dan waktu penyelesaian pengenalan/u);
   assert.match(html, /Kata sandi tidak disimpan dalam bentuk teks biasa/u);
   assert.match(html, /Sesi web berakhir setelah 30 menit tidak aktif atau 8 jam/u);
-  assert.match(html, /Belum ada fitur lupa kata sandi/u);
+  // AUTH-RESET-01: a one-time code from an administrator replaces "no forgot-password feature".
+  assert.match(html, /minta kode reset sekali pakai kepada\s+administrator/u);
+  assert.match(html, /href="#lupa-sandi"/u);
+  assert.doesNotMatch(html, /Belum ada fitur lupa kata sandi/u);
   assert.doesNotMatch(html, /SDK Google|accounts\.google\.com|issuer dan subject/u);
   assert.match(html, /cookie sesi HttpOnly/u);
   assert.match(html, /Tautan Keluar di halaman Akun mencabut sesi web yang sedang digunakan/u);

@@ -3,6 +3,7 @@ import type {
   AccountUser,
   AccountUserPage,
   AccountUserUpdate,
+  PasswordResetCodeIssue,
   SessionEnvelope,
 } from "@waspada/worker/account-contracts";
 
@@ -29,6 +30,10 @@ export interface AccountClient {
   logout(csrfToken: string): Promise<void>;
   listUsers(options?: { limit?: number; after?: string; signal?: AbortSignal }): Promise<AccountUserPage>;
   updateUser(id: string, update: AccountUserUpdate, csrfToken: string): Promise<AccountUser>;
+  /** Administrator only. The returned code is shown once and must not be stored or logged. */
+  issuePasswordResetCode(accountId: string, csrfToken: string): Promise<PasswordResetCodeIssue>;
+  /** Signed-out reset. Resolves on success; the person then signs in with the new password. */
+  resetPasswordWithCode(input: { username: string; code: string; newPassword: string }): Promise<void>;
 }
 
 export type AccountReturnTarget = "#akun" | "#mulai" | "#admin" | "#tinjau-bukti";
@@ -44,6 +49,8 @@ const MAX_ID_LENGTH = 200;
 const MAX_REASON_LENGTH = 500;
 const MAX_USERNAME_LENGTH = 32;
 const MAX_PASSWORD_LENGTH = 256;
+const MAX_RESET_CODE_LENGTH = 64;
+const RESET_CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{10}$/u;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -198,6 +205,20 @@ function postHeaders(): Record<string, string> {
   };
 }
 
+function parsePasswordResetCodeIssue(value: unknown): PasswordResetCodeIssue {
+  if (!isRecord(value) || !hasExactKeys(value, ["code", "expires_at", "username"])) {
+    throw new AccountPayloadError();
+  }
+  if (
+    typeof value.code !== "string" || !RESET_CODE_PATTERN.test(value.code) ||
+    !isInstant(value.expires_at) ||
+    typeof value.username !== "string" || value.username.length < 1 || value.username.length > MAX_USERNAME_LENGTH
+  ) {
+    throw new AccountPayloadError();
+  }
+  return { code: value.code, expires_at: value.expires_at, username: value.username };
+}
+
 function requireCredentialFields(username: string, password: string): void {
   if (typeof username !== "string" || username.length < 1 || username.length > MAX_USERNAME_LENGTH) {
     throw new AccountPayloadError();
@@ -343,6 +364,44 @@ export function createAccountClient(fetcher: FetchLike = fetch): AccountClient {
         }),
       });
       return parseAccountUser(body);
+    },
+
+    async issuePasswordResetCode(accountId, csrfToken) {
+      requireCsrfToken(csrfToken);
+      if (typeof accountId !== "string" || accountId.length < 1 || accountId.length > MAX_ID_LENGTH) {
+        throw new AccountPayloadError();
+      }
+      let encodedId: string;
+      try {
+        encodedId = encodeURIComponent(accountId);
+      } catch {
+        throw new AccountPayloadError();
+      }
+      const body = await requestJson("/api/v1/account/users/" + encodedId + "/password-reset-code", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
+      });
+      return parsePasswordResetCodeIssue(body);
+    },
+
+    async resetPasswordWithCode({ username, code, newPassword }) {
+      requireCredentialFields(username, newPassword);
+      if (typeof code !== "string" || code.length < 1 || code.length > MAX_RESET_CODE_LENGTH) {
+        throw new AccountPayloadError();
+      }
+      // A 204 has no body, so this reads the status directly, as logout does.
+      const response = await fetcher("/api/v1/auth/password-reset", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "error",
+        headers: postHeaders(),
+        body: JSON.stringify({ username, code, new_password: newPassword }),
+      });
+      if (response.status !== 204) throw errorResponse(response.status);
     },
   };
 }
