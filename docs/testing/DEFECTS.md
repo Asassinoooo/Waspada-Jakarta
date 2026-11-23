@@ -6,7 +6,7 @@ Updated 18 November 2026 (TG-DOCS-02): status for R-01, R-05, R-06, R-09 and R-1
 Updated 19 November 2026 (TG-DOCS-04): F-20 to F-28 and the EXPLORE-18 open items (section B); R-11 to R-13 (section D).
 Updated 19 November 2026 (TG-DOCS-05): status line on F-02, and new F-29 (section B).
 Updated 19 November 2026 (TG-DOCS-07): F-05 (partly closed), F-06 (closed by test), F-29 and F-32 (fixed, hosted re-check pending), new F-30 and F-31 (fixed, TEST-GAP-03), and the two EXPLORE-18 open items fixed by POLISH-02 and POLISH-03 (section B).
-Updated 20 November 2026 (TG-DOCS-09): F-39 to F-43 fixed and deployed on 20 November 2026 (section B); F-45 closed as out of scope; new F-46 to F-50 (section B). The evidence is in `docs/testing/evidence/2026-11-20/`.
+Updated 23 November 2026 (TG-DOCS-10): F-50 fixed by PERF-03/04 and retested (run 4, `docs/testing/evidence/2026-11-23/`). Earlier update 20 November 2026 (TG-DOCS-09): F-39 to F-43 fixed and deployed on 20 November 2026 (section B); F-45 closed as out of scope; new F-46 to F-50 (section B). The evidence is in `docs/testing/evidence/2026-11-20/`.
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules
@@ -472,15 +472,31 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Fix:** none yet. The ADR text needs correcting; no code change is planned for this finding.
 - **Status (20 Nov 2026): open.**
 
-### F-50: hosted public reads still use CPU above the Free plan's nominal allowance, and some requests fail with 503 under load (Medium, open)
+### F-50: hosted public reads still use CPU above the Free plan's nominal allowance, and some requests fail with 503 under load (Medium, fixed 23 Nov 2026)
 
 - **Observation:** after PERF-01 (Worker `007fbaa5`), `GET /api/v1/events` still used 22 to 52 ms of CPU per request on the hosted Worker (p50 35 ms; wrangler tail sample of 16 requests, 20 Nov 2026). The Workers Free plan's nominal CPU allowance is 10 ms (`PERFORMANCE.md`). Under 5 concurrent clients, 40 of 100 list requests and 2 of 100 briefing requests returned 503. Warm sequential `POST /api/v1/briefings` failed 13 of 30 with 503 and had p50 869 ms. A separate burst of 6 clients x 8 requests returned 5 requests with 503 and the body `error code: 1102` (the file's gloss: Worker exceeded resource limits).
 - **Found by:** TG-DOCS-09 (20 November 2026): the PERF-01 re-timing run 3 and the wrangler tail sample.
 - **Where:** the hosted Worker's public read path: `GET /api/v1/events` and `POST /api/v1/briefings`. The code location was not analysed in this update.
 - **Cause:** not determined. Error 1102 means the Worker exceeded a resource limit; the record does not say which one. The 503 bodies in run 3 were not captured; only the burst's bodies were.
 - **Severity:** Medium (set in the TG-DOCS-09 follow-up, 20 Nov 2026). Not yet reviewed by the owner.
-- **Fix:** none yet. Next step: PERF-02, not started; needs an owner decision.
-- **Status (20 Nov 2026): open.** Evidence: `evidence/2026-11-20/nfr04/timing-run3-after-perf01.txt` and `evidence/2026-11-20/nfr04/cpu-tail-after-perf01.txt`. Linked from NFR-04 and ST-N-04 (both stay Partial) and from `TEST-SUMMARY.md` section 8.
+- **Fix (23 Nov 2026):** PERF-03 and PERF-04 (owner decision 23 Nov 2026: published lists may be up to 60 s stale).
+  - PERF-03 (`38dee01`, fixed forward in `1e50384`) serves the list, detail and GeoJSON reads from a snapshot of the published projections kept in Workers KV.
+    - A one-statement fingerprint decides when to rebuild it.
+    - A moderator publish, withdraw or correction forces a rebuild.
+    - Responses carry a weak ETag (a match returns 304) and `cache-control: public, max-age=15, stale-while-revalidate=30`.
+    - A rebuild costs 13 SQL statements whatever the number of events; an unchanged check costs one.
+  - PERF-04 (`71226d0`) batches the briefing to a constant 7 statements, and keeps briefing and history results in a 30 s in-isolate memo.
+  - Deployed on 23 November 2026 (Worker version `356df500`, KV namespace `PUBLIC_SNAPSHOT`).
+- **Retest (23 Nov 2026), run 4** (`tools/perf/nfr04-run.ts`, `evidence/2026-11-23/nfr04/timing-run4-after-perf03.txt`): same warm and 5-client shapes as run 3, plus the GeoJSON route.
+  - Every request returned 200: 240 of 240 warm and 800 of 800 at 5 concurrent clients. There were no 503 or 1102 responses.
+  - Warm p50 was 43 to 101 ms on every route, and the warm p95 was at most 220 ms.
+  - At 5 clients, p50 was 40 to 158 ms and p95 at most 525 ms. The highest single response was the briefing, at 1,100 ms.
+  - Compared with run 3:
+    - The briefing went from 17/30 OK with p50 869 ms to 30/30 OK with p50 81 ms.
+    - The list at 5 clients went from 60/100 OK to 100/100 OK.
+  - Header check: `evidence/2026-11-23/nfr04/headers-after-perf03.txt` (public caching, ETag, 304, and year-long immutable static assets).
+  - Not re-measured: per-request CPU (no new wrangler tail sample) and the cold rounds.
+- **Status (23 Nov 2026): fixed and deployed; retested by run 4.** Earlier status (20 Nov 2026): open. Evidence: `evidence/2026-11-20/nfr04/timing-run3-after-perf01.txt` and `evidence/2026-11-20/nfr04/cpu-tail-after-perf01.txt`. Linked from NFR-04 and ST-N-04 (both stay Partial) and from `TEST-SUMMARY.md` section 8.
 
 ### F-ALERT-02: a published version did not reach `/api/v1/updates`
 

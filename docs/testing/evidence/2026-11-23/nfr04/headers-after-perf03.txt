@@ -1,0 +1,12 @@
+PERF-03 header check, 2026-11-23T02:35:46Z, Worker version 356df500
+GET /api/v1/events
+HTTP/2 200 
+cache-control: public, max-age=15, stale-while-revalidate=30
+etag: W/"90ee8c2d8a02e7e3-e3b0c44298fc1c14"
+GET /api/v1/events.geojson
+HTTP/2 200 
+cache-control: public, max-age=15, stale-while-revalidate=30
+etag: W/"90ee8c2d8a02e7e3"
+GET /api/v1/events.geojson with If-None-Match: W/"90ee8c2d8a02e7e3" -> 304
+GET /assets/index-CXRQLyYx.js
+cache-control: public, max-age=31536000, immutable
