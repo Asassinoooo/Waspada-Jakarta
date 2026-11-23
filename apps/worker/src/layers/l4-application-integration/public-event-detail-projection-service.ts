@@ -3,8 +3,9 @@ import {
   preparePublicEventProjectionSnapshot,
   PublicEventProjectionServiceError,
   type PreparedPublicEventProjectionSnapshot,
+  type PublicEventProjectionLookupBatchReadPort,
   type PublicEventProjectionLookupReadPort,
-
+  type PublicEventProjectionSnapshotBatchReadPort,
   type PublicEventProjectionSnapshotReadPort,
   type PublicEventProjectionSupportReference,
 } from "./public-event-projection-service.js";
@@ -31,6 +32,20 @@ export interface PublicEventDetailGeometryReadPort {
 export interface PublicEventDetailProjectionService {
   read(eventId: unknown): Promise<PublicEventDetailProjectionReadResult>;
 }
+
+/**
+ * PERF-03: the factory's service also reads several events with a constant number of statements per call (see
+ * readDetailBatch). Entry i is the outcome for eventIds[i]. A failed read rejects the whole call; an event's own failure
+ * is that event's error. It extends the read-only interface, so the existing read-only stubs still type-check.
+ */
+export interface PublicEventDetailBatchProjectionService extends PublicEventDetailProjectionService {
+  readMany(eventIds: readonly unknown[]): Promise<readonly PublicEventDetailBatchOutcome[]>;
+}
+
+/** One event of readMany: its result (missing is a result, not an error), or its own projection error. */
+export type PublicEventDetailBatchOutcome =
+  | { readonly value: PublicEventDetailProjectionReadResult }
+  | { readonly error: PublicEventDetailProjectionServiceError };
 
 export type PublicEventDetailProjectionReadResult =
   | { readonly kind: "found"; readonly detail: EventDetail }
@@ -105,10 +120,10 @@ interface ValidatedLookupResult {
  * EventDetail projector. This service performs reads only.
  */
 export function createPublicEventDetailProjectionService(ports: {
-  readonly snapshots: PublicEventProjectionSnapshotReadPort;
-  readonly lookups: PublicEventProjectionLookupReadPort;
+  readonly snapshots: PublicEventProjectionSnapshotReadPort & Partial<PublicEventProjectionSnapshotBatchReadPort>;
+  readonly lookups: PublicEventProjectionLookupReadPort & Partial<PublicEventProjectionLookupBatchReadPort>;
   readonly geometries: PublicEventDetailGeometryReadPort;
-}): PublicEventDetailProjectionService {
+}): PublicEventDetailBatchProjectionService {
   return {
     async read(eventId: unknown): Promise<PublicEventDetailProjectionReadResult> {
       if (!isIdentifier(eventId)) fail("INVALID_EVENT_ID");
@@ -150,30 +165,9 @@ export function createPublicEventDetailProjectionService(ports: {
       // A supporting reference with no approved attribution: the event is not publicly projectable (the list skips it too).
       if (lookupResult === null) return { kind: "missing" };
 
-      const projectionLookups: PublicProjectionLookups = {
-        scopeNames: lookupResult.scopeNames,
-        publicAttributions: lookupResult.publicAttributions,
-        impacts: prepared.impactRecords,
-      };
-      let context: PublicEventGeometryProjectionContext;
-      try {
-        context = projectPublicEventForGeometry(prepared.eventRecord, projectionLookups, {
-          locationLabelPresent: prepared.locationLabelPresent,
-          locationLabel: prepared.locationLabel,
-        });
-      } catch (error) {
-        // ATTRIBUTION_FAILED means no approved attribution for a supporting reference or claim: missing, as in the list.
-        if (error instanceof PublicProjectionError && error.code === "ATTRIBUTION_FAILED") return { kind: "missing" };
-        if (error instanceof PublicProjectionError
-          && (error.code === "LOOKUPS_INVALID"
-            || error.code === "NAME_LOOKUP_FAILED")) {
-          fail("LOOKUP_RESULT_INVALID");
-        }
-        fail("SNAPSHOT_INVALID");
-      }
-      if (context.eventId !== eventId || context.version !== readSnapshotVersion(prepared)) {
-        fail("SNAPSHOT_INVALID");
-      }
+      const geometry = geometryContextFor(eventId, prepared, lookupResult);
+      if (geometry === null) return { kind: "missing" };
+      const { context, projectionLookups } = geometry;
 
       const geometryIds = collectGeometryIds(context);
       let geometryRows: readonly PublicEventDetailGeometry[] = [];
@@ -204,7 +198,197 @@ export function createPublicEventDetailProjectionService(ports: {
       }
       return { kind: "found", detail };
     },
+    async readMany(eventIds: readonly unknown[]): Promise<readonly PublicEventDetailBatchOutcome[]> {
+      return readDetailBatch(ports, eventIds);
+    },
   };
+}
+
+/**
+ * The geometry context of one event, or null when the event is missing from the public view (no approved attribution
+ * for a supporting reference or claim). read() and readMany() share it, so both project an event the same way.
+ */
+function geometryContextFor(
+  eventId: string,
+  prepared: PreparedPublicEventProjectionSnapshot,
+  lookupResult: ValidatedLookupResult,
+): { readonly context: PublicEventGeometryProjectionContext; readonly projectionLookups: PublicProjectionLookups } | null {
+  const projectionLookups: PublicProjectionLookups = {
+    scopeNames: lookupResult.scopeNames,
+    publicAttributions: lookupResult.publicAttributions,
+    impacts: prepared.impactRecords,
+  };
+  let context: PublicEventGeometryProjectionContext;
+  try {
+    context = projectPublicEventForGeometry(prepared.eventRecord, projectionLookups, {
+      locationLabelPresent: prepared.locationLabelPresent,
+      locationLabel: prepared.locationLabel,
+    });
+  } catch (error) {
+    // ATTRIBUTION_FAILED means no approved attribution for a supporting reference or claim: missing, as in the list.
+    if (error instanceof PublicProjectionError && error.code === "ATTRIBUTION_FAILED") return null;
+    if (error instanceof PublicProjectionError
+      && (error.code === "LOOKUPS_INVALID"
+        || error.code === "NAME_LOOKUP_FAILED")) {
+      fail("LOOKUP_RESULT_INVALID");
+    }
+    fail("SNAPSHOT_INVALID");
+  }
+  if (context.eventId !== eventId || context.version !== readSnapshotVersion(prepared)) {
+    fail("SNAPSHOT_INVALID");
+  }
+  return { context, projectionLookups };
+}
+
+interface PendingDetail {
+  readonly eventId: string;
+  readonly prepared: PreparedPublicEventProjectionSnapshot;
+  readonly projectionLookups: PublicProjectionLookups;
+  readonly geometryIds: readonly string[];
+}
+
+/** An event's own failure, as the service error the single read gives for it. Unexpected errors use the fallback code. */
+function batchEventError(
+  error: unknown,
+  fallback: PublicEventDetailProjectionServiceErrorCode,
+): PublicEventDetailProjectionServiceError {
+  if (error instanceof PublicEventDetailProjectionServiceError) return error;
+  if (error instanceof PublicEventProjectionServiceError && error.code === "LOOKUP_LIMIT_EXCEEDED") {
+    return new PublicEventDetailProjectionServiceError("LOOKUP_LIMIT_EXCEEDED");
+  }
+  return new PublicEventDetailProjectionServiceError(fallback);
+}
+
+/**
+ * PERF-03: the details of several events with a constant number of statements. One batch snapshot read, one batch
+ * lookup read and one geometry read per 500 distinct ids serve the whole call. Each event then goes through the same
+ * validators and projectors as read(), so an event gets the result that read() gives it alone. A failed read rejects
+ * the whole call. An event's own validation or projection failure is that event's error.
+ */
+async function readDetailBatch(
+  ports: {
+    readonly snapshots: PublicEventProjectionSnapshotReadPort & Partial<PublicEventProjectionSnapshotBatchReadPort>;
+    readonly lookups: PublicEventProjectionLookupReadPort & Partial<PublicEventProjectionLookupBatchReadPort>;
+    readonly geometries: PublicEventDetailGeometryReadPort;
+  },
+  eventIds: readonly unknown[],
+): Promise<readonly PublicEventDetailBatchOutcome[]> {
+  if (!Array.isArray(eventIds)) fail("INVALID_EVENT_ID");
+  const requested = eventIds.map((eventId) => {
+    if (!isIdentifier(eventId)) fail("INVALID_EVENT_ID");
+    return eventId;
+  });
+  if (requested.length === 0) return [];
+  const distinct = [...new Set(requested)];
+  const distinctSet = new Set(distinct);
+  const snapshotPort = ports.snapshots;
+  const lookupPort = ports.lookups;
+  if (snapshotPort.readMany === undefined || lookupPort.resolveMany === undefined) fail("SNAPSHOT_READ_FAILED");
+
+  let snapshotRows: unknown;
+  try {
+    snapshotRows = await snapshotPort.readMany(distinct);
+  } catch {
+    fail("SNAPSHOT_READ_FAILED");
+  }
+  if (!Array.isArray(snapshotRows) || snapshotRows.length > distinct.length) fail("SNAPSHOT_INVALID");
+
+  const outcomes = new Map<string, PublicEventDetailBatchOutcome>();
+  const preparedById = new Map<string, PreparedPublicEventProjectionSnapshot>();
+  for (const row of snapshotRows) {
+    const eventId: unknown = typeof row === "object" && row !== null
+      ? (row as { readonly eventId?: unknown }).eventId
+      : undefined;
+    if (typeof eventId !== "string" || !distinctSet.has(eventId) || preparedById.has(eventId) || outcomes.has(eventId)) {
+      fail("SNAPSHOT_INVALID");
+    }
+    try {
+      preparedById.set(eventId, preparePublicEventProjectionSnapshot(row, eventId));
+    } catch (error) {
+      outcomes.set(eventId, { error: batchEventError(error, "SNAPSHOT_INVALID") });
+    }
+  }
+
+  // An event with no current snapshot is missing, so it has no lookup request.
+  const foundIds = distinct.filter((eventId) => preparedById.has(eventId));
+  const requests = foundIds.map((eventId) => preparedById.get(eventId)!.query);
+  let lookupRows: unknown = [];
+  if (requests.length > 0) {
+    try {
+      lookupRows = await lookupPort.resolveMany(requests);
+    } catch {
+      fail("LOOKUP_READ_FAILED");
+    }
+  }
+  if (!Array.isArray(lookupRows) || lookupRows.length !== requests.length) fail("LOOKUP_RESULT_INVALID");
+  const lookupList: readonly unknown[] = lookupRows;
+
+  const pending: PendingDetail[] = [];
+  foundIds.forEach((eventId, index) => {
+    const prepared = preparedById.get(eventId)!;
+    try {
+      const lookupResult = validateLookupResult(lookupList[index], prepared);
+      const geometry = lookupResult === null ? null : geometryContextFor(eventId, prepared, lookupResult);
+      if (geometry === null) {
+        outcomes.set(eventId, { value: { kind: "missing" } });
+        return;
+      }
+      pending.push({
+        eventId,
+        prepared,
+        projectionLookups: geometry.projectionLookups,
+        geometryIds: collectGeometryIds(geometry.context),
+      });
+    } catch (error) {
+      outcomes.set(eventId, { error: batchEventError(error, "LOOKUP_RESULT_INVALID") });
+    }
+  });
+
+  const geometryIds = [...new Set(pending.flatMap((event) => event.geometryIds))].sort(compareStrings);
+  const rowsById = new Map<string, unknown[]>();
+  for (let start = 0; start < geometryIds.length; start += maxGeometryIds) {
+    let geometryValue: unknown;
+    try {
+      geometryValue = await ports.geometries.read(geometryIds.slice(start, start + maxGeometryIds));
+    } catch {
+      fail("GEOMETRY_READ_FAILED");
+    }
+    if (!Array.isArray(geometryValue)) fail("GEOMETRY_RESULT_INVALID");
+    for (const row of geometryValue) {
+      const geometryId: unknown = typeof row === "object" && row !== null
+        ? (row as { readonly geometryId?: unknown }).geometryId
+        : undefined;
+      if (typeof geometryId === "string") rowsById.set(geometryId, [...(rowsById.get(geometryId) ?? []), row]);
+    }
+  }
+
+  for (const event of pending) {
+    let geometryRows: readonly PublicEventDetailGeometry[];
+    try {
+      // Each event validates only its own ids, with the same exact-set check read() applies to a single event.
+      geometryRows = validateGeometryResult(
+        event.geometryIds.flatMap((geometryId) => rowsById.get(geometryId) ?? []),
+        event.geometryIds,
+      );
+    } catch (error) {
+      outcomes.set(event.eventId, { error: batchEventError(error, "GEOMETRY_RESULT_INVALID") });
+      continue;
+    }
+    try {
+      const detail = projectPublicEventDetail(
+        event.prepared.eventRecord,
+        event.projectionLookups,
+        geometryRows.map((geometry) => geometry.recordJson),
+        { locationLabelPresent: event.prepared.locationLabelPresent, locationLabel: event.prepared.locationLabel },
+      );
+      outcomes.set(event.eventId, { value: { kind: "found", detail } });
+    } catch {
+      outcomes.set(event.eventId, { error: new PublicEventDetailProjectionServiceError("PROJECTION_FAILED") });
+    }
+  }
+
+  const missing: PublicEventDetailBatchOutcome = { value: { kind: "missing" } };
+  return requested.map((eventId) => outcomes.get(eventId) ?? missing);
 }
 
 function readSnapshotResult(value: unknown): unknown | null {

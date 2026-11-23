@@ -1,11 +1,13 @@
 import { dispatchIngestWorkflow, isGithubDispatchMode } from "./ingest-dispatch.js";
 import { createHash } from "node:crypto";
-import { createPublicEventListRuntime } from "./runtime/public-event-list-runtime.js";
+import { createPublicEventListRuntime, createPublicEventListCursorCodecForKey } from "./runtime/public-event-list-runtime.js";
+import { createPublicSnapshotStore, type PublicSnapshotStore } from "./runtime/public-snapshot.js";
+import { publicSnapshotRouteFor, readPublicSnapshotRoute } from "./runtime/public-snapshot-route.js";
 import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-runtime.js";
 import { createPublicEventHistoryRuntime } from "./runtime/public-event-history-runtime.js";
 import { createPublicEventGeoJSONRuntime } from "./runtime/public-event-geojson-runtime.js";
 import { createPublicBriefingRuntime } from "./runtime/public-briefing-runtime.js";
-import { createPublicEventUpdatesRuntime } from "./runtime/public-event-updates-runtime.js";
+import { createPublicEventUpdatesRuntime, type PublicEventUpdatesRuntime } from "./runtime/public-event-updates-runtime.js";
 import {
   handlePublicApiRequest,
   isPublicEventDetailPath,
@@ -204,7 +206,35 @@ function getSourceApprovalHandler(env: WorkerEnvironment, config: AccountRuntime
   });
 }
 
-function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConfig) {
+/**
+ * PERF-03: the KV snapshot store for this isolate, one per isolate so its memo survives across requests. Undefined
+ * without the PUBLIC_SNAPSHOT binding or a database, so the DB path answers every read as before. Rebuilds read through
+ * the no-cache config (see freshDatabase).
+ */
+let publicSnapshotStore: PublicSnapshotStore | undefined;
+
+function publicSnapshotStoreFor(env: WorkerEnvironment): PublicSnapshotStore | undefined {
+  const kv = env.PUBLIC_SNAPSHOT;
+  if (kv === undefined || !(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) return undefined;
+  publicSnapshotStore ??= createPublicSnapshotStore({ kv, withExecutor: (operation) => withSqlExecutor(env, operation) });
+  return publicSnapshotStore;
+}
+
+/**
+ * PERF-03: a public change (publication, withdrawal or correction) refreshes the snapshot after the response. Without
+ * the binding this does nothing.
+ */
+function refreshPublicSnapshot(env: WorkerEnvironment, ctx?: { waitUntil?: (promise: Promise<unknown>) => void }): void {
+  const store = publicSnapshotStoreFor(env);
+  if (store === undefined) return;
+  ctx?.waitUntil?.(store.refresh().catch(() => null));
+}
+
+function getModerationHandler(
+  env: WorkerEnvironment,
+  config: AccountRuntimeConfig,
+  onPublicChange: () => void = () => undefined,
+) {
   // The DB dataset comes from the same server-side configuration that scopes the sessions.
   const datasetKind = config.datasetKind as DatasetKind;
   return createModerationApiHandler({
@@ -336,6 +366,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       if (outcome.status === "withdrawn") {
         eventBroadcaster.broadcastPublic("event_withdrawn", { event_id: outcome.eventId, version: outcome.version });
         eventBroadcaster.broadcastModeration("event_withdrawn", { event_id: outcome.eventId, version: outcome.version });
+        onPublicChange();
         return {
           status: "withdrawn",
           event_id: outcome.eventId,
@@ -382,6 +413,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       if (outcome.status === "published" || outcome.status === "unchanged") {
         if (outcome.status === "published") {
           eventBroadcaster.broadcastPublic("event_updated", { event_id: outcome.eventId, version: outcome.version });
+          onPublicChange();
         }
         return {
           status: outcome.status,
@@ -427,6 +459,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
         if (outcome.status === "published") {
           eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });
           eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
+          onPublicChange();
           return { status: "written", receipt: { decision_id: outcome.decisionId } };
         }
         // F-ALERT-01: the facts are already public at this version. Nothing new is published and no alert is sent.
@@ -625,6 +658,7 @@ const workerHandlers = {
       if (outcome.status === "published") {
         eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });
         eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: proposalId });
+        refreshPublicSnapshot(env, ctx);
       } else if (outcome.status === "queued") {
         eventBroadcaster.broadcastModeration("proposal_created", { proposal_id: proposalId });
       }
@@ -653,7 +687,7 @@ const workerHandlers = {
       const config = moderationAccountConfig(env);
       if (!config) return unavailableJson();
       try {
-        const modRes = await getModerationHandler(env, config)(request);
+        const modRes = await getModerationHandler(env, config, () => refreshPublicSnapshot(env, ctx))(request);
         if (modRes !== undefined) return modRes;
       } catch {
         return unavailableJson();
@@ -735,7 +769,7 @@ const workerHandlers = {
           connectionString: publicReadDatabase(env)?.connectionString,
         })
         : undefined;
-    let publicEventUpdatesRuntime;
+    let publicEventUpdatesRuntime: PublicEventUpdatesRuntime | undefined;
     if (env.DATASET_MODE === "live"
       && request.method === "GET"
       && url.pathname === "/api/v1/updates") {
@@ -750,7 +784,9 @@ const workerHandlers = {
       }
     }
 
-    return handlePublicApiRequest(
+    // PERF-03: the three public reads answer from the KV snapshot when the binding is present. Otherwise, and for
+    // anything the snapshot cannot answer exactly, the DB path answers as before.
+    const dbPublicRead = () => handlePublicApiRequest(
       request,
       env,
       consoleTelemetry,
@@ -761,6 +797,24 @@ const workerHandlers = {
       publicBriefingRuntime,
       publicEventUpdatesRuntime,
     );
+    const snapshotRoute = publicSnapshotRouteFor({
+      method: request.method,
+      pathname: url.pathname,
+      datasetMode: env.DATASET_MODE,
+      snapshotBinding: env.PUBLIC_SNAPSHOT,
+      databaseConfigured: Boolean(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString),
+    });
+    const snapshotStore = snapshotRoute === null ? undefined : publicSnapshotStoreFor(env);
+    if (snapshotRoute !== null && snapshotStore !== undefined) {
+      return readPublicSnapshotRoute(request, snapshotRoute, {
+        store: snapshotStore,
+        cursorCodec: snapshotRoute === "list"
+          ? await createPublicEventListCursorCodecForKey(env.PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX)
+          : undefined,
+        waitUntil: ctx?.waitUntil ? (promise) => ctx?.waitUntil?.(promise) : undefined,
+      }, dbPublicRead);
+    }
+    return dbPublicRead();
   },
   async scheduled(
     controller: { readonly scheduledTime: number },

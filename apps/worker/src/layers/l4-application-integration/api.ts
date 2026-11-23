@@ -38,6 +38,7 @@ import {
 } from "../../runtime/public-event-updates-runtime.js";
 import type { SqlExecutor } from "../../../../db/src/sql.js";
 import type { PipelineRuntimeStatusProvider } from "../../runtime/pipeline-runtime-status.js";
+import type { PublicSnapshotKvNamespace } from "../../runtime/public-snapshot.js";
 
 export interface WorkerEnvironment {
   AUTH_ENABLED?: string;
@@ -55,6 +56,8 @@ export interface WorkerEnvironment {
   FRESHNESS_DUE_HYPERDRIVE?: { readonly connectionString?: string };
   FRESHNESS_DUE_SCHEDULER_ENABLED?: string;
   PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX?: string;
+  /** PERF-03: KV namespace for the public read snapshot. Absent means the DB path answers every read, as before. */
+  PUBLIC_SNAPSHOT?: PublicSnapshotKvNamespace;
   /** Shared secret for POST /api/v1/internal/proposals. Unset means the route answers 503. */
   INTERNAL_SERVICE_KEY?: string;
   /** Shared secret for webhook ingest (`x-service-key`). Unset means the route answers 503. */

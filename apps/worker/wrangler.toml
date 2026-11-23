@@ -20,6 +20,8 @@ invocation_logs = false
 # Secrets never go in this file: use `wrangler secret put --env production` (see docs/DEPLOYMENT.md).
 [env.production]
 name = "waspada-jakarta"
+# PERF-03 (23 Nov 2026): the public read snapshot. Optional in code, so without it the DB path answers every read.
+kv_namespaces = [{ binding = "PUBLIC_SNAPSHOT", id = "85160d4e4f2c461d99b8c84710b466f4" }]
 
 [env.production.vars]
 DATASET_MODE = "live"
