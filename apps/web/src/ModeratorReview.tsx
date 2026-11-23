@@ -1404,7 +1404,7 @@ function renderReadOnlyFixture(): React.JSX.Element {
       <div className="read-only-callout" role="note">
         <strong>Bukan antrean moderator.</strong>
         <span>
-          Record di bawah berasal dari fixture dokumentasi, bukan API review. Tidak ada sesi autentikasi atau tindakan tulis pada demo ini.
+          Laporan di bawah berasal dari fixture dokumentasi, bukan API review. Tidak ada sesi autentikasi atau tindakan tulis pada demo ini.
         </span>
       </div>
 
@@ -1436,7 +1436,7 @@ function renderReadOnlyFixture(): React.JSX.Element {
           </div>
           <blockquote className="review-quote">{fixture.source.permittedText}</blockquote>
           <dl className="detail-facts detail-facts--spacious">
-            <div><dt>Record sumber</dt><dd>{fixture.source.reportRevisionId}</dd></div>
+            <div><dt>Revisi laporan sumber</dt><dd>{fixture.source.reportRevisionId}</dd></div>
             <div><dt>Waktu diterbitkan</dt><dd><time dateTime={fixture.source.publishedAt}>{formatInstant(fixture.source.publishedAt)}</time></dd></div>
             <div><dt>Waktu diperoleh sistem</dt><dd><time dateTime={fixture.source.retrievedAt}>{formatInstant(fixture.source.retrievedAt)}</time></dd></div>
             <div><dt>Berlaku dalam fixture</dt><dd><time dateTime={fixture.source.validFrom}>{formatInstant(fixture.source.validFrom)}</time> – <time dateTime={fixture.source.validUntil}>{formatInstant(fixture.source.validUntil)}</time></dd></div>
@@ -1472,7 +1472,7 @@ function renderReadOnlyFixture(): React.JSX.Element {
             <div><span>Status independensi</span><strong>{fixture.origin.independenceStatus} · nilai fixture</strong></div>
           </div>
           <p className="review-boundary-note">
-            Jumlah dan status di sini menjelaskan record contoh saja; bukan temuan tentang sumber atau kejadian nyata.
+            Jumlah dan status di sini menjelaskan laporan contoh saja; bukan temuan tentang sumber atau kejadian nyata.
           </p>
         </section>
       </div>

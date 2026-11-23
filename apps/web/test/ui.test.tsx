@@ -440,7 +440,7 @@ test("loading, empty, and unavailable states give honest next steps", () => {
   const noMatch = renderFeed({ query: "tidak-ada" });
   const unavailable = renderFeed({ status: "unavailable", events: [] });
 
-  assert.match(loading, /Memuat record dari API/);
+  assert.match(loading, /Memuat laporan dari API/);
   assert.match(empty, /bukan pernyataan bahwa area aman/);
   assert.match(noMatch, /Tidak ada laporan yang cocok dengan pencarian dan filter ini/);
   assert.match(noMatch, /Hapus semua filter dan pencarian/);
@@ -473,8 +473,8 @@ test("loaded-page filters use contract values, preserve search, and combine with
   }).map((event) => event.event_id), ["test-weather-current"]);
 
   const defaultPage = renderFeed({ events: testOnlyEvents });
-  assert.match(defaultPage, /4 cocok dari 4 record dimuat/);
-  assert.match(defaultPage, /hanya berlaku pada 4 record yang sudah dimuat dari halaman API ini/);
+  assert.match(defaultPage, /4 cocok dari 4 laporan dimuat/);
+  assert.match(defaultPage, /hanya berlaku pada 4 laporan yang sudah dimuat dari halaman API ini/);
   assert.match(defaultPage, /bukan hitungan seluruh insiden di Jakarta/);
   assert.match(defaultPage, /name="category"/);
   assert.match(defaultPage, /name="lifecycle"/);
@@ -491,7 +491,7 @@ test("loaded-page filters use contract values, preserve search, and combine with
     query: "cuaca",
     filters: { category: "disasters_weather", lifecycle: "ongoing", freshness: "current" },
   });
-  assert.match(filteredPage, /1 cocok dari 4 record dimuat/);
+  assert.match(filteredPage, /1 cocok dari 4 laporan dimuat/);
   assert.match(filteredPage, /Uji cuaca saat ini/);
   assert.doesNotMatch(filteredPage, /Uji transportasi selesai|Uji cuaca lewat tinjau|Uji kerumunan perlu diperbarui/);
 });
@@ -514,7 +514,7 @@ test("filtered-empty state stays neutral and clear-all resets filters, search, a
     events: testOnlyEvents,
     filters: { category: "health_environmental_advisories", lifecycle: "all", freshness: "all" },
   });
-  assert.match(filteredEmpty, /0 cocok dari 4 record dimuat/);
+  assert.match(filteredEmpty, /0 cocok dari 4 laporan dimuat/);
   assert.match(filteredEmpty, /Tidak ada laporan yang cocok dengan pencarian dan filter ini/);
   assert.match(filteredEmpty, /Hasil kosong bukan pernyataan bahwa area aman\./);
   assert.match(filteredEmpty, /Hapus semua filter dan pencarian/);

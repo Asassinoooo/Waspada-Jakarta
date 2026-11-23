@@ -36,7 +36,7 @@ export function datasetBadge(datasetMode: string | undefined, sourcePreview = fa
     return {
       label: "Data contoh",
       title: "DEMO — data sintetis; bukan peringatan langsung",
-      detail: "Fixture presentasi tetap terpisah dari record API.",
+      detail: "Fixture presentasi tetap terpisah dari data API.",
       tone: "warning",
     };
   }

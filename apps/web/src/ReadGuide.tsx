@@ -86,7 +86,7 @@ export function ReadGuide({ embedded = false }: { embedded?: boolean }) {
           <li>Titik menunjukkan lokasi laporan pada ketelitian yang didukung sumber.</li>
           <li>Batas hanya ditampilkan jika penerbit mendefinisikan wilayah itu beserta cakupannya.</li>
           <li>Ruas jalan atau layanan hanya ditampilkan jika ada dukungan untuk ruas tersebut.</li>
-          <li>Laporan tanpa titik tetap ada di daftar dan ditampilkan pada tampilan seluruh peta Jakarta, tanpa pin. “Tidak dipetakan” berarti record tidak menyertakan geometri, bukan bahwa laporan tidak relevan.</li>
+          <li>Laporan tanpa titik tetap ada di daftar dan ditampilkan pada tampilan seluruh peta Jakarta, tanpa pin. “Tidak dipetakan” berarti laporan tidak menyertakan geometri, bukan bahwa laporan tidak relevan.</li>
         </ul>
         <p className="experience-caution">
           Titik tidak diperluas menjadi radius bahaya. Peta tidak menjamin rute aman, dan tidak ada laporan yang cocok bukan pernyataan bahwa wilayah aman.

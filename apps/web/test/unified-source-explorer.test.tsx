@@ -152,8 +152,8 @@ test("a context-group error preserves the loaded source group and reports partia
   assert.deepEqual(mapPoints, [[osmRecord.id, floodRecord.id]]);
   assert.match(markup, /Permintaan konteks gagal\./);
   assert.match(markup, /Open-Meteo[\s\S]*?Gagal dimuat/);
-  assert.match(markup, /OSM[\s\S]*?Ada record/);
-  assert.match(markup, /PetaBencana[\s\S]*?Ada record/);
+  assert.match(markup, /OSM[\s\S]*?Ada entri/);
+  assert.match(markup, /PetaBencana[\s\S]*?Ada entri/);
 });
 
 test("a source-group error leaves loaded regional catalog points usable", () => {
@@ -168,7 +168,7 @@ test("a source-group error leaves loaded regional catalog points usable", () => 
   });
   assert.deepEqual(mapPoints, [[quakeRecord.id]]);
   assert.match(markup, /Permintaan fasilitas gagal\./);
-  assert.match(markup, /USGS[\s\S]*?Ada record/);
+  assert.match(markup, /USGS[\s\S]*?Ada entri/);
 });
 test("the source panel keeps snapshot mode, provider times, attribution, and licence links inspectable", () => {
   const markup = renderView({ defaultPanel: "sumber" });
@@ -193,7 +193,7 @@ test("the Sumber panel shows USGS scope and its time window for an empty fetched
   assert.match(markup, /Jendela katalog USGS/);
   assert.match(markup, /Kueri katalog USGS/);
   assert.match(markup, /magnitudo ≥ 2,5/);
-  assert.match(markup, /7 hari · maksimal 30 record/);
+  assert.match(markup, /7 hari · maksimal 30 entri/);
   assert.match(markup, /104° BT–110° BT/);
   assert.match(markup, /4°–9,5° LS/);
   assert.match(markup, /bukan batas bahaya resmi atau area dampak Jakarta/);
