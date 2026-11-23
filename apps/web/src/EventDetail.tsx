@@ -233,20 +233,20 @@ function ApiEventDetail({
       {detail.status === "loading" && (
         <>
           <section className="detail-heading" aria-labelledby="detail-title">
-            <p className="section-kicker">{wording(demo, "Detail record sintetis", "Detail laporan")}</p>
+            <p className="section-kicker">{wording(demo, "Detail catatan sintetis", "Detail laporan")}</p>
             <h1 id="detail-title">{wording(demo, "Memuat detail contoh…", "Memuat detail…")}</h1>
           </section>
           <div className="state-panel state-panel--loading" role="status">
             <span className="loading-rule" aria-hidden="true" />
-            <strong>{wording(demo, "Memuat record sintetis dari API lokal…", "Memuat detail peristiwa…")}</strong>
+            <strong>{wording(demo, "Memuat catatan sintetis dari API lokal…", "Memuat detail peristiwa…")}</strong>
             <span>{wording(demo, "Data ini adalah contoh antarmuka, bukan laporan langsung.", "Ini bukan peringatan darurat.")}</span>
           </div>
         </>
       )}
       {detail.status === "not-found" && (
         <section className="state-panel" role="status">
-          <strong>{wording(demo, "Record contoh tidak ditemukan.", "Laporan tidak ditemukan.")}</strong>
-          <p>{wording(demo, "API demo tidak menyediakan record untuk ID ini.", "API tidak menyediakan laporan untuk ID ini.")}</p>
+          <strong>{wording(demo, "Catatan contoh tidak ditemukan.", "Laporan tidak ditemukan.")}</strong>
+          <p>{wording(demo, "API demo tidak menyediakan catatan untuk ID ini.", "API tidak menyediakan laporan untuk ID ini.")}</p>
           <a className="text-link" href="#peta">Kembali ke daftar</a>
         </section>
       )}
@@ -260,7 +260,7 @@ function ApiEventDetail({
       {event && (
         <>
           <section className="detail-heading" aria-labelledby="detail-title">
-            <p className="section-kicker">{wording(demo, "Detail dari API lokal · record sintetis", "Detail peristiwa")}</p>
+            <p className="section-kicker">{wording(demo, "Detail dari API lokal · catatan sintetis", "Detail peristiwa")}</p>
             <h1 id="detail-title">{event.title}</h1>
             <p>{event.summary}</p>
             {severity !== null && (
@@ -270,7 +270,7 @@ function ApiEventDetail({
               </p>
             )}
             <div className="fixture-notice" role="note">
-              {wording(demo, "Record ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta.", "Laporan ini menampilkan waktu dan sumbernya. Ini bukan peringatan darurat atau gambaran kondisi Jakarta.")}
+              {wording(demo, "Catatan ini berasal dari fixture demo sintetis. Nilai ini bukan laporan, peringatan langsung, atau gambaran kondisi Jakarta.", "Laporan ini menampilkan waktu dan sumbernya. Ini bukan peringatan darurat atau gambaran kondisi Jakarta.")}
             </div>
           </section>
 

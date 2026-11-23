@@ -31,23 +31,23 @@ const CRS84_ENVELOPE = {
   north: -5.16,
 } as const;
 const VIEW_SIZE = 500;
-const MAP_PADDING = 32;
-const REFERENCE_LATITUDE = (CRS84_ENVELOPE.south + CRS84_ENVELOPE.north) / 2;
-const LONGITUDE_SCALE = Math.cos((REFERENCE_LATITUDE * Math.PI) / 180);
-const PROJECTED_WIDTH = (CRS84_ENVELOPE.east - CRS84_ENVELOPE.west) * LONGITUDE_SCALE;
-const PROJECTED_HEIGHT = CRS84_ENVELOPE.north - CRS84_ENVELOPE.south;
-const MAP_SCALE = Math.min(
-  (VIEW_SIZE - MAP_PADDING * 2) / PROJECTED_WIDTH,
-  (VIEW_SIZE - MAP_PADDING * 2) / PROJECTED_HEIGHT,
-);
-const MAP_LEFT = (VIEW_SIZE - PROJECTED_WIDTH * MAP_SCALE) / 2;
-const MAP_TOP = (VIEW_SIZE - PROJECTED_HEIGHT * MAP_SCALE) / 2;
+/** Zoom of the whole-Jakarta view. The envelope is about 454 px tall at this zoom, inside the 500 px view. */
+const JAKARTA_VIEW_ZOOM = 9;
+const JAKARTA_VIEW_CENTER: MapCoordinate = [
+  (CRS84_ENVELOPE.west + CRS84_ENVELOPE.east) / 2,
+  (CRS84_ENVELOPE.south + CRS84_ENVELOPE.north) / 2,
+];
 
 type ProjectedPosition = [x: number, y: number];
+
+/**
+ * The whole-Jakarta view (HOSTED-39). The OpenStreetMap tiles are Web Mercator, so the pins use the same projection and
+ * each pin sits on the tile that covers its coordinate.
+ */
+export const JAKARTA_MAP_VIEW = mercatorViewAt(JAKARTA_VIEW_CENTER, JAKARTA_VIEW_ZOOM, { width: VIEW_SIZE, height: VIEW_SIZE });
+
 export function projectCRS84Position(position: PublicGeoJSONPosition): ProjectedPosition {
-  const x = MAP_LEFT + (position[0] - CRS84_ENVELOPE.west) * LONGITUDE_SCALE * MAP_SCALE;
-  const y = MAP_TOP + (CRS84_ENVELOPE.north - position[1]) * MAP_SCALE;
-  return [x, y];
+  return JAKARTA_MAP_VIEW.project(position);
 }
 
 export function positionsInGeometry(geometry: PublicGeoJSONGeometry): PublicGeoJSONPosition[] {
@@ -163,19 +163,6 @@ function MapFeature({
   );
 }
 
-function OsmTiles() {
-  return (
-    <div className="map-canvas__tiles" aria-hidden="true">
-      <img src="https://tile.openstreetmap.org/11/1631/1058.png" alt="" />
-      <img src="https://tile.openstreetmap.org/11/1632/1058.png" alt="" />
-      <img src="https://tile.openstreetmap.org/11/1633/1058.png" alt="" />
-      <img src="https://tile.openstreetmap.org/11/1631/1059.png" alt="" />
-      <img src="https://tile.openstreetmap.org/11/1632/1059.png" alt="" />
-      <img src="https://tile.openstreetmap.org/11/1633/1059.png" alt="" />
-    </div>
-  );
-}
-
 export function MapPanel(props: MapPanelProps) {
   const { selection, onReturnToList } = props;
   const legacyScreen = props.mapState === undefined && props.context === undefined && props.visibleEvents === undefined;
@@ -208,6 +195,8 @@ export function MapPanel(props: MapPanelProps) {
     : null;
   const selectedEventHasGeometry = selectedEventFeatures.length > 0;
   const selectedWholeView = selectedEvent?.location_display === "whole_view";
+  // Basemap tiles are drawn only in the loaded, non-fixture branch below.
+  const showsBaseMap = !isPresentation && mapState.status === "loaded" && visibleFeatures.length > 0;
 
   return (
     <section className="map-panel" aria-labelledby="map-title">
@@ -216,7 +205,7 @@ export function MapPanel(props: MapPanelProps) {
           <p className="section-kicker">{legacyScreen ? "Geometri yang tercatat" : "Lokasi dari laporan"}</p>
           <h2 id="map-title">{legacyScreen ? "Sketsa peta" : "Peta lokasi"}</h2>
         </div>
-        <span className="fixture-chip">Tanpa peta dasar</span>
+        {!showsBaseMap && <span className="fixture-chip">Tanpa peta dasar</span>}
       </header>
 
       <p className="map-panel__intro">
@@ -261,7 +250,7 @@ export function MapPanel(props: MapPanelProps) {
             </figcaption>
             <dl className="coordinate-row">
               <div>
-                <dt>Koordinat CRS84 pada fixture</dt>
+                <dt>Koordinat contoh</dt>
                 <dd>106.8, -6.2 → 106.81, -6.21</dd>
               </div>
               <div>
@@ -308,23 +297,28 @@ export function MapPanel(props: MapPanelProps) {
         ) : (
           <>
             <div className="map-canvas map-canvas--osm">
-              <OsmTiles />
-              <svg
-                className="geojson-map"
-                viewBox="0 0 500 500"
-                role="group"
-                aria-label="Titik lokasi yang cocok dengan daftar laporan yang dimuat"
-              >
-                {visibleFeatures.map(({ feature, event }) => (
-                  <MapFeature
-                    key={feature.id}
-                    feature={feature}
-                    event={event}
-                    selected={selectedEvent?.event_id === event.event_id && selectedEvent.version === event.version}
-                    onSelect={() => onSelectApiEvent(event, feature.id)}
-                  />
-                ))}
-              </svg>
+              <div className="map-canvas__stage">
+                <BasemapTiles view={JAKARTA_MAP_VIEW} className="map-canvas__tiles" tileClassName="map-canvas__tile" />
+                <svg
+                  className="geojson-map"
+                  viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
+                  role="group"
+                  aria-label="Titik lokasi yang cocok dengan daftar laporan yang dimuat"
+                >
+                  {visibleFeatures.map(({ feature, event }) => (
+                    <MapFeature
+                      key={feature.id}
+                      feature={feature}
+                      event={event}
+                      selected={selectedEvent?.event_id === event.event_id && selectedEvent.version === event.version}
+                      onSelect={() => onSelectApiEvent(event, feature.id)}
+                    />
+                  ))}
+                </svg>
+              </div>
+              <a className="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+                © OpenStreetMap contributors
+              </a>
             </div>
             <figcaption className="map-caption">
               {selectedFeature && selectedEvent ? (
@@ -392,27 +386,49 @@ export const RECORD_MAP_MIN_ZOOM = 9;
 export const RECORD_MAP_VIEW = { width: 496, height: 320 } as const;
 /** Kept clear around the fitted bounds, so markers and line strokes are not cut at the canvas edge. */
 export const RECORD_MAP_FIT_PADDING_PX = 24;
-const RECORD_MAP_TILE_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const RECORD_TILE_PX = 256;
+const BASEMAP_TILE_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const BASEMAP_TILE_PX = 256;
 const RECORD_MAP_ENVELOPE_CENTER: MapCoordinate = [
   (CRS84_ENVELOPE.west + CRS84_ENVELOPE.east) / 2,
   (CRS84_ENVELOPE.south + CRS84_ENVELOPE.north) / 2,
 ];
 
-export interface RecordMapLayout {
+/** A Web Mercator view. Basemap tiles and every projected position share its zoom and origin. */
+export interface MercatorView {
   zoom: number;
   width: number;
   height: number;
-  /** Centre of the fitted bounds; the envelope centre when nothing is drawable. */
-  center: MapCoordinate;
   /** World pixel (at `zoom`) of the view's top-left corner. */
   origin: { x: number; y: number };
   /** Base-map tiles; left/top are offsets from the view's top-left corner. */
   tiles: VisibleMapTile[];
-  /** The event point in view pixels. Null when the record has no point: no pin is invented. */
-  pin: { x: number; y: number } | null;
   /** CRS84 to view pixels, at the same zoom and origin as the tiles. */
   project: Projector;
+}
+
+/** The view centred on `center` at `zoom`. Its tiles and its projector come from the same world-pixel origin. */
+function mercatorViewAt(center: MapCoordinate, zoom: number, size: { width: number; height: number }): MercatorView {
+  const centerPixels = coordinateToWorldPixels(center, zoom);
+  const origin = { x: centerPixels.x - size.width / 2, y: centerPixels.y - size.height / 2 };
+  const project: Projector = (position) => {
+    const world = coordinateToWorldPixels([position[0], position[1]], zoom);
+    return [world.x - origin.x, world.y - origin.y];
+  };
+  return {
+    zoom,
+    width: size.width,
+    height: size.height,
+    origin,
+    tiles: getVisibleMapTiles(size.width, size.height, center, zoom),
+    project,
+  };
+}
+
+export interface RecordMapLayout extends MercatorView {
+  /** Centre of the fitted bounds; the envelope centre when nothing is drawable. */
+  center: MapCoordinate;
+  /** The event point in view pixels. Null when the record has no point: no pin is invented. */
+  pin: { x: number; y: number } | null;
 }
 
 /** What the view is fitted to: pins (Point geometries) first, every drawable position when there are no pins. */
@@ -471,23 +487,13 @@ export function layoutRecordMap(
   const anchors = focus.points.length > 0 ? focus.points : focus.positions;
   const zoom = anchors.length > 0 ? fitZoom(anchors, size) : RECORD_MAP_ZOOM;
   const center = anchors.length > 0 ? fitCentre(anchors, zoom) : RECORD_MAP_ENVELOPE_CENTER;
-  const centerPixels = coordinateToWorldPixels(center, zoom);
-  const origin = { x: centerPixels.x - size.width / 2, y: centerPixels.y - size.height / 2 };
-  const project: Projector = (position) => {
-    const world = coordinateToWorldPixels([position[0], position[1]], zoom);
-    return [world.x - origin.x, world.y - origin.y];
-  };
+  const view = mercatorViewAt(center, zoom, size);
   const firstPoint = focus.points[0];
-  const pinPosition = firstPoint === undefined ? null : project([firstPoint[0], firstPoint[1]]);
+  const pinPosition = firstPoint === undefined ? null : view.project([firstPoint[0], firstPoint[1]]);
   return {
-    zoom,
-    width: size.width,
-    height: size.height,
+    ...view,
     center,
-    origin,
-    tiles: getVisibleMapTiles(size.width, size.height, center, zoom),
     pin: pinPosition === null ? null : { x: pinPosition[0], y: pinPosition[1] },
-    project,
   };
 }
 
@@ -502,27 +508,28 @@ function recordFocusOf(drawable: readonly PublicGeometry[]): RecordMapFocus {
   return { points, positions };
 }
 
-function RecordBaseTiles({ layout }: { layout: RecordMapLayout }) {
-  const percentX = (value: number) => (value / layout.width) * 100 + "%";
-  const percentY = (value: number) => (value / layout.height) * 100 + "%";
+/** Basemap tiles for a Web Mercator view. Each tile sits at its pixel offset, sized as a share of the view. */
+function BasemapTiles({ view, className, tileClassName }: { view: MercatorView; className: string; tileClassName: string }) {
+  const percentX = (value: number) => (value / view.width) * 100 + "%";
+  const percentY = (value: number) => (value / view.height) * 100 + "%";
   return (
-    <div className="record-map__tiles" aria-hidden="true">
-      {layout.tiles.map((tile) => (
+    <div className={className} aria-hidden="true">
+      {view.tiles.map((tile) => (
         <img
           key={tile.key}
-          className="record-map__tile"
-          src={createOsmTileUrl(RECORD_MAP_TILE_TEMPLATE, tile)}
+          className={tileClassName}
+          src={createOsmTileUrl(BASEMAP_TILE_TEMPLATE, tile)}
           alt=""
-          width={RECORD_TILE_PX}
-          height={RECORD_TILE_PX}
+          width={BASEMAP_TILE_PX}
+          height={BASEMAP_TILE_PX}
           draggable={false}
           decoding="async"
           referrerPolicy="strict-origin-when-cross-origin"
           style={{
             left: percentX(tile.left),
             top: percentY(tile.top),
-            width: percentX(RECORD_TILE_PX),
-            height: percentY(RECORD_TILE_PX),
+            width: percentX(BASEMAP_TILE_PX),
+            height: percentY(BASEMAP_TILE_PX),
           }}
         />
       ))}
@@ -606,7 +613,7 @@ export function RecordMapPanel({
         ) : (
           <>
             <div className="map-canvas map-canvas--osm record-map">
-              <RecordBaseTiles layout={layout} />
+              <BasemapTiles view={layout} className="record-map__tiles" tileClassName="record-map__tile" />
               <svg
                 className="geojson-map"
                 viewBox={`0 0 ${layout.width} ${layout.height}`}

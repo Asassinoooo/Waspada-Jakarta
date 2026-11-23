@@ -409,7 +409,9 @@ test("renders earthquake empty and unavailable source outcomes independently", (
   assert.match(empty, /Respons kosong/u);
   assert.match(empty, /tidak menetapkan keselamatan atau dampak/u);
   assert.match(empty, /Kueri katalog regional · tujuh hari/u);
-  assert.match(empty, /Filter magnitudo ≥ 2,5 · hingga 30 record/u);
+  assert.match(empty, /Filter magnitudo ≥ 2,5 · hingga 30 catatan/u);
+  assert.match(empty, /Katalog tidak mengembalikan catatan pada jendela ini/u);
+  assert.doesNotMatch(empty, /\brecord\b/iu, "earthquake copy says catatan or laporan, not record (HOSTED-39)");
   assert.doesNotMatch(empty, /USGS ·/u);
 
   const unavailable = markup(createElement(EarthquakeContextCard, {
@@ -473,6 +475,8 @@ test("renders the non-demo guard and initial demo controls without fabricated so
 
 test("renders selected earthquake metadata with source timestamps and exact source link", () => {
   const html = markup(createElement(EarthquakeRecordDetails, { record: quakeRecord, fetchedAt }));
+  assert.match(html, /Buka catatan USGS/u);
+  assert.doesNotMatch(html, /\brecord\b/iu, "the USGS link and details say catatan, not record (HOSTED-39)");
   assert.match(html, /eventpage\/us7000sample/u);
   assert.match(html, /2026-10-09T03:12:00\.000Z/u);
   assert.match(html, /2026-10-10T04:59:00\.000Z/u);

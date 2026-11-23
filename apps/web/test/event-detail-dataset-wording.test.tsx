@@ -63,8 +63,9 @@ test("R-05: a live record is labelled as live data, never as synthetic or fixtur
 
 test("R-05: a demo record keeps the synthetic demo wording", () => {
   const html = renderDetail(context("demo"));
-  assert.match(html, /Detail dari API lokal · record sintetis/u);
-  assert.match(html, /Record ini berasal dari fixture demo sintetis\./u);
+  assert.match(html, /Detail dari API lokal · catatan sintetis/u);
+  assert.match(html, /Catatan ini berasal dari fixture demo sintetis\./u);
+  assert.doesNotMatch(textOf(html), /\brecord\b/iu, "the demo detail says catatan, not record (HOSTED-39)");
   assert.match(html, /<dt>Siklus<\/dt><dd>Berlangsung \(nilai fixture\)<\/dd>/u);
   assert.match(html, /Evaluasi fixture /u);
   assert.match(html, /Contoh API/u);

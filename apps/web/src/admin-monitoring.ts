@@ -467,13 +467,13 @@ function layerSummaries(
     },
     {
       layer: "L4", name: "L4 · Proyeksi publik",
-      description: "Record terbit yang dikembalikan dalam halaman pertama.",
+      description: "Laporan terbit yang dikembalikan dalam halaman pertama.",
       availability: eventResult.value ? "observed" : "unavailable",
       count: eventResult.value?.events.length ?? null,
       state: eventResult.value ? "ready" : "unavailable",
       note: eventResult.value
-        ? "Jumlah ini hanya record pada halaman pertama; cursor lanjutan tidak dimuat."
-        : "Jumlah record tidak tersedia karena halaman publik gagal dibaca.",
+        ? "Jumlah ini hanya laporan pada halaman pertama; cursor lanjutan tidak dimuat."
+        : "Jumlah laporan tidak tersedia karena halaman publik gagal dibaca.",
     },
     {
       layer: "L5", name: "L5 · Pengamatan API",
@@ -538,14 +538,14 @@ function makePublicItems(
     const evidenceSources = uniqueSourceNames(event);
     const steps: AdminStep[] = [{
       layer: "L4", state: "done", label: "Diterima dari daftar publik",
-      detail: "Record sudah menjadi proyeksi publik pada versi " + String(event.version) + ".",
+      detail: "Laporan sudah menjadi proyeksi publik pada versi " + String(event.version) + ".",
       at: event.published_at,
     }];
     return {
       id: "public:" + event.event_id + ":" + String(event.version),
       title: event.title, summary: event.summary, category: event.category, layer: "L4",
       state: "done", operationalPriority: "normal",
-      placeLabel: event.scope.places.slice(0, 4).join(", ") || "Lokasi tidak dirinci dalam record publik.",
+      placeLabel: event.scope.places.slice(0, 4).join(", ") || "Lokasi tidak dirinci dalam laporan publik.",
       geometry,
       ...(geometries.length > 1 ? { additionalGeometries: geometries.slice(1) } : {}),
       geometryBasis: geometry ? "source_supported" : "none",
@@ -559,7 +559,7 @@ function makePublicItems(
       datasetKind, observedAt: sourceObservationTime(event), fetchedAt: capturedAt,
       publishedAt: event.published_at,
       evidenceSummary: event.claims.length === 0
-        ? "Record publik tidak memuat klaim sumber dalam respons ini."
+        ? "Laporan publik tidak memuat klaim sumber dalam respons ini."
         : String(event.claims.length) + " klaim publik" + (evidenceSources.length ? "; sumber: " + evidenceSources.join(", ") : "."),
       publicStatus: {
         lifecycle: event.lifecycle, freshness: event.freshness,
@@ -603,7 +603,7 @@ function createPublicSnapshot(input: {
       "Mode dataset server dan label dataset ditampilkan dari /api/v1/context; keduanya terpisah dari status koneksi.",
       "Jumlah antrean, aktivitas internal, model/token, investigasi, moderator, dan telemetry server tidak tersedia melalui endpoint ini.",
       "Durasi request adalah pengukuran browser hingga respons tervalidasi, bukan latency server atau performa model.",
-      "Geometry hanya ditampilkan jika event_id dan version persis cocok dengan record pada halaman yang dimuat.",
+      "Geometry hanya ditampilkan jika event_id dan version persis cocok dengan laporan pada halaman yang dimuat.",
       "Hasil kosong, geometri kosong, atau sumber yang tidak tercantum bukan bukti bahwa suatu lokasi aman atau layanan lengkap.",
       "Halaman pertama saja dimuat; cursor lanjutan tidak diikuti dan tidak ada request detail per event.",
     ],
