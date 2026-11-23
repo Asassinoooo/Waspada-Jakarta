@@ -125,7 +125,7 @@ export function createPublicEventGeoJSONRuntime(
   };
 }
 
-async function readCollection(
+export async function readCollection(
   executor: SqlExecutor,
   query: PublicGeoJSONQuery,
 ): Promise<PublicFeatureCollection> {

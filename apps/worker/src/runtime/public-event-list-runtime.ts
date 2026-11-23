@@ -3,7 +3,10 @@ import { createPublicEventListRepository } from "../../../db/src/public-event-li
 import { createPublicEventSnapshotRepository } from "../../../db/src/public-event-snapshot.js";
 import { createPublicProjectionLookupRepository } from "../../../db/src/public-projection-lookups.js";
 import type { SqlExecutor } from "../../../db/src/sql.js";
-import { createPublicEventListCursorCodec } from "../layers/l4-application-integration/public-event-list-cursor.js";
+import {
+  createPublicEventListCursorCodec,
+  type PublicEventListCursorCodec,
+} from "../layers/l4-application-integration/public-event-list-cursor.js";
 import {
   createPublicEventListPageService,
   type PublicEventListPageService,
@@ -79,6 +82,22 @@ export async function createPublicEventListRuntime(
   });
 
   return createPublicEventListPageService({ projection, cursorCodec });
+}
+
+/**
+ * PERF-03: the cursor codec the KV snapshot's list pages use. It shares this module's key import and the same clock
+ * contract as the DB page service, so a snapshot page issues and verifies exactly the cursors the DB path does.
+ */
+export async function createPublicEventListCursorCodecForKey(
+  cursorHmacKeyHex: unknown,
+  now: () => number = Date.now,
+): Promise<PublicEventListCursorCodec | undefined> {
+  if (!isValidCursorSecret(cursorHmacKeyHex)) return undefined;
+  try {
+    return createPublicEventListCursorCodec({ key: await importCursorKey(cursorHmacKeyHex), now });
+  } catch {
+    return undefined;
+  }
 }
 
 export function isValidHyperdriveConnectionString(value: unknown): value is string {
