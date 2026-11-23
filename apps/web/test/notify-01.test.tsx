@@ -187,7 +187,7 @@ test("NOTIFY-01: the settings card explains each state and only offers to turn o
     }));
   const off = render({ permission: "default" });
   assert.ok(off.includes(NOTIFY_INTRO) && off.includes(NOTIFY_TAB_NOTE) && off.includes(NOTIFY_NOT_EMERGENCY));
-  assert.match(off, /<button type="button" class="button button--primary">Aktifkan notifikasi<\/button>/u);
+  assert.match(off, /<button type="button" class="button">Aktifkan notifikasi<\/button>/u);
   assert.match(render({ permission: "unsupported" }), /tidak mendukung notifikasi/u);
   assert.match(render({ permission: "default", live: false }), /bukan data contoh/u);
   assert.match(render({ permission: "default", hasInterests: false }), /Simpan minimal satu minat/u);

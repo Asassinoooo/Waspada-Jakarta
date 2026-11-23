@@ -116,7 +116,7 @@ export function NotificationSettings({ storage, hasInterests, live, permission: 
           ) : (
             <button
               type="button"
-              className="button button--primary"
+              className="button"
               onClick={() => void turnOn()}
               disabled={busy || status !== "off"}
             >
