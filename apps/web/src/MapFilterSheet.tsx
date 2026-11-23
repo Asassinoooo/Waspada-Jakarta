@@ -4,11 +4,13 @@ import { Sheet } from "./ui/Sheet.js";
 import {
   DEFAULT_PUBLISHED_FILTERS,
   FILTER_CATEGORIES,
+  RECENCY_OPTIONS,
   SOURCE_OPTIONS,
   TIME_RANGE_OPTIONS,
   categoryText,
   type EventTimeRange,
   type EvidenceKind,
+  type PublicationRecency,
   type PublishedFilters,
 } from "./published-events.js";
 
@@ -18,13 +20,15 @@ export interface MapFilterValue {
   facilityKinds: readonly EmergencyFacilityKind[];
 }
 
+/** MAP-RECENT-01 (owner, 23 Nov 2026): the map opens on events published or updated in the last 24 hours. */
 export const DEFAULT_MAP_FILTER_VALUE: MapFilterValue = {
-  filters: DEFAULT_PUBLISHED_FILTERS,
+  filters: { ...DEFAULT_PUBLISHED_FILTERS, recency: "24h" },
   facilitiesOn: false,
   facilityKinds: ["hospital", "police", "fire_station"],
 };
 
 export const FACILITY_NOTE = "Lokasi fasilitas dari OSM; tidak menunjukkan kesiapan layanan.";
+export const RECENCY_NOTE = "Waktu laporan terbit atau terakhir diperbarui di Waspada, bukan waktu kejadian.";
 export const TIME_NOTE = "Laporan tanpa waktu kejadian yang diketahui hanya tampil pada Semua waktu.";
 
 const FACILITY_OPTIONS: readonly { kind: EmergencyFacilityKind; label: string }[] = [
@@ -86,6 +90,24 @@ export function MapFilterSheet({ applied, onApply, onClose }: MapFilterSheetProp
             </button>
           ))}
         </div>
+      </fieldset>
+
+      <fieldset className="map-filter__group">
+        <legend>Terbit atau diperbarui</legend>
+        <div className="map-filter__chips">
+          {RECENCY_OPTIONS.map((option: { value: PublicationRecency; label: string }) => (
+            <button
+              key={option.value}
+              type="button"
+              className="filter-pill"
+              aria-pressed={draft.filters.recency === option.value}
+              onClick={() => setFilter("recency", option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="map-filter__note muted">{RECENCY_NOTE}</p>
       </fieldset>
 
       <fieldset className="map-filter__group">

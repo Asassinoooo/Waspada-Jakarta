@@ -165,3 +165,12 @@ UI-V3 refines the look without changing markup or class names, so the UI-V2 prim
 - **Motion:** all of it is token-driven. Under `prefers-reduced-motion`, `--duration-*` become 0.
 - **Caching:** `public/_headers` caches `/assets/*` and `/fonts/*` for a year as immutable (hashed file names).
 - **Copy:** the remaining English words in public screens are gone: "username" became "nama pengguna", and "event publik" became "kejadian publik".
+
+## MAP-RECENT-01: the map opens on the last 24 hours (owner, 23 Nov 2026)
+
+- `#peta` opens with the filter "Terbit atau diperbarui: 24 jam terakhir". It keeps an event when the `published_at` of its current public version is within 24 hours of the page clock. An update publishes a new version, so an older event that was updated recently stays visible. This is the publication time on Waspada, never the event time; the event-time filter ("Waktu kejadian") is separate and unchanged.
+- The window is not counted as an active filter. It is stated instead: a line at the top of the list, and a caption under the toolbar while the list panel is closed. Both give the number of older events hidden. "Tampilkan semua (N lebih lama)" in the list, or "Kapan saja" in the filter sheet, shows every published event. Reset returns to 24 hours.
+- An empty window says "Tidak ada laporan yang terbit atau diperbarui dalam 24 jam terakhir." and keeps the note that an empty result does not mean nothing happened. It never says the area is safe.
+- A shared link (`#peta?event=<id>`) to an older event switches to "Kapan saja", so the linked event is always shown.
+- The first screen keeps at most five controls (search, Filter, Daftar, zoom in, zoom out), so the window has no separate toolbar button.
+- The page clock moves every minute, so an open page drops events that age out of the window. Other lists (Pembaruan, Ringkasan) and the mobile app are unchanged.

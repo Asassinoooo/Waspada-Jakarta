@@ -8,6 +8,9 @@ import { EventDetail } from "../src/EventDetail.js";
 import { MapHome } from "../src/MapHome.js";
 import { countIndependentSources, publicationPathText, sourceCountText, sourceNamesOf } from "../src/published-events.js";
 
+/** MAP-RECENT-01: the map defaults to events published or updated in the last 24 hours; this clock sits inside that window. */
+const FIXTURE_NOW = Date.parse("2026-11-10T12:00:00.000Z");
+
 /** MERGE-REVIEW-01 (kept through UI-V2-B): the public map home shows published public events only, each with its own named sources. */
 
 function publishedEvent(overrides: Record<string, unknown> = {}): EventView {
@@ -56,7 +59,7 @@ test("a published event counts its distinct named sources and carries no invente
   const event = publishedEvent();
   assert.deepEqual(sourceNamesOf(event), ["Detik News", "Antara News"]);
   assert.equal(sourceCountText(sourceNamesOf(event).length), "2 sumber");
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event] }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event] }));
   assert.match(html, /2 sumber/);
   assert.doesNotMatch(html, /Laporan Terverifikasi|Terverifikasi Independen|Laporan Publik Terverifikasi/);
   assert.doesNotMatch(html, /waspada\.jakarta\.go\.id/, "no invented source URL");
@@ -75,7 +78,7 @@ test("the publication path is stated only when the API gives one", () => {
 });
 
 test("the map home intro states the publication path and claims neither verification nor corroboration", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [publishedEvent()] }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [publishedEvent()] }));
   assert.match(html, /Hanya laporan yang sudah terbit/);
   assert.match(html, /bukan hasil pemeriksaan atau verifikasi otomatis/);
   assert.doesNotMatch(html, /terverifikasi|verifikasi multi-sumber|independen|terkonfirmasi/iu);
@@ -118,7 +121,7 @@ test("the public map reads only the published events endpoint, never the moderat
 });
 
 test("the public map home keeps internal wording out of the public copy", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [publishedEvent()] }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [publishedEvent()] }));
   assert.doesNotMatch(html, /fixture|cursor|polling/iu);
 });
 
@@ -146,7 +149,7 @@ test("a syndicated copy with the same title is labelled as a copy and is not cou
   assert.deepEqual(countIndependentSources(event), { outlets: 1, copies: 1 });
   const { outlets, copies } = countIndependentSources(event);
   assert.equal(sourceCountText(outlets, copies), "1 sumber (1 salinan)");
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event] }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event] }));
   assert.match(html, /1 sumber \(1 salinan\)/);
 });
 
