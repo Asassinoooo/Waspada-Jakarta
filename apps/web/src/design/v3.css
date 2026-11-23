@@ -544,3 +544,84 @@ time,
 @media (max-width: 600px) {
   .notify-card { grid-template-columns: 1fr; padding: var(--space-4); }
 }
+/* ---------- AUTH-RESET-01: reset code (admin) and the #lupa-sandi page ---------- */
+
+.account-form__link {
+  align-self: center;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-underline-offset: 0.2em;
+}
+
+.reset-steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  counter-reset: reset-step;
+}
+
+.reset-steps li {
+  position: relative;
+  padding-left: 2.5rem;
+  line-height: 1.5;
+  counter-increment: reset-step;
+}
+
+.reset-steps li::before {
+  content: counter(reset-step);
+  position: absolute;
+  top: -0.1rem;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.reset-code {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+}
+
+.reset-code__issue { justify-self: start; }
+
+.reset-code__issued {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(100% 140% at 100% 0%, color-mix(in srgb, var(--color-accent-soft) 90%, transparent), transparent 60%),
+    var(--color-surface-raised);
+  animation: v3-rise var(--duration-slow) var(--ease-out-expo) both;
+}
+
+.reset-code__issued p { margin: 0; }
+.reset-code__label { font-size: var(--text-sm); color: var(--color-text-muted); }
+
+.reset-code__value {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.125rem);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  user-select: all;
+}
+
+.reset-code__meta { font-size: var(--text-sm); line-height: 1.5; }
+
+.reset-done h2 { letter-spacing: var(--tracking-tight); }

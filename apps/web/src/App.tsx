@@ -12,7 +12,7 @@ import { UpdatesCenter } from "./UpdatesCenter.js";
 import { useInterestNotifications } from "./useInterestNotifications.js";
 import type { MapSelection } from "./MapPanel.js";
 import { HelpPage } from "./HelpPage.js";
-import { AccountAccessGate, AccountPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
+import { AccountAccessGate, AccountPage, PasswordResetPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
 import { accountClient, type AccountReturnTarget } from "./account-client.js";
 import { SiteFooter, SiteHeader } from "./AppShell.js";
 import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
@@ -27,6 +27,7 @@ export type Route =
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "login"; returnTo?: AccountReturnTarget }
+  | { screen: "password-reset" }
   | { screen: "onboarding" }
   | { screen: "account" }
   | { screen: "admin-workspace"; initialTab: AdminTab }
@@ -149,6 +150,8 @@ export function routeFromHash(hash: string): Route {
   const adminTab = adminWorkspaceTabFromHash(hash);
   if (adminTab !== null) return { screen: "admin-workspace", initialTab: adminTab };
   if (hash === "#masuk") return { screen: "login" };
+  // AUTH-RESET-01: reset with a one-time code from an administrator.
+  if (hash === "#lupa-sandi") return { screen: "password-reset" };
   if (hash.startsWith("#masuk?")) {
     const params = new URLSearchParams(hash.slice("#masuk?".length));
     const returnTo = params.get("return_to");
@@ -493,6 +496,7 @@ export function App() {
       )}
       {route.screen === "preferences" && <Preferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />}
       {route.screen === "updates" && <UpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />}
+      {route.screen === "password-reset" && <PasswordResetPage />}
       {route.screen === "login" && <AccountPage screen="login" sessionState={sessionState} returnTo={route.returnTo} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
       {route.screen === "onboarding" && <AccountPage screen="onboarding" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
       {route.screen === "account" && <AccountPage screen="account" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}

@@ -169,8 +169,9 @@ export function PrivacyPage({ embedded = false, storage, onCleared }: PrivacyPag
           browser dan tidak dikirim saat masuk.
         </p>
         <p>
-          Belum ada fitur lupa kata sandi. Jika kata sandi hilang, layanan tidak dapat memulihkannya
-          secara mandiri.
+          Lupa kata sandi: karena akun username tidak menyimpan email, minta kode reset sekali pakai kepada
+          administrator, lalu buka <a className="text-link" href="#lupa-sandi">Lupa kata sandi</a>. Kode berlaku 30
+          menit; layanan hanya menyimpan hash kode, dan pemakaian kode mencabut semua sesi akun tersebut.
         </p>
         <a className="text-link" href="#akun">Periksa halaman akun</a>
       </section>

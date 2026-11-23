@@ -5,7 +5,10 @@ export type AccountRole = 'user' | 'moderator' | 'admin';
 export type AccountChannel = 'web' | 'mobile';
 
 /** Server-side throttle scopes. Client and username keys are hashed before storage. */
-export type AccountThrottleScope = 'register' | 'login_client' | 'login_username';
+export type AccountThrottleScope = 'register' | 'login_client' | 'login_username' | 'password_reset';
+
+/** Bounds for one-time reset codes (AUTH-RESET-01). The code itself is hashed by the worker before it reaches the store. */
+export const PASSWORD_RESET_CODE_MAX_FAILED_ATTEMPTS = 5;
 
 export class AccountUsernameTakenError extends Error {
   readonly code = 'username_taken' as const;
@@ -95,12 +98,48 @@ export interface SetPasswordHashInput {
   readonly keepTokenSha256: string;
 }
 
+export interface IssuePasswordResetCodeInput {
+  readonly actorAccountId: string;
+  readonly targetAccountId: string;
+  /** PBKDF2 hash of the generated code. The clear code never reaches the store. */
+  readonly codeHash: string;
+  readonly reason: string;
+  readonly now: string;
+  readonly expiresAt: string;
+}
+
+export type IssuePasswordResetCodeResult =
+  | { readonly outcome: 'issued'; readonly username: string; readonly expiresAt: string }
+  | { readonly outcome: 'forbidden' }
+  | { readonly outcome: 'not_found' }
+  | { readonly outcome: 'conflict' };
+
+export interface ConsumePasswordResetCodeInput {
+  /** Normalised username, or null when the submitted username is not in the stored format. */
+  readonly username: string | null;
+  readonly now: string;
+  /**
+   * Checks the submitted code against the stored hash in constant time. It runs inside the row lock, so
+   * concurrent guesses are counted one at a time. It is called with null when no live code exists, so
+   * every request pays the same hashing cost.
+   */
+  readonly verifyCode: (storedHash: string | null) => Promise<boolean>;
+  /** Called only after a correct, live code, so wrong guesses never pay for the new password hash. */
+  readonly hashNewPassword: () => Promise<string>;
+}
+
+export type ConsumePasswordResetCodeResult =
+  | { readonly outcome: 'reset'; readonly accountId: string }
+  | { readonly outcome: 'rejected' };
+
 export interface AccountStore {
   readonly datasetMode: AccountDatasetMode;
   createPasswordAccount(input: CreatePasswordAccountInput): Promise<StoredAccount>;
   findPasswordCredentialByUsername(username: string): Promise<StoredPasswordCredential | null>;
   findPasswordCredentialByAccountId(accountId: string): Promise<StoredPasswordCredential | null>;
   setPasswordHash(input: SetPasswordHashInput): Promise<boolean>;
+  issuePasswordResetCode(input: IssuePasswordResetCodeInput): Promise<IssuePasswordResetCodeResult>;
+  consumePasswordResetCode(input: ConsumePasswordResetCodeInput): Promise<ConsumePasswordResetCodeResult>;
   createSession(input: CreateAccountSessionInput): Promise<StoredAccount>;
   readSession(tokenSha256: string, now: string): Promise<StoredAccountSession | null>;
   revokeSession(tokenSha256: string, now: string): Promise<boolean>;
@@ -138,6 +177,25 @@ interface SessionRow extends AccountRow {
   session_revoked_at: string | Date | null;
   idle_expires_at: string | Date;
   absolute_expires_at: string | Date;
+}
+
+interface PasswordResetTargetRow {
+  account_id: string;
+  role: AccountRole;
+  active: boolean;
+  onboarding_version: number;
+  version: number;
+  username: string | null;
+  has_password: boolean;
+}
+
+interface PasswordResetCodeRow {
+  reset_id: string;
+  code_hash: string;
+  failed_attempts: number;
+  expires_at: string | Date;
+  account_id: string;
+  active: boolean;
 }
 
 const usernamePattern = /^[a-z0-9_.]{3,32}$/u;
@@ -279,6 +337,146 @@ export function createAccountStore(
           [datasetMode, input.accountId, input.now, input.keepTokenSha256],
         );
         return true;
+      });
+    },
+
+    async issuePasswordResetCode(input) {
+      requireUuid(input.actorAccountId, 'actor');
+      requireUuid(input.targetAccountId, 'target');
+      if (!passwordHashPattern.test(input.codeHash)) throw new TypeError('Reset code hash is invalid.');
+      requireTimestamp(input.now);
+      requireTimestamp(input.expiresAt);
+      if (timestamp(input.expiresAt) <= timestamp(input.now)) {
+        throw new TypeError('Reset code must expire after it is issued.');
+      }
+      const reason = normalizeReason(input.reason);
+      if (input.actorAccountId === input.targetAccountId) return { outcome: 'conflict' };
+
+      return inTransaction(async (transaction) => {
+        const locked = await transaction.query<PasswordResetTargetRow>(
+          `SELECT account_id::text, role, active, onboarding_version, version,
+                  username, password_hash IS NOT NULL AS has_password
+           FROM waspada.accounts
+           WHERE dataset_mode = $1 AND account_id IN ($2::uuid, $3::uuid)
+           ORDER BY account_id ASC
+           FOR UPDATE`,
+          [datasetMode, input.actorAccountId, input.targetAccountId],
+        );
+        const actor = locked.rows.find((row) => row.account_id === input.actorAccountId);
+        const target = locked.rows.find((row) => row.account_id === input.targetAccountId);
+        if (!actor || actor.role !== 'admin' || !actor.active || actor.onboarding_version !== 1) {
+          return { outcome: 'forbidden' };
+        }
+        if (!target || !target.has_password || target.username === null) return { outcome: 'not_found' };
+        if (!target.active) return { outcome: 'conflict' };
+
+        // One unused code per account: the older unused code is burned before the new one is stored.
+        await transaction.query(
+          `UPDATE waspada.password_reset_codes SET used_at = $3
+           WHERE dataset_mode = $1 AND account_id = $2::uuid AND used_at IS NULL`,
+          [datasetMode, input.targetAccountId, input.now],
+        );
+        // Retention: a code that was used or expired more than a day ago loses its hash, in a bounded batch.
+        // It runs here, on the admin issue path, so the login path never depends on this table.
+        await transaction.query(
+          `WITH stale AS (
+             SELECT reset_id FROM waspada.password_reset_codes
+             WHERE dataset_mode = $1
+               AND COALESCE(used_at, expires_at) <= $2::timestamptz - interval '1 day'
+             ORDER BY COALESCE(used_at, expires_at)
+             LIMIT 50
+           )
+           DELETE FROM waspada.password_reset_codes AS c
+           USING stale WHERE c.reset_id = stale.reset_id`,
+          [datasetMode, input.now],
+        );
+        await transaction.query(
+          `INSERT INTO waspada.password_reset_codes (
+             dataset_mode, account_id, issued_by_account_id, code_hash, created_at, expires_at
+           ) VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6)`,
+          [datasetMode, input.targetAccountId, input.actorAccountId, input.codeHash, input.now, input.expiresAt],
+        );
+        // The audit row names the actor, the target and the reason. It never carries the code.
+        await transaction.query(
+          `INSERT INTO waspada.account_admin_audit (
+             dataset_mode, actor_kind, actor_account_id, target_account_id,
+             action, reason, actor_role_at_action, target_role_before,
+             target_role_after, target_active_before, target_active_after,
+             expected_version, target_version_after, occurred_at
+           ) VALUES ($1, 'admin', $2::uuid, $3::uuid, 'password_reset_code_issued', $4,
+                    'admin', $5, $5, $6, $6, NULL, $7, $8)`,
+          [datasetMode, input.actorAccountId, input.targetAccountId, reason,
+            target.role, target.active, target.version, input.now],
+        );
+        return { outcome: 'issued', username: target.username, expiresAt: input.expiresAt };
+      });
+    },
+
+    async consumePasswordResetCode(input) {
+      requireTimestamp(input.now);
+      const username = input.username !== null && usernamePattern.test(input.username) ? input.username : null;
+      if (username === null) {
+        // Same hashing cost as a live code, so an unknown username is not answered faster than a wrong code.
+        await input.verifyCode(null);
+        return { outcome: 'rejected' };
+      }
+      return inTransaction(async (transaction) => {
+        // At most one unused code exists per account, and the row lock serialises concurrent guesses.
+        const rows = await transaction.query<PasswordResetCodeRow>(
+          `SELECT r.reset_id::text, r.code_hash, r.failed_attempts, r.expires_at,
+                  a.account_id::text, a.active
+           FROM waspada.password_reset_codes AS r
+           JOIN waspada.accounts AS a
+             ON a.account_id = r.account_id AND a.dataset_mode = r.dataset_mode
+           WHERE r.dataset_mode = $1 AND a.username = $2
+             AND a.password_hash IS NOT NULL AND r.used_at IS NULL
+           FOR UPDATE OF r`,
+          [datasetMode, username],
+        );
+        const row = rows.rows[0];
+        const matches = await input.verifyCode(row?.code_hash ?? null);
+        if (!row) return { outcome: 'rejected' };
+        if (timestamp(row.expires_at) <= timestamp(input.now)) {
+          await transaction.query(
+            'UPDATE waspada.password_reset_codes SET used_at = $2 WHERE reset_id = $1::uuid',
+            [row.reset_id, input.now],
+          );
+          return { outcome: 'rejected' };
+        }
+        if (!matches) {
+          // The fifth wrong attempt burns the code. A correct code after that is refused.
+          await transaction.query(
+            `UPDATE waspada.password_reset_codes
+             SET failed_attempts = failed_attempts + 1,
+                 used_at = CASE WHEN failed_attempts + 1 >= $3 THEN $2::timestamptz ELSE used_at END
+             WHERE reset_id = $1::uuid`,
+            [row.reset_id, input.now, PASSWORD_RESET_CODE_MAX_FAILED_ATTEMPTS],
+          );
+          return { outcome: 'rejected' };
+        }
+        if (!row.active) return { outcome: 'rejected' };
+
+        const newPasswordHash = await input.hashNewPassword();
+        if (!passwordHashPattern.test(newPasswordHash)) throw new TypeError('Password hash is invalid.');
+        await transaction.query(
+          'UPDATE waspada.password_reset_codes SET used_at = $2 WHERE reset_id = $1::uuid',
+          [row.reset_id, input.now],
+        );
+        const updated = await transaction.query<{ account_id: string }>(
+          `UPDATE waspada.accounts
+           SET password_hash = $3, updated_at = $4
+           WHERE dataset_mode = $1 AND account_id = $2::uuid AND active AND password_hash IS NOT NULL
+           RETURNING account_id::text`,
+          [datasetMode, row.account_id, newPasswordHash, input.now],
+        );
+        if (!updated.rows[0]) throw new Error('Password reset target changed during the transaction.');
+        // Every session of the account ends, including any session that presented the code.
+        await transaction.query(
+          `UPDATE waspada.account_sessions SET revoked_at = $2
+           WHERE dataset_mode = $1 AND account_id = $3::uuid AND revoked_at IS NULL`,
+          [datasetMode, input.now, row.account_id],
+        );
+        return { outcome: 'reset', accountId: row.account_id };
       });
     },
 

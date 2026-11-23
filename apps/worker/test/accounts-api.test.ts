@@ -10,8 +10,12 @@ import type {
   AccountDatasetMode,
   AccountStore,
   AccountThrottleScope,
+  ConsumePasswordResetCodeInput,
+  ConsumePasswordResetCodeResult,
   CreatePasswordAccountInput,
   CreateAccountSessionInput,
+  IssuePasswordResetCodeInput,
+  IssuePasswordResetCodeResult,
   SetPasswordHashInput,
   StoredAccount,
   StoredAccountSession,
@@ -233,6 +237,217 @@ test('admin list and role changes require a completed admin session, CSRF, and a
     'admin role changes revoke the target sessions');
 });
 
+// AUTH-RESET-01: an administrator issues a one-time code, and the person resets the password without a session.
+
+const resetNewPassword = 'sandi-reset-2026';
+const resetCodeExpiryMs = 30 * 60_000;
+const resetCodePattern = /^[0-9A-HJKMNP-TV-Z]{10}$/u;
+
+type Harness = ReturnType<typeof createHarness>;
+interface IssuedResetCode { readonly code: string; readonly expires_at: string; readonly username: string }
+
+async function seedResetFixture(harness: Harness, targetUsername: string): Promise<void> {
+  await harness.seed('admin.reset', startPassword, { role: 'admin', onboardingCompleted: true });
+  await harness.seed(targetUsername, startPassword, { role: 'user' });
+}
+
+async function loginAdminForReset(harness: Harness): Promise<{ cookie: string; csrf: string }> {
+  const response = await harness.post('/api/v1/auth/login', { username: 'admin.reset', password: startPassword }, { origin: appOrigin, marker: true, client: 'admin-reset' });
+  assert.equal(response.status, 200);
+  return { cookie: cookieFrom(response), csrf: ((await response.json()) as SessionBody).csrf_token ?? '' };
+}
+
+async function issueResetCodeFor(harness: Harness, admin: { cookie: string; csrf: string }, targetUsername: string): Promise<IssuedResetCode> {
+  const target = harness.store.findByUsername(targetUsername);
+  assert.ok(target, 'the target account exists');
+  const response = await harness.request(`/api/v1/account/users/${target.account.id}/password-reset-code`, {
+    method: 'POST', cookie: admin.cookie, headers: { origin: appOrigin, 'x-csrf-token': admin.csrf },
+  });
+  assert.equal(response.status, 200);
+  return await response.json() as IssuedResetCode;
+}
+
+function requestReset(
+  harness: Harness,
+  body: unknown,
+  options: { origin?: string; marker?: boolean; client?: string } = { origin: appOrigin, marker: true },
+): Promise<Response> {
+  return harness.post('/api/v1/auth/password-reset', body, options);
+}
+
+/** Same length, one character different, and a valid Crockford symbol, so it is a wrong code rather than a malformed one. */
+function wrongCodeFor(code: string): string {
+  return `${code.charAt(0) === '0' ? '1' : '0'}${code.slice(1)}`;
+}
+
+test('an administrator issues a one-time code; the reset ends every session, keeps the role, and the code works once', async () => {
+  const harness = createHarness();
+  await seedResetFixture(harness, 'warga.reset');
+  const admin = await loginAdminForReset(harness);
+  const deviceA = await harness.post('/api/v1/auth/login', { username: 'warga.reset', password: startPassword }, { origin: appOrigin, marker: true, client: 'device-a' });
+  const deviceB = await harness.post('/api/v1/auth/login', { username: 'warga.reset', password: startPassword }, { origin: appOrigin, marker: true, client: 'device-b' });
+  const cookieA = cookieFrom(deviceA);
+  const cookieB = cookieFrom(deviceB);
+
+  const issued = await issueResetCodeFor(harness, admin, 'warga.reset');
+  assert.match(issued.code, resetCodePattern, 'the code is ten Crockford base32 characters');
+  assert.equal(issued.username, 'warga.reset');
+  assert.equal(issued.expires_at, new Date(baseTime + resetCodeExpiryMs).toISOString(), 'the code lasts 30 minutes');
+  assert.equal(JSON.stringify(harness.store.auditRows).includes(issued.code), false, 'the audit trail never holds the code');
+  assert.equal(JSON.stringify([...harness.store.resetCodes.values()]).includes(issued.code), false, 'only a hash of the code is stored');
+  const adminId = harness.store.findByUsername('admin.reset')?.account.id;
+  const targetId = harness.store.findByUsername('warga.reset')?.account.id;
+  assert.deepEqual(
+    harness.store.auditRows.map(({ action, actorAccountId, targetAccountId }) => ({ action, actorAccountId, targetAccountId })),
+    [{ action: 'password_reset_code_issued', actorAccountId: adminId, targetAccountId: targetId }],
+  );
+
+  const reset = await requestReset(harness, { username: 'warga.reset', code: issued.code, new_password: resetNewPassword });
+  assert.equal(reset.status, 204);
+  assert.equal(reset.headers.get('set-cookie'), null, 'a reset starts no session');
+  for (const cookie of [cookieA, cookieB]) {
+    assert.equal((await harness.request('/api/v1/account/users', { cookie })).status, 401, 'every earlier session of the account has ended');
+  }
+
+  const reused = await requestReset(harness, { username: 'warga.reset', code: issued.code, new_password: 'sandi-lain-2026' });
+  assert.equal(reused.status, 400);
+  assert.equal(((await reused.json()) as { code: string }).code, 'invalid_reset_code', 'a used code is refused');
+
+  const oldPassword = await harness.post('/api/v1/auth/login', { username: 'warga.reset', password: startPassword }, { origin: appOrigin, marker: true, client: 'device-c' });
+  assert.equal(oldPassword.status, 401, 'the old password no longer works');
+  const newPassword = await harness.post('/api/v1/auth/login', { username: 'warga.reset', password: resetNewPassword }, { origin: appOrigin, marker: true, client: 'device-d' });
+  assert.equal(newPassword.status, 200);
+  assert.equal(((await newPassword.json()) as SessionBody).user?.role, 'user', 'the reset never changes the role');
+});
+
+test('a correct code is refused once it has expired, and the password stays unchanged', async () => {
+  const harness = createHarness();
+  await seedResetFixture(harness, 'warga.kedaluwarsa');
+  const admin = await loginAdminForReset(harness);
+  const issued = await issueResetCodeFor(harness, admin, 'warga.kedaluwarsa');
+
+  harness.advance(resetCodeExpiryMs);
+  const expired = await requestReset(harness, { username: 'warga.kedaluwarsa', code: issued.code, new_password: resetNewPassword });
+  assert.equal(expired.status, 400);
+  assert.equal(((await expired.json()) as { code: string }).code, 'invalid_reset_code');
+
+  const stillOld = await harness.post('/api/v1/auth/login', { username: 'warga.kedaluwarsa', password: startPassword }, { origin: appOrigin, marker: true, client: 'device-a' });
+  assert.equal(stillOld.status, 200, 'an expired code changes nothing');
+});
+
+test('four wrong codes leave the fifth attempt open; five wrong codes burn the code for good', async () => {
+  {
+    const harness = createHarness();
+    await seedResetFixture(harness, 'warga.tebakan');
+    const issued = await issueResetCodeFor(harness, await loginAdminForReset(harness), 'warga.tebakan');
+    const weak = await requestReset(harness, { username: 'warga.tebakan', code: issued.code, new_password: 'pendek' });
+    assert.equal(weak.status, 400);
+    assert.equal(((await weak.json()) as { code: string }).code, 'password_too_short', 'a weak new password is refused before any code is checked');
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const wrong = await requestReset(harness, { username: 'warga.tebakan', code: wrongCodeFor(issued.code), new_password: resetNewPassword });
+      assert.equal(wrong.status, 400);
+    }
+    const fifth = await requestReset(harness, { username: 'warga.tebakan', code: issued.code, new_password: resetNewPassword });
+    assert.equal(fifth.status, 204, 'the fifth attempt with the right code still succeeds');
+  }
+  {
+    const harness = createHarness();
+    await seedResetFixture(harness, 'warga.terkunci');
+    const issued = await issueResetCodeFor(harness, await loginAdminForReset(harness), 'warga.terkunci');
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const wrong = await requestReset(harness, { username: 'warga.terkunci', code: wrongCodeFor(issued.code), new_password: resetNewPassword });
+      assert.equal(wrong.status, 400);
+    }
+    const correctAfterBurn = await requestReset(harness, { username: 'warga.terkunci', code: issued.code, new_password: resetNewPassword });
+    assert.equal(correctAfterBurn.status, 400, 'the fifth wrong attempt burns the code, so the right one fails too');
+    assert.equal(((await correctAfterBurn.json()) as { code: string }).code, 'invalid_reset_code');
+  }
+});
+
+test('issuing a code needs an administrator, the exact Origin, and the session CSRF token', async () => {
+  const harness = createHarness();
+  await seedResetFixture(harness, 'warga.akses');
+  const admin = await loginAdminForReset(harness);
+  const target = harness.store.findByUsername('warga.akses');
+  const adminId = harness.store.findByUsername('admin.reset')?.account.id;
+  assert.ok(target && adminId);
+  const user = await harness.post('/api/v1/auth/login', { username: 'warga.akses', password: startPassword }, { origin: appOrigin, marker: true, client: 'user' });
+  const userCsrf = ((await user.json()) as SessionBody).csrf_token ?? '';
+  const attempt = (cookie: string | undefined, headers: Record<string, string>, path = `/api/v1/account/users/${target.account.id}/password-reset-code`) =>
+    harness.request(path, { method: 'POST', cookie, headers });
+
+  assert.equal((await attempt(cookieFrom(user), { origin: appOrigin, 'x-csrf-token': userCsrf })).status, 403, 'a plain user is refused');
+  assert.equal((await attempt(admin.cookie, { 'x-csrf-token': admin.csrf })).status, 403, 'a request without Origin is refused');
+  assert.equal((await attempt(admin.cookie, { origin: 'https://evil.example', 'x-csrf-token': admin.csrf })).status, 403, 'a foreign Origin is refused');
+  assert.equal((await attempt(admin.cookie, { origin: appOrigin })).status, 403, 'a request without the session CSRF token is refused');
+  assert.equal((await attempt(admin.cookie, { origin: appOrigin, 'x-csrf-token': 'x'.repeat(43) })).status, 403, 'a wrong CSRF token is refused');
+  assert.equal((await attempt(undefined, { origin: appOrigin, 'x-csrf-token': admin.csrf })).status, 401, 'no session is unauthorised');
+  assert.equal((await attempt(admin.cookie, { origin: appOrigin, 'x-csrf-token': admin.csrf }, `/api/v1/account/users/${randomUUID()}/password-reset-code`)).status, 404, 'an unknown account is not found');
+  assert.equal((await attempt(admin.cookie, { origin: appOrigin, 'x-csrf-token': admin.csrf }, `/api/v1/account/users/${adminId}/password-reset-code`)).status, 409, 'an administrator cannot issue a code for their own account');
+  assert.equal(harness.store.resetCodes.size, 0, 'no refused request stores a code');
+  assert.equal(harness.store.auditRows.length, 0, 'no refused request is audited as an issue');
+});
+
+test('an unknown username, a wrong code, a malformed code and a used code all get the same 400 body', async () => {
+  const harness = createHarness();
+  await seedResetFixture(harness, 'warga.sama');
+  const issued = await issueResetCodeFor(harness, await loginAdminForReset(harness), 'warga.sama');
+  const failures = [
+    { username: 'tidak.ada', code: issued.code },
+    { username: 'warga.sama', code: wrongCodeFor(issued.code) },
+    { username: 'warga.sama', code: 'PENDEK' },
+    { username: 'bukan nama', code: issued.code },
+  ];
+  const bodies: unknown[] = [];
+  for (const failure of failures) {
+    const response = await requestReset(harness, { ...failure, new_password: resetNewPassword });
+    assert.equal(response.status, 400);
+    bodies.push(withoutRequestId(await response.json()));
+  }
+  const correct = await requestReset(harness, { username: 'warga.sama', code: issued.code, new_password: resetNewPassword });
+  assert.equal(correct.status, 204);
+  const used = await requestReset(harness, { username: 'warga.sama', code: issued.code, new_password: resetNewPassword });
+  assert.equal(used.status, 400);
+  bodies.push(withoutRequestId(await used.json()));
+
+  for (const body of bodies) assert.deepEqual(body, bodies[0], 'every refusal gets the same body, apart from its request id');
+  assert.deepEqual(bodies[0], {
+    code: 'invalid_reset_code',
+    message: 'The username or reset code is not correct, or the code is no longer valid.',
+  });
+});
+
+test('the reset endpoint needs the pre-session marker and the exact Origin, and accepts only POST', async () => {
+  const harness = createHarness();
+  await seedResetFixture(harness, 'warga.pintu');
+  const issued = await issueResetCodeFor(harness, await loginAdminForReset(harness), 'warga.pintu');
+  const body = { username: 'warga.pintu', code: issued.code, new_password: resetNewPassword };
+  const cases: Array<{ origin?: string; marker: boolean }> = [
+    { origin: appOrigin, marker: false },
+    { origin: 'https://evil.example', marker: true },
+    { marker: true },
+  ];
+  for (const options of cases) {
+    assert.equal((await requestReset(harness, body, options)).status, 403);
+  }
+  const get = await harness.request('/api/v1/auth/password-reset', { headers: { origin: appOrigin, 'x-waspada-request': '1' } });
+  assert.equal(get.status, 405);
+  assert.equal((await requestReset(harness, body)).status, 204, 'refused guards did not spend the code');
+});
+
+test('reset attempts are throttled per client and per username, without spending the login budget', async () => {
+  const harness = createHarness();
+  await seedResetFixture(harness, 'warga.limit');
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const response = await requestReset(harness, { username: 'warga.limit', code: 'AAAAAAAAAA', new_password: resetNewPassword });
+    assert.equal(response.status, 400);
+  }
+  const limited = await requestReset(harness, { username: 'warga.limit', code: 'AAAAAAAAAA', new_password: resetNewPassword });
+  assert.equal(limited.status, 429);
+  const login = await harness.post('/api/v1/auth/login', { username: 'warga.limit', password: startPassword }, { origin: appOrigin, marker: true, client: 'client-default' });
+  assert.equal(login.status, 200, 'the login budget for the same username is separate');
+});
+
 // ---------------------------------------------------------------------------
 
 interface SessionBody {
@@ -337,10 +552,20 @@ interface SessionRecord {
   revoked: boolean;
 }
 
+interface ResetCodeRecord {
+  readonly accountId: string;
+  readonly codeHash: string;
+  failedAttempts: number;
+  readonly expiresAt: number;
+  usedAt: number | null;
+}
+
 class FakeAccountStore implements AccountStore {
   readonly accounts = new Map<string, StoredRecord>();
   readonly sessions = new Map<string, SessionRecord>();
   readonly throttles = new Map<string, { count: number; expiresAt: number }>();
+  readonly resetCodes = new Map<string, ResetCodeRecord>();
+  readonly auditRows: Array<{ action: string; actorAccountId: string; targetAccountId: string; reason: string }> = [];
 
   constructor(readonly datasetMode: AccountDatasetMode) {}
 
@@ -467,6 +692,62 @@ class FakeAccountStore implements AccountStore {
     }
     current.count += 1;
     return current.count <= maximumRequests;
+  }
+
+  async issuePasswordResetCode(input: IssuePasswordResetCodeInput): Promise<IssuePasswordResetCodeResult> {
+    const actor = this.accounts.get(input.actorAccountId)?.account;
+    if (!actor || actor.role !== 'admin' || !actor.active || actor.onboarding_version !== 1) {
+      return { outcome: 'forbidden' };
+    }
+    if (input.actorAccountId === input.targetAccountId) return { outcome: 'conflict' };
+    const target = this.accounts.get(input.targetAccountId);
+    if (!target) return { outcome: 'not_found' };
+    if (!target.account.active) return { outcome: 'conflict' };
+    const issuedAt = Date.parse(input.now);
+    for (const record of this.resetCodes.values()) {
+      if (record.accountId === input.targetAccountId && record.usedAt === null) record.usedAt = issuedAt;
+    }
+    this.resetCodes.set(randomUUID(), {
+      accountId: input.targetAccountId,
+      codeHash: input.codeHash,
+      failedAttempts: 0,
+      expiresAt: Date.parse(input.expiresAt),
+      usedAt: null,
+    });
+    this.auditRows.push({
+      action: 'password_reset_code_issued',
+      actorAccountId: input.actorAccountId,
+      targetAccountId: input.targetAccountId,
+      reason: input.reason,
+    });
+    return { outcome: 'issued', username: target.username, expiresAt: input.expiresAt };
+  }
+
+  async consumePasswordResetCode(input: ConsumePasswordResetCodeInput): Promise<ConsumePasswordResetCodeResult> {
+    const nowMs = Date.parse(input.now);
+    const record = input.username === null ? undefined : this.findByUsername(input.username);
+    const live = record
+      ? [...this.resetCodes.values()].find((code) => code.accountId === record.account.id && code.usedAt === null)
+      : undefined;
+    const matches = await input.verifyCode(live?.codeHash ?? null);
+    if (!record || !live) return { outcome: 'rejected' };
+    if (live.expiresAt <= nowMs) {
+      live.usedAt = nowMs;
+      return { outcome: 'rejected' };
+    }
+    if (!matches) {
+      live.failedAttempts += 1;
+      if (live.failedAttempts >= 5) live.usedAt = nowMs;
+      return { outcome: 'rejected' };
+    }
+    if (!record.account.active) return { outcome: 'rejected' };
+    const newHash = await input.hashNewPassword();
+    live.usedAt = nowMs;
+    record.passwordHash = newHash;
+    for (const session of this.sessions.values()) {
+      if (session.accountId === record.account.id) session.revoked = true;
+    }
+    return { outcome: 'reset', accountId: record.account.id };
   }
 
   async cleanupExpired(): Promise<number> {

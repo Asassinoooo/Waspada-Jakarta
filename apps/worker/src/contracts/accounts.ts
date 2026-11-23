@@ -51,3 +51,17 @@ export interface AccountUserUpdate {
   readonly expected_version: number;
   readonly reason: string;
 }
+
+/** Signed-out reset with an administrator-issued code. Success is 204 and starts no session. */
+export interface PasswordResetRequest {
+  readonly username: string;
+  readonly code: string;
+  readonly new_password: string;
+}
+
+/** Returned once, to the administrator who issued it. Never stored in clear and never logged. */
+export interface PasswordResetCodeIssue {
+  readonly code: string;
+  readonly expires_at: string;
+  readonly username: string;
+}
