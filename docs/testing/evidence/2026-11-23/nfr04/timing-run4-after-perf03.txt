@@ -1,0 +1,26 @@
+NFR-04 run 4 (after PERF-03/04 deploy 356df500), started 2026-11-23T02:32:23.013Z, target p50<500 ms and p95<1000 ms, base https://waspada-jakarta.waspada-worker.workers.dev
+
+[B] Warm sequential, 30 requests per route, 250 ms apart
+route | n | ok | p50 ms | p95 ms | max ms | p50<500 | p95<1000
+page / | 30 | 30 | 71 | 125 | 164 | yes | yes
+GET /api/v1/events | 30 | 30 | 78 | 107 | 122 | yes | yes
+GET /api/v1/events/:id | 30 | 30 | 73 | 123 | 187 | yes | yes
+GET /api/v1/events/:id/history | 30 | 30 | 55 | 187 | 420 | yes | yes
+GET /api/v1/events.geojson | 30 | 30 | 43 | 149 | 176 | yes | yes
+GET /api/v1/updates | 30 | 30 | 101 | 133 | 136 | yes | yes
+GET /api/v1/context | 30 | 30 | 82 | 101 | 316 | yes | yes
+POST /api/v1/briefings | 30 | 30 | 81 | 220 | 457 | yes | yes
+
+[C] 5 concurrent clients x 20 requests per route
+route | n | ok | p50 ms | p95 ms | max ms | p50<500 | p95<1000
+page / | 100 | 100 | 85 | 326 | 577 | yes | yes
+GET /api/v1/events | 100 | 100 | 158 | 391 | 591 | yes | yes
+GET /api/v1/events/:id | 100 | 100 | 87 | 208 | 638 | yes | yes
+GET /api/v1/events/:id/history | 100 | 100 | 56 | 213 | 712 | yes | yes
+GET /api/v1/events.geojson | 100 | 100 | 70 | 320 | 599 | yes | yes
+GET /api/v1/updates | 100 | 100 | 96 | 161 | 550 | yes | yes
+GET /api/v1/context | 100 | 100 | 40 | 91 | 309 | yes | yes
+POST /api/v1/briefings | 100 | 100 | 95 | 525 | 1100 | yes | yes
+
+GET /api/v1/events cache-control: public, max-age=15, stale-while-revalidate=30
+finished 2026-11-23T02:34:08.582Z

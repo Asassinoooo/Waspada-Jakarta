@@ -205,7 +205,7 @@ Status counts for all 172 rows of `test-cases.csv` (including ST-H-21 to ST-H-27
 Defects. F-39 to F-43 fixed in `8ce1e1f` and deployed on 20 Nov 2026 (Worker `007fbaa5`, migration 062); each entry in `DEFECTS.md` names its test. F-45 closed as out of scope after the ST-F-11 rewording (owner decision 19 Nov 2026). New: F-46 (High; stale proposal could overwrite a newer version; fixed in `5589a05`, on `main`), F-47 (Medium; per-event queries; fixed in `a43ced9`, deployed; the 503 failures above are not closed), F-48 (Low; claim origin on the review screen; fixed in `9e6c30e`, on `main`), F-49 (Low; open; ADR-061 says the automatic publication writes an audit record, it writes a publication decision record). F-50 (Medium; open; CPU above the nominal Free allowance and 503 responses under concurrency; next step PERF-02, not started, needs an owner decision). F-02 and F-44 are unchanged.
 
 Open items for the orchestrator (not decided in this update):
-- F-50 (open, Medium): hosted 503 responses under concurrency, the briefing route's p50, and CPU above the Free plan's nominal allowance. Next step PERF-02, not started; needs an owner decision.
+- F-50 (Medium): fixed on 23 Nov 2026 by PERF-03/04 (KV snapshot, batched briefing) and deployed (Worker `356df500`). In run 4, all 1,040 requests returned 200, and warm p50 was 43 to 101 ms on every route (`evidence/2026-11-23/nfr04/timing-run4-after-perf03.txt`).
 
 - ST-F-02's hosted step (ST-H-27) and F-02.
 - The 20 Nov hosted ingest has no ST-H row.
