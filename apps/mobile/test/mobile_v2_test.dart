@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:waspada_jakarta_mobile/src/public_api.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waspada_jakarta_mobile/src/app.dart';
+import 'package:waspada_jakarta_mobile/src/event_list_screen.dart';
 import 'package:waspada_jakarta_mobile/src/map_screen.dart';
 import 'package:waspada_jakarta_mobile/src/preferences.dart';
 import 'package:waspada_jakarta_mobile/src/public_models.dart';
+import 'package:waspada_jakarta_mobile/src/recency.dart';
 import 'package:waspada_jakarta_mobile/src/theme.dart';
 
 import 'support/fakes.dart';
@@ -103,7 +105,8 @@ void main() {
 
   group('MOBILE-V2 screens', () {
     Future<void> pumpApp(WidgetTester tester, SyntheticPublicApi api,
-        {Brightness brightness = Brightness.light}) async {
+        {Brightness brightness = Brightness.light,
+        DateTime Function() clock = fixtureClock}) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       tester.platformDispatcher.platformBrightnessTestValue = brightness;
@@ -115,7 +118,8 @@ void main() {
       await tester.pumpWidget(WaspadaApp(
           api: api,
           preferences: PreferencesRepository(MemoryStorage()),
-          showMapTiles: false));
+          showMapTiles: false,
+          clock: clock));
       await tester.pumpAndSettle();
     }
 
@@ -202,6 +206,117 @@ void main() {
       expect(Theme.of(context).brightness, Brightness.dark);
       expect(context.palette, WaspadaPalette.dark);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('MOBILE-RECENT-01 24-hour window', () {
+    final now = DateTime.parse('2026-11-23T12:00:00+07:00');
+    String hoursAgo(double hours) => now
+        .subtract(Duration(minutes: (hours * 60).round()))
+        .toUtc()
+        .toIso8601String();
+
+    test('the window keeps versions published or updated within 24 hours', () {
+      expect(publishedRecently(hoursAgo(23.9), now), isTrue);
+      expect(publishedRecently(hoursAgo(24.1), now), isFalse);
+      expect(publishedRecently(hoursAgo(-0.5), now), isTrue,
+          reason: 'a version newer than the device clock is recent');
+      expect(publishedRecently(null, now), isFalse);
+      expect(publishedRecently('bukan waktu', now), isFalse);
+    });
+
+    Future<void> pumpMap(WidgetTester tester, SyntheticPublicApi api) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(WaspadaApp(
+          api: api,
+          preferences: PreferencesRepository(MemoryStorage()),
+          showMapTiles: false,
+          clock: () => now));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Peta'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the map opens on 24 hours, hides an older pin, and one tap shows all',
+        (tester) async {
+      final api = SyntheticPublicApi(
+          events: EventPage.fromJson(_page([
+        _event({'event_id': 'evt-new', 'title': 'Baru', 'published_at': hoursAgo(2)}),
+        _event({'event_id': 'evt-old', 'title': 'Lama', 'published_at': hoursAgo(30)}),
+      ])));
+      MapPoint point(String id, String title) => MapPoint(
+          eventId: id,
+          title: title,
+          category: api.events.data.first.category,
+          longitude: 106.845,
+          latitude: -6.185,
+          approximate: false);
+      api.mapPoints = [point('evt-new', 'Titik baru'), point('evt-old', 'Titik lama')];
+      await pumpMap(tester, api);
+
+      expect(find.text('1 bertitik · 0 tanpa titik lokasi'), findsOneWidget);
+      expect(find.bySemanticsLabel('Titik baru'), findsOneWidget);
+      expect(find.bySemanticsLabel('Titik lama'), findsNothing);
+      expect(find.textContaining(recentScopeText), findsOneWidget);
+      expect(find.textContaining(olderHiddenText(1)), findsOneWidget);
+
+      await tester.tap(find.text('Semua'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 bertitik · 0 tanpa titik lokasi'), findsOneWidget);
+      expect(find.bySemanticsLabel('Titik lama'), findsOneWidget);
+      expect(find.textContaining(recentScopeText), findsNothing);
+    });
+
+    testWidgets('an empty window says so, is not an all-clear, and offers the older events',
+        (tester) async {
+      final api = SyntheticPublicApi(
+          events: EventPage.fromJson(_page([
+        _event({'event_id': 'evt-old', 'title': 'Lama', 'published_at': hoursAgo(48)}),
+      ])));
+      api.mapPoints = const [];
+      await pumpMap(tester, api);
+
+      expect(find.text(emptyRecentTitle), findsOneWidget);
+      expect(find.text(emptyRecentNote), findsOneWidget);
+      expect(find.text(showAllText(1)), findsOneWidget);
+      expect(RegExp(r'\baman\b').hasMatch('$emptyRecentTitle $emptyRecentNote'), isFalse);
+      await tester.tap(find.text(showAllText(1)));
+      await tester.pumpAndSettle();
+      expect(find.text(emptyRecentTitle), findsNothing);
+      expect(find.text('0 bertitik · 1 tanpa titik lokasi'), findsOneWidget);
+    });
+
+    testWidgets('the list opens on 24 hours and switches to all', (tester) async {
+      final api = SyntheticPublicApi(
+          events: EventPage.fromJson(_page([
+        _event({'event_id': 'evt-new', 'title': 'Laporan baru', 'published_at': hoursAgo(1)}),
+        _event({'event_id': 'evt-old', 'title': 'Laporan lama', 'published_at': hoursAgo(72)}),
+      ])));
+      tester.view.physicalSize = const Size(390, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(MaterialApp(
+          theme: buildWaspadaTheme(),
+          home: EventListScreen(
+              api: api,
+              preferences: PreferencesRepository(MemoryStorage()),
+              clock: () => now)));
+      await tester.pumpAndSettle();
+      expect(find.text('1 laporan pada halaman ini'), findsOneWidget);
+      expect(find.text('Laporan baru'), findsOneWidget);
+      expect(find.text('Laporan lama'), findsNothing);
+      await tester.tap(find.text('Semua'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 laporan pada halaman ini'), findsOneWidget);
+      expect(find.text('Laporan lama'), findsOneWidget);
     });
   });
 }

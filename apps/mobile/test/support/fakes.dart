@@ -188,3 +188,6 @@ const syntheticHistoryPage = <String, Object?>{
   'data': [],
   'page': {'next_cursor': null, 'cursor_expires_at': null},
 };
+
+/// MOBILE-RECENT-01: a clock inside the 24-hour window of the synthetic fixtures (published 24 Sep 2026, 09:05 WIB).
+DateTime fixtureClock() => DateTime.parse('2026-09-24T12:00:00+07:00');

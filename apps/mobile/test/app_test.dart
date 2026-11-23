@@ -39,7 +39,9 @@ Future<void> showEventList(
   });
   await tester.pumpWidget(MaterialApp(
       home: EventListScreen(
-          api: api, preferences: PreferencesRepository(storage))));
+          api: api,
+          preferences: PreferencesRepository(storage),
+          clock: fixtureClock)));
   await tester.pumpAndSettle();
 }
 
@@ -344,7 +346,7 @@ void main() {
     final preferences = PreferencesRepository(storage);
     final screens = <Widget>[
       LandingScreen(api: api, preferences: preferences),
-      EventListScreen(api: api, preferences: preferences),
+      EventListScreen(api: api, preferences: preferences, clock: fixtureClock),
       EventDetailScreen(
         api: api,
         contextInfo: api.context,
