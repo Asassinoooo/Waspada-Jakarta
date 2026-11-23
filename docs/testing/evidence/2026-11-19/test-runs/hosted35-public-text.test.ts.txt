@@ -1,0 +1,21 @@
+✔ HOSTED-35b: the summary joins claim texts without a double period (3.919254ms)
+✔ HOSTED-35b: a single claim that already ends in a period keeps one period (0.274347ms)
+✔ HOSTED-35b: a summary over 500 code points is cut at a word boundary and ends with an ellipsis (1.206983ms)
+✔ HOSTED-35b: a claim with no word boundary in range leaves the title as the summary (1.446136ms)
+✔ HOSTED-35b: legacy runs of two periods collapse to one, and an ellipsis or a single period is kept (0.527046ms)
+✔ HOSTED-35b: a legacy 120-code-point title cut mid-word is cut back to its last whitespace (0.939069ms)
+✔ HOSTED-35b: a title is repaired only when it is 120 code points, ends in a letter, and has whitespace to cut at (0.528177ms)
+✔ HOSTED-35b: a claim lists one source per (url, display name), keeping the earliest, and the projection repairs legacy text (4.897114ms)
+✔ HOSTED-35b: an exact time is an instant only when it is an RFC 3339 date-time, and a calendar date is a date (1.851117ms)
+✔ HOSTED-35b: looksIndonesian judges real headlines and claims, and passes short text (1.401875ms)
+✔ HOSTED-35b: the automatic gate holds an English claim or title for a moderator, and passes Indonesian text (1.877736ms)
+✔ HOSTED-35b: language_review holds the automatic path only, the way a discrepancy does, and no waiver skips it (0.810109ms)
+✔ HOSTED-35b: the in-memory read model repairs legacy text on read, and the stored event keeps its own text (4.664533ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1571.13648

@@ -1,0 +1,25 @@
+✔ the snapshot maps to five titled swimlanes and eighteen stage cards with pipeline edges (4.361654ms)
+✔ an edge animates only when its downstream stage moved items in the last 15 minutes (2.612987ms)
+✔ cards take their position from the layout table and carry only the view model (0.734229ms)
+✔ a stage with no counts says there is no data in 24 hours and never claims safety (0.971178ms)
+✔ the card chips for the AI queue read as menunggu, berjalan, ditunda and gagal (0.361109ms)
+✔ every count the Worker sends has an Indonesian label, so raw keys never reach the page (0.651146ms)
+✔ the layer names match the admin dashboard names and the review page links only where items are reviewable (0.68588ms)
+✔ labels for statuses and failure codes are readable and fall back to the raw value (0.49155ms)
+✔ relative times and cooldowns are plain Indonesian and never invent a time (0.915154ms)
+✔ the fixed layout is a compact grid with no overlapping cards and every card inside its lane band (1.459762ms)
+✔ the demo fixture carries no permitted text and only fictional titles (0.267405ms)
+✔ the review node shows a kedaluwarsa chip, and its drawer says unreviewed proposals expire unpublished (REVIEW-EXPIRY-01) (0.734339ms)
+✔ POLISH-03: a superseded proposal reads digantikan versi baru, apart from kedaluwarsa, and the review chip counts it (0.411061ms)
+✔ FLOW-RANGE-01: keys ending in _24h name the selected window, and _15m labels never change (0.230537ms)
+✔ FLOW-RANGE-01: a card and its empty line follow the snapshot's window, and the default is unchanged (0.480229ms)
+✔ FLOW-RANGE-01: labels follow the window of the snapshot on screen, falling back to 24 jam without one (0.236267ms)
+✔ FLOW-RANGE-01: the chosen window is remembered per viewer and falls back to 24 jam when storage is blocked or unknown (0.531885ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1450.8061

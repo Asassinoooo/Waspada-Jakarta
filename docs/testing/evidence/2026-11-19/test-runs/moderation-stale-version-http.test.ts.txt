@@ -1,0 +1,24 @@
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+▶ ST-F-03 / ST-F-13: a stale-version correction over HTTP (database)
+  ✔ control: the setup leaves exactly two versions, and the public view shows version 2 (3.62085ms)
+  ✔ a correction against base_version 1 answers 409 STALE_BASE_VERSION over HTTP and writes no version (57.354941ms)
+  ✔ the refusal is recorded once as a rejected decision and an audit record, and nothing is published (4.205944ms)
+  ✔ a correction against the current base_version 2 still publishes version 3 after the refusal (44.55486ms)
+✔ ST-F-03 / ST-F-13: a stale-version correction over HTTP (database) (17623.627245ms)
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+▶ ST-F-13: a publish against a decided or superseded proposal over HTTP (database)
+  ✔ control: a first publish of an undecided proposal answers 200 written and creates version 1 (91.667903ms)
+  ✔ a second publish of the already-decided proposal answers 409 ALREADY_DECIDED and writes no decision or version (24.938325ms)
+  ✔ a publish of a superseded proposal answers 409 ALREADY_DECIDED, and the newer proposal still publishes (67.172177ms)
+✔ ST-F-13: a publish against a decided or superseded proposal over HTTP (database) (15677.757319ms)
+ℹ tests 7
+ℹ suites 2
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 36129.943575

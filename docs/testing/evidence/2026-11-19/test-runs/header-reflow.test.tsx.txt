@@ -1,0 +1,10 @@
+✔ from 601px to 900px the header gaps tighten and the nav scrolls inside itself, so no item is drawn behind the badge (1.616872ms)
+✔ below 768px the brand name is hidden and the brand mark keeps its link and accessible name (15.527363ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2029.397732

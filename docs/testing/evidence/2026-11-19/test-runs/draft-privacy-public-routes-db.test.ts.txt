@@ -1,0 +1,24 @@
+{"event":"publication_origins","origins":1,"support_refs":1}
+{"event":"publication_attributions","attributed":1,"skipped":0}
+▶ ST-F-03: draft privacy on public routes and per-claim origin (database)
+  ✔ control: the published event is public on the list, detail, history, updates and briefing routes (263.914263ms)
+  ✔ an undecided draft and an unpublished correction draft are absent from every public route (158.20546ms)
+  ✔ the public event detail keeps the published version's title, not the draft's (161.629855ms)
+{"event":"publication_attributions","attributed":0,"skipped":1}
+  ✔ the in-memory public read model used by /api/v1/context lists only the published event (152.59474ms)
+  ✔ the draft rows exist in event_proposals with no decision, so privacy comes from the public views, not from absence (3.497854ms)
+  ▶ per-claim origin
+    ✔ the moderator review DTO shows each claim's own origin: source id, outlet, article link and evidence label (5.463093ms)
+    ✔ after publication, each public claim shows its own source attribution and label (20.392717ms)
+    ✔ a moderator publish refuses a claim still labelled under_review, as the automatic gate does, and shows no relabelled claim (18.754175ms)
+    ✔ a claim with no source link lists no source: no publisher, date or URL is invented (0.439163ms)
+  ✔ per-claim origin (59.931385ms)
+✔ ST-F-03: draft privacy on public routes and per-claim origin (database) (18609.741243ms)
+ℹ tests 9
+ℹ suites 2
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23733.415113

@@ -1,0 +1,85 @@
+✔ NFR-07 A2 control: a supported, quoted, undisputed proposal from a public-display source passes the automatic gate (5.701552ms)
+✔ NFR-07 A2: claim text that says verified, official or approved does not satisfy the support check (0.822612ms)
+✔ NFR-07 A2: a fake JSON proposal inside claim text does not supply the gate's structure (0.337054ms)
+✔ NFR-07 A2: Indonesian instructions in the title or claim text change neither the reasons nor the waivers (0.435455ms)
+✔ NFR-07 A2: an English injection line is held for review by the language check, and no waiver skips it (0.28673ms)
+✔ NFR-07 A2: a discrepancy flag written in the text is not read: only the has_discrepancy field decides (0.321134ms)
+✔ NFR-07 A4: the automatic gate refuses a claim link with a non-web scheme (0.409017ms)
+⚠ todo: NFR-07 A4 gap: the automatic gate accepts a claim link that carries credentials (28.30213ms) # NFR-07 A4 gap: publication-policy.ts:803-810 isHttpUrl accepts any http(s) URL, including userinfo. The public attribution (proposal-publication.ts:972-990, attributionUrlFor) then refuses it, so the claim publishes with no origin link.
+⚠ todo: NFR-07 A4 gap: the automatic gate accepts an http claim link that attribution later refuses (6.749091ms) # NFR-07 A4 gap: publication-policy.ts:803-810 accepts http:, while the schema and attributionUrlFor (proposal-publication.ts:972) require https. The claim publishes with no attribution.
+⚠ todo: NFR-07 A4 gap: RSS intake keeps a non-https or credential-bearing item link as the revision's canonical URL (34.82357ms) # NFR-07 A4 gap: rss-discovery.ts only length-limits the link, and rss-news-ingest.ts:168 and :201 store it as canonical_url with no scheme or userinfo check. Attribution refuses these links later, but intake should refuse or strip them.
+ℹ tests 10
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 3
+ℹ duration_ms 1915.199842
+
+✖ failing tests:
+
+test at test/nfr07-malicious-source-gate.test.ts:107:1
+⚠ todo: NFR-07 A4 gap: the automatic gate accepts a claim link that carries credentials (28.30213ms) # NFR-07 A4 gap: publication-policy.ts:803-810 isHttpUrl accepts any http(s) URL, including userinfo. The public attribution (proposal-publication.ts:972-990, attributionUrlFor) then refuses it, so the claim publishes with no origin link.
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(reasons.includes("claim_source_link_missing"))
+  
+      at TestContext.<anonymous> (/mnt/d/Projects/RPL/apps/worker/test/nfr07-malicious-source-gate.test.ts:111:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/nfr07-malicious-source-gate.test.ts:114:1
+⚠ todo: NFR-07 A4 gap: the automatic gate accepts an http claim link that attribution later refuses (6.749091ms) # NFR-07 A4 gap: publication-policy.ts:803-810 accepts http:, while the schema and attributionUrlFor (proposal-publication.ts:972) require https. The claim publishes with no attribution.
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(reasons.includes("claim_source_link_missing"))
+  
+      at TestContext.<anonymous> (/mnt/d/Projects/RPL/apps/worker/test/nfr07-malicious-source-gate.test.ts:118:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/nfr07-malicious-source-gate.test.ts:121:1
+⚠ todo: NFR-07 A4 gap: RSS intake keeps a non-https or credential-bearing item link as the revision's canonical URL (34.82357ms) # NFR-07 A4 gap: rss-discovery.ts only length-limits the link, and rss-news-ingest.ts:168 and :201 store it as canonical_url with no scheme or userinfo check. Attribution refuses these links later, but intake should refuse or strip them.
+  AssertionError [ERR_ASSERTION]: kept link is https: javascript:alert(1)
+  + actual - expected
+  
+  + 'javascript:'
+  - 'https:'
+  
+      at TestContext.<anonymous> (/mnt/d/Projects/RPL/apps/worker/test/nfr07-malicious-source-gate.test.ts:134:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'javascript:',
+    expected: 'https:',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

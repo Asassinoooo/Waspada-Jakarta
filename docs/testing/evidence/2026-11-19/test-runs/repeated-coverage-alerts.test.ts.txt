@@ -1,0 +1,33 @@
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+▶ FR-11 repeated coverage and re-delivery
+  ✔ a re-delivered proposal is already decided: no second decision and no second public version (98.336779ms)
+  ✔ a repeated report of the same facts from another outlet adds no version and no update (F-ALERT-01) (101.183116ms)
+  ✔ a moderator publish of the same facts from another outlet adds no version (F-ALERT-01) (57.218228ms)
+  ✔ a material change in a claim publishes the next version (F-ALERT-01) (70.606086ms)
+  ✔ a changed event time or severity is material and publishes the next version (F-ALERT-01) (98.158468ms)
+  ✔ a moderator publish of a material change publishes the next version (F-ALERT-01) (68.630529ms)
+  ✔ a newly published version appears in the public views and the updates feed (F-ALERT-02, HOSTED-02) (231.584062ms)
+  ✔ NFR-05: repeated deliveries of one publication leave one decision, one updates-feed entry and one public event (261.883938ms)
+  ✔ NFR-05: a repeated delivery adds no publication_outbox row and no second updates-feed entry (562.269233ms)
+  ✔ the publication writer role inserts only the review row it needs and cannot change it (12.38494ms)
+✔ FR-11 repeated coverage and re-delivery (19646.019059ms)
+ℹ tests 10
+ℹ suites 1
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22379.887349

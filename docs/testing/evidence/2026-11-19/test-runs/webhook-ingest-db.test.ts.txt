@@ -1,0 +1,16 @@
+▶ F-05 / ST-F-11: webhook route storage path (database)
+  ✔ a refused key answers 401 and writes no revision, chunk or AI job (60.79061ms)
+  ✔ a malformed event answers 400 and writes nothing, even though the same batch has a valid item (6.7378ms)
+  ✔ a valid event stores one revision with its chunks and queues exactly one AI job (50.607894ms)
+  ✔ the webhook AI job carries the same trace id as its revision (FR-14) (24.021919ms)
+  ✔ the same event delivered again keeps one revision and one AI job, with the same identity (36.147309ms)
+  ✔ a valid batch stores each event as its own revision and AI job (26.521765ms)
+✔ F-05 / ST-F-11: webhook route storage path (database) (17856.278929ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25093.713096

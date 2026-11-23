@@ -1,0 +1,16 @@
+✔ query parser accepts only canonical documented parameters (4.05795ms)
+✔ configuration fails closed outside live mode or without valid existing bindings (1.555288ms)
+✔ bootstrap reads only the transactional watermark in one read-only snapshot (21.701786ms)
+✔ a valid cursor reads one bounded ordered candidate page in the same transaction (11.635545ms)
+✔ malformed, tampered, wrong-scope, and expired cursors never open SQL (13.287542ms)
+✔ one request clock keeps cursor preflight and service expiry checks consistent (7.040179ms)
+✔ ahead cursors roll back and never read candidates (11.263416ms)
+✔ reader, projection, commit, and rollback failures stay generic (17.34464ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2685.128847

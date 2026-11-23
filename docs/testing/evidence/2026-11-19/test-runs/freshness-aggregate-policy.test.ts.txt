@@ -1,0 +1,15 @@
+✔ the aggregate matches the written rules for every claim status and every impact list up to three entries (4.332209ms)
+✔ the four named rules hold with one example each (0.332876ms)
+✔ with no impacts the event takes its claim-set status unchanged (0.206132ms)
+✔ the result is independent of the order of impact statuses (1.043642ms)
+✔ the aggregate reads its input without changing the claim status or the impact list (1.068508ms)
+✔ the aggregate never produces a status outside the three freshness values (1.016301ms)
+✔ malformed aggregate inputs fail with one stable error that never echoes the supplied value (1.544479ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1436.932713

@@ -1,0 +1,2 @@
+wrangler tail, 20 Nov 2026, 5 clients x 8 GET /api/v1/events on Worker 007fbaa5 (after PERF-01): 16 events sampled, all outcome ok, cpuTime ms: 22 26 26 28 30 31 32 33 35 35 35 37 38 41 51 52 (p50 35, max 52). Before PERF-01 (19 Nov): 37 to 113 ms.
+Separate burst of 6 clients x 8: 43 x 200, 5 x 503 with body 'error code: 1102' (Worker exceeded resource limits).

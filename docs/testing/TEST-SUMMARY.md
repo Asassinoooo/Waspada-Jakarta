@@ -1,7 +1,7 @@
 # Test summary: Waspada Jakarta
 
-Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026 (TG-DOCS-04; updated the same evening by TG-DOCS-05 and TG-DOCS-07). Draft for review. Baseline: `main` at `a7ba558`.
-Later update: TG-DOCS-07 (19 November 2026): section 7B, the register counts in section 1, and the open items in sections 4, 8 and 9. Earlier update: TG-DOCS-05 (19 November 2026, evening): section 7A, and the open items in sections 8 and 10. Earlier versions: TG-DOCS-03 (18 November 2026 evening, baseline `2d9d442`), TG-DOCS-02 (18 November 2026 morning, baseline `6fff929`) and the 13 November 2026 summary. Section 3 is as of 13 November 2026.
+Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026 (TG-DOCS-04; updated the same evening by TG-DOCS-05 and TG-DOCS-07; updated on 20 November 2026 by TG-DOCS-09). Draft for review. Baseline: `main` at `a7ba558`.
+Later update: TG-DOCS-09 (20 November 2026): section 7D (TEST-GAP-05 group 1, PERF-01, the NFR-07 gaps, the 20 November deploy and the hosted re-timing), the section 7 table and the section 8 open findings. Earlier update: TG-DOCS-07 (19 November 2026): section 7B, the register counts in section 1, and the open items in sections 4, 8 and 9. Earlier update: TG-DOCS-05 (19 November 2026, evening): section 7A, and the open items in sections 8 and 10. Earlier versions: TG-DOCS-03 (18 November 2026 evening, baseline `2d9d442`), TG-DOCS-02 (18 November 2026 morning, baseline `6fff929`) and the 13 November 2026 summary. Section 3 is as of 13 November 2026.
 Related: `docs/testing/TEST-PLAN.md`, `docs/testing/SYSTEM-TEST.md`, `docs/testing/INTEGRATION-TEST.md`, `docs/testing/UAT.md`, `docs/testing/test-cases.csv`, `docs/testing/DEFECTS.md`.
 
 This summary compiles records that exist, and each figure is cited to its source. For TG-DOCS-03 the CI logs were read with `gh`, the hosted public API was read without signing in, and the hosted database was read (read-only) to find the cause of F-19. Only the changed test files of the 18 November fixes were run locally (owner test policy, 12 November 2026).
@@ -113,6 +113,105 @@ Register status counts (`test-cases.csv`), before and after: Evidence exists 82 
 
 Defects: F-30 (a moderator reject wrote no audit record; fixed in `f3373c0`), F-31 (the webhook AI job had no trace id; fixed in `f3373c0`) and F-32 (header nav under the dataset badge at 601 to 900 px, 200% zoom; fixed in `b3ca26d`; severity not recorded). F-29 is fixed in `b4a0d0f`. F-05 is partly closed and F-06 is closed by test. Hosted re-checks for F-29, F-32 and the reject audit row (F-30) are pending.
 
+## 7C 19 Nov 2026 (TEST-GAP-04, ST-F-09, NFR-04/06/07, SEC-HEADERS-01)
+
+TG-DOCS-08 updates the register from the evidence in `docs/testing/evidence/2026-11-19/` (index in its README). Single-file test runs were on `main` at `e68aefd`. CI runs: 44498555647 (`e68aefd`, success, 2,917 tests, 2,913 passing, 0 failing, 4 todo) and 44502344276 (`9f6a456`, success, checked with `gh`). No heavy suite was run locally. The hosted checks are read-only, except that the scripted checklist signs in and out with existing test accounts and makes failed login attempts, and writes no content.
+
+Status counts from `test-cases.csv`, the 165 rows that existed before this update (the seven new hosted rows, ST-H-21 to ST-H-27, are not counted here):
+
+| Status | Before | After |
+| --- | --- | --- |
+| Evidence exists | 84 | 89 |
+| Partial | 43 | 39 |
+| Pass (local run reported; not re-run in TG-DOCS) | 21 | 21 |
+| Blocked | 5 | 5 |
+| Pass (CI run 44319579284) | 3 | 3 |
+| Points only (owner, 16 Nov 2026) | 3 | 3 |
+| Pass (hosted, read-only, 17 Nov 2026) | 2 | 2 |
+| Pending run | 2 | 2 |
+| Not evidenced | 2 | 1 |
+| **Total** | **165** | **165** |
+
+Rows changed (status):
+
+| Row | Was | Now | Why |
+| --- | --- | --- | --- |
+| ST-F-04 | Partial | Evidence exists | Every clause is named: anonymous reads (hosted ST-H-01, ST-H-12), the filters, the empty and unavailable states, and the demo or live label (`map-home.test.tsx`). The one-filtered-set clause is checked by source text only |
+| ST-F-05 | Partial | Evidence exists | The four times are each named from their own field (`event-detail-claim-sources.test.tsx`), and the hosted record page shows them (ST-H-23) |
+| ST-F-09 | Partial | Evidence exists | Restrictions and health are named on the admin page (`source-approval.test.tsx`, `source-approval-api.test.ts`); the moderator tab, the demo wording and the role-change audit are named too |
+| ST-N-02 | Partial | Evidence exists | Worker ledger limits are named (four reasoning calls, 60 s, 12,000 tokens, five attempts, resume keeps usage); the live caps are named under the reworded expected result |
+| ST-N-06 | Not evidenced | Partial | The restore rehearsal is recorded (`nfr06/restore-report.json`), but deletion-tombstone behaviour and the demo rebuild are not recorded |
+| ST-N-08 | Partial | Evidence exists | CI run 44498555647: clean checkout, `npm ci`, typecheck and build all succeed; Free-plan deploy is ST-H-01 |
+
+Rows whose notes changed, with status unchanged: ST-F-02, ST-F-03, ST-F-08, ST-F-11, ST-F-12, ST-F-13, ST-F-15, ST-F-16, ST-N-04, ST-N-05 and ST-N-07 stay Partial. ST-N-03 stays Not evidenced (no human sessions).
+
+Reworded expected results (owner decisions, 19 Nov 2026), each marked in its row: ST-F-11 (no quarantine), ST-F-12 and ST-F-16 (the live path does not use the Worker's L2 or L3, a design limit), ST-N-02 (the live path clause), ST-N-04 (the target: p50 under 500 ms, p95 under 1 s), and ST-N-07 (the approach: automated tests, an OWASP ZAP passive baseline and a scripted checklist, no active scan).
+
+Defects: F-33 to F-38 added and fixed (proposed severities: F-33 High; F-34, F-35, F-36 and F-38 Medium; F-37 Low). Open items F-39 to F-45. F-45 (refused webhook items are not recorded or counted) is added by this update from the ST-F-11 review.
+
+Still Partial after this update, and why: ST-F-02 (the hosted matched update in Pembaruan was not observed, ST-H-27); ST-F-03 (origin on screen and the draft's visibility after a stale write are not named); ST-F-08 (no-body/no-prompt text is not asserted; no 390 px check); ST-F-11 (refused items are not recorded or counted, F-45; no same-path test); ST-F-12 (nearby distinct incidents are not named on the live path); ST-F-13 and ST-N-05 (the HTTP stale-write tests mirror the Worker mapping, and the proposal decision route's stale path is only stubbed); ST-F-15 (no 'no coverage' wording is asserted); ST-F-16 (no test names the automatic decision's trace id); ST-N-04 (warm and cold start not separated; briefings not timed); ST-N-06 (deletion-tombstone behaviour not recorded; the rehearsal restored live data into PGlite); ST-N-07 (approved hosts not enforced, F-42; retention, F-39 and F-40; correlation prompt, F-43; no penetration test).
+
+## 7D 20 Nov 2026 (TEST-GAP-05 group 1, PERF-01, NFR-07 gaps, deploy)
+
+TG-DOCS-09 updates the register from the evidence in `docs/testing/evidence/2026-11-20/` (index in its README). Four commits on `main`, all dated 19 Nov 2026, merged as `5d4dc3c`: `5589a05` (an older undecided proposal cannot replace a newer published version; real-route stale-write tests for ST-F-03, ST-F-13 and NFR-05; F-46), `a43ced9` (PERF-01: a public event page is read in 4 queries instead of 61, with the same output; F-47), `9e6c30e` (ST-F-12 live-path correlation tests; the claim origin label on the moderator screen; F-48) and `8ce1e1f` (NFR-07: approved hosts checked at fetch, correlation-prompt source-text isolation, ADR-005 retention purge in the hosted ingest; F-39 to F-43).
+
+Deploy, 20 Nov 2026 (`evidence/2026-11-20/deploy/`): `deploy:prod` built the web app and deployed the Worker, version `007fbaa5-12d0-40e0-a999-db3af53eb11b`, with the schedule `7,37 * * * *`. The hosted bootstrap (main `5d4dc3c`) applied migration 062 (1 applied, 61 already present, 62 files), found 16 of 16 sources ready and the purge function present.
+
+CI. Run 44539519014 on `5d4dc3c` (push to main) concluded success: job 135613780034, 16 steps, all success, no failing line in the job log. `evidence/2026-11-20/ci/ci-44539519014-cited-tests.txt` lists the passing lines for the 130 cited test titles in 23 files. No heavy suite was run locally.
+
+Hosted ingest (`evidence/2026-11-20/nfr07/`). 44651206557 ran before the bootstrap: `Retention purge: failed.` (migration 062 not yet applied) and three sources failed (feeds_ok=13 feeds_failed=3; petabencana and source-bmkg-gempa `poll_error`, source-detik-utama `fetch_error`). 44692616661 ran after it: feeds_ok=16 feeds_failed=0, purge counts all 0. No ST-H row records the 20 Nov ingest.
+
+NFR-04 re-timing after the PERF-01 deploy (`evidence/2026-11-20/nfr04/`):
+- Run 3 (started 07:25 UTC, `timing-run3-after-perf01.txt`). Warm, 30 requests per route: `GET /api/v1/events` p50 152 ms and p95 255 ms (run 2 on 19 Nov: p50 451 ms, p95 1,362 ms). Every GET route met p50 under 500 ms and p95 under 1 s. `POST /api/v1/briefings` did not meet p50 (869 ms); 17 of 30 OK, 13 failed with 503.
+- Concurrent, 5 clients x 20 requests per route: `GET /api/v1/events` 60 of 100 OK, 40 failed with 503. `POST /api/v1/briefings` 98 of 100 OK, 2 failed with 503, p50 1,068 ms and p95 1,328 ms (not met).
+- Cold, first request after 5 minutes idle: `POST /api/v1/briefings` 792 to 1,012 ms; the file's own check (all cold requests under 1,000 ms) fails by one request.
+- A second run started 01:26 UTC (`timing-run3-interrupted-network.txt`) stopped after cold round 1 with a network timeout (ETIMEDOUT). It is kept for the record and is not a result.
+- CPU (`cpu-tail-after-perf01.txt`, wrangler tail, 20 Nov 2026): 16 sampled `GET /api/v1/events` on `007fbaa5`, all ok, CPU p50 35 ms and max 52 ms. The file records 37 to 113 ms before the fix (19 Nov). A separate burst of 6 clients x 8 requests gave 43 x 200 and 5 x 503 with the body `error code: 1102` (the file's own gloss: Worker exceeded resource limits).
+
+The 503 failures are not explained by any file in the record. ST-N-04 stays Partial. They are recorded as F-50 (open), together with the CPU finding (see the open items below).
+
+ZAP active scan on a local copy (20 Nov 2026, `evidence/2026-11-20/nfr07/`, ZAP 2.17.0, `plan-active.yaml`, reports `zap-active-local-report.html` and `.json`). The Worker API on 127.0.0.1:8787 had no High, Medium or Low alert; its two informational alerts are an authentication request and a user agent fuzzer. The Vite dev server on 127.0.0.1:5173, which is not deployed, had Medium alerts for CSP not set (4 instances) and a missing anti-clickjacking header (4), and a Low for a missing X-Content-Type-Options header (5). The record for the deployed headers is the hosted after-scan of 19 Nov 2026 (0 Medium after SEC-HEADERS-01). Production was not actively scanned.
+
+Row changes, Partial to Evidence exists unless stated (all reworded rows are marked in SYSTEM-TEST.md and test-cases.csv):
+
+| Row | Was | Now | Why |
+| --- | --- | --- | --- |
+| ST-F-02 | Partial | Evidence exists | Reworded (owner decision 19 Nov 2026): proven by tests; the briefing place match is checked on hosted. The matched update in Pembaruan on live data (ST-H-27) was not observed; F-02 stays open for it |
+| ST-F-03 | Partial | Evidence exists | Reworded (owner decision 19 Nov 2026): origin per claim (F-48 fix), one version and audit record for the first correction, a replay refused with 409 (the route has no idempotency key), a publication decision record, the stale draft kept in the queue |
+| ST-F-08 | Partial | Evidence exists | Reworded under the owner rule of 19 Nov 2026 (a clause that cannot be proven is reworded): no body or prompt text, 401 or 403 for a non-moderator, 390 px empty state shown in the screenshots; page-level horizontal scroll is not measured |
+| ST-F-12 | Partial | Evidence exists | Reworded (owner decision 19 Nov 2026, design limit): the live-path clauses are named by `st-f-12-live-correlation.test.ts` (10 tests) |
+| ST-F-13 | Partial | Evidence exists | A stale correction through the real route answers 409 and writes nothing; every public view shows the current version; the decision race tests (F-CONC-01) pass |
+| ST-F-15 | Partial | Evidence exists | Reworded (owner decision 19 Nov 2026, option a): an empty live list says that no report is published yet and is not an all-clear; demo and live labels are tested |
+| ST-F-16 | Partial | Evidence exists | Reworded (owner decision 19 Nov 2026, design limit): the automatic decision carries the trace id; the live path persists no investigation case |
+| ST-N-05 | Partial | Evidence exists | Reworded under the owner rule of 19 Nov 2026 (a clause that cannot be proven is reworded): notices are counted through the updates feed; repeated delivery and stale-route tests |
+| ST-N-06 | Partial | Evidence exists | Reworded under the owner rule of 19 Nov 2026 (a clause that cannot be proven is reworded): logical restore rehearsal (19 Nov v2 report) and demo rebuild test; not point-in-time recovery |
+| ST-N-07 | Partial | Evidence exists | Approved hosts, correlation-prompt isolation and the retention purge are tested, deployed and clean on the hosted ingest; ZAP active scan on a local copy recorded above |
+| ST-F-11 | Partial | Evidence exists | Reworded under the owner rule of 19 Nov 2026: the unchanged-content and malformed-item clauses are named by two tests each; the source-text, offset, unknown-field and same-path clauses are removed. F-45 is closed as out of scope |
+| ST-N-04 | Partial | Partial | Re-timed (run 3): warm GET reads within target; the briefing route and concurrent list requests are not (503s, above) |
+
+Status counts for all 172 rows of `test-cases.csv` (including ST-H-21 to ST-H-27), before this update (HEAD of the TG-DOCS-09 worktree) and after:
+
+| Status | Before | After |
+| --- | --- | --- |
+| Evidence exists | 95 | 106 |
+| Partial | 40 | 29 |
+| Pass | 26 | 26 |
+| Blocked | 5 | 5 |
+| Points only | 3 | 3 |
+| Pending run | 2 | 2 |
+| Not evidenced | 1 | 1 |
+| **Total** | **172** | **172** |
+
+Defects. F-39 to F-43 fixed in `8ce1e1f` and deployed on 20 Nov 2026 (Worker `007fbaa5`, migration 062); each entry in `DEFECTS.md` names its test. F-45 closed as out of scope after the ST-F-11 rewording (owner decision 19 Nov 2026). New: F-46 (High; stale proposal could overwrite a newer version; fixed in `5589a05`, on `main`), F-47 (Medium; per-event queries; fixed in `a43ced9`, deployed; the 503 failures above are not closed), F-48 (Low; claim origin on the review screen; fixed in `9e6c30e`, on `main`), F-49 (Low; open; ADR-061 says the automatic publication writes an audit record, it writes a publication decision record). F-50 (Medium; open; CPU above the nominal Free allowance and 503 responses under concurrency; next step PERF-02, not started, needs an owner decision). F-02 and F-44 are unchanged.
+
+Open items for the orchestrator (not decided in this update):
+- F-50 (open, Medium): hosted 503 responses under concurrency, the briefing route's p50, and CPU above the Free plan's nominal allowance. Next step PERF-02, not started; needs an owner decision.
+
+- ST-F-02's hosted step (ST-H-27) and F-02.
+- The 20 Nov hosted ingest has no ST-H row.
+- `evidence/2026-11-19/README.md`: a superseded line now sits at its nfr06 entry, pointing to the v2 files; the v1 text is kept.
+- The 390 px screenshots show the empty state; they do not measure page-level horizontal scroll.
+
 ## 7 Partial rows: what moved and what did not
 
 The question for this update was whether rows that were Partial are now fully proven. Moving a row needs new evidence for the part that was missing.
@@ -121,7 +220,10 @@ The question for this update was whether rows that were Partial are now fully pr
 | --- | --- | --- | --- |
 | AT-03 | Blocked | Partial | Hosted T4 ran; no decision made |
 | T5 | Partial | Pass (hosted, read-only) | Hosted T5 passed on both viewports (ST-H-07) |
-| ST-F-11 | Partial | Partial | Live feeds now run every 30 minutes on the hosted site; quarantine of a malformed item is still not named by a file |
+| ST-F-11 | Partial | Evidence exists | Reworded under the owner rule of 19 Nov 2026: the unchanged-content and malformed-item clauses are named by tests (20 Nov 2026, section 7D) |
+| ST-F-02, ST-F-03, ST-F-08, ST-F-12, ST-F-13, ST-F-15, ST-F-16 | Partial | Evidence exists | Reworded rows with named tests on 20 Nov 2026 (section 7D) |
+| ST-N-05, ST-N-06, ST-N-07 | Partial | Evidence exists | Reworded rows (ST-N-05 and ST-N-06 reworded under the owner rule of 19 Nov 2026: a clause that cannot be proven is reworded); deploy and CI on 20 Nov 2026 (section 7D) |
+| ST-N-04 | Partial | Partial | Re-timed after PERF-01 (run 3): warm GET reads within target; the briefing route and concurrent list requests are not (section 7D) |
 | ST-F-14 | Partial | Partial | The freshness pass runs in deployment; no file tests that pass |
 | ST-N-08 | Partial | Partial | Deployed on the Free plans; no rebuild from a clean clone is recorded |
 | FR-16 (traceability) | Not covered | Partial | Revoke-keeps-collection is tested (IT-HOST-08) |
@@ -137,6 +239,8 @@ Details in [DEFECTS.md](DEFECTS.md).
 - **Fixed on 19 November 2026:** F-20 to F-26 and F-28 (checked on the hosted site in ST-H-13 to ST-H-20); F-27 (tests only). R-11 to R-13 (CI test-code failures, fixed forward). On 19 November 2026 (TG-DOCS-07): F-06 closed by test; F-29 (`b4a0d0f`), F-30 and F-31 (`f3373c0`) and F-32 (`b3ca26d`) fixed, with no CI run and no hosted re-check yet (section 7B).
 - **Still open:** F-02 (open for the matched-update step on live data in the browser; the briefing part is fixed and checked on hosted, ST-H-13 and ST-H-14), F-05 (partly closed on 19 November 2026: the webhook route has a PGlite test; the BMKG CAP parser has none, and no production caller), F-08 (Node and WSL statements), R-01 (phone demo label), R-04 (demo queue for T4). F-01 and F-12 are closed by the points-only scope decision. The EXPLORE-18 items still open are duplicate events, the #peta list map on the live site, the phone layout of the admin tabs and the sign-in heading (`DEFECTS.md` section B). The "Versi dikoreksi" label and superseded proposals were fixed on 19 November 2026 (POLISH-02 and POLISH-03).
 - **Re-run pending:** R-05 and R-06 (fixed in `7cf6c0f`).
+- **Fixed on 20 November 2026 (TG-DOCS-09):** F-39 to F-43 (`8ce1e1f`; deployed 20 Nov 2026 with Worker `007fbaa5` and migration 062); F-46 (`5589a05`, on `main`); F-47 (`a43ced9`, deployed; its 503 failures are not closed); F-48 (`9e6c30e`, on `main`). F-45 closed as out of scope (owner decision, 19 Nov 2026).
+- **Open, new on 20 November 2026:** F-49 (ADR-061 wording: the automatic publication writes a publication decision record, not an audit row; documentation fix needed). F-46 to F-48 carry proposed severities that the owner has not reviewed. F-50 (open, Medium): hosted 503 responses under concurrency and CPU above the nominal Free allowance; next step PERF-02, not started, needs an owner decision.
 
 ## 9 Release-blocking checks (SDP section 10)
 

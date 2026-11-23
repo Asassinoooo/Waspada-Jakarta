@@ -1,0 +1,10 @@
+✔ NFR-07 A1: the system message is identical for every report, and source text is only a JSON string in the user message (41.423696ms)
+✔ NFR-07 A1: a fake proposal inside the source text is data, and the request carries no extra instruction messages (2.145972ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1432.793499

@@ -1,0 +1,47 @@
+NFR-04 run 2, started 2026-11-19T12:46:39.289Z, target p50<500 ms and p95<1000 ms
+
+[A] Cold: first request to each route after >=5 min idle (3 rounds). Columns: round | route | ms | status
+1 | page / | 2739 | 200
+1 | GET /api/v1/events | 1402 | 200
+1 | GET /api/v1/events/:id | 245 | 200
+1 | GET /api/v1/events/:id/history | 328 | 200
+1 | GET /api/v1/updates | 560 | 200
+1 | GET /api/v1/context | 1705 | 200
+1 | POST /api/v1/briefings | 89 | 400
+2 | page / | 869 | 200
+2 | GET /api/v1/events | 1618 | 200
+2 | GET /api/v1/events/:id | 247 | 200
+2 | GET /api/v1/events/:id/history | 207 | 200
+2 | GET /api/v1/updates | 329 | 200
+2 | GET /api/v1/context | 166 | 200
+2 | POST /api/v1/briefings | 84 | 400
+3 | page / | 775 | 200
+3 | GET /api/v1/events | 1582 | 200
+3 | GET /api/v1/events/:id | 178 | 200
+3 | GET /api/v1/events/:id/history | 321 | 200
+3 | GET /api/v1/updates | 140 | 200
+3 | GET /api/v1/context | 63 | 200
+3 | POST /api/v1/briefings | 317 | 400
+cold summary: n=21, max 2739 ms, all under 1000 ms: NO
+
+[B] Warm sequential, 30 requests per route, 250 ms apart
+route | n | ok | p50 ms | p95 ms | max ms | p50<500 | p95<1000
+page / | 30 | 30 | 106 | 530 | 2738 | yes | yes
+GET /api/v1/events | 30 | 24 | 451 | 1362 | 7243 | yes | NO
+GET /api/v1/events/:id | 30 | 29 | 101 | 378 | 624 | yes | yes
+GET /api/v1/events/:id/history | 30 | 30 | 89 | 320 | 331 | yes | yes
+GET /api/v1/updates | 30 | 30 | 125 | 1791 | 6857 | yes | NO
+GET /api/v1/context | 30 | 30 | 58 | 390 | 621 | yes | yes
+POST /api/v1/briefings | 30 | 0 | 62 | 141 | 179 | yes | yes
+
+[C] 5 concurrent clients x 20 requests per route
+route | n | ok | p50 ms | p95 ms | max ms | p50<500 | p95<1000
+page / | 100 | 100 | 85 | 207 | 369 | yes | yes
+GET /api/v1/events | 100 | 88 | 251 | 610 | 1009 | yes | yes
+GET /api/v1/events/:id | 100 | 98 | 82 | 343 | 422 | yes | yes
+GET /api/v1/events/:id/history | 100 | 100 | 60 | 178 | 450 | yes | yes
+GET /api/v1/updates | 100 | 100 | 82 | 124 | 424 | yes | yes
+GET /api/v1/context | 100 | 100 | 50 | 78 | 431 | yes | yes
+POST /api/v1/briefings | 100 | 0 | 53 | 187 | 341 | yes | yes
+
+finished 2026-11-19T13:04:02.770Z

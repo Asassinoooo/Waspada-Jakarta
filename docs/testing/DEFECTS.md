@@ -1,11 +1,12 @@
 # Defect and finding log
 
-Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026. Branch: `work/TEST-DOC-01-chapter5`.
+Project: Waspada Jakarta (Team 12, RPL course). Status date: 20 November 2026. Branch: `work/TEST-DOC-01-chapter5`.
 Updated 16 November 2026 (HOSTED-01 documentation decisions): status lines on F-01, F-03, F-04, F-12, F-13 and F-14; F-13 and F-14 added to section B.
 Updated 18 November 2026 (TG-DOCS-02): status for R-01, R-05, R-06, R-09 and R-10; CI status on F-03, F-04, F-13 and F-14; the F-14 residual; new entries D-03, F-16, F-17, F-18 and F-ALERT-02.
 Updated 19 November 2026 (TG-DOCS-04): F-20 to F-28 and the EXPLORE-18 open items (section B); R-11 to R-13 (section D).
 Updated 19 November 2026 (TG-DOCS-05): status line on F-02, and new F-29 (section B).
 Updated 19 November 2026 (TG-DOCS-07): F-05 (partly closed), F-06 (closed by test), F-29 and F-32 (fixed, hosted re-check pending), new F-30 and F-31 (fixed, TEST-GAP-03), and the two EXPLORE-18 open items fixed by POLISH-02 and POLISH-03 (section B).
+Updated 20 November 2026 (TG-DOCS-09): F-39 to F-43 fixed and deployed on 20 November 2026 (section B); F-45 closed as out of scope; new F-46 to F-50 (section B). The evidence is in `docs/testing/evidence/2026-11-20/`.
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules
@@ -16,6 +17,8 @@ Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMEN
 - SHAs and run IDs added on 18 November 2026 were checked with `git show -s`, `git merge-base --is-ancestor` and `gh run view` on that date.
 - SHAs added on 19 November 2026 (F-20 to F-28, R-11 to R-13) were read from `git log` at `a7ba558` (`git show --stat` for the files each fix changed). The CI run IDs and the hosted check results were not re-read with `gh` in this update.
 - Fix commits cited for F-29 to F-32 (`b4a0d0f`, `ab4533a`, `f3373c0`, `b3ca26d`) and the test commit `f155822` are on `main` (checked with `git merge-base --is-ancestor` on 19 November 2026). None is in CI baseline `a7ba558`, so no CI run covers them yet; `test-cases.csv` holds `44484348615` until a run is read.
+- SHAs and run IDs added on 19 November 2026 for F-33 to F-38 were checked with `git show -s` and `git merge-base --is-ancestor` on that date, and CI run 44502344276 with `gh run view`. `ea955b9f` is a Cloudflare Worker version id, not a git SHA. Open items F-39 to F-45 have no fix commit.
+- The fix SHAs (`5589a05`, `a43ced9`, `9e6c30e`, `8ce1e1f`) were checked on 20 November 2026 with `git show -s` and `git merge-base --is-ancestor`: each is an ancestor of the TG-DOCS-09 worktree HEAD. The CI run and job (44539519014, job 135613780034) were read with `gh api`, because `gh run view --log` returned no output. The ingest runs 44651206557 and 44692616661 are in `evidence/2026-11-20/nfr07/`. `007fbaa5` is a Cloudflare Worker version id, not a git SHA; it comes from the deploy record in `evidence/2026-11-20/deploy/`.
 - Blocked and pending UAT results are not defects (`docs/testing/UAT.md` section 10).
 
 ## Section A: Verified defects (fixed)
@@ -74,6 +77,8 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Evidence:** `docs/testing/UAT.md` section 6, T2 step 7 and open item; section 6.6. Affects ST-F-02 and AT-02. T2 is Partial in `test-cases.csv`.
 - **Decision needed:** either run T2 step 7 on a live dataset (this needs `serve:live`, real feeds and model quota, under explicit authorisation), or record the US-02 matched-update criterion as not evidenced.
 - **Status (19 Nov 2026): open for one part.** The briefing part is fixed and checked on the hosted site: a place interest matches, and its reason is returned (ST-H-13, ST-H-14; F-20 and F-21). The updates-feed step (a matched update in Pembaruan, read on live data) is still open. It has tests (`updates-center.test.tsx`, `public-event-updates.test.ts`, `publication-outbox-delivery-runtime.test.ts`) but no live browser run, so T2 step 7 has not run.
+
+- **Update (19 Nov 2026, TG-DOCS-08):** the once-only correction in Pembaruan is now named by a test (`apps/web/test/updates-center.test.tsx`, 'ST-F-02: a correction re-polled in a later cycle is shown once'). The hosted matched update in Pembaruan on live data was not observed (SYSTEM-TEST ST-H-27: the updates feed lists only changes made after a browser's first visit, and no matching change happened in the window). This finding stays open for that part.
 
 ### F-03: L1 webhook ingest imports L2 and L4 modules at runtime
 
@@ -315,6 +320,167 @@ F-20 to F-28 were found by EXPLORE-18 (18 November 2026): five read and write wa
 - **Fix:** `b3ca26d` (`fix(POLISH-01)`, 19 November 2026). At 601 to 900 px the header gaps and padding tighten, and the nav scrolls inside itself as the last fallback. Below 768 px the brand name is hidden and the brand mark keeps its link and accessible name. Test: `apps/web/test/header-reflow.test.tsx` (2 tests). The test checks the CSS rules and the header markup, not a rendered layout.
 - **Verification:** a local browser check at 375 to 1440 px (its record is not in the repository). Deployed on 19 November 2026. The hosted re-check is pending.
 - **Status (19 Nov 2026): fixed locally and deployed; hosted re-check pending.** BR-02 stays Partial: the account and moderator screens at 200% are not recorded.
+
+### F-33: a moderator publish or correction accepted a claim labelled under_review (High, proposed)
+
+- **Observation:** a moderator publish or correction could publish a claim whose label was still under_review. The automatic gate refuses that label; the moderator path did not.
+- **Found by:** TEST-GAP-04 tests, 19 November 2026 (the commit that carries the fix).
+- **Where:** `apps/worker/src/layers/l4-application-integration/publication-policy.ts`.
+- **Cause:** the moderator gate did not refuse a non-public claim label, which the automatic gate does.
+- **Severity:** High, proposed by TG-DOCS-08 (publishes unreviewed content, the rule in SYSTEM-TEST section 9). Not yet reviewed by the owner.
+- **Fix:** `01a61ec` (`test(TEST-GAP-04)`, 19 November 2026): the moderator gate refuses non-public claim labels. Test: `apps/worker/test/draft-privacy-public-routes-db.test.ts`, 'a moderator publish refuses a claim still labelled under_review'.
+- **Status (19 Nov 2026): fixed (`01a61ec`), on `main`; covered by CI run 44498555647 (`e68aefd`), which includes it.**
+
+### F-34: RSS intake stored javascript: and credential links (Medium, proposed)
+
+- **Observation:** RSS intake kept source links with a non-web scheme (javascript:) or with user information (credentials).
+- **Found by:** NFR-07 malicious-source tests at `e68aefd`, where three were todo (TG-DOCS-08, 19 November 2026).
+- **Where:** `apps/worker/src/layers/l1-data-knowledge/rss-news-ingest.ts`; `apps/worker/src/security/source-link.ts`.
+- **Cause:** no single public source-link rule applied at intake and at the gates.
+- **Severity:** Medium, proposed by TG-DOCS-08 (a public source link with a script scheme; the public page escapes text and CSP applies). Not yet reviewed by the owner.
+- **Fix:** `9f6a456` (`fix(NFR-07)`, 19 November 2026): one public source-link rule for RSS intake and the gates. Tests: `apps/worker/test/nfr07-malicious-source-gate.test.ts` (11 of 11).
+- **Status (19 Nov 2026): fixed (`9f6a456`); CI run 44502344276 (`9f6a456`) concluded success (checked with `gh`).**
+
+### F-35: the gate accepted http and user-info claim links that attribution dropped (Medium, proposed)
+
+- **Observation:** the automatic gate accepted a claim whose link was http or carried user information; the attribution step then dropped the link, so the claim went out with less source than the gate had checked.
+- **Found by:** NFR-07 malicious-source tests (TG-DOCS-08, 19 November 2026).
+- **Where:** `apps/worker/src/layers/l4-application-integration/publication-policy.ts`; `proposal-publication.ts`.
+- **Cause:** the gate and the attribution step applied different link rules.
+- **Severity:** Medium, proposed by TG-DOCS-08 (the claim kept its source record; only the link was lost). Not yet reviewed by the owner.
+- **Fix:** `9f6a456` (same commit as F-34). Test: `apps/worker/test/nfr07-malicious-source-gate.test.ts` (the non-web scheme refusal and the link tests).
+- **Status (19 Nov 2026): fixed (`9f6a456`); CI run 44502344276 concluded success.**
+
+### F-36: source text could forge prompt section headers in report interpretation (Medium, proposed)
+
+- **Observation:** source text could contain lines that look like prompt section headers, which the model could read as its own instructions.
+- **Found by:** NFR-07 source-text isolation tests (TG-DOCS-08, 19 November 2026).
+- **Where:** `apps/intelligence/src/agents/report-interpretation-agent.ts` (the report interpretation prompt).
+- **Cause:** section headers in the prompt were not neutralised in source text.
+- **Severity:** Medium, proposed by TG-DOCS-08 (input isolation under NFR-07). Not yet reviewed by the owner.
+- **Fix:** `9f6a456` (`fix(NFR-07)`, 19 November 2026). Test: `apps/intelligence/test/nfr07-source-text-isolation.test.ts` (6 of 6). The incident-correlation prompt is not changed by this fix; see F-43.
+- **Status (19 Nov 2026): fixed for report interpretation (`9f6a456`).**
+
+### F-37: a briefing repeated an event, and a null source publish time read "Tidak tersedia" (Low, proposed)
+
+- **Observation:** a briefing could list one event twice. A source with no publish time read "Tidak tersedia", which reads as a checked gap.
+- **Found by:** TEST-GAP-04 web tests (19 November 2026).
+- **Where:** `apps/web/src/BriefingResults.tsx`; `apps/web/src/EventDetail.tsx`; `apps/web/src/api-client.ts`.
+- **Cause:** the briefing did not collapse repeated events; an unstated source publish time used the availability wording.
+- **Severity:** Low, proposed by TG-DOCS-08 (display only; no unsupported claim). Not yet reviewed by the owner.
+- **Fix:** `35ab16e` (`test(TEST-GAP-04)`, 19 November 2026): a briefing event shows once, at its first position, and an unstated source publish time reads "Tidak disebutkan". Tests: `apps/web/test/preferences.test.tsx` ('ST-F-02: a briefing that repeats one event ...'); `apps/web/test/event-detail-claim-sources.test.tsx` ('ST-F-05: a null source publish time reads Tidak disebutkan ...').
+- **Status (19 Nov 2026): fixed (`35ab16e`), covered by CI run 44498555647 (`e68aefd`), which includes it.**
+
+### F-38: security headers missing and plain-HTTP API requests served (Medium, proposed)
+
+- **Observation:** pages and API responses lacked Content-Security-Policy, Strict-Transport-Security, anti-clickjacking, X-Content-Type-Options, Referrer-Policy and Permissions-Policy, and plain-HTTP API requests were served rather than redirected.
+- **Found by:** the OWASP ZAP passive baseline (2 Medium, 3 Low) and the scripted checklist (24 of 36), both run on 19 November 2026 before the fix (`nfr07/zap-before`, `nfr07/checklist-before`).
+- **Where:** `apps/worker/src/security/security-headers.ts`; `apps/worker/src/index.ts`; `apps/web/public/_headers`.
+- **Cause:** no security headers were set on pages or API responses, and no redirect applied to the API over HTTP.
+- **Severity:** Medium, proposed by TG-DOCS-08 (two Medium ZAP alerts on the public site). Not yet reviewed by the owner.
+- **Fix:** `db5bf13` (`fix(SEC-HEADERS-01)`, 19 November 2026), deployed as Worker version `ea955b9f` (a Cloudflare version id, not a git SHA). Tests: `apps/worker/test/security-headers.test.ts` (11); `apps/web/test/public-headers.test.ts` (7).
+- **Status (19 Nov 2026): fixed (`db5bf13`) and deployed. Hosted: ZAP after the fix 0 High and 0 Medium; checklist 34 of 36, with two recorded exceptions (ST-H-25, ST-H-26). Plain-HTTP static pages are still not redirected (a Cloudflare zone setting is unavailable on workers.dev; HSTS limits exposure).**
+
+### F-39: source-text and embedding purge (ADR-005) is not implemented (Medium, proposed; fixed 20 Nov 2026)
+
+- **Observation:** ADR-005 calls for purging source text and embeddings. No purge of source text or embeddings was found in the repository during the TG-DOCS-08 review. The only purge tested is for sessions and login state (`apps/worker/test/nfr07-session-retention.test.ts`).
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026).
+- **Fix:** `8ce1e1f` (`fix(TG-GAP-05)`, 19 November 2026). The ADR-005 retention purge runs once per hosted ingest run, after the backfills and before the freshness pass. It purges source text at the 365-day cap, and text cited only by a superseded version 90 days after that version stops being current; embeddings are purged with their text. A failed purge logs one fixed line and does not fail the run. Tests: `apps/db/test/nfr07-retention-purge.test.ts` (11 tests); `tools/hosted/nfr07-retention-purge.test.ts` (7 tests).
+- **Status (20 Nov 2026): fixed in `8ce1e1f`, deployed 20 November 2026 (Worker `007fbaa5`, migration 062).** The first ingest after the bootstrap reported all purge counts as 0 (`evidence/2026-11-20/nfr07/ingest-44692616661.txt`). The periods used are the ones in the tests above. No owner sign-off on these periods is recorded in this register.
+
+### F-40: 24-month audit retention is not implemented (Medium, proposed; fixed 20 Nov 2026)
+
+- **Observation:** the 24-month audit retention in the requirements has no purge job in the repository.
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026).
+- **Fix:** `8ce1e1f` (19 November 2026). Audit rows older than 24 months are purged; younger rows are kept. Test: `apps/db/test/nfr07-retention-purge.test.ts` ('audit rows older than 24 months are purged, and younger audit rows are kept').
+- **Status (20 Nov 2026): fixed in `8ce1e1f`, deployed 20 November 2026 (Worker `007fbaa5`, migration 062).**
+- **Status before (19 Nov 2026): open.**
+
+### F-41: news_triage_decisions.expires_at is never purged (Low, proposed; fixed 20 Nov 2026)
+
+- **Observation:** the expiry column on `news_triage_decisions` is written but no job purges rows past it.
+- **Found by:** TG-DOCS-08 review (19 November 2026).
+- **Fix:** `8ce1e1f` (19 November 2026). Triage decisions are purged 30 days after their `expires_at`. The 30-day grace keeps a decision while its item can still appear in a feed, so the item is not triaged again (migration 062 header comment). Test: `apps/db/test/nfr07-retention-purge.test.ts` ('triage decisions expired over 30 days ago are purged; recently expired and unexpired decisions are kept').
+- **Status (20 Nov 2026): fixed in `8ce1e1f`, deployed 20 November 2026 (Worker `007fbaa5`, migration 062).**
+
+### F-42: the approved-host list is not enforced at fetch (Medium, proposed; fixed 20 Nov 2026)
+
+- **Observation:** the approved outbound host list is recorded for sources, but the fetch path does not check each request against it.
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026); the redirect guard and the moderator-only provider fetch are tested, the host list is not.
+- **Fix:** `8ce1e1f` (19 November 2026). Each fetch is checked against the approved host list. A source whose registry row declares no host is refused without a request. A redirect is never followed, even to a host the registry approves. The host is read from the parsed URL, so credential-style, look-alike and case-variant URLs are judged on that host. Test: `apps/worker/test/nfr07-approved-host-fetch.test.ts` (12 tests).
+- **Status (20 Nov 2026): fixed in `8ce1e1f`, deployed 20 November 2026 (Worker `007fbaa5`, migration 062).**
+- **Status before (19 Nov 2026): open.**
+
+### F-43: the incident-correlation prompt has unescaped section headers (Medium, proposed; fixed 20 Nov 2026)
+
+- **Observation:** the incident-correlation prompt does not neutralise section headers in source text, so a forged header could appear as a prompt section. F-36 fixed only report interpretation (`9f6a456`).
+- **Found by:** TG-DOCS-08 review of NFR-07 (19 November 2026). `apps/intelligence/test/nfr07-source-text-isolation.test.ts` passes for the correlation prompt, but it does not test header forgery.
+- **Fix:** `8ce1e1f` (19 November 2026). The incident-correlation prompt neutralises every source-derived field, so a forged section header in source text is marked and each section appears once. Tests: `apps/intelligence/test/nfr07-source-text-isolation.test.ts` ('a forged section header or template line in any source field is marked, and the prompt keeps one section of each'; 'a quote copied from a marked line passes the provenance check').
+- **Status (20 Nov 2026): fixed in `8ce1e1f`, deployed 20 November 2026 (Worker `007fbaa5`, migration 062).**
+- **Status before (19 Nov 2026): open.**
+
+### F-44: the register reveals taken usernames, by design (Low, proposed; open)
+
+- **Observation:** the registration response says whether a username is taken, so anyone can test which usernames exist.
+- **Found by:** TG-DOCS-08 review (19 November 2026).
+- **Status (19 Nov 2026): open, recorded as a design choice. No owner decision on it is recorded in this file.**
+
+### F-45: refused webhook items are neither recorded nor counted (Medium, proposed; closed 20 Nov 2026, out of scope; added by TG-DOCS-08)
+
+- **Observation:** the reworded ST-F-11 expected result (owner, 19 November 2026) says a malformed item is "refused and recorded (counted)". A malformed webhook item is refused with 400 and writes nothing. The batch success response counts accepted items only. No record or count of a refused item exists.
+- **Found by:** TG-DOCS-08 review of ST-F-11 against the code (19 November 2026).
+- **Where:** `apps/worker/src/layers/l1-data-knowledge/webhook-ingest.ts`.
+- **Severity:** Medium, proposed (a traceability and operations gap with no public effect). Not yet reviewed by the owner.
+- **Status (20 Nov 2026): closed as out of scope after the ST-F-11 rewording (owner decision 19 Nov 2026); refused webhook items are still not recorded.** The reworded expected result is 'a malformed item is refused', which removes the record and count clause.
+
+### F-46: a pending proposal older than the current published version could overwrite it through the moderation route (High)
+
+- **Observation:** a publish or auto-publish of an undecided proposal made before the proposal behind the event's current published version could apply over that newer version, through the moderation route.
+- **Found by:** TG-GAP-05 (19 November 2026), the real-route stale-write tests in `apps/worker/test/moderation-stale-route-db.test.ts`.
+- **Where:** `apps/worker/src/layers/l4-application-integration/proposal-publication.ts`, `publishInTransaction`.
+- **Cause:** the publish path checked the base version for corrections only. A publish or auto-publish of an older proposal had no check against the current version.
+- **Severity:** High (set by the TG-DOCS-09 brief). Not yet reviewed by the owner.
+- **Fix:** `5589a05` (`fix(TG-GAP-05)`, 19 November 2026). An undecided proposal made before the one behind the current version is superseded. It writes one decision (`stale_reason` `older_than_current_version`) and publishes nothing, and the call answers 409 `already_decided`. Test: `apps/worker/test/moderation-stale-route-db.test.ts` (the 'NFR-05 / ST-F-13' tests).
+- **Status (20 Nov 2026): fixed (`5589a05`), on `main`, and deployed on 20 November 2026 (Worker `007fbaa5`; the bootstrap record names main at `5d4dc3c`).** No hosted check of this path is recorded.
+
+### F-47: the public event list issued one query set per event (Medium)
+
+- **Observation:** the public event list read each event in a page with its own query set: 61 SQL statements for a 20-event page. Before the fix the Worker used 37 to 113 ms of CPU per request, as recorded on 19 Nov 2026 in `evidence/2026-11-20/nfr04/cpu-tail-after-perf01.txt`, against the nominal 10 ms Workers Free CPU allowance (`PERFORMANCE.md`). Run 2 timings were slow, and some requests failed.
+- **Found by:** the NFR-04 timing script, run 2 on 19 November 2026, before the fix (`evidence/2026-11-19/nfr04/timing-run2-before-perf-fix.txt`). Warm sequential requests to `GET /api/v1/events`: 24 of 30 OK, p50 451 ms, p95 1,362 ms. The run 2 file does not name the host; the 19 November README records the script as run against the hosted public routes.
+- **Where:** `apps/worker/src/layers/l4-application-integration/public-event-list-projection-service.ts`; `public-event-projection-service.ts`; `public-projection.ts`; `apps/worker/src/runtime/public-event-list-runtime.ts`; `apps/db/src/public-projection-lookups.ts`.
+- **Cause:** the list projection read each event's rows separately.
+- **Severity:** Medium (set by the TG-DOCS-09 brief). Not yet reviewed by the owner.
+- **Fix:** `a43ced9` (`perf(PERF-01)`, 19 November 2026). A page is read in a constant number of queries (4 for 20 events, from 61), and the output is byte for byte the same as the per-event path. Tests: `apps/worker/test/perf01-public-event-list.test.ts` (3 tests); PERF-01 cases in `apps/worker/test/l4-public-event-list-projection-service.test.ts` and `l4-public-event-projection-service.test.ts`; `apps/db/test/public-projection-lookups.test.ts`.
+- **Status (20 Nov 2026): fixed (`a43ced9`) and deployed on 20 November 2026 (Worker `007fbaa5`).** Re-timed after the deploy (run 3, 20 Nov 2026, `evidence/2026-11-20/nfr04/timing-run3-after-perf01.txt`): warm GET reads meet the target (`GET /api/v1/events` p50 152 ms, p95 255 ms); `POST /api/v1/briefings` does not (p50 869 ms; 13 of 30 warm requests failed with 503), and under five concurrent clients 40 of 100 list requests failed with 503. Those 503s are not closed by this fix and are recorded as F-50 (open). The updates feed was also slow in run 2 (`GET /api/v1/updates` p95 1,791 ms, 30 of 30 OK); this commit does not change that route, and no backlog row for it is recorded in this update.
+
+### F-48: the moderator review screen did not show each claim's origin outlet (Low)
+
+- **Observation:** on the moderator review screen, a claim showed no origin outlet, so a moderator could not see where each claim came from.
+- **Found by:** TG-GAP-05 (19 November 2026), the ST-F-03 review. `apps/web/test/moderator-review.test.tsx` had no origin assertion.
+- **Where:** `apps/web/src/ModeratorReview.tsx`; `apps/web/src/moderator-review.css`.
+- **Severity:** Low (set by the TG-DOCS-09 brief). Not yet reviewed by the owner.
+- **Fix:** `9e6c30e` (19 November 2026). Each claim shows its origin on the review screen as 'Asal: ' followed by its outlet, or its registry source id when there is no outlet. Test: `apps/web/test/moderator-review.test.tsx` ('ST-F-03: each claim shows its origin on the review screen').
+- **Status (20 Nov 2026): fixed (`9e6c30e`) on `main`.** `deploy:prod` builds the web app before it deploys the Worker, so the fix is in the build deployed with `007fbaa5`. It is not checked on the hosted site.
+
+### F-49: ADR-061 says the automatic publication writes an audit record; it writes a publication decision record (Low, documentation mismatch)
+
+- **Observation:** `docs/decisions/ADR-061-agent-driven-publication.md`, decision 7, says each publish writes an audit row that records the actor, the publication mode and the gate reasons. The automatic publication writes a `publication_decisions` row that carries the proposal's trace id, and no `audit_records` row.
+- **Found by:** TG-GAP-05 (19 November 2026), the ST-F-16 test in `apps/worker/test/adr061-gate-db.test.ts`.
+- **Where:** `docs/decisions/ADR-061-agent-driven-publication.md`, decision 7.
+- **Cause:** not confirmed. The ADR text does not separate the automatic path from the moderator path. The moderator publish does write an audit record (`apps/db/test/manual-publication-gate-composition.test.ts`).
+- **Severity:** Low (set by the TG-DOCS-09 brief); documentation only, publication behaviour is unchanged.
+- **Fix:** none yet. The ADR text needs correcting; no code change is planned for this finding.
+- **Status (20 Nov 2026): open.**
+
+### F-50: hosted public reads still use CPU above the Free plan's nominal allowance, and some requests fail with 503 under load (Medium, open)
+
+- **Observation:** after PERF-01 (Worker `007fbaa5`), `GET /api/v1/events` still used 22 to 52 ms of CPU per request on the hosted Worker (p50 35 ms; wrangler tail sample of 16 requests, 20 Nov 2026). The Workers Free plan's nominal CPU allowance is 10 ms (`PERFORMANCE.md`). Under 5 concurrent clients, 40 of 100 list requests and 2 of 100 briefing requests returned 503. Warm sequential `POST /api/v1/briefings` failed 13 of 30 with 503 and had p50 869 ms. A separate burst of 6 clients x 8 requests returned 5 requests with 503 and the body `error code: 1102` (the file's gloss: Worker exceeded resource limits).
+- **Found by:** TG-DOCS-09 (20 November 2026): the PERF-01 re-timing run 3 and the wrangler tail sample.
+- **Where:** the hosted Worker's public read path: `GET /api/v1/events` and `POST /api/v1/briefings`. The code location was not analysed in this update.
+- **Cause:** not determined. Error 1102 means the Worker exceeded a resource limit; the record does not say which one. The 503 bodies in run 3 were not captured; only the burst's bodies were.
+- **Severity:** Medium (set in the TG-DOCS-09 follow-up, 20 Nov 2026). Not yet reviewed by the owner.
+- **Fix:** none yet. Next step: PERF-02, not started; needs an owner decision.
+- **Status (20 Nov 2026): open.** Evidence: `evidence/2026-11-20/nfr04/timing-run3-after-perf01.txt` and `evidence/2026-11-20/nfr04/cpu-tail-after-perf01.txt`. Linked from NFR-04 and ST-N-04 (both stay Partial) and from `TEST-SUMMARY.md` section 8.
 
 ### F-ALERT-02: a published version did not reach `/api/v1/updates`
 

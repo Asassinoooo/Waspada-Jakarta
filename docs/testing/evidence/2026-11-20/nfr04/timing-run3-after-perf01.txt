@@ -1,0 +1,47 @@
+NFR-04 run 3 (after PERF-01 deploy 007fbaa5), started 2026-11-20T07:25:34.786Z, target p50<500 ms and p95<1000 ms
+
+[A] Cold: first request to each route after >=5 min idle (3 rounds). Columns: round | route | ms | status
+1 | page / | 354 | 200
+1 | GET /api/v1/events | 415 | 200
+1 | GET /api/v1/events/:id | 173 | 200
+1 | GET /api/v1/events/:id/history | 106 | 200
+1 | GET /api/v1/updates | 167 | 200
+1 | GET /api/v1/context | 83 | 200
+1 | POST /api/v1/briefings | 792 | 200
+2 | page / | 279 | 200
+2 | GET /api/v1/events | 480 | 200
+2 | GET /api/v1/events/:id | 142 | 200
+2 | GET /api/v1/events/:id/history | 212 | 200
+2 | GET /api/v1/updates | 140 | 200
+2 | GET /api/v1/context | 91 | 200
+2 | POST /api/v1/briefings | 899 | 200
+3 | page / | 208 | 200
+3 | GET /api/v1/events | 347 | 200
+3 | GET /api/v1/events/:id | 251 | 200
+3 | GET /api/v1/events/:id/history | 155 | 200
+3 | GET /api/v1/updates | 101 | 200
+3 | GET /api/v1/context | 140 | 200
+3 | POST /api/v1/briefings | 1012 | 200
+cold summary: n=21, max 1012 ms, all under 1000 ms: NO
+
+[B] Warm sequential, 30 requests per route, 250 ms apart
+route | n | ok | p50 ms | p95 ms | max ms | p50<500 | p95<1000
+page / | 30 | 30 | 73 | 168 | 261 | yes | yes
+GET /api/v1/events | 30 | 30 | 152 | 255 | 282 | yes | yes
+GET /api/v1/events/:id | 30 | 30 | 84 | 132 | 135 | yes | yes
+GET /api/v1/events/:id/history | 30 | 30 | 65 | 89 | 100 | yes | yes
+GET /api/v1/updates | 30 | 30 | 113 | 197 | 209 | yes | yes
+GET /api/v1/context | 30 | 30 | 87 | 172 | 211 | yes | yes
+POST /api/v1/briefings | 30 | 17 | 869 | 978 | 1054 | NO | yes | failed statuses 503,503,503,503,503,503,503,503,503,503,503,503,503
+
+[C] 5 concurrent clients x 20 requests per route
+route | n | ok | p50 ms | p95 ms | max ms | p50<500 | p95<1000
+page / | 100 | 100 | 83 | 158 | 413 | yes | yes
+GET /api/v1/events | 100 | 60 | 178 | 485 | 589 | yes | yes | failed statuses 503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503,503
+GET /api/v1/events/:id | 100 | 100 | 133 | 195 | 336 | yes | yes
+GET /api/v1/events/:id/history | 100 | 100 | 128 | 260 | 443 | yes | yes
+GET /api/v1/updates | 100 | 100 | 114 | 224 | 293 | yes | yes
+GET /api/v1/context | 100 | 100 | 49 | 76 | 131 | yes | yes
+POST /api/v1/briefings | 100 | 98 | 1068 | 1328 | 1471 | NO | NO | failed statuses 503,503
+
+finished 2026-11-20T07:42:52.699Z

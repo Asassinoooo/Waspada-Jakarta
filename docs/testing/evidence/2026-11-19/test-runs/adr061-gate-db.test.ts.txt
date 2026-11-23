@@ -1,0 +1,42 @@
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+{"event":"publication_attributions","attributed":0,"skipped":1}
+▶ ADR-061 automatic gate: database-level checks
+  ✔ control: a fully valid proposal passes every automatic check and publishes as agent_auto (91.305951ms)
+  ▶ check 1: discrepancy status (has_discrepancy exactly false, no discrepancy listed)
+    ✔ queues a proposal whose has_discrepancy is absent, because an unknown status fails closed (31.251317ms)
+    ✔ queues a proposal with has_discrepancy false that still lists a discrepancy (17.812466ms)
+  ✔ check 1: discrepancy status (has_discrepancy exactly false, no discrepancy listed) (49.671698ms)
+  ✔ check 2 (correlation): an unresolved correlation queues and never publishes (17.689007ms)
+  ✔ check 3 (claim support): a claim that is not supported queues and never publishes (19.297504ms)
+  ✔ check 4 (claim quote): a claim with no quote queues and never publishes (20.188603ms)
+  ▶ check 8 (schema): a registry category, a title and a proposal time
+    ✔ queues a proposal with a blank title (21.751746ms)
+    ✔ queues a proposal with no claims (17.77705ms)
+  ✔ check 8 (schema): a registry category, a title and a proposal time (40.46574ms)
+  ▶ check 9 (location and event time): both come from the source
+    ✔ queues a proposal with no location (19.655526ms)
+    ✔ HOSTED-21: publishes a proposal whose event time is unknown, keeps the time unknown, and records the waiver (43.195072ms)
+    ✔ HOSTED-21: queues a proposal whose event time is present but malformed (15.425467ms)
+  ✔ check 9 (location and event time): both come from the source (78.980479ms)
+  ▶ concurrent decisions on one proposal (F-CONC-01, ADR-061 line 49)
+    ✔ two overlapping auto-publish calls for one proposal leave one decision and one version (36.260227ms)
+    ✔ a publish that passed its pre-check before another publish committed publishes nothing (F-CONC-01) (44.765818ms)
+    ✔ a reject that is recorded before a publish's transaction stops the publish: one decision, no version (F-CONC-01) (22.63948ms)
+    ✔ a publish that is recorded before a reject stops the reject: one decision, one version (F-CONC-01) (58.391005ms)
+  ✔ concurrent decisions on one proposal (F-CONC-01, ADR-061 line 49) (162.656941ms)
+  ▶ ST-F-07: a moderator reject records a decision and never publishes
+    ✔ a reject records one reject decision with the reviewer, writes no version or outbox row, and leaves nothing public (26.902858ms)
+    ✔ a reject writes one audit record for the moderator who rejected (15.144068ms)
+  ✔ ST-F-07: a moderator reject records a decision and never publishes (42.380683ms)
+✔ ADR-061 automatic gate: database-level checks (18649.573808ms)
+ℹ tests 17
+ℹ suites 6
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21547.0757

@@ -1,0 +1,14 @@
+{"event":"publication_attributions","attributed":0,"skipped":1}
+▶ POLISH-03 a superseded proposal is terminal
+  ✔ refuses a superseded proposal to a moderator publish, a moderator reject and an agent auto-publish as already_decided (60.321259ms)
+  ✔ the expiry sweep skips a superseded proposal, even when it is older than the review TTL (4.191909ms)
+  ✔ the newer proposal still publishes normally, and the superseded one keeps only its supersede row (51.267391ms)
+✔ POLISH-03 a superseded proposal is terminal (17715.942862ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20433.569979

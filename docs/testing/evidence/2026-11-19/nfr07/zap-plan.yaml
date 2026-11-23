@@ -1,0 +1,47 @@
+env:
+  contexts:
+    - name: waspada
+      urls: ["https://waspada-jakarta.waspada-worker.workers.dev"]
+      includePaths: ["https://waspada-jakarta.waspada-worker.workers.dev.*"]
+  parameters:
+    failOnError: true
+    progressToStdout: true
+jobs:
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 10
+      scanOnlyInScope: true
+  - type: requestor
+    requests:
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/events", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/events/inc-rep-source-detik-news-9ac008bd46d5d5d3", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/events/inc-rep-source-detik-news-9ac008bd46d5d5d3/history", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/updates", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/context", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/auth/session", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/moderation/proposals", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/api/v1/pipeline/flow", method: GET}
+      - {url: "https://waspada-jakarta.waspada-worker.workers.dev/robots.txt", method: GET}
+  - type: spider
+    parameters:
+      context: waspada
+      maxDuration: 5
+      maxDepth: 5
+      threadCount: 2
+      processForm: false
+      postForm: false
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 10
+  - type: report
+    parameters:
+      template: modern
+      reportDir: /mnt/d/Projects/RPL/.codex-build/zap
+      reportFile: zap-baseline-report
+      reportTitle: "Waspada Jakarta - ZAP baseline (passive) scan"
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: /mnt/d/Projects/RPL/.codex-build/zap
+      reportFile: zap-baseline-report

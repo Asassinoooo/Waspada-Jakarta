@@ -1,0 +1,72 @@
+NFR-04 run 3 (after PERF-01 deploy 007fbaa5), started 2026-11-20T01:26:47.672Z, target p50<500 ms and p95<1000 ms
+
+[A] Cold: first request to each route after >=5 min idle (3 rounds). Columns: round | route | ms | status
+1 | page / | 263 | 200
+1 | GET /api/v1/events | 196 | 200
+1 | GET /api/v1/events/:id | 163 | 200
+1 | GET /api/v1/events/:id/history | 151 | 200
+1 | GET /api/v1/updates | 106 | 200
+1 | GET /api/v1/context | 101 | 200
+1 | POST /api/v1/briefings | 583 | 200
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+[TypeError: fetch failed] {
+  [cause]: AggregateError [ETIMEDOUT]: 
+      at internalConnectMultiple (node:net:1430:18)
+      at internalConnectMultiple (node:net:1506:5)
+      at Timeout.internalConnectMultipleTimeout (node:net:2126:5)
+      at listOnTimeout (node:internal/timers:687:11)
+      at process.processTimers (node:internal/timers:618:7) {
+    code: 'ETIMEDOUT',
+    [errors]: [
+      Error: connect ETIMEDOUT 104.21.38.30:443
+          at createConnectionError (node:net:2062:14)
+          at Timeout.internalConnectMultipleTimeout (node:net:2121:38)
+          at listOnTimeout (node:internal/timers:687:11)
+          at process.processTimers (node:internal/timers:618:7) {
+        errno: -110,
+        code: 'ETIMEDOUT',
+        syscall: 'connect',
+        address: '104.21.38.30',
+        port: 443
+      },
+      Error: connect ENETUNREACH 2606:4700:3032::ac43:da4a:443 - Local (:::0)
+          at internalConnectMultiple (node:net:1502:16)
+          at Timeout.internalConnectMultipleTimeout (node:net:2126:5)
+          at listOnTimeout (node:internal/timers:687:11)
+          at process.processTimers (node:internal/timers:618:7) {
+        errno: -101,
+        code: 'ENETUNREACH',
+        syscall: 'connect',
+        address: '2606:4700:3032::ac43:da4a',
+        port: 443
+      },
+      Error: connect ETIMEDOUT 172.67.218.74:443
+          at createConnectionError (node:net:2062:14)
+          at Timeout.internalConnectMultipleTimeout (node:net:2121:38)
+          at listOnTimeout (node:internal/timers:687:11)
+          at process.processTimers (node:internal/timers:618:7) {
+        errno: -110,
+        code: 'ETIMEDOUT',
+        syscall: 'connect',
+        address: '172.67.218.74',
+        port: 443
+      },
+      Error: connect ENETUNREACH 2606:4700:3032::6815:261e:443 - Local (:::0)
+          at internalConnectMultiple (node:net:1502:16)
+          at Timeout.internalConnectMultipleTimeout (node:net:2126:5)
+          at listOnTimeout (node:internal/timers:687:11)
+          at process.processTimers (node:internal/timers:618:7) {
+        errno: -101,
+        code: 'ENETUNREACH',
+        syscall: 'connect',
+        address: '2606:4700:3032::6815:261e',
+        port: 443
+      }
+    ]
+  }
+}
+
+Node.js v24.21.0

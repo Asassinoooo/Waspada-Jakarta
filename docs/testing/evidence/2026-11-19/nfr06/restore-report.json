@@ -1,0 +1,424 @@
+{
+  "format": "waspada-restore-rehearsal-report-v1",
+  "restoredAt": "2026-11-19T09:41:01.731Z",
+  "sourceExportedAt": "2026-11-19T09:40:34.577Z",
+  "export": {
+    "bytes": 7598267,
+    "seconds": 16.396,
+    "exportedTables": 64,
+    "excludedTables": [
+      "account_admin_audit",
+      "account_login_attempts",
+      "account_login_throttles",
+      "account_sessions",
+      "accounts"
+    ],
+    "rows": 10386
+  },
+  "migrations": {
+    "expected": 61,
+    "applied": 61,
+    "match": true
+  },
+  "tables": [
+    {
+      "name": "acquisition_jobs",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "ai_jobs",
+      "expected": 50,
+      "actual": 50,
+      "match": true
+    },
+    {
+      "name": "audit_records",
+      "expected": 100,
+      "actual": 100,
+      "match": true
+    },
+    {
+      "name": "dataset_namespace_config",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "name": "embedding_runs",
+      "expected": 49,
+      "actual": 49,
+      "match": true
+    },
+    {
+      "name": "embedding_vectors",
+      "expected": 49,
+      "actual": 49,
+      "match": true
+    },
+    {
+      "name": "event_claim_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "event_claim_geometries",
+      "expected": 36,
+      "actual": 36,
+      "match": true
+    },
+    {
+      "name": "event_claim_origins",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "event_claims",
+      "expected": 146,
+      "actual": 146,
+      "match": true
+    },
+    {
+      "name": "event_impact_refs",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "event_proposals",
+      "expected": 48,
+      "actual": 48,
+      "match": true
+    },
+    {
+      "name": "event_versions",
+      "expected": 61,
+      "actual": 61,
+      "match": true
+    },
+    {
+      "name": "evidence_chunks",
+      "expected": 97,
+      "actual": 97,
+      "match": true
+    },
+    {
+      "name": "evidence_origins",
+      "expected": 6,
+      "actual": 6,
+      "match": true
+    },
+    {
+      "name": "evidence_references",
+      "expected": 75,
+      "actual": 75,
+      "match": true
+    },
+    {
+      "name": "extraction_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "extraction_results",
+      "expected": 48,
+      "actual": 48,
+      "match": true
+    },
+    {
+      "name": "freshness_transition_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "freshness_transitions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "geometries",
+      "expected": 15,
+      "actual": 15,
+      "match": true
+    },
+    {
+      "name": "geometry_evidence",
+      "expected": 26,
+      "actual": 26,
+      "match": true
+    },
+    {
+      "name": "grounding_candidate_events",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "grounding_contexts",
+      "expected": 48,
+      "actual": 48,
+      "match": true
+    },
+    {
+      "name": "grounding_evidence",
+      "expected": 75,
+      "actual": 75,
+      "match": true
+    },
+    {
+      "name": "grounding_prior_decisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "impact_claim_support",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "impact_versions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "incident_correlation_decisions",
+      "expected": 48,
+      "actual": 48,
+      "match": true
+    },
+    {
+      "name": "incident_processing_records",
+      "expected": 48,
+      "actual": 48,
+      "match": true
+    },
+    {
+      "name": "incident_reports",
+      "expected": 48,
+      "actual": 48,
+      "match": true
+    },
+    {
+      "name": "incidents",
+      "expected": 27,
+      "actual": 27,
+      "match": true
+    },
+    {
+      "name": "investigation_action_reservations",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_advance_review_pending",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_checkpoints",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_progress_snapshots",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "investigation_requests",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "news_triage_attempts",
+      "expected": 4344,
+      "actual": 4344,
+      "match": true
+    },
+    {
+      "name": "news_triage_decisions",
+      "expected": 4291,
+      "actual": 4291,
+      "match": true
+    },
+    {
+      "name": "origin_dependencies",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "origin_evidence",
+      "expected": 60,
+      "actual": 60,
+      "match": true
+    },
+    {
+      "name": "origin_report_revisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "pipeline_cycle_runs",
+      "expected": 55,
+      "actual": 55,
+      "match": true
+    },
+    {
+      "name": "proposal_claim_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "proposal_claim_origins",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "proposal_claims",
+      "expected": 148,
+      "actual": 148,
+      "match": true
+    },
+    {
+      "name": "public_attribution_review_decisions",
+      "expected": 60,
+      "actual": 60,
+      "match": true
+    },
+    {
+      "name": "public_event_history_review_decisions",
+      "expected": 58,
+      "actual": 58,
+      "match": true
+    },
+    {
+      "name": "public_event_updates_counter",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "name": "publication_claim_decisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_decision_evidence",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_decisions",
+      "expected": 64,
+      "actual": 64,
+      "match": true
+    },
+    {
+      "name": "publication_outbox",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_outbox_delivery_attempts",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_outbox_delivery_results",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "publication_write_receipts",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "report_revision_source_observations",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "report_revisions",
+      "expected": 50,
+      "actual": 50,
+      "match": true
+    },
+    {
+      "name": "scope_name_review_decisions",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "source_registry",
+      "expected": 16,
+      "actual": 16,
+      "match": true
+    },
+    {
+      "name": "source_revision_freshness_cursor_checkpoint",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "name": "source_revision_freshness_run_advances",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "source_revision_freshness_run_inputs",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "name": "traces",
+      "expected": 137,
+      "actual": 137,
+      "match": true
+    }
+  ],
+  "countsMatch": true,
+  "publicEvents": {
+    "expectedCount": 22,
+    "actualCount": 22,
+    "match": true
+  },
+  "foreignKeysDeferredDuringLoad": 103,
+  "foreignKeysRestored": true,
+  "triggersDisabledDuringLoad": 64,
+  "timingsSeconds": {
+    "verifyFiles": 0.578,
+    "restore": 18.818,
+    "verify": 0.461
+  },
+  "ok": true
+}

@@ -1,0 +1,15 @@
+✔ _headers opens with the /* rule at column 0 and every header line is indented (2.233292ms)
+✔ the Content-Security-Policy has every required directive with its source list (0.262275ms)
+✔ the CSP does not allow unsafe inline scripts or styles (0.284256ms)
+✔ the img-src allows the OpenStreetMap tile host that the map sources use (320.214096ms)
+✔ the other security headers are set to the required values (0.383019ms)
+✔ the Permissions-Policy grants geolocation only when the app reads it (274.256755ms)
+✔ every _headers line stays under Cloudflare's 2000-character line limit (1.452698ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1847.309665

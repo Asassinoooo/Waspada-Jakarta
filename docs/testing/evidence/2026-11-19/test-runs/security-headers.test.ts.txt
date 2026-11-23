@@ -1,0 +1,25 @@
+{
+  event_name: 'api_request',
+  route: 'context',
+  http_status: 200,
+  duration_ms: 0
+}
+✔ the header table matches the values the tests expect (2.078487ms)
+✔ a JSON response gets every security header and keeps its status, type, cache policy and body (32.14199ms)
+✔ headers a route already sets are kept, not overridden (0.884307ms)
+✔ every Set-Cookie header survives the rebuild (0.658579ms)
+✔ an SSE stream is passed through unread, so its chunks arrive intact and in order (1.177829ms)
+✔ a 101 response is returned as it is, because it cannot be rebuilt (0.267836ms)
+✔ plain-http /api/ requests are redirected with 308 to the same https URL (1.744187ms)
+✔ the default :80 port disappears on the https redirect and any other port is kept (0.536593ms)
+✔ https requests, non-API paths and loopback development hosts are not redirected (3.624809ms)
+✔ the default export redirects plain-http API requests and adds headers to https API responses (5.627797ms)
+✔ the public SSE stream through the default export keeps streaming with its headers (12.770355ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6100.07346

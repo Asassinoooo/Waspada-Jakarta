@@ -1,0 +1,14 @@
+✔ NFR-07 C4: a logout without the session CSRF token is refused before any session write (58.088425ms)
+✔ NFR-07 C4: logout with the exact Origin and the session CSRF token is accepted and revokes the session (7.16708ms)
+✔ NFR-07 C4: an Origin that is not the exact app origin is refused, and a missing Origin is refused (18.651994ms)
+✔ NFR-07 C5: the cleared session cookie keeps HttpOnly, Secure and SameSite=Strict in host mode (3.428877ms)
+✔ NFR-07 C2: an expired session is anonymous on the account route and refused on moderation (6.988083ms)
+✔ NFR-07 C3: a self-registered (role user) session gets 403 on moderation and on the admin account list, while a moderator session passes (5.731417ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1874.059051

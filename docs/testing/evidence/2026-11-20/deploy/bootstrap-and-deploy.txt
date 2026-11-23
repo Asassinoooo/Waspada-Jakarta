@@ -1,0 +1,36 @@
+# 2026-11-20 deploy: hosted bootstrap (migration 062) then Worker deploy, owner approval 20 Nov 2026
+## npm run hosted:bootstrap (main 5d4dc3c), output as printed
+[1/6] Server version check passed (server_version_num 170012).
+[2/6] Migrations: 1 applied, 61 already applied (62 files).
+[2/6] Role attributes checked: 14 waspada roles, none superuser, replication or bypassrls.
+[3/6] Layer roles granted to the owner login: 14.
+[4/6] Dataset namespace: live (already set).
+[5/6] Live sources: 0 inserted, 16 already present (never modified).
+[5/6] Public display grant upgraded on 0 legacy PetaBencana/BMKG row(s) (approved, active and on only).
+[5/6] Approved host declared on 2 PetaBencana/BMKG row(s) that had none (approved, active and on only).
+[5/6] Source readiness: 16 of 16 ready; 0 skipped (revoked or disabled rows are never changed here).
+[6/6] Administrator account: exists.
+[6/6] moderator: already exists.
+Hosted bootstrap finished.
+
+## Read-only check (BEGIN READ ONLY): source_id and cardinality(approved_hosts); purge function present
+petabencana 1
+source-antara-hukum 1
+source-antara-humaniora 1
+source-antara-metro 1
+source-antara-terkini 1
+source-antara-topnews 1
+source-antara-wartabumi 1
+source-bmkg-gempa 1
+source-cnbc-news 1
+source-cnn-nasional 1
+source-cnn-utama 1
+source-detik-news 1
+source-detik-utama 1
+source-sindonews-daerah 1
+source-sindonews-nasional 1
+source-tempo-nasional 1
+purge fn: true
+
+## npm run deploy:prod
+Deployed waspada-jakarta triggers; schedule: 7,37 * * * *; Current Version ID: 007fbaa5-12d0-40e0-a999-db3af53eb11b

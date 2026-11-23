@@ -1,0 +1,21 @@
+✔ the client reads the admin source list through the same-origin route with credentials and no cache (40.568181ms)
+✔ approval posts the status, the trimmed note and the session CSRF token to the sourceId route (2.321094ms)
+✔ a source id with reserved characters is encoded in the approval path (0.689245ms)
+✔ server refusals surface as HTTP errors that keep the status and the stable code (2.338678ms)
+✔ payloads that do not match the contract are rejected instead of being rendered (1.931644ms)
+✔ invalid writes are refused before any request leaves the browser (0.62169ms)
+✔ the note must be 10 to 500 characters after trimming (0.63258ms)
+✔ only an active administrator with a session CSRF token may manage source approval (0.359716ms)
+✔ the list shows the approval, collection and public display state, and an action only where a handler is supplied (15.771742ms)
+✔ the panel shows approval controls to an administrator only and loads the list after mount (4.122979ms)
+✔ the restriction block shows public display, reuse basis, access notes and the polling interval, and never a raw registry token (1.307068ms)
+✔ the health block shows Jakarta times for a checked source, a failure line without an error code, and the no-data line when never checked (2.969734ms)
+✔ the list parser accepts the restriction and health fields, null health included, and refuses an unknown status or an unreadable instant (4.838102ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1799.264747

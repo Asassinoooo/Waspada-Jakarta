@@ -1,0 +1,27 @@
+✔ the runtime factory requires exact live mode and a valid Hyperdrive connection without opening SQL (2.33949ms)
+✔ empty or whitespace-only interests use the pure projector before any runner or snapshot read (2.822814ms)
+✔ closed request validation precedes clock and SQL access (1.574734ms)
+✔ one read-only repeatable-read operation composes candidates, exact snapshots and public lookups (13.538407ms)
+✔ HOSTED-32: a whole-view event is returned in the briefing instead of failing the read with 503 (2.748046ms)
+✔ HOSTED-32: a place interest that names one segment of a public location label is returned with the label reason (2.595434ms)
+✔ concurrent event projections preserve candidate order and require exact current versions (21.482137ms)
+✔ a candidate version mismatch fails the whole response and rolls back (1.700357ms)
+✔ a stale candidate hidden by latest withdrawal fails closed with no partial briefing (2.2528ms)
+✔ waits for sibling candidate projections to settle before rolling back (73.909045ms)
+✔ latest-withdrawn events absent from the candidate reader produce no historical item (0.869419ms)
+✔ candidate overflow and invalid ordering fail the whole request (1.780625ms)
+✔ transaction and projection failures return only generic runtime errors and attempt rollback (0.604699ms)
+✔ API gates the exact live POST route and keeps demo, GET, and other paths off the runtime (46.063631ms)
+✔ API maps media type, malformed JSON, invalid UTF-8, query, and invalid content length to one stable 400 (5.989775ms)
+✔ API accepts an ordinary decimal Content-Length and JSON UTF-8 request (1.126745ms)
+✔ API counts streamed bytes and rejects an advertised oversized body before consuming it (2.792087ms)
+✔ request telemetry contains only fixed route bucket, status, and duration with no interest echo (0.786966ms)
+✔ runtime input errors map to 400 and public read failures map to generic 503 without partial output (1.148325ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3194.375741

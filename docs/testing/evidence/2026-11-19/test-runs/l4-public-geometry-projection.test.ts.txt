@@ -1,0 +1,16 @@
+✔ projects exact supported Point, LineString, and Polygon allowlists without changing coordinates (9.914377ms)
+✔ requires exact geometry ID coverage and a referencing claim with an exact supports reference (12.834091ms)
+✔ non-live, withdrawn, and malformed events fail at the accepted event projection boundary (1.11797ms)
+✔ accepts each GeoJSON geometry kind defined by schema 2.0 (0.917798ms)
+✔ validates schema 2.0 geometry metadata, CRS84, roles, precision, labels, and GeoJSON structure (13.265159ms)
+✔ builds an exact, stable FeatureCollection from projected details and enforces 500 features (37.004973ms)
+✔ bounds aggregate coordinate work across an entire FeatureCollection (263.679326ms)
+✔ an event with no geometry produces an empty detail and empty feature collection (0.764495ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1780.733378
