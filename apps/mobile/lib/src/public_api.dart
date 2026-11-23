@@ -33,7 +33,13 @@ abstract interface class PublicApi {
   Future<EventPage> listEvents(EventQuery query);
   Future<EventDetail> getEventDetail(String eventId);
   Future<HistoryPage> getEventHistory(String eventId, {String? cursor});
+
+  /// MOBILE-V2: map points from `/api/v1/events.geojson`. Only published events with a Point appear.
+  Future<List<MapPoint>> getEventMap();
 }
+
+/// MOBILE-V2: the hosted public Worker. A build without `--dart-define=API_ORIGIN=...` reads from here.
+const defaultApiOrigin = 'https://waspada-jakarta.waspada-worker.workers.dev';
 
 class EventQuery {
   const EventQuery(
@@ -103,7 +109,8 @@ class HttpPublicApi implements PublicApi {
         _httpClient = httpClient;
 
   factory HttpPublicApi.fromEnvironment({http.Client? httpClient}) {
-    final raw = const String.fromEnvironment('API_ORIGIN');
+    const defined = String.fromEnvironment('API_ORIGIN');
+    final raw = defined.trim().isEmpty ? defaultApiOrigin : defined;
     final allowLocalHttp =
         const bool.fromEnvironment('ALLOW_INSECURE_DEBUG_ORIGIN');
     try {
@@ -193,6 +200,10 @@ class HttpPublicApi implements PublicApi {
   @override
   Future<PublicContext> getContext() async =>
       _parse(await _get('/api/v1/context'), PublicContext.fromJson);
+
+  @override
+  Future<List<MapPoint>> getEventMap() async =>
+      _parse(await _get('/api/v1/events.geojson'), MapPoint.listFromGeoJson);
 
   @override
   Future<EventPage> listEvents(EventQuery query) async {

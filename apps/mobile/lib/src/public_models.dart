@@ -645,6 +645,7 @@ class EventRecord {
     this.severity,
     this.locationLabel,
     this.coordinates,
+    this.locationDisplay,
   });
 
   final String id;
@@ -676,6 +677,9 @@ class EventRecord {
   final IncidentSeverity? severity;
   final String? locationLabel;
   final List<double>? coordinates;
+
+  /// HOSTED-10: how the map shows this event. A whole-view event has no usable coordinate and never gets a pin.
+  final LocationDisplay? locationDisplay;
 
   /// Effective incident category: explicit incidentType, or derived from EventCategory.
   IncidentCategory? get incidentCategory =>
@@ -720,6 +724,8 @@ class EventRecord {
     'severity',
     'location_label',
     'coordinates',
+    // HOSTED-10: "point" or "whole_view". Additive; an older Worker omits it.
+    'location_display',
   };
 
   static const keys = requiredKeys;
@@ -788,7 +794,93 @@ class EventRecord {
       severity: severity,
       locationLabel: _nullableString(map['location_label'], maxLength: 500),
       coordinates: _parseCoordinates(map['coordinates']),
+      locationDisplay: LocationDisplay.tryParse(map['location_display']),
     );
+  }
+}
+
+/// HOSTED-10: the Worker's `location_display`. An unknown value is treated as absent rather than failing the page.
+enum LocationDisplay {
+  point('point'),
+  wholeView('whole_view');
+
+  const LocationDisplay(this.wireValue);
+  final String wireValue;
+
+  static LocationDisplay? tryParse(Object? value) {
+    if (value == null) return null;
+    if (value is! String) throw const ContractViolation();
+    for (final item in values) {
+      if (item.wireValue == value) return item;
+    }
+    return null;
+  }
+}
+
+/// A single map point from `/api/v1/events.geojson`. Only `Point` geometries become pins; lines and areas are never
+/// drawn, so no radius, route or danger zone appears on the map.
+class MapPoint {
+  const MapPoint({
+    required this.eventId,
+    required this.title,
+    required this.category,
+    required this.longitude,
+    required this.latitude,
+    required this.approximate,
+  });
+
+  final String eventId;
+  final String title;
+  final EventCategory category;
+  final double longitude;
+  final double latitude;
+
+  /// True for an `approximate_place` geometry (a place the agent or source named, located approximately).
+  final bool approximate;
+
+  /// Parses a FeatureCollection. Features that are not a valid Point inside the expected bounds are skipped, not
+  /// guessed. A malformed collection throws [ContractViolation].
+  static List<MapPoint> listFromGeoJson(Object? json) {
+    if (json is! Map<String, Object?> || json['type'] != 'FeatureCollection') {
+      throw const ContractViolation();
+    }
+    final features = json['features'];
+    if (features is! List) throw const ContractViolation();
+    final result = <MapPoint>[];
+    for (final feature in features) {
+      if (feature is! Map<String, Object?>) continue;
+      final geometry = feature['geometry'];
+      final properties = feature['properties'];
+      if (geometry is! Map<String, Object?> ||
+          properties is! Map<String, Object?>) {
+        continue;
+      }
+      if (geometry['type'] != 'Point') continue;
+      final coordinates = geometry['coordinates'];
+      if (coordinates is! List || coordinates.length < 2) continue;
+      final lng = coordinates[0];
+      final lat = coordinates[1];
+      if (lng is! num || lat is! num) continue;
+      if (lng < -180 || lng > 180 || lat < -90 || lat > 90) continue;
+      final eventId = properties['event_id'];
+      final title = properties['title'];
+      if (eventId is! String || eventId.isEmpty || title is! String) continue;
+      EventCategory category;
+      try {
+        category = EventCategory.parse(properties['category']);
+      } on ContractViolation {
+        continue;
+      }
+      result.add(MapPoint(
+        eventId: eventId,
+        title: title,
+        category: category,
+        longitude: lng.toDouble(),
+        latitude: lat.toDouble(),
+        approximate: properties['geometry_role'] == 'approximate_place',
+      ));
+    }
+    return result;
   }
 }
 
@@ -848,6 +940,7 @@ class EventDetail extends EventRecord {
     super.severity,
     super.locationLabel,
     super.coordinates,
+    super.locationDisplay,
   });
 
   final List<PublicGeometry> geometries;
@@ -856,10 +949,12 @@ class EventDetail extends EventRecord {
     final map = _object(
       json,
       {...EventRecord.requiredKeys, 'geometries'},
-      EventRecord.schema2OptionalKeys,
+      // MERGE-REVIEW-01: `publication` (agent or moderator mode) is additive on detail; it is read but not shown.
+      {...EventRecord.schema2OptionalKeys, 'publication'},
     );
-    final event = EventRecord.fromJson(
-        Map<String, Object?>.from(map)..remove('geometries'));
+    final event = EventRecord.fromJson(Map<String, Object?>.from(map)
+      ..remove('geometries')
+      ..remove('publication'));
     return EventDetail(
       id: event.id,
       version: event.version,
@@ -889,6 +984,7 @@ class EventDetail extends EventRecord {
       severity: event.severity,
       locationLabel: event.locationLabel,
       coordinates: event.coordinates,
+      locationDisplay: event.locationDisplay,
     );
   }
 }
@@ -1017,11 +1113,16 @@ class PublicGeometry {
     required this.label,
     this.id,
     this.precisionM,
+    this.point,
   });
   final String role;
   final String? label;
   final String? id;
   final double? precisionM;
+
+  /// MOBILE-V2: `[longitude, latitude]` when the geometry is a single Point, otherwise null. Lines and areas are never
+  /// drawn by the app.
+  final List<double>? point;
 
   factory PublicGeometry.fromJson(Object? json) {
     final map = _object(
@@ -1062,8 +1163,20 @@ class PublicGeometry {
       label: _nullableString(map['label'], maxLength: 500),
       id: _nullableString(map['geometry_id'], maxLength: 256),
       precisionM: precision is num ? precision.toDouble() : null,
+      point: _pointOf(map['geometry']),
     );
   }
+}
+
+List<double>? _pointOf(Object? geometry) {
+  if (geometry is! Map || geometry['type'] != 'Point') return null;
+  final coordinates = geometry['coordinates'];
+  if (coordinates is! List || coordinates.length < 2) return null;
+  final lng = coordinates[0];
+  final lat = coordinates[1];
+  if (lng is! num || lat is! num) return null;
+  if (lng < -180 || lng > 180 || lat < -90 || lat > 90) return null;
+  return [lng.toDouble(), lat.toDouble()];
 }
 
 void _validateGeometry(Object? value, [int depth = 0]) {

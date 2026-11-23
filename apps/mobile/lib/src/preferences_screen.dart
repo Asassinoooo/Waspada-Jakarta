@@ -7,8 +7,12 @@ import 'theme.dart';
 import 'ui_helpers.dart';
 
 class PreferencesScreen extends StatefulWidget {
-  const PreferencesScreen({super.key, required this.repository});
+  const PreferencesScreen(
+      {super.key, required this.repository, this.embedded = false});
   final PreferencesRepository repository;
+
+  /// True inside the bottom navigation: the screen is a tab, so it shows no back control.
+  final bool embedded;
   @override
   State<PreferencesScreen> createState() => _PreferencesScreenState();
 }
@@ -132,10 +136,13 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
             title: const Text('Minat dan privasi'),
-            leading: IconButton(
-                tooltip: 'Kembali',
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.arrow_back)),
+            automaticallyImplyLeading: false,
+            leading: widget.embedded
+                ? null
+                : IconButton(
+                    tooltip: 'Kembali',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back)),
             actions: [
               IconButton(
                   tooltip: 'Buka panduan membaca',
@@ -188,17 +195,17 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                     if (_loadStatus == PreferenceLoadStatus.loaded &&
                         _saved) ...[
                       const SizedBox(height: 10),
-                      const Text('Pilihan dibaca dari perangkat ini.',
+                      Text('Pilihan dibaca dari perangkat ini.',
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: WaspadaColors.teal)),
+                              color: context.palette.brand)),
                     ],
                     if (!_saved) ...[
                       const SizedBox(height: 10),
-                      const Text('Ada perubahan yang belum disimpan.',
+                      Text('Ada perubahan yang belum disimpan.',
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: WaspadaColors.marker)),
+                              color: context.palette.signalCritical)),
                     ],
                     const SizedBox(height: 24),
                     sectionTitle('Kategori', kicker: 'Pencocokan lokal'),
@@ -263,8 +270,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                     if (_validationMessage != null) ...[
                       const SizedBox(height: 8),
                       Text(_validationMessage!,
-                          style: const TextStyle(
-                              color: WaspadaColors.marker,
+                          style: TextStyle(
+                              color: context.palette.signalCritical,
                               fontWeight: FontWeight.w600),
                           semanticsLabel: _validationMessage),
                     ],
@@ -277,10 +284,10 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                     ],
                     const SizedBox(height: 14),
                     if (_saved && _writeStatus == PreferenceWriteStatus.saved)
-                      const Text('Pilihan tersimpan di perangkat ini.',
+                      Text('Pilihan tersimpan di perangkat ini.',
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: WaspadaColors.teal)),
+                              color: context.palette.brand)),
                     Row(children: [
                       Expanded(
                           child: FilledButton.icon(
@@ -388,7 +395,7 @@ class _TextInterestFieldState extends State<_TextInterestField> {
           ]),
           if (_message != null)
             Text(_message!,
-                style: const TextStyle(color: WaspadaColors.marker),
+                style: TextStyle(color: context.palette.signalCritical),
                 semanticsLabel: _message),
           if (widget.values.isNotEmpty)
             Wrap(

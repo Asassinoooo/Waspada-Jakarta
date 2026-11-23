@@ -20,7 +20,8 @@ flutter pub get
 To run on a configured Android device, supply the HTTPS API origin at build time:
 
 ```sh
-flutter run --dart-define=API_ORIGIN=https://your-api-origin.example
+flutter run   # reads the hosted Worker by default
+flutter run --dart-define=API_ORIGIN=https://your-api-origin.example   # or another origin
 ```
 
 `API_ORIGIN` must be an origin without a path, query, credentials, or fragment. Release builds require HTTPS. A debug build can read local public API fixtures over HTTP to `localhost`, `127.0.0.1`, or `10.0.2.2` only when `ALLOW_INSECURE_DEBUG_ORIGIN=true` is also passed. Release builds set Android cleartext traffic to false. Android backup is disabled, and shared-preference files are excluded from backup and device transfer.
@@ -57,7 +58,9 @@ A local build does not establish the live API, Android device behavior, TalkBack
 ## Known limitations
 
 - The native client has no account surface. Moderator and administrator tools are web-only.
-- `pubspec.yaml` still lists `flutter_secure_storage`. No current source file imports it, because the account token store was removed with the sign-in flow. Removing the package is a separate dependency change.
+- MOBILE-V2 (23 Nov 2026): without `API_ORIGIN` the app reads the hosted Worker (`defaultApiOrigin` in `lib/src/public_api.dart`). The unused `flutter_secure_storage` dependency was removed.
+- MOBILE-V2 navigation has four tabs: Beranda, Peta, Laporan and Minat. The map (`flutter_map`, OpenStreetMap tiles with attribution) draws a pin only for a Point the API returns from `/api/v1/events.geojson`. An approximate place is drawn as a ring. Lines and areas are never drawn, and events without a point are listed under "Tanpa titik lokasi".
+- The typeface is Plus Jakarta Sans, bundled under `assets/fonts` (SIL OFL 1.1). Light and dark themes follow the system setting.
 - Live data remains subject to server-selected dataset mode and source/publication policy. A DEMO or synthetic/historical dataset is identified in the UI and is never presented as live.
 - Scope-name matching uses `unorm_dart` for Unicode NFC, then trims outer whitespace and lowercases before exact comparison. It does not collapse internal whitespace, apply aliases, or compare one interest field against another; category matching is exact.
 - App backup is disabled. Interest values stay in local app storage and are not synchronized.
