@@ -765,12 +765,34 @@ async function writePointGeometry(tx: SqlExecutor, input: PointWriteInput): Prom
 }
 
 /**
- * HOSTED-10 and HOSTED-26: the support and the location status of a publication. It never refuses. A coordinate-bearing
- * event with support gets one Point geometry (geometry_status "point_written"). A coordinate-bearing event with no
- * support, and no row written earlier, records "pending_geometry_writer" and stays a whole view. An event with no usable
- * coordinate records "whole_view". A group notice with no location records "not_required_group_notice". The support of a
- * claim is filled only when the proposal came from one report revision, so no claim is given evidence from another
- * revision.
+ * MAP-GEO-02: the distinct references of several claims' support, in claim order. Two references are the same when they
+ * name the same revision, text hash and span, because the database holds one persisted row for each such span. The
+ * point of a multi-revision event cites this union, so every revision a claim cites is evidence of the point.
+ */
+function unionClaimSupport(claimSupport: readonly (readonly DomainEvidenceRef[])[]): DomainEvidenceRef[] {
+  const seen = new Set<string>();
+  const union: DomainEvidenceRef[] = [];
+  for (const refs of claimSupport) {
+    for (const ref of refs) {
+      const key = JSON.stringify([ref.report_revision_id, ref.permitted_text_hash, ref.span_start, ref.span_end]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      union.push(ref);
+    }
+  }
+  return union;
+}
+
+/**
+ * HOSTED-10, HOSTED-26 and MAP-GEO-02: the support and the location status of a publication. It never refuses. A
+ * coordinate-bearing event with point support gets one Point geometry (geometry_status "point_written"). The point's
+ * support is the support of the proposal's one report revision. For a proposal from several revisions it is the union of
+ * the claims' own support (HOSTED-31), so a merged event gets its point too. A coordinate-bearing event with no point
+ * support, and no row written earlier, records "pending_geometry_writer" and stays a whole view. So does one whose point
+ * write fails under its savepoint. An event with no usable coordinate records "whole_view". A group notice with no location
+ * records "not_required_group_notice". The support of a claim is filled only when the proposal came from one report
+ * revision. A claim of a merged proposal gets only its own chunk's reference, so no claim is given evidence from another
+ * revision. The returned `support` fields keep that meaning.
  */
 async function enrichPublication(
   tx: SqlExecutor,
@@ -810,6 +832,9 @@ async function enrichPublication(
     claimSourceIds: (proposal.claims ?? []).map((claim) => claim.source_id),
   });
   if (outcome.status === "point") {
+    // MAP-GEO-02: the point cites what its claims cite. One revision: that revision's support. Several revisions: the
+    // union of the claims' own support. The claim support and the returned `support` fields are not changed by this.
+    const pointSupport = own.revisions.length > 1 ? unionClaimSupport(claimSupport) : support;
     const point = await withOptionalSavepoint(tx, "hosted26_point", () => writePointGeometry(tx, {
       datasetKind: input.datasetKind,
       traceId: input.traceId,
@@ -817,7 +842,7 @@ async function enrichPublication(
       coordinates: outcome.coordinates,
       source: outcome.source,
       locationLabel: proposal.location_label,
-      support,
+      support: pointSupport,
     }));
     const geometryId = point.ok ? point.value : null;
     return {

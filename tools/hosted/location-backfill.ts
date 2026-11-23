@@ -36,8 +36,10 @@ export interface LocationBackfillDeps {
 /**
  * The live events whose latest decision is a publication and still lacks a location the publication can now give: the
  * geometry was never written (pending_geometry_writer), or the decision says a label was present but stores none, or
- * (HOSTED-31) the latest version has a claim with no support. The
- * latest decision is the one with the highest event version. Oldest publication first, at most `limit` events.
+ * (HOSTED-31) the latest version has a claim with no support. The pending test (MAP-GEO-02) applies to every decision,
+ * with or without a label key: a decision written since migration 055 always has that key, and a multi-revision event
+ * published before MAP-GEO-02 is pending even though its claims have support. The latest decision is the one with the
+ * highest event version. Oldest publication first, at most `limit` events.
  */
 export const LOCATION_CANDIDATE_SQL = `
   WITH latest AS (
@@ -55,9 +57,10 @@ export const LOCATION_CANDIDATE_SQL = `
     AND (
       (
         NOT (latest.record_json ? 'location_label')
-        AND (latest.record_json->>'geometry_status' = 'pending_geometry_writer'
-          OR latest.record_json->>'location_label_present' = 'true')
+        AND latest.record_json->>'location_label_present' = 'true'
       )
+      -- MAP-GEO-02: the point was never written. Not limited to decisions without a label key.
+      OR latest.record_json->>'geometry_status' = 'pending_geometry_writer'
       -- HOSTED-31: the latest version has a claim with no support, which the public reader refuses.
       OR EXISTS (
         SELECT 1
