@@ -838,7 +838,7 @@ export function ModeratorReviewQueue({
         <section className="state-panel" role="status" aria-labelledby="review-access-title">
           <h2 id="review-access-title">Tinjauan hanya untuk moderator</h2>
           <p>{moderatorAccessMessage(accessStatus)}</p>
-          <a className="text-link" href={`${SIGN_IN_HREF}?return_to=%23tinjau-bukti`}>Masuk dengan username</a>
+          <a className="text-link" href={`${SIGN_IN_HREF}?return_to=%23tinjau-bukti`}>Masuk dengan nama pengguna</a>
         </section>
       ) : reviewView === "triage" ? (
         <section className="state-panel" aria-label="Antrean tertahan untuk inspeksi">

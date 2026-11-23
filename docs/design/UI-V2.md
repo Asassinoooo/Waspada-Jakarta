@@ -142,3 +142,26 @@ Pembaruan, Area saya, the account screens (Akun, Masuk, Mulai), and Bantuan and 
   - `EventFeed.tsx` is exported but no screen renders it, and `ui.test.tsx` renders it directly. About 330 lines of `styles.css` (`.feed-*`, `.search-*`, `.event-card*`, `.discovery-*`, `.dataset-status*`, `.mobile-view-switch`, `.page-intro*`, `.presentation-card*`) depend only on it. Removing it is a follow-up because it also changes that test.
 - The phone rule that sets a 44px minimum on `.button` and `.experience-action` also applies to `.button--sm` outside `.map-home` and `.map-popup`, for example in the pipeline view.
 - Not checked: 390px and 768px in a browser, a keyboard walk-through, contrast, and CI.
+
+## UI-V3 visual layer (23 Nov 2026)
+
+UI-V3 refines the look without changing markup or class names, so the UI-V2 primitives and rules above still apply.
+
+- **Type:** Plus Jakarta Sans, self-hosted as one variable woff2 (latin subset) in `apps/web/public/fonts` (SIL OFL 1.1). It is preloaded in `index.html`, and CSP `font-src 'self'` is unchanged. Display headings use tight tracking (`--tracking-display`).
+- **Tokens (`src/design/tokens.css`):**
+  - a warmer "paper" neutral ramp and a deeper teal accent;
+  - a severity scale running amber → vermilion → deep red;
+  - larger radii (`--radius-lg` 20 px, new `--radius-xl` 28 px) and softer, deeper shadows;
+  - `--ease-out-expo` and `--duration-slow`.
+  - There is still no green "safe" state.
+- **Layer (`src/design/v3.css`, imported last in `main.tsx`):**
+  - a muted basemap (grey-paper in light, inverted ink in dark), so only the pins carry colour;
+  - glass islands for the header, list panel, toolbar, legend and footer;
+  - lifted cards with a staggered reveal;
+  - marker drop shadows;
+  - dialog entrance motion and intro padding;
+  - large display page headers;
+  - softer empty states.
+- **Motion:** all of it is token-driven. Under `prefers-reduced-motion`, `--duration-*` become 0.
+- **Caching:** `public/_headers` caches `/assets/*` and `/fonts/*` for a year as immutable (hashed file names).
+- **Copy:** the remaining English words in public screens are gone: "username" became "nama pengguna", and "event publik" became "kejadian publik".

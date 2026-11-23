@@ -650,7 +650,7 @@ export function UpdateCenterContent({
           eyebrow="Pembaruan untuk minat lokal"
           title="Pembaruan"
           titleId="updates-center-title"
-          lead="Hanya ringkasan perubahan yang cocok dengan minat tersimpan dan detail event publik terkini yang ditampilkan."
+          lead="Hanya ringkasan perubahan yang cocok dengan minat tersimpan dan detail kejadian publik terkini yang ditampilkan."
         />
 
         {gate === "unknown" ? (
@@ -676,7 +676,7 @@ export function UpdateCenterContent({
             )}
             {state.status === "loading" && (
               <div className="state-panel state-panel--loading" role="status" aria-live="polite" aria-busy="true">
-                <strong>{state.phase === "baseline" ? "Menetapkan titik awal pembaruan…" : state.phase === "snapshot" ? "Memperbarui halaman event publik…" : state.phase === "details" ? "Memeriksa detail event publik…" : "Memuat pembaruan live…"}</strong>
+                <strong>{state.phase === "baseline" ? "Menetapkan titik awal pembaruan…" : state.phase === "snapshot" ? "Memperbarui halaman kejadian publik…" : state.phase === "details" ? "Memeriksa detail kejadian publik…" : "Memuat pembaruan langsung…"}</strong>
                 <div className="skeleton-stack" aria-hidden="true">
                   <span className="skeleton" />
                   <span className="skeleton skeleton--short" />
