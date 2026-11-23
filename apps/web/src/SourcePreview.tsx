@@ -61,7 +61,7 @@ function timeValue(value: string | null, missing: string): ReactNode {
 
 function statusLabel(source: PreviewSource): string {
   switch (source.status) {
-    case "available": return "Ada record pratinjau";
+    case "available": return "Ada entri pratinjau";
     case "empty": return "Respons sumber kosong";
     case "unavailable": return "Sumber tidak tersedia";
     case "not_requested": return "Belum diminta";
@@ -144,9 +144,9 @@ export function SourcePreviewStatusCard({
           </div>
         </dl>
       )}
-      {source.limited && <p className="source-preview__source-note">Jumlah record dibatasi; daftar ini tidak lengkap.</p>}
+      {source.limited && <p className="source-preview__source-note">Jumlah entri dibatasi; daftar ini tidak lengkap.</p>}
       {source.rejected_count > 0 && (
-        <p className="source-preview__source-note">{source.rejected_count} record tidak dimasukkan ke pratinjau karena tidak memenuhi batas sumber.</p>
+        <p className="source-preview__source-note">{source.rejected_count} entri tidak dimasukkan ke pratinjau karena tidak memenuhi batas sumber.</p>
       )}
     </article>
   );
@@ -157,7 +157,7 @@ export function SourcePreviewRecordDetails({ record }: { record: PreviewRecord |
     return (
       <section className="source-preview__selected" aria-live="polite" aria-labelledby="source-preview-selected-title">
         <h2 id="source-preview-selected-title">Detail pilihan</h2>
-        <p>Pilih satu record di daftar atau peta untuk melihat waktu, status sumber, dan tautannya.</p>
+        <p>Pilih satu entri di daftar atau peta untuk melihat waktu, status sumber, dan tautannya.</p>
       </section>
     );
   }
@@ -255,7 +255,7 @@ function SourceRecordList({
     <section className="source-preview__record-group" aria-label={title}>
       <h3>{title}</h3>
       {records.length === 0 ? (
-        <p className="source-preview__list-empty">Belum ada record pada kelompok ini di hasil filter.</p>
+        <p className="source-preview__list-empty">Belum ada entri pada kelompok ini di hasil filter.</p>
       ) : (
         <ul>
           {records.map((record) => (
@@ -433,7 +433,7 @@ export function SourcePreview({ datasetMode, renderMap, contextSources, canReque
                 {payload.cached ? " · hasil sementara dalam cache server" : ""}
               </span>
             </div>
-            <p>{visibleRecords.length} record cocok dengan pencarian dan filter. Cakupan mengikuti respons pratinjau ini.</p>
+            <p>{visibleRecords.length} entri cocok dengan pencarian dan filter. Cakupan mengikuti respons pratinjau ini.</p>
           </section>
 
           <section className="source-preview__sources" aria-label="Status tiap sumber">
@@ -442,7 +442,7 @@ export function SourcePreview({ datasetMode, renderMap, contextSources, canReque
             ))}
           </section>
 
-          <section className="source-preview__filters" aria-label="Cari dan filter record pratinjau">
+          <section className="source-preview__filters" aria-label="Cari dan filter entri pratinjau">
             <label className="source-preview__search" htmlFor="source-preview-search">
               Cari fasilitas atau kategori
               <input
@@ -486,15 +486,15 @@ export function SourcePreview({ datasetMode, renderMap, contextSources, canReque
 
           {visibleRecords.length === 0 && (
             <p className="source-preview__no-records" role="status">
-              Tidak ada record yang cocok dengan filter ini. Hasil kosong tidak berarti Jakarta aman.
+              Tidak ada entri yang cocok dengan filter ini. Hasil kosong tidak berarti Jakarta aman.
             </p>
           )}
           <div className="source-preview__columns" data-mobile-view={mobileView}>
-            <div className="source-preview__list-column" aria-label="Daftar record pratinjau">
+            <div className="source-preview__list-column" aria-label="Daftar entri pratinjau">
               <SourceRecordList title="Fasilitas rujukan · OpenStreetMap" records={facilityRecords} selectedId={selectedId} onSelect={setSelectedId} />
               <SourceRecordList title="Laporan warga · belum ditinjau" records={reportRecords} selectedId={selectedId} onSelect={setSelectedId} />
             </div>
-            <section className="source-preview__map-column" aria-label="Peta record pratinjau">
+            <section className="source-preview__map-column" aria-label="Peta entri pratinjau">
               {renderMap
                 ? renderMap(visibleRecords, selectedRecord?.id ?? null, selectMapRecord, returnToList)
                 : <p className="source-preview__map-fallback">Peta belum tersedia. Daftar, waktu, atribusi, dan tautan sumber tetap dapat digunakan.</p>}

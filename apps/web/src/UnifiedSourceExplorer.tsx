@@ -97,7 +97,7 @@ function formatPolicyNumber(value: number): string {
 }
 function statusLabel(status: ContextSourceStatus | PreviewSource["status"] | "loading" | "error" | "idle"): string {
   switch (status) {
-    case "available": return "Ada record";
+    case "available": return "Ada entri";
     case "empty": return "Respons kosong";
     case "unavailable": return "Tidak tersedia";
     case "not_requested": return "Belum diminta";
@@ -226,10 +226,10 @@ function RecordList({
 }
 ) {
   if (points.length === 0) {
-    return <p className="unified-source-explorer__empty-list" role="status">Tidak ada record yang cocok dengan filter. Hasil kosong bukan pernyataan bahwa Jakarta aman.</p>;
+    return <p className="unified-source-explorer__empty-list" role="status">Tidak ada entri yang cocok dengan filter. Hasil kosong bukan pernyataan bahwa Jakarta aman.</p>;
   }
   return (
-    <ul className="unified-source-explorer__record-list" aria-label="Record dari seluruh sumber">
+    <ul className="unified-source-explorer__record-list" aria-label="Entri dari seluruh sumber">
       {points.map((point) => {
         const selected = selectedId === point.id;
         const colorKind =
@@ -368,7 +368,7 @@ function SourceMetadataCard({
   {source.id === "usgs" && (
     <section className="unified-source-explorer__query-policy" aria-label="Cakupan kueri katalog USGS">
       <h4>Kueri katalog USGS</h4>
-      <p>{source.data_mode === "fetched" ? "Kueri yang digunakan" : "Batas kueri untuk permintaan berikutnya"}: magnitudo ≥ 2,5 · jendela {CONTEXT_SOURCE_POLICY.earthquakeWindowMs / (24 * 60 * 60_000)} hari · maksimal {CONTEXT_SOURCE_POLICY.maxEarthquakes} record.</p>
+      <p>{source.data_mode === "fetched" ? "Kueri yang digunakan" : "Batas kueri untuk permintaan berikutnya"}: magnitudo ≥ 2,5 · jendela {CONTEXT_SOURCE_POLICY.earthquakeWindowMs / (24 * 60 * 60_000)} hari · maksimal {CONTEXT_SOURCE_POLICY.maxEarthquakes} entri.</p>
       <p>Batas pencarian: {CONTEXT_SOURCE_POLICY.earthquakeEnvelope.west}° BT–{CONTEXT_SOURCE_POLICY.earthquakeEnvelope.east}° BT, {formatPolicyNumber(Math.abs(CONTEXT_SOURCE_POLICY.earthquakeEnvelope.north))}°–{formatPolicyNumber(Math.abs(CONTEXT_SOURCE_POLICY.earthquakeEnvelope.south))}° LS. Cakupan ini adalah jendela kueri, bukan batas bahaya resmi atau area dampak Jakarta.</p>
     </section>
   )}
@@ -386,7 +386,7 @@ function SourceMetadataCard({
     source.rejected_count > 0 && <p>{
       source.rejected_count
 }
-    record/nilai tidak memenuhi batas validasi.</p>
+    entri/nilai tidak memenuhi batas validasi.</p>
 }
   <p className="unified-source-explorer__attribution">{
     source.attribution
@@ -725,7 +725,7 @@ export function UnifiedSourceExplorerView({
         <div>
           <h2>Peta sumber Jakarta</h2>
           <p>Peta interaktif belum tersambung pada tampilan ini.</p>
-          <p>{visiblePoints.length} record mengikuti pencarian dan filter bersama.</p>
+          <p>{visiblePoints.length} entri mengikuti pencarian dan filter bersama.</p>
         </div>
       </div>
     )}
