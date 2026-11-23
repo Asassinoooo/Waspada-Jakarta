@@ -72,7 +72,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       type="button"
       className={className ? `theme-toggle ${className}` : "theme-toggle"}
       onClick={() => setThemePreference(nextThemePreference(theme))}
-      aria-label={`Tema tampilan, saat ini ${THEME_LABEL[theme]}`}
+      aria-label={`Tema: ${THEME_LABEL[theme]}, ganti tema tampilan`}
       title="Ganti tema tampilan: Sistem, Terang, Gelap"
     >
       <span className="theme-toggle__label">Tema: {THEME_LABEL[theme]}</span>

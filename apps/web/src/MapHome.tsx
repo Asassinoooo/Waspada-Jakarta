@@ -348,26 +348,26 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
               className="button button--quiet map-home__tool"
               aria-haspopup="dialog"
               aria-expanded={filterOpen}
-              aria-label={activeCount > 0 ? `Filter, ${activeCount} aktif` : "Filter"}
+              aria-label={activeCount > 0 ? `Filter ${activeCount} aktif` : "Filter"}
               onClick={() => setFilterOpen(true)}
             >
               <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M4 6h16M7 12h10M10 18h4" />
               </svg>
-              <span className="map-home__tool-label">Filter</span>
+              <span className="map-home__tool-label">Filter</span>{" "}
               {activeCount > 0 && <span className="count-chip map-home__count">{activeCount}</span>}
             </button>
             <button
               type="button"
               className="button button--quiet map-home__tool"
               aria-expanded={listOpen}
-              aria-label={`Daftar laporan, ${visibleEvents.length}`}
+              aria-label={`Daftar ${visibleEvents.length} laporan`}
               onClick={() => setListOpen((open) => !open)}
             >
               <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
               </svg>
-              <span className="map-home__tool-label">Daftar</span>
+              <span className="map-home__tool-label">Daftar</span>{" "}
               <span className="count-chip map-home__count">{visibleEvents.length}</span>
             </button>
           </div>

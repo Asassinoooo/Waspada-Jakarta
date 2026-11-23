@@ -36,7 +36,8 @@ test("below 768px the brand name is hidden and the brand mark keeps its link and
   assert.match(narrow, /\.brand__text\s*\{\s*display:\s*none;?\s*\}/u);
 
   const markup = renderToStaticMarkup(createElement(SiteHeader, { route: { screen: "discover" }, context: null }));
-  assert.match(markup, /<a class="brand" href="#peta" aria-label="Waspada Jakarta, ke peta">/u);
+  // A11Y-01: the brand link's accessible name is its visible text (axe label-content-name-mismatch).
+  assert.match(markup, /<a class="brand" href="#peta">/u);
   const navLabels = [...markup.matchAll(/<nav class="primary-nav"[\s\S]*?<\/nav>/gu)][0]?.[0].match(/<span>([^<]+)<\/span>/gu) ?? [];
   assert.deepEqual(navLabels, ["<span>Peta</span>", "<span>Pembaruan</span>", "<span>Area saya</span>"]);
   assert.match(markup, /class="site-header__badge-label">Status data</u, "the dataset label is in the header markup");
