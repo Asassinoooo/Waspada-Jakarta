@@ -402,6 +402,12 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     assert.equal(select({ snapshotBinding: undefined }), null);
     assert.equal(select({ datasetMode: "demo" }), null);
     assert.equal(select({ databaseConfigured: false }), null);
+    // The database check runs only for one of the three snapshot routes, so /context never reads the binding.
+    let checks = 0;
+    assert.equal(select({ pathname: "/api/v1/context", databaseConfigured: () => { checks += 1; return true; } }), null);
+    assert.equal(checks, 0);
+    assert.equal(select({ databaseConfigured: () => { checks += 1; return true; } }), "list");
+    assert.equal(checks, 1);
     assert.equal(select({ method: "POST" }), null);
     assert.equal(select({ pathname: "/api/v1/events/inc-perf03-01/history" }), null);
     assert.equal(select({ pathname: "/api/v1/context" }), null);
