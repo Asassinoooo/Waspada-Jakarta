@@ -21,6 +21,8 @@ dist/
 build/
 test-results/
 playwright-report/
+# A11Y-01: axe audit report written by npm run a11y:audit
+tools/e2e/out/
 
 # Credentials and local runtime state
 .env

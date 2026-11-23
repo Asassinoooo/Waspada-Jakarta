@@ -51,12 +51,50 @@ jobs:
       - name: Build Web and Worker Bundles
         run: npm run build
 
+  # E2E-CI-01 + A11Y-01: the offline browser journey and the axe accessibility audit of the public pages. Both run
+  # on PGlite with the Worker and the built web app behind one loopback server. A serious or critical axe violation
+  # or a keyboard failure fails this job and so blocks deploy. The audit report is uploaded even when a step fails.
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Build web app for the browser tools
+        run: npm run build:web
+
+      - name: Run browser journey
+        run: npm run test:e2e:ci
+
+      - name: Run accessibility audit
+        run: npm run a11y:audit
+
+      - name: Upload accessibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-report
+          path: tools/e2e/out/
+
   # CD-01 (23 Nov 2026): continuous deployment. Every push to main whose checks all pass is deployed to the hosted
   # Worker (web assets + API) with `npm run deploy:prod`. Pull requests never deploy. A failed check means no deploy.
   # Migrations are not applied here: a new migration is still applied by hand before its code is merged (DEPLOYMENT.md).
   # Needs repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Worker secrets stay in Cloudflare.
   deploy:
-    needs: test
+    needs: [test, e2e]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     environment:
