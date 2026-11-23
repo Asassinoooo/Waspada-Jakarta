@@ -40,13 +40,38 @@ export interface PublishedMarker {
 export type EventTimeRange = "all" | "24h" | "7d" | "30d";
 export type EvidenceKind = "issuer_notice" | "attributed_report" | "independent_corroboration" | "crowdsourced_observation";
 
+/**
+ * MAP-RECENT-01: the window on the publication time of the event's current public version. An update publishes a new
+ * version, so "24h" keeps events first published or updated in the last 24 hours. It is not the event time.
+ */
+export type PublicationRecency = "24h" | "all";
+
 export interface PublishedFilters {
   category: Category | "all";
   timeRange: EventTimeRange;
+  recency: PublicationRecency;
   source: EvidenceKind | "all";
 }
 
-export const DEFAULT_PUBLISHED_FILTERS: PublishedFilters = { category: "all", timeRange: "all", source: "all" };
+export const DEFAULT_PUBLISHED_FILTERS: PublishedFilters = { category: "all", timeRange: "all", source: "all", recency: "all" };
+
+export const RECENCY_OPTIONS: readonly { value: PublicationRecency; label: string }[] = [
+  { value: "24h", label: "24 jam terakhir" },
+  { value: "all", label: "Kapan saja" },
+];
+
+export const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * True when the current public version was published (first publication or an update) within 24 hours of nowMs. A
+ * publication time after nowMs (a version that arrived after the page opened, or clock skew) counts as recent. An
+ * unreadable time is not recent.
+ */
+export function publishedRecently(event: Pick<EventView, "published_at">, nowMs: number): boolean {
+  const publishedMs = Date.parse(event.published_at ?? "");
+  if (Number.isNaN(publishedMs)) return false;
+  return nowMs - publishedMs <= RECENT_WINDOW_MS;
+}
 
 export const FILTER_CATEGORIES: readonly Category[] = [
   "crime_personal_security",
@@ -81,7 +106,10 @@ const TIME_WINDOW_MS: Record<Exclude<EventTimeRange, "all">, number> = {
   "30d": 30 * 24 * 60 * 60 * 1000,
 };
 
-/** Number of filter groups that differ from the default, plus facilities when they are shown. */
+/**
+ * Number of filter groups that differ from the default, plus facilities when they are shown. The publication window
+ * (recency) is not counted: the map shows it on its own toggle and in the list.
+ */
 export function countActiveFilters(filters: PublishedFilters, facilitiesOn: boolean): number {
   return (filters.category === "all" ? 0 : 1)
     + (filters.timeRange === "all" ? 0 : 1)
@@ -108,7 +136,7 @@ function searchableText(event: EventView): string {
   return parts.join(" ").toLocaleLowerCase("id");
 }
 
-/** Filters the loaded list. Search, category, time range and source all combine with AND. */
+/** Filters the loaded list. Search, category, time range, source and publication window all combine with AND. */
 export function filterPublishedEvents(
   events: readonly EventView[],
   query: string,
@@ -119,6 +147,7 @@ export function filterPublishedEvents(
   return events.filter((event) =>
     (filters.category === "all" || event.category === filters.category)
     && withinTimeRange(event, filters.timeRange, nowMs)
+    && (filters.recency === "all" || publishedRecently(event, nowMs))
     && (filters.source === "all" || event.claims.some((claim) => claim.evidence_label === filters.source))
     && (search.length === 0 || searchableText(event).includes(search))
   );
