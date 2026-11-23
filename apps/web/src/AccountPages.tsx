@@ -305,11 +305,11 @@ function PasswordLogin({
   return (
     <div className="account-flow">
       <section className="account-card" aria-labelledby="login-title">
-        <h2 id="login-title">Masuk dengan username</h2>
+        <h2 id="login-title">Masuk dengan nama pengguna</h2>
         <p>Masuk bersifat opsional. Peta, laporan publik, riwayat, dan minat lokal tetap dapat digunakan tanpa akun.</p>
         {loginAvailable
           ? <LoginForm client={client} onSignedIn={enterAccount} />
-          : <p className="account-message" role="status">Masuk dengan username belum disiapkan pada layanan ini.</p>}
+          : <p className="account-message" role="status">Masuk dengan nama pengguna belum disiapkan pada layanan ini.</p>}
       </section>
       {registrationAvailable
         ? (
@@ -434,7 +434,7 @@ export const ACCOUNT_ONBOARDING_STEPS = [
   },
   {
     title: "Selesaikan pengenalan tanpa mengirim minat",
-    body: "Untuk akun dengan username, layanan menyimpan username, nama tampilan, peran yang ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Kata sandi hanya disimpan sebagai hash. Minat tetap di browser dan tidak dikirim saat masuk.",
+    body: "Untuk akun dengan nama pengguna, layanan menyimpan nama pengguna, nama tampilan, peran yang ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Kata sandi hanya disimpan sebagai hash. Minat tetap di browser dan tidak dikirim saat masuk.",
   },
 ] as const;
 
@@ -521,8 +521,8 @@ function Onboarding({
       {sessionState.status === "anonymous" && (
         <section className="account-card account-card--quiet">
           <h2>Pengenalan ini opsional</h2>
-          <p>Anda dapat berhenti kapan saja. Masuk dengan username bila ingin menyimpan versi dan waktu penyelesaian pada akun.</p>
-          <a className="text-link" href="#masuk">Masuk dengan username</a>
+          <p>Anda dapat berhenti kapan saja. Masuk dengan nama pengguna bila ingin menyimpan versi dan waktu penyelesaian pada akun.</p>
+          <a className="text-link" href="#masuk">Masuk dengan nama pengguna</a>
         </section>
       )}
     </div>
@@ -847,7 +847,7 @@ export function AccountPage({
         <h2>Akun tidak diperlukan untuk membaca laporan</h2>
         <p>Masuk hanya menambahkan profil dan pengenalan akun. Minat serta preferensi tetap disimpan secara lokal.</p>
         <div className="account-actions">
-          <a className="button button--primary" href="#masuk">Masuk dengan username</a>
+          <a className="button button--primary" href="#masuk">Masuk dengan nama pengguna</a>
           <a className="button button--quiet" href="#mulai">Lihat pengenalan</a>
         </div>
       </section>
@@ -932,7 +932,7 @@ export function AccountAccessGate({
         <p>{shell === "admin" ? "Ruang administrator hanya tersedia untuk akun administrator yang masuk." : "Tampilan tinjau hanya tersedia untuk akun moderator atau administrator yang masuk."}</p>
         <div className="account-actions" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", alignItems: "flex-start" }}>
           <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
-            <a className="button button--quiet" href="#masuk">Masuk dengan username</a>
+            <a className="button button--quiet" href="#masuk">Masuk dengan nama pengguna</a>
             <a className="button button--quiet" href="#peta">Kembali ke layanan publik</a>
           </div>
         </div>

@@ -14,6 +14,8 @@ import "./help-page.css";
 import "./account.css";
 import "./app-shell.css";
 import "./embedding-3d.css";
+// UI-V3: the refined visual layer loads last so it can refine every surface above.
+import "./design/v3.css";
 
 applyStoredTheme();
 
