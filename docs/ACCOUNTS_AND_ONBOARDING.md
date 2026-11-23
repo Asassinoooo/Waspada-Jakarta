@@ -35,7 +35,7 @@ Onboarding explains event status, evidence freshness, optional device-local inte
 - **Sessions:** a web session uses the cookie `__Host-waspada_session` on HTTPS origins (Secure, HttpOnly, SameSite=Strict). Loopback development uses `waspada_session_dev`. A session expires after 30 minutes without use or 8 hours after sign-in. Signing in rotates away any earlier cookie session.
 - **Browser writes:** register and login require the exact application Origin and the header `X-Waspada-Request: 1`. Password change and logout require the exact Origin and the session's `X-CSRF-Token`.
 - **Password change:** requires the current password. It revokes every other session of that account and keeps the current one.
-- **Not provided:** password reset, email recovery, multi-factor sign-in, and any operator reset command. A forgotten password cannot be recovered by the service in this change.
+- **Not provided:** password reset, email recovery, multi-factor sign-in, and any operator reset command. A forgotten password cannot be recovered by the service in this change. Amended 23 Nov 2026 (AUTH-RESET-01): an administrator issues a one-time reset code (30 minutes, one use, no email), which is entered on the `#lupa-sandi` page. Reset attempts have their own throttle: 12 per client and 12 per username in 10 minutes. Email recovery and multi-factor sign-in are still not provided.
 
 ## Run the synthetic demo in WSL
 

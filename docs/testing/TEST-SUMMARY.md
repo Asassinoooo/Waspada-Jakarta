@@ -2,6 +2,7 @@
 
 Project: Waspada Jakarta (Team 12, RPL course). Status date: 19 November 2026 (TG-DOCS-04; updated the same evening by TG-DOCS-05 and TG-DOCS-07; updated on 20 November 2026 by TG-DOCS-09). Draft for review. Baseline: `main` at `a7ba558`.
 Later update: TG-DOCS-09 (20 November 2026): section 7D (TEST-GAP-05 group 1, PERF-01, the NFR-07 gaps, the 20 November deploy and the hosted re-timing), the section 7 table and the section 8 open findings. Earlier update: TG-DOCS-07 (19 November 2026): section 7B, the register counts in section 1, and the open items in sections 4, 8 and 9. Earlier update: TG-DOCS-05 (19 November 2026, evening): section 7A, and the open items in sections 8 and 10. Earlier versions: TG-DOCS-03 (18 November 2026 evening, baseline `2d9d442`), TG-DOCS-02 (18 November 2026 morning, baseline `6fff929`) and the 13 November 2026 summary. Section 3 is as of 13 November 2026.
+Update 23 November 2026 (DOCS-2311): section 7E, covering the seven merges of that day and the CD-01 deploy blocker.
 Related: `docs/testing/TEST-PLAN.md`, `docs/testing/SYSTEM-TEST.md`, `docs/testing/INTEGRATION-TEST.md`, `docs/testing/UAT.md`, `docs/testing/test-cases.csv`, `docs/testing/DEFECTS.md`.
 
 This summary compiles records that exist, and each figure is cited to its source. For TG-DOCS-03 the CI logs were read with `gh`, the hosted public API was read without signing in, and the hosted database was read (read-only) to find the cause of F-19. Only the changed test files of the 18 November fixes were run locally (owner test policy, 12 November 2026).
@@ -211,6 +212,22 @@ Open items for the orchestrator (not decided in this update):
 - The 20 Nov hosted ingest has no ST-H row.
 - `evidence/2026-11-19/README.md`: a superseded line now sits at its nfr06 entry, pointing to the v2 files; the v1 text is kept.
 - The 390 px screenshots show the empty state; they do not measure page-level horizontal scroll.
+
+## 7E 23 Nov 2026 (DOCS-2311: seven merges and CD-01)
+
+The counts below are those recorded by each task and in the evidence files named here. This update re-ran no tests.
+
+- **MAP-GEO-02** (`d289927`): an event built from several report revisions, with an agent or source coordinate, now gets a point. `apps/worker/test/map-geo-02-multi-revision-point.test.ts`: 7 pass.
+- **AUTH-RESET-01** (`4b34b3d`): administrator-issued one-time password reset codes (ADR-065 amendment of 23 Nov 2026). Tests: db `password-reset-codes` 5, accounts-api 17, web `auth-reset-ui` 6, migrations 22. Migration 063 was applied to the hosted Neon database on 23 Nov 2026 (`npm run hosted:bootstrap`: 1 applied, 62 already applied).
+- **COPY-02** (`65ecf25`): visible English "record" copy replaced with "laporan" or "entri". Guard test `apps/web/test/copy-no-record.test.ts`.
+- **MOBILE-RECENT-01** (`198ca2b`): the Android map and list default to the last 24 h. `flutter test`: 61 pass (4 new). Not run on a device. Evidence: `docs/testing/evidence/2026-11-23/mobile/MOBILE-RECENT-01-apk.md`.
+- **NOTIFY-01** (`a7768db`, `51c3ed2`): "Area saya" notifications, local to the device only. Web test `notify-01`: 9 pass. Android `flutter test`: 71 pass (10 new). Not verified on a device. Evidence: `docs/testing/evidence/2026-11-23/mobile/NOTIFY-01-apk.md`.
+- **E2E-CI-01** (`a37e374`): CI job `e2e` runs `npm run test:e2e:ci` (offline PGlite browser journey, no env file) and passes in 42 s. The `deploy` job now needs `test` and `e2e`.
+- **A11Y-01** (`0d715af`, `a37e374`, `6546d63`): axe-core 4.14.0, WCAG 2.1 A/AA, on 8 public pages at 390 and 1440 px, light and dark (32 combinations), plus a keyboard pass. Final local gating run: 0 critical, serious, moderate or minor findings; Gate PASS. Automated audit only, with no assistive-technology session. CI uploads the report as artifact `a11y-report`.
+- **ST-N-03** moves from Not evidenced to Partial (automated audit and keyboard pass only). NFR-03 stays Not evidenced, because the 80% human-session target is not met.
+- **CD-01** (`0f7ba39`): the deploy job fails at "Check deploy credentials" until the owner adds the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (`docs/DEPLOYMENT.md` section 8). Until then the deploy job fails and nothing is deployed from CI.
+
+Open after this update: the owner adds the two CD-01 secrets; the hosted Worker deploy of the AUTH-RESET-01 routes and page is not recorded; the NOTIFY-01 and MOBILE-RECENT-01 device runs have not been done.
 
 ## 7 Partial rows: what moved and what did not
 

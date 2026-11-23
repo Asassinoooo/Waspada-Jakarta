@@ -7,6 +7,7 @@ Updated 19 November 2026 (TG-DOCS-04): F-20 to F-28 and the EXPLORE-18 open item
 Updated 19 November 2026 (TG-DOCS-05): status line on F-02, and new F-29 (section B).
 Updated 19 November 2026 (TG-DOCS-07): F-05 (partly closed), F-06 (closed by test), F-29 and F-32 (fixed, hosted re-check pending), new F-30 and F-31 (fixed, TEST-GAP-03), and the two EXPLORE-18 open items fixed by POLISH-02 and POLISH-03 (section B).
 Updated 23 November 2026 (TG-DOCS-10): F-50 fixed by PERF-03/04 and retested (run 4, `docs/testing/evidence/2026-11-23/`). Earlier update 20 November 2026 (TG-DOCS-09): F-39 to F-43 fixed and deployed on 20 November 2026 (section B); F-45 closed as out of scope; new F-46 to F-50 (section B). The evidence is in `docs/testing/evidence/2026-11-20/`.
+Updated 23 November 2026 (DOCS-2311): no new defect or finding IDs. The axe-core findings that A11Y-01 fixed (`label-content-name-mismatch` on the brand link, theme toggle and Daftar/Filter buttons; `link-name` on the brand at 390 px) are listed in `TEST-SUMMARY.md` section 7E. The CD-01 deploy stays blocked until two repository secrets are set (`docs/DEPLOYMENT.md` section 8).
 Related: `docs/testing/test-cases.csv`, `docs/testing/TEST-SUMMARY.md`, `DOKUMENTASI_UNIT_TESTING.md` section 2.a (corrected text on this branch).
 
 ## Purpose and rules

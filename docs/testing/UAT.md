@@ -20,8 +20,8 @@ In scope:
 
 Out of scope:
 - Starting or stopping the live server, real source fetches and model calls. The persona cases read the live app and do not change its data. The matched-update checks in US-02 need live data and stay pending (T2).
-- Hosted decisions and writes (the hosted walkthroughs are read-only, section 9.2), hosted backup and restore, source rights and password reset.
-- A full accessibility audit. Section 7 lists the only layout and text-size checks.
+- Hosted decisions and writes (the hosted walkthroughs are read-only, section 9.2), hosted backup and restore and source rights. Password reset (AUTH-RESET-01, admin-issued code, 23 Nov 2026) was added after the UAT sessions and was not part of them.
+- Accessibility, beyond an automated axe audit only (A11Y-01, 23 Nov 2026: eight public pages at 390 and 1440 px, light and dark, plus a keyboard pass). There is no assistive-technology session. Section 7 lists the only layout and text-size checks.
 
 ## 2 Method
 
