@@ -5,6 +5,7 @@ import 'city_illustration.dart';
 import 'event_detail_screen.dart';
 import 'event_list_screen.dart';
 import 'map_screen.dart';
+import 'notify_platform.dart';
 import 'preferences.dart';
 import 'preferences_screen.dart';
 import 'public_api.dart';
@@ -71,6 +72,50 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
   final _visited = <int>{0};
+  NotifyController? _notify;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final notify = NotifyScope.maybeOf(context);
+    if (notify == _notify) return;
+    _notify?.openRequests.removeListener(_openFromNotification);
+    _notify = notify;
+    notify?.openRequests.addListener(_openFromNotification);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openFromNotification());
+  }
+
+  @override
+  void dispose() {
+    _notify?.openRequests.removeListener(_openFromNotification);
+    super.dispose();
+  }
+
+  /// NOTIFY-01: a tapped notification opens that event's detail; the summary opens the list.
+  Future<void> _openFromNotification() async {
+    final notify = _notify;
+    if (notify == null || !mounted) return;
+    final eventId = notify.openRequests.value;
+    if (eventId == null) return;
+    notify.consumeOpenRequest();
+    if (eventId.isEmpty) return _select(2);
+    try {
+      final contextInfo = await widget.api.getContext();
+      final saved = await widget.preferences.load();
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => EventDetailScreen(
+          api: widget.api,
+          contextInfo: contextInfo,
+          eventId: eventId,
+          initialInterests: saved.interests,
+          preferences: widget.preferences,
+        ),
+      ));
+    } on ApiFailure {
+      if (mounted) _select(2);
+    }
+  }
 
   void _select(int index) => setState(() {
         _index = index;

@@ -17,6 +17,8 @@ dependencies:
   latlong2: ^0.10.1
   flutter_localizations:
     sdk: flutter
+  workmanager: 0.10.10
+  flutter_local_notifications: 19.5.0
 
 dev_dependencies:
   flutter_test:
