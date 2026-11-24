@@ -11,6 +11,8 @@
     />
     <title>Waspada Jakarta</title>
     <link rel="preload" href="/fonts/plus-jakarta-sans-var.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- PERF-07: the first event page starts downloading with the HTML; must equal EVENT_LIST_FIRST_PAGE_PATH. -->
+    <link rel="preload" href="/api/v1/events?limit=100" as="fetch" crossorigin="anonymous" />
     <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
   </head>
   <body>

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ApiHttpError, ApiPayloadError, listAllEvents, MAX_EVENT_PAGES, PartialEventListError } from "../src/api-client.js";
+import { readFileSync } from "node:fs";
+import { ApiHttpError, ApiPayloadError, EVENT_LIST_FIRST_PAGE_PATH, listAllEvents, MAX_EVENT_PAGES, PartialEventListError } from "../src/api-client.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -24,7 +25,7 @@ test("listAllEvents follows next_cursor and merges the pages in order", async (t
   const events = await listAllEvents();
 
   assert.deepEqual(events.map((event) => event.event_id), ["ev-1", "ev-21"]);
-  assert.deepEqual(requests, ["/api/v1/events", "/api/v1/events?cursor=c1"]);
+  assert.deepEqual(requests, ["/api/v1/events?limit=100", "/api/v1/events?limit=100&cursor=c1"]);
 });
 
 test("listAllEvents keeps one copy of an event repeated across pages, at its first position", async (t) => {
@@ -111,4 +112,25 @@ test("listAllEvents stops at the page limit and reports the list as incomplete",
     assert.ok(error.reason instanceof ApiPayloadError);
     return true;
   });
+});
+
+test("PERF-07: a list that fits in one page is one request, and index.html preloads exactly that URL", async (t) => {
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return jsonPage(["ev-1", "ev-2"], null);
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const events = await listAllEvents();
+
+  assert.equal(events.length, 2);
+  assert.deepEqual(requests, [EVENT_LIST_FIRST_PAGE_PATH]);
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(
+    html.includes(`<link rel="preload" href="${EVENT_LIST_FIRST_PAGE_PATH}" as="fetch" crossorigin="anonymous" />`),
+    "index.html preloads the first event page with the same URL the app requests",
+  );
 });
