@@ -64,10 +64,13 @@ These are summarised here, with the source in brackets.
 
 | ID | Branch | Goal | Owner/agent | Started |
 | --- | --- | --- | --- | --- |
-| PERF-06 (+PERF-05 trial) | not started | Push snapshot refresh from ingest; reads never wait on Neon; edge cache only if it works on workers.dev | planned after PERF-08 | |
-| PERF-09 | `work/PERF-09-split` | Lazy-load non-first-screen routes; main chunk < 100 KB compressed | planned | |
+| PERF-06 (+PERF-05 trial) | `work/PERF-06-push` (worktree `../waspada-perf06`), **paused 24 Nov 2026 mid-task, uncommitted** | Push snapshot refresh from ingest; reads never wait on Neon; edge cache only if it works on workers.dev | planned after PERF-08 | |
 | HIST-UI-01 (UI) | not started | "Lihat perubahan" disclosure in web `EventDetail` history + Flutter detail | main model | |
-| MOBILE-REL-01 | `work/MOBILE-REL-01-mobrel` | Release-signed split APKs via `mobile-release.yml` on tag `mobile-v*` to GitHub Releases + `#unduh` page | Haiku CI, main page | 24 Nov 2026 |
+| MOBILE-REL-01 (page + key) | not started | `#unduh` page (reads `apps/web/public/mobile-release.json`). **Blocked on owner:** create the release keystore and the 4 secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (see `apps/mobile/README.md` "Rilis APK"); do not tag `mobile-v0.2.0` before FIX-MOB-GEOJSON | main model | |
+| FIX-MOB-GEOJSON | not started | Android `HttpPublicApi._get` rejects `application/geo+json`, so the map tab fails on production (`public_api.dart:188`, `map_screen.dart:100`). Accept it for `/api/v1/events.geojson`; add a test with the real content type | owner approved 24 Nov 2026 (AUDIT-2411 #1) | |
+| FIX-ADMIN-MON | not started | `apps/web/src/admin-monitoring.ts` `parseEventView` requires exactly 14 keys; live events also carry `location_display`, `location_label` (checked on hosted, 66 events), so the admin dashboard rejects live data. Accept optional contract fields and categories `other`/`unclassified` | owner approved (AUDIT-2411 #3) | |
+| FIX-MOD-PARAMS | not started | `apps/worker/src/index.ts:327` reject drops `reason` (decideProposal accepts it); publish ignores `evidence_label`/`category_resolution`/`resolved_category` that moderation-api validates | owner approved (AUDIT-2411 #2) | |
+| FIX-SESSION-ANON | not started | `GET /api/v1/auth/session` opens a Postgres connection + transaction before checking for a cookie (`account-runtime.ts:87-112`); anonymous page loads wake Neon (180–360 ms measured). Answer anonymous requests without the DB | owner approved (AUDIT-2411 #4) | |
 | GUI-03 | not started | GUI audit then fixes: map/detail, home/nav/onboarding, Android, admin/moderator | main model | |
 
 ## 3. Next candidates (not started; the owner picks)
@@ -99,6 +102,8 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 - **HIST-UI-01:** show what changed between published versions of an event (the data exists in `/api/v1/updates`).
 
 ### Owner actions waiting
+- Check Neon **Usage** (CU-hours this month). Estimate from 12 ingest runs of 7–11 min each, 48 a day: about 80 of the 100 free CU-hours a month. If it is close, reduce the ingest cadence.
+- PR #4 (AUDIT-2411 report, doc only): read; not merged yet.
 - Run a real admin reset on a throwaway account (AUTH-RESET-01 hosted check).
 - Record the UAT results from the teammate's laptop (T1–T5).
 - Update the STD report in Google Docs.
@@ -107,6 +112,8 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 
 | Date | ID | Result | Checks actually run |
 | --- | --- | --- | --- |
+| 24 Nov 2026 | MOBILE-REL-01 (CI) | `build.gradle.kts` signs release from `android/key.properties` (falls back to debug); `.github/workflows/mobile-release.yml` on tag `mobile-v*`: tests, split APKs, SHA256SUMS, GitHub Release, commits `mobile-release.json` to main and dispatches CI; pubspec 0.2.0+2. Workflow never run | `flutter analyze` clean; `flutter build apk --release --split-per-abi` OK (arm64 21.5 MB, v7a 19.0 MB, x86_64 23.3 MB); throwaway-key signing path checked locally |
+| 24 Nov 2026 | PERF-09 | Lazy routes (Preferences, UpdatesCenter, HelpPage, account pages, admin gate) + split-out helpers; idle warm-up of route chunks. Main chunk 136.7 → 102.1 kB gzip (target 100 not quite met) | Web typecheck; `perf09-lazy-routes` 9/9; 36 other web test files 405 pass, 0 fail; no browser check |
 | 24 Nov 2026 | HIST-UI-01 (backend) | `HistoryEntry.changes?` (additive): text/enum/time diffs, scope names added/removed (approved `public_scope_names` only; unresolved names skip only that scope field), claim/impact counts; summary capped at 600 chars; read from published versions only, still 2 statements per history page | Typecheck; worker `hist-ui-01-history-changes` 15/15, `l4-public-event-history-projection-service` 12/12, `public-event-history-runtime` 5/5, `perf04-briefing-history` 11/11, `source-revision-freshness-public-projection` 1/1; db `public-event-history` 8/8, `manual-publication-public-read-chain` 3/3 |
 | 24 Nov 2026 | PERF-08 | `Server-Timing: snap;desc="memo|kv|check|rebuild", kv, db, build, total` on snapshot-served 200/304 (not on errors or DB-fallback answers). `npm run perf:probe` (`tools/perf/latency-probe.ts`); the CI deploy job appends a 3-round probe to the job summary (`continue-on-error`) | Typecheck; `perf03-public-snapshot` 18/18 (5 new). Hosted probe before deploy (10:16Z): `?limit=100` TTFB 425 ms, `/api/v1/events` 57 ms, GeoJSON 35 ms |
 | 24 Nov 2026 | PERF-07 | First event load is one `?limit=100` request (was 4 x 20 for 66 events), preloaded from `index.html` | Web typecheck; `event-list-pages` 7/7, `updates-center` 18/18, `public-published-feed` 12/12, `admin-monitoring` 15/15 |
