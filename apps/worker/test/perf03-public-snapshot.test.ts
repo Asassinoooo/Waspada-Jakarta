@@ -38,6 +38,7 @@ import {
 } from "../src/runtime/public-event-list-runtime.js";
 import {
   createPublicSnapshotStore,
+  newPublicSnapshotTiming,
   PUBLIC_SNAPSHOT_KEY,
   type PublicSnapshotKvNamespace,
   type PublicSnapshotStore,
@@ -46,6 +47,7 @@ import {
   publicSnapshotRouteFor,
   PUBLIC_READ_CACHE_CONTROL,
   readPublicSnapshotRoute,
+  snapshotServerTiming,
   type PublicSnapshotRouteKind,
 } from "../src/runtime/public-snapshot-route.js";
 
@@ -63,6 +65,8 @@ const TEST_CONNECTION_STRING = "postgresql://test-user:test-password@hyperdrive.
 const TEST_CURSOR_KEY_HEX = "fedcba9876543210".repeat(4);
 const TEST_NOW = Date.parse("2026-11-23T00:00:00.000Z");
 const ENV: WorkerEnvironment = { DATASET_MODE: "live" };
+/** PERF-08: the fixed shape of a snapshot answer's Server-Timing. Only a source word and rounded numbers match. */
+const SERVER_TIMING = /^snap;desc="(memo|kv|check|rebuild)", kv;dur=\d+(?:\.\d)?, db;dur=\d+(?:\.\d)?, build;dur=\d+(?:\.\d)?, total;dur=\d+(?:\.\d)?$/u;
 
 function proposalFor(index: number): EventProposalDto {
   const lineageKey = LINEAGE_KEYS[index % LINEAGE_KEYS.length]!;
@@ -382,6 +386,127 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     const other = await snapshotRead(h, store, "list", request(path, { "if-none-match": 'W/"0000000000000000"' }));
     assert.equal(other.status, 200);
     assert.equal(await other.text(), await (await dbRead(h, request(path))).text());
+  });
+
+  // PERF-08 cases. They publish nothing and withdraw nothing, so they run before the withdrawal cases below.
+  function serverTimingOf(response: Response): string {
+    return response.headers.get("server-timing") ?? "";
+  }
+
+  it("PERF-08: a list, detail or GeoJSON 200 from the snapshot carries a well-formed Server-Timing, and a 304 keeps it", async () => {
+    const store = storeFor(h, new FakeKv());
+    const listPath = "/api/v1/events?limit=5";
+    const list = await snapshotRead(h, store, "list", request(listPath));
+    assert.equal(list.status, 200);
+    assert.match(serverTimingOf(list), SERVER_TIMING);
+    assert.match(serverTimingOf(list), /^snap;desc="rebuild"/u, "the first read of a cold store builds the snapshot");
+    const etag = list.headers.get("etag");
+    assert.ok(etag);
+    await list.text();
+
+    const detail = await snapshotRead(h, store, "detail", request(`/api/v1/events/${eventIdFor(4)}`));
+    assert.equal(detail.status, 200);
+    assert.match(serverTimingOf(detail), SERVER_TIMING);
+    assert.match(serverTimingOf(detail), /^snap;desc="memo"/u, "a read within the memo TTL is answered from the memo");
+    await detail.text();
+
+    const geo = await snapshotRead(h, store, "geojson", request("/api/v1/events.geojson"));
+    assert.equal(geo.status, 200);
+    assert.match(serverTimingOf(geo), SERVER_TIMING);
+    await geo.text();
+
+    const notModified = await snapshotRead(h, store, "list", request(listPath, { "if-none-match": etag }));
+    assert.equal(notModified.status, 304);
+    assert.match(serverTimingOf(notModified), SERVER_TIMING);
+    assert.equal(await notModified.text(), "");
+  });
+
+  it("PERF-08: the timing source is rebuild on a cold build, memo within the memo TTL, kv in a new isolate, and check past 60 s", async () => {
+    const kv = new FakeKv();
+    const first = storeFor(h, kv);
+    const built = newPublicSnapshotTiming();
+    assert.ok(await first.read({ timing: built }));
+    assert.equal(built.source, "rebuild");
+    assert.ok(Number.isFinite(built.dbMs) && built.dbMs >= 0, "the database stage is a non-negative duration");
+    assert.ok(Number.isFinite(built.buildMs) && built.buildMs >= 0, "the build stage is a non-negative duration");
+
+    const memoTiming = newPublicSnapshotTiming();
+    const beforeMemo = h.counter.queries;
+    assert.ok(await first.read({ timing: memoTiming }));
+    assert.equal(memoTiming.source, "memo");
+    assert.equal(memoTiming.kvMs, 0, "a memo read does not touch KV");
+    assert.equal(memoTiming.dbMs, 0, "a memo read issues no statement");
+    assert.equal(h.counter.queries, beforeMemo);
+
+    // A new isolate has no memo. Its KV snapshot is fresh, so it is served with no statement.
+    const second = storeFor(h, kv);
+    const kvTiming = newPublicSnapshotTiming();
+    const beforeKv = h.counter.queries;
+    assert.ok(await second.read({ timing: kvTiming }));
+    assert.equal(kvTiming.source, "kv");
+    assert.equal(kvTiming.dbMs, 0);
+    assert.equal(h.counter.queries, beforeKv, "a fresh KV snapshot is served with no statement");
+
+    // Past the 60 s bound the read runs the fingerprint check. It matches, so nothing is rebuilt.
+    h.clock.at += 61_000;
+    const checkTiming = newPublicSnapshotTiming();
+    const beforeCheck = h.counter.queries;
+    assert.ok(await second.read({ timing: checkTiming }));
+    assert.equal(checkTiming.source, "check");
+    assert.equal(h.counter.queries - beforeCheck, 1, "the check is one fingerprint statement");
+    assert.equal(checkTiming.buildMs, 0, "a matching check builds nothing");
+  });
+
+  it("PERF-08: a KV snapshot whose fingerprint no longer matches is rebuilt past the 60 s bound, and the timing says rebuild", async () => {
+    const kv = new FakeKv();
+    assert.ok(await storeFor(h, kv).read());
+    // Stored content with a fingerprint the database does not produce, as after a change the store has not seen yet.
+    const stored = JSON.parse(kv.values.get(PUBLIC_SNAPSHOT_KEY)!) as Record<string, unknown>;
+    kv.values.set(PUBLIC_SNAPSHOT_KEY, JSON.stringify({ ...stored, fingerprint: "0:stale" }));
+
+    const store = storeFor(h, kv);
+    h.clock.at += 61_000;
+    const putsBefore = kv.putKeys.length;
+    const timing = newPublicSnapshotTiming();
+    const snapshot = await store.read({ timing });
+    assert.ok(snapshot);
+    assert.equal(timing.source, "rebuild");
+    assert.notEqual(snapshot.fingerprint, "0:stale");
+    assert.equal(kv.putKeys.length, putsBefore + 1, "the rebuild writes KV");
+  });
+
+  it("PERF-08: error responses and DB-served answers carry no Server-Timing, and a snapshot answer names no SQL, key or id", async () => {
+    const store = storeFor(h, new FakeKv());
+    const missing = await snapshotRead(h, store, "detail", request("/api/v1/events/inc-perf03-missing"));
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get("server-timing"), null);
+    await missing.text();
+
+    const filtered = await snapshotRead(h, store, "list", request("/api/v1/events?category=disasters_weather&limit=5"));
+    assert.equal(filtered.status, 200);
+    assert.equal(filtered.headers.get("server-timing"), null, "a filtered list is a DB answer, not a snapshot answer");
+    await filtered.text();
+
+    // A KV failure answers from the DB path, so it is not a snapshot answer either.
+    const fallback = await snapshotRead(h, storeFor(h, new BrokenKv()), "list", request("/api/v1/events?limit=3"));
+    assert.equal(fallback.status, 200);
+    assert.equal(fallback.headers.get("server-timing"), null);
+    await fallback.text();
+
+    const served = await snapshotRead(h, store, "detail", request(`/api/v1/events/${eventIdFor(7)}`));
+    const header = serverTimingOf(served);
+    assert.match(header, SERVER_TIMING);
+    assert.equal(header.includes(":"), false, "no colon, so no SQL text and no URL");
+    assert.equal(header.includes("inc-perf03"), false, "no event id");
+    assert.equal(/select|waspada|postgres|public-snapshot/iu.test(header), false, "no SQL, schema or key name");
+  });
+
+  it("PERF-08: the Server-Timing value has the fixed shape, rounds each duration to one decimal, and maps a bad number to 0", () => {
+    const timing = { source: "kv" as const, kvMs: 3.24, dbMs: 0, buildMs: Number.NaN };
+    assert.equal(
+      snapshotServerTiming(timing, 5.06),
+      'snap;desc="kv", kv;dur=3.2, db;dur=0, build;dur=0, total;dur=5.1',
+    );
   });
 
   it("PERF-03: the route is selected only for a live GET of one of the three reads, with the binding and a database", () => {

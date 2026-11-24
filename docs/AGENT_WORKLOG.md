@@ -103,6 +103,7 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 
 | Date | ID | Result | Checks actually run |
 | --- | --- | --- | --- |
+| 24 Nov 2026 | PERF-08 | `Server-Timing: snap;desc="memo|kv|check|rebuild", kv, db, build, total` on snapshot-served 200/304 (not on errors or DB-fallback answers). `npm run perf:probe` (`tools/perf/latency-probe.ts`); CI deploy job appends a 3-round probe to the job summary (`continue-on-error`) | Typecheck; `perf03-public-snapshot` 18/18 (5 new). Hosted pre-deploy probe 10:16Z: `?limit=100` TTFB 425 ms, `/api/v1/events` 57 ms, GeoJSON 35 ms |
 | 24 Nov 2026 | AGENT-LOG-01 | This file was added. `README.md` and `HANDOFF.md` link to it | Doc only |
 | 24 Nov 2026 | CD-01 | The first automatic deploy worked after the secrets were set (Worker `3b918744…`) | CI run 45147791923: test, e2e and deploy succeeded; the CI smoke check passed; hosted reset probe returned 400 |
 | 23 Nov 2026 | DOCS-2311 | Backlog, test summary, ST-N-03, UAT and ADR-065 updated for the items below | Merge `77e5c7c` |

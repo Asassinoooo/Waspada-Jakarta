@@ -151,3 +151,9 @@ jobs:
             echo "$path 200"
           done
           echo "Deployed commit ${GITHUB_SHA::7}" >> "$GITHUB_STEP_SUMMARY"
+
+      # PERF-08: latency of the live public reads, appended to the job summary. It only reads, and it never fails the
+      # deploy. "Install dependencies" above runs npm ci in this job, so tsx is available to the probe.
+      - name: Latency probe
+        continue-on-error: true
+        run: node --import tsx tools/perf/latency-probe.ts --rounds 3 >> "$GITHUB_STEP_SUMMARY"
