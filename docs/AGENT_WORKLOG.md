@@ -64,11 +64,10 @@ These are summarised here, with the source in brackets.
 
 | ID | Branch | Goal | Owner/agent | Started |
 | --- | --- | --- | --- | --- |
-| PERF-06 (+PERF-05 trial) | `work/PERF-06-push` (worktree `../waspada-perf06`), **paused 24 Nov 2026 mid-task, uncommitted** | Push snapshot refresh from ingest; reads never wait on Neon; edge cache only if it works on workers.dev | planned after PERF-08 | |
 | HIST-UI-01 (UI) | not started | "Lihat perubahan" disclosure in web `EventDetail` history + Flutter detail | main model | |
 | MOBILE-REL-01 (page + key) | not started | `#unduh` page (reads `apps/web/public/mobile-release.json`). **Blocked on owner:** create the release keystore and the 4 secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (see `apps/mobile/README.md` "Rilis APK"); do not tag `mobile-v0.2.0` before FIX-MOB-GEOJSON | main model | |
-| FIX-MOD-PARAMS | not started | `apps/worker/src/index.ts:327` reject drops `reason` (decideProposal accepts it); publish ignores `evidence_label`/`category_resolution`/`resolved_category` that moderation-api validates | owner approved (AUDIT-2411 #2) | |
-| FIX-SESSION-ANON | not started | `GET /api/v1/auth/session` opens a Postgres connection + transaction before checking for a cookie (`account-runtime.ts:87-112`); anonymous page loads wake Neon (180–360 ms measured). Answer anonymous requests without the DB | owner approved (AUDIT-2411 #4) | |
+| FIX-MOD-UI | not started | `ModeratorReview.tsx` never sends `category_resolution`, so a proposal with a triage/interpreter category mismatch always gets 409 and cannot be published from the UI (pre-existing; `moderation-api.ts` mismatch check). Add the choice to the review screen | main model (UI) | |
+| FIX-MOD-SESSION | not started | `readModeratorPrincipal` (via `withAccountStore`) still opens a DB connection on moderation/SSE requests without a cookie; add a cookie-presence check first | | |
 | GUI-03 | not started | GUI audit then fixes: map/detail, home/nav/onboarding, Android, admin/moderator | main model | |
 
 ## 3. Next candidates (not started; the owner picks)
@@ -100,6 +99,8 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 - **HIST-UI-01:** show what changed between published versions of an event (the data exists in `/api/v1/updates`).
 
 ### Owner actions waiting
+- **Set `SNAPSHOT_REFRESH_KEY`** (same random value) as a Worker secret (`npx wrangler secret put SNAPSHOT_REFRESH_KEY --env production` in `apps/worker`) and a GitHub secret (`gh secret set SNAPSHOT_REFRESH_KEY`). Until both exist, the refresh route answers 404, and ingest changes reach public reads within about 5 min instead of about 60 s.
+- Android release key + 4 secrets (MOBILE-REL-01), see `apps/mobile/README.md` "Rilis APK".
 - Check Neon **Usage** (CU-hours this month). Estimate from 12 ingest runs of 7–11 min each, 48 a day: about 80 of the 100 free CU-hours a month. If it is close, reduce the ingest cadence.
 - PR #4 (AUDIT-2411 report, doc only): read; not merged yet.
 - Run a real admin reset on a throwaway account (AUTH-RESET-01 hosted check).
@@ -110,6 +111,9 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 
 | Date | ID | Result | Checks actually run |
 | --- | --- | --- | --- |
+| 24 Nov 2026 | PERF-06 (+PERF-05 trial) | Public reads never wait on Neon while KV has a snapshot. Companion key `public-snapshot:v1:verified`; background fingerprint check at most every 5 min per isolate (writes the verified key only when stale, to protect the 1,000 KV writes/day). `POST /api/v1/internal/public-snapshot/refresh` (Bearer `SNAPSHOT_REFRESH_KEY`; 404 when unset, 401 wrong, 202 ok) called by `ingest.yml` after each run. Edge cache (`caches.default`) trial: keep only if hosted `Server-Timing` shows `edge;desc="hit"`. **Owner decision 24 Nov 2026:** pushed changes (ingest, moderator, auto-publish) within ~60 s; other DB changes (e.g. freshness evaluator) may take up to ~5 min | Typecheck; `perf03-public-snapshot` 24/24 (6 new) on merged main |
+| 24 Nov 2026 | FIX-MOD-PARAMS | Reject `reason` stored (record + audit); publish `reason`, `category_resolution`, `resolved_category` (must be a recorded candidate; gate re-checks), `evidence_label` recorded on the decision only (not applied to claims: would bypass the per-claim gate). Moderation 500s return a generic message + request id | Typecheck; `fix-mod-params` 10/10 (mutation-checked). Existing moderation/gate DB tests left to CI |
+| 24 Nov 2026 | FIX-SESSION-ANON | Account runtime opens the transactional DB connection only on the first store call, so anonymous `GET /api/v1/auth/session` (every page load) and refused pre-session requests skip Neon; anonymous response body unchanged | Typecheck; `fix-session-anon` 6/6 (3 fail on old code), 10 related account/moderation test files all pass |
 | 24 Nov 2026 | FIX-ADMIN-MON | Admin monitoring parser allows the contract's optional EventView keys (`location_display`, `location_label`, `severity`, `incident_type`; type-checked, unknown keys still rejected); categories `other`/`unclassified` accepted in admin-monitoring, api-client and update-matching, labelled "Lainnya"/"Belum diklasifikasikan" | Web typecheck; `admin-monitoring` 19/19 (2 failed before the fix), `updates-center` 19/19, plus 7 label/map test files all pass; not checked on hosted admin (needs admin login) |
 | 24 Nov 2026 | FIX-MOB-GEOJSON | Android `HttpPublicApi` accepts `application/geo+json` for `/api/v1/events.geojson` only (other reads stay `application/json`); the map tab failed on production before. Not yet in any released APK | `flutter analyze` clean; `public_api_test` 11/11 (2 new); full `flutter test` 73 passed; **not verified on a device** |
 | 24 Nov 2026 | PERF-07 fix | CI `e2e` failed from `073a16f` to `3ce39f1` (deploys skipped): the `index.html` preload ran on every route, so the moderation page cached a pre-publish list for 15 s and the map reused it (journey step 9). Preload removed; `startEarlyEventListLoad()` runs from `main.tsx` on discover routes only and is used once within 10 s | Reproduced locally (`build:web` + `test:e2e:ci` failed at step 9), then passed after the fix; `event-list-pages` 8/8, `perf09-lazy-routes` 9/9, web typecheck |
