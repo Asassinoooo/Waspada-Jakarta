@@ -395,8 +395,17 @@ export async function requestBriefing(interests: BriefingInterests): Promise<Bri
   return parseBriefingResponse(body);
 }
 
-export function listEvents(cursor?: string) {
+/**
+ * PERF-07: the largest page the public API accepts (PUBLIC_EVENT_LIST_PROJECTION_LIMITS.maxPageSize). The first load
+ * asks for it, so a list of up to 100 events is one request instead of one per 20. `index.html` preloads exactly
+ * EVENT_LIST_FIRST_PAGE_PATH, so keep the two identical.
+ */
+export const EVENT_LIST_PAGE_SIZE = 100;
+export const EVENT_LIST_FIRST_PAGE_PATH = `/api/v1/events?limit=${EVENT_LIST_PAGE_SIZE}`;
+
+export function listEvents(cursor?: string, limit?: number) {
   const query = new URLSearchParams();
+  if (limit !== undefined) query.set("limit", String(limit));
   if (cursor !== undefined) query.set("cursor", cursor);
   const search = query.toString();
   return getJson<EventPage>("/api/v1/events" + (search === "" ? "" : "?" + search));
@@ -441,7 +450,7 @@ export async function listAllEvents(): Promise<EventView[]> {
   for (let pageNumber = 1; pageNumber <= MAX_EVENT_PAGES; pageNumber += 1) {
     let page: EventPage;
     try {
-      page = eventPageOrThrow(await listEvents(cursor));
+      page = eventPageOrThrow(await listEvents(cursor, EVENT_LIST_PAGE_SIZE));
     } catch (error) {
       if (pageNumber === 1) throw error;
       throw new PartialEventListError(events, error);
