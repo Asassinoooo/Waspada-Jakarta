@@ -2,7 +2,8 @@ import "./design/tokens.css";
 import "./design/components.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.js";
+import { App, routeFromHash } from "./App.js";
+import { startEarlyEventListLoad } from "./api-client.js";
 import { applyStoredTheme } from "./ThemeToggle.js";
 import "./styles.css";
 import "./source-preview.css";
@@ -18,6 +19,8 @@ import "./embedding-3d.css";
 import "./design/v3.css";
 
 applyStoredTheme();
+// PERF-07: the map and list need the first event page; start it before the first render, on those routes only.
+if (routeFromHash(window.location.hash).screen === "discover") startEarlyEventListLoad();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("The app root element is missing.");
