@@ -124,6 +124,7 @@ Known issues and planned fixes are tracked in the [implementation backlog](docs/
 - [AI model integration plan](docs/AI_MODEL_INTEGRATION_PLAN.md)
 - [Cloudflare/Neon Free decision](docs/decisions/ADR-010-cloudflare-neon-free.md) and [platform compatibility](docs/PLATFORM_COMPATIBILITY.md)
 - [Architecture decision records](docs/decisions/README.md)
+- [Agent worklog](docs/AGENT_WORKLOG.md): the living handoff. Every agent reads it first and updates it as it works
 - [Developer handoff](HANDOFF.md) and [delivery log](docs/DELIVERY_LOG.md)
 - [Project report (Google Docs)](https://docs.google.com/document/d/1xwSzLJmsHau6jlNGQCZ3deaVnrvCyqS0oNyDZaTv6tM)
 
