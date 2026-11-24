@@ -494,6 +494,30 @@ function unavailableJson(): Response {
   });
 }
 
+/**
+ * PERF-06: the snapshot refresh route takes `Authorization: Bearer <key>`. An unset key answers 404, so the route is inert
+ * until the secret is set. Both sides are hashed before the comparison, as in checkServiceKey, so the compare runs in
+ * constant time. The key is never echoed or logged.
+ */
+async function snapshotRefreshDenial(request: Request, configuredKey: string | undefined): Promise<Response | null> {
+  const json = (status: number, code: string): Response => new Response(JSON.stringify({ ok: false, code, error: code }), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+  if (typeof configuredKey !== "string" || configuredKey.length === 0) return json(404, "NOT_FOUND");
+  const provided = /^Bearer (.+)$/u.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
+  const [providedDigest, configuredDigest] = await Promise.all([sha256Bytes(provided), sha256Bytes(configuredKey)]);
+  let difference = provided.length === 0 ? 1 : 0;
+  for (let index = 0; index < configuredDigest.length; index += 1) {
+    difference |= providedDigest[index]! ^ configuredDigest[index]!;
+  }
+  return difference === 0 ? null : json(401, "UNAUTHORIZED");
+}
+
+async function sha256Bytes(value: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+}
+
 /** Machine routes: 503 when the key is not configured, 401 on any mismatch. */
 async function serviceKeyDenial(request: Request, configuredKey: string | undefined): Promise<Response | null> {
   const decision = await checkServiceKey(request, configuredKey);
@@ -664,6 +688,27 @@ const workerHandlers = {
       }
       return new Response(JSON.stringify({ ok: true, proposal_id: proposalId, status: outcome.status, ...(outcome.status === "queued" ? { reasons: outcome.reasons } : {}), ...(outcome.status === "published" || outcome.status === "unchanged" ? { event_id: outcome.eventId, version: outcome.version } : {}) }), {
         status: 200,
+        headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+      });
+    }
+
+    // PERF-06: the hosted ingest pushes a snapshot rebuild after each successful cycle. Bearer auth; inert without the
+    // secret (404). The rebuild runs after the response, through waitUntil.
+    if (url.pathname === "/api/v1/internal/public-snapshot/refresh" && request.method === "POST") {
+      const denied = await snapshotRefreshDenial(request, env.SNAPSHOT_REFRESH_KEY);
+      if (denied) return denied;
+      const store = publicSnapshotStoreFor(env);
+      if (store === undefined) {
+        return new Response(JSON.stringify({ ok: false, code: "TEMPORARILY_UNAVAILABLE", error: "TEMPORARILY_UNAVAILABLE" }), {
+          status: 503,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+      const rebuilt = store.refresh().catch(() => null);
+      if (ctx?.waitUntil) ctx.waitUntil(rebuilt);
+      else await rebuilt;
+      return new Response(JSON.stringify({ status: "accepted" }), {
+        status: 202,
         headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
       });
     }

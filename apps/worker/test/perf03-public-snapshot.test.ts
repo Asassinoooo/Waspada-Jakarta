@@ -42,6 +42,7 @@ import {
   PUBLIC_SNAPSHOT_KEY,
   type PublicSnapshotKvNamespace,
   type PublicSnapshotStore,
+  PUBLIC_SNAPSHOT_VERIFIED_KEY,
 } from "../src/runtime/public-snapshot.js";
 import {
   publicSnapshotRouteFor,
@@ -50,6 +51,7 @@ import {
   snapshotServerTiming,
   type PublicSnapshotRouteKind,
 } from "../src/runtime/public-snapshot-route.js";
+import worker from "../src/index.js";
 
 /**
  * PERF-03 (23 Nov 2026): the hosted public reads of the event list, one event and the GeoJSON collection come from a
@@ -65,8 +67,13 @@ const TEST_CONNECTION_STRING = "postgresql://test-user:test-password@hyperdrive.
 const TEST_CURSOR_KEY_HEX = "fedcba9876543210".repeat(4);
 const TEST_NOW = Date.parse("2026-11-23T00:00:00.000Z");
 const ENV: WorkerEnvironment = { DATASET_MODE: "live" };
-/** PERF-08: the fixed shape of a snapshot answer's Server-Timing. Only a source word and rounded numbers match. */
-const SERVER_TIMING = /^snap;desc="(memo|kv|check|rebuild)", kv;dur=\d+(?:\.\d)?, db;dur=\d+(?:\.\d)?, build;dur=\d+(?:\.\d)?, total;dur=\d+(?:\.\d)?$/u;
+/**
+ * PERF-08: the fixed shape of a snapshot answer's Server-Timing. Only a source word and rounded numbers match. PERF-05
+ * trial: the edge part appears only when a `caches.default` exists, so it is optional here.
+ */
+const SERVER_TIMING = /^snap;desc="(memo|kv|rebuild)", kv;dur=\d+(?:\.\d)?, db;dur=\d+(?:\.\d)?, build;dur=\d+(?:\.\d)?, total;dur=\d+(?:\.\d)?(?:, edge;desc="(?:hit|miss)")?$/u;
+/** PERF-06: the staleness bound of the background check (the store default). */
+const STALE_AFTER_MS = 300_000;
 
 function proposalFor(index: number): EventProposalDto {
   const lineageKey = LINEAGE_KEYS[index % LINEAGE_KEYS.length]!;
@@ -228,6 +235,32 @@ function storeFor(h: Harness, kv: PublicSnapshotKvNamespace): PublicSnapshotStor
   });
 }
 
+/**
+ * PERF-06: a store whose database calls wait at a gate while it is held. A background check then cannot reach the
+ * database until the test releases it, so a read that returns while held has answered without the database.
+ */
+function gatedStore(h: Harness, kv: PublicSnapshotKvNamespace): { store: PublicSnapshotStore; hold(): void; release(): void } {
+  const gate = { held: false, waiting: [] as Array<() => void> };
+  const store = createPublicSnapshotStore({
+    kv,
+    withExecutor: async (operation) => {
+      if (gate.held) await new Promise<void>((resolve) => gate.waiting.push(resolve));
+      return operation(countingExecutor(h.database, h.counter));
+    },
+    now: () => h.clock.at,
+  });
+  return {
+    store,
+    hold: () => {
+      gate.held = true;
+    },
+    release: () => {
+      gate.held = false;
+      for (const resolve of gate.waiting.splice(0)) resolve();
+    },
+  };
+}
+
 function snapshotRead(
   h: Harness,
   store: PublicSnapshotStore,
@@ -362,7 +395,8 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     assert.equal(pending.length, 1, "the write is handed to waitUntil");
 
     await Promise.all(pending);
-    assert.deepEqual(kv.putKeys, [PUBLIC_SNAPSHOT_KEY]);
+    // PERF-06: the snapshot is written first, then its verified time.
+    assert.deepEqual(kv.putKeys, [PUBLIC_SNAPSHOT_KEY, PUBLIC_SNAPSHOT_VERIFIED_KEY]);
     assert.equal(JSON.parse(kv.values.get(PUBLIC_SNAPSHOT_KEY)!).version, 1);
   });
 
@@ -421,7 +455,7 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     assert.equal(await notModified.text(), "");
   });
 
-  it("PERF-08: the timing source is rebuild on a cold build, memo within the memo TTL, kv in a new isolate, and check past 60 s", async () => {
+  it("PERF-08: the timing source is rebuild on a cold build, memo within the memo TTL, kv in a new isolate, and kv past 60 s with no check", async () => {
     const kv = new FakeKv();
     const first = storeFor(h, kv);
     const built = newPublicSnapshotTiming();
@@ -447,32 +481,46 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     assert.equal(kvTiming.dbMs, 0);
     assert.equal(h.counter.queries, beforeKv, "a fresh KV snapshot is served with no statement");
 
-    // Past the 60 s bound the read runs the fingerprint check. It matches, so nothing is rebuilt.
+    // PERF-06: 61 s is inside the 5 min bound, so the read is served from KV with no statement and no background check.
     h.clock.at += 61_000;
-    const checkTiming = newPublicSnapshotTiming();
-    const beforeCheck = h.counter.queries;
-    assert.ok(await second.read({ timing: checkTiming }));
-    assert.equal(checkTiming.source, "check");
-    assert.equal(h.counter.queries - beforeCheck, 1, "the check is one fingerprint statement");
-    assert.equal(checkTiming.buildMs, 0, "a matching check builds nothing");
+    const olderTiming = newPublicSnapshotTiming();
+    const beforeOlder = h.counter.queries;
+    const pending: Promise<unknown>[] = [];
+    assert.ok(await second.read({ timing: olderTiming, waitUntil: (promise) => pending.push(promise) }));
+    assert.equal(olderTiming.source, "kv");
+    assert.equal(h.counter.queries - beforeOlder, 0, "no statement on the request path past 60 s");
+    assert.equal(pending.length, 0, "no background check inside the 5 min bound");
   });
 
-  it("PERF-08: a KV snapshot whose fingerprint no longer matches is rebuilt past the 60 s bound, and the timing says rebuild", async () => {
+  it("PERF-08: a stale KV snapshot is served at once, and the background check rebuilds it, so the next read is the new content", async () => {
     const kv = new FakeKv();
     assert.ok(await storeFor(h, kv).read());
     // Stored content with a fingerprint the database does not produce, as after a change the store has not seen yet.
     const stored = JSON.parse(kv.values.get(PUBLIC_SNAPSHOT_KEY)!) as Record<string, unknown>;
     kv.values.set(PUBLIC_SNAPSHOT_KEY, JSON.stringify({ ...stored, fingerprint: "0:stale" }));
 
-    const store = storeFor(h, kv);
-    h.clock.at += 61_000;
+    const gated = gatedStore(h, kv);
+    const store = gated.store;
+    h.clock.at += STALE_AFTER_MS + 1_000;
     const putsBefore = kv.putKeys.length;
     const timing = newPublicSnapshotTiming();
-    const snapshot = await store.read({ timing });
-    assert.ok(snapshot);
-    assert.equal(timing.source, "rebuild");
-    assert.notEqual(snapshot.fingerprint, "0:stale");
-    assert.equal(kv.putKeys.length, putsBefore + 1, "the rebuild writes KV");
+    const pending: Promise<unknown>[] = [];
+    const beforeServe = h.counter.queries;
+    // The database is held: the read must answer while the background check is still waiting for it.
+    gated.hold();
+    const served = await store.read({ timing, waitUntil: (promise) => pending.push(promise) });
+    assert.ok(served);
+    assert.equal(timing.source, "kv", "the stale copy is served, not rebuilt, on the request path");
+    assert.equal(served.fingerprint, "0:stale");
+    assert.equal(h.counter.queries - beforeServe, 0, "no database statement before the response");
+    assert.equal(pending.length, 1, "one background check is handed to waitUntil");
+
+    gated.release();
+    await Promise.all(pending);
+    const after = await store.read();
+    assert.ok(after);
+    assert.notEqual(after.fingerprint, "0:stale", "the background check rebuilt the snapshot");
+    assert.equal(kv.putKeys.length, putsBefore + 2, "the background rebuild writes the snapshot and its verified time");
   });
 
   it("PERF-08: error responses and DB-served answers carry no Server-Timing, and a snapshot answer names no SQL, key or id", async () => {
@@ -582,29 +630,37 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     assert.equal(missingOutcome.value.kind, "missing");
   });
 
-  it("PERF-03: an unchanged fingerprint costs one statement, no rebuild and no KV write", async () => {
+  it("PERF-03: an unchanged fingerprint is verified in the background: one fingerprint statement, no rebuild, and only the verified time is written", async () => {
     const kv = new FakeKv();
     const store = storeFor(h, kv);
     const built = await store.read();
     assert.ok(built, "the first read builds the snapshot");
     const putsBefore = kv.putKeys.length;
 
-    const beforeCheck = h.counter.queries;
+    // Inside the 5 min bound nothing runs: no statement on the request path, no check, no write.
+    const beforeInside = h.counter.queries;
     h.clock.at += 61_000;
-    const checked = await store.read();
-    assert.equal(h.counter.queries - beforeCheck, 1, "the 60 s check reads only the fingerprint");
-    assert.equal(checked?.built_at, built.built_at, "no rebuild: built_at is unchanged");
-    assert.equal(kv.putKeys.length, putsBefore, "no KV write");
+    const inside = await store.read();
+    assert.equal(h.counter.queries - beforeInside, 0, "no statement inside the staleness bound");
+    assert.equal(inside?.built_at, built.built_at, "no rebuild: built_at is unchanged");
+    assert.equal(kv.putKeys.length, putsBefore, "no KV write inside the bound");
 
+    // Past the bound the snapshot is served at once and one fingerprint check runs after the response.
     const pending: Promise<unknown>[] = [];
     const beforeBackground = h.counter.queries;
-    h.clock.at += 31_000;
-    const served = await store.read({ waitUntil: (promise) => pending.push(promise) });
-    assert.ok(served, "the snapshot is served while the 30 s check runs");
-    assert.equal(pending.length, 1, "the 30 s check is handed to waitUntil");
+    h.clock.at += STALE_AFTER_MS;
+    // A fresh isolate, with the database held: the snapshot is served before the background check can reach it.
+    const gated = gatedStore(h, kv);
+    gated.hold();
+    const served = await gated.store.read({ waitUntil: (promise) => pending.push(promise) });
+    assert.ok(served, "the snapshot is served while the background check runs");
+    assert.equal(h.counter.queries - beforeBackground, 0, "no database statement before the response");
+    assert.equal(pending.length, 1, "the background check is handed to waitUntil");
+    gated.release();
     await Promise.all(pending);
-    assert.equal(h.counter.queries - beforeBackground, 1, "the 30 s check reads only the fingerprint");
-    assert.equal(kv.putKeys.length, putsBefore, "still no KV write");
+    assert.equal(h.counter.queries - beforeBackground, 1, "the background check reads only the fingerprint");
+    assert.equal(kv.putKeys.at(-1), PUBLIC_SNAPSHOT_VERIFIED_KEY, "a matching check writes the verified time, not the snapshot");
+    assert.equal(kv.putKeys.length, putsBefore + 1, "one KV write: the verified time");
   });
 
   it("PERF-03: a freshness change moves the fingerprint, so the next check rebuilds and the served page equals the DB path", async () => {
@@ -638,7 +694,11 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     });
     assert.equal(appended.outcome, "written");
 
-    h.clock.at += 61_000;
+    // PERF-06: no push here, so the change is picked up by the background check once the snapshot is past the bound.
+    h.clock.at += STALE_AFTER_MS + 1_000;
+    const pending: Promise<unknown>[] = [];
+    await store.read({ waitUntil: (promise) => pending.push(promise) });
+    await Promise.all(pending);
     const after = await store.read();
     assert.ok(after);
     assert.notEqual(after.fingerprint, built.fingerprint, "the freshness change moved the fingerprint");
@@ -657,11 +717,14 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     const withdrawn = eventIdFor(3);
     await withdrawFixtureEvent(3);
 
-    h.clock.at += 61_000;
+    h.clock.at += STALE_AFTER_MS + 1_000;
+    const pending: Promise<unknown>[] = [];
+    await store.read({ waitUntil: (promise) => pending.push(promise) });
+    await Promise.all(pending);
     const after = await store.read();
     assert.ok(after);
     assert.notEqual(after.fingerprint, built.fingerprint, "the withdrawal moved the fingerprint");
-    assert.equal(kv.putKeys.length, putsBefore + 1, "the rebuild writes the snapshot once");
+    assert.deepEqual(kv.putKeys.slice(putsBefore), [PUBLIC_SNAPSHOT_KEY, PUBLIC_SNAPSHOT_VERIFIED_KEY], "the background rebuild writes the snapshot, then its verified time");
 
     const path = "/api/v1/events?limit=20";
     const served = await (await snapshotRead(h, store, "list", request(path))).text();
@@ -674,7 +737,175 @@ describe("PERF-03 public read snapshot (PGlite, real publication path)", () => {
     const beforeForced = h.counter.queries;
     await store.refresh();
     assert.ok(h.counter.queries - beforeForced > 1, "a forced refresh runs the full build, not only the fingerprint");
-    assert.equal(kv.putKeys.length, putsBefore + 2, "a forced refresh writes KV");
+    assert.equal(kv.putKeys.length, putsBefore + 4, "a forced refresh writes the snapshot and its verified time");
+  });
+
+  // PERF-06 cases. They read the published events and withdraw nothing, so they run before the final case.
+  function pushTo(pending: Promise<unknown>[]): (promise: Promise<unknown>) => void {
+    return (promise) => {
+      pending.push(promise);
+    };
+  }
+
+  it("PERF-06: a fresh isolate serves a KV snapshot with no statement when its verified time is recent, though built_at is 10 min old", async () => {
+    const kv = new FakeKv();
+    const built = await storeFor(h, kv).read();
+    assert.ok(built);
+    h.clock.at += 600_000;
+    kv.values.set(PUBLIC_SNAPSHOT_VERIFIED_KEY, new Date(h.clock.at - 5_000).toISOString());
+
+    const pending: Promise<unknown>[] = [];
+    const timing = newPublicSnapshotTiming();
+    const before = h.counter.queries;
+    const served = await storeFor(h, kv).read({ timing, waitUntil: pushTo(pending) });
+    assert.ok(served);
+    assert.equal(served.built_at, built.built_at, "the KV content is served");
+    assert.equal(timing.source, "kv");
+    assert.equal(h.counter.queries - before, 0, "no statement on the request path");
+    assert.equal(pending.length, 0, "the verified time is 5 s old, so no background check starts");
+  });
+
+  it("PERF-06: a fresh isolate with both times older than 5 min serves at once with no synchronous statement, then one background check writes the verified time", async () => {
+    const kv = new FakeKv();
+    assert.ok(await storeFor(h, kv).read());
+    const writesBefore = kv.putKeys.length;
+    h.clock.at += 600_000;
+
+    const pending: Promise<unknown>[] = [];
+    const timing = newPublicSnapshotTiming();
+    const before = h.counter.queries;
+    const gated = gatedStore(h, kv);
+    gated.hold();
+    const served = await gated.store.read({ timing, waitUntil: pushTo(pending) });
+    assert.ok(served);
+    assert.equal(timing.source, "kv");
+    assert.equal(h.counter.queries - before, 0, "the request path issues no statement");
+    assert.equal(pending.length, 1, "exactly one background check is handed to waitUntil");
+
+    gated.release();
+    await Promise.all(pending);
+    assert.equal(h.counter.queries - before, 1, "the background check reads only the fingerprint");
+    assert.equal(kv.values.get(PUBLIC_SNAPSHOT_VERIFIED_KEY), new Date(h.clock.at).toISOString(), "the verified time is now");
+    assert.deepEqual(kv.putKeys.slice(writesBefore), [PUBLIC_SNAPSHOT_VERIFIED_KEY], "only the verified time is written");
+  });
+
+  it("PERF-06: two reads inside the window start one background check, and a read after that check starts none", async () => {
+    const kv = new FakeKv();
+    assert.ok(await storeFor(h, kv).read());
+    h.clock.at += 600_000;
+
+    const store = storeFor(h, kv);
+    const pending: Promise<unknown>[] = [];
+    const before = h.counter.queries;
+    assert.ok(await store.read({ waitUntil: pushTo(pending) }));
+    assert.ok(await store.read({ waitUntil: pushTo(pending) }));
+    assert.equal(pending.length, 1, "the second read in the window does not start another check");
+
+    await Promise.all(pending);
+    assert.equal(h.counter.queries - before, 1, "one fingerprint statement for both reads");
+    assert.ok(await store.read({ waitUntil: pushTo(pending) }));
+    assert.equal(pending.length, 1, "the check just confirmed the content, so the next read starts none");
+  });
+
+  it("PERF-06: a KV miss still builds synchronously, so the first read of an empty KV answers with the rebuilt snapshot", async () => {
+    const timing = newPublicSnapshotTiming();
+    const before = h.counter.queries;
+    const built = await storeFor(h, new FakeKv()).read({ timing });
+    assert.ok(built);
+    assert.equal(timing.source, "rebuild");
+    assert.ok(h.counter.queries - before > 1, "the miss runs the full build on the request path");
+  });
+
+  it("PERF-06: the refresh route is inert without SNAPSHOT_REFRESH_KEY, rejects a missing or wrong bearer key, and accepts the right one with 202", async () => {
+    const kv = new FakeKv();
+    const key = "snapshot-refresh-test-secret-000000000000";
+    const route = "https://waspada.example.invalid/api/v1/internal/public-snapshot/refresh";
+    const envWith = (extra: Record<string, unknown>): WorkerEnvironment => ({
+      DATASET_MODE: "live",
+      SQL_EXECUTOR: h.database.executor,
+      PUBLIC_SNAPSHOT: kv,
+      ...extra,
+    }) as unknown as WorkerEnvironment;
+    const post = (authorization: string | null): Request => new Request(route, {
+      method: "POST",
+      headers: authorization === null ? {} : { authorization },
+    });
+    const ctxWith = (pending: Promise<unknown>[]) => ({ waitUntil: pushTo(pending) });
+
+    const putsBefore = kv.putKeys.length;
+    const unset = await worker.fetch(post(`Bearer ${key}`), envWith({}), ctxWith([]));
+    assert.equal(unset.status, 404, "without the secret the route does not exist");
+    await unset.text();
+
+    const missing = await worker.fetch(post(null), envWith({ SNAPSHOT_REFRESH_KEY: key }), ctxWith([]));
+    assert.equal(missing.status, 401);
+    const wrong = await worker.fetch(post("Bearer snapshot-refresh-test-secret-00000000000x"), envWith({ SNAPSHOT_REFRESH_KEY: key }), ctxWith([]));
+    assert.equal(wrong.status, 401);
+    const wrongText = await wrong.text();
+    assert.deepEqual(JSON.parse(wrongText), { ok: false, code: "UNAUTHORIZED", error: "UNAUTHORIZED" });
+    assert.equal(kv.putKeys.length, putsBefore, "no refresh runs for a rejected request");
+
+    const pending: Promise<unknown>[] = [];
+    const accepted = await worker.fetch(post(`Bearer ${key}`), envWith({ SNAPSHOT_REFRESH_KEY: key }), ctxWith(pending));
+    assert.equal(accepted.status, 202);
+    const acceptedText = await accepted.text();
+    assert.equal(acceptedText, '{"status":"accepted"}');
+    assert.equal(acceptedText.includes(key), false, "the key is never echoed");
+    assert.equal(pending.length, 1, "the refresh is handed to waitUntil");
+    await Promise.all(pending);
+    assert.ok(kv.putKeys.includes(PUBLIC_SNAPSHOT_KEY), "the refresh rebuilt and wrote the snapshot");
+
+    const unbound = await worker.fetch(post(`Bearer ${key}`), envWith({ SNAPSHOT_REFRESH_KEY: key, PUBLIC_SNAPSHOT: undefined }), ctxWith([]));
+    assert.equal(unbound.status, 503, "without the KV binding the route answers 503");
+    await unbound.text();
+  });
+
+  it("PERF-06: with a Cache API the second read of an identical snapshot answer is an edge hit, a conditional read gets 304, and without one no edge part appears", async () => {
+    const copies = new Map<string, Response>();
+    let puts = 0;
+    let matches = 0;
+    const cache = {
+      async match(req: Request): Promise<Response | undefined> {
+        matches += 1;
+        return copies.get(req.url)?.clone();
+      },
+      async put(req: Request, res: Response): Promise<void> {
+        puts += 1;
+        copies.set(req.url, res.clone());
+      },
+    };
+    const holder = globalThis as unknown as { caches?: unknown };
+    const previous = holder.caches;
+    holder.caches = { default: cache };
+    try {
+      const store = storeFor(h, new FakeKv());
+      const listPath = "/api/v1/events?limit=5";
+      const pending: Promise<unknown>[] = [];
+      const first = await snapshotRead(h, store, "list", request(listPath), pushTo(pending));
+      const firstBody = await first.text();
+      assert.match(serverTimingOf(first), /, edge;desc="miss"$/u, "the first answer is an edge miss");
+      await Promise.all(pending);
+      assert.equal(puts, 1, "the miss stores one copy");
+
+      const second = await snapshotRead(h, store, "list", request(listPath), pushTo(pending));
+      assert.match(serverTimingOf(second), /, edge;desc="hit"$/u, "the second answer is an edge hit");
+      assert.equal(await second.text(), firstBody, "the edge copy equals the built body");
+      assert.equal(second.headers.get("etag"), first.headers.get("etag"));
+      assert.equal(second.headers.get("cache-control"), PUBLIC_READ_CACHE_CONTROL);
+      assert.ok(matches >= 2);
+
+      const etag = first.headers.get("etag")!;
+      const conditional = await snapshotRead(h, store, "list", request(listPath, { "if-none-match": etag }), pushTo(pending));
+      assert.equal(conditional.status, 304);
+      assert.match(serverTimingOf(conditional), /, edge;desc="hit"$/u);
+      await conditional.text();
+    } finally {
+      holder.caches = previous;
+    }
+
+    const plain = await snapshotRead(h, storeFor(h, new FakeKv()), "list", request("/api/v1/events?limit=5"));
+    assert.equal(serverTimingOf(plain).includes("edge"), false, "without caches.default the header has no edge part");
+    await plain.text();
   });
 
   // This case withdraws events, so it runs last: the cases above read the published events.
