@@ -1,4 +1,12 @@
 import type { HistoryEntry, HistoryPage } from "../../contracts/public-api.js";
+import {
+  diffHistoryChangeSnapshots,
+  historyScopeNameKey,
+  readHistoryChangeSnapshot,
+  type HistoryChangeSnapshot,
+  type HistoryScopeEntityType,
+  type HistoryScopeNameMap,
+} from "./public-event-history-changes.js";
 
 export const PUBLIC_EVENT_HISTORY_PROJECTION_LIMITS = Object.freeze({
   defaultPageSize: 50,
@@ -65,11 +73,21 @@ interface ValidatedCandidateVersion {
   readonly eventId: string;
   readonly eventVersion: number;
   readonly publishedAt: string;
+  /** HIST-UI-01: the envelope-checked record, read only to describe what changed. Never projected as is. */
+  readonly recordJson: unknown;
+}
+
+interface ValidatedCandidatePrevious {
+  readonly eventVersion: number;
+  readonly recordJson: unknown;
 }
 
 interface ValidatedCandidatePage {
   readonly versions: readonly ValidatedCandidateVersion[];
   readonly nextAfterVersion: number | null;
+  /** HIST-UI-01: the previous published version of the first entry, or null. */
+  readonly previous: ValidatedCandidatePrevious | null;
+  readonly scopeNames: HistoryScopeNameMap;
 }
 
 interface ValidatedDisclosureMetadata {
@@ -116,7 +134,10 @@ const eventRecordKeys = [
   "event_time", "validity", "scope", "claims", "impact_refs", "publication_status",
   "withdrawal_reason", "publication_decision_id", "published_at", "withdrawn_at",
 ] as const;
-const candidatePageKeys = ["eventId", "versions", "nextAfterVersion"] as const;
+const candidatePageKeys = ["eventId", "versions", "nextAfterVersion", "previousVersion", "scopeNames"] as const;
+const candidatePreviousKeys = ["datasetKind", "eventId", "eventVersion", "recordJson"] as const;
+const candidateScopeNameKeys = ["entityType", "id", "displayName"] as const;
+const scopeEntityTypes = new Set<string>(["place", "service", "institution", "audience"]);
 const candidateVersionKeys = ["datasetKind", "eventId", "eventVersion", "recordJson"] as const;
 const disclosurePageKeys = ["eventId", "versions", "coverageComplete", "nextAfterVersion"] as const;
 const disclosureVersionKeys = ["datasetKind", "eventId", "eventVersion", "disclosure"] as const;
@@ -181,9 +202,22 @@ export function createPublicEventHistoryProjectionService(ports: {
         fail("PAGE_MISMATCH");
       }
 
-      const data: HistoryEntry[] = candidateResult.page.versions.map((candidate, index) => {
+      // HIST-UI-01: each entry is compared with the previous published version. The first entry of a later page is
+      // compared with the reader's previous version, so a page boundary never changes an entry's changes.
+      const scopeNames = candidateResult.page.scopeNames;
+      let previousSnapshot: HistoryChangeSnapshot | null = candidateResult.page.previous === null
+        ? null
+        : readHistoryChangeSnapshot(candidateResult.page.previous.recordJson, scopeNames);
+      const data: HistoryEntry[] = [];
+      for (const [index, candidate] of candidateResult.page.versions.entries()) {
         const disclosure = disclosurePage.versions[index]!.metadata;
-        return {
+        const snapshot = readHistoryChangeSnapshot(candidate.recordJson, scopeNames);
+        // A retracted entry keeps its existing shape, and version 1 has nothing to compare with.
+        const changes = disclosure.changeType === "retracted" || previousSnapshot === null || snapshot === null
+          ? []
+          : diffHistoryChangeSnapshots(previousSnapshot, snapshot);
+        previousSnapshot = snapshot;
+        data.push({
           event_id: candidate.eventId,
           version: candidate.eventVersion,
           change_type: disclosure.changeType,
@@ -191,8 +225,9 @@ export function createPublicEventHistoryProjectionService(ports: {
           summary: disclosure.summary,
           // POLISH-02: the flag is present only when true, so moderator corrections keep the unchanged entry shape.
           ...(disclosure.automatic ? { automatic: true } : {}),
-        };
-      });
+          ...(changes.length > 0 ? { changes } : {}),
+        });
+      }
 
       return {
         kind: "found",
@@ -261,7 +296,7 @@ function parseCandidateResult(
         fail("CANDIDATE_RESULT_INVALID");
       }
       const publishedAt = validatePublishedEventRecord(candidate.recordJson, eventId, candidate.eventVersion);
-      versions.push({ eventId, eventVersion: candidate.eventVersion, publishedAt });
+      versions.push({ eventId, eventVersion: candidate.eventVersion, publishedAt, recordJson: candidate.recordJson });
       previousVersion = candidate.eventVersion;
     }
 
@@ -271,7 +306,9 @@ function parseCandidateResult(
       request.limit,
       "CANDIDATE_RESULT_INVALID",
     );
-    return { kind: "found", page: { versions, nextAfterVersion } };
+    const previous = readCandidatePrevious(value.page.previousVersion, eventId, afterVersion, versions.length);
+    const scopeNames = readCandidateScopeNames(value.page.scopeNames);
+    return { kind: "found", page: { versions, nextAfterVersion, previous, scopeNames } };
   } catch (error) {
     if (error instanceof PublicEventHistoryProjectionServiceError) throw error;
     fail("CANDIDATE_RESULT_INVALID");
@@ -348,6 +385,47 @@ function validateDisclosure(
     summary: value.summary,
     automatic: changeType === "corrected" && value.reviewerId === AUTOMATIC_REVIEWER_ID,
   };
+}
+
+/** HIST-UI-01: null, or a published version at or before the page boundary. An empty page has no previous version. */
+function readCandidatePrevious(
+  value: unknown,
+  eventId: string,
+  afterVersion: number,
+  versionCount: number,
+): ValidatedCandidatePrevious | null {
+  if (value === null) return null;
+  if (versionCount === 0
+    || !hasExactKeys(value, candidatePreviousKeys)
+    || value.datasetKind !== "live"
+    || value.eventId !== eventId
+    || !isPositiveDatabaseInteger(value.eventVersion)
+    || value.eventVersion > afterVersion) {
+    fail("CANDIDATE_RESULT_INVALID");
+  }
+  validatePublishedEventRecord(value.recordJson, eventId, value.eventVersion);
+  return { eventVersion: value.eventVersion, recordJson: value.recordJson };
+}
+
+/** HIST-UI-01: approved display names, one per (entity type, ID). A duplicate or unknown entity type fails closed. */
+function readCandidateScopeNames(value: unknown): HistoryScopeNameMap {
+  if (!Array.isArray(value)) fail("CANDIDATE_RESULT_INVALID");
+  const names = new Map<string, string>();
+  for (const entry of value) {
+    if (!hasExactKeys(entry, candidateScopeNameKeys)
+      || typeof entry.entityType !== "string"
+      || !scopeEntityTypes.has(entry.entityType)
+      || typeof entry.id !== "string"
+      || entry.id.length === 0
+      || typeof entry.displayName !== "string"
+      || entry.displayName.length === 0) {
+      fail("CANDIDATE_RESULT_INVALID");
+    }
+    const key = historyScopeNameKey(entry.entityType as HistoryScopeEntityType, entry.id);
+    if (names.has(key)) fail("CANDIDATE_RESULT_INVALID");
+    names.set(key, entry.displayName);
+  }
+  return names;
 }
 
 function validatePublishedEventRecord(value: unknown, eventId: string, eventVersion: number): string {

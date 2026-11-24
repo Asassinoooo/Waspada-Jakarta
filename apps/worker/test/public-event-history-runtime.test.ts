@@ -45,12 +45,18 @@ function makeEventRecord(version: number) {
   };
 }
 
-function makeCandidateRow(version: number) {
+/** HIST-UI-01: the reader returns the previous published version at the page boundary, and no scope names here. */
+function makeCandidateRow(version: number, previousVersion: number | null = null) {
   return {
     current_dataset_kind: "live",
     current_event_id: eventId,
     current_version: 2,
     current_record_json: makeEventRecord(2),
+    previous_dataset_kind: previousVersion === null ? null : "live",
+    previous_event_id: previousVersion === null ? null : eventId,
+    previous_version: previousVersion,
+    previous_record_json: previousVersion === null ? null : makeEventRecord(previousVersion),
+    scope_names: [],
     dataset_kind: "live",
     event_id: eventId,
     version,
@@ -138,7 +144,7 @@ test("exact-live history composes candidate and reviewed readers in one SQL oper
       return versions.map((version) => makeDisclosureRow(version));
     }
     assert.ok(statement.includes("FROM waspada.public_event_versions AS event"));
-    return versions.map((version) => makeCandidateRow(version));
+    return versions.map((version) => makeCandidateRow(version, afterVersion > 0 ? afterVersion : null));
   });
   const response = await handlePublicApiRequest(
     new Request("http://localhost/api/v1/events/" + eventId + "/history"),
@@ -171,6 +177,11 @@ test("exact-live history composes candidate and reviewed readers in one SQL oper
         change_type: "corrected",
         changed_at: "2026-09-26T03:02:00Z",
         summary: "Fictional reviewed disclosure for version 2.",
+        changes: [{
+          field: "title",
+          before: "Synthetic history event version 1",
+          after: "Synthetic history event version 2",
+        }],
       },
     ],
     page: { next_cursor: null, cursor_expires_at: null },
@@ -184,7 +195,7 @@ test("exact-live history composes candidate and reviewed readers in one SQL oper
     const versions = [1, 2].filter((version) => version > Number(parameters[1]));
     return statement.includes("public_event_history_review_metadata AS disclosure")
       ? versions.map((version) => makeDisclosureRow(version))
-      : versions.map((version) => makeCandidateRow(version));
+      : versions.map((version) => makeCandidateRow(version, Number(parameters[1]) > 0 ? Number(parameters[1]) : null));
   });
   const cursorResponse = await handlePublicApiRequest(
     new Request("http://localhost/api/v1/events/" + eventId + "/history?cursor=1&limit=5"),
@@ -199,6 +210,12 @@ test("exact-live history composes candidate and reviewed readers in one SQL oper
   assert.equal(cursorRuntime.operations, 1);
   assert.equal(cursorPage.data.length, 1);
   assert.equal(cursorPage.data[0]?.version, 2);
+  // HIST-UI-01: the entry at a page boundary is compared with the previous version the reader returned.
+  assert.deepEqual(cursorPage.data[0]?.changes, [{
+    field: "title",
+    before: "Synthetic history event version 1",
+    after: "Synthetic history event version 2",
+  }]);
   assert.deepEqual(cursorPage.page, { next_cursor: null, cursor_expires_at: null });
 });
 

@@ -201,6 +201,31 @@ export interface EventPage {
   };
 }
 
+/**
+ * HIST-UI-01 (additive, optional): one difference from the previous PUBLISHED version. Text fields carry the public
+ * projection's text (repaired title and summary, the event time and validity written as "precision start end" with
+ * "-" for an open bound, or null when absent). A summary before or after is at most 600 characters, cut at a word
+ * boundary and ending in "…" when longer. Scope fields carry public display names, sorted, at most 20 per list. A scope
+ * field is left out when one of its IDs has no approved display name, and the other fields still appear. Claims and
+ * impacts are counts only.
+ */
+export type HistoryChange =
+  | {
+    field: "title" | "summary" | "category" | "lifecycle" | "freshness" | "event_time" | "validity";
+    before: string | null;
+    after: string | null;
+  }
+  | {
+    field: "places" | "services" | "institutions" | "audiences";
+    added: string[];
+    removed: string[];
+  }
+  | {
+    field: "claims" | "impacts";
+    before_count: number;
+    after_count: number;
+  };
+
 export interface HistoryEntry {
   event_id: string;
   version: number;
@@ -212,6 +237,12 @@ export interface HistoryEntry {
    * Omitted otherwise. The reviewer identifier is never exposed.
    */
   automatic?: boolean;
+  /**
+   * HIST-UI-01 (additive, optional): the differences from the previous published version, in the field order of
+   * HistoryChange. Omitted for version 1, when no previous published version is present, for a retracted entry, and
+   * when nothing differs. Never contains reviewer, trace, decision or source identifiers.
+   */
+  changes?: HistoryChange[];
 }
 
 export interface HistoryPage {

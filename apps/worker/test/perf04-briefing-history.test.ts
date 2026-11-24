@@ -449,10 +449,31 @@ function historyRows(state: HistoryFakeState, statement: string, parameters: rea
     }));
   }
   if (statement.includes("FROM waspada.public_event_history_versions AS history")) {
+    // HIST-UI-01: the reader also returns the latest version at or before the boundary, and the page's approved names.
+    const previousVersion = page.length === 0
+      ? undefined
+      : state.historyVersions
+        .filter((version) => version <= afterVersion && version <= current)
+        .reduce<number | undefined>((latest, version) => (latest === undefined || version > latest ? version : latest), undefined);
+    const previousColumns = previousVersion === undefined
+      ? {
+        previous_dataset_kind: null,
+        previous_event_id: null,
+        previous_version: null,
+        previous_record_json: null,
+      }
+      : {
+        previous_dataset_kind: "live",
+        previous_event_id: historyEventId,
+        previous_version: previousVersion,
+        previous_record_json: historyRecord(previousVersion),
+      };
     if (page.length === 0) {
       return [{
         ...currentColumns,
         current_record_json: historyRecord(current),
+        ...previousColumns,
+        scope_names: [],
         dataset_kind: null,
         event_id: null,
         version: null,
@@ -462,6 +483,8 @@ function historyRows(state: HistoryFakeState, statement: string, parameters: rea
     return page.map((version) => ({
       ...currentColumns,
       current_record_json: historyRecord(current),
+      ...previousColumns,
+      scope_names: [],
       dataset_kind: "live",
       event_id: historyEventId,
       version,
