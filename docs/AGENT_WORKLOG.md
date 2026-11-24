@@ -66,7 +66,7 @@ These are summarised here, with the source in brackets.
 | --- | --- | --- | --- | --- |
 | PERF-06 (+PERF-05 trial) | not started | Push snapshot refresh from ingest; reads never wait on Neon; edge cache only if it works on workers.dev | planned after PERF-08 | |
 | PERF-09 | `work/PERF-09-split` | Lazy-load non-first-screen routes; main chunk < 100 KB compressed | planned | |
-| HIST-UI-01 | `work/HIST-UI-01-hist` | Optional `changes` on history entries (diff vs previous published version) + "Lihat perubahan" UI (web, mobile) | Haiku backend, main UI | 24 Nov 2026 |
+| HIST-UI-01 (UI) | not started | "Lihat perubahan" disclosure in web `EventDetail` history + Flutter detail | main model | |
 | MOBILE-REL-01 | `work/MOBILE-REL-01-mobrel` | Release-signed split APKs via `mobile-release.yml` on tag `mobile-v*` to GitHub Releases + `#unduh` page | Haiku CI, main page | 24 Nov 2026 |
 | GUI-03 | not started | GUI audit then fixes: map/detail, home/nav/onboarding, Android, admin/moderator | main model | |
 
@@ -107,6 +107,7 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 
 | Date | ID | Result | Checks actually run |
 | --- | --- | --- | --- |
+| 24 Nov 2026 | HIST-UI-01 (backend) | `HistoryEntry.changes?` (additive): text/enum/time diffs, scope names added/removed (approved `public_scope_names` only; unresolved names skip only that scope field), claim/impact counts; summary capped at 600 chars; read from published versions only, still 2 statements per history page | Typecheck; worker `hist-ui-01-history-changes` 15/15, `l4-public-event-history-projection-service` 12/12, `public-event-history-runtime` 5/5, `perf04-briefing-history` 11/11, `source-revision-freshness-public-projection` 1/1; db `public-event-history` 8/8, `manual-publication-public-read-chain` 3/3 |
 | 24 Nov 2026 | PERF-08 | `Server-Timing: snap;desc="memo|kv|check|rebuild", kv, db, build, total` on snapshot-served 200/304 (not on errors or DB-fallback answers). `npm run perf:probe` (`tools/perf/latency-probe.ts`); the CI deploy job appends a 3-round probe to the job summary (`continue-on-error`) | Typecheck; `perf03-public-snapshot` 18/18 (5 new). Hosted probe before deploy (10:16Z): `?limit=100` TTFB 425 ms, `/api/v1/events` 57 ms, GeoJSON 35 ms |
 | 24 Nov 2026 | PERF-07 | First event load is one `?limit=100` request (was 4 x 20 for 66 events), preloaded from `index.html` | Web typecheck; `event-list-pages` 7/7, `updates-center` 18/18, `public-published-feed` 12/12, `admin-monitoring` 15/15 |
 | 24 Nov 2026 | AGENT-LOG-01 | This file was added. `README.md` and `HANDOFF.md` link to it | Doc only |
