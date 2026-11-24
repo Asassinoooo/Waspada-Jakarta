@@ -163,10 +163,16 @@ class HttpPublicApi implements PublicApi, NotifyApi {
     return Uri.parse('${origin.scheme}://${origin.authority}$path$suffix');
   }
 
-  Future<Object?> _get(String path, [Map<String, String>? query]) async {
+  /// FIX-MOB-GEOJSON: the Worker answers `/api/v1/events.geojson` as `application/geo+json` (RFC 7946), so the map
+  /// read accepts that media type; every other read stays `application/json` only.
+  static const _jsonTypes = {'application/json'};
+  static const _geoJsonTypes = {'application/geo+json', 'application/json'};
+
+  Future<Object?> _get(String path,
+      [Map<String, String>? query, Set<String> accepted = _jsonTypes]) async {
     final uri = _uri(path, query);
     final request = http.Request('GET', uri)
-      ..headers['accept'] = 'application/json'
+      ..headers['accept'] = accepted.join(', ')
       ..headers['cache-control'] = 'no-store';
     late final http.StreamedResponse response;
     try {
@@ -185,7 +191,7 @@ class HttpPublicApi implements PublicApi, NotifyApi {
     }
     final contentType =
         response.headers['content-type']?.split(';').first.trim().toLowerCase();
-    if (contentType != 'application/json') {
+    if (contentType == null || !accepted.contains(contentType)) {
       throw const ApiFailure(ApiFailureKind.payload);
     }
     final length = response.contentLength;
@@ -229,7 +235,8 @@ class HttpPublicApi implements PublicApi, NotifyApi {
 
   @override
   Future<List<MapPoint>> getEventMap() async =>
-      _parse(await _get('/api/v1/events.geojson'), MapPoint.listFromGeoJson);
+      _parse(await _get('/api/v1/events.geojson', null, _geoJsonTypes),
+          MapPoint.listFromGeoJson);
 
   @override
   Future<EventPage> listEvents(EventQuery query) async {
