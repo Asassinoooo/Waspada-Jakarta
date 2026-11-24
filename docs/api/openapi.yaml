@@ -1146,6 +1146,36 @@ components:
         changed_at: { type: string, format: date-time }
         summary: { type: string, maxLength: 500 }
         automatic: { type: boolean, description: "POLISH-02 (additive, optional). True only for an automatic refresh by agent:auto-publisher, which is written as change_type corrected. Omitted otherwise. The reviewer identifier is never exposed." }
+        changes:
+          type: array
+          maxItems: 13
+          description: "HIST-UI-01 (additive, optional). The differences from the previous published version, in field order. Omitted for version 1, when no previous published version is present, for a retracted entry, when the entry's own text, enum, time or count values cannot be read, and when nothing differs. A scope field is left out when one of its IDs has no approved display name, and the other fields still appear. Scope lists hold public display names, sorted, at most 20 each. A summary before or after is at most 600 characters, cut at a word boundary and ending in an ellipsis when longer. Claims and impacts are counts. No identifier, reviewer, trace or decision value appears."
+          items:
+            oneOf:
+              - type: object
+                additionalProperties: false
+                required: [field, before, after]
+                description: "Text difference. event_time and validity use the form 'precision start end' with '-' for an open bound, and null when the value is absent."
+                properties:
+                  field: { type: string, enum: [title, summary, category, lifecycle, freshness, event_time, validity] }
+                  before: { type: [string, 'null'] }
+                  after: { type: [string, 'null'] }
+              - type: object
+                additionalProperties: false
+                required: [field, added, removed]
+                description: "Scope difference by public display name."
+                properties:
+                  field: { type: string, enum: [places, services, institutions, audiences] }
+                  added: { type: array, maxItems: 20, items: { type: string } }
+                  removed: { type: array, maxItems: 20, items: { type: string } }
+              - type: object
+                additionalProperties: false
+                required: [field, before_count, after_count]
+                description: "Count difference for claims or impacts."
+                properties:
+                  field: { type: string, enum: [claims, impacts] }
+                  before_count: { type: integer, minimum: 0 }
+                  after_count: { type: integer, minimum: 0 }
     HistoryPage:
       type: object
       additionalProperties: false
