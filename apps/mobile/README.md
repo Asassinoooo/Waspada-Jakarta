@@ -28,7 +28,7 @@ flutter run --dart-define=API_ORIGIN=https://your-api-origin.example   # or anot
 
 Interests stay in local app storage (`shared_preferences`) on the device and are never uploaded. The app does not request location.
 
-The Android min SDK is 24 or higher. Release signing remains an external build configuration.
+The Android min SDK is 24 or higher. Release builds are signed with `android/key.properties` when that file exists (see Rilis APK below). Without it, `--release` builds fall back to the debug key for local use.
 
 ## Check
 
@@ -40,6 +40,27 @@ flutter build web
 ```
 
 A local build does not establish the live API, Android device behavior, TalkBack, hosted deployment, or store-release readiness.
+
+## Rilis APK
+
+`.github/workflows/mobile-release.yml` publishes signed APKs to GitHub Releases. It runs when a `mobile-v*` tag is pushed, or when started by hand from the Actions tab (a hand run uses the tag `mobile-v<pubspec version>`).
+
+To cut a release, bump `version` in `pubspec.yaml`, then tag the commit. The tag must match the version: `mobile-v0.2.0` for `0.2.0+2`.
+
+```sh
+git tag mobile-v0.2.0 && git push origin mobile-v0.2.0
+```
+
+The workflow runs `flutter test`, builds three split APKs (`arm64-v8a`, `armeabi-v7a`, `x86_64`) against the hosted API origin, and names them `waspada-jakarta-<version>-<abi>.apk`. It also writes `SHA256SUMS.txt` and `mobile-release.json`, creates the release, and commits the manifest to `apps/web/public/mobile-release.json` on `main`. If the release already exists, the run fails. Bump the version instead of reusing a tag.
+
+Required repository secrets:
+
+- `ANDROID_KEYSTORE_BASE64`: the upload keystore, base64 encoded (for example `base64 -w0 release.jks`).
+- `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`: the keystore password, the key alias and the key password.
+
+Keep an offline backup of the keystore file and its passwords, for example in a password manager. If the key is lost, the next APK is signed with a different key. Android then refuses to update existing installs, and people must uninstall first, which deletes their local interests. Never commit the keystore or `key.properties`. Both are git-ignored.
+
+These APKs are sideloaded and are not on the Play Store. Publishing an APK does not establish store-release readiness.
 
 ## Feature parity
 

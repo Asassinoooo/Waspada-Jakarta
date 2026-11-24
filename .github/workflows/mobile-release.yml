@@ -1,0 +1,272 @@
+name: Mobile release
+
+# MOBILE-REL-01: signed Android release APKs for apps/mobile, published to GitHub Releases.
+# Start it by pushing a tag mobile-v<version> (the version must match apps/mobile/pubspec.yaml), or from the Actions tab.
+# The repository is public, so the log shows fixed messages and file names only. Signing values come from repository
+# secrets and are passed only to the steps that need them. The keystore and key.properties are deleted at the end,
+# even when an earlier step fails.
+
+on:
+  push:
+    tags:
+      - "mobile-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  # Used only by the last publishing step. A push made with GITHUB_TOKEN does not start the push-triggered CI and
+  # deploy, so that step starts ci.yml on main with workflow_dispatch. ci.yml's deploy job accepts that event.
+  actions: write
+
+concurrency:
+  group: waspada-mobile-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve version and tag
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          pubspec=apps/mobile/pubspec.yaml
+          version=$(sed -n 's/^version: *\([^+ ]*\)+[0-9]*.*/\1/p' "$pubspec")
+          build=$(sed -n 's/^version: *[^+ ]*+\([0-9]*\).*/\1/p' "$pubspec")
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$build" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not read version and build from $pubspec (expected a form like 0.2.0+2)."
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "push" ]; then
+            tag="$REF_NAME"
+            if [ "$tag" != "mobile-v$version" ]; then
+              echo "::error::Tag $tag does not match pubspec version $version. Tag mobile-v$version instead."
+              exit 1
+            fi
+          else
+            tag="mobile-v$version"
+            # A hand-started run creates the tag, so the tag must not exist yet.
+            if [ -n "$(git ls-remote --tags origin "refs/tags/$tag")" ]; then
+              echo "::error::Tag $tag already exists. Bump the version in $pubspec."
+              exit 1
+            fi
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::A release for $tag already exists. Bump the version instead of reusing a tag."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "build=$build"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag (version $version, build $build)."
+
+      - name: Check signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Repository secrets not set:$missing. Add them under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "All four signing secrets are set."
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.7"
+          channel: stable
+          cache: true
+
+      - name: Install Flutter packages
+        working-directory: apps/mobile
+        run: flutter pub get
+
+      - name: Run Flutter tests
+        working-directory: apps/mobile
+        run: flutter test
+
+      # The signing material exists only for the build and is deleted by the last step.
+      - name: Write signing material
+        working-directory: apps/mobile
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
+          test -s android/app/release.jks
+          # Java properties treat a backslash as an escape character, so each backslash in a value is doubled.
+          escape() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$(escape "$ANDROID_KEYSTORE_PASSWORD")"
+            echo "keyAlias=$(escape "$ANDROID_KEY_ALIAS")"
+            echo "keyPassword=$(escape "$ANDROID_KEY_PASSWORD")"
+          } > android/key.properties
+          echo "Wrote android/key.properties and android/app/release.jks."
+
+      - name: Build release APKs
+        working-directory: apps/mobile
+        run: flutter build apk --release --split-per-abi --dart-define=API_ORIGIN=https://waspada-jakarta.waspada-worker.workers.dev
+
+      - name: Stage APKs, checksums and manifest
+        working-directory: apps/mobile
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          BUILD: ${{ steps.meta.outputs.build }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+          OUT_DIR: ${{ runner.temp }}/mobile-release
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, glob, hashlib, json, os, re, shutil
+
+          version = os.environ["VERSION"]
+          build = int(os.environ["BUILD"])
+          tag = os.environ["TAG"]
+          repo = os.environ["REPO"]
+          out = os.environ["OUT_DIR"]
+          os.makedirs(out, exist_ok=True)
+
+          files = []
+          for src in sorted(glob.glob("build/app/outputs/flutter-apk/app-*-release.apk")):
+              match = re.fullmatch(r"app-(.+)-release\.apk", os.path.basename(src))
+              if not match:
+                  continue
+              abi = match.group(1)
+              name = f"waspada-jakarta-{version}-{abi}.apk"
+              dst = os.path.join(out, name)
+              shutil.copyfile(src, dst)
+              with open(dst, "rb") as handle:
+                  digest = hashlib.sha256(handle.read()).hexdigest()
+              files.append({
+                  "abi": abi,
+                  "name": name,
+                  "size_bytes": os.path.getsize(dst),
+                  "sha256": digest,
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+              })
+
+          abis = sorted(item["abi"] for item in files)
+          if abis != ["arm64-v8a", "armeabi-v7a", "x86_64"]:
+              raise SystemExit(f"Expected the three split APKs, found: {abis}")
+
+          with open(os.path.join(out, "SHA256SUMS.txt"), "w", encoding="utf-8") as handle:
+              for item in files:
+                  handle.write(f"{item['sha256']}  {item['name']}\n")
+
+          manifest = {
+              "version": version,
+              "build": build,
+              "released_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "tag": tag,
+              "release_url": f"https://github.com/{repo}/releases/tag/{tag}",
+              "files": files,
+          }
+          with open(os.path.join(out, "mobile-release.json"), "w", encoding="utf-8") as handle:
+              json.dump(manifest, handle, indent=2, ensure_ascii=False)
+              handle.write("\n")
+
+          for item in files:
+              print(f"{item['name']} {item['size_bytes']} bytes")
+          PY
+          ls -l "$OUT_DIR"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ github.sha }}
+          OUT_DIR: ${{ runner.temp }}/mobile-release
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            printf 'Aplikasi Android Waspada Jakarta %s untuk membaca informasi publik. Tidak ada akun dan tidak meminta lokasi.\n\n' "$VERSION"
+            cat <<'NOTES'
+          Bukan aplikasi darurat. Darurat: 112.
+
+          Cara memasang:
+          1. Unduh APK untuk perangkat Anda. arm64-v8a untuk sebagian besar ponsel modern, armeabi-v7a untuk ponsel 32-bit yang lebih lama, dan x86_64 untuk emulator.
+          2. Periksa checksum dengan SHA256SUMS.txt (sha256sum -c SHA256SUMS.txt).
+          3. Buka berkas APK di ponsel, izinkan pemasangan dari sumber ini jika diminta, lalu pasang.
+
+          Distribusi ini langsung (sideload), bukan dari Play Store.
+          NOTES
+          } > "$notes"
+          cd "$OUT_DIR"
+          gh release create "$TAG" \
+            --target "$COMMIT" \
+            --title "Waspada Jakarta $VERSION (Android)" \
+            --notes-file "$notes" \
+            waspada-jakarta-"$VERSION"-*.apk SHA256SUMS.txt mobile-release.json
+
+      # The manifest goes to main so the public page can read it. Only this checkout keeps credentials for the push.
+      - name: Checkout main for the manifest
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: manifest-main
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Commit mobile-release.json to main
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          OUT_DIR: ${{ runner.temp }}/mobile-release
+        run: |
+          set -euo pipefail
+          cd manifest-main
+          mkdir -p apps/web/public
+          cp "$OUT_DIR/mobile-release.json" apps/web/public/mobile-release.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898182+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/public/mobile-release.json
+          git commit -m "chore(MOBILE-REL-01): publish mobile-release.json for $TAG"
+          git push origin HEAD:main
+
+      # Starts the CI and deploy run for the manifest commit (see the permissions comment above).
+      - name: Start CI and deploy on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run ci.yml --ref main
+
+      - name: Delete signing material
+        if: always()
+        working-directory: apps/mobile
+        run: rm -f android/key.properties android/app/release.jks
