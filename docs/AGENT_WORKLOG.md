@@ -107,6 +107,7 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 
 | Date | ID | Result | Checks actually run |
 | --- | --- | --- | --- |
+| 24 Nov 2026 | AUDIT-2411 | Full codebase & performance gap audit recorded in `docs/testing/CODEBASE-PERF-AUDIT-2026-11-24.md` (reconciled with `df7c090`, covering Worker/KV/Neon Free ceilings, DB/ingest, web bundle/rendering, mobile `application/geo+json` + `NOTIFY-01`, and CI/CD) | Static code audit only (`git diff --check`) |
 | 24 Nov 2026 | PERF-08 | `Server-Timing: snap;desc="memo|kv|check|rebuild", kv, db, build, total` on snapshot-served 200/304 (not on errors or DB-fallback answers). `npm run perf:probe` (`tools/perf/latency-probe.ts`); the CI deploy job appends a 3-round probe to the job summary (`continue-on-error`) | Typecheck; `perf03-public-snapshot` 18/18 (5 new). Hosted probe before deploy (10:16Z): `?limit=100` TTFB 425 ms, `/api/v1/events` 57 ms, GeoJSON 35 ms |
 | 24 Nov 2026 | PERF-07 | First event load is one `?limit=100` request (was 4 x 20 for 66 events), preloaded from `index.html` | Web typecheck; `event-list-pages` 7/7, `updates-center` 18/18, `public-published-feed` 12/12, `admin-monitoring` 15/15 |
 | 24 Nov 2026 | AGENT-LOG-01 | This file was added. `README.md` and `HANDOFF.md` link to it | Doc only |
