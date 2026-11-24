@@ -122,6 +122,10 @@ export function categoryLabel(value: string) {
       return "Utilitas dan layanan penting";
     case "health_environmental_advisories":
       return "Kesehatan dan lingkungan";
+    case "other":
+      return "Lainnya";
+    case "unclassified":
+      return "Belum diklasifikasikan";
     default:
       return value;
   }

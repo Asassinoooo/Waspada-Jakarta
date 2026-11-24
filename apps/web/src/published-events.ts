@@ -337,8 +337,6 @@ export function areaText(event: EventView): string {
 }
 
 export function categoryText(category: string): string {
-  if (category === "other") return "Lainnya";
-  if (category === "unclassified") return "Belum diklasifikasikan";
   return categoryLabel(category);
 }
 

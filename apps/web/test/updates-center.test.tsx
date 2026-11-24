@@ -230,6 +230,11 @@ test("current detail validation accepts date-only time and rejects malformed ide
   assert.throws(() => validateCurrentUpdateEvent(detail("synthetic-event", { scope: { places: ["Pondok"], services: [], institutions: [] } }), "synthetic-event", 2));
 });
 
+test("current detail validation accepts the other and unclassified categories", () => {
+  assert.equal(validateCurrentUpdateEvent(detail("synthetic-other", { category: "other" }), "synthetic-other", 2).category, "other");
+  assert.equal(validateCurrentUpdateEvent(detail("synthetic-unclassified", { category: "unclassified" }), "synthetic-unclassified", 2).category, "unclassified");
+});
+
 test("matching uses normalized exact scope names from event, claim, and impact only", () => {
   const current = validateCurrentUpdateEvent(detail("fictional-match", {
     title: "A different title must not match",
