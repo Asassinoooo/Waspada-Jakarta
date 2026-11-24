@@ -60,6 +60,8 @@ export interface WorkerEnvironment {
   PUBLIC_SNAPSHOT?: PublicSnapshotKvNamespace;
   /** Shared secret for POST /api/v1/internal/proposals. Unset means the route answers 503. */
   INTERNAL_SERVICE_KEY?: string;
+  /** PERF-06: bearer secret for POST /api/v1/internal/public-snapshot/refresh. Unset means the route answers 404 (inert). */
+  SNAPSHOT_REFRESH_KEY?: string;
   /** Shared secret for webhook ingest (`x-service-key`). Unset means the route answers 503. */
   WEBHOOK_SERVICE_KEY?: string;
   /**

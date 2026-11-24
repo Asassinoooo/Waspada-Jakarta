@@ -16,10 +16,14 @@ import { readPublicGeoJSONQuery } from "../layers/l4-application-integration/pub
 import { readCollection as readGeoJSONCollection } from "./public-event-geojson-runtime.js";
 
 /**
- * PERF-03 (owner accepted at most 60 s of staleness for public reads). The hosted public reads of the event list,
- * one event and the GeoJSON collection are served from one published snapshot in Cloudflare KV. The snapshot holds
- * exactly what the DB path returns, built by the existing candidate reader, list projection, detail projection and
- * GeoJSON reader. A public read then needs no database connection.
+ * PERF-03: the hosted public reads of the event list, one event and the GeoJSON collection are served from one published
+ * snapshot in Cloudflare KV. The snapshot holds exactly what the DB path returns, built by the existing candidate reader,
+ * list projection, detail projection and GeoJSON reader. A public read then needs no database connection.
+ *
+ * PERF-06: freshness comes from pushes. The moderator, auto-publish and ingest hooks rebuild the snapshot (ingest pushes
+ * through POST /api/v1/internal/public-snapshot/refresh). A read never waits on the database while a KV snapshot exists.
+ * A snapshot not verified for staleAfterMs (5 min) gets one fingerprint check after the response. That check is a safety
+ * net for changes that were not pushed. So the earlier 60 s bound now holds for pushed changes only.
  *
  * A check costs one statement: the fingerprint over every public view the snapshot reads. A full rebuild runs only
  * when that fingerprint changed (or a hook forces it). The projections read no clock and no other table, so equal
@@ -28,13 +32,16 @@ import { readCollection as readGeoJSONCollection } from "./public-event-geojson-
  */
 export const PUBLIC_SNAPSHOT_VERSION = 1;
 export const PUBLIC_SNAPSHOT_KEY = "public-snapshot:v1";
+/**
+ * PERF-06: an ISO time, the last verification of the KV snapshot (a matching fingerprint or a rebuild). A new isolate
+ * treats the snapshot as verified at the later of its built_at and this value. A writer puts it only after the snapshot.
+ */
+export const PUBLIC_SNAPSHOT_VERIFIED_KEY = "public-snapshot:v1:verified";
 
 /** In-isolate memo lifetime: a KV read happens at most this often per isolate. */
 const DEFAULT_MEMO_TTL_MS = 15_000;
-/** A snapshot verified longer ago than this gets one fingerprint check, run in the background. */
-const DEFAULT_STALE_AFTER_MS = 30_000;
-/** Beyond this the read runs the fingerprint check before it answers, so a served snapshot is never older than 60 s. */
-const DEFAULT_HARD_STALE_AFTER_MS = 60_000;
+/** A snapshot not verified for longer than this gets one fingerprint check, run in the background after the response. */
+const DEFAULT_STALE_AFTER_MS = 300_000;
 /** Safety cap on the candidate walk. The DB reader pages in order, so the walk always ends. */
 const MAX_SNAPSHOT_CANDIDATES = 20_000;
 
@@ -99,9 +106,10 @@ export interface PublicSnapshotKvNamespace {
 
 /**
  * How one read was answered. `memo`: this isolate's memo, with no KV read and no statement. `kv`: the KV snapshot, with
- * no statement. `check`: a synchronous fingerprint check matched the content. `rebuild`: a full build ran.
+ * no statement. `rebuild`: a full build ran, which happens only on a KV miss. A background check runs after the response
+ * and is not reported here.
  */
-export type PublicSnapshotSource = "memo" | "kv" | "check" | "rebuild";
+export type PublicSnapshotSource = "memo" | "kv" | "rebuild";
 
 /**
  * PERF-08: filled in by one read, so the route can report it in Server-Timing. Durations are milliseconds of this read's
@@ -131,7 +139,10 @@ function elapsedSince(startedAt: number): number {
 }
 
 export interface PublicSnapshotStore {
-  /** The snapshot to answer from, or null when none can be had (the caller then answers from the DB). */
+  /**
+   * The snapshot to answer from, or null when none can be had (the caller then answers from the DB). A KV snapshot is
+   * served without waiting on the database. Only a KV miss builds synchronously.
+   */
   read(options?: PublicSnapshotReadOptions): Promise<PublicSnapshot | null>;
   /** Rebuilds now, whatever the fingerprint says, and writes KV. Used by the moderator, auto-publish and refresh hooks. */
   refresh(): Promise<PublicSnapshot | null>;
@@ -142,9 +153,10 @@ export interface PublicSnapshotStoreOptions {
   /** Runs one database operation. Production uses the no-cache config, so a check sees the latest committed write. */
   readonly withExecutor: <Result>(operation: (executor: SqlExecutor) => Promise<Result>) => Promise<Result>;
   readonly now?: () => number;
+  /** In-isolate memo lifetime (default 15 s). */
   readonly memoTtlMs?: number;
+  /** Verification age beyond which one background check runs (default 5 min). */
   readonly staleAfterMs?: number;
-  readonly hardStaleAfterMs?: number;
 }
 
 /** Thrown by the snapshot list projection for a filtered request. The route checks first, so this is defensive. */
@@ -287,7 +299,7 @@ interface SnapshotMemo {
   readonly snapshot: PublicSnapshot;
   /** When this isolate loaded or built the snapshot. The memo lives for memoTtlMs from here. */
   readonly loadedAt: number;
-  /** When the content was last confirmed against the database (a matching fingerprint or a rebuild). Drives the stale rules. */
+  /** When the content was last confirmed against the database (a matching fingerprint, a rebuild or the KV verified time). */
   readonly verifiedAt: number;
 }
 
@@ -302,19 +314,20 @@ interface CheckMode {
 
 interface CheckResult {
   readonly snapshot: PublicSnapshot;
-  /** Set only when a rebuild needs KV to get the new content. The caller passes it to waitUntil. */
+  /** Set only when KV must be written (a rebuild, or a verified time that is stale in KV). The caller passes it to waitUntil. */
   readonly write?: Promise<void>;
 }
 
 type LoadResult =
-  | { readonly kind: "hit"; readonly snapshot: PublicSnapshot }
+  | { readonly kind: "hit"; readonly snapshot: PublicSnapshot; readonly verifiedAt: number }
   | { readonly kind: "miss" }
   | { readonly kind: "error" };
 
 /**
- * One store per isolate. Reads come from the in-isolate memo, then KV. Checks are serialised, so at most one runs in an
- * isolate. A check reads the fingerprint (one statement). Only a changed fingerprint, a forced refresh or a missing KV
- * snapshot runs the full build, and only a full build writes KV.
+ * One store per isolate. Reads come from the in-isolate memo, then KV, and never wait on the database while KV holds a
+ * snapshot. A snapshot not verified for staleAfterMs gets one background fingerprint check, at most one at a time per
+ * isolate. Only a changed fingerprint, a forced refresh or a missing KV snapshot runs the full build, and only a build
+ * writes the snapshot. A matching check writes the verified time when KV's copy of it is stale.
  */
 export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): PublicSnapshotStore {
   const kv = options.kv;
@@ -322,18 +335,51 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
   const now = options.now ?? Date.now;
   const memoTtlMs = options.memoTtlMs ?? DEFAULT_MEMO_TTL_MS;
   const staleAfterMs = options.staleAfterMs ?? DEFAULT_STALE_AFTER_MS;
-  const hardStaleAfterMs = options.hardStaleAfterMs ?? DEFAULT_HARD_STALE_AFTER_MS;
 
   let memo: SnapshotMemo | undefined;
   let rebuildEpoch = 0;
   let queue: Promise<unknown> = Promise.resolve();
   let backgroundPending = false;
 
-  async function writeSnapshot(snapshot: PublicSnapshot): Promise<void> {
+  /** The verified time in KV, clamped to now so a bad future value cannot keep a snapshot fresh. 0 when absent or invalid. */
+  function verifiedTimeOf(text: string | null): number {
+    if (text === null) return 0;
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? Math.min(parsed, now()) : 0;
+  }
+
+  async function writeVerified(verifiedAt: number): Promise<void> {
+    try {
+      await kv.put(PUBLIC_SNAPSHOT_VERIFIED_KEY, new Date(verifiedAt).toISOString());
+    } catch {
+      // Best effort. A missing verified time only brings the next background check sooner.
+    }
+  }
+
+  /**
+   * The snapshot first, then the verified time. A verified time written before its snapshot would vouch for the old
+   * content. If the snapshot write fails, the verified time is not written either.
+   */
+  async function writeSnapshot(snapshot: PublicSnapshot, verifiedAt: number): Promise<void> {
     try {
       await kv.put(PUBLIC_SNAPSHOT_KEY, JSON.stringify(snapshot));
     } catch {
       // A failed write costs one more rebuild in another isolate. Reads never depend on it.
+      return;
+    }
+    await writeVerified(verifiedAt);
+  }
+
+  /**
+   * A matching check writes the verified time only when KV's copy is older than the staleness bound. Without this every
+   * isolate would write KV on every window (KV allows a small number of writes per day on the free plan).
+   */
+  async function verifiedWriteNeeded(startedAt: number): Promise<boolean> {
+    try {
+      const verifiedAt = verifiedTimeOf(await kv.get(PUBLIC_SNAPSHOT_VERIFIED_KEY, "text"));
+      return startedAt - verifiedAt > staleAfterMs;
+    } catch {
+      return true;
     }
   }
 
@@ -353,10 +399,11 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
     const fingerprint = await withExecutor((executor) => readPublicSnapshotFingerprint(executor));
     timing.dbMs += elapsedSince(fingerprintStarted);
     if (!mode.force && !mode.kvMissing && memo !== undefined && memo.snapshot.fingerprint === fingerprint) {
-      // The fingerprint was read after startedAt, so startedAt is a safe, earlier verification time. KV is not written.
+      // The fingerprint was read after startedAt, so startedAt is a safe, earlier verification time.
       memo = { ...memo, verifiedAt: startedAt };
-      timing.source = "check";
-      return { snapshot: memo.snapshot };
+      const snapshot = memo.snapshot;
+      if (await verifiedWriteNeeded(startedAt)) return { snapshot, write: writeVerified(startedAt) };
+      return { snapshot };
     }
     const draftStarted = performance.now();
     const draft = await withExecutor((executor) => buildPublicSnapshotDraft(executor));
@@ -375,7 +422,7 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
     rebuildEpoch += 1;
     timing.buildMs += elapsedSince(assembleStarted);
     timing.source = "rebuild";
-    return { snapshot, write: writeSnapshot(snapshot) };
+    return { snapshot, write: writeSnapshot(snapshot, startedAt) };
   }
 
   function check(mode: CheckMode, timing: PublicSnapshotTiming = newPublicSnapshotTiming()): Promise<CheckResult> {
@@ -385,15 +432,22 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
   }
 
   async function loadFromKv(): Promise<LoadResult> {
-    let text: string | null;
+    let loaded: [string | null, string | null];
     try {
-      text = await kv.get(PUBLIC_SNAPSHOT_KEY, "text");
+      loaded = await Promise.all([
+        kv.get(PUBLIC_SNAPSHOT_KEY, "text"),
+        // A failed verified read only means the snapshot's built_at stands as its verified time.
+        kv.get(PUBLIC_SNAPSHOT_VERIFIED_KEY, "text").catch(() => null),
+      ]);
     } catch {
       return { kind: "error" };
     }
+    const [text, verifiedText] = loaded;
     if (text === null) return { kind: "miss" };
     const snapshot = parseSnapshot(text);
-    return snapshot === null ? { kind: "miss" } : { kind: "hit", snapshot };
+    if (snapshot === null) return { kind: "miss" };
+    const verifiedAt = Math.min(Math.max(timeOf(snapshot.built_at), verifiedTimeOf(verifiedText)), now());
+    return { kind: "hit", snapshot, verifiedAt };
   }
 
   async function serveCheck(
@@ -414,6 +468,7 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
     return result.snapshot;
   }
 
+  /** At most one background check per isolate. It runs after the response, so no read waits for it. */
   function scheduleBackground(readOptions: PublicSnapshotReadOptions): void {
     if (backgroundPending) return;
     backgroundPending = true;
@@ -441,12 +496,19 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
         // A rebuild finished during the KV read, so its memo is newer than what was just read.
         current = memo;
         timing.source = "memo";
+      } else if (memo !== undefined && timeOf(memo.snapshot.built_at) > timeOf(loaded.snapshot.built_at)) {
+        // This isolate's memo is newer than the KV copy (its KV write is not visible yet), so it stays.
+        current = { ...memo, loadedAt: now() };
+        memo = current;
+        timing.source = "memo";
       } else {
         const sameFingerprint = memo !== undefined && memo.snapshot.fingerprint === loaded.snapshot.fingerprint;
         current = {
           snapshot: loaded.snapshot,
           loadedAt: now(),
-          verifiedAt: sameFingerprint && memo !== undefined ? memo.verifiedAt : timeOf(loaded.snapshot.built_at),
+          verifiedAt: sameFingerprint && memo !== undefined
+            ? Math.max(memo.verifiedAt, loaded.verifiedAt)
+            : loaded.verifiedAt,
         };
         memo = current;
         timing.source = "kv";
@@ -455,12 +517,8 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
       timing.source = "memo";
     }
 
-    const age = now() - current.verifiedAt;
-    // 60 s synchronous path (the accepted staleness bound). A snapshot not verified for 60 s waits here for the
-    // fingerprint check, one statement, and rebuilds only when the fingerprint changed. This path is intended.
-    if (age > hardStaleAfterMs) return serveCheck({ force: false, kvMissing: false }, readOptions, timing);
-    // 30 s background path: the snapshot is still served now, and the fingerprint check runs after the response.
-    if (age > staleAfterMs) scheduleBackground(readOptions);
+    // Past the staleness bound one background check runs after the response. The snapshot is served now.
+    if (now() - current.verifiedAt > staleAfterMs) scheduleBackground(readOptions);
     return current.snapshot;
   }
 

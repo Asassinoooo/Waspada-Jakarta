@@ -24,6 +24,8 @@ export const PUBLIC_READ_CACHE_CONTROL = "public, max-age=15, stale-while-revali
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const GEOJSON_CONTENT_TYPE = "application/geo+json";
 const EVENTS_PATH_PREFIX = "/api/v1/events/";
+/** PERF-05 trial: the edge copy's own lifetime, set on the copy itself. */
+const EDGE_MAX_AGE_SECONDS = 15;
 
 export interface PublicSnapshotRouteSelection {
   readonly method: string;
@@ -87,9 +89,20 @@ export async function readPublicSnapshotRoute(
       timing,
     })
     .catch(() => null);
-  const served = snapshot === null ? null : await answerFromSnapshot(kind, url, snapshot, options.cursorCodec);
-  if (served !== null) {
-    return publicReadResponse(request, served, snapshotServerTiming(timing, performance.now() - startedAt));
+  if (snapshot !== null) {
+    // The snapshot read above is cheap (memo or KV). The edge copy is looked up before the body is built.
+    const edge = edgeEntryFor(kind, url, snapshot);
+    if (edge !== undefined) {
+      const hit = await readEdge(edge);
+      if (hit !== null) {
+        return publicReadResponse(request, hit, timingValue(timing, startedAt, 'edge;desc="hit"'));
+      }
+    }
+    const served = await answerFromSnapshot(kind, url, snapshot, options.cursorCodec);
+    if (served !== null) {
+      if (edge !== undefined) await storeEdge(edge, served, options.waitUntil);
+      return publicReadResponse(request, served, timingValue(timing, startedAt, edge === undefined ? undefined : 'edge;desc="miss"'));
+    }
   }
 
   const response = await readFromDatabase();
@@ -146,9 +159,74 @@ async function answerFromSnapshot(
 }
 
 /**
+ * PERF-05 trial (edge copy). The Cache API (`caches.default`) keeps the 200 body of a snapshot answer for 15 s. The key is
+ * the request URL plus the snapshot's content hash, so a new snapshot never serves an old body. A list with a cursor is
+ * not kept. The Cache API may be a no-op on *.workers.dev, so this stays only if hosted Server-Timing shows
+ * `edge;desc="hit"`. Without a global `caches.default` (tests, Node) nothing here runs and the response carries no edge part.
+ */
+interface EdgeCache {
+  match(request: Request): Promise<Response | undefined>;
+  put(request: Request, response: Response): Promise<void>;
+}
+
+interface EdgeEntry {
+  readonly cache: EdgeCache;
+  readonly key: Request;
+}
+
+function edgeEntryFor(kind: PublicSnapshotRouteKind, url: URL, snapshot: PublicSnapshot): EdgeEntry | undefined {
+  const cache = (globalThis as unknown as { caches?: { default?: EdgeCache } }).caches?.default;
+  if (cache === undefined) return undefined;
+  if (kind === "list" && url.searchParams.has("cursor")) return undefined;
+  const separator = url.search.length > 0 ? "&" : "?";
+  return { cache, key: new Request(`${url.href}${separator}__snap=${snapshot.content_hash}`) };
+}
+
+async function readEdge(entry: EdgeEntry): Promise<ServedBody | null> {
+  try {
+    const response = await entry.cache.match(entry.key);
+    if (response === undefined) return null;
+    const etag = unquotedEtag(response.headers.get("etag"));
+    if (etag === null) return null;
+    return {
+      contentType: response.headers.get("content-type") ?? JSON_CONTENT_TYPE,
+      body: await response.text(),
+      etag,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function storeEdge(
+  entry: EdgeEntry,
+  served: ServedBody,
+  waitUntil: ((promise: Promise<unknown>) => void) | undefined,
+): Promise<void> {
+  // The copy carries its own max-age. It has no Server-Timing, which belongs to the request that reads it.
+  const copy = new Response(served.body, {
+    status: 200,
+    headers: {
+      "content-type": served.contentType,
+      etag: `W/"${served.etag}"`,
+      "cache-control": `public, max-age=${EDGE_MAX_AGE_SECONDS}`,
+    },
+  });
+  const write = entry.cache.put(entry.key, copy).catch(() => undefined);
+  if (waitUntil !== undefined) waitUntil(write);
+  else await write;
+}
+
+function unquotedEtag(value: string | null): string | null {
+  if (value === null) return null;
+  return /^W\/"([^"]*)"$/u.exec(value)?.[1] ?? null;
+}
+
+/**
  * PERF-08: the Server-Timing value of a snapshot answer, for example
- * `snap;desc="kv", kv;dur=3.2, db;dur=0, build;dur=0, total;dur=5.1`. The source is one of four fixed words and every
- * duration is a rounded number, so the value never carries SQL, keys, URLs, ids or error text.
+ * `snap;desc="kv", kv;dur=3.2, db;dur=0, build;dur=0, total;dur=5.1`. The source is one of three fixed words and every
+ * duration is a rounded number, so the value never carries SQL, keys, URLs, ids or error text. The route appends an
+ * `edge` entry only when the PERF-05 trial ran.
  */
 export function snapshotServerTiming(timing: PublicSnapshotTiming, totalMs: number): string {
   const duration = (value: number): string => String(Number.isFinite(value) ? Math.max(0, Math.round(value * 10) / 10) : 0);
@@ -160,6 +238,11 @@ export function snapshotServerTiming(timing: PublicSnapshotTiming, totalMs: numb
     `build;dur=${duration(timing.buildMs)}`,
     `total;dur=${duration(totalMs)}`,
   ].join(", ");
+}
+
+function timingValue(timing: PublicSnapshotTiming, startedAt: number, extra: string | undefined): string {
+  const base = snapshotServerTiming(timing, performance.now() - startedAt);
+  return extra === undefined ? base : `${base}, ${extra}`;
 }
 
 /**
