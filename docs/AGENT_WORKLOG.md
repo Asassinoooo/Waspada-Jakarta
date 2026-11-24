@@ -64,9 +64,8 @@ These are summarised here, with the source in brackets.
 
 | ID | Branch | Goal | Owner/agent | Started |
 | --- | --- | --- | --- | --- |
-| PERF-08 | `work/PERF-08-perf08` | `Server-Timing` on public reads + `tools/perf/latency-probe.ts` + non-blocking CI probe | Haiku worker, reviewed by main | 24 Nov 2026 |
 | PERF-06 (+PERF-05 trial) | not started | Push snapshot refresh from ingest; reads never wait on Neon; edge cache only if it works on workers.dev | planned after PERF-08 | |
-| PERF-09 | not started | Lazy-load non-first-screen routes; main chunk < 100 KB compressed | planned | |
+| PERF-09 | `work/PERF-09-split` | Lazy-load non-first-screen routes; main chunk < 100 KB compressed | planned | |
 | HIST-UI-01 | `work/HIST-UI-01-hist` | Optional `changes` on history entries (diff vs previous published version) + "Lihat perubahan" UI (web, mobile) | Haiku backend, main UI | 24 Nov 2026 |
 | MOBILE-REL-01 | `work/MOBILE-REL-01-mobrel` | Release-signed split APKs via `mobile-release.yml` on tag `mobile-v*` to GitHub Releases + `#unduh` page | Haiku CI, main page | 24 Nov 2026 |
 | GUI-03 | not started | GUI audit then fixes: map/detail, home/nav/onboarding, Android, admin/moderator | main model | |
@@ -108,6 +107,7 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 
 | Date | ID | Result | Checks actually run |
 | --- | --- | --- | --- |
+| 24 Nov 2026 | PERF-08 | `Server-Timing: snap;desc="memo|kv|check|rebuild", kv, db, build, total` on snapshot-served 200/304 (not on errors or DB-fallback answers). `npm run perf:probe` (`tools/perf/latency-probe.ts`); the CI deploy job appends a 3-round probe to the job summary (`continue-on-error`) | Typecheck; `perf03-public-snapshot` 18/18 (5 new). Hosted probe before deploy (10:16Z): `?limit=100` TTFB 425 ms, `/api/v1/events` 57 ms, GeoJSON 35 ms |
 | 24 Nov 2026 | PERF-07 | First event load is one `?limit=100` request (was 4 x 20 for 66 events), preloaded from `index.html` | Web typecheck; `event-list-pages` 7/7, `updates-center` 18/18, `public-published-feed` 12/12, `admin-monitoring` 15/15 |
 | 24 Nov 2026 | AGENT-LOG-01 | This file was added. `README.md` and `HANDOFF.md` link to it | Doc only |
 | 24 Nov 2026 | CD-01 | The first automatic deploy worked after the secrets were set (Worker `3b918744…`) | CI run 45147791923: test, e2e and deploy succeeded; the CI smoke check passed; hosted reset probe returned 400 |

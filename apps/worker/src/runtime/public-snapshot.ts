@@ -97,8 +97,37 @@ export interface PublicSnapshotKvNamespace {
   put(key: string, value: string): Promise<void>;
 }
 
+/**
+ * How one read was answered. `memo`: this isolate's memo, with no KV read and no statement. `kv`: the KV snapshot, with
+ * no statement. `check`: a synchronous fingerprint check matched the content. `rebuild`: a full build ran.
+ */
+export type PublicSnapshotSource = "memo" | "kv" | "check" | "rebuild";
+
+/**
+ * PERF-08: filled in by one read, so the route can report it in Server-Timing. Durations are milliseconds of this read's
+ * own work. `kvMs` is the KV get and parse. `dbMs` is the fingerprint statement plus the rebuild's database callback
+ * (connection, statements and the projection that runs inside it). `buildMs` is the content hash and snapshot assembly.
+ * A stage this read did not run stays at 0. The background check and the KV write are not counted.
+ */
+export interface PublicSnapshotTiming {
+  source: PublicSnapshotSource | null;
+  kvMs: number;
+  dbMs: number;
+  buildMs: number;
+}
+
+export function newPublicSnapshotTiming(): PublicSnapshotTiming {
+  return { source: null, kvMs: 0, dbMs: 0, buildMs: 0 };
+}
+
 export interface PublicSnapshotReadOptions {
   readonly waitUntil?: (promise: Promise<unknown>) => void;
+  /** Receives how this read was answered. Optional: without it the read behaves exactly as before PERF-08. */
+  readonly timing?: PublicSnapshotTiming;
+}
+
+function elapsedSince(startedAt: number): number {
+  return performance.now() - startedAt;
 }
 
 export interface PublicSnapshotStore {
@@ -308,23 +337,31 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
     }
   }
 
-  async function checkNow(mode: CheckMode): Promise<CheckResult> {
+  async function checkNow(mode: CheckMode, timing: PublicSnapshotTiming): Promise<CheckResult> {
     const startedAt = now();
     if (!mode.force && !mode.kvMissing && memo !== undefined && startedAt - memo.verifiedAt <= staleAfterMs) {
       // A check that finished while this one waited in the queue already confirmed the content.
+      timing.source = "memo";
       return { snapshot: memo.snapshot };
     }
     if (mode.kvMissing && memo !== undefined && mode.epochAtMiss !== undefined && rebuildEpoch !== mode.epochAtMiss) {
       // Concurrent cold reads share one build: a build that finished after the miss was seen wrote or will write KV.
+      timing.source = "memo";
       return { snapshot: memo.snapshot };
     }
+    const fingerprintStarted = performance.now();
     const fingerprint = await withExecutor((executor) => readPublicSnapshotFingerprint(executor));
+    timing.dbMs += elapsedSince(fingerprintStarted);
     if (!mode.force && !mode.kvMissing && memo !== undefined && memo.snapshot.fingerprint === fingerprint) {
       // The fingerprint was read after startedAt, so startedAt is a safe, earlier verification time. KV is not written.
       memo = { ...memo, verifiedAt: startedAt };
+      timing.source = "check";
       return { snapshot: memo.snapshot };
     }
+    const draftStarted = performance.now();
     const draft = await withExecutor((executor) => buildPublicSnapshotDraft(executor));
+    timing.dbMs += elapsedSince(draftStarted);
+    const assembleStarted = performance.now();
     const snapshot: PublicSnapshot = {
       version: PUBLIC_SNAPSHOT_VERSION,
       built_at: new Date(startedAt).toISOString(),
@@ -336,11 +373,13 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
     };
     memo = { snapshot, loadedAt: startedAt, verifiedAt: startedAt };
     rebuildEpoch += 1;
+    timing.buildMs += elapsedSince(assembleStarted);
+    timing.source = "rebuild";
     return { snapshot, write: writeSnapshot(snapshot) };
   }
 
-  function check(mode: CheckMode): Promise<CheckResult> {
-    const run = queue.then(() => checkNow(mode));
+  function check(mode: CheckMode, timing: PublicSnapshotTiming = newPublicSnapshotTiming()): Promise<CheckResult> {
+    const run = queue.then(() => checkNow(mode, timing));
     queue = run.catch(() => undefined);
     return run;
   }
@@ -357,10 +396,14 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
     return snapshot === null ? { kind: "miss" } : { kind: "hit", snapshot };
   }
 
-  async function serveCheck(mode: CheckMode, readOptions: PublicSnapshotReadOptions): Promise<PublicSnapshot | null> {
+  async function serveCheck(
+    mode: CheckMode,
+    readOptions: PublicSnapshotReadOptions,
+    timing: PublicSnapshotTiming,
+  ): Promise<PublicSnapshot | null> {
     let result: CheckResult;
     try {
-      result = await check(mode);
+      result = await check(mode, timing);
     } catch {
       return null;
     }
@@ -383,17 +426,21 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
   }
 
   async function read(readOptions: PublicSnapshotReadOptions = {}): Promise<PublicSnapshot | null> {
+    const timing = readOptions.timing ?? newPublicSnapshotTiming();
     let current = memo;
     if (current === undefined || now() - current.loadedAt >= memoTtlMs) {
       const epochBefore = rebuildEpoch;
+      const kvStarted = performance.now();
       const loaded = await loadFromKv();
+      timing.kvMs = elapsedSince(kvStarted);
       if (loaded.kind === "error") return null;
       if (loaded.kind === "miss") {
-        return serveCheck({ force: false, kvMissing: true, epochAtMiss: epochBefore }, readOptions);
+        return serveCheck({ force: false, kvMissing: true, epochAtMiss: epochBefore }, readOptions, timing);
       }
       if (memo !== undefined && rebuildEpoch !== epochBefore) {
         // A rebuild finished during the KV read, so its memo is newer than what was just read.
         current = memo;
+        timing.source = "memo";
       } else {
         const sameFingerprint = memo !== undefined && memo.snapshot.fingerprint === loaded.snapshot.fingerprint;
         current = {
@@ -402,13 +449,16 @@ export function createPublicSnapshotStore(options: PublicSnapshotStoreOptions): 
           verifiedAt: sameFingerprint && memo !== undefined ? memo.verifiedAt : timeOf(loaded.snapshot.built_at),
         };
         memo = current;
+        timing.source = "kv";
       }
+    } else {
+      timing.source = "memo";
     }
 
     const age = now() - current.verifiedAt;
     // 60 s synchronous path (the accepted staleness bound). A snapshot not verified for 60 s waits here for the
     // fingerprint check, one statement, and rebuilds only when the fingerprint changed. This path is intended.
-    if (age > hardStaleAfterMs) return serveCheck({ force: false, kvMissing: false }, readOptions);
+    if (age > hardStaleAfterMs) return serveCheck({ force: false, kvMissing: false }, readOptions, timing);
     // 30 s background path: the snapshot is still served now, and the fingerprint check runs after the response.
     if (age > staleAfterMs) scheduleBackground(readOptions);
     return current.snapshot;

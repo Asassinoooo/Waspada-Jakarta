@@ -6,9 +6,11 @@ import type { PublicEventListCursorCodec } from "../layers/l4-application-integr
 import { parsePublicEventListQuery } from "../layers/l4-application-integration/public-event-list-query.js";
 import {
   createPublicSnapshotListProjection,
+  newPublicSnapshotTiming,
   shortDigest,
   type PublicSnapshot,
   type PublicSnapshotStore,
+  type PublicSnapshotTiming,
 } from "./public-snapshot.js";
 
 /**
@@ -77,11 +79,18 @@ export async function readPublicSnapshotRoute(
   readFromDatabase: () => Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);
+  const startedAt = performance.now();
+  const timing = newPublicSnapshotTiming();
   const snapshot = await options.store
-    .read(options.waitUntil === undefined ? {} : { waitUntil: options.waitUntil })
+    .read({
+      ...(options.waitUntil === undefined ? {} : { waitUntil: options.waitUntil }),
+      timing,
+    })
     .catch(() => null);
   const served = snapshot === null ? null : await answerFromSnapshot(kind, url, snapshot, options.cursorCodec);
-  if (served !== null) return publicReadResponse(request, served);
+  if (served !== null) {
+    return publicReadResponse(request, served, snapshotServerTiming(timing, performance.now() - startedAt));
+  }
 
   const response = await readFromDatabase();
   if (response.status !== 200) return response;
@@ -136,14 +145,35 @@ async function answerFromSnapshot(
   }
 }
 
-/** Public cache headers and the weak ETag on a 200. A matching If-None-Match gets a 304 with no body. */
-function publicReadResponse(request: Request, served: ServedBody): Response {
-  const headers = {
+/**
+ * PERF-08: the Server-Timing value of a snapshot answer, for example
+ * `snap;desc="kv", kv;dur=3.2, db;dur=0, build;dur=0, total;dur=5.1`. The source is one of four fixed words and every
+ * duration is a rounded number, so the value never carries SQL, keys, URLs, ids or error text.
+ */
+export function snapshotServerTiming(timing: PublicSnapshotTiming, totalMs: number): string {
+  const duration = (value: number): string => String(Number.isFinite(value) ? Math.max(0, Math.round(value * 10) / 10) : 0);
+  // The store sets a source before it returns any snapshot, so the fallback only keeps the type total.
+  return [
+    `snap;desc="${timing.source ?? "memo"}"`,
+    `kv;dur=${duration(timing.kvMs)}`,
+    `db;dur=${duration(timing.dbMs)}`,
+    `build;dur=${duration(timing.buildMs)}`,
+    `total;dur=${duration(totalMs)}`,
+  ].join(", ");
+}
+
+/**
+ * Public cache headers and the weak ETag on a 200. A matching If-None-Match gets a 304 with no body. A snapshot answer
+ * also carries its Server-Timing, on the 200 and on the 304.
+ */
+function publicReadResponse(request: Request, served: ServedBody, serverTiming?: string): Response {
+  const headers: Record<string, string> = {
     "content-type": served.contentType,
     "x-content-type-options": "nosniff",
     "cache-control": PUBLIC_READ_CACHE_CONTROL,
     etag: `W/"${served.etag}"`,
   };
+  if (serverTiming !== undefined) headers["server-timing"] = serverTiming;
   if (ifNoneMatchMatches(request.headers.get("if-none-match"), served.etag)) {
     return new Response(null, { status: 304, headers });
   }
