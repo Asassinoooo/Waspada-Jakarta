@@ -8,8 +8,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { createOsmTileUrl, getVisibleMapTiles, type MapCoordinate } from "./SourcePointMap.js";
-import { facilityKindIcon, facilityKindLabel, type EmergencyFacility } from "./emergency-facilities.js";
+import { createOsmTileUrl, getVisibleMapTiles, type MapCoordinate } from "./map-tiles.js";
+import { facilityKindIcon, facilityKindLabel, type EmergencyFacility } from "./emergency-facility-kinds.js";
 import { severityAriaSuffix, type PublicSeverity } from "./published-events.js";
 import {
   coordinateAt,

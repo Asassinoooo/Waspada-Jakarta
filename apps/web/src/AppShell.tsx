@@ -3,7 +3,7 @@ import type { PublicContext } from "@waspada/worker/public-contracts";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
 import type { Route } from "./App.js";
 import { accountClient } from "./account-client.js";
-import { hasProtectedShellAccess } from "./AccountPages.js";
+import { hasProtectedShellAccess } from "./account-access.js";
 import { openOnboardingIntro } from "./OnboardingIntro.js";
 import { THEME_LABEL, ThemeToggle, nextThemePreference, setThemePreference, useThemePreference } from "./ThemeToggle.js";
 import { Menu, type MenuItem } from "./ui/Menu.js";

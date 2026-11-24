@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { facilityKindIcon, type EmergencyFacilityKind } from "./emergency-facilities.js";
+import { facilityKindIcon, type EmergencyFacilityKind } from "./emergency-facility-kinds.js";
 import { Sheet } from "./ui/Sheet.js";
 import {
   DEFAULT_PUBLISHED_FILTERS,
