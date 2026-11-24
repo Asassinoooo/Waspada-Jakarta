@@ -5,7 +5,7 @@ import {
   readNotifyEnabled,
   writeNotifyEnabled,
   type NotifyPermission,
-} from "./interest-notifications.js";
+} from "./notify-settings.js";
 import type { PreferencesStorage } from "./preferences-store.js";
 
 export const NOTIFY_INTRO =

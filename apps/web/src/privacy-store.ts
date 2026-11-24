@@ -1,4 +1,4 @@
-import { UPDATE_CURSOR_STORAGE_KEY } from "./UpdatesCenter.js";
+import { UPDATE_CURSOR_STORAGE_KEY } from "./update-matching.js";
 import {
   PREFERENCES_STORAGE_KEY,
   type PreferencesStorage,

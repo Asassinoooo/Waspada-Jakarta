@@ -10,12 +10,23 @@
  * and notifies nothing, so opening the page never replays old events.
  */
 import { ApiHttpError, getEventDetailWithSignal, getPublicUpdates, type PublicUpdatePage } from "./api-client.js";
-import type { BriefingInterests, PreferencesStorage } from "./preferences-store.js";
-import { hydrateAndMatchUpdates, type MatchedPublicUpdate, type UpdateCenterScheduler } from "./UpdatesCenter.js";
+import type { BriefingInterests } from "./preferences-store.js";
+import { hydrateAndMatchUpdates, type MatchedPublicUpdate } from "./update-matching.js";
+import type { UpdateCenterScheduler } from "./UpdatesCenter.js";
 
-export const NOTIFY_STORAGE_KEY = "waspada-jakarta:notify:v1";
-/** Fired on window when the setting changes in this tab, so the app-level notifier can start or stop. */
-export const NOTIFY_CHANGE_EVENT = "waspada:notify-change";
+// PERF-09: the setting and permission helpers live in notify-settings.ts so the eager shell can read them without
+// loading this notifier. They stay re-exported here for existing callers.
+import { notificationPermission } from "./notify-settings.js";
+
+export {
+  NOTIFY_CHANGE_EVENT,
+  NOTIFY_STORAGE_KEY,
+  notificationPermission,
+  readNotifyEnabled,
+  writeNotifyEnabled,
+  type NotifyPermission,
+} from "./notify-settings.js";
+
 export const NOTIFY_POLL_INTERVAL_MS = 60_000;
 /** At most this many single notifications per cycle; more matches become one summary notification. */
 export const NOTIFY_MAX_PER_CYCLE = 3;
@@ -23,35 +34,6 @@ const NOTIFY_MAX_PAGES_PER_CYCLE = 5;
 const NOTIFY_PAGE_SIZE = 20;
 
 export const NOTIFY_EMERGENCY_LINE = "Bukan layanan darurat. Darurat: 112.";
-
-export type NotifyPermission = "unsupported" | "default" | "granted" | "denied";
-
-export function notificationPermission(): NotifyPermission {
-  if (typeof window === "undefined" || typeof window.Notification === "undefined") return "unsupported";
-  const value = window.Notification.permission;
-  return value === "granted" || value === "denied" ? value : "default";
-}
-
-export function readNotifyEnabled(storage: PreferencesStorage | null | undefined): boolean {
-  try {
-    return storage?.getItem(NOTIFY_STORAGE_KEY) === "on";
-  } catch {
-    return false;
-  }
-}
-
-/** Saves the setting and tells this tab's notifier. Returns false when the browser refuses the write. */
-export function writeNotifyEnabled(storage: PreferencesStorage | null | undefined, enabled: boolean): boolean {
-  try {
-    if (!storage) return false;
-    if (enabled) storage.setItem(NOTIFY_STORAGE_KEY, "on");
-    else storage.removeItem(NOTIFY_STORAGE_KEY);
-  } catch {
-    return false;
-  }
-  if (typeof window !== "undefined") window.dispatchEvent(new Event(NOTIFY_CHANGE_EVENT));
-  return true;
-}
 
 export interface NotificationContent {
   readonly title: string;

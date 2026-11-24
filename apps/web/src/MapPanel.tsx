@@ -2,7 +2,7 @@ import type { EventView, PublicContext, PublicFeature, PublicFeatureCollection, 
 import type { ReactNode } from "react";
 import type { FeedStatus } from "./EventFeed.js";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
-import { coordinateToWorldPixels, createOsmTileUrl, getVisibleMapTiles, worldPixelsToCoordinate, type MapCoordinate, type VisibleMapTile } from "./SourcePointMap.js";
+import { coordinateToWorldPixels, createOsmTileUrl, getVisibleMapTiles, worldPixelsToCoordinate, type MapCoordinate, type VisibleMapTile } from "./map-tiles.js";
 
 export type MapSelection =
   | { kind: "none" }

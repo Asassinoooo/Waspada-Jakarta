@@ -1,5 +1,5 @@
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
-import { hasProtectedShellAccess } from "./AccountPages.js";
+import { hasProtectedShellAccess } from "./account-access.js";
 import { ContextSourcesHttpError } from "./context-sources-client.js";
 import { SourcePreviewHttpError } from "./source-preview-client.js";
 

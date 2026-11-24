@@ -1,13 +1,6 @@
 import osmSnapshot from "../../worker/src/demo/osm-reference-snapshot.json" with { type: "json" };
-
-export type EmergencyFacilityKind = "hospital" | "police" | "fire_station";
-
-export interface EmergencyFacility {
-  readonly id: string;
-  readonly kind: EmergencyFacilityKind;
-  readonly title: string;
-  readonly coordinates: readonly [longitude: number, latitude: number];
-}
+import type { EmergencyFacility, EmergencyFacilityKind } from "./emergency-facility-kinds.js";
+export { facilityKindIcon, facilityKindLabel, type EmergencyFacility, type EmergencyFacilityKind } from "./emergency-facility-kinds.js";
 
 export const EMERGENCY_FACILITIES: readonly EmergencyFacility[] = osmSnapshot.records.map((r) => ({
   id: r.id,
@@ -60,26 +53,4 @@ export function findNearbyFacilities(
   }
   results.sort((a, b) => a.distanceMeters - b.distanceMeters);
   return results.slice(0, limit);
-}
-
-export function facilityKindLabel(kind: EmergencyFacilityKind): string {
-  switch (kind) {
-    case "hospital":
-      return "Rumah Sakit";
-    case "police":
-      return "Kepolisian";
-    case "fire_station":
-      return "Pemadam Kebakaran";
-  }
-}
-
-export function facilityKindIcon(kind: EmergencyFacilityKind): string {
-  switch (kind) {
-    case "hospital":
-      return "🏥";
-    case "police":
-      return "👮";
-    case "fire_station":
-      return "🚒";
-  }
 }

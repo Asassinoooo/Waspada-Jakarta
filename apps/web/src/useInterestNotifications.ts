@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  createInterestNotifier,
-  notificationPermission,
-  NOTIFY_CHANGE_EVENT,
-  NOTIFY_STORAGE_KEY,
-  readNotifyEnabled,
-  showBrowserNotification,
-} from "./interest-notifications.js";
+import { notificationPermission, NOTIFY_CHANGE_EVENT, NOTIFY_STORAGE_KEY, readNotifyEnabled } from "./notify-settings.js";
 import { browserPreferencesStorage, loadPreferences, PREFERENCES_STORAGE_KEY, type BriefingInterests } from "./preferences-store.js";
 
 function hasAnyInterest(interests: BriefingInterests): boolean {
@@ -51,8 +44,17 @@ export function useInterestNotifications(): void {
     if (typeof window === "undefined") return;
     const interests = readActiveInterests();
     if (interests === null) return;
-    const notifier = createInterestNotifier({ interests, notify: showBrowserNotification });
-    notifier.start();
-    return () => notifier.stop();
+    // PERF-09: the notifier code loads only when notifications are on, permitted and have saved interests.
+    let stopped = false;
+    let notifier: { start(): void; stop(): void } | null = null;
+    void import("./interest-notifications.js").then(({ createInterestNotifier, showBrowserNotification }) => {
+      if (stopped) return;
+      notifier = createInterestNotifier({ interests, notify: showBrowserNotification });
+      notifier.start();
+    });
+    return () => {
+      stopped = true;
+      notifier?.stop();
+    };
   }, [revision]);
 }

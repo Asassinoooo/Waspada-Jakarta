@@ -11,12 +11,12 @@ import {
   type MapProjection,
   type MapView,
 } from "./EventMapCanvas.js";
-import type { MapCoordinate } from "./SourcePointMap.js";
+import type { MapCoordinate } from "./map-tiles.js";
 import { MapEventList, RECENT_SCOPE_TEXT } from "./MapEventList.js";
 import { MapLegend } from "./MapSeverity.js";
 import { DEFAULT_MAP_FILTER_VALUE, MapFilterSheet, type MapFilterValue } from "./MapFilterSheet.js";
 import { AnchoredMapPopup, PeekMapPopup, popupAnchor, unmappedPopupAnchor } from "./MapPopup.js";
-import { EMERGENCY_FACILITIES } from "./emergency-facilities.js";
+import type { EmergencyFacility } from "./emergency-facility-kinds.js";
 import { buildEventHash, copyText, eventShareUrl, MAP_HOME_HASH } from "./map-links.js";
 import {
   categoryMarkerIcon,
@@ -144,9 +144,27 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       severity: severityOf(event),
     }];
   }), [visibleEvents, data.markers, selectedId]);
+  // PERF-09: the OSM facility records (about 200 points) load only when the facility layer is switched on.
+  const [facilityRecords, setFacilityRecords] = useState<readonly EmergencyFacility[] | null>(null);
+  useEffect(() => {
+    if (!applied.facilitiesOn || facilityRecords !== null) return;
+    let cancelled = false;
+    import("./emergency-facilities.js")
+      .then((module) => {
+        if (!cancelled) setFacilityRecords(module.EMERGENCY_FACILITIES);
+      })
+      .catch(() => {
+        // The layer stays empty when the chunk cannot load. The filter sheet keeps its own note.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applied.facilitiesOn, facilityRecords]);
   const facilities = useMemo(
-    () => (applied.facilitiesOn ? EMERGENCY_FACILITIES.filter((facility) => applied.facilityKinds.includes(facility.kind)) : []),
-    [applied],
+    () => (applied.facilitiesOn && facilityRecords !== null
+      ? facilityRecords.filter((facility) => applied.facilityKinds.includes(facility.kind))
+      : []),
+    [applied, facilityRecords],
   );
   const selectedEvent = selectedId !== null && visibleIds.has(selectedId) ? eventsById.get(selectedId) ?? null : null;
   const activeCount = countActiveFilters(applied.filters, applied.facilitiesOn);

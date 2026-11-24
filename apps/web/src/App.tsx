@@ -7,15 +7,24 @@ import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDis
 import { MapHome } from "./MapHome.js";
 import { parseEventIdFromHash } from "./map-links.js";
 import { adminGateShell, adminWorkspaceTabFromHash, type AdminTab } from "./admin-workspace-model.js";
-import { Preferences } from "./Preferences.js";
-import { UpdatesCenter } from "./UpdatesCenter.js";
 import { useInterestNotifications } from "./useInterestNotifications.js";
 import type { MapSelection } from "./MapPanel.js";
-import { HelpPage } from "./HelpPage.js";
-import { AccountAccessGate, AccountPage, PasswordResetPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
+import type { AccountSessionState } from "./AccountPages.js";
+import { hasProtectedShellAccess } from "./account-access.js";
 import { accountClient, type AccountReturnTarget } from "./account-client.js";
 import { SiteFooter, SiteHeader } from "./AppShell.js";
 import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
+// PERF-09: these routes are not on the first screen, so their code loads when the route opens (or idle, see below).
+import {
+  LazyAccountAccessGate,
+  LazyAccountPage,
+  LazyHelpPage,
+  LazyPasswordResetPage,
+  LazyPreferences,
+  LazyUpdatesCenter,
+  RouteFallback,
+  scheduleRouteChunkWarmup,
+} from "./lazy-routes.js";
 
 // UI-V2-C: the administrator workspace (tabs for overview, review, flow, 3D view, accounts and source demo).
 // Its shell, styles and every heavy tab load only when an admin route opens.
@@ -340,6 +349,9 @@ export function App() {
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
 
+  // PERF-09: once the first screen is up, fetch the lazy public routes in the background (idle, or after 2 s).
+  useEffect(() => scheduleRouteChunkWarmup(), []);
+
   // Real-time Public Events SSE Stream (Zero-polling live updates)
   useEffect(() => {
     if (typeof window === "undefined" || typeof EventSource === "undefined") return;
@@ -450,7 +462,9 @@ export function App() {
       return (
         <div className="app-shell">
           <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
-          <AccountAccessGate shell={adminGateShell(route.initialTab)} sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+          <Suspense fallback={<RouteFallback />}>
+            <LazyAccountAccessGate shell={adminGateShell(route.initialTab)} sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+          </Suspense>
         </div>
       );
     }
@@ -494,18 +508,44 @@ export function App() {
       {route.screen === "detail-presentation" && (
         <PresentationRoute context={context} />
       )}
-      {route.screen === "preferences" && <Preferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />}
-      {route.screen === "updates" && <UpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />}
-      {route.screen === "password-reset" && <PasswordResetPage />}
-      {route.screen === "login" && <AccountPage screen="login" sessionState={sessionState} returnTo={route.returnTo} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
-      {route.screen === "onboarding" && <AccountPage screen="onboarding" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
-      {route.screen === "account" && <AccountPage screen="account" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
+      {route.screen === "preferences" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyPreferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />
+        </Suspense>
+      )}
+      {route.screen === "updates" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyUpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />
+        </Suspense>
+      )}
+      {route.screen === "password-reset" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyPasswordResetPage />
+        </Suspense>
+      )}
+      {route.screen === "login" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyAccountPage screen="login" sessionState={sessionState} returnTo={route.returnTo} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+        </Suspense>
+      )}
+      {route.screen === "onboarding" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyAccountPage screen="onboarding" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+        </Suspense>
+      )}
+      {route.screen === "account" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyAccountPage screen="account" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+        </Suspense>
+      )}
       {route.screen === "help" && (
-        <HelpPage
-          section={route.section}
-          showLocalPipeline={import.meta.env?.DEV === true && context?.dataset_mode === "demo"}
-          onCleared={() => setLocalDataRevision((revision) => revision + 1)}
-        />
+        <Suspense fallback={<RouteFallback />}>
+          <LazyHelpPage
+            section={route.section}
+            showLocalPipeline={import.meta.env?.DEV === true && context?.dataset_mode === "demo"}
+            onCleared={() => setLocalDataRevision((revision) => revision + 1)}
+          />
+        </Suspense>
       )}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
