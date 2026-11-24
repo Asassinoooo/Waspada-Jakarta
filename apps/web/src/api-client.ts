@@ -397,11 +397,33 @@ export async function requestBriefing(interests: BriefingInterests): Promise<Bri
 
 /**
  * PERF-07: the largest page the public API accepts (PUBLIC_EVENT_LIST_PROJECTION_LIMITS.maxPageSize). The first load
- * asks for it, so a list of up to 100 events is one request instead of one per 20. `index.html` preloads exactly
- * EVENT_LIST_FIRST_PAGE_PATH, so keep the two identical.
+ * asks for it, so a list of up to 100 events is one request instead of one per 20.
+ *
+ * There is no `<link rel=preload>` in index.html: it fired on every route (the moderation queue too) and left a
+ * cached pre-publish list that the map then reused for up to 15 s (E2E step 9). The early start below runs only for
+ * the discover routes, from main.tsx.
  */
 export const EVENT_LIST_PAGE_SIZE = 100;
 export const EVENT_LIST_FIRST_PAGE_PATH = `/api/v1/events?limit=${EVENT_LIST_PAGE_SIZE}`;
+
+/** An early first-page request started before the first render; used once, and only while it is recent. */
+let earlyFirstPage: { readonly startedAt: number; readonly body: Promise<unknown> } | undefined;
+const EARLY_FIRST_PAGE_MAX_AGE_MS = 10_000;
+
+/** PERF-07: starts the first event page while React renders. main.tsx calls it on the discover routes only. */
+export function startEarlyEventListLoad(): void {
+  if (earlyFirstPage !== undefined) return;
+  const body = getJson<unknown>(EVENT_LIST_FIRST_PAGE_PATH);
+  body.catch(() => undefined); // an unused or failed early load is not an unhandled rejection; listAllEvents rethrows
+  earlyFirstPage = { startedAt: Date.now(), body };
+}
+
+function takeEarlyFirstPage(): Promise<unknown> | undefined {
+  const early = earlyFirstPage;
+  earlyFirstPage = undefined;
+  if (early === undefined || Date.now() - early.startedAt > EARLY_FIRST_PAGE_MAX_AGE_MS) return undefined;
+  return early.body;
+}
 
 export function listEvents(cursor?: string, limit?: number) {
   const query = new URLSearchParams();
@@ -450,7 +472,8 @@ export async function listAllEvents(): Promise<EventView[]> {
   for (let pageNumber = 1; pageNumber <= MAX_EVENT_PAGES; pageNumber += 1) {
     let page: EventPage;
     try {
-      page = eventPageOrThrow(await listEvents(cursor, EVENT_LIST_PAGE_SIZE));
+      const early = pageNumber === 1 ? takeEarlyFirstPage() : undefined;
+      page = eventPageOrThrow(await (early ?? listEvents(cursor, EVENT_LIST_PAGE_SIZE)));
     } catch (error) {
       if (pageNumber === 1) throw error;
       throw new PartialEventListError(events, error);
