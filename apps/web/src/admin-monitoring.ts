@@ -26,8 +26,20 @@ const categories: readonly Category[] = [
   "crime_personal_security", "demonstrations_public_gatherings", "crowds_major_events",
   "violence_immediate_threats", "disasters_weather", "fires_infrastructure_hazards",
   "transport_road_incidents", "utilities_essential_services", "health_environmental_advisories",
-  "group_specific_critical_notices",
+  "group_specific_critical_notices", "other", "unclassified",
 ];
+/** The keys every EventView carries (contract: EventView in apps/worker/src/contracts/public-api.ts). */
+const eventViewRequiredKeys = [
+  "event_id", "version", "title", "summary", "category", "tags", "lifecycle", "freshness",
+  "event_time", "validity", "scope", "claims", "impacts", "published_at",
+] as const;
+/**
+ * Optional EventView keys the contract declares. The Worker adds location_display, location_label and severity to list
+ * items (public-event-list-projection-service.ts). An optional key is absent, never null, when it does not apply.
+ */
+const eventViewOptionalKeys = ["incident_type", "location_display", "location_label", "severity"] as const;
+const locationDisplays = ["point", "whole_view"] as const;
+const severities = ["low", "medium", "high"] as const;
 const lifecycles: readonly Lifecycle[] = ["planned", "ongoing", "resolved", "cancelled", "unknown"];
 const freshnessStatuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
 const precisions = ["exact", "date", "range", "unknown"] as const;
@@ -81,6 +93,17 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 function hasExactKeys(value: JsonRecord, keys: readonly string[]): boolean {
   return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+/**
+ * Every required key is present, and every other key is one of the optional keys. Unknown keys still fail closed.
+ */
+function hasKeys(value: JsonRecord, required: readonly string[], optional: readonly string[]): boolean {
+  return required.every((key) => Object.hasOwn(value, key))
+    && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
+}
+/** An optional key may be absent. A present key must pass its own check. */
+function optionalValid(value: JsonRecord, key: string, check: (field: unknown) => boolean): boolean {
+  return !Object.hasOwn(value, key) || check(value[key]);
 }
 function isString(value: unknown, maximum: number, allowEmpty = true): value is string {
   return typeof value === "string" && value.length <= maximum && (allowEmpty || value.length > 0);
@@ -215,16 +238,19 @@ function parsePublicImpact(value: unknown): PublicImpact {
   };
 }
 function parseEventView(value: unknown): EventView {
-  if (!isRecord(value) || !hasExactKeys(value, [
-    "event_id", "version", "title", "summary", "category", "tags", "lifecycle", "freshness",
-    "event_time", "validity", "scope", "claims", "impacts", "published_at",
-  ])
+  if (!isRecord(value) || !hasKeys(value, eventViewRequiredKeys, eventViewOptionalKeys)
     || !isString(value.event_id, MAX_PUBLIC_ID, false)
     || !Number.isSafeInteger(value.version) || (value.version as number) < 1
     || !isString(value.title, 500, false) || !isString(value.summary, MAX_TEXT)
     || !isMember(value.category, categories) || !Array.isArray(value.tags) || value.tags.length > 100
     || !isMember(value.lifecycle, lifecycles) || !Array.isArray(value.claims) || value.claims.length > 100
-    || !Array.isArray(value.impacts) || value.impacts.length > 100 || !isInstant(value.published_at)) {
+    || !Array.isArray(value.impacts) || value.impacts.length > 100 || !isInstant(value.published_at)
+    // Optional keys: absent is valid. A present key is type-checked with the Worker's own caps.
+    || !optionalValid(value, "incident_type", (field) => isString(field, 200, false))
+    || !optionalValid(value, "location_display", (field) => isMember(field, locationDisplays))
+    // Up to 200 code points in the Worker, which is at most 400 UTF-16 units.
+    || !optionalValid(value, "location_label", (field) => isString(field, 400, false))
+    || !optionalValid(value, "severity", (field) => isMember(field, severities))) {
     throw new MonitorPayloadError();
   }
   const tags = value.tags.map((tag) => {
@@ -238,6 +264,12 @@ function parseEventView(value: unknown): EventView {
     event_time: parseTimeScope(value.event_time), validity: parseValidity(value.validity),
     scope: parseScope(value.scope), claims: value.claims.map(parsePublicClaim),
     impacts: value.impacts.map(parsePublicImpact), published_at: value.published_at,
+    // Copied only when present, so an absent key stays absent in the parsed view.
+    ...(Object.hasOwn(value, "incident_type") ? { incident_type: value.incident_type as string } : {}),
+    ...(Object.hasOwn(value, "location_display")
+      ? { location_display: value.location_display as (typeof locationDisplays)[number] } : {}),
+    ...(Object.hasOwn(value, "location_label") ? { location_label: value.location_label as string } : {}),
+    ...(Object.hasOwn(value, "severity") ? { severity: value.severity as (typeof severities)[number] } : {}),
   };
 }
 function parseEventPage(value: unknown): { events: EventView[]; nextCursor: string | null } {

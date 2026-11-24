@@ -79,6 +79,8 @@ const categories: readonly Category[] = [
   "utilities_essential_services",
   "health_environmental_advisories",
   "group_specific_critical_notices",
+  "other",
+  "unclassified",
 ];
 const lifecycles: readonly Lifecycle[] = ["planned", "ongoing", "resolved", "cancelled", "unknown"];
 const freshnessStatuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
