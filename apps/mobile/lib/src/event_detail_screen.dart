@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'history_changes.dart';
 import 'preferences.dart';
 import 'preferences_screen.dart';
 import 'public_api.dart';
@@ -578,6 +579,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall),
+                                  if (entry.changes.isNotEmpty)
+                                    HistoryChangesTile(changes: entry.changes),
                                 ])),
                           ]),
                     )),

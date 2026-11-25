@@ -1268,7 +1268,8 @@ class HistoryEntry {
       required this.changeType,
       required this.changedAt,
       required this.summary,
-      this.automatic = false});
+      this.automatic = false,
+      this.changes = const []});
   final String eventId;
   final int version;
   final String changeType;
@@ -1276,6 +1277,8 @@ class HistoryEntry {
   final String summary;
   // POLISH-02 (additive, optional): true only for an automatic refresh by agent:auto-publisher. Absent means false.
   final bool automatic;
+  // HIST-UI-01 (additive, optional): what changed from the previous published version. Empty when absent or malformed.
+  final List<HistoryChange> changes;
 
   factory HistoryEntry.fromJson(Object? json) {
     final map = _object(
@@ -1289,6 +1292,7 @@ class HistoryEntry {
         'supersedes_version',
         'published_at',
         'automatic',
+        'changes',
       },
     );
     const changes = {'published', 'corrected', 'impact_changed', 'retracted'};
@@ -1303,8 +1307,97 @@ class HistoryEntry {
       changedAt: _requiredInstant(map['changed_at']),
       summary: _string(map['summary'], maxLength: 500),
       automatic: automaticValue == true,
+      changes: _parseHistoryChanges(map['changes']),
     );
   }
+}
+
+/// HIST-UI-01: one difference from the previous published version, typed by the API field it names.
+sealed class HistoryChange {
+  const HistoryChange(this.field);
+
+  /// The API field name, such as "event_time" or "places".
+  final String field;
+}
+
+/// A text field before and after. Null means no value; for "validity" it means no validity window.
+final class HistoryValueChange extends HistoryChange {
+  const HistoryValueChange(super.field, {required this.before, required this.after});
+  final String? before;
+  final String? after;
+}
+
+/// A scope field: public display names added to or removed from the list.
+final class HistoryNamesChange extends HistoryChange {
+  const HistoryNamesChange(super.field, {required this.added, required this.removed});
+  final List<String> added;
+  final List<String> removed;
+}
+
+/// A claim or impact count before and after.
+final class HistoryCountChange extends HistoryChange {
+  const HistoryCountChange(super.field, {required this.before, required this.after});
+  final int before;
+  final int after;
+}
+
+const _historyValueFields = {
+  'title',
+  'summary',
+  'category',
+  'lifecycle',
+  'freshness',
+  'event_time',
+  'validity',
+};
+const _historyNameFields = {'places', 'services', 'institutions', 'audiences'};
+const _historyCountFields = {'claims', 'impacts'};
+
+/// Tolerant by design: an absent, null or non-list value gives no changes, and an item with an unknown field or a
+/// malformed shape is skipped. Neither case stops the history entry itself from parsing.
+List<HistoryChange> _parseHistoryChanges(Object? value) {
+  if (value is! List) return const [];
+  final changes = <HistoryChange>[];
+  for (final item in value) {
+    try {
+      changes.add(_historyChangeOrThrow(item));
+    } on ContractViolation {
+      // Skipped on purpose: one malformed item must not hide the rest of the entry.
+    }
+  }
+  return List.unmodifiable(changes);
+}
+
+HistoryChange _historyChangeOrThrow(Object? item) {
+  if (item is! Map) throw const ContractViolation();
+  final field = item['field'];
+  if (field is! String) throw const ContractViolation();
+  if (_historyValueFields.contains(field)) {
+    if (!item.containsKey('before') || !item.containsKey('after')) {
+      throw const ContractViolation();
+    }
+    return HistoryValueChange(
+      field,
+      before: _nullableString(item['before'], maxLength: 1000),
+      after: _nullableString(item['after'], maxLength: 1000),
+    );
+  }
+  if (_historyNameFields.contains(field)) {
+    return HistoryNamesChange(
+      field,
+      added: _stringList(item['added'], maxItems: 100),
+      removed: _stringList(item['removed'], maxItems: 100),
+    );
+  }
+  if (_historyCountFields.contains(field)) {
+    final before = item['before_count'];
+    final after = item['after_count'];
+    if (before is! int || after is! int || before < 0 || after < 0) {
+      throw const ContractViolation();
+    }
+    return HistoryCountChange(field, before: before, after: after);
+  }
+  throw const ContractViolation();
 }
 
 class HistoryPage {
