@@ -71,7 +71,7 @@ These are summarised here, with the source in brackets.
 | PERF-09b | merged 25 Nov 2026 (bf96d6f), deployed | Idle warm-up removed; header/footer links prefetch their route chunk on pointer/focus/touch. Demo `PresentationDetail`, the GeoJSON `MapPanel` and the full account client left the entry. **CI-measured main chunk: 103.35 kB gz (run 45560101806) → 100.19 kB gz (run 45565640646); still 0.19 kB over the 100 kB target.** Next lever: lazy `OnboardingIntro` (~1.4 kB gz; owner call, it changes when the first-visit intro appears) | main model | |
 | PERF-09c | in progress 25 Nov 2026 (owner approved lazy intro) | `intro-trigger.ts` keeps the storage flag/open event in the entry; `OnboardingIntroGate` loads the `OnboardingIntro` dialog chunk only on a first map visit or a "Lihat pengenalan" request. Local: web tsc ok; perf09c-intro-gate 4/4, onboarding-intro 7/7, perf09-lazy-routes 13/13. CI size pending | main model | |
 | Hosted check 25 Nov 2026 | done | After deploy of 8aa0898: `/mobile-release.json` 200; `GET /api/v1/moderation/proposals` without cookie 401; 39 published events have version ≥ 2, and their history returns `changes` (e.g. one detik event has 8 entries with changes) | main model | |
-| GUI-03 | not started | GUI audit then fixes: map/detail, home/nav/onboarding, Android, admin/moderator | main model | |
+| GUI-03 | audit written 25 Nov 2026; **waiting for owner direction (A/B/C)** | `docs/design/GUI-03-audit.md`: 12 ranked findings for public web pages (hosted, 390/1440, light/dark). Screenshots via `tools/gui/gui-shots.ts`. Admin/moderator (synthetic harness) and Android not captured yet. No design change until the owner picks a direction | main model | |
 
 ## 3. Next candidates (not started; the owner picks)
 
