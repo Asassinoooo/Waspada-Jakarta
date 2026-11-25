@@ -56,6 +56,8 @@ export interface EventProposalDto {
   readonly incident_type: string;
   readonly primary_category?: string;
   readonly compatibility_category?: string;
+  /** FIX-MOD-UI: the interpreter's own category. The triage candidate is primary_category. */
+  readonly interpretation_category?: string | null;
   readonly severity: "low" | "medium" | "high" | "critical" | "unknown";
   readonly event_time: { readonly precision: "exact" | "date" | "range" | "unknown"; readonly value: string | null };
   readonly location_label: string | null;
@@ -73,7 +75,15 @@ export interface EventProposalDto {
   readonly publication_mode?: "agent_auto" | "moderator_reviewed" | null;
   readonly caveats?: readonly string[];
 }
-export interface ModeratorDecisionCommand {
+/** WJ-INT-02B: the moderator's choice when a proposal's triage and interpreter categories differ. */
+export type CategoryResolution = "accept_triage" | "accept_interpretation";
+
+export interface CategoryResolutionFields {
+  readonly category_resolution?: CategoryResolution;
+  readonly resolved_category?: string;
+}
+
+export interface ModeratorDecisionCommand extends CategoryResolutionFields {
   readonly proposal_id: string;
   readonly action: "publish" | "reject" | "investigate";
   readonly evidence_label: "attributed_report" | "crowdsourced_observation" | "independent_corroboration";
@@ -104,6 +114,8 @@ export interface ModeratorReviewProps {
   initialFeedback?: ModerationFeedback | null;
   /** Initial approval modal open state (useful for testing) */
   initialModalOpen?: boolean;
+  /** Initial triage/interpreter choice for a mismatched proposal (useful for testing) */
+  initialCategoryChoice?: CategoryResolution | null;
   /** Base URL for moderation API (default: "/api/v1/moderation") */
   apiBaseUrl?: string;
 }
@@ -139,6 +151,94 @@ export function proposalCategoryLabel(proposal: { primary_category?: string; inc
     return CANONICAL_CATEGORY_LABELS[proposal.primary_category]!;
   }
   return incidentTypeLabel(proposal.incident_type);
+}
+
+/** The worker's signal for a triage/interpreter mismatch (moderation-api.ts). */
+export function hasCategoryMismatch(proposal: Pick<EventProposalDto, "caveats">): boolean {
+  return Array.isArray(proposal.caveats) && proposal.caveats.includes("category_mismatch_review");
+}
+
+function officialCategoryOrNull(value: unknown): string | null {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(CANONICAL_CATEGORY_LABELS, value)
+    ? value
+    : null;
+}
+
+/**
+ * FIX-MOD-UI: the candidate a choice publishes. accept_triage is the triage category (primary_category);
+ * accept_interpretation is the interpreter's category (interpretation_category). compatibility_category is a
+ * legacy alias and is never a candidate.
+ */
+export function categoryCandidateFor(
+  proposal: Pick<EventProposalDto, "primary_category" | "interpretation_category">,
+  choice: CategoryResolution,
+): string | null {
+  return choice === "accept_triage"
+    ? officialCategoryOrNull(proposal.primary_category)
+    : officialCategoryOrNull(proposal.interpretation_category);
+}
+
+export interface CategoryChoiceOption {
+  readonly choice: CategoryResolution;
+  /** The recorded candidate, or null when the proposal records none for this choice. */
+  readonly category: string | null;
+  readonly label: string;
+  readonly hint: string;
+}
+
+export function categoryChoiceOptions(
+  proposal: Pick<EventProposalDto, "primary_category" | "interpretation_category">,
+): readonly CategoryChoiceOption[] {
+  return (["accept_triage", "accept_interpretation"] as const).map((choice) => {
+    const category = categoryCandidateFor(proposal, choice);
+    return {
+      choice,
+      category,
+      label: category !== null ? CANONICAL_CATEGORY_LABELS[category]! : "Tidak tercatat",
+      hint: choice === "accept_triage" ? "dari penyaring awal" : "dari interpretasi agen",
+    };
+  });
+}
+
+export type CategoryPublishPlan =
+  | { readonly ok: true; readonly fields: CategoryResolutionFields }
+  | { readonly ok: false; readonly hint: string };
+
+/**
+ * FIX-MOD-UI: what a publish sends about the category. Without a recorded mismatch the plan sends nothing, so the
+ * request is unchanged. With a mismatch, the moderator's choice is required, and resolved_category is that choice's
+ * recorded candidate, which the worker checks against the proposal.
+ */
+export function planCategoryPublish(
+  proposal: Pick<EventProposalDto, "caveats" | "primary_category" | "interpretation_category">,
+  choice: CategoryResolution | null,
+): CategoryPublishPlan {
+  if (!hasCategoryMismatch(proposal)) return { ok: true, fields: {} };
+  if (choice === null) {
+    return { ok: false, hint: "Pilih salah satu kategori di atas sebelum menerbitkan." };
+  }
+  const resolved = categoryCandidateFor(proposal, choice);
+  if (resolved === null) {
+    return { ok: false, hint: "Kategori ini tidak tercatat pada proposal, jadi pilih kategori yang lain." };
+  }
+  return { ok: true, fields: { category_resolution: choice, resolved_category: resolved } };
+}
+
+const CATEGORY_REFUSAL_MESSAGES: Readonly<Record<string, string>> = {
+  CATEGORY_MISMATCH_UNRESOLVED:
+    "Penyaring awal dan agen interpretasi menilai kategori berbeda. Pilih kategori yang dipakai, lalu terbitkan lagi.",
+  CATEGORY_NOT_CANDIDATE:
+    "Kategori yang dikirim tidak sesuai dengan kategori yang tercatat pada proposal. Muat ulang antrean, lalu coba lagi.",
+  CATEGORY_CANDIDATES_UNRECORDED:
+    "Proposal ini tidak mencatat kategori untuk pilihan tersebut. Pilih kategori yang lain.",
+  INVALID_CATEGORY_RESOLUTION: "Pilihan kategori tidak dikenali sistem. Muat ulang halaman, lalu coba lagi.",
+  INVALID_CATEGORY: "Kategori proposal ini tidak dikenali sistem, sehingga belum dapat diterbitkan.",
+};
+
+/** Readable Indonesian text for a category refusal from the worker, or null for any other code. */
+export function categoryRefusalMessage(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return CATEGORY_REFUSAL_MESSAGES[code.toUpperCase()] ?? null;
 }
 
 export function severityLabel(sev: string): string {
@@ -294,6 +394,14 @@ export class ModerationHttpError extends Error {
   }
 }
 
+/** FIX-MOD-UI: a moderation action the server refused. `code` is the worker's code, in either letter case. */
+export class ModerationActionError extends Error {
+  constructor(message: string, readonly status: number, readonly code: string | null) {
+    super(message);
+    this.name = "ModerationActionError";
+  }
+}
+
 /**
  * The catalog reads the moderation endpoint, which answers 401/403 to visitors without a moderator
  * session. Show a plain access message instead of a raw HTTP error. (Moved from LaporanPublik in UI-V2-B.)
@@ -374,15 +482,19 @@ export async function publishModerationDecision(
   });
   if (!response.ok) {
     let errorDetail = `HTTP ${response.status}`;
+    let code: string | null = null;
     try {
-      const errorJson = (await response.json()) as { error?: string; message?: string };
+      const errorJson = (await response.json()) as { code?: unknown; error?: string; message?: string };
       if (errorJson.error || errorJson.message) {
         errorDetail += `: ${errorJson.error || errorJson.message}`;
       }
+      // Route errors carry `code`; publish denials carry the code in `code` and `error`.
+      if (typeof errorJson.code === "string") code = errorJson.code;
+      else if (typeof errorJson.error === "string") code = errorJson.error;
     } catch {
       // ignore
     }
-    throw new Error(`Moderation action failed: ${errorDetail}`);
+    throw new ModerationActionError(`Moderation action failed: ${errorDetail}`, response.status, code);
   }
   return (await response.json()) as { ok: boolean; status: string };
 }
@@ -460,6 +572,7 @@ export function ModeratorReviewQueue({
   onDecision,
   initialFeedback = null,
   initialModalOpen = false,
+  initialCategoryChoice = null,
   apiBaseUrl = "/api/v1/moderation",
 }: ModeratorReviewProps) {
   const [queue, setQueue] = useState<EventProposalDto[]>(() =>
@@ -479,6 +592,8 @@ export function ModeratorReviewQueue({
     return first ? autoDetectEvidenceLabel(first) : "attributed_report";
   });
   const [decisionReason, setDecisionReason] = useState<string>("");
+  // FIX-MOD-UI: the triage/interpreter choice. Stays unset until the moderator picks one for a mismatched proposal.
+  const [categoryChoice, setCategoryChoice] = useState<CategoryResolution | null>(initialCategoryChoice);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<ModerationFeedback | null>(initialFeedback);
   const [sessionCsrf, setSessionCsrf] = useState<string>("");
@@ -639,11 +754,17 @@ export function ModeratorReviewQueue({
     return queue.find((p) => p.proposal_id === selectedId) ?? null;
   }, [queue, selectedId]);
 
+  // FIX-MOD-UI: what the selected proposal's publish must carry about its category (null when nothing is selected).
+  const categoryPlan = useMemo(() => {
+    return selectedProposal ? planCategoryPublish(selectedProposal, categoryChoice) : null;
+  }, [selectedProposal, categoryChoice]);
+
   // Sync auto-detected evidence label when selected proposal changes
   useEffect(() => {
     if (selectedProposal) {
       setEvidenceLabelChoice(autoDetectEvidenceLabel(selectedProposal));
       setActiveClaimId(null);
+      setCategoryChoice(null);
     }
   }, [selectedProposal?.proposal_id]);
 
@@ -721,12 +842,20 @@ export function ModeratorReviewQueue({
       reason?: string
     ) => {
       if (!selectedProposal || submitting) return;
+      // FIX-MOD-UI: a publish of a mismatched proposal waits for the moderator's choice. Nothing is sent before it.
+      const categoryFields = action === "publish" ? planCategoryPublish(selectedProposal, categoryChoice) : null;
+      if (categoryFields !== null && !categoryFields.ok) {
+        setFeedback({ type: "error", message: categoryFields.hint });
+        return;
+      }
       setSubmitting(true);
       const command: ModeratorDecisionCommand = {
         proposal_id: selectedProposal.proposal_id,
         action,
         evidence_label,
         ...(reason?.trim() ? { reason: reason.trim() } : {}),
+        // Only a mismatch adds the two fields. Without one the request is unchanged.
+        ...(categoryFields !== null && categoryFields.ok ? categoryFields.fields : {}),
       };
 
       try {
@@ -765,15 +894,17 @@ export function ModeratorReviewQueue({
           });
         }
       } catch (err) {
+        // FIX-MOD-UI: a category refusal from the worker shows readable Indonesian text, never the raw code.
+        const refusal = err instanceof ModerationActionError ? categoryRefusalMessage(err.code) : null;
         setFeedback({
           type: "error",
-          message: `Gagal memproses proposal: ${err instanceof Error ? err.message : String(err)}`,
+          message: refusal ?? `Gagal memproses proposal: ${err instanceof Error ? err.message : String(err)}`,
         });
       } finally {
         setSubmitting(false);
       }
     },
-    [selectedProposal, submitting, onDecision, apiBaseUrl, fetcher, effectiveCsrfToken, queue]
+    [selectedProposal, submitting, onDecision, apiBaseUrl, fetcher, effectiveCsrfToken, queue, categoryChoice]
   );
 
   return (
@@ -1232,6 +1363,7 @@ export function ModeratorReviewQueue({
                     disabled={submitting}
                     onClick={() => {
                       setEvidenceLabelChoice(autoDetectEvidenceLabel(selectedProposal));
+                      setCategoryChoice(null);
                       setModalOpen(true);
                     }}
                   >
@@ -1339,6 +1471,44 @@ export function ModeratorReviewQueue({
                 </label>
               </fieldset>
 
+              {selectedProposal && hasCategoryMismatch(selectedProposal) && (
+                <fieldset className="modal-fieldset">
+                  <legend className="modal-legend">Kategori berbeda — pilih kategori yang dipakai</legend>
+                  <p className="modal-help-text">
+                    Penyaring awal dan agen interpretasi menilai kategori yang berbeda untuk proposal ini.
+                    Sistem tidak memilih sendiri, jadi pilih satu kategori.
+                  </p>
+                  {categoryChoiceOptions(selectedProposal).map((option) => (
+                    <label
+                      key={option.choice}
+                      className={`label-choice-card ${
+                        categoryChoice === option.choice ? "label-choice-card--selected" : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="category_resolution"
+                        value={option.choice}
+                        checked={categoryChoice === option.choice}
+                        disabled={submitting || option.category === null}
+                        onChange={() => setCategoryChoice(option.choice)}
+                      />
+                      <div className="label-choice-text">
+                        <strong>{option.label}</strong>
+                        <span>
+                          {option.category === null ? `${option.hint}; tidak tercatat pada proposal` : option.hint}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                  {categoryPlan !== null && !categoryPlan.ok && (
+                    <p id="category-choice-hint" className="modal-help-text" role="status">
+                      {categoryPlan.hint}
+                    </p>
+                  )}
+                </fieldset>
+              )}
+
               <div className="modal-input-group">
                 <label htmlFor="decision-reason-input">Catatan / Alasan Verifikasi (Opsional):</label>
                 <input
@@ -1367,7 +1537,8 @@ export function ModeratorReviewQueue({
                 type="button"
                 className="modal-btn modal-btn--primary"
                 data-action="modal-confirm"
-                disabled={submitting}
+                disabled={submitting || (categoryPlan !== null && !categoryPlan.ok)}
+                aria-describedby={categoryPlan !== null && !categoryPlan.ok ? "category-choice-hint" : undefined}
                 onClick={() =>
                   void handleAction("publish", evidenceLabelChoice, decisionReason)
                 }
