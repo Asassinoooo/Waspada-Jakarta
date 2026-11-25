@@ -215,6 +215,7 @@ export function SiteFooter() {
     <footer className="site-footer">
       <span>Data dari sumber publik dan laporan warga; bukan layanan darurat. Darurat: 112.</span>
       <nav className="site-footer__links" aria-label="Tautan bawah">
+        <a href="#unduh">Aplikasi Android</a>
         <a href="#bantuan">Bantuan</a>
         <a href="#privasi">Privasi</a>
       </nav>

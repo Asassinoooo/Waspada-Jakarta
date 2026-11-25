@@ -31,6 +31,12 @@ export function HelpPage({ section, showLocalPipeline = false, storage, onCleare
         <ReadGuide embedded />
         <PrivacyPage embedded storage={storage} onCleared={onCleared} />
 
+        <section className="help-page__app" aria-labelledby="help-app-title">
+          <h2 id="help-app-title">Aplikasi Android</h2>
+          <p>Waspada Jakarta juga tersedia sebagai aplikasi Android, dengan notifikasi untuk area pilihan Anda. Belum ada di Play Store; file APK diunduh dari halaman rilis proyek.</p>
+          <a className="button button--quiet" href="#unduh">Lihat cara mengunduh</a>
+        </section>
+
         <section id="pengelola" className="help-page__operator" aria-labelledby="operator-links-title">
           <p className="experience-kicker">Ruang contoh dan pengelola</p>
           <h2 id="operator-links-title">Untuk pengelola</h2>
