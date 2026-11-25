@@ -99,7 +99,7 @@ Since PERF-03/04 (F-50), the reads come from a KV snapshot. But each request sti
 - **HIST-UI-01:** show what changed between published versions of an event (the data exists in `/api/v1/updates`).
 
 ### Owner actions waiting
-- **Set `SNAPSHOT_REFRESH_KEY`** (same random value) as a Worker secret (`npx wrangler secret put SNAPSHOT_REFRESH_KEY --env production` in `apps/worker`) and a GitHub secret (`gh secret set SNAPSHOT_REFRESH_KEY`). Until both exist, the refresh route answers 404, and ingest changes reach public reads within about 5 min instead of about 60 s.
+- ~~Set `SNAPSHOT_REFRESH_KEY`~~ **Done 25 Nov 2026:** set as Worker secret (production) and GitHub secret; hosted refresh route now answers 401 to a wrong key (was 404). First ingest-triggered 202 not yet observed.
 - Android release key + 4 secrets (MOBILE-REL-01), see `apps/mobile/README.md` "Rilis APK".
 - Check Neon **Usage** (CU-hours this month). Estimate from 12 ingest runs of 7–11 min each, 48 a day: about 80 of the 100 free CU-hours a month. If it is close, reduce the ingest cadence.
 - PR #4 (AUDIT-2411 report, doc only): read; not merged yet.
