@@ -1,6 +1,6 @@
 import { authorizeModeratorAction, type ModeratorAction } from '../layers/l4-application-integration/moderator-authorization.js';
 import type { ModerationPrincipal } from '../layers/l4-application-integration/moderation-api.js';
-import { readAccountAuthentication } from '../accounts/api.js';
+import { accountCookieCredential, readAccountAuthentication } from '../accounts/api.js';
 import type { AccountWorkerEnvironment } from '../accounts/types.js';
 import {
   resolveAccountRuntime,
@@ -22,14 +22,16 @@ export function moderationAccountConfig(
 
 /**
  * Reads the browser session for a moderation surface. Only a web cookie session counts, so
- * bearer tokens never authorize moderation writes. Throws on database failure, which callers
- * must map to 503 rather than to an anonymous response.
+ * bearer tokens never authorize moderation writes. A request without a session cookie returns null
+ * before the account store is touched, so it never opens a database connection (FIX-MOD-SESSION).
+ * Throws on database failure, which callers must map to 503 rather than to an anonymous response.
  */
 export async function readModeratorPrincipal(
   request: Request,
   config: AccountRuntimeConfig,
   dependencies: ModeratorSessionDependencies = {},
 ): Promise<ModerationPrincipal | null> {
+  if (accountCookieCredential(request, config.cookieMode) === null) return null;
   const auth = await withAccountStore(config, dependencies, (store) =>
     readAccountAuthentication(request, store, Date.now, config.cookieMode));
   if (!auth || auth.source !== 'cookie' || auth.session.channel !== 'web') return null;

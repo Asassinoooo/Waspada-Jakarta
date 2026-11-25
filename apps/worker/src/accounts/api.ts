@@ -171,6 +171,18 @@ export function accountCookieNames(mode: AccountCookieMode): { readonly session:
 }
 
 /**
+ * The browser session cookie token a moderation surface may use, or null when there is none. It needs no
+ * store, so callers can refuse anonymous requests before a database connection opens. It follows the
+ * precedence of readAccountAuthentication: any Authorization header wins there and is never accepted for
+ * moderation, so it returns null here too.
+ */
+export function accountCookieCredential(request: Request, cookieMode: AccountCookieMode): string | null {
+  if (request.headers.get('authorization') !== null) return null;
+  const cookieToken = readCookie(request, accountCookieNames(cookieMode).session);
+  return cookieToken && isOpaqueToken(cookieToken) ? cookieToken : null;
+}
+
+/**
  * Resolves the current session from the browser cookie, or from an existing bearer for
  * sessions minted before native login was removed. Returns null for anything not active.
  */
