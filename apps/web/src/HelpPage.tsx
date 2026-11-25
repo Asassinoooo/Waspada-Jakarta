@@ -1,5 +1,5 @@
 import { PrivacyPage } from "./PrivacyPage.js";
-import { openOnboardingIntro } from "./OnboardingIntro.js";
+import { openOnboardingIntro } from "./intro-trigger.js";
 import { ReadGuide } from "./ReadGuide.js";
 import type { PreferencesStorage } from "./preferences-store.js";
 import { PageHeader } from "./ui/PageHeader.js";

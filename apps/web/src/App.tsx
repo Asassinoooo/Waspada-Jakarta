@@ -15,7 +15,8 @@ import { hasProtectedShellAccess } from "./account-access.js";
 import type { AccountReturnTarget } from "./account-client.js";
 import { getAccountSession } from "./account-session.js";
 import { SiteFooter, SiteHeader } from "./AppShell.js";
-import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
+import { introAutoOpenFor } from "./intro-trigger.js";
+import { OnboardingIntroGate } from "./OnboardingIntroGate.js";
 // PERF-09: these routes are not on the first screen, so their code loads when the route opens (or when a link to it is
 // pointed at or focused, see prefetchRouteOnIntent in AppShell).
 import {
@@ -561,7 +562,7 @@ export function App() {
       )}
       {/* The map home carries its own floating footer, so the map runs to the bottom edge. */}
       {route.screen !== "discover" && <SiteFooter />}
-      <OnboardingIntro autoOpen={introAutoOpenFor(route.screen)} />
+      <OnboardingIntroGate autoOpen={introAutoOpenFor(route.screen)} />
     </div>
   );
 }

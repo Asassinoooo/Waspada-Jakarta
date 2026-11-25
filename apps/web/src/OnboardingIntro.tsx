@@ -1,54 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog } from "./ui/Dialog.js";
 
-export const INTRO_STORAGE_KEY = "waspada-jakarta:intro:v1";
-export const INTRO_OPEN_EVENT = "waspada:open-intro";
+import { INTRO_OPEN_EVENT, isIntroDone, markIntroDone } from "./intro-trigger.js";
+
+export {
+  INTRO_OPEN_EVENT,
+  INTRO_STORAGE_KEY,
+  introAutoOpenFor,
+  isIntroDone,
+  markIntroDone,
+  openOnboardingIntro,
+  resetIntroSessionForTests,
+  type IntroStorage,
+} from "./intro-trigger.js";
+
 const INTRO_TITLE_ID = "onboarding-intro-title";
-
-export interface IntroStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-// If browser storage cannot be read or written, the intro still shows once per page session.
-let dismissedThisSession = false;
-
-function defaultStorage(): IntroStorage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-export function isIntroDone(storage: IntroStorage | null = defaultStorage()): boolean {
-  if (dismissedThisSession) return true;
-  try {
-    return storage?.getItem(INTRO_STORAGE_KEY) === "done";
-  } catch {
-    return false;
-  }
-}
-
-export function markIntroDone(storage: IntroStorage | null = defaultStorage()): void {
-  dismissedThisSession = true;
-  try {
-    storage?.setItem(INTRO_STORAGE_KEY, "done");
-  } catch {
-    // Storage blocked: the module flag above still keeps the intro closed for this page session.
-  }
-}
-
-/** Test hook: clears the per-session flag so each test starts from a fresh page session. */
-export function resetIntroSessionForTests(): void {
-  dismissedThisSession = false;
-}
-
-/** Opens the intro from anywhere in the app (help page, account menu). */
-export function openOnboardingIntro(): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(INTRO_OPEN_EVENT));
-}
 
 export interface IntroStep {
   title: string;
@@ -116,23 +82,20 @@ export function OnboardingIntroPanel({ step, onSkip, onAdvance }: OnboardingIntr
   );
 }
 
-/** The intro opens automatically on the public map only. Admin, review, login, account and source screens never open it. */
-export function introAutoOpenFor(screen: string): boolean {
-  return screen === "discover";
-}
-
 export interface OnboardingIntroProps {
   /** True on the public map route only. The intro never opens automatically on admin, review or login screens. */
   autoOpen?: boolean;
+  /** PERF-09c: open at once, for a "Lihat pengenalan" request that arrived while this chunk was loading. */
+  openOnMount?: boolean;
 }
 
-export function OnboardingIntro({ autoOpen = false }: OnboardingIntroProps) {
-  const [open, setOpen] = useState(false);
+export function OnboardingIntro({ autoOpen = false, openOnMount = false }: OnboardingIntroProps) {
+  const [open, setOpen] = useState(openOnMount);
   const [step, setStep] = useState(0);
   const autoShown = useRef(false);
 
   useEffect(() => {
-    if (!autoOpen || autoShown.current) return;
+    if (!autoOpen || autoShown.current || openOnMount) return;
     autoShown.current = true;
     if (!isIntroDone()) {
       setStep(0);
