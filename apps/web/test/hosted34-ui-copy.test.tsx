@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { EventDetail as EventDetailRecord, PublicContext } from "@waspada/worker/public-contracts";
 import { presentationFallsThrough, type Route } from "../src/App.js";
 import { EventDetail } from "../src/EventDetail.js";
-import { MapPanel } from "../src/MapPanel.js";
+import { MapPanel } from "../src/GeoMapPanel.js";
 import { documentTitleFor, freshnessBasisLabel } from "../src/display.js";
 import { EMPTY_LIST_TITLE, EMPTY_SEARCH_TITLE, MapEventList } from "../src/MapEventList.js";
 import {
