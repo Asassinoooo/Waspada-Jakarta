@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "build": 2,
+  "released_at": "2026-11-25T06:31:21Z",
+  "tag": "mobile-v0.2.0",
+  "release_url": "https://github.com/Asassinoooo/Waspada-Jakarta/releases/tag/mobile-v0.2.0",
+  "files": [
+    {
+      "abi": "arm64-v8a",
+      "name": "waspada-jakarta-0.2.0-arm64-v8a.apk",
+      "size_bytes": 21464566,
+      "sha256": "d90fa68296f44093db7a492edcbba4b3498878f6665450b774895fcc22f00d68",
+      "url": "https://github.com/Asassinoooo/Waspada-Jakarta/releases/download/mobile-v0.2.0/waspada-jakarta-0.2.0-arm64-v8a.apk"
+    },
+    {
+      "abi": "armeabi-v7a",
+      "name": "waspada-jakarta-0.2.0-armeabi-v7a.apk",
+      "size_bytes": 19053506,
+      "sha256": "11650712724daa2b462f50b223baf5ed1eeebabc68c6b2fa371ec31e1560d853",
+      "url": "https://github.com/Asassinoooo/Waspada-Jakarta/releases/download/mobile-v0.2.0/waspada-jakarta-0.2.0-armeabi-v7a.apk"
+    },
+    {
+      "abi": "x86_64",
+      "name": "waspada-jakarta-0.2.0-x86_64.apk",
+      "size_bytes": 23341554,
+      "sha256": "bc4681971e30d7af7ec3101516849e88b37103c78cc55b913a992ed59d85c9ee",
+      "url": "https://github.com/Asassinoooo/Waspada-Jakarta/releases/download/mobile-v0.2.0/waspada-jakarta-0.2.0-x86_64.apk"
+    }
+  ]
+}
