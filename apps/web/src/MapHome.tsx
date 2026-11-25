@@ -426,6 +426,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
             </span>
             <span className="map-home__footer-text map-home__footer-text--short">Bukan layanan darurat. Darurat: 112.</span>
             <nav className="map-home__footer-links" aria-label="Tautan bawah">
+              <a href="#unduh">Aplikasi Android</a>
               <a href="#bantuan">Bantuan</a>
               <a href="#privasi">Privasi</a>
             </nav>

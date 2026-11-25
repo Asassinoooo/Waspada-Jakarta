@@ -7,12 +7,15 @@ const loadUpdatesCenter = () => import("./UpdatesCenter.js");
 const loadHelpPage = () => import("./HelpPage.js");
 const loadAccountPages = () => import("./AccountPages.js");
 const loadAccountGate = () => import("./account-gate.js");
+const loadDownloadPage = () => import("./DownloadPage.js");
 
 export const LazyPreferences = lazy(() => loadPreferences().then((module) => ({ default: module.Preferences })));
 export const LazyUpdatesCenter = lazy(() => loadUpdatesCenter().then((module) => ({ default: module.UpdatesCenter })));
 export const LazyHelpPage = lazy(() => loadHelpPage().then((module) => ({ default: module.HelpPage })));
 export const LazyAccountPage = lazy(() => loadAccountPages().then((module) => ({ default: module.AccountPage })));
 export const LazyPasswordResetPage = lazy(() => loadAccountPages().then((module) => ({ default: module.PasswordResetPage })));
+/** MOBILE-REL-01: `#unduh`. Not warmed: few visitors open it. */
+export const LazyDownloadPage = lazy(() => loadDownloadPage().then((module) => ({ default: module.DownloadPage })));
 /** The gate for protected routes (admin workspace). Not warmed: only signed-in staff reach it. */
 export const LazyAccountAccessGate = lazy(() => loadAccountGate().then((module) => ({ default: module.AccountAccessGate })));
 

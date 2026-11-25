@@ -78,3 +78,15 @@
     padding: var(--space-4) 0;
   }
 }
+
+/* MOBILE-REL-01: pointer to #unduh */
+.help-page__app {
+  width: min(100%, 76rem);
+  margin: var(--space-8) auto 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  background: var(--color-surface);
+}
+
+.help-page__app h2 { margin-top: 0; }

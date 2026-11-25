@@ -19,6 +19,7 @@ import {
   LazyAccountAccessGate,
   LazyAccountPage,
   LazyHelpPage,
+  LazyDownloadPage,
   LazyPasswordResetPage,
   LazyPreferences,
   LazyUpdatesCenter,
@@ -33,6 +34,7 @@ const AdminWorkspace = lazy(() => import("./admin-entry.js"));
 export type Route =
   | { screen: "discover"; eventId?: string }
   | { screen: "help"; section?: "panduan" | "privasi" }
+  | { screen: "download" }
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "login"; returnTo?: AccountReturnTarget }
@@ -172,6 +174,7 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#mulai") return { screen: "onboarding" };
   if (hash === "#akun") return { screen: "account" };
   if (hash === "#bantuan") return { screen: "help" };
+  if (hash === "#unduh") return { screen: "download" };
   if (hash === "#panduan") return { screen: "help", section: "panduan" };
   if (hash === "#privasi") return { screen: "help", section: "privasi" };
   if (hash === "#pipeline-lokal" && import.meta.env?.DEV === true) return { screen: "local-pipeline" };
@@ -545,6 +548,11 @@ export function App() {
             showLocalPipeline={import.meta.env?.DEV === true && context?.dataset_mode === "demo"}
             onCleared={() => setLocalDataRevision((revision) => revision + 1)}
           />
+        </Suspense>
+      )}
+      {route.screen === "download" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyDownloadPage />
         </Suspense>
       )}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (

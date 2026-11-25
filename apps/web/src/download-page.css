@@ -1,0 +1,156 @@
+/* MOBILE-REL-01: #unduh, the Android APK download page. Loaded with its lazy route chunk. */
+.download-page { padding-top: var(--space-8); padding-bottom: var(--space-12); }
+
+.download-card {
+  display: grid;
+  gap: var(--space-5);
+  margin-top: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: clamp(var(--space-5), 4vw, var(--space-8));
+  background:
+    linear-gradient(135deg, var(--color-accent-soft), transparent 55%),
+    var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.download-card__kicker {
+  margin: 0;
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.download-card__title {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-3xl);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+
+.download-card__date { margin: var(--space-1) 0 0; color: var(--color-text-muted); }
+
+.download-file { display: grid; gap: var(--space-2); min-width: 0; }
+
+.download-file__button {
+  justify-self: start;
+  min-height: 3rem;
+  padding-inline: var(--space-6);
+  font-size: var(--text-md);
+}
+
+.download-file__hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+
+.download-file__sha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.download-file__sha-label { color: var(--color-text-subtle); font-weight: var(--weight-semibold); }
+
+.download-file__sha code {
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.download-card__others {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.download-card__others > summary { min-height: 2.75rem; display: flex; align-items: center; }
+
+.download-file-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.download-file-list a { font-weight: var(--weight-semibold); }
+
+.download-card__source { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+
+.download-section { margin-top: var(--space-10); }
+
+.download-section h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); }
+
+.download-steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: download-step;
+}
+
+.download-steps li {
+  position: relative;
+  padding-left: 2.75rem;
+  counter-increment: download-step;
+  line-height: var(--leading-normal);
+}
+
+.download-steps li::before {
+  content: counter(download-step);
+  position: absolute;
+  top: -0.1rem;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-round);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: var(--weight-bold);
+}
+
+.download-note {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.download-scope {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-4);
+}
+
+.download-scope > div {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  background: var(--color-surface);
+}
+
+.download-scope h3 { margin: 0 0 var(--space-2); font-size: var(--text-md); }
+
+.download-scope ul { margin: 0; padding-left: 1.1rem; display: grid; gap: var(--space-2); }
+
+.download-emergency {
+  margin-top: var(--space-8);
+  border: 1px solid var(--color-danger-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+}
+
+.download-emergency a { color: inherit; font-weight: var(--weight-bold); }
+
+@media (max-width: 480px) {
+  .download-file__button { justify-self: stretch; justify-content: center; }
+  .download-card__title { font-size: var(--text-2xl); }
+}
