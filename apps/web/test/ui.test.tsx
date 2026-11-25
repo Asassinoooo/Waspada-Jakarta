@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { prerenderToNodeStream } from "react-dom/static";
 import type { BriefingResponse, EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
 import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, routeFromHash } from "../src/App.js";
@@ -11,6 +12,14 @@ import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from 
 import { ModeratorReview } from "../src/ModeratorReview.js";
 import type { GeoJSONMapState, MapSelection } from "../src/MapPanel.js";
 import { emptyInterests } from "../src/preferences-store.js";
+
+/** PERF-09b: the demo presentation loads on demand, so its markup is read once every Suspense boundary has resolved. */
+async function renderWhenReady(element: Parameters<typeof renderToStaticMarkup>[0]): Promise<string> {
+  const { prelude } = await prerenderToNodeStream(element);
+  let html = "";
+  for await (const chunk of prelude) html += String(chunk);
+  return html;
+}
 
 const demoContext: PublicContext = {
   dataset_mode: "demo",
@@ -421,8 +430,8 @@ test("late briefing responses are rejected after the interest or request snapsho
   assert.equal(isCurrentBriefingRequest(original, null), false);
 });
 
-test("presentation detail is visible only after the API confirms demo mode", () => {
-  const demoDetail = renderToStaticMarkup(<PresentationRoute context={demoContext} />);
+test("presentation detail is visible only after the API confirms demo mode", async () => {
+  const demoDetail = await renderWhenReady(<PresentationRoute context={demoContext} />);
   const liveDetail = renderToStaticMarkup(<PresentationRoute context={{ ...demoContext, dataset_mode: "live", dataset_label: "live" }} />);
   const unknownDetail = renderToStaticMarkup(<PresentationRoute context={null} />);
 
@@ -539,8 +548,8 @@ test("filtered-empty state stays neutral and clear-all resets filters, search, a
   assert.deepEqual(afterClear.mapSelection, { kind: "none" });
 });
 
-test("documented detail keeps evidence times distinct and does not invent history", () => {
-  const markup = renderToStaticMarkup(<EventDetail mode="presentation" context={demoContext} />);
+test("documented detail keeps evidence times distinct and does not invent history", async () => {
+  const markup = await renderWhenReady(<EventDetail mode="presentation" context={demoContext} />);
 
   assert.match(markup, /Contoh detail terpisah dari API/);
   assert.match(markup, /Bus 12 diversion \(synthetic demo\)/);

@@ -4,6 +4,7 @@ import test from "node:test";
 import { createElement, Suspense, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { prerenderToNodeStream } from "react-dom/static";
+import * as lazyRoutes from "../src/lazy-routes.js";
 import {
   LazyAccountAccessGate,
   LazyAccountPage,
@@ -11,12 +12,20 @@ import {
   LazyPasswordResetPage,
   LazyPreferences,
   LazyUpdatesCenter,
+  prefetchRouteChunk,
+  prefetchRouteOnIntent,
   RouteFallback,
-  scheduleRouteChunkWarmup,
+  routeChunkForHref,
+  type RouteChunk,
 } from "../src/lazy-routes.js";
+import { EventDetail } from "../src/EventDetail.js";
 import type { PreferencesStorage } from "../src/preferences-store.js";
+import type { PublicContext } from "@waspada/worker/public-contracts";
 
-/** PERF-09: public routes that are not on the first screen load on demand, and the map home stays in the first chunk. */
+/**
+ * PERF-09 / PERF-09b: public routes that are not on the first screen load on demand, and the map home stays in the first
+ * chunk. PERF-09b replaces the idle warm-up with a prefetch on link intent (pointer over, focus, touch start).
+ */
 
 class MemoryStorage implements PreferencesStorage {
   readonly values = new Map<string, string>();
@@ -125,10 +134,77 @@ test("the admin access gate loads lazily and shows its own loading status", asyn
   assert.match(ready, /role="status"/);
 });
 
-test("route chunk warm-up is a cancellable no-op without a browser window", () => {
-  const cancel = scheduleRouteChunkWarmup();
-  assert.equal(typeof cancel, "function");
-  assert.doesNotThrow(() => cancel());
+test("no route chunk is fetched at idle: the warm-up is gone and the app does not call it", () => {
+  assert.equal("scheduleRouteChunkWarmup" in lazyRoutes, false);
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /scheduleRouteChunkWarmup|requestIdleCallback/);
+});
+
+test("a hash link maps to the one route chunk it opens; the map and other links map to none", () => {
+  const expected: Array<[string, RouteChunk]> = [
+    ["#ringkasan-saya", "preferences"],
+    ["#pembaruan", "updates"],
+    ["#bantuan", "help"],
+    ["#privasi", "help"],
+    ["#panduan", "help"],
+    ["#akun", "account"],
+    ["#masuk", "account"],
+    ["#masuk?return_to=%23akun", "account"],
+    ["#lupa-sandi", "account"],
+    ["#mulai", "account"],
+    ["#unduh", "download"],
+    ["#admin/tinjau", "admin"],
+  ];
+  for (const [href, chunk] of expected) assert.equal(routeChunkForHref(href), chunk, href);
+  for (const href of ["#peta", "#detail/api/evt-1", "#detail/presentation", "https://example.com/#akun", ""]) {
+    assert.equal(routeChunkForHref(href), null, href);
+  }
+});
+
+test("prefetch on intent loads the link's chunk once, and a failed load is harmless", async () => {
+  const loaded: RouteChunk[] = [];
+  const load = (chunk: RouteChunk) => {
+    loaded.push(chunk);
+    return Promise.resolve({});
+  };
+  prefetchRouteChunk("#pembaruan", load);
+  prefetchRouteChunk("#peta", load);
+  assert.deepEqual(loaded, ["updates"]);
+
+  // A rejected load and a synchronous throw are both swallowed. An unhandled rejection would fail this test run.
+  assert.doesNotThrow(() => prefetchRouteChunk("#bantuan", () => Promise.reject(new Error("offline"))));
+  assert.doesNotThrow(() => prefetchRouteChunk("#bantuan", () => {
+    throw new Error("synchronous failure");
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+
+test("the header and footer intent handler prefetches the link under the pointer or focus only", () => {
+  const loaded: RouteChunk[] = [];
+  const load = (chunk: RouteChunk) => {
+    loaded.push(chunk);
+    return Promise.resolve({});
+  };
+  const onLink = (href: string) => ({ target: { closest: () => ({ getAttribute: () => href }) } as unknown as EventTarget });
+  prefetchRouteOnIntent(onLink("#ringkasan-saya"), load);
+  prefetchRouteOnIntent({ target: { closest: () => null } as unknown as EventTarget }, load);
+  prefetchRouteOnIntent({ target: null }, load);
+  assert.deepEqual(loaded, ["preferences"]);
+
+  const shell = readFileSync(new URL("../src/AppShell.tsx", import.meta.url), "utf8");
+  assert.match(shell, /<header className="site-header" onPointerOver=\{prefetchRouteOnIntent\} onFocus=\{prefetchRouteOnIntent\} onTouchStart=\{prefetchRouteOnIntent\}>/);
+  assert.match(shell, /<footer className="site-footer" onPointerOver=\{prefetchRouteOnIntent\} onFocus=\{prefetchRouteOnIntent\} onTouchStart=\{prefetchRouteOnIntent\}>/);
+});
+
+test("the demo presentation detail shows a status while its module loads, then the fixture", async () => {
+  const demoContext: PublicContext = { dataset_mode: "demo", dataset_label: "synthetic", generated_at: "2026-09-24T10:00:00.000Z", sources: [] };
+  const pending = renderToStaticMarkup(createElement(EventDetail, { mode: "presentation", context: demoContext }));
+  assert.match(pending, /role="status"/);
+  assert.doesNotMatch(pending, /Contoh detail terpisah dari API/);
+
+  const ready = await renderWhenReady(createElement(EventDetail, { mode: "presentation", context: demoContext }));
+  assert.match(ready, /Contoh detail terpisah dari API/);
+  assert.doesNotMatch(ready, /Memuat contoh detail/);
 });
 
 /**
@@ -169,6 +245,10 @@ test("the first-screen import graph does not reach the lazily loaded route modul
   const names = [...visited].map((file) => file.slice(srcUrl.pathname.length));
   const lazyRouteModules = [
     "Preferences.tsx",
+    "PresentationDetail.tsx",
+    "GeoMapPanel.tsx",
+    "account-client.ts",
+    "EventFeed.tsx",
     "UpdatesCenter.tsx",
     "HelpPage.tsx",
     "PrivacyPage.tsx",

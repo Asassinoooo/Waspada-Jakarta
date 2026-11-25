@@ -1,22 +1,15 @@
 import type { Category, EventView, FreshnessStatus, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
-import { MapPanel, type GeoJSONMapState, type MapSelection } from "./MapPanel.js";
+import { MapPanel } from "./GeoMapPanel.js";
+import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
+import { DEFAULT_FEED_FILTERS, type FeedFilters } from "./feed-filters.js";
 
 export type FeedStatus = "loading" | "loaded" | "unavailable";
 export type MobileDiscoveryPanel = "list" | "map";
 
-export interface FeedFilters {
-  category: Category | "all";
-  lifecycle: Lifecycle | "all";
-  freshness: FreshnessStatus | "all";
-}
-
-export const DEFAULT_FEED_FILTERS: FeedFilters = {
-  category: "all",
-  lifecycle: "all",
-  freshness: "all",
-};
+export { DEFAULT_FEED_FILTERS } from "./feed-filters.js";
+export type { FeedFilters } from "./feed-filters.js";
 
 const categories: readonly Category[] = [
   "crime_personal_security",

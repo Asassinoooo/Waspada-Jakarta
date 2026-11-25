@@ -3,7 +3,8 @@ import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessSt
 import { apiReadFailure, getEventDetail, getEventHistory, getPublicContext, listAllEvents, type ApiReadState } from "./api-client.js";
 import { documentTitleFor } from "./display.js";
 import { EventDetail } from "./EventDetail.js";
-import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
+import type { FeedStatus, MobileDiscoveryPanel } from "./EventFeed.js";
+import { DEFAULT_FEED_FILTERS, type FeedFilters } from "./feed-filters.js";
 import { MapHome } from "./MapHome.js";
 import { parseEventIdFromHash } from "./map-links.js";
 import { adminGateShell, adminWorkspaceTabFromHash, type AdminTab } from "./admin-workspace-model.js";
@@ -11,10 +12,12 @@ import { useInterestNotifications } from "./useInterestNotifications.js";
 import type { MapSelection } from "./MapPanel.js";
 import type { AccountSessionState } from "./AccountPages.js";
 import { hasProtectedShellAccess } from "./account-access.js";
-import { accountClient, type AccountReturnTarget } from "./account-client.js";
+import type { AccountReturnTarget } from "./account-client.js";
+import { getAccountSession } from "./account-session.js";
 import { SiteFooter, SiteHeader } from "./AppShell.js";
 import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
-// PERF-09: these routes are not on the first screen, so their code loads when the route opens (or idle, see below).
+// PERF-09: these routes are not on the first screen, so their code loads when the route opens (or when a link to it is
+// pointed at or focused, see prefetchRouteOnIntent in AppShell).
 import {
   LazyAccountAccessGate,
   LazyAccountPage,
@@ -24,7 +27,6 @@ import {
   LazyPreferences,
   LazyUpdatesCenter,
   RouteFallback,
-  scheduleRouteChunkWarmup,
 } from "./lazy-routes.js";
 
 // UI-V2-C: the administrator workspace (tabs for overview, review, flow, 3D view, accounts and source demo).
@@ -271,7 +273,7 @@ export function App() {
     if (sessionScope === null) return;
     const controller = new AbortController();
     let cancelled = false;
-    accountClient.getSession(controller.signal)
+    getAccountSession(controller.signal)
       .then((session) => {
         if (cancelled) return;
         setSessionResult({
@@ -351,9 +353,6 @@ export function App() {
     else url.searchParams.delete("panel");
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }, [discovery.query, discovery.filters.category, discovery.filters.lifecycle, discovery.filters.freshness, mobilePanel]);
-
-  // PERF-09: once the first screen is up, fetch the lazy public routes in the background (idle, or after 2 s).
-  useEffect(() => scheduleRouteChunkWarmup(), []);
 
   // Real-time Public Events SSE Stream (Zero-polling live updates)
   useEffect(() => {

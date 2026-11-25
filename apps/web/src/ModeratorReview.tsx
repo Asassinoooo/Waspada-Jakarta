@@ -12,7 +12,7 @@ import {
   triageReasonLabel,
 } from "./moderation-labels.js";
 import { documentedPresentationFixture as fixture } from "./presentation-fixture.js";
-import { MapPanel } from "./MapPanel.js";
+import { MapPanel } from "./GeoMapPanel.js";
 import { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";
 import { moderatorAccessMessage, SIGN_IN_HREF } from "./account-messages.js";
 export { InteractiveIncidentMap } from "./InteractiveIncidentMap.js";

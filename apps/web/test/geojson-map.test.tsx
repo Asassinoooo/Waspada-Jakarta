@@ -11,7 +11,8 @@ import type {
 import { SiteHeader } from "../src/AppShell.js";
 import { ApiPayloadError, getEventGeoJSON, parsePublicGeoJSON } from "../src/api-client.js";
 import { DEFAULT_FEED_FILTERS, EventFeed } from "../src/EventFeed.js";
-import { JAKARTA_MAP_VIEW, MapPanel, projectCRS84Position, type GeoJSONMapState } from "../src/MapPanel.js";
+import { JAKARTA_MAP_VIEW, projectCRS84Position, type GeoJSONMapState } from "../src/MapPanel.js";
+import { MapPanel } from "../src/GeoMapPanel.js";
 import { coordinateToWorldPixels, createOsmTileUrl } from "../src/SourcePointMap.js";
 
 const liveContext: PublicContext = {
