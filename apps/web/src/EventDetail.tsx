@@ -2,6 +2,7 @@ import type { EventDetail as EventDetailRecord, HistoryPage, PublicContext } fro
 import type { ApiReadState } from "./api-client.js";
 import { categoryLabel, evidenceLabel, eventTimeText, formatInstant, freshnessBasisLabel, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
+import { HistoryChanges } from "./history-changes.js";
 import { MapPanel, RecordMapPanel } from "./MapPanel.js";
 import { SeverityChip } from "./MapSeverity.js";
 import {
@@ -193,6 +194,7 @@ function ApiHistory({
               <span className="claim-card__label">{historyChangeLabel(entry)} · versi {entry.version}{wording(demo, " · fixture demo", "")}</span>
               <p>{entry.summary}</p>
               <p>{wording(demo, "Waktu pada fixture: ", "Waktu: ")}<time dateTime={entry.changed_at}>{formatInstant(entry.changed_at)}</time></p>
+              <HistoryChanges changes={entry.changes} />
             </li>
           ))}
         </ol>
