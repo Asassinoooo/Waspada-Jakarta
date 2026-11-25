@@ -65,7 +65,7 @@ These are summarised here, with the source in brackets.
 | ID | Branch | Goal | Owner/agent | Started |
 | --- | --- | --- | --- | --- |
 | HIST-UI-01 (UI) | not started | "Lihat perubahan" disclosure in web `EventDetail` history + Flutter detail | main model | |
-| MOBILE-REL-01 (page + key) | not started | `#unduh` page (reads `apps/web/public/mobile-release.json`). **Blocked on owner:** create the release keystore and the 4 secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (see `apps/mobile/README.md` "Rilis APK"); do not tag `mobile-v0.2.0` before FIX-MOB-GEOJSON | main model | |
+| MOBILE-REL-01 (page + key) | key done, release not run | `#unduh` page (reads `apps/web/public/mobile-release.json`) not started. **25 Nov 2026:** release keystore created (PKCS12, RSA 4096, alias `waspada-release`, cert SHA-256 `30:A5:06:18:…:A9:90:23`), kept outside the repo in the owner's home folder (owner to back up offline); the 4 GitHub secrets are set. FIX-MOB-GEOJSON is in main, so tag `mobile-v0.2.0` is unblocked; not pushed yet (owner pushes the tag) | main model | |
 | FIX-MOD-UI | not started | `ModeratorReview.tsx` never sends `category_resolution`, so a proposal with a triage/interpreter category mismatch always gets 409 and cannot be published from the UI (pre-existing; `moderation-api.ts` mismatch check). Add the choice to the review screen | main model (UI) | |
 | FIX-MOD-SESSION | not started | `readModeratorPrincipal` (via `withAccountStore`) still opens a DB connection on moderation/SSE requests without a cookie; add a cookie-presence check first | | |
 | GUI-03 | not started | GUI audit then fixes: map/detail, home/nav/onboarding, Android, admin/moderator | main model | |
