@@ -5,7 +5,7 @@ import type { Route } from "./App.js";
 import { getAccountSession } from "./account-session.js";
 import { prefetchRouteOnIntent } from "./lazy-routes.js";
 import { hasProtectedShellAccess } from "./account-access.js";
-import { openOnboardingIntro } from "./OnboardingIntro.js";
+import { openOnboardingIntro } from "./intro-trigger.js";
 import { THEME_LABEL, ThemeToggle, nextThemePreference, setThemePreference, useThemePreference } from "./ThemeToggle.js";
 import { Menu, type MenuItem } from "./ui/Menu.js";
 import { Popover } from "./ui/Popover.js";
