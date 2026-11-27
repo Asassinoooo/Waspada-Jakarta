@@ -325,7 +325,7 @@ time,
 }
 
 .page-header .page-header__lead {
-  max-width: 46rem;
+  max-width: 100%;
   font-size: var(--text-lg);
   line-height: 1.55;
 }

@@ -292,8 +292,8 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
               })}
             </section>
 
-            <fieldset className="preference-card preference-categories">
-              <legend>Kategori yang diikuti</legend>
+            <section className="preference-card preference-categories" role="group" aria-labelledby="preference-categories-title">
+              <h2 id="preference-categories-title">Kategori yang diikuti</h2>
               <p className="preference-card__help">
                 Pilih sampai {MAX_CATEGORIES} kategori yang tersedia dalam kontrak briefing.
               </p>
@@ -312,7 +312,7 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
                 ))}
               </div>
               <p className="preference-limit">{state.interests.categories.length}/{MAX_CATEGORIES} kategori dipilih</p>
-            </fieldset>
+            </section>
 
             <div className="preferences-actions">
               <button className="button button--primary" type="button" onClick={save}>Simpan di perangkat ini</button>
