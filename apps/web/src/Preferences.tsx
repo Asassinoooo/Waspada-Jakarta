@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel } from "./display.js";
-import { BriefingResults } from "./BriefingResults.js";
 import { NotificationSettings } from "./NotificationSettings.js";
 import { PageHeader } from "./ui/PageHeader.js";
 import {
@@ -76,7 +75,7 @@ function feedbackAfterEdit(text: string): Feedback {
   return { kind: "status", text };
 }
 
-export function Preferences({ storage, context = null, contextSnapshotId }: PreferencesProps) {
+export function Preferences({ storage, context = null }: PreferencesProps) {
   const [activeStorage] = useState<PreferencesStorage | null>(() =>
     storage === undefined ? browserPreferencesStorage() : storage,
   );
@@ -192,25 +191,12 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
           lead="Periksa dan ubah minat yang ingin Anda simpan untuk browser ini."
         />
 
-        <section className="preferences-privacy" aria-label="Penyimpanan minat">
-          <strong>Minat tetap di browser ini.</strong>
-          <p>
-            Minat dikirim ke layanan hanya saat Anda meminta briefing dan tidak disimpan oleh layanan. Menghapus data browser juga menghapus minat tersimpan di sini.
-          </p>
-        </section>
-
         <NotificationSettings
           storage={activeStorage}
           live={context?.dataset_mode === "live"}
           hasInterests={state.loadStatus !== "malformed" && (state.interests.categories.length > 0
             || state.interests.places.length > 0 || state.interests.services.length > 0
             || state.interests.institutions.length > 0 || state.interests.audiences.length > 0)}
-        />
-
-        <BriefingResults
-          context={context}
-          interests={state.interests}
-          contextSnapshotId={contextSnapshotId}
         />
 
         {state.feedback && (
@@ -292,8 +278,8 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
               })}
             </section>
 
-            <fieldset className="preference-card preference-categories">
-              <legend>Kategori yang diikuti</legend>
+            <section className="preference-card preference-categories" role="group" aria-labelledby="preference-categories-title">
+              <h2 id="preference-categories-title">Kategori yang diikuti</h2>
               <p className="preference-card__help">
                 Pilih sampai {MAX_CATEGORIES} kategori yang tersedia dalam kontrak briefing.
               </p>
@@ -312,7 +298,7 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
                 ))}
               </div>
               <p className="preference-limit">{state.interests.categories.length}/{MAX_CATEGORIES} kategori dipilih</p>
-            </fieldset>
+            </section>
 
             <div className="preferences-actions">
               <button className="button button--primary" type="button" onClick={save}>Simpan di perangkat ini</button>

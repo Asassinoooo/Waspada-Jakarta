@@ -35,7 +35,8 @@
 }
 
 .experience-page--embedded {
-  width: min(100%, 76rem);
+  width: 100%;
+  max-width: 100%;
   min-height: 0;
   margin: 0 auto;
   padding: var(--space-6) 0;

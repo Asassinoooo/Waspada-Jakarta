@@ -44,6 +44,9 @@ export interface MapEventListProps {
   onSelect: (eventId: string) => void;
   onReset: () => void;
   onRetry: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  onClose?: () => void;
 }
 
 /** Compact cards and every list state: loading skeleton, inline error with retry, and the exact empty message. */
@@ -62,9 +65,44 @@ export function MapEventList({
   onSelect,
   onReset,
   onRetry,
+  searchQuery,
+  onSearchChange,
+  onClose,
 }: MapEventListProps) {
   return (
     <div className="map-list">
+      <div className="map-list__top-bar">
+        <div className="map-list__search-wrapper">
+          <svg className="map-list__search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            id="map-search"
+            type="search"
+            className="input map-list__search-input"
+            value={searchQuery ?? ""}
+            onChange={(event) => onSearchChange?.(event.target.value)}
+            placeholder="Cari judul atau lokasi..."
+            aria-label="Cari laporan"
+            autoComplete="off"
+          />
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            className="button button--quiet map-list__collapse-btn"
+            onClick={onClose}
+            title="Sembunyikan daftar"
+            aria-label="Sembunyikan daftar laporan"
+          >
+            <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       <div className="map-list__head">
         <div>
           <p className="section-kicker">Laporan terbit</p>

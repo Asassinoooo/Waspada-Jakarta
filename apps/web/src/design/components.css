@@ -813,7 +813,7 @@ button.admin-queue-card:hover {
  * .page-column sets the reading width. Its side gutter comes from .main-shell and .experience-page (16px on phones). */
 .page-column {
   width: 100%;
-  max-width: 45rem;
+  max-width: 100%;
   margin-right: auto;
   margin-left: auto;
   min-width: 0;

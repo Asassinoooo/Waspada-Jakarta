@@ -154,6 +154,7 @@ export interface SiteHeaderProps {
 }
 
 export function SiteHeader({ route, context = null, sessionKey = 0, accountRevision = 0 }: SiteHeaderProps) {
+  const [brandCollapsed, setBrandCollapsed] = useState(false);
   const compact = useMediaMatch(COMPACT_HEADER_QUERY);
   const theme = useThemePreference();
   const session = useAccountSession(sessionKey, accountRevision);
@@ -177,8 +178,17 @@ export function SiteHeader({ route, context = null, sessionKey = 0, accountRevis
     <>
       <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
       {/* PERF-09b: pointing at, focusing or touching a link prefetches its route chunk (menu links included). */}
-      <header className="site-header" onPointerOver={prefetchRouteOnIntent} onFocus={prefetchRouteOnIntent} onTouchStart={prefetchRouteOnIntent}>
-        <a className="brand" href="#peta">
+      <header className={`site-header${brandCollapsed ? " site-header--collapsed" : ""}`} onPointerOver={prefetchRouteOnIntent} onFocus={prefetchRouteOnIntent} onTouchStart={prefetchRouteOnIntent}>
+        <a
+          className={`brand${brandCollapsed ? " brand--collapsed" : ""}`}
+          href="#peta"
+          onClick={(event) => {
+            event.preventDefault();
+            setBrandCollapsed((prev) => !prev);
+          }}
+          title={brandCollapsed ? "Tampilkan nama Waspada Jakarta" : "Klik untuk menciutkan logo"}
+          aria-expanded={!brandCollapsed}
+        >
           <span className="brand-mark" aria-hidden="true">WJ</span>
           <span className="brand__text">
             <strong>Waspada Jakarta</strong>

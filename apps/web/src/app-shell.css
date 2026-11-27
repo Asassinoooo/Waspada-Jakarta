@@ -23,7 +23,7 @@
   align-items: center;
   column-gap: var(--space-5);
   box-sizing: border-box;
-  width: min(calc(100% - 2 * var(--shell-gap)), 88rem);
+  width: calc(100% - 2 * var(--shell-gap));
   height: var(--shell-header-height);
   margin: var(--shell-gap) auto 0;
   padding-inline: var(--space-4) var(--space-2);
@@ -33,6 +33,43 @@
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  transition:
+    grid-template-columns var(--duration-base) var(--ease-standard),
+    column-gap var(--duration-base) var(--ease-standard),
+    padding-inline var(--duration-base) var(--ease-standard),
+    background-color 0.75s ease,
+    border-color 0.75s ease,
+    box-shadow 0.75s ease;
+}
+
+/* Collapsed: only the [WJ] brand-mark is visible; border shrinks to wrap the logo only. */
+.site-header--collapsed {
+  grid-template-columns: auto 0 0;
+  column-gap: 0;
+  width: fit-content;
+  min-width: 0;
+  margin-inline: var(--shell-gap) auto;
+  padding-inline: var(--space-2);
+}
+
+.site-header--collapsed .primary-nav,
+.site-header--collapsed .site-header__tools {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  width: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    visibility var(--duration-fast) var(--ease-standard),
+    width var(--duration-base) var(--ease-standard);
+}
+
+.primary-nav,
+.site-header__tools {
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    visibility var(--duration-fast) var(--ease-standard);
 }
 
 .brand {
@@ -43,9 +80,30 @@
   min-height: 2.75rem;
   color: var(--color-text);
   text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition: gap var(--duration-fast) var(--ease-standard);
 }
 
-.brand:hover { color: var(--color-accent); }
+.brand--collapsed {
+  gap: 0;
+}
+
+.brand--collapsed .brand__text {
+  position: absolute;
+  clip: rect(0 0 0 0);
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
+
+.brand:hover {
+  color: var(--color-accent);
+}
 
 .brand-mark {
   display: grid;
@@ -101,7 +159,9 @@
     border-color var(--duration-fast) var(--ease-standard);
 }
 
-.primary-nav a:hover { color: var(--color-text); }
+.primary-nav a:hover {
+  color: var(--color-text);
+}
 
 .primary-nav a[aria-current="page"] {
   border-bottom-color: var(--color-accent);
@@ -207,14 +267,18 @@
 }
 
 /* First-visit intro (OnboardingIntro). */
-.intro-dialog { width: min(34rem, 100%); }
+.intro-dialog {
+  width: min(34rem, 100%);
+}
 
 .intro {
   display: grid;
   gap: var(--space-3);
 }
 
-.intro__title { margin: 0; }
+.intro__title {
+  margin: 0;
+}
 
 .intro__text {
   margin: 0;
@@ -256,7 +320,9 @@
    dataset badge and Akun share one row, so gaps and padding tighten here. The nav scrolls inside itself as the last
    fallback, so a nav item is never drawn behind the dataset badge (a 1440 px screen at 200% zoom is a 720 px viewport). */
 @media (max-width: 900px) {
-  .brand__text small { display: none; }
+  .brand__text small {
+    display: none;
+  }
 
   .site-header {
     column-gap: var(--space-3);
@@ -269,12 +335,18 @@
     scrollbar-width: none;
   }
 
-  .primary-nav::-webkit-scrollbar { display: none; }
+  .primary-nav::-webkit-scrollbar {
+    display: none;
+  }
 
-  .primary-nav a { padding: 0 var(--space-2); }
+  .primary-nav a {
+    padding: 0 var(--space-2);
+  }
 
   .site-header__badge,
-  .site-header__account { padding-inline: var(--space-2); }
+  .site-header__account {
+    padding-inline: var(--space-2);
+  }
 }
 
 /* Below 768px the brand name is hidden visually only. It stays in the accessibility tree as the link's name
@@ -306,7 +378,9 @@
     padding-inline: var(--space-2) var(--space-1);
   }
 
-  .brand { gap: 0; }
+  .brand {
+    gap: 0;
+  }
 
   .primary-nav {
     gap: 0;
@@ -315,7 +389,9 @@
     scrollbar-width: none;
   }
 
-  .primary-nav::-webkit-scrollbar { display: none; }
+  .primary-nav::-webkit-scrollbar {
+    display: none;
+  }
 
   .primary-nav a {
     flex: 0 0 auto;
@@ -333,9 +409,13 @@
     box-shadow: inset 0 -2px 0 var(--color-accent);
   }
 
-  .primary-nav__icon { display: block; }
+  .primary-nav__icon {
+    display: block;
+  }
 
-  .site-header__tools { gap: var(--space-1); }
+  .site-header__tools {
+    gap: var(--space-1);
+  }
 
   /* Phone: the badge shrinks to a 44px status dot; the label stays for screen readers. */
   .site-header__badge {
@@ -353,11 +433,16 @@
     white-space: nowrap;
   }
 
-  .site-header__badge-dot { width: 0.625rem; height: 0.625rem; }
+  .site-header__badge-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+  }
 
   .site-header__account {
     padding: 0 var(--space-2);
   }
 
-  .site-header__chevron { display: none; }
+  .site-header__chevron {
+    display: none;
+  }
 }

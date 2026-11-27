@@ -3,7 +3,7 @@
   grid-template-columns: minmax(0, 1fr);
   overflow-wrap: anywhere;
   gap: var(--space-4);
-  max-width: 88rem;
+  max-width: 100%;
 }
 
 .local-pipeline__intro,

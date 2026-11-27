@@ -111,6 +111,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [deepLinkMissing, setDeepLinkMissing] = useState(false);
   const [detailEventId, setDetailEventId] = useState<string | null>(null);
+  const [detailFullscreen, setDetailFullscreen] = useState(false);
   const detail = usePublicEventDetail(detailEventId);
   const focusPopupOnOpen = useRef(false);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -323,6 +324,9 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       onSelect={openFromList}
       onReset={resetFilters}
       onRetry={data.reload}
+      searchQuery={query}
+      onSearchChange={setQuery}
+      onClose={() => setListOpen(false)}
     />
   );
 
@@ -351,42 +355,37 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
           />
 
           <div className="toolbar map-home__toolbar">
-            <input
-              id="map-search"
-              type="search"
-              className="input map-home__search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Cari judul atau lokasi"
-              aria-label="Cari laporan"
-              autoComplete="off"
-            />
             <button
               type="button"
-              className="button button--quiet map-home__tool"
-              aria-haspopup="dialog"
-              aria-expanded={filterOpen}
-              aria-label={activeCount > 0 ? `Filter ${activeCount} aktif` : "Filter"}
-              onClick={() => setFilterOpen(true)}
-            >
-              <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M4 6h16M7 12h10M10 18h4" />
-              </svg>
-              <span className="map-home__tool-label">Filter</span>{" "}
-              {activeCount > 0 && <span className="count-chip map-home__count">{activeCount}</span>}
-            </button>
-            <button
-              type="button"
-              className="button button--quiet map-home__tool"
+              className="button button--quiet map-home__tool map-home__tool--list-btn"
               aria-expanded={listOpen}
               aria-label={`Daftar ${visibleEvents.length} laporan`}
               onClick={() => setListOpen((open) => !open)}
+              title={listOpen ? "Sembunyikan daftar" : "Tampilkan daftar"}
             >
               <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
               </svg>
               <span className="map-home__tool-label">Daftar</span>{" "}
               <span className="count-chip map-home__count">{visibleEvents.length}</span>
+            </button>
+          </div>
+
+          <div className="toolbar map-home__toolbar map-home__toolbar--right">
+            <button
+              type="button"
+              className="button button--quiet map-home__tool"
+              aria-haspopup="dialog"
+              aria-expanded={filterOpen}
+              aria-label={activeCount > 0 ? `Filter ${activeCount} aktif` : "Filter"}
+              onClick={() => setFilterOpen((open) => !open)}
+              title={filterOpen ? "Tutup filter" : "Buka filter"}
+            >
+              <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M4 6h16M7 12h10M10 18h4" />
+              </svg>
+              <span className="map-home__tool-label">Filter</span>{" "}
+              {activeCount > 0 && <span className="count-chip map-home__count">{activeCount}</span>}
             </button>
           </div>
 
@@ -450,7 +449,6 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
           applied={applied}
           onApply={(next) => {
             setApplied(next);
-            setFilterOpen(false);
           }}
           onClose={() => setFilterOpen(false)}
         />
@@ -470,12 +468,28 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       )}
 
       {detailEventId !== null && (
-        <Sheet open onClose={closeDetail} titleId={DETAIL_TITLE_ID} className="map-detail-sheet">
+        <Sheet
+          open
+          onClose={closeDetail}
+          titleId={DETAIL_TITLE_ID}
+          className={`map-detail-sheet${detailFullscreen ? " map-detail-sheet--fullscreen" : ""}`}
+        >
           <div className="map-detail-sheet__head">
             <h2 id={DETAIL_TITLE_ID}>Detail laporan</h2>
-            <button type="button" className="button button--quiet button--sm" onClick={closeDetail}>
-              Tutup
-            </button>
+            <div className="map-detail-sheet__actions">
+              <button
+                type="button"
+                className="button button--quiet button--sm"
+                onClick={() => setDetailFullscreen((prev) => !prev)}
+                title={detailFullscreen ? "Kecilkan jendela" : "Layar penuh"}
+                aria-pressed={detailFullscreen}
+              >
+                {detailFullscreen ? "Perkecil" : "Layar penuh"}
+              </button>
+              <button type="button" className="button button--quiet button--sm" onClick={closeDetail}>
+                Tutup
+              </button>
+            </div>
           </div>
           <EventDetail
             variant="sheet"
