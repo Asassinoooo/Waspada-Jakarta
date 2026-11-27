@@ -1,0 +1,22 @@
+{"event":"public_geojson_skipped","skipped":1}
+{"event":"public_geojson_skipped","skipped":1}
+{"event":"public_geojson_skipped","skipped":1}
+✔ projects only selected point, line, and polygon candidates with stable allowlists and exact coordinates (11.439489ms)
+✔ accepts a viewport-selected subset without requiring out-of-viewport geometry rows (1.030488ms)
+✔ requires a selected geometry to be scoped and supported by the same published claim (2.379966ms)
+✔ matches complete support references and rejects altered span, revision, hash, unit, or relation (4.478079ms)
+✔ rejects malformed candidate identity, duplicates, inconsistent Event JSON, stale versions, and unused batches (1.6477ms)
+✔ rejects extraneous, malformed, and misnamed lookup values, and skips an event whose attribution is missing, duplicated or unreviewed (8.762843ms)
+✔ HOSTED-22: an event with no approved attribution is skipped, the other event still renders, and only a count is logged (3.874323ms)
+✔ validates exact impact records in each event-version lookup batch (2.278658ms)
+✔ rejects non-live, withdrawn, stale, and malformed geometry candidates without fallback (6.365163ms)
+✔ bounds candidate and lookup work before projection, and returns the exact empty collection (1.649283ms)
+✔ accepts 500 selected features and rejects the 501st before inspecting candidate rows (314.172763ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1739.105486

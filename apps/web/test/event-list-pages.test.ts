@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ApiHttpError, ApiPayloadError, listAllEvents, MAX_EVENT_PAGES, PartialEventListError } from "../src/api-client.js";
+import { readFileSync } from "node:fs";
+import { ApiHttpError, ApiPayloadError, EVENT_LIST_FIRST_PAGE_PATH, startEarlyEventListLoad, listAllEvents, MAX_EVENT_PAGES, PartialEventListError } from "../src/api-client.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -24,7 +25,7 @@ test("listAllEvents follows next_cursor and merges the pages in order", async (t
   const events = await listAllEvents();
 
   assert.deepEqual(events.map((event) => event.event_id), ["ev-1", "ev-21"]);
-  assert.deepEqual(requests, ["/api/v1/events", "/api/v1/events?cursor=c1"]);
+  assert.deepEqual(requests, ["/api/v1/events?limit=100", "/api/v1/events?limit=100&cursor=c1"]);
 });
 
 test("listAllEvents keeps one copy of an event repeated across pages, at its first position", async (t) => {
@@ -111,4 +112,42 @@ test("listAllEvents stops at the page limit and reports the list as incomplete",
     assert.ok(error.reason instanceof ApiPayloadError);
     return true;
   });
+});
+
+test("PERF-07: a list that fits in one page is one request, and index.html has no route-blind preload", async (t) => {
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return jsonPage(["ev-1", "ev-2"], null);
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const events = await listAllEvents();
+
+  assert.equal(events.length, 2);
+  assert.deepEqual(requests, [EVENT_LIST_FIRST_PAGE_PATH]);
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(!html.includes('rel="preload" href="/api/v1/events'), "no route-blind preload of the event list in index.html");
+});
+
+test("PERF-07: an early first-page load is reused once by listAllEvents, then normal requests resume", async (t) => {
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return jsonPage([`ev-${requests.length}`], null);
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  startEarlyEventListLoad();
+  startEarlyEventListLoad(); // a second call does not start a second request
+  const first = await listAllEvents();
+  const second = await listAllEvents();
+
+  assert.deepEqual(first.map((event) => event.event_id), ["ev-1"]);
+  assert.deepEqual(second.map((event) => event.event_id), ["ev-2"]);
+  assert.deepEqual(requests, [EVENT_LIST_FIRST_PAGE_PATH, EVENT_LIST_FIRST_PAGE_PATH]);
 });

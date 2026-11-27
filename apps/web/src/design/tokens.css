@@ -11,40 +11,50 @@
  * incident state — the service never claims an area is safe.
  */
 
+/* UI-V3: Plus Jakarta Sans, self-hosted (SIL OFL 1.1, public/fonts). CSP font-src 'self' allows it. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plus-jakarta-sans-var.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   color-scheme: light;
 
   /* ---- Neutral ramp (cool, slightly green-grey) ---- */
   --gray-0: #FFFFFF;
-  --gray-25: #F8FAF9;
-  --gray-50: #F2F6F4;
-  --gray-100: #E8EEEB;
-  --gray-200: #D5DEDB;
-  --gray-300: #B9C6C2;
-  --gray-400: #8A9C98;
-  --gray-500: #64777A;
-  --gray-600: #4C6064;
-  --gray-700: #33494F;
-  --gray-800: #213A41;
-  --gray-900: #18323A;
+  --gray-25: #FAF9F6;
+  --gray-50: #F5F3EE;
+  --gray-100: #ECE9E2;
+  --gray-200: #E0DCD3;
+  --gray-300: #C9C4B9;
+  --gray-400: #8E9693;
+  --gray-500: #626E71;
+  --gray-600: #4A585C;
+  --gray-700: #2F4045;
+  --gray-800: #1B2D33;
+  --gray-900: #0F2229;
 
   /* ---- Brand teal ---- */
-  --teal-50: #E7F3F1;
+  --teal-50: #E3F1EE;
   --teal-100: #CDE7E3;
   --teal-300: #6FB8B0;
-  --teal-500: #0B8C85;
-  --teal-600: #087B75;
-  --teal-700: #06625D;
+  --teal-500: #0E7F79;
+  --teal-600: #0B6E69;
+  --teal-700: #08524E;
 
   /* ---- Semantic hues ---- */
   --amber-50: #FDF6E6;
   --amber-200: #F3D98F;
-  --amber-500: #E7B448;
+  --amber-500: #F2A541;
   --amber-700: #8A6212;
   --red-50: #FBEDEB;
   --red-200: #EBB8B2;
-  --red-600: #A7433B;
-  --red-700: #86342D;
+  --red-600: #C2362B;
+  --red-700: #9A2A21;
   --blue-50: #EAF2FA;
   --blue-600: #2F6497;
 
@@ -123,7 +133,7 @@
   --ink-on-teal: var(--color-on-accent);
 
   /* ---- Typography ---- */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --text-2xs: 0.6875rem; /* 11px – micro labels only */
@@ -134,16 +144,18 @@
   --text-xl: 1.25rem;    /* 20px */
   --text-2xl: 1.5rem;    /* 24px */
   --text-3xl: 1.875rem;  /* 30px */
-  --text-display: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  --text-display: clamp(2.25rem, 1.5rem + 3vw, 3.75rem);
+  --tracking-tight: -0.022em;
+  --tracking-display: -0.035em;
 
   --leading-tight: 1.2;
   --leading-snug: 1.35;
   --leading-normal: 1.55;
 
   --weight-regular: 400;
-  --weight-medium: 550;
+  --weight-medium: 500;
   --weight-semibold: 650;
-  --weight-bold: 750;
+  --weight-bold: 780;
 
   /* ---- Spacing (4px base) ---- */
   --space-0: 0;
@@ -160,18 +172,19 @@
 
   /* ---- Radius ---- */
   --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
   --radius-pill: 999px;
   --radius-round: 50%;
 
   /* ---- Elevation ---- */
-  --shadow-xs: 0 1px 2px rgb(24 50 58 / 0.06);
-  --shadow-sm: 0 1px 3px rgb(24 50 58 / 0.08), 0 1px 2px rgb(24 50 58 / 0.04);
-  --shadow-md: 0 4px 12px rgb(24 50 58 / 0.10), 0 1px 3px rgb(24 50 58 / 0.06);
-  --shadow-lg: 0 12px 32px rgb(24 50 58 / 0.18), 0 2px 6px rgb(24 50 58 / 0.08);
-  --shadow-focus: 0 0 0 3px rgb(11 140 133 / 0.35);
+  --shadow-xs: 0 1px 2px rgb(15 34 41 / 0.05);
+  --shadow-sm: 0 2px 6px -1px rgb(15 34 41 / 0.08), 0 1px 2px rgb(15 34 41 / 0.04);
+  --shadow-md: 0 10px 24px -8px rgb(15 34 41 / 0.16), 0 2px 6px -2px rgb(15 34 41 / 0.08);
+  --shadow-lg: 0 28px 60px -20px rgb(15 34 41 / 0.32), 0 8px 18px -8px rgb(15 34 41 / 0.14);
+  --shadow-focus: 0 0 0 3px rgb(14 127 121 / 0.38);
 
   /* ---- Layout ---- */
   --content-max: 76rem;
@@ -182,8 +195,10 @@
 
   /* ---- Motion ---- */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-slow: 420ms;
   --duration-fast: 120ms;
-  --duration-base: 180ms;
+  --duration-base: 200ms;
 
   /* ---- Layers ---- */
   --z-header: 50;
@@ -199,18 +214,18 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --color-bg: #0F1D21;
-    --color-surface: #15262B;
-    --color-surface-raised: #1B2F35;
-    --color-surface-sunken: #0B171A;
+    --color-bg: #0A1316;
+    --color-surface: #111C20;
+    --color-surface-raised: #152328;
+    --color-surface-sunken: #070F11;
     --color-surface-hover: #1E3A3D;
-    --color-border: #2A4148;
+    --color-border: #22333A;
     --color-border-strong: #3A545B;
-    --color-text: #E6EEEC;
+    --color-text: #EAF0F0;
     --color-text-muted: #A9BBB8;
     --color-text-subtle: #84999A;
     --color-text-inverse: #0F1D21;
-    --color-accent: #3FB8AE;
+    --color-accent: #5CC8BE;
     --color-accent-hover: #6FCDC5;
     --color-accent-soft: #143A3A;
     --color-accent-border: #1F5552;
@@ -250,18 +265,18 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-bg: #0F1D21;
-  --color-surface: #15262B;
-  --color-surface-raised: #1B2F35;
-  --color-surface-sunken: #0B171A;
+  --color-bg: #0A1316;
+  --color-surface: #111C20;
+  --color-surface-raised: #152328;
+  --color-surface-sunken: #070F11;
   --color-surface-hover: #1E3A3D;
-  --color-border: #2A4148;
+  --color-border: #22333A;
   --color-border-strong: #3A545B;
-  --color-text: #E6EEEC;
+  --color-text: #EAF0F0;
   --color-text-muted: #A9BBB8;
   --color-text-subtle: #84999A;
   --color-text-inverse: #0F1D21;
-  --color-accent: #3FB8AE;
+  --color-accent: #5CC8BE;
   --color-accent-hover: #6FCDC5;
   --color-accent-soft: #143A3A;
   --color-accent-border: #1F5552;
@@ -302,5 +317,6 @@
   :root {
     --duration-fast: 0ms;
     --duration-base: 0ms;
+    --duration-slow: 0ms;
   }
 }

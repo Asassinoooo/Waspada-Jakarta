@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { prerenderToNodeStream } from "react-dom/static";
 import type { BriefingResponse, EventDetail as EventDetailRecord, EventView, HistoryPage, PublicContext } from "@waspada/worker/public-contracts";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
 import { discoveryStateFromSearch, discoveryStateReducer, PresentationRoute, routeFromHash } from "../src/App.js";
@@ -11,6 +12,14 @@ import { DEFAULT_FEED_FILTERS, EventFeed, filterEvents, type FeedFilters } from 
 import { ModeratorReview } from "../src/ModeratorReview.js";
 import type { GeoJSONMapState, MapSelection } from "../src/MapPanel.js";
 import { emptyInterests } from "../src/preferences-store.js";
+
+/** PERF-09b: the demo presentation loads on demand, so its markup is read once every Suspense boundary has resolved. */
+async function renderWhenReady(element: Parameters<typeof renderToStaticMarkup>[0]): Promise<string> {
+  const { prelude } = await prerenderToNodeStream(element);
+  let html = "";
+  for await (const chunk of prelude) html += String(chunk);
+  return html;
+}
 
 const demoContext: PublicContext = {
   dataset_mode: "demo",
@@ -421,8 +430,8 @@ test("late briefing responses are rejected after the interest or request snapsho
   assert.equal(isCurrentBriefingRequest(original, null), false);
 });
 
-test("presentation detail is visible only after the API confirms demo mode", () => {
-  const demoDetail = renderToStaticMarkup(<PresentationRoute context={demoContext} />);
+test("presentation detail is visible only after the API confirms demo mode", async () => {
+  const demoDetail = await renderWhenReady(<PresentationRoute context={demoContext} />);
   const liveDetail = renderToStaticMarkup(<PresentationRoute context={{ ...demoContext, dataset_mode: "live", dataset_label: "live" }} />);
   const unknownDetail = renderToStaticMarkup(<PresentationRoute context={null} />);
 
@@ -440,7 +449,7 @@ test("loading, empty, and unavailable states give honest next steps", () => {
   const noMatch = renderFeed({ query: "tidak-ada" });
   const unavailable = renderFeed({ status: "unavailable", events: [] });
 
-  assert.match(loading, /Memuat record dari API/);
+  assert.match(loading, /Memuat laporan dari API/);
   assert.match(empty, /bukan pernyataan bahwa area aman/);
   assert.match(noMatch, /Tidak ada laporan yang cocok dengan pencarian dan filter ini/);
   assert.match(noMatch, /Hapus semua filter dan pencarian/);
@@ -473,8 +482,8 @@ test("loaded-page filters use contract values, preserve search, and combine with
   }).map((event) => event.event_id), ["test-weather-current"]);
 
   const defaultPage = renderFeed({ events: testOnlyEvents });
-  assert.match(defaultPage, /4 cocok dari 4 record dimuat/);
-  assert.match(defaultPage, /hanya berlaku pada 4 record yang sudah dimuat dari halaman API ini/);
+  assert.match(defaultPage, /4 cocok dari 4 laporan dimuat/);
+  assert.match(defaultPage, /hanya berlaku pada 4 laporan yang sudah dimuat dari halaman API ini/);
   assert.match(defaultPage, /bukan hitungan seluruh insiden di Jakarta/);
   assert.match(defaultPage, /name="category"/);
   assert.match(defaultPage, /name="lifecycle"/);
@@ -491,7 +500,7 @@ test("loaded-page filters use contract values, preserve search, and combine with
     query: "cuaca",
     filters: { category: "disasters_weather", lifecycle: "ongoing", freshness: "current" },
   });
-  assert.match(filteredPage, /1 cocok dari 4 record dimuat/);
+  assert.match(filteredPage, /1 cocok dari 4 laporan dimuat/);
   assert.match(filteredPage, /Uji cuaca saat ini/);
   assert.doesNotMatch(filteredPage, /Uji transportasi selesai|Uji cuaca lewat tinjau|Uji kerumunan perlu diperbarui/);
 });
@@ -514,7 +523,7 @@ test("filtered-empty state stays neutral and clear-all resets filters, search, a
     events: testOnlyEvents,
     filters: { category: "health_environmental_advisories", lifecycle: "all", freshness: "all" },
   });
-  assert.match(filteredEmpty, /0 cocok dari 4 record dimuat/);
+  assert.match(filteredEmpty, /0 cocok dari 4 laporan dimuat/);
   assert.match(filteredEmpty, /Tidak ada laporan yang cocok dengan pencarian dan filter ini/);
   assert.match(filteredEmpty, /Hasil kosong bukan pernyataan bahwa area aman\./);
   assert.match(filteredEmpty, /Hapus semua filter dan pencarian/);
@@ -539,8 +548,8 @@ test("filtered-empty state stays neutral and clear-all resets filters, search, a
   assert.deepEqual(afterClear.mapSelection, { kind: "none" });
 });
 
-test("documented detail keeps evidence times distinct and does not invent history", () => {
-  const markup = renderToStaticMarkup(<EventDetail mode="presentation" context={demoContext} />);
+test("documented detail keeps evidence times distinct and does not invent history", async () => {
+  const markup = await renderWhenReady(<EventDetail mode="presentation" context={demoContext} />);
 
   assert.match(markup, /Contoh detail terpisah dari API/);
   assert.match(markup, /Bus 12 diversion \(synthetic demo\)/);
@@ -630,13 +639,14 @@ test("detail not-found, unavailable, loading, and empty-history states are expli
     />,
   );
 
-  assert.match(notFound, /Record contoh tidak ditemukan/);
+  assert.match(notFound, /Catatan contoh tidak ditemukan/);
+  assert.doesNotMatch(notFound, /\brecord\b/i, "the demo not-found state says catatan (HOSTED-39)");
   assert.match(notFound, /Riwayat laporan tidak ditemukan/);
   assert.doesNotMatch(notFound, /Contoh fiktif: pemberitahuan kelompok/);
   assert.match(unavailable, /Detail contoh belum dapat dimuat/);
   assert.match(unavailable, /Keadaan keselamatan tidak diketahui/);
   assert.match(unavailable, />Coba lagi memuat detail</);
-  assert.match(loading, /Memuat record sintetis dari API lokal/);
+  assert.match(loading, /Memuat catatan sintetis dari API lokal/);
   assert.match(loading, /Memuat riwayat fixture/);
   assert.match(loading, /role="status"/);
   assert.match(emptyHistory, /Tidak ada entri riwayat pada fixture ini/);

@@ -1,24 +1,27 @@
 import type {
-  AccountRole,
   AccountUser,
   AccountUserPage,
   AccountUserUpdate,
+  PasswordResetCodeIssue,
   SessionEnvelope,
 } from "@waspada/worker/account-contracts";
+import {
+  AccountPayloadError,
+  MAX_ID_LENGTH,
+  MAX_SESSION_BYTES,
+  errorResponse,
+  hasExactKeys,
+  isInstant,
+  isRecord,
+  isRole,
+  parseAccountUser,
+  parseSessionEnvelope,
+  readAccountSession,
+  requestAccountJson,
+  type FetchLike,
+} from "./account-session.js";
 
-export class AccountHttpError extends Error {
-  constructor(readonly status: number) {
-    super("Account request failed with status " + status);
-    this.name = "AccountHttpError";
-  }
-}
-
-export class AccountPayloadError extends Error {
-  constructor() {
-    super("Account response could not be safely read");
-    this.name = "AccountPayloadError";
-  }
-}
+export { AccountHttpError, AccountPayloadError, parseSessionEnvelope } from "./account-session.js";
 
 export interface AccountClient {
   getSession(signal?: AbortSignal): Promise<SessionEnvelope>;
@@ -29,104 +32,21 @@ export interface AccountClient {
   logout(csrfToken: string): Promise<void>;
   listUsers(options?: { limit?: number; after?: string; signal?: AbortSignal }): Promise<AccountUserPage>;
   updateUser(id: string, update: AccountUserUpdate, csrfToken: string): Promise<AccountUser>;
+  /** Administrator only. The returned code is shown once and must not be stored or logged. */
+  issuePasswordResetCode(accountId: string, csrfToken: string): Promise<PasswordResetCodeIssue>;
+  /** Signed-out reset. Resolves on success; the person then signs in with the new password. */
+  resetPasswordWithCode(input: { username: string; code: string; newPassword: string }): Promise<void>;
 }
 
 export type AccountReturnTarget = "#akun" | "#mulai" | "#admin" | "#tinjau-bukti";
 
-type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-
-const ACCOUNT_VERSION = "account-v1";
-const ACCOUNT_ROLES: readonly AccountRole[] = ["user", "moderator", "admin"];
-const MAX_SESSION_BYTES = 16 * 1024;
 const MAX_USER_PAGE_BYTES = 128 * 1024;
 const MAX_CURSOR_LENGTH = 2_048;
-const MAX_ID_LENGTH = 200;
 const MAX_REASON_LENGTH = 500;
 const MAX_USERNAME_LENGTH = 32;
 const MAX_PASSWORD_LENGTH = 256;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
-}
-
-function isRole(value: unknown): value is AccountRole {
-  return typeof value === "string" && ACCOUNT_ROLES.includes(value as AccountRole);
-}
-
-function isInstant(value: unknown): value is string {
-  return typeof value === "string"
-    && value.length <= 100
-    && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/u.test(value)
-    && !Number.isNaN(Date.parse(value));
-}
-
-function parseAccountUser(value: unknown): AccountUser {
-  if (!isRecord(value) || !hasExactKeys(value, [
-    "id",
-    "display_name",
-    "email",
-    "role",
-    "active",
-    "onboarding_version",
-    "onboarding_completed_at",
-    "version",
-  ])) {
-    throw new AccountPayloadError();
-  }
-
-  if (
-    typeof value.id !== "string" || value.id.length < 1 || value.id.length > MAX_ID_LENGTH ||
-    typeof value.display_name !== "string" || value.display_name.length < 1 || value.display_name.length > 200 ||
-    !(value.email === null || (typeof value.email === "string" && value.email.length >= 3 && value.email.length <= 320 && value.email.includes("@"))) ||
-    !isRole(value.role) ||
-    typeof value.active !== "boolean" ||
-    (value.onboarding_version !== 0 && value.onboarding_version !== 1) ||
-    !(value.onboarding_completed_at === null || isInstant(value.onboarding_completed_at)) ||
-    !Number.isSafeInteger(value.version) || (value.version as number) < 1 ||
-    (value.onboarding_version === 0 && value.onboarding_completed_at !== null) ||
-    (value.onboarding_version === 1 && value.onboarding_completed_at === null)
-  ) {
-    throw new AccountPayloadError();
-  }
-
-  return value as unknown as AccountUser;
-}
-
-export function parseSessionEnvelope(value: unknown): SessionEnvelope {
-  if (!isRecord(value) || !hasExactKeys(value, [
-    "version",
-    "status",
-    "password_login_available",
-    "registration_available",
-    "csrf_token",
-    "user",
-  ])) {
-    throw new AccountPayloadError();
-  }
-
-  if (
-    value.version !== ACCOUNT_VERSION ||
-    (value.status !== "anonymous" && value.status !== "authenticated") ||
-    typeof value.password_login_available !== "boolean" ||
-    typeof value.registration_available !== "boolean" ||
-    !(value.csrf_token === null || (typeof value.csrf_token === "string" && value.csrf_token.length >= 16 && value.csrf_token.length <= 512))
-  ) {
-    throw new AccountPayloadError();
-  }
-
-  if (value.status === "anonymous") {
-    if (value.user !== null || value.csrf_token !== null) throw new AccountPayloadError();
-    return value as unknown as SessionEnvelope;
-  }
-
-  if (value.user === null || value.csrf_token === null) throw new AccountPayloadError();
-  parseAccountUser(value.user);
-  return value as unknown as SessionEnvelope;
-}
+const MAX_RESET_CODE_LENGTH = 64;
+const RESET_CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{10}$/u;
 
 function parseUserPage(value: unknown): AccountUserPage {
   if (!isRecord(value) || !hasExactKeys(value, ["data", "next_cursor"]) || !Array.isArray(value.data) || value.data.length > 50) {
@@ -142,49 +62,6 @@ function parseUserPage(value: unknown): AccountUserPage {
   return { data, next_cursor: value.next_cursor as string | null };
 }
 
-async function readBoundedJson(response: Response, maximumBytes: number): Promise<unknown> {
-  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
-  if (contentType !== "application/json") throw new AccountPayloadError();
-
-  const contentLength = response.headers.get("content-length");
-  if (contentLength !== null && /^\d+$/u.test(contentLength) && Number(contentLength) > maximumBytes) {
-    throw new AccountPayloadError();
-  }
-
-  if (!response.body) throw new AccountPayloadError();
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      totalBytes += value.byteLength;
-      if (totalBytes > maximumBytes) {
-        await reader.cancel().catch(() => {});
-        throw new AccountPayloadError();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
-  } catch {
-    throw new AccountPayloadError();
-  }
-}
-
 function requireCsrfToken(token: string): void {
   if (typeof token !== "string" || token.length < 16 || token.length > 512) throw new AccountPayloadError();
 }
@@ -198,6 +75,20 @@ function postHeaders(): Record<string, string> {
   };
 }
 
+function parsePasswordResetCodeIssue(value: unknown): PasswordResetCodeIssue {
+  if (!isRecord(value) || !hasExactKeys(value, ["code", "expires_at", "username"])) {
+    throw new AccountPayloadError();
+  }
+  if (
+    typeof value.code !== "string" || !RESET_CODE_PATTERN.test(value.code) ||
+    !isInstant(value.expires_at) ||
+    typeof value.username !== "string" || value.username.length < 1 || value.username.length > MAX_USERNAME_LENGTH
+  ) {
+    throw new AccountPayloadError();
+  }
+  return { code: value.code, expires_at: value.expires_at, username: value.username };
+}
+
 function requireCredentialFields(username: string, password: string): void {
   if (typeof username !== "string" || username.length < 1 || username.length > MAX_USERNAME_LENGTH) {
     throw new AccountPayloadError();
@@ -207,30 +98,14 @@ function requireCredentialFields(username: string, password: string): void {
   }
 }
 
-function errorResponse(status: number): AccountHttpError {
-  return new AccountHttpError(status);
-}
-
 export function createAccountClient(fetcher: FetchLike = fetch): AccountClient {
   async function requestJson(path: string, init: RequestInit, maximumBytes = MAX_SESSION_BYTES): Promise<unknown> {
-    const response = await fetcher(path, {
-      ...init,
-      credentials: "same-origin",
-      cache: "no-store",
-      redirect: "error",
-    });
-    if (!response.ok) throw errorResponse(response.status);
-    return readBoundedJson(response, maximumBytes);
+    return requestAccountJson(fetcher, path, init, maximumBytes);
   }
 
   return {
     async getSession(signal) {
-      const body = await requestJson("/api/v1/auth/session", {
-        method: "GET",
-        headers: { accept: "application/json" },
-        ...(signal === undefined ? {} : { signal }),
-      });
-      return parseSessionEnvelope(body);
+      return readAccountSession(fetcher, signal);
     },
 
     async login(username, password) {
@@ -343,6 +218,44 @@ export function createAccountClient(fetcher: FetchLike = fetch): AccountClient {
         }),
       });
       return parseAccountUser(body);
+    },
+
+    async issuePasswordResetCode(accountId, csrfToken) {
+      requireCsrfToken(csrfToken);
+      if (typeof accountId !== "string" || accountId.length < 1 || accountId.length > MAX_ID_LENGTH) {
+        throw new AccountPayloadError();
+      }
+      let encodedId: string;
+      try {
+        encodedId = encodeURIComponent(accountId);
+      } catch {
+        throw new AccountPayloadError();
+      }
+      const body = await requestJson("/api/v1/account/users/" + encodedId + "/password-reset-code", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
+      });
+      return parsePasswordResetCodeIssue(body);
+    },
+
+    async resetPasswordWithCode({ username, code, newPassword }) {
+      requireCredentialFields(username, newPassword);
+      if (typeof code !== "string" || code.length < 1 || code.length > MAX_RESET_CODE_LENGTH) {
+        throw new AccountPayloadError();
+      }
+      // A 204 has no body, so this reads the status directly, as logout does.
+      const response = await fetcher("/api/v1/auth/password-reset", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "error",
+        headers: postHeaders(),
+        body: JSON.stringify({ username, code, new_password: newPassword }),
+      });
+      if (response.status !== 204) throw errorResponse(response.status);
     },
   };
 }

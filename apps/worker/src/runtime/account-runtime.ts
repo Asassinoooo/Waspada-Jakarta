@@ -88,6 +88,79 @@ export async function withAccountStore<Result>(
   return runner(config.source.connectionString, (executor) => operation(createAccountStore(executor, config.datasetMode)));
 }
 
+/**
+ * One request's account store. The database connection opens on the first store call, through the same
+ * transactional runner as withAccountStore, and every later call in the request shares it. close() releases
+ * it once the response is built. A request that never reads the store, such as an anonymous session read
+ * or a request refused by the pre-session marker, never opens a connection.
+ */
+interface RequestAccountStore {
+  readonly store: AccountStore;
+  close(): Promise<void>;
+}
+
+function openRequestAccountStore(
+  config: AccountRuntimeConfig,
+  dependencies: { readonly withTransactionalSqlExecutor?: AccountTransactionalSqlExecutorRunner } = {},
+): RequestAccountStore {
+  if (config.source.kind === 'executor') {
+    return { store: createAccountStore(config.source.executor, config.datasetMode), close: async () => {} };
+  }
+  const runner = dependencies.withTransactionalSqlExecutor ?? withPostgresTransactionalSqlExecutor;
+  const connectionString = config.source.connectionString;
+  let releaseConnection: () => void = () => {};
+  const holdConnection = new Promise<void>((resolve) => {
+    releaseConnection = resolve;
+  });
+  let connection: Promise<void> | undefined;
+  let connected: Promise<AccountStore> | undefined;
+  const connect = (): Promise<AccountStore> => {
+    connected ??= new Promise<AccountStore>((resolveStore, rejectStore) => {
+      connection = runner(connectionString, async (executor) => {
+        resolveStore(createAccountStore(executor, config.datasetMode));
+        // The connection stays open until close(), so the request's store calls keep one client and its transactions.
+        await holdConnection;
+      });
+      connection.catch(rejectStore);
+    });
+    return connected;
+  };
+  return {
+    store: lazyAccountStore(config.datasetMode, connect),
+    close: async () => {
+      releaseConnection();
+      await connection;
+    },
+  };
+}
+
+/** Delegates every store call to the store that `connect` opens on first use. */
+function lazyAccountStore(datasetMode: AccountDatasetMode, connect: () => Promise<AccountStore>): AccountStore {
+  return {
+    datasetMode,
+    createPasswordAccount: (input) => connect().then((store) => store.createPasswordAccount(input)),
+    findPasswordCredentialByUsername: (username) => connect().then((store) => store.findPasswordCredentialByUsername(username)),
+    findPasswordCredentialByAccountId: (accountId) => connect().then((store) => store.findPasswordCredentialByAccountId(accountId)),
+    setPasswordHash: (input) => connect().then((store) => store.setPasswordHash(input)),
+    issuePasswordResetCode: (input) => connect().then((store) => store.issuePasswordResetCode(input)),
+    consumePasswordResetCode: (input) => connect().then((store) => store.consumePasswordResetCode(input)),
+    createSession: (input) => connect().then((store) => store.createSession(input)),
+    readSession: (tokenSha256, now) => connect().then((store) => store.readSession(tokenSha256, now)),
+    revokeSession: (tokenSha256, now) => connect().then((store) => store.revokeSession(tokenSha256, now)),
+    completeOnboarding: (accountId, version, now) => connect().then((store) => store.completeOnboarding(accountId, version, now)),
+    listAccounts: (limit, after, actorAccountId) => connect().then((store) => store.listAccounts(limit, after, actorAccountId)),
+    updateAccountByAdmin: (input) => connect().then((store) => store.updateAccountByAdmin(input)),
+    consumeThrottle: (scope, clientKeySha256, now, windowMilliseconds, maximumRequests) => connect().then((store) => store.consumeThrottle(
+      scope,
+      clientKeySha256,
+      now,
+      windowMilliseconds,
+      maximumRequests,
+    )),
+    cleanupExpired: (now, maxRows) => connect().then((store) => store.cleanupExpired(now, maxRows)),
+  };
+}
+
 /** Returns a lazy, fail-closed request handler. The public Worker routes remain independent. */
 export async function createAccountRuntime(
   configuration: AccountWorkerEnvironment,
@@ -108,9 +181,14 @@ export async function createAccountRuntime(
 
   return async (request) => {
     if (!isAccountRequest(request)) return undefined;
+    let scope: RequestAccountStore | undefined;
     try {
-      return await withAccountStore(config, dependencies, async (store) => createAccountApi({ ...apiOptions, store })(request));
+      scope = openRequestAccountStore(config, dependencies);
+      const response = await createAccountApi({ ...apiOptions, store: scope.store })(request);
+      await scope.close();
+      return response;
     } catch {
+      await scope?.close().catch(() => undefined);
       return accountUnavailableResponse();
     }
   };

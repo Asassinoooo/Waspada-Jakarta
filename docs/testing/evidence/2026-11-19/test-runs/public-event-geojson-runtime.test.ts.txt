@@ -1,0 +1,14 @@
+✔ exact live GeoJSON composes candidates, current snapshots and approved lookups in one SQL operation (17.946646ms)
+✔ an empty candidate read returns the exact empty collection without snapshot or lookup queries (0.589211ms)
+✔ query and connection validation leave the SQL operation unopened (1.432221ms)
+✔ lookup requests are deduplicated and split into deterministic batches of at most 100 keys (23.079315ms)
+✔ candidate/current version mismatch fails closed without any lookup or fallback (0.877835ms)
+✔ a withdrawn latest event cannot fall back to a stale candidate version or return partial features (37.251206ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3344.742654

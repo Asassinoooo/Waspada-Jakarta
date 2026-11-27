@@ -1,0 +1,34 @@
+✔ #peta and the legacy #jelajah deep links keep the event id, and plain hashes stay on the map (3.101499ms)
+✔ event ids survive a round trip through the map link (0.232611ms)
+✔ deep link resolves an event only when it is in the published list (0.326013ms)
+✔ the toolbar and zoom group show at most five controls on the first screen (24.255513ms)
+✔ the toolbar buttons keep their names on phones, where their text is hidden (5.646579ms)
+✔ the empty list says the exact message, and never claims an area is safe (5.225069ms)
+✔ a whole_view event in the list says it covers the whole map, and an event without the flag keeps its not-mapped badge (2.044313ms)
+✔ an empty filtered list offers Reset filter (0.921816ms)
+✔ a failed list load shows an inline error with a retry (1.185213ms)
+✔ a loading list shows skeleton cards with a status message (1.682063ms)
+✔ each card names its category, event time and source count, and buttons are keyboard reachable (5.400624ms)
+✔ filters reduce the list by category, time range, source and search, and combine (2.029847ms)
+✔ active filter count counts each non-default group and the facility layer (0.732064ms)
+✔ the filter sheet explains the OSM facility limit and offers Terapkan and Reset (3.312891ms)
+✔ markers come only from API geometry: the incident point wins and polygons are never turned into circles (0.70798ms)
+✔ the map home stylesheet uses design tokens only, with no hex colour literal (10.296283ms)
+✔ the phone list and popup use a bottom sheet, and the desktop list is a left panel from 900px (7.951312ms)
+✔ selecting a whole_view event glides to the default Jakarta view, never to another event's pin (6.028866ms)
+✔ the filters type stays a value type, so a default is never mutated (0.381366ms)
+✔ the map canvas loads the tile stylesheet and places whole-pixel tiles, not the legacy grid canvas (14.226967ms)
+✔ the map screen has no page footer strip: the emergency notice floats over the map (7.624749ms)
+✔ ST-F-04: the map markers and the list draw from one filtered set, and an event without a point is listed but never pinned (12.441542ms)
+✔ ST-F-04: the demo or live label sits on the map screen that holds the list, and each mode shows only its own (20.122205ms)
+✔ ST-F-04: at 390 px the list is a closed bottom sheet behind the Daftar toggle, and the side panel opens only from 900 px (18.937694ms)
+✔ ST-F-15: a live map with no published events says an empty list is not an all-clear, and carries the live label (4.982911ms)
+✔ ST-F-15: a demo map with no published events carries the demo label and never the live one (7.137747ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3199.799301

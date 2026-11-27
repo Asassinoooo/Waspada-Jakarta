@@ -337,7 +337,7 @@ export function EarthquakeRecordDetails({ record, fetchedAt }: { record: Earthqu
       </dl>
       <p className="context-sources__impact-note">Titik menunjukkan episentrum katalog, bukan area dampak. Data kawasan ini tidak menyimpulkan dampak di Jakarta.</p>
       <a className="context-sources__source-link" href={record.source_url} target="_blank" rel="noreferrer">
-        Buka record USGS <span aria-hidden="true">↗</span>
+        Buka catatan USGS <span aria-hidden="true">↗</span>
       </a>
     </section>
   );
@@ -372,7 +372,7 @@ export function EarthquakeContextCard({
         <div className="context-sources__quake-window">
           <strong>Kueri katalog regional · tujuh hari</strong>
           <span>{formatTime(source.window_start)} – {formatTime(source.window_end)}</span>
-          <span>Filter magnitudo ≥ 2,5 · hingga 30 record.</span>
+          <span>Filter magnitudo ≥ 2,5 · hingga 30 catatan.</span>
           <span>Wilayah kueri memberi konteks kawasan; bukan batas resmi atau area dampak Jakarta.</span>
         </div>
       )}
@@ -380,7 +380,7 @@ export function EarthquakeContextCard({
       {source.status === "unavailable" && <SourceStatusNote source={source} />}
       {source.status === "empty" && (
         <p className="context-sources__state-note">
-          Katalog tidak mengembalikan record pada jendela ini. Hasil kosong tidak menetapkan keselamatan atau dampak di Jakarta.
+          Katalog tidak mengembalikan catatan pada jendela ini. Hasil kosong tidak menetapkan keselamatan atau dampak di Jakarta.
         </p>
       )}
       {source.status === "available" && (
@@ -407,8 +407,8 @@ export function EarthquakeContextCard({
               ))}
             </ul>
           </section>
-          {source.limited && <p className="context-sources__state-note">Daftar dibatasi hingga jumlah record yang ditetapkan kueri; hasil mungkin tidak lengkap.</p>}
-          {source.rejected_count > 0 && <p className="context-sources__state-note">{source.rejected_count} record sumber tidak dimasukkan karena tidak memenuhi batas validasi.</p>}
+          {source.limited && <p className="context-sources__state-note">Daftar dibatasi hingga jumlah catatan yang ditetapkan kueri; hasil mungkin tidak lengkap.</p>}
+          {source.rejected_count > 0 && <p className="context-sources__state-note">{source.rejected_count} catatan sumber tidak dimasukkan karena tidak memenuhi batas validasi.</p>}
           <EarthquakeRecordDetails record={selectedRecord} fetchedAt={source.fetched_at} />
           <details className="context-sources__map-disclosure">
             <summary>Lihat peta kawasan (opsional)</summary>
@@ -417,7 +417,7 @@ export function EarthquakeContextCard({
             </p>}
             {renderMap
               ? renderMap(source.records, selectedRecord?.id ?? null, selectRecord)
-              : <p className="context-sources__map-fallback">Peta belum tersedia. Daftar, metadata, atribusi, dan tautan record tetap dapat digunakan.</p>}
+              : <p className="context-sources__map-fallback">Peta belum tersedia. Daftar, metadata, atribusi, dan tautan catatan tetap dapat digunakan.</p>}
           </details>
         </>
       )}

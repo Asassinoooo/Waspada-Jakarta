@@ -10,6 +10,7 @@ import {
   sourcePublishedAtText,
   severityOf,
   sourceCountText,
+  type PublicationRecency,
   type PublishedEventsStatus,
   type PublishedMarker,
 } from "./published-events.js";
@@ -18,6 +19,12 @@ export const EMPTY_LIST_TITLE = "Belum ada laporan terbit di area ini dalam rent
 export const EMPTY_LIST_NOTE = "Daftar ini hanya memuat laporan yang sudah terbit. Hasil kosong tidak berarti tidak ada kejadian.";
 /** HOSTED-34: the empty message when only the text search is active (no category, time or source filter). */
 export const EMPTY_SEARCH_TITLE = "Tidak ada laporan terbit yang cocok dengan pencarian ini.";
+/** MAP-RECENT-01: the list states its default window, and an empty window never reads as "nothing happened". */
+export const RECENT_SCOPE_TEXT = "Terbit atau diperbarui dalam 24 jam terakhir.";
+export const EMPTY_RECENT_TITLE = "Tidak ada laporan yang terbit atau diperbarui dalam 24 jam terakhir.";
+export function showAllText(olderCount: number): string {
+  return `Tampilkan semua (${olderCount} lebih lama)`;
+}
 export const LIST_NOTE = "Hanya laporan yang sudah terbit. Ini bukan hasil pemeriksaan atau verifikasi otomatis.";
 
 export interface MapEventListProps {
@@ -29,6 +36,10 @@ export interface MapEventListProps {
   filtersActive: boolean;
   /** True when the text search is the only narrowing; the empty message then names the search. */
   searchOnly?: boolean;
+  /** MAP-RECENT-01: the publication window in force, and how many loaded events it hides. */
+  recency?: PublicationRecency;
+  olderHiddenCount?: number;
+  onShowAll?: () => void;
   errorMessage: string | null;
   onSelect: (eventId: string) => void;
   onReset: () => void;
@@ -44,6 +55,9 @@ export function MapEventList({
   selectedId,
   filtersActive,
   searchOnly = false,
+  recency = "all",
+  olderHiddenCount = 0,
+  onShowAll,
   errorMessage,
   onSelect,
   onReset,
@@ -59,6 +73,22 @@ export function MapEventList({
         {status === "loaded" && <span className="count-chip" aria-live="polite">{events.length} laporan</span>}
       </div>
       <p className="map-list__note muted">{LIST_NOTE}</p>
+      {recency === "24h" && status === "loaded" && (
+        <div className="map-list__scope">
+          <span className="map-list__scope-text">
+            <svg className="map-list__scope-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            {RECENT_SCOPE_TEXT}
+          </span>
+          {olderHiddenCount > 0 && onShowAll && events.length > 0 && (
+            <button type="button" className="button button--quiet button--sm map-list__scope-action" onClick={onShowAll}>
+              {showAllText(olderHiddenCount)}
+            </button>
+          )}
+        </div>
+      )}
 
       {status === "loading" && (
         <div className="map-list__loading" role="status">
@@ -86,8 +116,15 @@ export function MapEventList({
 
       {status === "loaded" && events.length === 0 && (
         <div className="empty-state map-list__empty" role="status">
-          <p className="empty-state__title">{searchOnly ? EMPTY_SEARCH_TITLE : EMPTY_LIST_TITLE}</p>
+          <p className="empty-state__title">
+            {searchOnly ? EMPTY_SEARCH_TITLE : recency === "24h" && !filtersActive ? EMPTY_RECENT_TITLE : EMPTY_LIST_TITLE}
+          </p>
           <p>{EMPTY_LIST_NOTE}</p>
+          {recency === "24h" && olderHiddenCount > 0 && onShowAll && (
+            <button type="button" className="button button--primary" onClick={onShowAll}>
+              {showAllText(olderHiddenCount)}
+            </button>
+          )}
           {filtersActive && (
             <button type="button" className="button button--quiet" onClick={onReset}>
               Reset filter

@@ -277,9 +277,20 @@
   .site-header__account { padding-inline: var(--space-2); }
 }
 
-/* Below 768px the brand name is hidden. The brand mark keeps the link and the accessible name ("Waspada Jakarta, ke peta"). */
+/* Below 768px the brand name is hidden visually only. It stays in the accessibility tree as the link's name
+   (A11Y-01: display:none left the link with no name at phone width, axe link-name). */
 @media (max-width: 768px) {
-  .brand__text { display: none; }
+  .brand__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 /* Phone: one row, at most 56px. Brand mark, icon nav, dataset badge and Akun. */
@@ -296,7 +307,6 @@
   }
 
   .brand { gap: 0; }
-  .brand__text { display: none; }
 
   .primary-nav {
     gap: 0;

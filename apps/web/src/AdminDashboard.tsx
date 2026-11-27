@@ -362,7 +362,7 @@ export function AdminRecordInspector({ item, mode, geometryKnown }: { item: Admi
 
       <section className="admin-inspector__section" aria-labelledby="admin-evidence-title">
         <h3 id="admin-evidence-title">Sumber dan bukti</h3>
-        <p className="admin-evidence-copy">{item.evidenceSummary || "Ringkasan bukti tidak tersedia pada record ini."}</p>
+        <p className="admin-evidence-copy">{item.evidenceSummary || "Ringkasan bukti tidak tersedia pada laporan ini."}</p>
         {item.sourceNames.length > 0 ? (
           <ul className="admin-source-tags" aria-label="Nama sumber yang tercantum">
             {item.sourceNames.map((name) => <li key={name}>{name}</li>)}

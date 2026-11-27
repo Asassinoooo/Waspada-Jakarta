@@ -1,0 +1,23 @@
+✔ normalizes text values, ignores blanks, and removes normalized duplicates (6.242689ms)
+✔ counts Unicode code points and does not truncate an overlong value (0.57686ms)
+✔ enforces the 30-value limit without silently truncating (0.392678ms)
+✔ save and reload use the versioned browser-local key and normalized request fields (0.705358ms)
+✔ malformed or out-of-contract saved content is preserved for deliberate recovery (1.164159ms)
+✔ read, write, and clear storage failures return recoverable states (0.31298ms)
+✔ empty preferences render a labelled editor and all ten contract categories (15.775748ms)
+✔ saved preferences render their values without claiming a relevance match (12.494574ms)
+✔ rendering saved live preferences leaves briefing idle until the explicit request action (7.695072ms)
+✔ only exact live mode and a non-empty normalized interest can start a briefing request (1.149842ms)
+✔ invalid saved JSON renders a recovery action without exposing a blank editor to overwrite it (1.971026ms)
+✔ unavailable browser storage renders an explanation and keeps editing recoverable (5.28953ms)
+✔ preferences have a direct hash route and public navigation link (6.199908ms)
+✔ ST-F-02: Ringkasan saya lists each matched event once, each with its reason (4.590484ms)
+✔ ST-F-02: a briefing that repeats one event shows that event once, at its first position (3.852606ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3065.491766

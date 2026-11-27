@@ -1,11 +1,13 @@
 import { dispatchIngestWorkflow, isGithubDispatchMode } from "./ingest-dispatch.js";
 import { createHash } from "node:crypto";
-import { createPublicEventListRuntime } from "./runtime/public-event-list-runtime.js";
+import { createPublicEventListRuntime, createPublicEventListCursorCodecForKey } from "./runtime/public-event-list-runtime.js";
+import { createPublicSnapshotStore, type PublicSnapshotStore } from "./runtime/public-snapshot.js";
+import { publicSnapshotRouteFor, readPublicSnapshotRoute } from "./runtime/public-snapshot-route.js";
 import { createPublicEventDetailRuntime } from "./runtime/public-event-detail-runtime.js";
 import { createPublicEventHistoryRuntime } from "./runtime/public-event-history-runtime.js";
 import { createPublicEventGeoJSONRuntime } from "./runtime/public-event-geojson-runtime.js";
 import { createPublicBriefingRuntime } from "./runtime/public-briefing-runtime.js";
-import { createPublicEventUpdatesRuntime } from "./runtime/public-event-updates-runtime.js";
+import { createPublicEventUpdatesRuntime, type PublicEventUpdatesRuntime } from "./runtime/public-event-updates-runtime.js";
 import {
   handlePublicApiRequest,
   isPublicEventDetailPath,
@@ -19,11 +21,18 @@ import { handleFreshnessDueScheduleTrigger } from "./runtime/freshness-due-sched
 import { createSourcePreviewHandler } from "./layers/l4-application-integration/source-preview-api.js";
 import { createContextSourcesHandler } from "./layers/l4-application-integration/context-sources-api.js";
 import { handleAccountRequest, type AccountRuntimeConfig } from "./runtime/account-runtime.js";
-import { createModerationApiHandler, type EventProposalDto, type StoredEvidenceChunk } from "./layers/l4-application-integration/moderation-api.js";
+import {
+  createModerationApiHandler,
+  type EventProposalDto,
+  type ModeratorDecisionCommand,
+  type ModerationPrincipal,
+  type StoredEvidenceChunk,
+} from "./layers/l4-application-integration/moderation-api.js";
 import { createSourceApprovalApiHandler, isSourceApprovalPath } from "./layers/l4-application-integration/source-approval-api.js";
 import {
   AGENT_AUTO_PUBLISHER_ID,
   decideProposal,
+  isCategoryResolution,
   submitEventCorrection,
   withdrawPublishedEvent,
 } from "./layers/l4-application-integration/proposal-publication.js";
@@ -204,9 +213,142 @@ function getSourceApprovalHandler(env: WorkerEnvironment, config: AccountRuntime
   });
 }
 
-function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConfig) {
+/**
+ * PERF-03: the KV snapshot store for this isolate, one per isolate so its memo survives across requests. Undefined
+ * without the PUBLIC_SNAPSHOT binding or a database, so the DB path answers every read as before. Rebuilds read through
+ * the no-cache config (see freshDatabase).
+ */
+let publicSnapshotStore: PublicSnapshotStore | undefined;
+
+function publicSnapshotStoreFor(env: WorkerEnvironment): PublicSnapshotStore | undefined {
+  const kv = env.PUBLIC_SNAPSHOT;
+  if (kv === undefined || !(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) return undefined;
+  publicSnapshotStore ??= createPublicSnapshotStore({ kv, withExecutor: (operation) => withSqlExecutor(env, operation) });
+  return publicSnapshotStore;
+}
+
+/**
+ * PERF-03: a public change (publication, withdrawal or correction) refreshes the snapshot after the response. Without
+ * the binding this does nothing.
+ */
+function refreshPublicSnapshot(env: WorkerEnvironment, ctx?: { waitUntil?: (promise: Promise<unknown>) => void }): void {
+  const store = publicSnapshotStoreFor(env);
+  if (store === undefined) return;
+  ctx?.waitUntil?.(store.refresh().catch(() => null));
+}
+
+/**
+ * Moderator reject and publish for one proposal. Both call decideProposal, the one gate. The handler validates the
+ * reason, the category resolution, the resolved category and the evidence label, and each one reaches the decision
+ * here, so a moderator's input is recorded or enforced rather than dropped. Exported so the tests exercise these
+ * adapters, not a copy of them.
+ */
+export function createModerationDecisionAdapters(
+  env: WorkerEnvironment,
+  datasetKind: DatasetKind,
+  onPublicChange: () => void = () => undefined,
+) {
+  const gateDatasetKind = datasetKind as "live" | "historical" | "synthetic";
+  return {
+    rejectProposal: async (
+      proposalId: string,
+      command: ModeratorDecisionCommand,
+      principal: ModerationPrincipal,
+    ): Promise<{ status: "rejected" | "already_decided" | "denied"; code?: string }> => {
+      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
+        return { status: "denied", code: "proposal_unavailable" };
+      }
+      const outcome = await withSqlExecutor(env, (executor) => decideProposal(
+        {
+          executor,
+          datasetKind: gateDatasetKind,
+          checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
+        },
+        {
+          proposalId,
+          action: "reject",
+          actor: { kind: "moderator", actorId: principal.actorId },
+          reason: command.reason,
+        },
+      ));
+      if (outcome.status === "rejected") return { status: "rejected" };
+      if (outcome.status === "already_decided") return { status: "already_decided" };
+      return { status: "denied", code: outcome.status === "denied" ? outcome.code : "publication_failed" };
+    },
+    publisher: {
+      publish: async (input: unknown) => {
+        const cmd = typeof input === "object" && input !== null
+          ? (input as {
+            proposal_id?: string;
+            proposalId?: string;
+            actorId?: string;
+            reason?: unknown;
+            category_resolution?: unknown;
+            resolved_category?: unknown;
+            evidence_label?: unknown;
+            decision?: { proposal_id?: string };
+          })
+          : {};
+        const id = cmd.proposal_id ?? cmd.proposalId ?? cmd.decision?.proposal_id;
+        const actorId = cmd.actorId;
+        if (!id || typeof actorId !== "string" || actorId.length === 0) {
+          return { status: "denied", code: "proposal_not_found" };
+        }
+        if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
+          return { status: "denied", code: "proposal_unavailable" };
+        }
+        const outcome = await withSqlExecutor(env, (executor) => decideProposal(
+          {
+            executor,
+            datasetKind: gateDatasetKind,
+            checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
+          },
+          {
+            proposalId: id,
+            action: "publish",
+            actor: { kind: "moderator", actorId },
+            reason: typeof cmd.reason === "string" ? cmd.reason : undefined,
+            categoryResolution: isCategoryResolution(cmd.category_resolution) ? cmd.category_resolution : undefined,
+            resolvedCategory: typeof cmd.resolved_category === "string" ? cmd.resolved_category : undefined,
+            moderatorEvidenceLabel: typeof cmd.evidence_label === "string" ? cmd.evidence_label : undefined,
+          },
+        ));
+        if (outcome.status === "published") {
+          eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });
+          eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
+          onPublicChange();
+          return { status: "written", receipt: { decision_id: outcome.decisionId } };
+        }
+        // F-ALERT-01: the facts are already public at this version. Nothing new is published and no alert is sent.
+        if (outcome.status === "unchanged") {
+          return {
+            status: "unchanged",
+            receipt: { decision_id: outcome.decisionId },
+            event_id: outcome.eventId,
+            version: outcome.version,
+          };
+        }
+        if (outcome.status === "already_decided") {
+          return { status: "conflict", code: "ALREADY_DECIDED" };
+        }
+        if (outcome.status === "denied") {
+          if (outcome.code === "publication_failed") return { status: "denied", code: "writer_failed" };
+          return { status: "denied", code: outcome.code };
+        }
+        return { status: "denied", code: "publication_not_authorized" };
+      },
+    },
+  };
+}
+
+function getModerationHandler(
+  env: WorkerEnvironment,
+  config: AccountRuntimeConfig,
+  onPublicChange: () => void = () => undefined,
+) {
   // The DB dataset comes from the same server-side configuration that scopes the sessions.
   const datasetKind = config.datasetKind as DatasetKind;
+  const moderatorDecisions = createModerationDecisionAdapters(env, datasetKind, onPublicChange);
   return createModerationApiHandler({
     listPendingProposals: async () => {
       if (env.SQL_EXECUTOR || freshDatabase(env)?.connectionString) {
@@ -294,26 +436,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
     cookieMode: config.cookieMode,
     datasetScope: config.datasetKind,
     csrfProtection: true,
-    rejectProposal: async (proposalId: string, _command, principal) => {
-      if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
-        return { status: "denied", code: "proposal_unavailable" };
-      }
-      const outcome = await withSqlExecutor(env, (executor) => decideProposal(
-        {
-          executor,
-          datasetKind: datasetKind as "live" | "historical" | "synthetic",
-          checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
-        },
-        {
-          proposalId,
-          action: "reject",
-          actor: { kind: "moderator", actorId: principal.actorId },
-        },
-      ));
-      if (outcome.status === "rejected") return { status: "rejected" };
-      if (outcome.status === "already_decided") return { status: "already_decided" };
-      return { status: "denied", code: outcome.status === "denied" ? outcome.code : "publication_failed" };
-    },
+    rejectProposal: moderatorDecisions.rejectProposal,
     // TG-FR12: a moderator withdraws a published event. One transaction writes the withdrawn version, its decision and
     // its audit record. Public reads drop the event on their own, and the in-memory model drops it after COMMIT.
     withdrawEvent: async (eventId: string, command, principal) => {
@@ -336,6 +459,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       if (outcome.status === "withdrawn") {
         eventBroadcaster.broadcastPublic("event_withdrawn", { event_id: outcome.eventId, version: outcome.version });
         eventBroadcaster.broadcastModeration("event_withdrawn", { event_id: outcome.eventId, version: outcome.version });
+        onPublicChange();
         return {
           status: "withdrawn",
           event_id: outcome.eventId,
@@ -382,6 +506,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       if (outcome.status === "published" || outcome.status === "unchanged") {
         if (outcome.status === "published") {
           eventBroadcaster.broadcastPublic("event_updated", { event_id: outcome.eventId, version: outcome.version });
+          onPublicChange();
         }
         return {
           status: outcome.status,
@@ -399,55 +524,7 @@ function getModerationHandler(env: WorkerEnvironment, config: AccountRuntimeConf
       return { status: "refused", code: "publication_failed", reasons: [] };
     },
     // MERGE-REVIEW-01: moderator publication uses the same writer and gate as the agent auto-publisher.
-    publisher: {
-      publish: async (input: unknown) => {
-        const cmd = typeof input === "object" && input !== null
-          ? (input as { proposal_id?: string; proposalId?: string; actorId?: string; decision?: { proposal_id?: string } })
-          : {};
-        const id = cmd.proposal_id ?? cmd.proposalId ?? cmd.decision?.proposal_id;
-        const actorId = cmd.actorId;
-        if (!id || typeof actorId !== "string" || actorId.length === 0) {
-          return { status: "denied", code: "proposal_not_found" };
-        }
-        if (!(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString)) {
-          return { status: "denied", code: "proposal_unavailable" };
-        }
-        const outcome = await withSqlExecutor(env, (executor) => decideProposal(
-          {
-            executor,
-            datasetKind: datasetKind as "live" | "historical" | "synthetic",
-            checkPublicDisplay: (sourceId: string) => checkSourcePublicDisplay(env, sourceId),
-          },
-          {
-            proposalId: id,
-            action: "publish",
-            actor: { kind: "moderator", actorId },
-          },
-        ));
-        if (outcome.status === "published") {
-          eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });
-          eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: id });
-          return { status: "written", receipt: { decision_id: outcome.decisionId } };
-        }
-        // F-ALERT-01: the facts are already public at this version. Nothing new is published and no alert is sent.
-        if (outcome.status === "unchanged") {
-          return {
-            status: "unchanged",
-            receipt: { decision_id: outcome.decisionId },
-            event_id: outcome.eventId,
-            version: outcome.version,
-          };
-        }
-        if (outcome.status === "already_decided") {
-          return { status: "conflict", code: "ALREADY_DECIDED" };
-        }
-        if (outcome.status === "denied") {
-          if (outcome.code === "publication_failed") return { status: "denied", code: "writer_failed" };
-          return { status: "denied", code: outcome.code };
-        }
-        return { status: "denied", code: "publication_not_authorized" };
-      },
-    },
+    publisher: moderatorDecisions.publisher,
   });
 }
 function unavailableJson(): Response {
@@ -459,6 +536,30 @@ function unavailableJson(): Response {
     status: 503,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
+}
+
+/**
+ * PERF-06: the snapshot refresh route takes `Authorization: Bearer <key>`. An unset key answers 404, so the route is inert
+ * until the secret is set. Both sides are hashed before the comparison, as in checkServiceKey, so the compare runs in
+ * constant time. The key is never echoed or logged.
+ */
+async function snapshotRefreshDenial(request: Request, configuredKey: string | undefined): Promise<Response | null> {
+  const json = (status: number, code: string): Response => new Response(JSON.stringify({ ok: false, code, error: code }), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+  if (typeof configuredKey !== "string" || configuredKey.length === 0) return json(404, "NOT_FOUND");
+  const provided = /^Bearer (.+)$/u.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
+  const [providedDigest, configuredDigest] = await Promise.all([sha256Bytes(provided), sha256Bytes(configuredKey)]);
+  let difference = provided.length === 0 ? 1 : 0;
+  for (let index = 0; index < configuredDigest.length; index += 1) {
+    difference |= providedDigest[index]! ^ configuredDigest[index]!;
+  }
+  return difference === 0 ? null : json(401, "UNAUTHORIZED");
+}
+
+async function sha256Bytes(value: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
 }
 
 /** Machine routes: 503 when the key is not configured, 401 on any mismatch. */
@@ -625,11 +726,33 @@ const workerHandlers = {
       if (outcome.status === "published") {
         eventBroadcaster.broadcastPublic("event_published", { event_id: outcome.eventId, version: outcome.version });
         eventBroadcaster.broadcastModeration("proposal_published", { proposal_id: proposalId });
+        refreshPublicSnapshot(env, ctx);
       } else if (outcome.status === "queued") {
         eventBroadcaster.broadcastModeration("proposal_created", { proposal_id: proposalId });
       }
       return new Response(JSON.stringify({ ok: true, proposal_id: proposalId, status: outcome.status, ...(outcome.status === "queued" ? { reasons: outcome.reasons } : {}), ...(outcome.status === "published" || outcome.status === "unchanged" ? { event_id: outcome.eventId, version: outcome.version } : {}) }), {
         status: 200,
+        headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+      });
+    }
+
+    // PERF-06: the hosted ingest pushes a snapshot rebuild after each successful cycle. Bearer auth; inert without the
+    // secret (404). The rebuild runs after the response, through waitUntil.
+    if (url.pathname === "/api/v1/internal/public-snapshot/refresh" && request.method === "POST") {
+      const denied = await snapshotRefreshDenial(request, env.SNAPSHOT_REFRESH_KEY);
+      if (denied) return denied;
+      const store = publicSnapshotStoreFor(env);
+      if (store === undefined) {
+        return new Response(JSON.stringify({ ok: false, code: "TEMPORARILY_UNAVAILABLE", error: "TEMPORARILY_UNAVAILABLE" }), {
+          status: 503,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+      const rebuilt = store.refresh().catch(() => null);
+      if (ctx?.waitUntil) ctx.waitUntil(rebuilt);
+      else await rebuilt;
+      return new Response(JSON.stringify({ status: "accepted" }), {
+        status: 202,
         headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
       });
     }
@@ -653,7 +776,7 @@ const workerHandlers = {
       const config = moderationAccountConfig(env);
       if (!config) return unavailableJson();
       try {
-        const modRes = await getModerationHandler(env, config)(request);
+        const modRes = await getModerationHandler(env, config, () => refreshPublicSnapshot(env, ctx))(request);
         if (modRes !== undefined) return modRes;
       } catch {
         return unavailableJson();
@@ -735,7 +858,7 @@ const workerHandlers = {
           connectionString: publicReadDatabase(env)?.connectionString,
         })
         : undefined;
-    let publicEventUpdatesRuntime;
+    let publicEventUpdatesRuntime: PublicEventUpdatesRuntime | undefined;
     if (env.DATASET_MODE === "live"
       && request.method === "GET"
       && url.pathname === "/api/v1/updates") {
@@ -750,7 +873,9 @@ const workerHandlers = {
       }
     }
 
-    return handlePublicApiRequest(
+    // PERF-03: the three public reads answer from the KV snapshot when the binding is present. Otherwise, and for
+    // anything the snapshot cannot answer exactly, the DB path answers as before.
+    const dbPublicRead = () => handlePublicApiRequest(
       request,
       env,
       consoleTelemetry,
@@ -761,6 +886,24 @@ const workerHandlers = {
       publicBriefingRuntime,
       publicEventUpdatesRuntime,
     );
+    const snapshotRoute = publicSnapshotRouteFor({
+      method: request.method,
+      pathname: url.pathname,
+      datasetMode: env.DATASET_MODE,
+      snapshotBinding: env.PUBLIC_SNAPSHOT,
+      databaseConfigured: () => Boolean(env.SQL_EXECUTOR || freshDatabase(env)?.connectionString),
+    });
+    const snapshotStore = snapshotRoute === null ? undefined : publicSnapshotStoreFor(env);
+    if (snapshotRoute !== null && snapshotStore !== undefined) {
+      return readPublicSnapshotRoute(request, snapshotRoute, {
+        store: snapshotStore,
+        cursorCodec: snapshotRoute === "list"
+          ? await createPublicEventListCursorCodecForKey(env.PUBLIC_EVENT_LIST_CURSOR_HMAC_KEY_HEX)
+          : undefined,
+        waitUntil: ctx?.waitUntil ? (promise) => ctx?.waitUntil?.(promise) : undefined,
+      }, dbPublicRead);
+    }
+    return dbPublicRead();
   },
   async scheduled(
     controller: { readonly scheduledTime: number },

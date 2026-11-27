@@ -1,0 +1,33 @@
+▶ FLOW-VIS-01 pipeline flow snapshot
+  ✔ the review node carries expired_24h, and an aggregate without the count still builds with zero (2.619507ms)
+  ✔ POLISH-03: the review node carries supersede_24h beside expired_24h, and a supersede is not a gate rejection (0.570706ms)
+  ✔ places every stage in its layer and keeps the edges in pipeline order (1.156651ms)
+  ✔ reports an empty database as idle with zero counts, never as safe or healthy (0.340751ms)
+  ✔ gives failure precedence over waiting and waiting over activity (0.370906ms)
+  ✔ animates an edge only when its downstream node moved items in the last 15 minutes (1.593199ms)
+  ✔ attaches runtime detail and marks runtime-only nodes from the runtime status (0.732585ms)
+✔ FLOW-VIS-01 pipeline flow snapshot (9.205236ms)
+▶ FLOW-RANGE-01 pipeline flow window
+  ✔ accepts only the five windows, defaults when the parameter is missing, and refuses repeats (0.438802ms)
+  ✔ names its window in the snapshot: 24 h by default and the selected length otherwise (0.651135ms)
+  ✔ answers the demo snapshot and items with the requested window and refuses other ranges with 400 (32.259582ms)
+  ✔ passes the selected window to the store on the live path and keeps the 15 minute bound fixed (4.06267ms)
+✔ FLOW-RANGE-01 pipeline flow window (37.974298ms)
+▶ FLOW-VIS-01 pipeline flow handler
+  ✔ answers the demo snapshot and items without a database and labels them demo (1.73993ms)
+  ✔ validates the node id and the limit before reading anything (1.028413ms)
+  ✔ answers 503 in live mode when the database cannot be read, without echoing the error (0.695968ms)
+  ✔ uses runtime-only drill-downs from the attached status and says so when it is absent (1.121775ms)
+  ✔ reads live aggregates through the injected read-only runner and labels them live (1.199339ms)
+✔ FLOW-VIS-01 pipeline flow handler (6.210954ms)
+▶ FLOW-VIS-01 route guard
+  ✔ refuses anonymous callers and deployments without accounts before touching a database (3.489078ms)
+✔ FLOW-VIS-01 route guard (3.6148ms)
+ℹ tests 17
+ℹ suites 4
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6751.71277

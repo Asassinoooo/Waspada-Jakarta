@@ -47,3 +47,18 @@ jobs:
           GOOGLE_AI_FALLBACK_CHAT_MODEL: gemini-3.1-flash-lite
           DATASET_KIND: live
         run: npm run serve:hosted-ingest:once
+
+      # PERF-06: push a public snapshot rebuild after a successful cycle, so public reads see the ingest without waiting for
+      # the Worker's background check. Best effort: a failure here never fails the ingest, and without the secret the step
+      # only warns. The key is passed to this step only and is never echoed.
+      - name: Refresh public snapshot
+        if: success()
+        continue-on-error: true
+        env:
+          SNAPSHOT_REFRESH_KEY: ${{ secrets.SNAPSHOT_REFRESH_KEY }}
+        run: |
+          if [ -z "$SNAPSHOT_REFRESH_KEY" ]; then
+            echo "::warning::SNAPSHOT_REFRESH_KEY not set; skipping"
+            exit 0
+          fi
+          curl -fsS -X POST -H "Authorization: Bearer $SNAPSHOT_REFRESH_KEY" https://waspada-jakarta.waspada-worker.workers.dev/api/v1/internal/public-snapshot/refresh -o /dev/null -w "%{http_code}\n"

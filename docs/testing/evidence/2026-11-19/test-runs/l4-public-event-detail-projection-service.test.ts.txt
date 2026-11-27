@@ -1,0 +1,46 @@
+✔ binds one snapshot and exact lookups before reading unique event/claim geometries (12.706367ms)
+✔ returns missing without lookup or geometry reads (0.484667ms)
+✔ rejects an invalid requested ID before any port call (1.192257ms)
+✔ rejects snapshot identity mismatches before reviewed lookup (0.498523ms)
+✔ does not read geometries for an event without event or claim references (1.04291ms)
+▶ enforces the geometry cap and rejects malformed references before geometry I/O
+  ✔ over-limit unique references (3.589048ms)
+  ✔ invalid geometry identifier (1.1777ms)
+  ✔ duplicate IDs inside one scope (0.883425ms)
+✔ enforces the geometry cap and rejects malformed references before geometry I/O (7.422196ms)
+▶ rejects missing, duplicate, extra, and identity-mismatched lookup rows before geometry I/O
+  ✔ missing requested names (1.179032ms)
+  ✔ extra scope identity (1.049933ms)
+  ✔ duplicate support attribution (0.782768ms)
+  ✔ invalid source timestamp (0.82689ms)
+  ✔ source text or excerpt leakage (0.992857ms)
+  ✔ wrong supporting attribution identity (0.696529ms)
+✔ rejects missing, duplicate, extra, and identity-mismatched lookup rows before geometry I/O (7.459546ms)
+▶ rejects malformed geometry port rows without returning partial detail
+  ✔ missing geometry (1.261475ms)
+  ✔ duplicate geometry (1.132035ms)
+  ✔ extra geometry (0.858219ms)
+  ✔ wrong dataset (1.099696ms)
+  ✔ wrapper and record IDs disagree (0.98896ms)
+  ✔ record identity disagrees with its wrapper (0.619035ms)
+  ✔ malformed result container (0.51872ms)
+✔ rejects malformed geometry port rows without returning partial detail (8.258103ms)
+✔ HOSTED-22: a supporting reference with no approved attribution is missing, not a lookup error (0.538366ms)
+▶ validates valid and impossible source timestamps before geometry reads
+  ✔ accepts a valid leap-day timestamp (1.748867ms)
+  ✔ rejects an impossible calendar date (0.824476ms)
+✔ validates valid and impossible source timestamps before geometry reads (3.575127ms)
+▶ redacts snapshot, lookup, geometry port errors
+  ✔ snapshot (1.175019ms)
+  ✔ lookup (0.522156ms)
+  ✔ geometry (0.586876ms)
+✔ redacts snapshot, lookup, geometry port errors (3.402949ms)
+✔ delegates exact claim/evidence support to the strict projector and returns no partial detail (1.040887ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1444.189956

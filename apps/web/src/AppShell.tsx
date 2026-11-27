@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import type { PublicContext } from "@waspada/worker/public-contracts";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
 import type { Route } from "./App.js";
-import { accountClient } from "./account-client.js";
-import { hasProtectedShellAccess } from "./AccountPages.js";
-import { openOnboardingIntro } from "./OnboardingIntro.js";
+import { getAccountSession } from "./account-session.js";
+import { prefetchRouteOnIntent } from "./lazy-routes.js";
+import { hasProtectedShellAccess } from "./account-access.js";
+import { openOnboardingIntro } from "./intro-trigger.js";
 import { THEME_LABEL, ThemeToggle, nextThemePreference, setThemePreference, useThemePreference } from "./ThemeToggle.js";
 import { Menu, type MenuItem } from "./ui/Menu.js";
 import { Popover } from "./ui/Popover.js";
@@ -36,7 +37,7 @@ export function datasetBadge(datasetMode: string | undefined, sourcePreview = fa
     return {
       label: "Data contoh",
       title: "DEMO — data sintetis; bukan peringatan langsung",
-      detail: "Fixture presentasi tetap terpisah dari record API.",
+      detail: "Fixture presentasi tetap terpisah dari data API.",
       tone: "warning",
     };
   }
@@ -99,7 +100,7 @@ function useAccountSession(refreshKey: number, accountRevision: number): Session
   const [session, setSession] = useState<SessionEnvelope | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    accountClient.getSession(controller.signal)
+    getAccountSession(controller.signal)
       .then((next) => setSession(next))
       .catch(() => {
         if (!controller.signal.aborted) setSession(null);
@@ -175,8 +176,9 @@ export function SiteHeader({ route, context = null, sessionKey = 0, accountRevis
   return (
     <>
       <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
-      <header className="site-header">
-        <a className="brand" href="#peta" aria-label="Waspada Jakarta, ke peta">
+      {/* PERF-09b: pointing at, focusing or touching a link prefetches its route chunk (menu links included). */}
+      <header className="site-header" onPointerOver={prefetchRouteOnIntent} onFocus={prefetchRouteOnIntent} onTouchStart={prefetchRouteOnIntent}>
+        <a className="brand" href="#peta">
           <span className="brand-mark" aria-hidden="true">WJ</span>
           <span className="brand__text">
             <strong>Waspada Jakarta</strong>
@@ -212,9 +214,10 @@ export function SiteHeader({ route, context = null, sessionKey = 0, accountRevis
 
 export function SiteFooter() {
   return (
-    <footer className="site-footer">
+    <footer className="site-footer" onPointerOver={prefetchRouteOnIntent} onFocus={prefetchRouteOnIntent} onTouchStart={prefetchRouteOnIntent}>
       <span>Data dari sumber publik dan laporan warga; bukan layanan darurat. Darurat: 112.</span>
       <nav className="site-footer__links" aria-label="Tautan bawah">
+        <a href="#unduh">Aplikasi Android</a>
         <a href="#bantuan">Bantuan</a>
         <a href="#privasi">Privasi</a>
       </nav>

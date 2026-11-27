@@ -1,0 +1,11 @@
+✔ NFR-07 C2: a session is refused at its idle limit, its absolute limit or after revocation, and an active one slides its idle window (4995.87331ms)
+✔ NFR-07 B: cleanupExpired purges only expired or long-revoked sessions and expired login state, in bounded batches, within one dataset (3685.804755ms)
+✔ NFR-07 B: a purge batch is bounded, and an invalid bound is refused before any delete (3639.256695ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14194.862503

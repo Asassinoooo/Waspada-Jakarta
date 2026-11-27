@@ -242,7 +242,7 @@ test("account loading and failure are non-blocking, and anonymous onboarding has
   assert.equal(ACCOUNT_ONBOARDING_STEPS.length, 3);
   assert.match(ACCOUNT_ONBOARDING_STEPS[1]?.body ?? "", /menyimpan kategori minat di perangkat ini/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.title ?? "", /tanpa mengirim minat/u);
-  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /username/u);
+  assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /nama pengguna/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /hanya disimpan sebagai hash/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /peran yang ditetapkan server/u);
   assert.match(ACCOUNT_ONBOARDING_STEPS[2]?.body ?? "", /versi dan waktu penyelesaian/u);
@@ -265,7 +265,7 @@ test("profile shows the server role as read-only and keeps the local-interest de
 
 test("login screen offers username sign-in and registration without any role field or Google copy", () => {
   const html = renderToStaticMarkup(<AccountPage screen="login" sessionState={sessionState(anonymousSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
-  assert.match(html, /Masuk dengan username/u);
+  assert.match(html, /Masuk dengan nama pengguna/u);
   assert.match(html, /id="login-username"/u);
   assert.match(html, /id="login-password"/u);
   assert.match(html, /autoComplete="current-password"/u);

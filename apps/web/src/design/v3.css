@@ -1,0 +1,627 @@
+/*
+ * UI-V3 visual layer (23 Nov 2026).
+ *
+ * Loaded last (main.tsx), so it refines the existing components without changing their markup or class names.
+ * Direction: calm editorial civic map. A muted, paper-toned basemap lets the incident pins carry the colour; glass
+ * islands float over it; type is Plus Jakarta Sans with tight display tracking. There is no green "safe" state.
+ * Every animation here stops under prefers-reduced-motion (tokens set the durations to 0).
+ */
+
+/* ---------- Type ---------- */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+}
+
+:where(h1, h2, h3) {
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
+}
+
+:where(h1) {
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-display);
+}
+
+:where(p) { text-wrap: pretty; }
+
+time,
+.map-card__freshness,
+.count-chip {
+  font-variant-numeric: tabular-nums;
+}
+
+.eyebrow,
+.section-kicker {
+  letter-spacing: 0.12em;
+  font-weight: var(--weight-bold);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+}
+
+/* ---------- Basemap: muted paper in light, deep ink in dark ---------- */
+
+.map-tile-layer,
+.record-map__tile,
+.map-canvas__tile {
+  filter: grayscale(0.92) sepia(0.12) contrast(0.92) brightness(1.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
+    filter: invert(1) hue-rotate(180deg) grayscale(0.85) brightness(0.62) contrast(1.05);
+  }
+}
+
+:root[data-theme="dark"] :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
+  filter: invert(1) hue-rotate(180deg) grayscale(0.85) brightness(0.62) contrast(1.05);
+}
+
+/* The layer carries the dark treatment, so the per-tile dimming from incident-map.css must not stack on it. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .map-tile-layer .map-tile-img { filter: none; }
+}
+:root[data-theme="dark"] .map-tile-layer .map-tile-img { filter: none; }
+
+/* A soft vignette so the floating islands read against busy tiles. */
+.map-home__stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 60% 55%, transparent 55%, color-mix(in srgb, var(--color-bg) 55%, transparent) 100%);
+}
+
+/* ---------- Glass islands ---------- */
+
+.site-header,
+.map-home__panel,
+.map-home__toolbar,
+.map-legend.map-legend--severity,
+.map-home__footer,
+.map-home .map-zoom-controls {
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
+  background: color-mix(in srgb, var(--color-surface-raised) 82%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+}
+
+.site-header {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.map-home__panel {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  animation: v3-island-in var(--duration-slow) var(--ease-out-expo);
+}
+
+.map-home__toolbar {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.map-legend.map-legend--severity,
+.map-home__footer {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+@keyframes v3-island-in {
+  from { opacity: 0; transform: translateY(0.75rem) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- Brand ---------- */
+
+.brand-mark {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 45%, var(--color-text)));
+  color: var(--color-on-accent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), var(--shadow-sm);
+}
+
+/* ---------- Controls ---------- */
+
+.button {
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.005em;
+  transition:
+    transform var(--duration-fast) var(--ease-out-expo),
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.button:active:not(:disabled) { transform: scale(0.97); }
+
+.button--primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 88%, white), var(--color-accent));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 6px 16px -8px color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+
+.input,
+:where(input[type="search"], input[type="text"], select, textarea) {
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.badge,
+.count-chip {
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-semibold);
+}
+
+.feedback-banner {
+  border-radius: var(--radius-md);
+}
+
+/* ---------- Event cards in the map list ---------- */
+
+.map-list__items {
+  gap: var(--space-3);
+}
+
+.map-card {
+  position: relative;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border-color: color-mix(in srgb, var(--color-border) 80%, transparent);
+  box-shadow: var(--shadow-xs);
+  transition:
+    transform var(--duration-base) var(--ease-out-expo),
+    box-shadow var(--duration-base) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+  animation: v3-rise var(--duration-slow) var(--ease-out-expo) both;
+}
+
+.map-list__items > :nth-child(2) .map-card, .map-list__items > .map-card:nth-child(2) { animation-delay: 40ms; }
+.map-list__items > :nth-child(3) .map-card, .map-list__items > .map-card:nth-child(3) { animation-delay: 80ms; }
+.map-list__items > :nth-child(4) .map-card, .map-list__items > .map-card:nth-child(4) { animation-delay: 120ms; }
+.map-list__items > :nth-child(n + 5) .map-card, .map-list__items > .map-card:nth-child(n + 5) { animation-delay: 160ms; }
+
+@keyframes v3-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.map-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-md);
+}
+
+.map-card--selected {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-soft) 70%, var(--color-surface-raised));
+  box-shadow: 0 0 0 1px var(--color-accent), var(--shadow-md);
+}
+
+.map-card__title {
+  font-size: 1.0625rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.012em;
+  line-height: 1.3;
+}
+
+.map-card__meta { line-height: 1.45; }
+
+.map-card__unmapped {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.1rem 0.5rem;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+}
+
+.map-list__head h2 {
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* ---------- Markers ---------- */
+
+.map-marker__svg {
+  filter: drop-shadow(0 3px 6px rgb(15 34 41 / 0.35));
+  transition: transform var(--duration-base) var(--ease-out-expo), width var(--duration-base) var(--ease-out-expo), height var(--duration-base) var(--ease-out-expo);
+}
+
+.map-marker:hover .map-marker__svg { transform: translateY(-2px) scale(1.08); }
+
+.map-marker--selected .map-marker__svg {
+  filter: drop-shadow(0 6px 14px rgb(15 34 41 / 0.45));
+}
+
+/* ---------- Dialogs and the first-visit intro ---------- */
+
+.modal-overlay {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.modal-dialog,
+[role="dialog"][aria-modal="true"].dialog {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  animation: v3-dialog-in var(--duration-slow) var(--ease-out-expo);
+}
+
+@keyframes v3-dialog-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.intro-dialog {
+  padding: clamp(1.5rem, 1rem + 2vw, 2.25rem);
+}
+
+.intro {
+  gap: var(--space-4);
+}
+
+.intro__title {
+  font-size: clamp(1.75rem, 1.3rem + 1.6vw, 2.375rem);
+  line-height: 1.08;
+  letter-spacing: var(--tracking-display);
+}
+
+.intro__text {
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+
+.intro__actions {
+  margin-top: var(--space-2);
+}
+
+/* ---------- Sheets, popups, pages ---------- */
+
+.sheet,
+.map-popup {
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.map-popup--anchored {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.map-popup__title {
+  letter-spacing: -0.015em;
+}
+
+.page-header .page-header__title {
+  font-size: var(--text-display);
+  font-weight: var(--weight-bold);
+  line-height: 1.02;
+  letter-spacing: var(--tracking-display);
+}
+
+.page-header .page-header__eyebrow {
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.page-header .page-header__lead {
+  max-width: 46rem;
+  font-size: var(--text-lg);
+  line-height: 1.55;
+}
+
+.page-header {
+  padding-block: clamp(1rem, 0.5rem + 2vw, 2.5rem) var(--space-4);
+  animation: v3-rise var(--duration-slow) var(--ease-out-expo) both;
+}
+
+.updates-center-empty,
+.empty-state {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(80% 120% at 0% 0%, color-mix(in srgb, var(--color-accent-soft) 80%, transparent), transparent 60%),
+    var(--color-surface-raised);
+  box-shadow: var(--shadow-xs);
+}
+
+.card,
+.panel {
+  border-radius: var(--radius-lg);
+}
+
+.skip-link:focus {
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 600px) {
+  .site-header { border-radius: var(--radius-lg); }
+  .map-home__panel { border-radius: var(--radius-lg); }
+  .map-card { padding: var(--space-3) var(--space-4); }
+}
+
+/* ---------- MAP-RECENT-01: the 24-hour window toggle and the list scope line ---------- */
+
+/* A glass caption under the toolbar: it names the window the pins cover. */
+.map-home__scope {
+  position: absolute;
+  top: calc(var(--map-top-inset) + var(--map-island-gap) + 3.75rem + var(--space-2));
+  left: calc(var(--map-inset-left) + var(--map-island-gap));
+  z-index: 4;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  max-width: calc(100% - var(--map-inset-left) - 2 * var(--map-island-gap));
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  pointer-events: none;
+  animation: v3-rise var(--duration-slow) var(--ease-out-expo) both;
+}
+
+.map-home__scope-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
+.map-home__scope-more {
+  color: var(--color-text-muted);
+  font-weight: var(--weight-regular, 400);
+}
+
+.map-list__scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-accent-soft) 60%, transparent);
+  font-size: var(--text-sm);
+}
+
+.map-list__scope-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-semibold);
+}
+
+.map-list__scope-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
+.map-list__scope-action { margin-inline-start: auto; }
+
+@media (max-width: 600px) {
+  .map-home__scope {
+    top: calc(var(--map-top-inset) + var(--space-2) + 3.25rem + var(--space-2));
+    left: var(--space-2);
+    max-width: calc(100% - 2 * var(--space-2));
+  }
+}
+
+/* ---------- NOTIFY-01: the "Area saya" notification card ---------- */
+
+.notify-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-4);
+  margin-block: var(--space-4);
+  padding: var(--space-5, 1.25rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(90% 140% at 0% 0%, color-mix(in srgb, var(--color-accent-soft) 85%, transparent), transparent 62%),
+    var(--color-surface-raised);
+  box-shadow: var(--shadow-xs);
+  animation: v3-rise var(--duration-slow) var(--ease-out-expo) both;
+}
+
+.notify-card__icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), var(--shadow-sm);
+}
+
+.notify-card__icon svg { width: 1.375rem; height: 1.375rem; }
+
+.notify-card[data-status="on"] .notify-card__icon svg {
+  transform-origin: 50% 10%;
+  animation: v3-bell 1.1s var(--ease-out-expo) 1;
+}
+
+@keyframes v3-bell {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(14deg); }
+  40% { transform: rotate(-10deg); }
+  60% { transform: rotate(6deg); }
+  80% { transform: rotate(-3deg); }
+}
+
+.notify-card__body { display: grid; gap: var(--space-2); min-width: 0; }
+.notify-card__body p { margin: 0; }
+
+.notify-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.notify-card__head h2 {
+  margin: 0;
+  font-size: var(--text-xl, 1.25rem);
+  letter-spacing: var(--tracking-tight);
+}
+
+.notify-card__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+}
+
+.notify-card__state::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.notify-card__state--on {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.notify-card__state--off {
+  background: color-mix(in srgb, var(--color-text-muted) 14%, transparent);
+  color: var(--color-text-muted);
+}
+
+.notify-card__note {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.notify-card__hint {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-accent-soft) 55%, transparent);
+  font-size: var(--text-sm);
+}
+
+.notify-card__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
+.notify-card__message { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+
+@media (max-width: 600px) {
+  .notify-card { grid-template-columns: 1fr; padding: var(--space-4); }
+}
+/* ---------- AUTH-RESET-01: reset code (admin) and the #lupa-sandi page ---------- */
+
+.account-form__link {
+  align-self: center;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-underline-offset: 0.2em;
+}
+
+.reset-steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  counter-reset: reset-step;
+}
+
+.reset-steps li {
+  position: relative;
+  padding-left: 2.5rem;
+  line-height: 1.5;
+  counter-increment: reset-step;
+}
+
+.reset-steps li::before {
+  content: counter(reset-step);
+  position: absolute;
+  top: -0.1rem;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.reset-code {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+}
+
+.reset-code__issue { justify-self: start; }
+
+.reset-code__issued {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(100% 140% at 100% 0%, color-mix(in srgb, var(--color-accent-soft) 90%, transparent), transparent 60%),
+    var(--color-surface-raised);
+  animation: v3-rise var(--duration-slow) var(--ease-out-expo) both;
+}
+
+.reset-code__issued p { margin: 0; }
+.reset-code__label { font-size: var(--text-sm); color: var(--color-text-muted); }
+
+.reset-code__value {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.125rem);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  user-select: all;
+}
+
+.reset-code__meta { font-size: var(--text-sm); line-height: 1.5; }
+
+.reset-done h2 { letter-spacing: var(--tracking-tight); }

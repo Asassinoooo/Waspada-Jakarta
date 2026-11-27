@@ -384,15 +384,25 @@ describe('PUB-01 manual publication and public read-chain PGlite composition', (
           change_type: 'corrected',
           changed_at: CORRECTION_AT,
           summary: CORRECTION_DISCLOSURE_SUMMARY,
+          // HIST-UI-01: version 1's scope IDs have no seeded names here, so only the title and summary differ.
+          changes: [
+            { field: 'title', before: 'Synthetic fixture event title', after: 'Synthetic corrected fixture event title' },
+            {
+              field: 'summary',
+              before: 'Authored synthetic summary; no real incident is asserted.',
+              after: 'Authored synthetic corrected summary; no real incident is asserted.',
+            },
+          ],
         },
       ],
       page: { next_cursor: null, cursor_expires_at: null },
     });
     for (const entry of history.page.data) {
-      assert.deepEqual(Object.keys(entry).sort(), [
+      assert.deepEqual(Object.keys(entry).filter((key) => key !== 'changes').sort(), [
         'change_type', 'changed_at', 'event_id', 'summary', 'version',
       ]);
     }
+    assert.equal('changes' in (history.page.data[0] ?? {}), false, 'version 1 has no changes');
     assert.notEqual(history.page.data[0]?.summary, storedVersions.rows[0]?.summary);
     assert.notEqual(history.page.data[1]?.summary, storedVersions.rows[1]?.summary);
 
@@ -418,7 +428,12 @@ describe('PUB-01 manual publication and public read-chain PGlite composition', (
         summary: CORRECTION_DISCLOSURE_SUMMARY,
       },
     ]);
-    assert.deepEqual(updates.items, history.page.data);
+    // HIST-UI-01: the updates feed does not carry the history-only changes list, so compare everything else.
+    assert.deepEqual(updates.items, history.page.data.map((entry) => {
+      const withoutChanges: Partial<typeof entry> = { ...entry };
+      delete withoutChanges.changes;
+      return withoutChanges;
+    }));
     assert.deepEqual(Object.keys(updates).sort(), [
       'checked_at', 'cursor_expires_at', 'items', 'next_cursor',
     ]);

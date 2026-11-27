@@ -2,6 +2,8 @@
 
 **Updated:** 18 October 2026 · **Team:** 12 · **Audience:** any coding agent or developer.
 
+> **Start with [`docs/AGENT_WORKLOG.md`](docs/AGENT_WORKLOG.md)** (since 24 Nov 2026). It holds the current state, the work in progress, the next candidates and the rules every agent follows to keep it updated. This file is older background.
+
 This document is self-contained project context. It requires no particular assistant, model, editor, connector, previous conversation, or agent session. Use ordinary repository files, Git, and terminal commands. Directory names such as `.codex-build` are existing artifact locations, not a requirement to use that product.
 
 > **Update 8 November 2026:** `main` is now at `33528c6`, 84 commits past the baseline below. Work from 26 October to 6 November (live pollers, triage gate and permission evidence with migrations 037–044, Mastra `apps/intelligence`, deterministic prefilter, corroboration, 3D embedding view, webhook/SSE, demo-login, and the frontend overhaul in PRs #1–#3) was accepted by Team 12 as **local live mode** (`npm run serve:live`). It is recorded as LIVE-LOCAL-01 in the [backlog](docs/IMPLEMENTATION_BACKLOG.md), together with the defects found on review (`FIX-*`, `TEST-LIST-01`). Statements below that no live source is active, that there are 36 migrations, or that `npm run dev:pipeline` exists (it does not; use `pipeline:serve`) are superseded. The invariants in section 3 still apply, and some current code violates them; see the FIX rows before building on the moderation, publication or public-page paths.

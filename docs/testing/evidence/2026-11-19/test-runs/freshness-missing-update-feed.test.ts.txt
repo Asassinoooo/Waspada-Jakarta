@@ -1,0 +1,12 @@
+✔ one bounded due page: passed review date needs update, ended validity expires, a missing feed stays current (20.098405ms)
+✔ a missing feed never becomes expired or resolved however long it stays silent (7.006108ms)
+✔ without an issuer validity window no evaluated status is expired, at any time (3.384264ms)
+✔ the status vocabulary the policy can produce has no resolved value (4.916871ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1419.850863

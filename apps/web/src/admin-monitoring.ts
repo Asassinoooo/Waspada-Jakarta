@@ -26,8 +26,20 @@ const categories: readonly Category[] = [
   "crime_personal_security", "demonstrations_public_gatherings", "crowds_major_events",
   "violence_immediate_threats", "disasters_weather", "fires_infrastructure_hazards",
   "transport_road_incidents", "utilities_essential_services", "health_environmental_advisories",
-  "group_specific_critical_notices",
+  "group_specific_critical_notices", "other", "unclassified",
 ];
+/** The keys every EventView carries (contract: EventView in apps/worker/src/contracts/public-api.ts). */
+const eventViewRequiredKeys = [
+  "event_id", "version", "title", "summary", "category", "tags", "lifecycle", "freshness",
+  "event_time", "validity", "scope", "claims", "impacts", "published_at",
+] as const;
+/**
+ * Optional EventView keys the contract declares. The Worker adds location_display, location_label and severity to list
+ * items (public-event-list-projection-service.ts). An optional key is absent, never null, when it does not apply.
+ */
+const eventViewOptionalKeys = ["incident_type", "location_display", "location_label", "severity"] as const;
+const locationDisplays = ["point", "whole_view"] as const;
+const severities = ["low", "medium", "high"] as const;
 const lifecycles: readonly Lifecycle[] = ["planned", "ongoing", "resolved", "cancelled", "unknown"];
 const freshnessStatuses: readonly FreshnessStatus[] = ["current", "needs_update", "expired"];
 const precisions = ["exact", "date", "range", "unknown"] as const;
@@ -81,6 +93,17 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 function hasExactKeys(value: JsonRecord, keys: readonly string[]): boolean {
   return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+/**
+ * Every required key is present, and every other key is one of the optional keys. Unknown keys still fail closed.
+ */
+function hasKeys(value: JsonRecord, required: readonly string[], optional: readonly string[]): boolean {
+  return required.every((key) => Object.hasOwn(value, key))
+    && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
+}
+/** An optional key may be absent. A present key must pass its own check. */
+function optionalValid(value: JsonRecord, key: string, check: (field: unknown) => boolean): boolean {
+  return !Object.hasOwn(value, key) || check(value[key]);
 }
 function isString(value: unknown, maximum: number, allowEmpty = true): value is string {
   return typeof value === "string" && value.length <= maximum && (allowEmpty || value.length > 0);
@@ -215,16 +238,19 @@ function parsePublicImpact(value: unknown): PublicImpact {
   };
 }
 function parseEventView(value: unknown): EventView {
-  if (!isRecord(value) || !hasExactKeys(value, [
-    "event_id", "version", "title", "summary", "category", "tags", "lifecycle", "freshness",
-    "event_time", "validity", "scope", "claims", "impacts", "published_at",
-  ])
+  if (!isRecord(value) || !hasKeys(value, eventViewRequiredKeys, eventViewOptionalKeys)
     || !isString(value.event_id, MAX_PUBLIC_ID, false)
     || !Number.isSafeInteger(value.version) || (value.version as number) < 1
     || !isString(value.title, 500, false) || !isString(value.summary, MAX_TEXT)
     || !isMember(value.category, categories) || !Array.isArray(value.tags) || value.tags.length > 100
     || !isMember(value.lifecycle, lifecycles) || !Array.isArray(value.claims) || value.claims.length > 100
-    || !Array.isArray(value.impacts) || value.impacts.length > 100 || !isInstant(value.published_at)) {
+    || !Array.isArray(value.impacts) || value.impacts.length > 100 || !isInstant(value.published_at)
+    // Optional keys: absent is valid. A present key is type-checked with the Worker's own caps.
+    || !optionalValid(value, "incident_type", (field) => isString(field, 200, false))
+    || !optionalValid(value, "location_display", (field) => isMember(field, locationDisplays))
+    // Up to 200 code points in the Worker, which is at most 400 UTF-16 units.
+    || !optionalValid(value, "location_label", (field) => isString(field, 400, false))
+    || !optionalValid(value, "severity", (field) => isMember(field, severities))) {
     throw new MonitorPayloadError();
   }
   const tags = value.tags.map((tag) => {
@@ -238,6 +264,12 @@ function parseEventView(value: unknown): EventView {
     event_time: parseTimeScope(value.event_time), validity: parseValidity(value.validity),
     scope: parseScope(value.scope), claims: value.claims.map(parsePublicClaim),
     impacts: value.impacts.map(parsePublicImpact), published_at: value.published_at,
+    // Copied only when present, so an absent key stays absent in the parsed view.
+    ...(Object.hasOwn(value, "incident_type") ? { incident_type: value.incident_type as string } : {}),
+    ...(Object.hasOwn(value, "location_display")
+      ? { location_display: value.location_display as (typeof locationDisplays)[number] } : {}),
+    ...(Object.hasOwn(value, "location_label") ? { location_label: value.location_label as string } : {}),
+    ...(Object.hasOwn(value, "severity") ? { severity: value.severity as (typeof severities)[number] } : {}),
   };
 }
 function parseEventPage(value: unknown): { events: EventView[]; nextCursor: string | null } {
@@ -467,13 +499,13 @@ function layerSummaries(
     },
     {
       layer: "L4", name: "L4 · Proyeksi publik",
-      description: "Record terbit yang dikembalikan dalam halaman pertama.",
+      description: "Laporan terbit yang dikembalikan dalam halaman pertama.",
       availability: eventResult.value ? "observed" : "unavailable",
       count: eventResult.value?.events.length ?? null,
       state: eventResult.value ? "ready" : "unavailable",
       note: eventResult.value
-        ? "Jumlah ini hanya record pada halaman pertama; cursor lanjutan tidak dimuat."
-        : "Jumlah record tidak tersedia karena halaman publik gagal dibaca.",
+        ? "Jumlah ini hanya laporan pada halaman pertama; cursor lanjutan tidak dimuat."
+        : "Jumlah laporan tidak tersedia karena halaman publik gagal dibaca.",
     },
     {
       layer: "L5", name: "L5 · Pengamatan API",
@@ -538,14 +570,14 @@ function makePublicItems(
     const evidenceSources = uniqueSourceNames(event);
     const steps: AdminStep[] = [{
       layer: "L4", state: "done", label: "Diterima dari daftar publik",
-      detail: "Record sudah menjadi proyeksi publik pada versi " + String(event.version) + ".",
+      detail: "Laporan sudah menjadi proyeksi publik pada versi " + String(event.version) + ".",
       at: event.published_at,
     }];
     return {
       id: "public:" + event.event_id + ":" + String(event.version),
       title: event.title, summary: event.summary, category: event.category, layer: "L4",
       state: "done", operationalPriority: "normal",
-      placeLabel: event.scope.places.slice(0, 4).join(", ") || "Lokasi tidak dirinci dalam record publik.",
+      placeLabel: event.scope.places.slice(0, 4).join(", ") || "Lokasi tidak dirinci dalam laporan publik.",
       geometry,
       ...(geometries.length > 1 ? { additionalGeometries: geometries.slice(1) } : {}),
       geometryBasis: geometry ? "source_supported" : "none",
@@ -559,7 +591,7 @@ function makePublicItems(
       datasetKind, observedAt: sourceObservationTime(event), fetchedAt: capturedAt,
       publishedAt: event.published_at,
       evidenceSummary: event.claims.length === 0
-        ? "Record publik tidak memuat klaim sumber dalam respons ini."
+        ? "Laporan publik tidak memuat klaim sumber dalam respons ini."
         : String(event.claims.length) + " klaim publik" + (evidenceSources.length ? "; sumber: " + evidenceSources.join(", ") : "."),
       publicStatus: {
         lifecycle: event.lifecycle, freshness: event.freshness,
@@ -603,7 +635,7 @@ function createPublicSnapshot(input: {
       "Mode dataset server dan label dataset ditampilkan dari /api/v1/context; keduanya terpisah dari status koneksi.",
       "Jumlah antrean, aktivitas internal, model/token, investigasi, moderator, dan telemetry server tidak tersedia melalui endpoint ini.",
       "Durasi request adalah pengukuran browser hingga respons tervalidasi, bukan latency server atau performa model.",
-      "Geometry hanya ditampilkan jika event_id dan version persis cocok dengan record pada halaman yang dimuat.",
+      "Geometry hanya ditampilkan jika event_id dan version persis cocok dengan laporan pada halaman yang dimuat.",
       "Hasil kosong, geometri kosong, atau sumber yang tidak tercantum bukan bukti bahwa suatu lokasi aman atau layanan lengkap.",
       "Halaman pertama saja dimuat; cursor lanjutan tidak diikuti dan tidak ada request detail per event.",
     ],

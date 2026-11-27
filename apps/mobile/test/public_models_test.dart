@@ -457,4 +457,79 @@ void main() {
           throwsA(isA<ContractViolation>()));
     });
   });
+
+  group('HIST-UI-01 history changes', () {
+    Map<String, Object?> historyEntry([Map<String, Object?> extra = const {}]) => {
+          'event_id': 'synthetic-event-1',
+          'version': 2,
+          'change_type': 'corrected',
+          'changed_at': '2026-11-24T09:00:00+07:00',
+          'summary': 'Ringkasan fiksi.',
+          ...extra,
+        };
+
+    test('the three change shapes parse into typed values', () {
+      final entry = HistoryEntry.fromJson(historyEntry({
+        'changes': [
+          {'field': 'title', 'before': 'Judul lama', 'after': 'Judul baru'},
+          {'field': 'event_time', 'before': null, 'after': 'exact 2026-11-24T08:00:00+07:00 -'},
+          {'field': 'places', 'added': ['Kelurahan Contoh'], 'removed': ['Kecamatan Contoh']},
+          {'field': 'claims', 'before_count': 1, 'after_count': 3},
+        ],
+      }));
+
+      expect(entry.changes, hasLength(4));
+      final title = entry.changes[0] as HistoryValueChange;
+      expect(title.field, 'title');
+      expect(title.before, 'Judul lama');
+      expect(title.after, 'Judul baru');
+      final eventTime = entry.changes[1] as HistoryValueChange;
+      expect(eventTime.before, isNull);
+      expect(eventTime.after, 'exact 2026-11-24T08:00:00+07:00 -');
+      final places = entry.changes[2] as HistoryNamesChange;
+      expect(places.field, 'places');
+      expect(places.added, ['Kelurahan Contoh']);
+      expect(places.removed, ['Kecamatan Contoh']);
+      final claims = entry.changes[3] as HistoryCountChange;
+      expect(claims.field, 'claims');
+      expect(claims.before, 1);
+      expect(claims.after, 3);
+    });
+
+    test('a missing, null or non-list changes value gives an empty list', () {
+      expect(HistoryEntry.fromJson(historyEntry()).changes, isEmpty);
+      expect(HistoryEntry.fromJson(historyEntry({'changes': null})).changes, isEmpty);
+      expect(HistoryEntry.fromJson(historyEntry({'changes': 'bukan daftar'})).changes, isEmpty);
+    });
+
+    test('malformed and unknown items are skipped and the rest of the entry still parses', () {
+      final entry = HistoryEntry.fromJson(historyEntry({
+        'changes': [
+          'bukan objek',
+          {'before': 'x', 'after': 'y'},
+          {'field': 'reviewer_id', 'before': 'a', 'after': 'b'},
+          {'field': 'title', 'before': 'hanya sebelum'},
+          {'field': 'title', 'before': 5, 'after': 'y'},
+          {'field': 'places', 'before': 'x', 'after': 'y'},
+          {'field': 'places', 'added': ['Benar'], 'removed': [7]},
+          {'field': 'claims', 'before_count': -1, 'after_count': 2},
+          {'field': 'impacts', 'before_count': 1.5, 'after_count': 2},
+          {'field': 'summary', 'before': 'Ringkasan lama', 'after': 'Ringkasan baru'},
+        ],
+      }));
+
+      expect(entry.changes, hasLength(1));
+      expect(entry.changes.single, isA<HistoryValueChange>());
+      expect(entry.changes.single.field, 'summary');
+      expect(entry.summary, 'Ringkasan fiksi.');
+      expect(entry.version, 2);
+    });
+
+    test('version 1 and retracted entries without changes stay empty', () {
+      final first = HistoryEntry.fromJson(historyEntry({'version': 1, 'change_type': 'published'}));
+      expect(first.changes, isEmpty);
+      final retracted = HistoryEntry.fromJson(historyEntry({'change_type': 'retracted'}));
+      expect(retracted.changes, isEmpty);
+    });
+  });
 }

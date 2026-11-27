@@ -17,6 +17,9 @@ import {
   type PublicSeverity,
 } from "../src/published-events.js";
 
+/** MAP-RECENT-01: the map defaults to events published or updated in the last 24 hours; this clock sits inside that window. */
+const FIXTURE_NOW = Date.parse("2026-11-12T12:00:00.000Z");
+
 /** SEV-01: a public estimate of impact, shown as icon size, a chip and a key. It is never a radius and never a safety claim. */
 
 const MAP_CSS = readFileSync(new URL("../src/map-home.css", import.meta.url), "utf8");
@@ -210,7 +213,7 @@ test("the legend says what the icon size means, names the three levels, and sits
 });
 
 test("the map home renders the legend and the assessed marker class together", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, {
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW,
     initialEvents: [event("evt-1", { severity: "high" })],
     initialMarkers: new Map([["evt-1", { coordinate: [106.8786, -6.2549] as const, role: "incident_scene" }]]),
   }));

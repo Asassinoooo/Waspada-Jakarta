@@ -1,22 +1,15 @@
 import type { Category, EventView, FreshnessStatus, Lifecycle, PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel, evidenceLabel, formatEventTime, formatInstant, freshnessLabel, lifecycleLabel } from "./display.js";
 import { documentedPresentationFixture as presentation } from "./presentation-fixture.js";
-import { MapPanel, type GeoJSONMapState, type MapSelection } from "./MapPanel.js";
+import { MapPanel } from "./GeoMapPanel.js";
+import type { GeoJSONMapState, MapSelection } from "./MapPanel.js";
+import { DEFAULT_FEED_FILTERS, type FeedFilters } from "./feed-filters.js";
 
 export type FeedStatus = "loading" | "loaded" | "unavailable";
 export type MobileDiscoveryPanel = "list" | "map";
 
-export interface FeedFilters {
-  category: Category | "all";
-  lifecycle: Lifecycle | "all";
-  freshness: FreshnessStatus | "all";
-}
-
-export const DEFAULT_FEED_FILTERS: FeedFilters = {
-  category: "all",
-  lifecycle: "all",
-  freshness: "all",
-};
+export { DEFAULT_FEED_FILTERS } from "./feed-filters.js";
+export type { FeedFilters } from "./feed-filters.js";
 
 const categories: readonly Category[] = [
   "crime_personal_security",
@@ -81,7 +74,7 @@ function apiEventDetailHref(eventId: string) {
 
 function datasetLabel(context: PublicContext | null) {
   if (!context) return "Status dataset tidak tersedia";
-  return context.dataset_mode === "demo" ? "Record sintetis dari API" : "Record dari dataset live API";
+  return context.dataset_mode === "demo" ? "Laporan sintetis dari API" : "Laporan dari dataset live API";
 }
 
 export function EventFeed({
@@ -118,7 +111,7 @@ export function EventFeed({
           <h1 id="discover-title">Daftar lebih dulu</h1>
         </div>
         <p className="page-intro__copy">
-          Baca asal setiap detail dan waktunya. Peta hanya menampilkan geometri yang tercatat; record lain tetap ada di daftar.
+          Baca asal setiap detail dan waktunya. Peta hanya menampilkan geometri yang tercatat; laporan lain tetap ada di daftar.
         </p>
       </section>
 
@@ -207,8 +200,8 @@ export function EventFeed({
         </fieldset>
         <p className="search-help" id="feed-filter-help">
           {status === "loaded"
-            ? "Pencarian dan filter hanya berlaku pada " + events.length + " record yang sudah dimuat dari halaman API ini. Ini bukan hitungan seluruh insiden di Jakarta."
-            : "Pencarian dan filter hanya berlaku pada record yang sudah dimuat dari halaman API ini."}
+            ? "Pencarian dan filter hanya berlaku pada " + events.length + " laporan yang sudah dimuat dari halaman API ini. Ini bukan hitungan seluruh insiden di Jakarta."
+            : "Pencarian dan filter hanya berlaku pada laporan yang sudah dimuat dari halaman API ini."}
         </p>
       </section>
 
@@ -247,11 +240,11 @@ export function EventFeed({
           <header className="panel-heading">
             <div>
               <p className="section-kicker">Halaman data dari API</p>
-              <h2 id="feed-title">Daftar record</h2>
+              <h2 id="feed-title">Daftar laporan</h2>
             </div>
             {status === "loaded" && (
               <span className="count-chip" aria-live="polite">
-                {matchingEvents.length} cocok dari {events.length} record dimuat
+                {matchingEvents.length} cocok dari {events.length} laporan dimuat
               </span>
             )}
           </header>
@@ -259,7 +252,7 @@ export function EventFeed({
           {status === "loading" && (
             <div className="state-panel state-panel--loading" role="status">
               <span className="loading-rule" aria-hidden="true" />
-              <strong>Memuat record dari API…</strong>
+              <strong>Memuat laporan dari API…</strong>
               <span>Status dataset ditampilkan setelah konteks API tersedia.</span>
             </div>
           )}
@@ -274,7 +267,7 @@ export function EventFeed({
 
           {status === "loaded" && events.length === 0 && (
             <div className="state-panel" role="status">
-              <strong>Belum ada record pada halaman API ini.</strong>
+              <strong>Belum ada laporan pada halaman API ini.</strong>
               <p>Tidak ada laporan yang cocok bukan pernyataan bahwa area aman.</p>
             </div>
           )}
@@ -288,7 +281,7 @@ export function EventFeed({
           )}
 
           {status === "loaded" && matchingEvents.length > 0 && (
-            <ul className="event-list" aria-label="Record event dari halaman API yang dimuat">
+            <ul className="event-list" aria-label="Laporan dari halaman API yang dimuat">
               {matchingEvents.map((event) => {
                 const selected = mapSelection.kind === "api-event" &&
                   mapSelection.event.event_id === event.event_id &&

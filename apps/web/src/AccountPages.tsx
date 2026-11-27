@@ -8,8 +8,14 @@ import {
   type AccountReturnTarget,
 } from "./account-client.js";
 import {
+  formatResetCode,
   loginFailureMessage,
+  normaliseResetCodeInput,
   normaliseUsernameInput,
+  passwordResetFailureMessage,
+  resetCodeIssueFailureMessage,
+  validatePasswordReset,
+  type PasswordResetField,
   passwordChangeFailureMessage,
   registrationFailureMessage,
   validateLogin,
@@ -20,6 +26,12 @@ import {
   type PasswordChangeField,
   type RegistrationField,
 } from "./account-messages.js";
+import { SessionLoading, SessionUnavailable } from "./account-gate.js";
+
+// PERF-09: the gate lives in account-gate.tsx and the access rule in account-access.ts, so the eager shell never loads
+// this module. Both are re-exported here for existing callers.
+export { AccountAccessGate } from "./account-gate.js";
+export { hasProtectedShellAccess, type ProtectedShell } from "./account-access.js";
 
 export type AccountSessionState =
   | { status: "loading"; session: null }
@@ -63,32 +75,6 @@ function AccountFrame({ children, title, kicker = "Akun · Waspada Jakarta" }: {
         {children}
       </div>
     </main>
-  );
-}
-
-function SessionLoading({ label = "Memeriksa sesi akun…" }: { label?: string }) {
-  return (
-    <section className="state-panel state-panel--loading" role="status" aria-live="polite">
-      <strong>{label}</strong>
-      <span>Peta dan laporan publik tetap dapat dibuka selama pemeriksaan ini.</span>
-      <div className="skeleton-stack" aria-hidden="true">
-        <span className="skeleton" />
-        <span className="skeleton skeleton--short" />
-      </div>
-    </section>
-  );
-}
-
-function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
-  return (
-    <section className="state-panel state-panel--error" role="alert">
-      <strong>Status akun belum dapat diperiksa.</strong>
-      <p>Fitur akun memerlukan layanan sesi. Peta dan laporan publik tetap tersedia.</p>
-      <div className="account-actions">
-        <button className="button button--quiet" type="button" onClick={onRetry}>Coba lagi</button>
-        <a className="button button--primary" href="#peta">Buka peta dan laporan</a>
-      </div>
-    </section>
   );
 }
 
@@ -193,6 +179,7 @@ function LoginForm({ client, onSignedIn }: { client: AccountClient; onSignedIn: 
       />
       <div className="account-actions">
         <button className="button button--primary" type="submit" disabled={working}>{working ? "Memeriksa…" : "Masuk"}</button>
+        <a className="account-form__link" href="#lupa-sandi">Lupa kata sandi?</a>
       </div>
     </form>
   );
@@ -305,11 +292,11 @@ function PasswordLogin({
   return (
     <div className="account-flow">
       <section className="account-card" aria-labelledby="login-title">
-        <h2 id="login-title">Masuk dengan username</h2>
+        <h2 id="login-title">Masuk dengan nama pengguna</h2>
         <p>Masuk bersifat opsional. Peta, laporan publik, riwayat, dan minat lokal tetap dapat digunakan tanpa akun.</p>
         {loginAvailable
           ? <LoginForm client={client} onSignedIn={enterAccount} />
-          : <p className="account-message" role="status">Masuk dengan username belum disiapkan pada layanan ini.</p>}
+          : <p className="account-message" role="status">Masuk dengan nama pengguna belum disiapkan pada layanan ini.</p>}
       </section>
       {registrationAvailable
         ? (
@@ -434,7 +421,7 @@ export const ACCOUNT_ONBOARDING_STEPS = [
   },
   {
     title: "Selesaikan pengenalan tanpa mengirim minat",
-    body: "Untuk akun dengan username, layanan menyimpan username, nama tampilan, peran yang ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Kata sandi hanya disimpan sebagai hash. Minat tetap di browser dan tidak dikirim saat masuk.",
+    body: "Untuk akun dengan nama pengguna, layanan menyimpan nama pengguna, nama tampilan, peran yang ditetapkan server, sesi akun, serta versi dan waktu penyelesaian pengenalan. Kata sandi hanya disimpan sebagai hash. Minat tetap di browser dan tidak dikirim saat masuk.",
   },
 ] as const;
 
@@ -521,8 +508,8 @@ function Onboarding({
       {sessionState.status === "anonymous" && (
         <section className="account-card account-card--quiet">
           <h2>Pengenalan ini opsional</h2>
-          <p>Anda dapat berhenti kapan saja. Masuk dengan username bila ingin menyimpan versi dan waktu penyelesaian pada akun.</p>
-          <a className="text-link" href="#masuk">Masuk dengan username</a>
+          <p>Anda dapat berhenti kapan saja. Masuk dengan nama pengguna bila ingin menyimpan versi dan waktu penyelesaian pada akun.</p>
+          <a className="text-link" href="#masuk">Masuk dengan nama pengguna</a>
         </section>
       )}
     </div>
@@ -623,8 +610,85 @@ function AdminUserRow({
           </label>
           <button className="button" type="button" onClick={() => void save()} disabled={saving || !dirty || reason.trim().length < 1}>{saving ? "Menyimpan…" : "Simpan perubahan"}</button>
         </div>}
+      {!isSelf && user.active && <AdminResetCode user={user} client={client} csrfToken={csrfToken} />}
       {message && <p className="account-message" role="status">{message}</p>}
     </article>
+  );
+}
+
+const WIB_TIME = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" });
+
+/**
+ * AUTH-RESET-01: an administrator issues a one-time reset code for a password account. The code is shown once, here
+ * only; the service keeps only its hash. The administrator hands it to the owner in person.
+ */
+function AdminResetCode({ user, client, csrfToken }: { user: AccountUser; client: AccountClient; csrfToken: string }) {
+  const [issued, setIssued] = useState<{ code: string; username: string; expiresAt: string } | null>(null);
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function issue() {
+    if (working) return;
+    const ok = typeof window === "undefined" || window.confirm(
+      `Buat kode reset kata sandi untuk ${user.display_name}? Kode lama yang belum dipakai tidak berlaku lagi.`,
+    );
+    if (!ok) return;
+    setWorking(true);
+    setMessage(null);
+    setCopied(false);
+    try {
+      const result = await client.issuePasswordResetCode(user.id, csrfToken);
+      setIssued({ code: result.code, username: result.username, expiresAt: result.expires_at });
+    } catch (error) {
+      setMessage(resetCodeIssueFailureMessage(error));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function copy() {
+    if (!issued) return;
+    try {
+      await navigator.clipboard.writeText(formatResetCode(issued.code));
+      setCopied(true);
+    } catch {
+      setCopied(false);
+      setMessage("Salin otomatis tidak tersedia. Bacakan atau tulis kode di atas.");
+    }
+  }
+
+  return (
+    <div className="reset-code">
+      {issued ? (
+        <div className="reset-code__issued" role="status" aria-live="polite">
+          <p className="reset-code__label">Kode reset untuk <strong>{issued.username}</strong></p>
+          <p className="reset-code__value" aria-label={"Kode " + formatResetCode(issued.code).split("").join(" ")}>
+            {formatResetCode(issued.code)}
+          </p>
+          <p className="reset-code__meta">
+            Berlaku sampai pukul {WIB_TIME.format(new Date(issued.expiresAt))} WIB, sekali pakai. Kode hanya ditampilkan sekarang.
+          </p>
+          <p className="reset-code__meta">
+            Berikan langsung kepada pemilik akun. Pemilik membuka <strong>Lupa kata sandi</strong> di halaman Masuk. Setelah
+            berhasil, semua sesi akun itu keluar.
+          </p>
+          <div className="account-actions">
+            <button className="button button--quiet button--sm" type="button" onClick={() => void copy()}>
+              {copied ? "Tersalin" : "Salin kode"}
+            </button>
+            <button className="button button--quiet button--sm" type="button" onClick={() => { setIssued(null); setCopied(false); }}>
+              Sembunyikan
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="button button--quiet button--sm reset-code__issue" type="button" onClick={() => void issue()} disabled={working}>
+          {working ? "Membuat kode…" : "Buat kode reset kata sandi"}
+        </button>
+      )}
+      {message && <p className="account-message" role="status">{message}</p>}
+    </div>
   );
 }
 
@@ -817,6 +881,92 @@ function AccountProfile({
   );
 }
 
+/**
+ * AUTH-RESET-01: #lupa-sandi. A password account has no email, so the owner asks an administrator for a one-time
+ * code and sets a new password here. Success ends every session of the account; the owner then signs in.
+ */
+export function PasswordResetPage({ client = accountClient }: { client?: AccountClient }) {
+  const [username, setUsername] = useState("");
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<PasswordResetField>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (working) return;
+    const errors = validatePasswordReset({ username, code, password, confirm });
+    setFieldErrors(errors);
+    setFormError(null);
+    if (Object.keys(errors).length > 0) return;
+    setWorking(true);
+    try {
+      await client.resetPasswordWithCode({
+        username: normaliseUsernameInput(username),
+        code: normaliseResetCodeInput(code),
+        newPassword: password,
+      });
+      setPassword("");
+      setConfirm("");
+      setCode("");
+      setDone(true);
+    } catch (error) {
+      setFormError(passwordResetFailureMessage(error));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <AccountFrame title="Atur ulang kata sandi" kicker="Akun · Lupa kata sandi">
+      {done ? (
+        <section className="account-card reset-done" role="status" aria-labelledby="reset-done-title">
+          <h2 id="reset-done-title">Kata sandi baru tersimpan</h2>
+          <p>Semua sesi lama akun ini sudah keluar. Masuk dengan nama pengguna dan kata sandi baru.</p>
+          <div className="account-actions">
+            <a className="button button--primary" href="#masuk">Masuk</a>
+          </div>
+        </section>
+      ) : (
+        <div className="account-flow">
+          <section className="account-card account-card--quiet" aria-labelledby="reset-steps-title">
+            <h2 id="reset-steps-title">Cara mendapatkan kode</h2>
+            <ol className="reset-steps">
+              <li><strong>Hubungi administrator</strong> Waspada Jakarta dan sebutkan nama pengguna Anda.</li>
+              <li><strong>Terima kode 10 karakter.</strong> Kode berlaku 30 menit dan hanya bisa dipakai sekali.</li>
+              <li><strong>Isi formulir ini</strong> dengan kode dan kata sandi baru.</li>
+            </ol>
+            <p className="account-form__hint">Akun dengan nama pengguna tidak menyimpan email, jadi kode tidak dikirim otomatis. Administrator tidak pernah meminta kata sandi Anda.</p>
+          </section>
+          <section className="account-card" aria-labelledby="reset-form-title">
+            <h2 id="reset-form-title">Kode dan kata sandi baru</h2>
+            <form className="account-form" onSubmit={(event) => void submit(event)} noValidate>
+              {formError && <p className="account-message account-message--error" role="alert">{formError}</p>}
+              <FieldInput id="reset-username" name="username" label="Nama pengguna" value={username} onChange={setUsername}
+                autoComplete="username" error={fieldErrors.username} disabled={working} />
+              <FieldInput id="reset-code" name="code" label="Kode reset" value={code} onChange={setCode}
+                autoComplete="one-time-code" hint="Contoh: 7K3QP-9XW2M. Huruf besar atau kecil sama saja."
+                error={fieldErrors.code} disabled={working} />
+              <FieldInput id="reset-password" name="password" label="Kata sandi baru" type="password" value={password}
+                onChange={setPassword} autoComplete="new-password" hint="Minimal 10 karakter." error={fieldErrors.password}
+                disabled={working} />
+              <FieldInput id="reset-confirm" name="confirm_password" label="Ulangi kata sandi baru" type="password"
+                value={confirm} onChange={setConfirm} autoComplete="new-password" error={fieldErrors.confirm} disabled={working} />
+              <div className="account-actions">
+                <button className="button button--primary" type="submit" disabled={working}>{working ? "Menyimpan…" : "Simpan kata sandi baru"}</button>
+                <a className="account-form__link" href="#masuk">Kembali ke Masuk</a>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+    </AccountFrame>
+  );
+}
+
 export function AccountPage({
   screen,
   sessionState,
@@ -847,7 +997,7 @@ export function AccountPage({
         <h2>Akun tidak diperlukan untuk membaca laporan</h2>
         <p>Masuk hanya menambahkan profil dan pengenalan akun. Minat serta preferensi tetap disimpan secara lokal.</p>
         <div className="account-actions">
-          <a className="button button--primary" href="#masuk">Masuk dengan username</a>
+          <a className="button button--primary" href="#masuk">Masuk dengan nama pengguna</a>
           <a className="button button--quiet" href="#mulai">Lihat pengenalan</a>
         </div>
       </section>
@@ -898,55 +1048,4 @@ export function AdminAccountsPanel({
       onRefreshSession={onRefreshSession}
     />
   );
-}
-
-export type ProtectedShell = "admin" | "review";
-
-export function hasProtectedShellAccess(shell: ProtectedShell, session: SessionEnvelope): boolean {
-  const user = session.user;
-  if (session.status !== "authenticated" || user === null || !user.active) return false;
-  if (shell === "admin") return user.role === "admin";
-  return user.role === "moderator" || user.role === "admin";
-}
-
-/**
- * Gate for protected screens. `isNarrowScreen` is accepted for callers but no longer changes the gate:
- * the admin workspace is responsive (UI-V2-C), and the server enforces the role on every request.
- */
-export function AccountAccessGate({
-  shell,
-  sessionState,
-  onRefreshSession,
-}: {
-  shell: ProtectedShell;
-  sessionState: AccountSessionState;
-  isNarrowScreen: boolean;
-  onRefreshSession: () => void;
-}) {
-  if (sessionState.status === "loading") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionLoading label="Memeriksa izin sesi…" /></main>;
-  if (sessionState.status === "error") return <main id="main-content" tabIndex={-1} className="main-shell account-page"><SessionUnavailable onRetry={onRefreshSession} /></main>;
-  if (sessionState.status === "anonymous") {
-    return <main id="main-content" tabIndex={-1} className="main-shell account-page">
-      <section className="account-card" role="status">
-        <h1>Sesi diperlukan</h1>
-        <p>{shell === "admin" ? "Ruang administrator hanya tersedia untuk akun administrator yang masuk." : "Tampilan tinjau hanya tersedia untuk akun moderator atau administrator yang masuk."}</p>
-        <div className="account-actions" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", alignItems: "flex-start" }}>
-          <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
-            <a className="button button--quiet" href="#masuk">Masuk dengan username</a>
-            <a className="button button--quiet" href="#peta">Kembali ke layanan publik</a>
-          </div>
-        </div>
-      </section>
-    </main>;
-  }
-  if (!hasProtectedShellAccess(shell, sessionState.session)) {
-    return <main id="main-content" tabIndex={-1} className="main-shell account-page">
-      <section className="account-card" role="alert">
-        <h1>Akses tidak tersedia</h1>
-        <p>Sesi saat ini tidak memiliki peran yang diperlukan untuk membuka tampilan ini.</p>
-        <div className="account-actions"><a className="button button--quiet" href="#akun">Lihat akun</a><a className="button button--primary" href="#peta">Kembali ke layanan publik</a></div>
-      </section>
-    </main>;
-  }
-  return null;
 }

@@ -1,0 +1,13 @@
+▶ NFR-02 L3 tool-attempt budget (database)
+  ✔ five tool attempts exhaust the default budget, failed and timed-out attempts included, and a sixth is refused (320.344612ms)
+  ✔ the stopped case records limit_exhausted and no later attempt is reserved (230.723428ms)
+  ✔ a reserved attempt that was never invoked is released and gives its place back, so only invoked attempts use the budget (270.056989ms)
+✔ NFR-02 L3 tool-attempt budget (database) (18567.32465ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20599.243862

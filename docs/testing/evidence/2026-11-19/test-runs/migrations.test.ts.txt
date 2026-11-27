@@ -1,0 +1,32 @@
+▶ DATA-01 migrations
+  ✔ updates only the relation constraint transactionally and preserves all four values on reapplication (18789.63762ms)
+  ✔ refuses duplicate legacy evidence identities without changing either row (16965.85107ms)
+  ✔ applies from empty state and is repeatable with checksum protection (14.847962ms)
+  ✔ rejects a newly introduced migration that sorts before an applied version (5.612711ms)
+  ✔ loads only ordered, named SQL migrations (3.97382ms)
+  ✔ adds a standalone report-revision reader without changing existing role privileges (16636.600063ms)
+  ✔ grants only the existing L1 pipeline role access to source-observation metadata (16173.287478ms)
+  ✔ grants the L2 grounding reader only exact source-observation columns (17026.449013ms)
+  ✔ extends only the existing L4 impact reader with source-observation metadata columns (16652.160769ms)
+  ✔ adds only private source-observation linkage access to the existing freshness writer (16625.498842ms)
+  ✔ extends only the private freshness reason/status constraint for withdrawn observations (15961.189216ms)
+  ✔ grants the isolated freshness writer only append and replay access (13.383848ms)
+  ✔ keeps freshness ledger private while current-public safe views stay readable (26.561779ms)
+  ✔ creates the isolated publication capability with its exact operation grants (33.863423ms)
+  ✔ grants both publication roles exactly the point geometry write and read, and no report text (HOSTED-26) (11.984616ms)
+  ✔ grants the L1 pipeline only the chunk and embedding metadata columns it reads (2.433921ms)
+  ✔ grants L1 only geometry and support columns, with no table-level reads or geometry mutations (4.959703ms)
+  ✔ creates a non-login L2 reader with only retrieval-column reads and no writes or sequence access (27.259579ms)
+  ✔ creates a NOLOGIN L3 coordinator with only ledger and grounding columns (19.691052ms)
+  ✔ adds private source-revision freshness run state without widening source-observation access (15810.938697ms)
+  ✔ 044 documents the synthetic backfill limitation without rewriting history (15707.480367ms)
+  ✔ F-14: 048 makes an incident start nullable and keeps every other incident column required (15341.483658ms)
+✔ DATA-01 migrations (201919.421252ms)
+ℹ tests 22
+ℹ suites 1
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 204143.983895

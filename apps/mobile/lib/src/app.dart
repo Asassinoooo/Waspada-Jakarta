@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'city_illustration.dart';
 import 'event_detail_screen.dart';
 import 'event_list_screen.dart';
+import 'map_screen.dart';
+import 'notify_platform.dart';
 import 'preferences.dart';
 import 'preferences_screen.dart';
 import 'public_api.dart';
@@ -16,24 +19,181 @@ class WaspadaApp extends StatelessWidget {
     super.key,
     required this.api,
     required this.preferences,
+    this.showMapTiles = true,
+    this.clock = DateTime.now,
   });
 
   final PublicApi api;
   final PreferencesRepository preferences;
+
+  /// Tests turn map tiles off so no network request is made.
+  final bool showMapTiles;
+
+  /// The clock for the 24-hour window on the map and list (tests pass a fixed one).
+  final DateTime Function() clock;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'Waspada Jakarta',
         debugShowCheckedModeBanner: false,
         theme: buildWaspadaTheme(),
-        home: LandingScreen(api: api, preferences: preferences),
+        darkTheme: buildWaspadaTheme(brightness: Brightness.dark),
+        themeMode: ThemeMode.system,
+        locale: const Locale('id'),
+        supportedLocales: const [Locale('id'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: HomeShell(
+            api: api,
+            preferences: preferences,
+            showMapTiles: showMapTiles,
+            clock: clock),
+      );
+}
+
+/// MOBILE-V2: the four main destinations. Tabs are built the first time they are opened and then kept alive, so
+/// switching back keeps the scroll position and does not refetch.
+class HomeShell extends StatefulWidget {
+  const HomeShell({
+    super.key,
+    required this.api,
+    required this.preferences,
+    this.showMapTiles = true,
+    this.clock = DateTime.now,
+  });
+  final PublicApi api;
+  final PreferencesRepository preferences;
+  final bool showMapTiles;
+  final DateTime Function() clock;
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  int _index = 0;
+  final _visited = <int>{0};
+  NotifyController? _notify;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final notify = NotifyScope.maybeOf(context);
+    if (notify == _notify) return;
+    _notify?.openRequests.removeListener(_openFromNotification);
+    _notify = notify;
+    notify?.openRequests.addListener(_openFromNotification);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openFromNotification());
+  }
+
+  @override
+  void dispose() {
+    _notify?.openRequests.removeListener(_openFromNotification);
+    super.dispose();
+  }
+
+  /// NOTIFY-01: a tapped notification opens that event's detail; the summary opens the list.
+  Future<void> _openFromNotification() async {
+    final notify = _notify;
+    if (notify == null || !mounted) return;
+    final eventId = notify.openRequests.value;
+    if (eventId == null) return;
+    notify.consumeOpenRequest();
+    if (eventId.isEmpty) return _select(2);
+    try {
+      final contextInfo = await widget.api.getContext();
+      final saved = await widget.preferences.load();
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => EventDetailScreen(
+          api: widget.api,
+          contextInfo: contextInfo,
+          eventId: eventId,
+          initialInterests: saved.interests,
+          preferences: widget.preferences,
+        ),
+      ));
+    } on ApiFailure {
+      if (mounted) _select(2);
+    }
+  }
+
+  void _select(int index) => setState(() {
+        _index = index;
+        _visited.add(index);
+      });
+
+  Widget _tab(int index) => switch (index) {
+        0 => LandingScreen(
+            api: widget.api,
+            preferences: widget.preferences,
+            onOpenMap: () => _select(1),
+            onOpenList: () => _select(2),
+            onOpenPreferences: () => _select(3),
+          ),
+        1 => MapScreen(
+            api: widget.api,
+            preferences: widget.preferences,
+            showTiles: widget.showMapTiles,
+            clock: widget.clock),
+        2 => EventListScreen(
+            api: widget.api,
+            preferences: widget.preferences,
+            embedded: true,
+            clock: widget.clock),
+        _ => PreferencesScreen(repository: widget.preferences, embedded: true),
+      };
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: IndexedStack(
+          index: _index,
+          children: [
+            for (var i = 0; i < 4; i++)
+              _visited.contains(i) ? _tab(i) : const SizedBox.shrink(),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: _select,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home_rounded),
+                label: 'Beranda'),
+            NavigationDestination(
+                icon: Icon(Icons.map_outlined),
+                selectedIcon: Icon(Icons.map_rounded),
+                label: 'Peta'),
+            NavigationDestination(
+                icon: Icon(Icons.view_agenda_outlined),
+                selectedIcon: Icon(Icons.view_agenda_rounded),
+                label: 'Laporan'),
+            NavigationDestination(
+                icon: Icon(Icons.tune_outlined),
+                selectedIcon: Icon(Icons.tune_rounded),
+                label: 'Minat'),
+          ],
+        ),
       );
 }
 
 class LandingScreen extends StatefulWidget {
-  const LandingScreen({super.key, required this.api, required this.preferences});
+  const LandingScreen({
+    super.key,
+    required this.api,
+    required this.preferences,
+    this.onOpenMap,
+    this.onOpenList,
+    this.onOpenPreferences,
+  });
   final PublicApi api;
   final PreferencesRepository preferences;
+
+  /// When the landing sits in [HomeShell] these switch tabs; on its own it pushes the screens instead.
+  final VoidCallback? onOpenMap;
+  final VoidCallback? onOpenList;
+  final VoidCallback? onOpenPreferences;
 
   @override
   State<LandingScreen> createState() => _LandingScreenState();
@@ -116,9 +276,19 @@ class _LandingScreenState extends State<LandingScreen> {
   }
 
   void _openDiscovery() {
+    final onOpenList = widget.onOpenList;
+    if (onOpenList != null) return onOpenList();
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) =>
           EventListScreen(api: widget.api, preferences: widget.preferences),
+    ));
+  }
+
+  void _openMap() {
+    final onOpenMap = widget.onOpenMap;
+    if (onOpenMap != null) return onOpenMap();
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => MapScreen(api: widget.api, preferences: widget.preferences),
     ));
   }
 
@@ -139,6 +309,8 @@ class _LandingScreenState extends State<LandingScreen> {
   }
 
   void _openPreferences() {
+    final onOpenPreferences = widget.onOpenPreferences;
+    if (onOpenPreferences != null) return onOpenPreferences();
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => PreferencesScreen(repository: widget.preferences),
     ));
@@ -151,201 +323,417 @@ class _LandingScreenState extends State<LandingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
+    final text = Theme.of(context).textTheme;
+    final previewEvents = _preview?.data ?? const <EventRecord>[];
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Waspada Jakarta'),
-        actions: [
-          IconButton(
-              tooltip: 'Muat ulang konteks dan ringkasan',
-              onPressed: _loadContextAndPreview,
-              icon: const Icon(Icons.refresh)),
-          IconButton(
-              tooltip: 'Panduan membaca',
-              onPressed: _openGuide,
-              icon: const Icon(Icons.help_outline)),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 36),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (_contextInfo != null) ModeNotice(contextInfo: _contextInfo!),
-          if (_loadingContext) const _ContextLoading(),
-          if (_contextFailure != null)
-            _UnavailableContext(
-                failure: _contextFailure!, onRetry: _loadContextAndPreview),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 26, 20, 8),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('INFORMASI PUBLIK JAKARTA',
-                  style: TextStyle(
-                      fontSize: 12,
-                      letterSpacing: 1.1,
-                      fontWeight: FontWeight.w800,
-                      color: WaspadaColors.teal)),
-              const SizedBox(height: 12),
-              Semantics(
-                header: true,
-                child: Text('Pahami Jakarta\nsebelum melangkah.',
-                    style: Theme.of(context).textTheme.displaySmall),
+      body: RefreshIndicator(
+        onRefresh: _loadContextAndPreview,
+        color: p.brand,
+        child: CustomScrollView(slivers: [
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: p.canvas,
+            titleSpacing: 20,
+            title: Row(children: [
+              const _BrandMark(),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text('Waspada Jakarta',
+                    overflow: TextOverflow.ellipsis, style: text.titleMedium),
               ),
-              const SizedBox(height: 14),
-              Text(
-                  'Baca laporan, waktu kejadian, dan bukti untuk memahami dampaknya pada aktivitasmu.',
-                  style: Theme.of(context).textTheme.bodyLarge),
-              const SizedBox(height: 9),
-              Text(
-                  'Layanan ini menyajikan informasi publik. Bukan layanan darurat atau jaminan rute aman.',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 22),
-              SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                      onPressed: _openDiscovery,
-                      icon: const Icon(Icons.list_alt),
-                      label: const Text('Jelajahi laporan'))),
-              const SizedBox(height: 4),
-              SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                      onPressed: _openPreferences,
-                      icon: const Icon(Icons.tune),
-                      label: const Text('Atur minat (opsional)'))),
-              const SizedBox(height: 8),
-              const CityIllustration(),
-              const Center(
-                  child: Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Text('Ilustrasi Jakarta — bukan peta kejadian',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 13, color: WaspadaColors.ink)))),
             ]),
+            actions: [
+              IconButton(
+                  tooltip: 'Muat ulang konteks dan ringkasan',
+                  onPressed: _loadContextAndPreview,
+                  icon: const Icon(Icons.refresh_rounded)),
+              IconButton(
+                  tooltip: 'Panduan membaca',
+                  onPressed: _openGuide,
+                  icon: const Icon(Icons.menu_book_outlined)),
+              const SizedBox(width: 6),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 30, 20, 0),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              sectionTitle('Cara membaca informasi', kicker: 'Kenali konteks'),
-              const SizedBox(height: 14),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                _ReadingChoice(
-                    label: 'Laporan',
-                    selected: _readingPanel == 0,
-                    onTap: () => setState(() => _readingPanel = 0)),
-                _ReadingChoice(
-                    label: 'Bukti',
-                    selected: _readingPanel == 1,
-                    onTap: () => setState(() => _readingPanel = 1)),
-                _ReadingChoice(
-                    label: 'Konteks',
-                    selected: _readingPanel == 2,
-                    onTap: () => setState(() => _readingPanel = 2)),
-              ]),
-              const SizedBox(height: 12),
-              ReadOnlyNotice(
-                title: const ['Laporan', 'Bukti', 'Konteks'][_readingPanel],
-                message: const [
-                  'Lihat kategori, status kejadian, cakupan, dan waktu yang dijelaskan pada setiap laporan.',
-                  'Baca siapa atau sumber apa yang mendukung setiap klaim. Label bukti tidak berarti verifikasi model.',
-                  'Kesegaran informasi, validitas sumber, dan waktu terbit memiliki arti yang berbeda.',
-                ][_readingPanel],
-                icon: const [
-                  Icons.article_outlined,
-                  Icons.fact_check_outlined,
-                  Icons.schedule_outlined
-                ][_readingPanel],
+          // The landing is short, so it is built eagerly: every notice (demo label, empty result) exists at once.
+          SliverToBoxAdapter(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+            if (_contextInfo != null) ModeNotice(contextInfo: _contextInfo!),
+            if (_loadingContext) const _ContextLoading(),
+            if (_contextFailure != null)
+              _UnavailableContext(
+                  failure: _contextFailure!, onRetry: _loadContextAndPreview),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _Hero(onExplore: _openDiscovery, onMap: _openMap),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: IntrinsicHeight(
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                Expanded(
+                  child: _StatTile(
+                    value: _preview == null
+                        ? '—'
+                        : '${previewEvents.length}${_preview!.nextCursor != null ? '+' : ''}',
+                    label: 'laporan terbit',
+                    icon: Icons.article_outlined,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
+                    value: _contextInfo == null
+                        ? '—'
+                        : '${_contextInfo!.sources.where((s) => s.health == SourceHealth.healthy).length}/${_contextInfo!.sources.length}',
+                    label: 'sumber merespons',
+                    icon: Icons.sensors_rounded,
+                  ),
+                ),
+              ])),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 30, 20, 0),
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 8,
+                children: [
+                  sectionTitle('Ringkasan laporan',
+                      kicker: 'Dari daftar publik'),
+                  if (_contextInfo != null && previewEvents.isNotEmpty)
+                    TextButton(
+                        onPressed: _openDiscovery,
+                        child: const Text('Lihat daftar lengkap')),
+                ],
               ),
-              const SizedBox(height: 10),
-              const Text('Contoh cara membaca — bukan laporan aktual.',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: WaspadaColors.ink)),
-            ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 30, 20, 0),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              sectionTitle('Ringkasan laporan', kicker: 'Dari daftar publik'),
-              const SizedBox(height: 5),
-              Text(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Text(
                   _contextInfo == null
                       ? 'Pratinjau disembunyikan sampai mode dataset dapat dipastikan.'
-                      : 'Respons konteks dibuat ${formatWib(_contextInfo!.generatedAt)}.',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 12),
-              if (_loadingPreview) const _PreviewLoading(),
-              if (_previewFailure != null)
-                _RetryPanel(
+                      : 'Diperbarui ${formatWib(_contextInfo!.generatedAt)}.',
+                  style: text.bodySmall),
+            ),
+            if (_loadingPreview)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(children: [
+                  Semantics(
+                      label: 'Memuat ringkasan halaman pertama…',
+                      child: SkeletonCard()),
+                  SizedBox(height: 10),
+                  SkeletonCard(),
+                ]),
+              ),
+            if (_previewFailure != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _RetryPanel(
                     title: 'Pratinjau belum dapat dimuat.',
                     message: _previewFailure!.userMessage,
                     onRetry: _loadContextAndPreview),
-              if (_contextInfo !=
-                      null &&
-                  _preview != null &&
-                  _preview!.data.isEmpty)
-                const ReadOnlyNotice(
+              ),
+            if (_contextInfo != null && _preview != null && previewEvents.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: ReadOnlyNotice(
                     title: 'Tidak ada laporan pada halaman ini.',
                     message:
                         'Laporan yang kosong bukan pernyataan bahwa kondisi aman.',
                     icon: Icons.inbox_outlined),
-              if (_preview != null)
-                ..._preview!.data.take(3).map((event) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _PreviewTile(
-                          event: event, onTap: () => _openEventPreview(event)),
-                    )),
-              if (_contextInfo != null &&
-                  _preview != null &&
-                  _preview!.data.isNotEmpty)
-                Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                        onPressed: _openDiscovery,
-                        icon: const Icon(Icons.arrow_forward),
-                        label: const Text('Lihat daftar lengkap'))),
-              if (_contextInfo != null && _contextInfo!.sources.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                sectionTitle('Ketersediaan sumber'),
-                const SizedBox(height: 8),
-                ..._contextInfo!.sources.map((source) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                          '${source.displayName} — ${sourceHealthLabel(source.health)} · terakhir berhasil ${formatWib(source.lastSuccessAt)}',
-                          style: Theme.of(context).textTheme.bodyMedium),
-                    )),
-              ],
-            ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Divider(height: 1),
-              const SizedBox(height: 16),
-              Text('Tidak ada laporan bukan berarti wilayah aman.',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Text(
-                  'Minat disimpan hanya di perangkat ini. Saat mengambil informasi, layanan menerima permintaan jaringan biasa; minat tidak dikirim otomatis.',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 8),
-              Wrap(spacing: 4, runSpacing: 4, children: [
-                TextButton(
-                    onPressed: _openGuide,
-                    child: const Text('Panduan membaca')),
-                TextButton(
-                    onPressed: _openPreferences,
-                    child: const Text('Privasi dan minat')),
+              ),
+            for (final (i, event) in previewEvents.take(3).indexed)
+              _StaggeredIn(
+                index: i,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: _PreviewTile(
+                      event: event, onTap: () => _openEventPreview(event)),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    sectionTitle('Cara membaca informasi',
+                        kicker: 'Kenali konteks'),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('Laporan')),
+                          ButtonSegment(value: 1, label: Text('Bukti')),
+                          ButtonSegment(value: 2, label: Text('Konteks')),
+                        ],
+                        selected: {_readingPanel},
+                        onSelectionChanged: (value) =>
+                            setState(() => _readingPanel = value.first),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: ReadOnlyNotice(
+                        key: ValueKey(_readingPanel),
+                        title: const ['Laporan', 'Bukti', 'Konteks'][_readingPanel],
+                        message: const [
+                          'Lihat kategori, status kejadian, cakupan, dan waktu yang dijelaskan pada setiap laporan.',
+                          'Baca siapa atau sumber apa yang mendukung setiap klaim. Label bukti tidak berarti verifikasi model.',
+                          'Kesegaran informasi, validitas sumber, dan waktu terbit memiliki arti yang berbeda.',
+                        ][_readingPanel],
+                        icon: const [
+                          Icons.article_outlined,
+                          Icons.fact_check_outlined,
+                          Icons.schedule_outlined
+                        ][_readingPanel],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Contoh cara membaca — bukan laporan aktual.',
+                        style: text.bodySmall),
+                  ]),
+            ),
+            if (_contextInfo != null && _contextInfo!.sources.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 26, 16, 0),
+                child: SurfaceCard(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Kicker('Ketersediaan sumber'),
+                        const SizedBox(height: 10),
+                        for (final source in _contextInfo!.sources)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 5),
+                                    child: _HealthDot(health: source.health),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                        '${source.displayName} — ${sourceHealthLabel(source.health)} · terakhir berhasil ${formatWib(source.lastSuccessAt)}',
+                                        style: text.bodyMedium),
+                                  ),
+                                ]),
+                          ),
+                      ]),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 26, 16, 0),
+              child: Column(children: [
+                const CityIllustration(),
+                Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text('Ilustrasi Jakarta — bukan peta kejadian',
+                        textAlign: TextAlign.center, style: text.bodySmall)),
               ]),
-            ]),
-          ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 32),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Tidak ada laporan bukan berarti wilayah aman.',
+                        style: text.titleMedium),
+                    const SizedBox(height: 8),
+                    Text(
+                        'Minat disimpan hanya di perangkat ini. Saat mengambil informasi, layanan menerima permintaan jaringan biasa; minat tidak dikirim otomatis.',
+                        style: text.bodyMedium),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 4, runSpacing: 4, children: [
+                      TextButton(
+                          onPressed: _openGuide,
+                          child: const Text('Panduan membaca')),
+                      TextButton(
+                          onPressed: _openPreferences,
+                          child: const Text('Privasi dan minat')),
+                    ]),
+                  ]),
+            ),
+          ])),
         ]),
       ),
+    );
+  }
+}
+
+class _BrandMark extends StatelessWidget {
+  const _BrandMark();
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+            colors: [p.brand, p.heroEnd],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Icon(Icons.radar_rounded, size: 17, color: p.onBrand),
+    );
+  }
+}
+
+class _Hero extends StatelessWidget {
+  const _Hero({required this.onExplore, required this.onMap});
+  final VoidCallback onExplore;
+  final VoidCallback onMap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    const onHero = Colors.white;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: LinearGradient(
+          colors: [p.heroStart, p.heroEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: onHero.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(WaspadaShape.pill),
+          ),
+          child: const Text('INFORMASI PUBLIK JAKARTA',
+              style: TextStyle(
+                  color: onHero,
+                  fontSize: 11,
+                  letterSpacing: 1.3,
+                  fontWeight: FontWeight.w800)),
+        ),
+        const SizedBox(height: 16),
+        Semantics(
+          header: true,
+          child: Text('Pahami Jakarta\nsebelum melangkah.',
+              style: Theme.of(context)
+                  .textTheme
+                  .displaySmall
+                  ?.copyWith(color: onHero)),
+        ),
+        const SizedBox(height: 12),
+        Text(
+            'Baca laporan, waktu kejadian, dan bukti untuk memahami dampaknya pada aktivitasmu.',
+            style: Theme.of(context)
+                .textTheme
+                .bodyLarge
+                ?.copyWith(color: onHero.withValues(alpha: 0.86))),
+        const SizedBox(height: 6),
+        Text(
+            'Layanan ini menyajikan informasi publik. Bukan layanan darurat atau jaminan rute aman.',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: onHero.withValues(alpha: 0.7))),
+        const SizedBox(height: 20),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: onHero, foregroundColor: p.heroStart),
+              onPressed: onExplore,
+              icon: const Icon(Icons.view_agenda_rounded),
+              label: const Text('Jelajahi laporan')),
+          OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                  foregroundColor: onHero,
+                  side: BorderSide(color: onHero.withValues(alpha: 0.4))),
+              onPressed: onMap,
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('Lihat peta')),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile(
+      {required this.value, required this.label, required this.icon});
+  final String value;
+  final String label;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return SurfaceCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Row(children: [
+        Icon(icon, size: 20, color: p.brand),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()])),
+            Text(label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _HealthDot extends StatelessWidget {
+  const _HealthDot({required this.health});
+  final SourceHealth health;
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final color = switch (health) {
+      SourceHealth.healthy => p.brand,
+      SourceHealth.degraded => p.signalMedium,
+      SourceHealth.unavailable => p.signalCritical,
+      SourceHealth.unknown => p.inkMuted,
+    };
+    return Container(
+        width: 9,
+        height: 9,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+  }
+}
+
+/// Fades and lifts a child in, delayed by its index. Respects reduced motion.
+class _StaggeredIn extends StatelessWidget {
+  const _StaggeredIn({required this.index, required this.child});
+  final int index;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 320 + index * 90),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, (1 - t) * 14), child: child),
+      ),
+      child: child,
     );
   }
 }
@@ -354,9 +742,12 @@ class _ContextLoading extends StatelessWidget {
   const _ContextLoading();
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
         child: Semantics(
-            liveRegion: true, child: LinearProgressIndicator(minHeight: 3)),
+            liveRegion: true,
+            child: ClipRRect(
+                borderRadius: BorderRadius.all(Radius.circular(4)),
+                child: LinearProgressIndicator(minHeight: 3))),
       );
 }
 
@@ -366,26 +757,12 @@ class _UnavailableContext extends StatelessWidget {
   final VoidCallback onRetry;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: _RetryPanel(
             title: 'Mode dataset belum tersedia.',
             message:
                 '${failure.userMessage} Pratinjau laporan tetap disembunyikan.',
             onRetry: onRetry),
-      );
-}
-
-class _PreviewLoading extends StatelessWidget {
-  const _PreviewLoading();
-  @override
-  Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
-        child: Row(children: [
-          SizedBox.square(
-              dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 12),
-          Text('Memuat ringkasan halaman pertama…')
-        ]),
       );
 }
 
@@ -396,17 +773,19 @@ class _RetryPanel extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-            color: WaspadaColors.white,
-            border: Border.all(color: WaspadaColors.concrete),
-            borderRadius: BorderRadius.circular(10)),
+  Widget build(BuildContext context) => SurfaceCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 5),
+          Row(children: [
+            Icon(Icons.cloud_off_rounded,
+                color: context.palette.signalHigh, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+                child:
+                    Text(title, style: Theme.of(context).textTheme.titleMedium)),
+          ]),
+          const SizedBox(height: 6),
           Text(message),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
@@ -415,63 +794,74 @@ class _RetryPanel extends StatelessWidget {
       );
 }
 
-class _ReadingChoice extends StatelessWidget {
-  const _ReadingChoice(
-      {required this.label, required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => Semantics(
-        button: true,
-        selected: selected,
-        child: selected
-            ? FilledButton(onPressed: onTap, child: Text(label))
-            : OutlinedButton(onPressed: onTap, child: Text(label)),
-      );
-}
-
 class _PreviewTile extends StatelessWidget {
   const _PreviewTile({required this.event, required this.onTap});
   final EventRecord event;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(15),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(event.title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 6),
-              Wrap(spacing: 8, runSpacing: 6, children: [
-                if (event.severity != null)
-                  StatusPill(
-                    icon: Icons.warning_amber_rounded,
-                    label: event.severity!.label,
-                    color: event.severity == IncidentSeverity.critical
-                        ? WaspadaColors.marker
-                        : event.severity == IncidentSeverity.high
-                            ? WaspadaColors.caution
-                            : WaspadaColors.softPanel,
-                  ),
-                StatusPill(
-                    icon: Icons.category_outlined, label: event.category.label),
-                StatusPill(icon: Icons.schedule, label: event.lifecycle.label),
-                StatusPill(
-                    icon: Icons.update, label: event.freshness.status.label),
-              ]),
-              const SizedBox(height: 8),
-              Text(
-                  'Waktu kejadian/observasi: ${formatEventTime(event.eventTime)}',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 2),
-              Text('Terbit ${formatWib(event.publishedAt)}',
-                  style: Theme.of(context).textTheme.bodyMedium),
-            ]),
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final published = relativeWib(event.publishedAt);
+    return SurfaceCard(
+      padding: EdgeInsets.zero,
+      onTap: onTap,
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 14, 0, 14),
+            child: SeverityRail(severity: event.severity),
           ),
-        ),
-      );
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Text(event.icon, style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(event.category.label.toUpperCase(),
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(color: p.brand)),
+                      ),
+                      if (published != null)
+                        Text(published,
+                            style: Theme.of(context).textTheme.labelMedium),
+                    ]),
+                    const SizedBox(height: 6),
+                    Text(event.title,
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      if (event.severity != null)
+                        StatusPill(
+                          icon: Icons.warning_amber_rounded,
+                          label: event.severity!.label,
+                          color: severityColor(context, event.severity),
+                          foreground:
+                              severityForeground(context, event.severity),
+                        ),
+                      StatusPill(
+                          icon: Icons.schedule, label: event.lifecycle.label),
+                      StatusPill(
+                          icon: Icons.update,
+                          label: event.freshness.status.label),
+                    ]),
+                    const SizedBox(height: 8),
+                    Text(
+                        'Waktu kejadian/observasi: ${formatEventTime(event.eventTime)}',
+                        style: Theme.of(context).textTheme.bodySmall),
+                    Text('Terbit ${formatWib(event.publishedAt)}',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ]),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
 }

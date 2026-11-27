@@ -222,4 +222,56 @@ void main() {
       expect(error.userMessage, isNot(contains('private diagnostic marker')));
     }
   });
+
+  // FIX-MOB-GEOJSON: production answers the map read as application/geo+json; the client rejected it, so the map tab
+  // failed on the hosted Worker while the fakes passed.
+  test('map read accepts the Worker application/geo+json media type', () async {
+    late http.Request seen;
+    final client = MockClient((request) async {
+      seen = request;
+      return http.Response(
+          jsonEncode({
+            'type': 'FeatureCollection',
+            'features': [
+              {
+                'type': 'Feature',
+                'id': 'evt-a',
+                'geometry': {
+                  'type': 'Point',
+                  'coordinates': [106.845, -6.185]
+                },
+                'properties': {
+                  'event_id': 'evt-a',
+                  'version': 1,
+                  'title': 'Contoh sintetis',
+                  'category': syntheticEvent['category'],
+                  'lifecycle': 'active',
+                  'freshness': 'fresh',
+                  'geometry_role': 'approximate_place',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/geo+json; charset=utf-8'});
+    });
+    final api = HttpPublicApi(
+        origin: Uri.parse('https://api.example.invalid'), httpClient: client);
+    final points = await api.getEventMap();
+    expect(seen.url.path, '/api/v1/events.geojson');
+    expect(seen.headers['accept'], contains('application/geo+json'));
+    expect(points.single.eventId, 'evt-a');
+  });
+
+  test('other reads still refuse a non-JSON media type', () async {
+    final client = MockClient((request) async => http.Response(
+        jsonEncode(syntheticEventPage), 200,
+        headers: {'content-type': 'application/geo+json'}));
+    final api = HttpPublicApi(
+        origin: Uri.parse('https://api.example.invalid'), httpClient: client);
+    await expectLater(
+        api.listEvents(const EventQuery()),
+        throwsA(isA<ApiFailure>()
+            .having((f) => f.kind, 'kind', ApiFailureKind.payload)));
+  });
 }

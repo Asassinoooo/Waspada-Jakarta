@@ -1,0 +1,17 @@
+✔ detail and history requests use encoded IDs and existing read-only API paths (36.644527ms)
+✔ public API failures keep the HTTP status available without exposing response bodies (1.451826ms)
+✔ briefing POST sends only the current interests in the existing JSON request contract (1.60533ms)
+✔ briefing client rejects malformed or partial response data as one generic payload error (1.500275ms)
+✔ briefing client returns each event once, keeping the first occurrence in place (1.721434ms)
+✔ updates client sends only the opaque cursor and fixed page size and validates a closed page (13.895461ms)
+✔ updates client bootstraps without a cursor and preserves HTTP 410 (2.121825ms)
+✔ updates client rejects extra fields, malformed timestamps, oversized pages, and invalid cursor input (2.327505ms)
+✔ POLISH-02: the updates client keeps the optional automatic flag only when it is a boolean (2.060351ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1325.173903

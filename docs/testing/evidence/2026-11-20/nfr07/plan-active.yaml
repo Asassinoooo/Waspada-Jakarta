@@ -1,0 +1,37 @@
+env:
+  contexts:
+    - name: waspada-local
+      urls: ["http://127.0.0.1:8787", "http://127.0.0.1:5173"]
+      includePaths: ["http://127.0.0.1:8787.*", "http://127.0.0.1:5173.*"]
+  parameters:
+    failOnError: false
+    progressToStdout: true
+jobs:
+  - type: passiveScan-config
+    parameters: {maxAlertsPerRule: 10, scanOnlyInScope: true}
+  - type: requestor
+    requests:
+      - {url: "http://127.0.0.1:5173/", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/events", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/events/synthetic-demo-01", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/events/synthetic-demo-01/history", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/events?cursor=x&limit=5", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/updates", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/context", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/auth/session", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/moderation/proposals", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/pipeline/flow", method: GET}
+      - {url: "http://127.0.0.1:8787/api/v1/briefings", method: POST, headers: ["Content-Type: application/json"], data: '{"interests":{"places":["Jakarta Timur"],"services":[],"institutions":[],"audiences":[],"categories":["disasters_weather"]}}'}
+      - {url: "http://127.0.0.1:8787/api/v1/auth/login", method: POST, headers: ["Content-Type: application/json", "Origin: http://127.0.0.1:5173"], data: '{"username":"zap-probe","password":"not-a-real-password"}'}
+  - type: spider
+    parameters: {context: waspada-local, maxDuration: 3, maxDepth: 5, threadCount: 2}
+  - type: passiveScan-wait
+    parameters: {maxDuration: 5}
+  - type: activeScan
+    parameters: {context: waspada-local, maxRuleDurationInMins: 2, maxScanDurationInMins: 30, threadPerHost: 2}
+  - type: passiveScan-wait
+    parameters: {maxDuration: 5}
+  - type: report
+    parameters: {template: modern, reportDir: /mnt/d/Projects/RPL/.codex-build/zap, reportFile: zap-active-local-report, reportTitle: "Waspada Jakarta - ZAP active scan, local copy (demo data)"}
+  - type: report
+    parameters: {template: traditional-json, reportDir: /mnt/d/Projects/RPL/.codex-build/zap, reportFile: zap-active-local-report}

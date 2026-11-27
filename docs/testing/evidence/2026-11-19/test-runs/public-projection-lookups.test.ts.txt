@@ -1,0 +1,16 @@
+▶ API-PUBLIC-LOOKUPS-CORE reviewed lookup persistence and read port
+  ✔ returns only the latest approved Indonesian scope names and exact current support attributions (20.762743ms)
+  ✔ omits missing, held, revoked, and inexact keys and rejects duplicate requested keys (5.618451ms)
+  ✔ rejects malformed and over-limit query keys without echoing caller values or querying SQL (0.728628ms)
+  ✔ uses parameterized exact-key SQL and keeps deterministic result ordering (5.260861ms)
+  ✔ enforces exact live supporting-reference linkage, immutable history, and unique versions (20.798018ms)
+  ✔ grants the reader the closed views only and denies approval/source reads and mutations (36.038074ms)
+✔ API-PUBLIC-LOOKUPS-CORE reviewed lookup persistence and read port (16968.962191ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18911.28219

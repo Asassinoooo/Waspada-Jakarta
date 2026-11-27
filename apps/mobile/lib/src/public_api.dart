@@ -33,7 +33,39 @@ abstract interface class PublicApi {
   Future<EventPage> listEvents(EventQuery query);
   Future<EventDetail> getEventDetail(String eventId);
   Future<HistoryPage> getEventHistory(String eventId, {String? cursor});
+
+  /// MOBILE-V2: map points from `/api/v1/events.geojson`. Only published events with a Point appear.
+  Future<List<MapPoint>> getEventMap();
 }
+
+/// NOTIFY-01: one page of `/api/v1/updates`. The first call (no cursor) returns no items and a baseline cursor.
+class UpdatePage {
+  const UpdatePage({required this.items, required this.nextCursor});
+  final List<HistoryEntry> items;
+  final String nextCursor;
+
+  factory UpdatePage.fromJson(Object? json) {
+    if (json is! Map) throw const ContractViolation();
+    final items = json['items'];
+    final cursor = json['next_cursor'];
+    if (items is! List || items.length > 100) throw const ContractViolation();
+    if (cursor is! String || cursor.isEmpty || cursor.length > 2048) {
+      throw const ContractViolation();
+    }
+    return UpdatePage(
+        items: items.map(HistoryEntry.fromJson).toList(growable: false),
+        nextCursor: cursor);
+  }
+}
+
+/// NOTIFY-01: what the background notifier reads. Interests are never sent: both calls are public reads.
+abstract interface class NotifyApi {
+  Future<UpdatePage> getUpdates({String? cursor});
+  Future<EventDetail> getEventDetail(String eventId);
+}
+
+/// MOBILE-V2: the hosted public Worker. A build without `--dart-define=API_ORIGIN=...` reads from here.
+const defaultApiOrigin = 'https://waspada-jakarta.waspada-worker.workers.dev';
 
 class EventQuery {
   const EventQuery(
@@ -97,13 +129,14 @@ Uri? parseApiOrigin(
   return uri.replace(path: '', query: null, fragment: null);
 }
 
-class HttpPublicApi implements PublicApi {
+class HttpPublicApi implements PublicApi, NotifyApi {
   HttpPublicApi({required Uri? origin, required http.Client httpClient})
       : _origin = origin,
         _httpClient = httpClient;
 
   factory HttpPublicApi.fromEnvironment({http.Client? httpClient}) {
-    final raw = const String.fromEnvironment('API_ORIGIN');
+    const defined = String.fromEnvironment('API_ORIGIN');
+    final raw = defined.trim().isEmpty ? defaultApiOrigin : defined;
     final allowLocalHttp =
         const bool.fromEnvironment('ALLOW_INSECURE_DEBUG_ORIGIN');
     try {
@@ -130,10 +163,16 @@ class HttpPublicApi implements PublicApi {
     return Uri.parse('${origin.scheme}://${origin.authority}$path$suffix');
   }
 
-  Future<Object?> _get(String path, [Map<String, String>? query]) async {
+  /// FIX-MOB-GEOJSON: the Worker answers `/api/v1/events.geojson` as `application/geo+json` (RFC 7946), so the map
+  /// read accepts that media type; every other read stays `application/json` only.
+  static const _jsonTypes = {'application/json'};
+  static const _geoJsonTypes = {'application/geo+json', 'application/json'};
+
+  Future<Object?> _get(String path,
+      [Map<String, String>? query, Set<String> accepted = _jsonTypes]) async {
     final uri = _uri(path, query);
     final request = http.Request('GET', uri)
-      ..headers['accept'] = 'application/json'
+      ..headers['accept'] = accepted.join(', ')
       ..headers['cache-control'] = 'no-store';
     late final http.StreamedResponse response;
     try {
@@ -152,7 +191,7 @@ class HttpPublicApi implements PublicApi {
     }
     final contentType =
         response.headers['content-type']?.split(';').first.trim().toLowerCase();
-    if (contentType != 'application/json') {
+    if (contentType == null || !accepted.contains(contentType)) {
       throw const ApiFailure(ApiFailureKind.payload);
     }
     final length = response.contentLength;
@@ -195,6 +234,11 @@ class HttpPublicApi implements PublicApi {
       _parse(await _get('/api/v1/context'), PublicContext.fromJson);
 
   @override
+  Future<List<MapPoint>> getEventMap() async =>
+      _parse(await _get('/api/v1/events.geojson', null, _geoJsonTypes),
+          MapPoint.listFromGeoJson);
+
+  @override
   Future<EventPage> listEvents(EventQuery query) async {
     final cursor = query.cursor;
     if (cursor != null && (cursor.isEmpty || cursor.length > 2048)) {
@@ -218,6 +262,16 @@ class HttpPublicApi implements PublicApi {
         EventDetail.fromJson);
     if (detail.id != eventId) throw const ApiFailure(ApiFailureKind.payload);
     return detail;
+  }
+
+  @override
+  Future<UpdatePage> getUpdates({String? cursor}) async {
+    if (cursor != null && (cursor.isEmpty || cursor.length > 2048)) {
+      throw const ApiFailure(ApiFailureKind.payload);
+    }
+    final query = <String, String>{'limit': '20'};
+    if (cursor != null) query['cursor'] = cursor;
+    return _parse(await _get('/api/v1/updates', query), UpdatePage.fromJson);
   }
 
   @override

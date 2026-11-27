@@ -331,6 +331,50 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         default: { $ref: '#/components/responses/UnexpectedError' }
+  /auth/password-reset:
+    post:
+      tags: [Account session]
+      operationId: resetPasswordWithCode
+      summary: Set a new password with an administrator-issued one-time code
+      description: "No session is needed, because the code is the proof of possession. Requires the exact Origin and the X-Waspada-Request marker, as login does. An unknown username, a wrong code, an expired code and a used code all return the same 400 body. The fifth wrong code burns the code. Success ends every session of the account, starts no new session and keeps the role."
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/WaspadaRequest' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordResetRequest' }
+      responses:
+        '204': { description: "Password changed. Every session of the account has ended. No session is created." }
+        '400': { description: "Malformed request, a weak new password, or a code that is wrong, expired or used. The code cases share one generic body." }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '405': { description: Only POST is accepted }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { description: Account service unavailable; generic body }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+  /account/users/{account_id}/password-reset-code:
+    post:
+      tags: [Admin]
+      operationId: issuePasswordResetCode
+      summary: Issue a one-time password reset code for a password account
+      description: "Administrator only. Requires a web cookie session, the exact Origin and X-CSRF-Token. Replaces any unused code for the account. The code is returned once, expires after 30 minutes and is stored only as a hash. The audit trail records the administrator and the account, never the code."
+      security: [{ AccountSessionCookie: [] }]
+      parameters:
+        - { name: account_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '200':
+          description: "Code issued. This is the only response that carries the code. It is marked no-store."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PasswordResetCodeIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
   /moderation/reviews:
     get:
       tags: [Moderation]
@@ -682,7 +726,7 @@ components:
     To: { name: to, in: query, required: false, schema: { type: string, format: date-time } }
     Origin: { name: Origin, in: header, required: true, description: Must exactly match the application origin., schema: { type: string, format: uri } }
     CsrfToken: { name: X-CSRF-Token, in: header, required: true, schema: { type: string, minLength: 32, maxLength: 512 } }
-    WaspadaRequest: { name: X-Waspada-Request, in: header, required: true, description: Pre-session marker for register and login; must be the value 1., schema: { type: string, enum: ['1'] } }
+    WaspadaRequest: { name: X-Waspada-Request, in: header, required: true, description: "Pre-session marker for register, login and password reset. Must be the value 1.", schema: { type: string, enum: ['1'] } }
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, description: Reuse with identical actor, operation and body; changed-body reuse is rejected., schema: { type: string, minLength: 16, maxLength: 128 } }
   responses:
     BadRequest:
@@ -1102,6 +1146,36 @@ components:
         changed_at: { type: string, format: date-time }
         summary: { type: string, maxLength: 500 }
         automatic: { type: boolean, description: "POLISH-02 (additive, optional). True only for an automatic refresh by agent:auto-publisher, which is written as change_type corrected. Omitted otherwise. The reviewer identifier is never exposed." }
+        changes:
+          type: array
+          maxItems: 13
+          description: "HIST-UI-01 (additive, optional). The differences from the previous published version, in field order. Omitted for version 1, when no previous published version is present, for a retracted entry, when the entry's own text, enum, time or count values cannot be read, and when nothing differs. A scope field is left out when one of its IDs has no approved display name, and the other fields still appear. Scope lists hold public display names, sorted, at most 20 each. A summary before or after is at most 600 characters, cut at a word boundary and ending in an ellipsis when longer. Claims and impacts are counts. No identifier, reviewer, trace or decision value appears."
+          items:
+            oneOf:
+              - type: object
+                additionalProperties: false
+                required: [field, before, after]
+                description: "Text difference. event_time and validity use the form 'precision start end' with '-' for an open bound, and null when the value is absent."
+                properties:
+                  field: { type: string, enum: [title, summary, category, lifecycle, freshness, event_time, validity] }
+                  before: { type: [string, 'null'] }
+                  after: { type: [string, 'null'] }
+              - type: object
+                additionalProperties: false
+                required: [field, added, removed]
+                description: "Scope difference by public display name."
+                properties:
+                  field: { type: string, enum: [places, services, institutions, audiences] }
+                  added: { type: array, maxItems: 20, items: { type: string } }
+                  removed: { type: array, maxItems: 20, items: { type: string } }
+              - type: object
+                additionalProperties: false
+                required: [field, before_count, after_count]
+                description: "Count difference for claims or impacts."
+                properties:
+                  field: { type: string, enum: [claims, impacts] }
+                  before_count: { type: integer, minimum: 0 }
+                  after_count: { type: integer, minimum: 0 }
     HistoryPage:
       type: object
       additionalProperties: false
@@ -1238,6 +1312,28 @@ components:
       properties:
         current_password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
         new_password: { type: string, minLength: 10, maxLength: 256, writeOnly: true }
+    PasswordResetRequest:
+      type: object
+      required: [username, code, new_password]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 256 }
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+          writeOnly: true
+          description: "Ten characters from Crockford base32. Case, spaces and hyphens are ignored."
+        new_password: { type: string, minLength: 10, maxLength: 256, writeOnly: true }
+    PasswordResetCodeIssue:
+      type: object
+      required: [code, expires_at, username]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9A-HJKMNP-TV-Z]{10}$'
+          description: "Shown once to the administrator. Never stored in clear and never logged."
+        expires_at: { type: string, format: date-time }
+        username: { type: string }
     ReviewSummary:
       type: object
       additionalProperties: false

@@ -1,0 +1,37 @@
+▶ NFR-07 A1: report interpretation prompt isolates source text
+  ✔ the agents are built with the reviewed instruction constants, and those constants hold no source text (3.313349ms)
+  ✔ every injected line sits inside the REPORT TEXT or EVIDENCE CHUNKS data sections only (8.511825ms)
+  ✔ the source metadata goes in the header, and the instruction constant holds no source text (3.68717ms)
+  ✔ the parsed answer comes only from the model reply, never from JSON inside the source text (1.940921ms)
+  ⚠ todo: a report line that imitates a section header cannot add a second evidence section (2.616791ms) # NFR-07 A1 gap: report-interpretation-agent.ts:138-160 wraps source text in '=== REPORT TEXT ===' with no escaping or closing delimiter. A line containing '=== EVIDENCE CHUNKS ===' or 'Format your output' adds a second section header, so the prompt is ambiguous about where the data ends.
+✔ NFR-07 A1: report interpretation prompt isolates source text (23.012889ms)
+▶ NFR-07 A1: incident correlation prompt isolates source text
+  ✔ the incoming report and the candidate description carry source text only in their own sections (1.882682ms)
+✔ NFR-07 A1: incident correlation prompt isolates source text (2.212493ms)
+ℹ tests 6
+ℹ suites 2
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 1
+ℹ duration_ms 27664.310484
+
+✖ failing tests:
+
+test at test/nfr07-source-text-isolation.test.ts:138:3
+⚠ todo: a report line that imitates a section header cannot add a second evidence section (2.616791ms) # NFR-07 A1 gap: report-interpretation-agent.ts:138-160 wraps source text in '=== REPORT TEXT ===' with no escaping or closing delimiter. A line containing '=== EVIDENCE CHUNKS ===' or 'Format your output' adds a second section header, so the prompt is ambiguous about where the data ends.
+  AssertionError [ERR_ASSERTION]: exactly one evidence section header
+  
+  2 !== 1
+  
+      at TestContext.<anonymous> (/mnt/d/Projects/RPL/apps/intelligence/test/nfr07-source-text-isolation.test.ts:145:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

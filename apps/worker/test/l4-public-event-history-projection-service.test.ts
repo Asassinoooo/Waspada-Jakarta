@@ -140,7 +140,7 @@ function makeCandidateResult(
 ): RecordValue {
   return {
     kind: "found",
-    page: { eventId, versions, nextAfterVersion, ...pageOverrides },
+    page: { eventId, versions, nextAfterVersion, previousVersion: null, scopeNames: [], ...pageOverrides },
   };
 }
 

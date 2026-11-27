@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # CD-01: a manual run on main re-runs every check and then redeploys.
+  workflow_dispatch:
 
 jobs:
   test:
@@ -48,3 +50,110 @@ jobs:
 
       - name: Build Web and Worker Bundles
         run: npm run build
+
+  # E2E-CI-01 + A11Y-01: the offline browser journey and the axe accessibility audit of the public pages. Both run
+  # on PGlite with the Worker and the built web app behind one loopback server. A serious or critical axe violation
+  # or a keyboard failure fails this job and so blocks deploy. The audit report is uploaded even when a step fails.
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Build web app for the browser tools
+        run: npm run build:web
+
+      - name: Run browser journey
+        run: npm run test:e2e:ci
+
+      - name: Run accessibility audit
+        run: npm run a11y:audit
+
+      - name: Upload accessibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-report
+          path: tools/e2e/out/
+
+  # CD-01 (23 Nov 2026): continuous deployment. Every push to main whose checks all pass is deployed to the hosted
+  # Worker (web assets + API) with `npm run deploy:prod`. Pull requests never deploy. A failed check means no deploy.
+  # Migrations are not applied here: a new migration is still applied by hand before its code is merged (DEPLOYMENT.md).
+  # Needs repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Worker secrets stay in Cloudflare.
+  deploy:
+    needs: [test, e2e]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://waspada-jakarta.waspada-worker.workers.dev
+    # One deploy at a time. A newer commit waiting in the queue replaces an older one that has not started.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check deploy credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Set repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to enable deployment."
+            exit 1
+          fi
+
+      - name: Build web and deploy Worker (production)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: npm run deploy:prod
+
+      - name: Smoke check the live site
+        run: |
+          base="https://waspada-jakarta.waspada-worker.workers.dev"
+          for path in / /api/v1/context /api/v1/events?limit=1; do
+            ok=""
+            for attempt in 1 2 3 4 5; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$base$path" || true)
+              if [ "$code" = "200" ]; then ok=1; break; fi
+              echo "$path returned $code (attempt $attempt)"; sleep 6
+            done
+            if [ -z "$ok" ]; then echo "::error::$path did not return 200 after deploy"; exit 1; fi
+            echo "$path 200"
+          done
+          echo "Deployed commit ${GITHUB_SHA::7}" >> "$GITHUB_STEP_SUMMARY"
+
+      # PERF-08: latency of the live public reads, appended to the job summary. It only reads, and it never fails the
+      # deploy. "Install dependencies" above runs npm ci in this job, so tsx is available to the probe.
+      - name: Latency probe
+        continue-on-error: true
+        run: node --import tsx tools/perf/latency-probe.ts --rounds 3 >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,22 @@
+✔ HOSTED-29: a multi-source cluster whose reports state only a date keeps date precision (10.812872ms)
+✔ HOSTED-29: a single-source cluster with a YYYY-MM-DD date keeps date precision (0.873928ms)
+✔ HOSTED-29: the correlated and single-report engines give the same stated date for the same text (8.171644ms)
+✔ HOSTED-29: a time range the reports state stays a range, even when another report gives only a date (1.288604ms)
+✔ HOSTED-29: a report with no stated date gives unknown precision, and its publish time is not used (0.76705ms)
+✔ HOSTED-29: a date that is not a real calendar day is not invented (0.442128ms)
+✔ HOSTED-29: the shared date parsing accepts real calendar days, including a leap day (0.335251ms)
+✔ HOSTED-29: the in-memory read model keeps a date as YYYY-MM-DD, gives its claims date precision and no validity start (2.558345ms)
+✔ HOSTED-29: the in-memory read model keeps a date from a raw input as YYYY-MM-DD (3.806015ms)
+✔ HOSTED-29: the in-memory read model gives unknown for a date that is not a real calendar day (0.524702ms)
+✔ HOSTED-29 control: an exact time keeps exact precision on its claims and its validity start (0.886932ms)
+✔ HOSTED-29: the strict public projector accepts a stored date-precision event and keeps the date (4.025691ms)
+✔ HOSTED-29: the strict public projector accepts the in-memory read model's own date output (1.212374ms)
+✔ HOSTED-29: the strict public projector refuses a date that carries an invented hour (1.55636ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1675.182414

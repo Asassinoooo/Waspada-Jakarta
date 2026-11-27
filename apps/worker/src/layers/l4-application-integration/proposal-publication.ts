@@ -13,6 +13,7 @@ import type { SqlExecutor, TransactionalSqlExecutor } from "../../../../db/src/s
 import type { EventProposalWriter } from "../../../../db/src/event-proposal-writer.js";
 import { persistGeometryInCallerTransaction } from "../../../../db/src/geometry-writer.js";
 import type { EventProposalDto } from "./moderation-api.js";
+import { isOfficialIncidentCategory } from "../../../../db/src/incident-categories.js";
 import {
   PublicReadModel,
   proposalToEventDetail,
@@ -94,6 +95,78 @@ export type PublicationActor =
 
 export type ProposalDecisionAction = "auto_publish" | "publish" | "reject";
 
+/** WJ-INT-02B: the moderator's explicit choice when a triage and an interpreter category disagree. */
+export const CATEGORY_RESOLUTIONS = ["accept_triage", "accept_interpretation"] as const;
+export type CategoryResolution = (typeof CATEGORY_RESOLUTIONS)[number];
+
+export function isCategoryResolution(value: unknown): value is CategoryResolution {
+  return typeof value === "string" && (CATEGORY_RESOLUTIONS as readonly string[]).includes(value);
+}
+
+export type CategoryResolutionCode =
+  | "category_mismatch_unresolved"
+  | "category_candidates_unrecorded"
+  | "category_not_candidate";
+
+export type CategoryResolutionOutcome =
+  | {
+    readonly ok: true;
+    /** The category to publish. Null means the record's stored category stands (no moderator choice). */
+    readonly category: string | null;
+  }
+  | { readonly ok: false; readonly code: CategoryResolutionCode };
+
+/**
+ * WJ-INT-02B: the published category must be one of the two categories the proposal records, the triage category
+ * (`primary_category`) or the interpreter category (`interpretation_category`). A recorded mismatch needs an explicit
+ * category_resolution. A resolved_category must be a recorded candidate and must agree with the resolution. Nothing is
+ * mapped or guessed, and a missing candidate is refused rather than taken from the client.
+ */
+export function resolvePublicationCategory(
+  proposal: {
+    readonly primary_category?: unknown;
+    readonly interpretation_category?: unknown;
+    readonly caveats?: unknown;
+  },
+  choice: { readonly categoryResolution?: unknown; readonly resolvedCategory?: unknown },
+): CategoryResolutionOutcome {
+  const mismatched = Array.isArray(proposal.caveats) && proposal.caveats.includes("category_mismatch_review");
+  if (mismatched && choice.categoryResolution === undefined) {
+    return { ok: false, code: "category_mismatch_unresolved" };
+  }
+  if (choice.categoryResolution === undefined && choice.resolvedCategory === undefined) {
+    return { ok: true, category: null };
+  }
+  if (choice.categoryResolution !== undefined && !isCategoryResolution(choice.categoryResolution)) {
+    return { ok: false, code: "category_not_candidate" };
+  }
+  const triage = isOfficialIncidentCategory(proposal.primary_category) ? proposal.primary_category : null;
+  const interpreted = isOfficialIncidentCategory(proposal.interpretation_category)
+    ? proposal.interpretation_category
+    : null;
+  const candidates: string[] = [triage, interpreted].flatMap((category) => (category === null ? [] : [category]));
+  const selected = choice.categoryResolution === undefined
+    ? null
+    : choice.categoryResolution === "accept_interpretation" ? interpreted : triage;
+  if (choice.categoryResolution !== undefined && selected === null) {
+    return { ok: false, code: "category_candidates_unrecorded" };
+  }
+  let category: string | null = selected;
+  if (choice.resolvedCategory !== undefined) {
+    if (typeof choice.resolvedCategory !== "string" || !candidates.includes(choice.resolvedCategory)) {
+      return {
+        ok: false,
+        code: candidates.length === 0 ? "category_candidates_unrecorded" : "category_not_candidate",
+      };
+    }
+    if (selected !== null && choice.resolvedCategory !== selected) {
+      return { ok: false, code: "category_not_candidate" };
+    }
+    category = choice.resolvedCategory;
+  }
+  return { ok: true, category };
+}
+
 export interface ProposalDecisionDependencies {
   readonly executor: SqlExecutor;
   readonly datasetKind: "live" | "historical" | "synthetic";
@@ -135,6 +208,12 @@ export type ProposalDecisionOutcome =
       | "investigation_stopped_for_review"
       /** TG-FR12: a withdrawn event is never published again by an agent or a moderator. */
       | "event_withdrawn"
+      /** WJ-INT-02B: a triage/interpreter mismatch needs the moderator's category_resolution. */
+      | "category_mismatch_unresolved"
+      /** WJ-INT-02B: the chosen or resolved category is not recorded on the proposal. Nothing is taken from the client. */
+      | "category_candidates_unrecorded"
+      /** WJ-INT-02B: resolved_category is not a recorded candidate, or contradicts category_resolution. */
+      | "category_not_candidate"
       | CorrectionRefusalCode;
     readonly reasons?: readonly ProposalGateReason[];
   }
@@ -765,12 +844,34 @@ async function writePointGeometry(tx: SqlExecutor, input: PointWriteInput): Prom
 }
 
 /**
- * HOSTED-10 and HOSTED-26: the support and the location status of a publication. It never refuses. A coordinate-bearing
- * event with support gets one Point geometry (geometry_status "point_written"). A coordinate-bearing event with no
- * support, and no row written earlier, records "pending_geometry_writer" and stays a whole view. An event with no usable
- * coordinate records "whole_view". A group notice with no location records "not_required_group_notice". The support of a
- * claim is filled only when the proposal came from one report revision, so no claim is given evidence from another
- * revision.
+ * MAP-GEO-02: the distinct references of several claims' support, in claim order. Two references are the same when they
+ * name the same revision, text hash and span, because the database holds one persisted row for each such span. The
+ * point of a multi-revision event cites this union, so every revision a claim cites is evidence of the point.
+ */
+function unionClaimSupport(claimSupport: readonly (readonly DomainEvidenceRef[])[]): DomainEvidenceRef[] {
+  const seen = new Set<string>();
+  const union: DomainEvidenceRef[] = [];
+  for (const refs of claimSupport) {
+    for (const ref of refs) {
+      const key = JSON.stringify([ref.report_revision_id, ref.permitted_text_hash, ref.span_start, ref.span_end]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      union.push(ref);
+    }
+  }
+  return union;
+}
+
+/**
+ * HOSTED-10, HOSTED-26 and MAP-GEO-02: the support and the location status of a publication. It never refuses. A
+ * coordinate-bearing event with point support gets one Point geometry (geometry_status "point_written"). The point's
+ * support is the support of the proposal's one report revision. For a proposal from several revisions it is the union of
+ * the claims' own support (HOSTED-31), so a merged event gets its point too. A coordinate-bearing event with no point
+ * support, and no row written earlier, records "pending_geometry_writer" and stays a whole view. So does one whose point
+ * write fails under its savepoint. An event with no usable coordinate records "whole_view". A group notice with no location
+ * records "not_required_group_notice". The support of a claim is filled only when the proposal came from one report
+ * revision. A claim of a merged proposal gets only its own chunk's reference, so no claim is given evidence from another
+ * revision. The returned `support` fields keep that meaning.
  */
 async function enrichPublication(
   tx: SqlExecutor,
@@ -810,6 +911,9 @@ async function enrichPublication(
     claimSourceIds: (proposal.claims ?? []).map((claim) => claim.source_id),
   });
   if (outcome.status === "point") {
+    // MAP-GEO-02: the point cites what its claims cite. One revision: that revision's support. Several revisions: the
+    // union of the claims' own support. The claim support and the returned `support` fields are not changed by this.
+    const pointSupport = own.revisions.length > 1 ? unionClaimSupport(claimSupport) : support;
     const point = await withOptionalSavepoint(tx, "hosted26_point", () => writePointGeometry(tx, {
       datasetKind: input.datasetKind,
       traceId: input.traceId,
@@ -817,7 +921,7 @@ async function enrichPublication(
       coordinates: outcome.coordinates,
       source: outcome.source,
       locationLabel: proposal.location_label,
-      support,
+      support: pointSupport,
     }));
     const geometryId = point.ok ? point.value : null;
     return {
@@ -1120,6 +1224,10 @@ interface PublishCore {
   readonly decidedAt: string;
   /** TG-FR12: the version a correction was made from. A correction publishes only over that version. */
   readonly baseVersion?: number;
+  /** WJ-INT-02B: the moderator's explicit triage/interpreter choice. Recorded on the publish decision when given. */
+  readonly categoryResolution?: CategoryResolution;
+  /** The evidence label the moderator's publish request carried. Recorded on the decision only, never on a claim. */
+  readonly moderatorEvidenceLabel?: string;
 }
 
 /** HOSTED-26: the rows of one published version. The caller builds the decision record, so every gate and location field is explicit. */
@@ -1512,6 +1620,11 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
         : action === "correct" ? "moderator_correction" : "moderator_review",
       source_count: sourceCount,
       reason: core.reason,
+      // WJ-INT-02B: the moderator's explicit category choice and the category it published, when one was given.
+      ...(core.categoryResolution !== undefined
+        ? { category_resolution: core.categoryResolution, resolved_category: proposal.primary_category ?? null }
+        : {}),
+      ...(core.moderatorEvidenceLabel !== undefined ? { moderator_evidence_label: core.moderatorEvidenceLabel } : {}),
       ...(waivers.length > 0 ? { waivers } : {}),
       ...(action === "correct" ? { base_version: core.baseVersion ?? null } : {}),
       // HOSTED-10 and HOSTED-26: the point's source and the location status live here. "point_written" means the
@@ -1559,6 +1672,9 @@ async function publishInTransaction(tx: SqlExecutor, core: PublishCore): Promise
  * TG-FR12: an event withdrawn by a moderator is never published again (denied, event_withdrawn).
  * HOSTED-28: a claim from a source that is not approved is refused with source_revoked, before any local_relaxed waiver.
  * The proposal is queued (auto_publish) or denied (publish). Published events are not withdrawn.
+ * WJ-INT-02B: a publish takes its category only from the proposal's recorded candidates (resolvePublicationCategory),
+ * and a recorded triage/interpreter mismatch is denied until the moderator sends a category_resolution. The source gate
+ * then runs on the resolved record. The reason, the resolution and the evidence label are recorded on the decision.
  */
 export async function decideProposal(
   dependencies: ProposalDecisionDependencies,
@@ -1569,6 +1685,12 @@ export async function decideProposal(
     readonly reason?: string;
     /** Read only for auto_publish. Omitted means `required`, so the permission check applies. */
     readonly sourcePermission?: AutoPublishSourcePermission;
+    /** Publish only (WJ-INT-02B): the moderator's triage/interpreter choice. */
+    readonly categoryResolution?: CategoryResolution;
+    /** Publish only (WJ-INT-02B): the category the moderator resolved to. It must be a recorded candidate. */
+    readonly resolvedCategory?: string;
+    /** Publish only: the evidence label the request carried. Recorded on the decision, never applied to a claim. */
+    readonly moderatorEvidenceLabel?: string;
   },
 ): Promise<ProposalDecisionOutcome> {
   const { executor, datasetKind } = dependencies;
@@ -1617,6 +1739,19 @@ export async function decideProposal(
     });
   }
 
+  // WJ-INT-02B: a moderator publish takes its category only from the proposal's own recorded candidates, and a
+  // mismatch needs an explicit resolution. The resolved record then goes through the same source gate below.
+  // Nothing is written before this check.
+  let publishRecord: EventProposalDto = proposal;
+  if (input.action === "publish") {
+    const resolution = resolvePublicationCategory(proposal, {
+      categoryResolution: input.categoryResolution,
+      resolvedCategory: input.resolvedCategory,
+    });
+    if (!resolution.ok) return { status: "denied", code: resolution.code };
+    if (resolution.category !== null) publishRecord = { ...proposal, primary_category: resolution.category };
+  }
+
   // External registry checks run before the lock, so no database lock is held across them. Fail-closed.
   const publicDisplaySourceIds = await resolvePublicDisplay(dependencies, proposal);
   const revokedSourceIds = await resolveRevokedSourceIds(executor, proposal);
@@ -1632,7 +1767,7 @@ export async function decideProposal(
       datasetKind,
       proposalId: input.proposalId,
       traceId: row.trace_id,
-      proposal,
+      proposal: publishRecord,
       investigationId: row.investigation_id,
       action: publishAction,
       actor: input.actor,
@@ -1642,6 +1777,8 @@ export async function decideProposal(
       revokedSourceIds,
       decisionId,
       decidedAt,
+      categoryResolution: publishAction === "publish" ? input.categoryResolution : undefined,
+      moderatorEvidenceLabel: publishAction === "publish" ? input.moderatorEvidenceLabel : undefined,
     }));
   } catch {
     return { status: "denied", code: "publication_failed" };

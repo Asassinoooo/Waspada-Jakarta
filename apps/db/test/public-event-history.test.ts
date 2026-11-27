@@ -34,6 +34,11 @@ interface HistoryQueryRow {
   readonly current_event_id: unknown;
   readonly current_version: unknown;
   readonly current_record_json: unknown;
+  readonly previous_dataset_kind: unknown;
+  readonly previous_event_id: unknown;
+  readonly previous_version: unknown;
+  readonly previous_record_json: unknown;
+  readonly scope_names: unknown;
   readonly dataset_kind: unknown;
   readonly event_id: unknown;
   readonly version: unknown;
@@ -79,6 +84,16 @@ describe('public event history repository', () => {
 
     await seedEvent(testDatabase, historicalFixture, 'event-non-live', [{ version: 1 }]);
     await seedEvent(testDatabase, syntheticFixture, 'event-synthetic', [{ version: 1 }]);
+
+    // HIST-UI-01: scope IDs with approved names, plus one held name that must never reach a page.
+    await seedEvent(testDatabase, liveFixture, 'event-named-history', [
+      { version: 1, recordJson: namedEventRecord(1, ['place-history-alpha']) },
+      { version: 2, recordJson: namedEventRecord(2, ['place-history-alpha', 'place-history-beta']) },
+      { version: 3, recordJson: namedEventRecord(3, ['place-history-beta', 'place-history-gamma']) },
+    ]);
+    await seedScopeName(testDatabase, 'place-history-alpha', 'approved', 'Fictional alpha place');
+    await seedScopeName(testDatabase, 'place-history-beta', 'approved', 'Fictional beta place');
+    await seedScopeName(testDatabase, 'place-history-gamma', 'held', null);
   });
 
   after(async () => {
@@ -99,6 +114,9 @@ describe('public event history repository', () => {
 
     assert.deepEqual(result.rows.map(({ event_id, version }) => [event_id, version]), [
       ['event-malformed-history', 2],
+      ['event-named-history', 1],
+      ['event-named-history', 2],
+      ['event-named-history', 3],
       ['event-other', 1],
       ['event-paged', 1],
       ['event-paged', 2],
@@ -144,12 +162,17 @@ describe('public event history repository', () => {
     assert.equal(first.page.versions[0]?.datasetKind, 'live');
     assert.deepEqual(first.page.versions[0]?.recordJson,
       eventRecord(liveFixture, 'event-paged', 1, 'published'));
+    assert.equal(first.page.previousVersion, null, 'the first page has no previous version');
 
     const second = await repository.read('event-paged', { limit: 2, afterVersion: first.page.nextAfterVersion });
     assert.equal(second.kind, 'found');
     if (second.kind !== 'found') return;
     assert.deepEqual(second.page.versions.map(({ eventVersion }) => eventVersion), [3, 4]);
     assert.equal(second.page.nextAfterVersion, null);
+    // HIST-UI-01: the boundary carries the latest published version before the page, which is version 2.
+    assert.equal(second.page.previousVersion?.eventVersion, 2);
+    assert.deepEqual(second.page.previousVersion?.recordJson,
+      eventRecord(liveFixture, 'event-paged', 2, 'published'));
 
     assert.equal(calls.length, 2);
     assert.deepEqual(calls.map(({ parameters }) => parameters), [
@@ -168,6 +191,42 @@ describe('public event history repository', () => {
       (error: unknown) => error instanceof PublicEventHistoryError && error.code === 'INVALID_PAGE',
     );
     assert.equal(calls.length, 2, 'invalid keysets are rejected before querying');
+  });
+
+  it('returns the previous published version and only approved scope names at a page boundary', async () => {
+    const repository = createPublicEventHistoryRepository(testDatabase.executor);
+
+    const boundary = await repository.read('event-named-history', { limit: 1, afterVersion: 2 });
+    assert.equal(boundary.kind, 'found');
+    if (boundary.kind !== 'found') return;
+    assert.deepEqual(boundary.page.versions.map(({ eventVersion }) => eventVersion), [3]);
+    assert.equal(boundary.page.previousVersion?.eventVersion, 2);
+    assert.deepEqual((boundary.page.previousVersion?.recordJson as Record<string, unknown>).scope, {
+      place_ids: ['place-history-alpha', 'place-history-beta'],
+      service_ids: [], institution_ids: [], audience_ids: [], geometry_ids: [],
+    });
+    // The held name for place-history-gamma is not in waspada.public_scope_names, so it never reaches the page.
+    assert.deepEqual(boundary.page.scopeNames, [
+      { entityType: 'place', id: 'place-history-alpha', displayName: 'Fictional alpha place' },
+      { entityType: 'place', id: 'place-history-beta', displayName: 'Fictional beta place' },
+    ]);
+
+    const afterFirst = await repository.read('event-named-history', { limit: 1, afterVersion: 1 });
+    assert.equal(afterFirst.kind, 'found');
+    if (afterFirst.kind !== 'found') return;
+    assert.deepEqual(afterFirst.page.versions.map(({ eventVersion }) => eventVersion), [2]);
+    assert.equal(afterFirst.page.previousVersion?.eventVersion, 1);
+
+    const firstPage = await repository.read('event-named-history', { limit: 1 });
+    assert.equal(firstPage.kind, 'found');
+    if (firstPage.kind !== 'found') return;
+    assert.equal(firstPage.page.previousVersion, null, 'the first page has no previous version');
+
+    const end = await repository.read('event-named-history', { afterVersion: 3 });
+    assert.deepEqual(end, {
+      kind: 'found',
+      page: { eventId: 'event-named-history', versions: [], nextAfterVersion: null, previousVersion: null, scopeNames: [] },
+    });
   });
 
   it('returns missing for unknown, withdrawn, and non-live events without exposing old versions', async () => {
@@ -191,7 +250,13 @@ describe('public event history repository', () => {
     const beyondCurrent = await repository.read('event-paged', { afterVersion: 4 });
     assert.deepEqual(beyondCurrent, {
       kind: 'found',
-      page: { eventId: 'event-paged', versions: [], nextAfterVersion: null },
+      page: {
+        eventId: 'event-paged',
+        versions: [],
+        nextAfterVersion: null,
+        previousVersion: null,
+        scopeNames: [],
+      },
     });
     await assert.rejects(
       repository.read("event-paged' OR TRUE --"),
@@ -223,6 +288,11 @@ describe('public event history repository', () => {
       current_event_id: 'event-requested',
       current_version: 3,
       current_record_json: current,
+      previous_dataset_kind: null,
+      previous_event_id: null,
+      previous_version: null,
+      previous_record_json: null,
+      scope_names: [],
       dataset_kind: 'live',
       event_id: 'event-requested',
       version,
@@ -241,6 +311,28 @@ describe('public event history repository', () => {
       { name: 'version beyond current public version', rows: [row(4)] },
       { name: 'unexpected result column', rows: [{ ...row(1), private_value: marker }] },
       { name: 'malformed current envelope', rows: [row(1, { current_record_json: { ...current, private_value: marker } })] },
+      { name: 'previous version above the page boundary', rows: [row(2, {
+        previous_dataset_kind: 'live',
+        previous_event_id: 'event-requested',
+        previous_version: 1,
+        previous_record_json: eventRecord(liveFixture, 'event-requested', 1, 'published'),
+      })] },
+      { name: 'previous version for another event', rows: [row(1, {
+        previous_dataset_kind: 'live',
+        previous_event_id: 'event-other-private',
+        previous_version: 0,
+        previous_record_json: { ...eventRecord(liveFixture, 'event-other-private', 1, 'published') },
+      })] },
+      { name: 'unknown scope name entity type', rows: [row(1, {
+        scope_names: [{ entity_type: 'school', id: 'place-history-alpha', display_name: 'Fictional name' }],
+      })] },
+      { name: 'unexpected scope name column', rows: [row(1, {
+        scope_names: [{ entity_type: 'place', id: 'place-history-alpha', display_name: 'Fictional name', private_value: marker }],
+      })] },
+      { name: 'scope names that differ between rows', rows: [
+        row(1, { scope_names: [{ entity_type: 'place', id: 'place-history-alpha', display_name: 'Fictional name' }] }),
+        row(2),
+      ] },
     ];
     for (const testCase of cases) {
       const executor = fixedRowsExecutor(testCase.rows);
@@ -543,6 +635,33 @@ function eventRecord(
     published_at: published ? TEST_TIME : null,
     withdrawn_at: published ? null : TEST_TIME,
   };
+}
+
+/** A published fixture record whose only difference is its place IDs, so the boundary test can read scope names. */
+function namedEventRecord(version: number, placeIds: readonly string[]): Record<string, unknown> {
+  return {
+    ...eventRecord(liveFixture, 'event-named-history', version, 'published'),
+    scope: {
+      place_ids: [...placeIds],
+      service_ids: [], institution_ids: [], audience_ids: [], geometry_ids: [],
+    },
+  };
+}
+
+async function seedScopeName(
+  database: TestDatabase,
+  entityId: string,
+  decisionStatus: 'approved' | 'held',
+  displayName: string | null,
+): Promise<void> {
+  await database.executor.query(
+    `INSERT INTO waspada.scope_name_review_decisions
+       (review_decision_id, entity_type, entity_id, locale, review_version, decision_status, display_name,
+        provenance_ref, reviewer_id, decision_reason, reviewed_at)
+     VALUES ($1, 'place', $2, 'id-ID', 1, $3, $4, 'fictional-history-provenance',
+        'fictional-history-reviewer', 'Authored fictional name for a bounded database test.', $5)`,
+    ['history-name-' + entityId, entityId, decisionStatus, displayName, TEST_TIME],
+  );
 }
 
 function recordQueries(

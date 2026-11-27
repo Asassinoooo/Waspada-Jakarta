@@ -4,6 +4,7 @@ import type { PublicContext, PublicFeatureCollection, EventView } from "@waspada
 import { createAdminMonitor, type AdminMonitorScheduler } from "../src/admin-monitoring.js";
 import { createSimulationSnapshot, SIMULATION_STEPS } from "../src/admin-fixtures.js";
 import type { AdminMonitorState } from "../src/admin-types.js";
+import { categoryLabel } from "../src/display.js";
 
 const NOW = Date.parse("2026-10-10T03:00:00.000Z");
 const sourceUrl = "https://source.example.test/notices/one";
@@ -188,6 +189,14 @@ test("simulation script is finite, immutable, fictional, and covers the operatio
   }, TypeError);
 });
 
+/** Every string in a monitoring value, so the copy can be checked without naming each field. */
+function stringsIn(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (value !== null && typeof value === "object") return Object.values(value).flatMap(stringsIn);
+  return [];
+}
+
 test("public monitoring reads only the bounded read paths and joins every exact event/version geometry", async () => {
   const scheduler = new FakeScheduler();
   const calls: Array<{ path: string; init: RequestInit | undefined }> = [];
@@ -261,6 +270,24 @@ test("public monitoring reads only the bounded read paths and joins every exact 
   monitor.pause();
   assert.deepEqual(scheduler.delays, []);
   assert.equal(latest.current?.status, "paused");
+  monitor.stop();
+});
+
+test("HOSTED-39: the public-projection copy in the admin monitor says laporan or catatan, never record", async () => {
+  const scheduler = new FakeScheduler();
+  const latest: { current: AdminMonitorState | null } = { current: null };
+  const monitor = createAdminMonitor({
+    onState: (state) => { latest.current = state; },
+    scheduler,
+    clock: () => NOW,
+    fetch: async (input) => payloadForPath(requestPath(input)),
+  });
+  await monitor.start();
+  const snapshot = latest.current?.snapshot;
+  assert.ok(snapshot, "the monitor produced a snapshot");
+  const copy = [...stringsIn(snapshot.layers), ...stringsIn(snapshot.items), ...stringsIn(snapshot.limitations)];
+  assert.ok(copy.some((text) => /laporan terbit/iu.test(text)), "the public-projection layer names laporan");
+  assert.deepEqual(copy.filter((text) => /\brecord\b/iu.test(text)), []);
   monitor.stop();
 });
 
@@ -477,6 +504,104 @@ test("range precision requires ordered instant endpoints and rejects date-only e
     assert.equal(latest.current?.currentAttempt?.probes.find((probe) => probe.endpoint === "events")?.status,
       scenario.accepted ? "succeeded" : "failed");
     monitor.stop();
+  }
+});
+
+/** A list page with raw items, so a test can put any JSON value in a field. */
+function eventPageOf(items: unknown[]) {
+  return { data: items, page: { next_cursor: "opaque-next-page", cursor_expires_at: "2026-10-11T00:00:00.000Z" } };
+}
+/** Runs one monitor cycle against a raw events page and the standard context and geometry fixtures. */
+async function runEventPage(page: unknown, geojson: PublicFeatureCollection = featureCollection()): Promise<AdminMonitorState | null> {
+  const latest: { current: AdminMonitorState | null } = { current: null };
+  const monitor = createAdminMonitor({
+    onState: (state) => { latest.current = state; },
+    scheduler: new FakeScheduler(),
+    clock: () => NOW,
+    fetch: async (input) => {
+      const path = requestPath(input);
+      if (path === "/api/v1/context") return jsonResponse(context());
+      if (path === "/api/v1/events?limit=20") return jsonResponse(page);
+      if (path === "/api/v1/events.geojson") return jsonResponse(geojson, "application/geo+json");
+      throw new Error("Unexpected path.");
+    },
+  });
+  await monitor.start();
+  // Read before stop(): stopping emits a paused state of its own.
+  const state = latest.current;
+  monitor.stop();
+  return state;
+}
+
+test("live list items with the Worker's optional location and severity keys parse", async () => {
+  // The Worker adds location_display, location_label and severity to list items; each is absent when it does not apply.
+  const page = eventPageOf([
+    {
+      ...eventView({ eventId: "public-event-live-01" }),
+      location_display: "point",
+      location_label: "Kawasan Contoh Selatan (fiktif)",
+      severity: "medium",
+    },
+    { ...eventView({ eventId: "public-event-live-02" }), location_display: "whole_view" },
+    eventView({ eventId: "public-event-live-03" }),
+  ]);
+  const state = await runEventPage(page, featureCollection([feature("public-event-live-01", 1, "live-point")]));
+
+  assert.equal(state?.status, "connected");
+  assert.equal(state?.currentAttempt?.probes.find((probe) => probe.endpoint === "events")?.status, "succeeded");
+  assert.equal(state?.snapshot?.items.length, 3);
+  assert.equal(state?.snapshot?.items.find((item) => item.id === "public:public-event-live-01:1")?.geometryBasis,
+    "source_supported");
+  assert.equal(state?.snapshot?.items.find((item) => item.id === "public:public-event-live-02:1")?.geometry, null);
+});
+
+test("the categories other and unclassified parse on list items and map features and have Indonesian labels", async () => {
+  const otherFeature: PublicFeatureCollection["features"][number] = {
+    ...feature("public-event-other-01", 1, "other-point"),
+    properties: { ...feature("public-event-other-01", 1).properties, category: "other" },
+  };
+  const page = eventPageOf([
+    { ...eventView({ eventId: "public-event-other-01" }), category: "other" },
+    { ...eventView({ eventId: "public-event-unclassified-01" }), category: "unclassified" },
+  ]);
+  const geojson: PublicFeatureCollection = { type: "FeatureCollection", features: [otherFeature] };
+  const state = await runEventPage(page, geojson);
+
+  assert.equal(state?.status, "connected");
+  assert.equal(state?.snapshot?.items.length, 2);
+  assert.equal(state?.snapshot?.items.find((item) => item.id === "public:public-event-other-01:1")?.category, "other");
+  assert.deepEqual(state?.snapshot?.items.find((item) => item.id === "public:public-event-other-01:1")?.geometry,
+    otherFeature.geometry);
+  assert.equal(state?.snapshot?.items.find((item) => item.id === "public:public-event-unclassified-01:1")?.category,
+    "unclassified");
+  assert.equal(categoryLabel("other"), "Lainnya");
+  assert.equal(categoryLabel("unclassified"), "Belum diklasifikasikan");
+});
+
+test("an unknown extra key on a list item still fails the whole page closed", async () => {
+  const state = await runEventPage(eventPageOf([
+    { ...eventView({ eventId: "public-event-extra-01" }), unexpected_private_field: "discard" },
+  ]));
+
+  assert.equal(state?.status, "partial");
+  assert.equal(state?.snapshot?.items.length, 0);
+  assert.equal(state?.currentAttempt?.probes.find((probe) => probe.endpoint === "events")?.status, "failed");
+});
+
+test("a wrong-typed or out-of-contract optional field fails the whole page closed", async () => {
+  const wrongOptionals: Array<[string, Record<string, unknown>]> = [
+    ["location_display outside point and whole_view", { location_display: "polygon" }],
+    ["location_label that is not text", { location_label: 42 }],
+    ["location_label null, which the contract omits instead", { location_label: null }],
+    ["location_label longer than the public cap", { location_label: "A".repeat(401) }],
+    ["severity outside low, medium and high", { severity: "critical" }],
+    ["incident_type that is not text", { incident_type: ["banjir"] }],
+  ];
+  for (const [name, fields] of wrongOptionals) {
+    const state = await runEventPage(eventPageOf([{ ...eventView({ eventId: "public-event-typed-01" }), ...fields }]));
+    assert.equal(state?.status, "partial", name);
+    assert.equal(state?.snapshot?.items.length, 0, name);
+    assert.equal(state?.currentAttempt?.probes.find((probe) => probe.endpoint === "events")?.status, "failed", name);
   }
 });
 

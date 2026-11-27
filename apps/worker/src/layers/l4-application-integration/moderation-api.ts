@@ -19,6 +19,9 @@ import {
 } from "./moderator-authorization.js";
 import {
   WITHDRAWAL_REASON_CATEGORIES,
+  isCategoryResolution,
+  resolvePublicationCategory,
+  type CategoryResolutionCode,
   type WithdrawalReasonCategory,
 } from "./proposal-publication.js";
 
@@ -100,6 +103,8 @@ export interface ModeratorDecisionCommand {
   /** WJ-INT-02B: required to publish a proposal whose record carries an
    *  unresolved triage/interpreter category mismatch. */
   readonly category_resolution?: "accept_triage" | "accept_interpretation";
+  /** WJ-INT-02B: the category the moderator resolved to. Checked against the proposal's recorded candidates. */
+  readonly resolved_category?: string;
 }
 // ============================================================================
 // Moderation API Interfaces & Types
@@ -686,6 +691,29 @@ function correctionResponse(result: EventCorrectionResult): Response {
   );
 }
 
+/** WJ-INT-02B: the refusal for a category choice the proposal cannot publish. Nothing is written. */
+function categoryRefusal(proposalId: string, code: CategoryResolutionCode): Response {
+  if (code === "category_mismatch_unresolved") {
+    return apiError(
+      "CATEGORY_MISMATCH_UNRESOLVED",
+      `Proposal ${proposalId} has an unresolved triage/interpreter category mismatch; provide category_resolution`,
+      409,
+    );
+  }
+  if (code === "category_candidates_unrecorded") {
+    return apiError(
+      "CATEGORY_CANDIDATES_UNRECORDED",
+      `Proposal ${proposalId} records no category for the requested resolution`,
+      400,
+    );
+  }
+  return apiError(
+    "CATEGORY_NOT_CANDIDATE",
+    `Proposal ${proposalId} can publish only a category it records (triage or interpretation)`,
+    400,
+  );
+}
+
 // ============================================================================
 // Main Factory
 // ============================================================================
@@ -902,6 +930,7 @@ export function createModerationApiHandler(
           body.category_resolution === "accept_triage" || body.category_resolution === "accept_interpretation"
             ? body.category_resolution
             : undefined,
+        resolved_category: typeof body.resolved_category === "string" ? body.resolved_category : undefined,
       };
       // MERGE-REVIEW-01: only "publish" and "reject" exist. Reject records a decision and never
       // reaches the publisher. Any other action is refused, so nothing publishes by accident.
@@ -925,6 +954,17 @@ export function createModerationApiHandler(
       }
       if (decisionCommand.action !== "publish") {
         return apiError("INVALID_ACTION", "action must be publish or reject", 400);
+      }
+      // WJ-INT-02B: a category choice the publisher cannot use is refused, never silently dropped.
+      if (body.category_resolution !== undefined && !isCategoryResolution(body.category_resolution)) {
+        return apiError(
+          "INVALID_CATEGORY_RESOLUTION",
+          "category_resolution must be accept_triage or accept_interpretation",
+          400,
+        );
+      }
+      if (body.resolved_category !== undefined && typeof body.resolved_category !== "string") {
+        return apiError("INVALID_CATEGORY", "resolved_category must be an official incident category", 400);
       }
 
       // WJ-INT-02B: a proposal carrying an unresolved triage/interpreter
@@ -997,47 +1037,34 @@ export function createModerationApiHandler(
       // accept_triage → proposal.primary_category; accept_interpretation →
       // proposal.interpretation_category; non-mismatch publishes keep the
       // stored canonical slug. Invalid or missing selected category → 400.
+      // The shared rule (resolvePublicationCategory) decides the category from the proposal's own candidates. decideProposal
+      // runs the same rule inside the gate. Every field the publisher reads is set here, so no raw client value reaches it.
+      let resolvedCategory: string | null = decisionCommand.resolved_category ?? null;
+      const stored = await fetchProposalDetail(route.proposalId, dependencies);
+      if (stored) {
+        const rawStored = (stored.proposal as { primary_category?: unknown }).primary_category;
+        if (typeof rawStored === "string" && !isOfficialIncidentCategory(rawStored)) {
+          return apiError("INVALID_CATEGORY", `Proposal ${route.proposalId} has an unrecognized primary category`, 400);
+        }
+        const resolution = resolvePublicationCategory(stored.proposal, {
+          categoryResolution: decisionCommand.category_resolution,
+          resolvedCategory: decisionCommand.resolved_category,
+        });
+        if (!resolution.ok) return categoryRefusal(route.proposalId, resolution.code);
+        resolvedCategory = resolution.category;
+      }
       {
-        const stored = await fetchProposalDetail(route.proposalId, dependencies);
-        if (stored) {
-          const proposal = stored.proposal as {
-            primary_category?: unknown;
-            interpretation_category?: unknown;
-            caveats?: readonly unknown[];
-          };
-          const mismatched =
-            Array.isArray(proposal.caveats) && proposal.caveats.includes("category_mismatch_review");
-          const rawStored = proposal.primary_category;
-          let selected: unknown;
-          if (mismatched && decisionCommand.action === "publish") {
-            selected =
-              decisionCommand.category_resolution === "accept_interpretation"
-                ? proposal.interpretation_category
-                : proposal.primary_category;
-            if (
-              typeof selected !== "string" ||
-              !isOfficialIncidentCategory(selected)
-            ) {
-              return apiError(
-                "INVALID_CATEGORY",
-                `Proposal ${route.proposalId} has an unrecognized or missing selected category for resolution ${decisionCommand.category_resolution ?? "none"}`,
-                400,
-              );
-            }
-          } else if (typeof rawStored === "string") {
-            if (!isOfficialIncidentCategory(rawStored)) {
-              return apiError("INVALID_CATEGORY", `Proposal ${route.proposalId} has an unrecognized primary category`, 400);
-            }
-            selected = rawStored;
-          }
-          if (typeof selected === "string") {
-            const input = publishInput as Record<string, unknown>;
-            const draft = (input.eventDraft ?? input.event) as Record<string, unknown> | undefined;
+        const outgoing = publishInput as Record<string, unknown> | null;
+        if (outgoing && typeof outgoing === "object") {
+          outgoing.reason = decisionCommand.reason;
+          outgoing.evidence_label = decisionCommand.evidence_label;
+          outgoing.category_resolution = decisionCommand.category_resolution ?? null;
+          outgoing.resolved_category = resolvedCategory;
+          if (resolvedCategory !== null) {
+            const draft = (outgoing.eventDraft ?? outgoing.event) as Record<string, unknown> | undefined;
             if (draft && typeof draft === "object") {
-              draft.category = selected;
+              draft.category = resolvedCategory;
             }
-            (input as Record<string, unknown>).category_resolution = decisionCommand.category_resolution ?? null;
-            (input as Record<string, unknown>).resolved_category = selected;
           }
         }
       }
@@ -1066,6 +1093,7 @@ export function createModerationApiHandler(
             else if (rec.code === "publication_not_authorized") status = 403;
             // F-04: the case must be resolved first. This is a state conflict, not a permission failure.
             else if (rec.code === "investigation_stopped_for_review") status = 409;
+            else if (rec.code === "category_mismatch_unresolved") status = 409;
             else if (rec.code === "proposal_unavailable" || rec.code === "writer_failed") {
               status = 502;
             }
@@ -1102,8 +1130,22 @@ export function createModerationApiHandler(
           200,
         );
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Publication failed";
-        return apiError("PUBLICATION_FAILED", msg, 500);
+        // The internal error text never reaches the client. The log keeps the error name and the request id, so an
+        // operator can match a report to the failure without the message being echoed back.
+        const requestId = crypto.randomUUID();
+        console.error(JSON.stringify({
+          event: "moderation_publish_failed",
+          request_id: requestId,
+          error_name: err instanceof Error ? err.name : "unknown",
+        }));
+        return jsonResponse(
+          {
+            code: "PUBLICATION_FAILED",
+            message: "The publication could not be completed. Quote the request_id when reporting this.",
+            request_id: requestId,
+          },
+          500,
+        );
       }
     }
 

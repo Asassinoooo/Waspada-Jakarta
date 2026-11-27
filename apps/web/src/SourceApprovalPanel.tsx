@@ -18,8 +18,9 @@ import {
 
 /** HOSTED-34: the intro. Kept true to apps/db/src/source-approval-store.ts (approve sets the status only; revoke sets it and auto-publication to never). */
 export const SOURCE_APPROVAL_INTRO = "Persetujuan mencatat status sumber. Menyetujui mengizinkan laporan dari sumber ini tampil publik. "
-  + "Mencabut menghentikan penerbitan dari sumber ini. Pengumpulan otomatis tidak berubah, baik saat disetujui maupun dicabut. "
-  + "Tampil publik tetap mengikuti hak penggunaan sumber. Pencabutan tidak menarik kejadian yang sudah terbit. Setiap perubahan dicatat dalam audit.";
+  + "Pengumpulan otomatis tidak berubah. "
+  + "Mencabut menghentikan penerbitan dari sumber ini. Pengumpulan otomatis tetap berjalan, dan terbit otomatis diatur ke tidak pernah. "
+  + "Tampil publik tetap mengikuti hak penggunaan sumber. Kejadian yang sudah terbit tidak ditarik. Setiap perubahan dicatat dalam audit.";
 
 /** HOSTED-34: the body of the confirmation dialog for each change. */
 export function sourceApprovalDialogBody(status: AdminSourceApprovalStatus): string {

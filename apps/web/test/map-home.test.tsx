@@ -6,8 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { EventView, PublicContext, PublicFeatureCollection } from "@waspada/worker/public-contracts";
 import { SiteHeader } from "../src/AppShell.js";
 import { routeFromHash } from "../src/App.js";
-import { MapEventList, EMPTY_LIST_NOTE, EMPTY_LIST_TITLE } from "../src/MapEventList.js";
-import { MapFilterSheet, DEFAULT_MAP_FILTER_VALUE, FACILITY_NOTE } from "../src/MapFilterSheet.js";
+import { MapEventList, EMPTY_LIST_NOTE, EMPTY_LIST_TITLE, EMPTY_RECENT_TITLE, RECENT_SCOPE_TEXT, showAllText } from "../src/MapEventList.js";
+import { MapFilterSheet, DEFAULT_MAP_FILTER_VALUE, FACILITY_NOTE, RECENCY_NOTE } from "../src/MapFilterSheet.js";
 import { MapHome } from "../src/MapHome.js";
 import { buildEventHash, parseEventIdFromHash } from "../src/map-links.js";
 import {
@@ -16,8 +16,12 @@ import {
   DEFAULT_PUBLISHED_FILTERS,
   filterPublishedEvents,
   markersFromGeoJSON,
+  publishedRecently,
   type PublishedFilters,
 } from "../src/published-events.js";
+
+/** MAP-RECENT-01: the map defaults to events published or updated in the last 24 hours; this clock sits inside that window. */
+const FIXTURE_NOW = Date.parse("2026-11-12T12:00:00.000Z");
 
 /** UI-V2-B map home at #peta: toolbar, list states, filters, deep links and the public-only data rules. */
 
@@ -82,7 +86,7 @@ test("deep link resolves an event only when it is in the published list", () => 
 });
 
 test("the toolbar and zoom group show at most five controls on the first screen", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
   const toolbar = html.match(/class="toolbar map-home__toolbar">([\s\S]*?)<\/div>/)?.[1] ?? "";
   const zoom = html.match(/class="map-zoom-controls"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
   const controls = (toolbar.match(/<(button|input)\b/g) ?? []).length + (zoom.match(/<(button|input)\b/g) ?? []).length;
@@ -91,16 +95,19 @@ test("the toolbar and zoom group show at most five controls on the first screen"
 });
 
 test("the toolbar buttons keep their names on phones, where their text is hidden", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
   assert.match(html, /aria-label="Filter"/);
-  assert.match(html, /aria-label="Daftar laporan, 1"/);
+  assert.match(html, /aria-label="Daftar 1 laporan"/);
   assert.match(html, /aria-label="Cari laporan"/);
 });
 
 test("the empty list says the exact message, and never claims an area is safe", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [] }));
-  assert.ok(html.includes(EMPTY_LIST_TITLE));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [] }));
+  // MAP-RECENT-01: the map opens on the 24-hour window, so its empty message names that window.
+  assert.ok(html.includes(EMPTY_RECENT_TITLE));
+  assert.equal(EMPTY_RECENT_TITLE, "Tidak ada laporan yang terbit atau diperbarui dalam 24 jam terakhir.");
   assert.equal(EMPTY_LIST_TITLE, "Belum ada laporan terbit di area ini dalam rentang waktu ini.");
+  assert.ok(html.includes(EMPTY_LIST_NOTE), "the note says an empty result does not mean nothing happened");
   assert.doesNotMatch(html, /\baman\b/iu);
   assert.doesNotMatch(html, /Reset filter/, "no reset button without an active filter");
 });
@@ -175,7 +182,7 @@ test("a loading list shows skeleton cards with a status message", () => {
 });
 
 test("each card names its category, event time and source count, and buttons are keyboard reachable", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
   assert.match(html, /Waktu kejadian: /);
   assert.match(html, /1 sumber/);
   assert.match(html, /<button type="button" class="map-marker[^"]*" style="[^"]*" aria-label="Bencana dan cuaca: Laporan evt-1"/);
@@ -209,7 +216,7 @@ test("filters reduce the list by category, time range, source and search, and co
 
 test("active filter count counts each non-default group and the facility layer", () => {
   assert.equal(countActiveFilters(DEFAULT_PUBLISHED_FILTERS, false), 0);
-  assert.equal(countActiveFilters({ category: "disasters_weather", timeRange: "7d", source: "all" }, true), 3);
+  assert.equal(countActiveFilters({ category: "disasters_weather", timeRange: "7d", source: "all", recency: "24h" }, true), 3);
 });
 
 test("the filter sheet explains the OSM facility limit and offers Terapkan and Reset", () => {
@@ -270,7 +277,7 @@ test("the filters type stays a value type, so a default is never mutated", () =>
 });
 
 test("the map canvas loads the tile stylesheet and places whole-pixel tiles, not the legacy grid canvas", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
   assert.match(html, /class="interactive-incident-map event-map-canvas"/u);
   assert.doesNotMatch(html, /class="(?:[^"]*\s)?map-canvas(?:\s[^"]*)?"/u, "styles.css styles .map-canvas as a gridded placeholder");
   const tiles = html.match(/<img[^>]*class="map-tile-img(?: map-tile-img--backdrop)?"[^>]*>/gu) ?? [];
@@ -285,7 +292,7 @@ test("the map canvas loads the tile stylesheet and places whole-pixel tiles, not
 });
 
 test("the map screen has no page footer strip: the emergency notice floats over the map", () => {
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
   const footer = html.match(/<footer class="map-home__footer">([\s\S]*?)<\/footer>/u)?.[1] ?? "";
   assert.match(footer, /bukan layanan darurat\. Darurat: 112\./u);
   assert.match(footer, /Bukan layanan darurat\. Darurat: 112\./u);
@@ -299,9 +306,9 @@ test("ST-F-04: the map markers and the list draw from one filtered set, and an e
     ["evt-pin-a", { coordinate: [106.8786, -6.2549] as const, role: "incident_scene" }],
     ["evt-pin-b", { coordinate: [106.8801, -6.2561] as const, role: "incident_scene" }],
   ]);
-  const html = renderToStaticMarkup(createElement(MapHome, { initialEvents: events, initialMarkers: pins }));
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: events, initialMarkers: pins }));
 
-  assert.match(html, /aria-label="Daftar laporan, 3"/, "the list counts every event that passes the filters");
+  assert.match(html, /aria-label="Daftar 3 laporan"/, "the list counts every event that passes the filters");
   const pinLabels = [...html.matchAll(/<button type="button" class="map-marker[^"]*"[^>]*aria-label="([^"]+)"/g)]
     .map((match) => match[1] ?? "");
   assert.equal(pinLabels.length, 2, "only events with a point from the API geometry are pinned");
@@ -324,7 +331,7 @@ const liveScreenContext: PublicContext = { dataset_mode: "live", dataset_label: 
 /** The map screen as App renders it for #peta: the header with its dataset badge, then the map home with its list. */
 function mapScreen(context: PublicContext, events: readonly EventView[], pins: typeof markers = markers): string {
   return renderToStaticMarkup(createElement(SiteHeader, { route: { screen: "discover" }, context }))
-    + renderToStaticMarkup(createElement(MapHome, { initialEvents: events, initialMarkers: pins, context }));
+    + renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: events, initialMarkers: pins, context }));
 }
 
 function minWidthMatches(query: string, width: number): boolean {
@@ -356,7 +363,7 @@ function atViewportWidth<T>(width: number, render: () => T): T {
 test("ST-F-04: the demo or live label sits on the map screen that holds the list, and each mode shows only its own", () => {
   const demo = mapScreen(demoScreenContext, [event("evt-1")]);
   assert.match(demo, /<span class="site-header__badge-label">Data contoh<\/span>/u);
-  assert.match(demo, /aria-label="Daftar laporan, 1"/u);
+  assert.match(demo, /aria-label="Daftar 1 laporan"/u);
   assert.match(demo, /aria-label="Laporan terbit"/u, "the list is on the same screen as the label");
   assert.doesNotMatch(demo, /site-header__badge-label">Langsung</u);
 
@@ -368,9 +375,9 @@ test("ST-F-04: the demo or live label sits on the map screen that holds the list
 
 test("ST-F-04: at 390 px the list is a closed bottom sheet behind the Daftar toggle, and the side panel opens only from 900 px", () => {
   const render = (width: number) => atViewportWidth(width, () => renderToStaticMarkup(
-    createElement(MapHome, { initialEvents: [event("evt-1")], initialMarkers: markers }),
+    createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }),
   ));
-  const toggleOf = (html: string) => html.match(/<button[^>]*aria-label="Daftar laporan, 1"[^>]*>/u)?.[0] ?? "";
+  const toggleOf = (html: string) => html.match(/<button[^>]*aria-label="Daftar 1 laporan"[^>]*>/u)?.[0] ?? "";
 
   const phone = render(390);
   assert.match(toggleOf(phone), /aria-expanded="false"/u, "the toggle reads closed on a phone");
@@ -392,7 +399,7 @@ test("ST-F-04: at 390 px the list is a closed bottom sheet behind the Daftar tog
 
 test("ST-F-15: a live map with no published events says an empty list is not an all-clear, and carries the live label", () => {
   const html = mapScreen(liveScreenContext, []);
-  assert.ok(html.includes(EMPTY_LIST_TITLE));
+  assert.ok(html.includes(EMPTY_RECENT_TITLE));
   assert.ok(html.includes(EMPTY_LIST_NOTE), "the note says an empty result does not mean nothing happened");
   assert.doesNotMatch(html, /\baman\b/iu);
   assert.doesNotMatch(html, /semua baik|tidak ada bahaya|situasi normal|kondisi normal/iu);
@@ -404,5 +411,66 @@ test("ST-F-15: a demo map with no published events carries the demo label and ne
   const html = mapScreen(demoScreenContext, []);
   assert.match(html, /<span class="site-header__badge-label">Data contoh<\/span>/u);
   assert.doesNotMatch(html, /site-header__badge-label">Langsung</u);
-  assert.ok(html.includes(EMPTY_LIST_TITLE));
+  assert.ok(html.includes(EMPTY_RECENT_TITLE));
+});
+
+// MAP-RECENT-01 (owner, 23 Nov 2026): the map opens on events published or updated in the last 24 hours.
+
+const HOUR = 60 * 60 * 1000;
+
+function publishedHoursAgo(id: string, hours: number): EventView {
+  return event(id, { published_at: new Date(FIXTURE_NOW - hours * HOUR).toISOString() });
+}
+
+test("MAP-RECENT-01: the publication window keeps versions published or updated within 24 hours and drops older ones", () => {
+  assert.equal(publishedRecently(publishedHoursAgo("a", 23.9), FIXTURE_NOW), true);
+  assert.equal(publishedRecently(publishedHoursAgo("b", 24.1), FIXTURE_NOW), false);
+  assert.equal(publishedRecently(publishedHoursAgo("c", -0.5), FIXTURE_NOW), true, "a version newer than the page clock is recent");
+  assert.equal(publishedRecently(event("d", { published_at: "not a time" }), FIXTURE_NOW), false, "an unreadable time is never recent");
+  // An update publishes a new version, so an old event updated an hour ago carries a recent published_at.
+  const updated = event("e", { version: 4, published_at: new Date(FIXTURE_NOW - HOUR).toISOString() });
+  const events = [publishedHoursAgo("old", 72), updated, publishedHoursAgo("new", 2)];
+  const ids = (recency: "24h" | "all") =>
+    filterPublishedEvents(events, "", { ...DEFAULT_PUBLISHED_FILTERS, recency }, FIXTURE_NOW).map((item) => item.event_id);
+  assert.deepEqual(ids("24h"), ["e", "new"]);
+  assert.deepEqual(ids("all"), ["old", "e", "new"]);
+});
+
+test("MAP-RECENT-01: the map defaults to 24 hours, the window is not counted as an active filter, and reset keeps it", () => {
+  assert.equal(DEFAULT_MAP_FILTER_VALUE.filters.recency, "24h");
+  assert.equal(DEFAULT_PUBLISHED_FILTERS.recency, "all", "other lists keep every published event");
+  assert.equal(countActiveFilters(DEFAULT_MAP_FILTER_VALUE.filters, false), 0);
+  const sheet = renderToStaticMarkup(createElement(MapFilterSheet, { applied: DEFAULT_MAP_FILTER_VALUE, onApply: () => {}, onClose: () => {} }));
+  assert.match(sheet, /<legend>Terbit atau diperbarui<\/legend>/u);
+  assert.match(sheet, /aria-pressed="true"[^>]*>24 jam terakhir</u);
+  assert.match(sheet, />Kapan saja</u);
+  assert.ok(sheet.includes(RECENCY_NOTE), "the sheet says this is the publication time, not the event time");
+});
+
+test("MAP-RECENT-01: an older event is hidden by default, counted, and one action shows it; no pin is drawn for it", () => {
+  const events = [publishedHoursAgo("old-1", 30), publishedHoursAgo("fresh-1", 1)];
+  const pins = new Map([
+    ["old-1", { coordinate: [106.85, -6.2] as const, role: "incident_scene" }],
+    ["fresh-1", { coordinate: [106.8, -6.18] as const, role: "incident_scene" }],
+  ]);
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: events, initialMarkers: pins }));
+  assert.match(html, /aria-label="Daftar 1 laporan"/u);
+  assert.ok(html.includes(RECENT_SCOPE_TEXT), "the list and the map caption name the window");
+  assert.ok(html.includes(showAllText(1)));
+  // The desktop side panel already shows the window line, so the map caption stays hidden while it is open.
+  assert.doesNotMatch(html, /class="map-home__scope"/u);
+  assert.doesNotMatch(html, /\baman\b/iu);
+});
+
+test("MAP-RECENT-01: an empty 24-hour window with older events offers to show them and still says empty is not an all-clear", () => {
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [publishedHoursAgo("old-1", 48)] }));
+  assert.ok(html.includes(EMPTY_RECENT_TITLE));
+  assert.ok(html.includes(EMPTY_LIST_NOTE));
+  assert.ok(html.includes(showAllText(1)));
+  assert.doesNotMatch(html, /\baman\b/iu);
+});
+
+test("MAP-RECENT-01: a deep link to an older event widens the window so the linked event is shown", () => {
+  const source = readFileSync(new URL("../src/MapHome.tsx", import.meta.url), "utf8");
+  assert.match(source, /publishedRecently\(target\.event, now\) \? DEFAULT_MAP_FILTER_VALUE : withRecency\(DEFAULT_MAP_FILTER_VALUE, "all"\)/u);
 });

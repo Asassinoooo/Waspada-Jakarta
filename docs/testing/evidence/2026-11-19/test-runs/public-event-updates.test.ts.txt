@@ -1,0 +1,14 @@
+▶ API-PUBLIC-UPDATES-READER-CORE
+  ✔ backfills a watermark and allocates every later review transactionally (24.205547ms)
+  ✔ reads ordered, bounded latest-approved candidates and excludes withdrawn history (85.130507ms)
+  ✔ validates decimal bounds and rejects malformed rows before exposing candidate data (2.587326ms)
+  ✔ grants the reader only redacted update views and fails closed on missing or overflowed counter state (47.920486ms)
+✔ API-PUBLIC-UPDATES-READER-CORE (16181.24643ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18091.125396

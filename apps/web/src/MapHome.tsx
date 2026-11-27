@@ -11,12 +11,12 @@ import {
   type MapProjection,
   type MapView,
 } from "./EventMapCanvas.js";
-import type { MapCoordinate } from "./SourcePointMap.js";
-import { MapEventList } from "./MapEventList.js";
+import type { MapCoordinate } from "./map-tiles.js";
+import { MapEventList, RECENT_SCOPE_TEXT } from "./MapEventList.js";
 import { MapLegend } from "./MapSeverity.js";
 import { DEFAULT_MAP_FILTER_VALUE, MapFilterSheet, type MapFilterValue } from "./MapFilterSheet.js";
 import { AnchoredMapPopup, PeekMapPopup, popupAnchor, unmappedPopupAnchor } from "./MapPopup.js";
-import { EMERGENCY_FACILITIES } from "./emergency-facilities.js";
+import type { EmergencyFacility } from "./emergency-facility-kinds.js";
 import { buildEventHash, copyText, eventShareUrl, MAP_HOME_HASH } from "./map-links.js";
 import {
   categoryMarkerIcon,
@@ -24,6 +24,8 @@ import {
   countActiveFilters,
   deepLinkTarget,
   filterPublishedEvents,
+  publishedRecently,
+  type PublicationRecency,
   severityOf,
   usePublicEventDetail,
   usePublishedEvents,
@@ -54,6 +56,8 @@ export interface MapHomeProps {
   /** Test seam: renders these published events without reading the API. */
   initialEvents?: readonly EventView[];
   initialMarkers?: ReadonlyMap<string, PublishedMarker>;
+  /** Test seam: the clock for the time filters (ms). The page otherwise reads Date.now() and re-reads it every minute. */
+  now?: number;
 }
 
 function useMediaMatch(query: string): boolean {
@@ -76,14 +80,25 @@ function useMediaMatch(query: string): boolean {
  * list is a left panel from 900px or a bottom sheet below that. Every view reads the same published
  * events, through the shared hook, and every filter applies to the list and the markers alike.
  */
-export function MapHome({ deepLinkEventId = null, context = null, initialEvents, initialMarkers }: MapHomeProps) {
+function withRecency(value: MapFilterValue, recency: PublicationRecency): MapFilterValue {
+  return { ...value, filters: { ...value.filters, recency } };
+}
+
+export function MapHome({ deepLinkEventId = null, context = null, initialEvents, initialMarkers, now: fixedNow }: MapHomeProps) {
   const seed = useMemo(
     () => (initialEvents === undefined ? undefined : { events: initialEvents, markers: initialMarkers ?? NO_MARKERS }),
     [initialEvents, initialMarkers],
   );
   const data = usePublishedEvents(seed);
   const wide = useMediaMatch(WIDE_QUERY);
-  const [now] = useState(() => Date.now());
+  const [clock, setClock] = useState(() => Date.now());
+  const now = fixedNow ?? clock;
+  // MAP-RECENT-01: the 24-hour window moves with the clock, so an open page drops events that age out of it.
+  useEffect(() => {
+    if (fixedNow !== undefined) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [fixedNow]);
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState<MapFilterValue>(DEFAULT_MAP_FILTER_VALUE);
   const [listOpen, setListOpen] = useState(wide);
@@ -108,6 +123,14 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     () => filterPublishedEvents(data.events, query, applied.filters, now),
     [data.events, query, applied.filters, now],
   );
+  // MAP-RECENT-01: how many loaded events the 24-hour window alone hides, under the same search and other filters.
+  const olderHiddenCount = useMemo(
+    () => applied.filters.recency === "all"
+      ? 0
+      : filterPublishedEvents(data.events, query, { ...applied.filters, recency: "all" }, now).length - visibleEvents.length,
+    [data.events, query, applied.filters, now, visibleEvents.length],
+  );
+  const recentOnly = applied.filters.recency === "24h";
   const visibleIds = useMemo(() => new Set(visibleEvents.map((event) => event.event_id)), [visibleEvents]);
   const canvasMarkers = useMemo<CanvasMarker[]>(() => visibleEvents.flatMap((event) => {
     const marker = data.markers.get(event.event_id);
@@ -121,9 +144,27 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       severity: severityOf(event),
     }];
   }), [visibleEvents, data.markers, selectedId]);
+  // PERF-09: the OSM facility records (about 200 points) load only when the facility layer is switched on.
+  const [facilityRecords, setFacilityRecords] = useState<readonly EmergencyFacility[] | null>(null);
+  useEffect(() => {
+    if (!applied.facilitiesOn || facilityRecords !== null) return;
+    let cancelled = false;
+    import("./emergency-facilities.js")
+      .then((module) => {
+        if (!cancelled) setFacilityRecords(module.EMERGENCY_FACILITIES);
+      })
+      .catch(() => {
+        // The layer stays empty when the chunk cannot load. The filter sheet keeps its own note.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applied.facilitiesOn, facilityRecords]);
   const facilities = useMemo(
-    () => (applied.facilitiesOn ? EMERGENCY_FACILITIES.filter((facility) => applied.facilityKinds.includes(facility.kind)) : []),
-    [applied],
+    () => (applied.facilitiesOn && facilityRecords !== null
+      ? facilityRecords.filter((facility) => applied.facilityKinds.includes(facility.kind))
+      : []),
+    [applied, facilityRecords],
   );
   const selectedEvent = selectedId !== null && visibleIds.has(selectedId) ? eventsById.get(selectedId) ?? null : null;
   const activeCount = countActiveFilters(applied.filters, applied.facilitiesOn);
@@ -152,13 +193,15 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     }
     setDeepLinkMissing(false);
     setQuery("");
-    setApplied(DEFAULT_MAP_FILTER_VALUE);
+    // A shared link to an older event widens the window, so the event it names is shown, never hidden by the default.
+    setApplied(publishedRecently(target.event, now) ? DEFAULT_MAP_FILTER_VALUE : withRecency(DEFAULT_MAP_FILTER_VALUE, "all"));
     setSelectedId(target.event.event_id);
     setCopyMessage(null);
     if (target.marker) flyTo(target.marker.coordinate, MAP_DETAIL_ZOOM);
     // A whole_view event has no pin: show the whole Jakarta view (the recenter target), never another event's point.
     else if (target.event.location_display === "whole_view") flyTo(MAP_DEFAULT_VIEW.center, MAP_DEFAULT_VIEW.zoom, false);
     if (!wide) setListOpen(false);
+    // The clock is read, not a dependency: a link is applied once, and a minute tick must not re-apply it.
   }, [deepLinkEventId, data.status, data.events, data.markers, wide]);
 
   // Focus moves into the popup only after a user action, never on a deep-link load.
@@ -228,6 +271,10 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     setApplied(DEFAULT_MAP_FILTER_VALUE);
   }
 
+  function setRecency(recency: PublicationRecency) {
+    setApplied((current) => withRecency(current, recency));
+  }
+
   function openDetail(eventId: string) {
     setDetailEventId(eventId);
   }
@@ -269,6 +316,9 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       selectedId={selectedId}
       filtersActive={filtersActive}
       searchOnly={searchOnly}
+      recency={applied.filters.recency}
+      olderHiddenCount={olderHiddenCount}
+      onShowAll={() => setRecency("all")}
       errorMessage={data.errorMessage}
       onSelect={openFromList}
       onReset={resetFilters}
@@ -316,29 +366,42 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
               className="button button--quiet map-home__tool"
               aria-haspopup="dialog"
               aria-expanded={filterOpen}
-              aria-label={activeCount > 0 ? `Filter, ${activeCount} aktif` : "Filter"}
+              aria-label={activeCount > 0 ? `Filter ${activeCount} aktif` : "Filter"}
               onClick={() => setFilterOpen(true)}
             >
               <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M4 6h16M7 12h10M10 18h4" />
               </svg>
-              <span className="map-home__tool-label">Filter</span>
+              <span className="map-home__tool-label">Filter</span>{" "}
               {activeCount > 0 && <span className="count-chip map-home__count">{activeCount}</span>}
             </button>
             <button
               type="button"
               className="button button--quiet map-home__tool"
               aria-expanded={listOpen}
-              aria-label={`Daftar laporan, ${visibleEvents.length}`}
+              aria-label={`Daftar ${visibleEvents.length} laporan`}
               onClick={() => setListOpen((open) => !open)}
             >
               <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
               </svg>
-              <span className="map-home__tool-label">Daftar</span>
+              <span className="map-home__tool-label">Daftar</span>{" "}
               <span className="count-chip map-home__count">{visibleEvents.length}</span>
             </button>
           </div>
+
+          {/* MAP-RECENT-01: the map says which window its pins cover. It is a caption, not a sixth first-screen control:
+              the window changes from the list or the filter sheet. Hidden while the side panel shows the same line. */}
+          {recentOnly && data.status === "loaded" && !(wide && listOpen) && (
+            <p className="map-home__scope">
+              <svg className="map-home__scope-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              <span>{RECENT_SCOPE_TEXT}</span>
+              {olderHiddenCount > 0 && <span className="map-home__scope-more">{olderHiddenCount} laporan lebih lama disembunyikan</span>}
+            </p>
+          )}
 
           {data.markersUnavailable && (
             <div className="feedback-banner feedback-banner--error map-home__notice" role="alert">
@@ -363,6 +426,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
             </span>
             <span className="map-home__footer-text map-home__footer-text--short">Bukan layanan darurat. Darurat: 112.</span>
             <nav className="map-home__footer-links" aria-label="Tautan bawah">
+              <a href="#unduh">Aplikasi Android</a>
               <a href="#bantuan">Bantuan</a>
               <a href="#privasi">Privasi</a>
             </nav>

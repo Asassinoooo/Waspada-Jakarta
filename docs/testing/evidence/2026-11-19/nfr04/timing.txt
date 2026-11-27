@@ -1,0 +1,7 @@
+route | n | ok | p50 ms | p95 ms | max ms | p50<500 | p95<1000
+page / | 30 | 30 | 48 | 68 | 68 | yes | yes
+GET /api/v1/events | 30 | 30 | 145 | 324 | 808 | yes | yes
+GET /api/v1/events/:id | 30 | 30 | 48 | 58 | 67 | yes | yes
+GET /api/v1/events/:id/history | 30 | 30 | 46 | 58 | 103 | yes | yes
+GET /api/v1/updates | 30 | 30 | 63 | 73 | 77 | yes | yes
+GET /api/v1/context | 30 | 30 | 38 | 47 | 48 | yes | yes

@@ -101,3 +101,8 @@ Status 18 Nov 2026: the Hyperdrive bindings, static assets, cron trigger (HOSTED
 - **Limitation 6 (source revocation): decided.** Revoking a source stops publication only; collection continues (FR-16). Implementation is a follow-up task; until it lands, the old behaviour applies.
 - **Domain: no custom domain** (owner, 18 Nov 2026). The site stays on `*.workers.dev`. Some ISP resolvers block that hostname (`docs/testing/DEFECTS.md` F-17); this is an accepted limitation.
 - **Password reset: out of scope** for this release (owner, 18 Nov 2026).
+
+## Amendment, 23 November 2026: password reset and local notifications
+
+- **Password reset: decided.** This replaces the 18 Nov 2026 line above. Owner decision, 23 Nov 2026: a password reset goes through the administrator. An administrator issues a one-time code of 10 Crockford base32 characters, valid for 30 minutes, usable once, and burned after 5 wrong attempts. Only its PBKDF2 hash is stored, and the audit row `password_reset_code_issued` never holds the code. There is no email. Delivered by AUTH-RESET-01 (merge `4b34b3d`); migration 063 was applied to the hosted Neon database on 23 Nov 2026.
+- **Notifications: local only** (owner decision, 23 Nov 2026). "Area saya" notifications run on the device. There is no Firebase and no Web Push, and interests are never uploaded. Delivered by NOTIFY-01 (web `a7768db`, Android merge `51c3ed2`).

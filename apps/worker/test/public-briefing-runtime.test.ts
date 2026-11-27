@@ -181,15 +181,20 @@ function makeRuntime(fixtures: readonly Fixture[], options: HarnessOptions = {})
       } else if (statement.includes("WITH trim_characters AS")) {
         rows = options.candidateRows ?? fixtures.map(({ candidateRow }) => candidateRow);
       } else if (statement.includes("FROM waspada.public_event_versions AS event")) {
-        const eventId = String(parameters[0]);
-        const delayMs = options.snapshotDelayMs?.[eventId] ?? 0;
+        // PERF-04: the briefing reads every candidate snapshot in one set read, so parameters[0] is an array of ids.
+        const requestedIds = Array.isArray(parameters[0])
+          ? parameters[0] as readonly string[]
+          : [String(parameters[0])];
+        const delayMs = Math.max(0, ...requestedIds.map((id) => options.snapshotDelayMs?.[id] ?? 0));
         if (delayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-        const fixture = fixtureById.get(eventId);
         snapshotReadsCompleted += 1;
 
-        rows = fixture !== undefined && !options.omitSnapshots?.includes(eventId)
-          ? [fixture.snapshotRow]
-          : [];
+        rows = requestedIds.flatMap((eventId) => {
+          const fixture = fixtureById.get(eventId);
+          return fixture !== undefined && !options.omitSnapshots?.includes(eventId)
+            ? [fixture.snapshotRow]
+            : [];
+        });
       } else if (statement.includes("FROM waspada.public_event_impacts AS impact")) {
         rows = [];
       } else if (statement.includes("FROM waspada.public_scope_names AS names")) {
@@ -501,7 +506,8 @@ test("waits for sibling candidate projections to settle before rolling back", as
 
   await assertReadFailed(harness.runtime.read(makeRequest({ categories: ["crime_personal_security"] })));
   await new Promise<void>((resolve) => setTimeout(resolve, 40));
-  assert.equal(harness.snapshotReadsCompletedAtRollback, 2);
+  // PERF-04: both candidates share one batch snapshot read, which must finish before the rollback.
+  assert.equal(harness.snapshotReadsCompletedAtRollback, 1);
   assert.equal(harness.readsOutsideTransaction, 0);
   assert.equal(harness.transactionOpen, false);
 });

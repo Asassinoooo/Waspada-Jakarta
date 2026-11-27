@@ -545,7 +545,7 @@ export function Embedding3DVisualization() {
       {accessMessage && (
         <section className="state-panel" role="status">
           <p>{accessMessage}</p>
-          <a className="text-link" href={SIGN_IN_HREF}>Masuk dengan username</a>
+          <a className="text-link" href={SIGN_IN_HREF}>Masuk dengan nama pengguna</a>
         </section>
       )}
 

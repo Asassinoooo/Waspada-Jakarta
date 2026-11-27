@@ -3,18 +3,32 @@ import type { Category, EventDetail as EventDetailRecord, EventView, FreshnessSt
 import { apiReadFailure, getEventDetail, getEventHistory, getPublicContext, listAllEvents, type ApiReadState } from "./api-client.js";
 import { documentTitleFor } from "./display.js";
 import { EventDetail } from "./EventDetail.js";
-import { DEFAULT_FEED_FILTERS, type FeedFilters, type FeedStatus, type MobileDiscoveryPanel } from "./EventFeed.js";
+import type { FeedStatus, MobileDiscoveryPanel } from "./EventFeed.js";
+import { DEFAULT_FEED_FILTERS, type FeedFilters } from "./feed-filters.js";
 import { MapHome } from "./MapHome.js";
 import { parseEventIdFromHash } from "./map-links.js";
 import { adminGateShell, adminWorkspaceTabFromHash, type AdminTab } from "./admin-workspace-model.js";
-import { Preferences } from "./Preferences.js";
-import { UpdatesCenter } from "./UpdatesCenter.js";
+import { useInterestNotifications } from "./useInterestNotifications.js";
 import type { MapSelection } from "./MapPanel.js";
-import { HelpPage } from "./HelpPage.js";
-import { AccountAccessGate, AccountPage, type AccountSessionState, hasProtectedShellAccess } from "./AccountPages.js";
-import { accountClient, type AccountReturnTarget } from "./account-client.js";
+import type { AccountSessionState } from "./AccountPages.js";
+import { hasProtectedShellAccess } from "./account-access.js";
+import type { AccountReturnTarget } from "./account-client.js";
+import { getAccountSession } from "./account-session.js";
 import { SiteFooter, SiteHeader } from "./AppShell.js";
-import { introAutoOpenFor, OnboardingIntro } from "./OnboardingIntro.js";
+import { introAutoOpenFor } from "./intro-trigger.js";
+import { OnboardingIntroGate } from "./OnboardingIntroGate.js";
+// PERF-09: these routes are not on the first screen, so their code loads when the route opens (or when a link to it is
+// pointed at or focused, see prefetchRouteOnIntent in AppShell).
+import {
+  LazyAccountAccessGate,
+  LazyAccountPage,
+  LazyHelpPage,
+  LazyDownloadPage,
+  LazyPasswordResetPage,
+  LazyPreferences,
+  LazyUpdatesCenter,
+  RouteFallback,
+} from "./lazy-routes.js";
 
 // UI-V2-C: the administrator workspace (tabs for overview, review, flow, 3D view, accounts and source demo).
 // Its shell, styles and every heavy tab load only when an admin route opens.
@@ -23,9 +37,11 @@ const AdminWorkspace = lazy(() => import("./admin-entry.js"));
 export type Route =
   | { screen: "discover"; eventId?: string }
   | { screen: "help"; section?: "panduan" | "privasi" }
+  | { screen: "download" }
   | { screen: "preferences" }
   | { screen: "updates" }
   | { screen: "login"; returnTo?: AccountReturnTarget }
+  | { screen: "password-reset" }
   | { screen: "onboarding" }
   | { screen: "account" }
   | { screen: "admin-workspace"; initialTab: AdminTab }
@@ -148,6 +164,8 @@ export function routeFromHash(hash: string): Route {
   const adminTab = adminWorkspaceTabFromHash(hash);
   if (adminTab !== null) return { screen: "admin-workspace", initialTab: adminTab };
   if (hash === "#masuk") return { screen: "login" };
+  // AUTH-RESET-01: reset with a one-time code from an administrator.
+  if (hash === "#lupa-sandi") return { screen: "password-reset" };
   if (hash.startsWith("#masuk?")) {
     const params = new URLSearchParams(hash.slice("#masuk?".length));
     const returnTo = params.get("return_to");
@@ -159,6 +177,7 @@ export function routeFromHash(hash: string): Route {
   if (hash === "#mulai") return { screen: "onboarding" };
   if (hash === "#akun") return { screen: "account" };
   if (hash === "#bantuan") return { screen: "help" };
+  if (hash === "#unduh") return { screen: "download" };
   if (hash === "#panduan") return { screen: "help", section: "panduan" };
   if (hash === "#privasi") return { screen: "help", section: "privasi" };
   if (hash === "#pipeline-lokal" && import.meta.env?.DEV === true) return { screen: "local-pipeline" };
@@ -204,6 +223,8 @@ export function PresentationRoute({ context }: { context: PublicContext | null }
 }
 
 export function App() {
+  // NOTIFY-01: "Area saya" browser notifications while this tab is open (off unless the person turns them on).
+  useInterestNotifications();
   const [route, setRoute] = useState<Route>(() => routeFromHash(window.location.hash));
   const [routeActivation, setRouteActivation] = useState(0);
   const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia("(max-width: 900px)").matches);
@@ -253,7 +274,7 @@ export function App() {
     if (sessionScope === null) return;
     const controller = new AbortController();
     let cancelled = false;
-    accountClient.getSession(controller.signal)
+    getAccountSession(controller.signal)
       .then((session) => {
         if (cancelled) return;
         setSessionResult({
@@ -444,7 +465,9 @@ export function App() {
       return (
         <div className="app-shell">
           <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
-          <AccountAccessGate shell={adminGateShell(route.initialTab)} sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+          <Suspense fallback={<RouteFallback />}>
+            <LazyAccountAccessGate shell={adminGateShell(route.initialTab)} sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+          </Suspense>
         </div>
       );
     }
@@ -488,17 +511,49 @@ export function App() {
       {route.screen === "detail-presentation" && (
         <PresentationRoute context={context} />
       )}
-      {route.screen === "preferences" && <Preferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />}
-      {route.screen === "updates" && <UpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />}
-      {route.screen === "login" && <AccountPage screen="login" sessionState={sessionState} returnTo={route.returnTo} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
-      {route.screen === "onboarding" && <AccountPage screen="onboarding" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
-      {route.screen === "account" && <AccountPage screen="account" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />}
+      {route.screen === "preferences" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyPreferences key={localDataRevision} context={context} contextSnapshotId={contextRequestKey} />
+        </Suspense>
+      )}
+      {route.screen === "updates" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyUpdatesCenter key={localDataRevision} context={context} refreshCurrentEvents={refreshCurrentEvents} />
+        </Suspense>
+      )}
+      {route.screen === "password-reset" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyPasswordResetPage />
+        </Suspense>
+      )}
+      {route.screen === "login" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyAccountPage screen="login" sessionState={sessionState} returnTo={route.returnTo} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+        </Suspense>
+      )}
+      {route.screen === "onboarding" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyAccountPage screen="onboarding" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+        </Suspense>
+      )}
+      {route.screen === "account" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyAccountPage screen="account" sessionState={sessionState} isNarrowScreen={narrowScreen} onRefreshSession={refreshAccountSession} />
+        </Suspense>
+      )}
       {route.screen === "help" && (
-        <HelpPage
-          section={route.section}
-          showLocalPipeline={import.meta.env?.DEV === true && context?.dataset_mode === "demo"}
-          onCleared={() => setLocalDataRevision((revision) => revision + 1)}
-        />
+        <Suspense fallback={<RouteFallback />}>
+          <LazyHelpPage
+            section={route.section}
+            showLocalPipeline={import.meta.env?.DEV === true && context?.dataset_mode === "demo"}
+            onCleared={() => setLocalDataRevision((revision) => revision + 1)}
+          />
+        </Suspense>
+      )}
+      {route.screen === "download" && (
+        <Suspense fallback={<RouteFallback />}>
+          <LazyDownloadPage />
+        </Suspense>
       )}
       {route.screen === "local-pipeline" && LocalPipelinePreview !== null && (
         <Suspense fallback={<main id="main-content" className="main-shell"><section className="state-panel" role="status">Memuat tampilan lokal…</section></main>}>
@@ -507,7 +562,7 @@ export function App() {
       )}
       {/* The map home carries its own floating footer, so the map runs to the bottom edge. */}
       {route.screen !== "discover" && <SiteFooter />}
-      <OnboardingIntro autoOpen={introAutoOpenFor(route.screen)} />
+      <OnboardingIntroGate autoOpen={introAutoOpenFor(route.screen)} />
     </div>
   );
 }

@@ -25,10 +25,22 @@ const cspDirectives = new Map(
   }),
 );
 
+// UI-V3: hashed build assets and the self-hosted font are immutable, so they get their own long-cache rules.
+const extraRules = new Set(["/assets/*", "/fonts/*"]);
+
 test("_headers opens with the /* rule at column 0 and every header line is indented", () => {
   assert.equal(lines[0], "/*");
   for (const line of lines.slice(1).filter((candidate) => candidate.trim().length > 0)) {
+    if (extraRules.has(line)) continue;
     assert.match(line, /^ {2}\S/u, `indented header line: ${line}`);
+  }
+});
+
+test("UI-V3: hashed assets and fonts are cached for a year as immutable", () => {
+  for (const rule of extraRules) {
+    const index = lines.indexOf(rule);
+    assert.ok(index > 0, `${rule} rule exists`);
+    assert.equal(lines[index + 1], "  Cache-Control: public, max-age=31536000, immutable");
   }
 });
 

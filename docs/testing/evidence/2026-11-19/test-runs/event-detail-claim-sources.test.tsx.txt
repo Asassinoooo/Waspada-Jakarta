@@ -1,0 +1,23 @@
+✔ HOSTED-24A: two quotes from one article become one source line with both quotes kept (3.179972ms)
+✔ HOSTED-24A: a repeated excerpt is shown once, and a missing or empty excerpt adds nothing (0.29173ms)
+✔ HOSTED-24A: identical attributions collapse and the first occurrence keeps its place in the order (0.324651ms)
+✔ HOSTED-24A: a different URL, display name or source publish time is a different source (0.311195ms)
+✔ HOSTED-24A: entries with no source publish time are one source only when name and URL also match (0.250754ms)
+✔ HOSTED-24A: an empty source list gives no lines and the input is not changed (0.267345ms)
+✔ HOSTED-24A: the claim renders the repeated DETIK source once, with both quotes (20.11809ms)
+✔ HOSTED-24A: different sources of one claim each keep their own line (7.247736ms)
+✔ F-09: two quotes from one outlet are one media on the detail page, whatever the server's own count says (6.137191ms)
+✔ POLISH-02: the collection time is shown in WIB, and Tidak disebutkan stays when no source gives one (16.014239ms)
+✔ POLISH-02: the earliest collection time across the sources is shown, and the publish and event times are unchanged (5.593777ms)
+✔ POLISH-02: an automatic refresh reads Diperbarui otomatis, and a moderator correction keeps Versi dikoreksi (4.215286ms)
+✔ ST-F-05: the record page shows the event, issuer, collection and publication times, each from its own field (4.274045ms)
+✔ ST-F-05: a null collection time reads Tidak disebutkan, and no other time fills that row (5.495565ms)
+✔ ST-F-05: a null source publish time reads Tidak disebutkan on its source line (4.62838ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2073.435557

@@ -80,7 +80,7 @@ class _GuideItem extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, color: WaspadaColors.teal),
+              Icon(icon, color: context.palette.brand),
               const SizedBox(width: 12),
               Expanded(
                   child: Column(

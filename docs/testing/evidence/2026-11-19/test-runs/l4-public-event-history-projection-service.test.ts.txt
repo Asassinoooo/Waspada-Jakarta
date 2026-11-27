@@ -1,0 +1,20 @@
+✔ projects bounded versions into only the unchanged HistoryPage allowlist (5.237703ms)
+✔ accepts each contract change type and a 500-code-point reviewed summary (1.207896ms)
+✔ returns missing only from the candidate history reader (0.289456ms)
+✔ a missing or incomplete review page fails closed for an existing event (1.163794ms)
+✔ held and revoked disclosure metadata is never projected (1.711728ms)
+✔ rejects invalid identifiers and page bounds before calling either reader (2.73374ms)
+✔ passes the same keyset boundary to both readers and serializes its next version token (0.918049ms)
+✔ rejects mismatched event, version sequence, cursor, duplicates, and oversized pages (2.631068ms)
+✔ rejects non-live, withdrawn, identity-mismatched, or malformed event records (1.237771ms)
+✔ rejects invalid change types and summaries over 500 Unicode code points (1.056956ms)
+✔ converts reader exceptions into stable redacted errors (0.540631ms)
+✔ marks only an agent:auto-publisher correction as automatic and never exposes the reviewer (0.575646ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1759.151944

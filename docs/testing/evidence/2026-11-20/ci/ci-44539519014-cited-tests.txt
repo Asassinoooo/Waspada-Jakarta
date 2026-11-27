@@ -1,0 +1,321 @@
+# CI proof for the cited tests (TG-DOCS-09, 20 Nov 2026)
+# CI run 44539519014 (push to main), head 5d4dc3c76767503211a2554d6016cbea3871345e, conclusion success.
+# Job "test" 135613780034 started 19 Nov 2026 14:02:44 UTC and completed 14:25:02 UTC. Its 16 steps are all success.
+# `gh run view 44539519014 --log` returned an empty file on 20 Nov 2026 (exit 0), so the same job log was read with:
+#   gh api repos/<owner>/Waspada-Jakarta/actions/jobs/135613780034/logs
+# Kept lines are copied verbatim, with GitHub timestamps. Lines that held a database connection string or a credential-style name were dropped by the filter; no kept line held one.
+# The whole job log has no ✖ line and no FAIL line.
+# The job log prints node:test "ℹ pass / ℹ fail / ℹ todo" summary lines rather than "# pass / # fail" TAP lines. They are summed per step below.
+
+## 1. Totals per test step (sum of the ℹ summary blocks in the job log)
+
+| Step | Summary blocks | tests | pass | fail | todo |
+| --- | --- | --- | --- | --- | --- |
+| Run Database Tests (db:test) | 68 | 450 | 450 | 0 | 0 |
+| Run Web Tests | 1 | 515 | 515 | 0 | 0 |
+| Run Worker Tests | 1 | 1519 | 1519 | 0 | 0 |
+| Run Intelligence Tests | 1 | 253 | 253 | 0 | 0 |
+| Run Pipeline Tests | 58 | 58 | 58 | 0 | 0 |
+| Run Accounts Tests | 6 | 130 | 130 | 0 | 0 |
+| Run Evaluation and AI Tool Tests | 1 | 74 | 74 | 0 | 0 |
+| **All test steps** | | **2999** | **2999** | **0** | **0** |
+
+## 2. Cited tests reported as passing
+
+Each file is listed with the step that ran it. "titles" counts the test and describe titles in the file, as they are in the source at head 5d4dc3c (the worktree has no change to these files since that commit). Each title below is the verbatim ✔ line from the job log.
+
+### apps/worker/test/moderation-stale-route-db.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 16; passing in the log: 16; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:16:36.0903594Z     ✔ ST-F-13: control: a publish and a correction at the current base write versions 1 and 2 over the route (118.650439ms)
+2026-11-19T14:16:36.1200003Z     ✔ ST-F-13: a correction against base_version 1 answers 409 STALE_BASE_VERSION, writes no version and sends no notice (31.859728ms)
+2026-11-19T14:16:36.1465764Z     ✔ ST-F-13: after the stale write every public view shows version 2 and never the stale title (88.365952ms)
+2026-11-19T14:16:36.1515088Z   ✔ ST-F-13: a stale correction over the Worker route (239.925738ms)
+2026-11-19T14:16:36.2114535Z     ✔ NFR-05 / ST-F-13: a repeated publish of a decided proposal answers 409 ALREADY_DECIDED and adds no version, decision, audit row or notice (57.697647ms)
+2026-11-19T14:16:36.2551810Z     ✔ NFR-05 / ST-F-13: a publish of a superseded proposal answers 409 and writes nothing, and the newer proposal publishes one version (59.996005ms)
+2026-11-19T14:16:36.4846244Z     ✔ NFR-05 / ST-F-13: an older undecided proposal written after a newer version is published answers 409, is superseded, and never replaces the newer version (222.736696ms)
+2026-11-19T14:16:36.4854889Z   ✔ NFR-05 / ST-F-13: a stale publish over the Worker route (341.249127ms)
+2026-11-19T14:16:36.5739006Z     ✔ ST-F-03: control: a publish and a correction at the current base write versions 1 and 2 for the draft incident (91.801042ms)
+2026-11-19T14:16:36.7227845Z     ✔ ST-F-03: after a stale correction is refused, the pending draft is still in the moderator queue, undecided, and on no public route (146.401708ms)
+2026-11-19T14:16:36.7229363Z   ✔ ST-F-03: the draft stays in the moderator queue and off the public routes (238.732973ms)
+2026-11-19T14:16:36.7788395Z     ✔ ST-F-03: a first correction writes exactly one version and one audit record over the route (62.663999ms)
+2026-11-19T14:16:36.7982964Z     ✔ ST-F-03: an identical replay of that correction answers 409, adds no version or publish decision, and records one refusal; it does not return the original result, because the route has no idempotency key (19.972842ms)
+2026-11-19T14:16:36.8307001Z     ✔ ST-F-03: the same facts repeated at the current base answer unchanged with the existing version and add no version or notice (13.787261ms)
+2026-11-19T14:16:36.8308010Z   ✔ ST-F-03: the first write and its replay (97.024657ms)
+2026-11-19T14:16:36.8308761Z ✔ ST-F-03, ST-F-13 and NFR-05 over the Worker route (database) (11417.592464ms)
+------------------------------------------------------------
+
+### apps/web/test/moderator-review.test.tsx
+Step: `npm run test --workspace=@waspada/web`. Titles: 1; passing in the log: 1; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:29.8822567Z ✔ ST-F-03: each claim shows its origin on the review screen (7.083966ms)
+------------------------------------------------------------
+
+### apps/intelligence/test/st-f-12-live-correlation.test.ts
+Step: `npm run test:intelligence`. Titles: 12; passing in the log: 12; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:20:29.3003821Z   ✔ ST-F-12: validation refuses a same_incident link whose candidate id is not among retrieved candidates (0.807011ms)
+2026-11-19T14:20:29.3024858Z ✔ ST-F-12 live correlation: candidate validation (pure) (1.523479ms)
+2026-11-19T14:20:37.5237374Z   ✔ ST-F-12: a report with no candidate incident becomes its own incident, without a model call (101.146566ms)
+2026-11-19T14:20:37.5238044Z   ✔ ST-F-12: a syndicated copy from the same publisher does not raise corroboration (114.744277ms)
+2026-11-19T14:20:37.5246167Z   ✔ ST-F-12: a statement repeated across chunks of one article is one claim and does not raise corroboration (36.863793ms)
+2026-11-19T14:20:37.5247274Z   ✔ ST-F-12: nearby distinct incidents stay separate when the correlator says new_incident (57.003889ms)
+2026-11-19T14:20:37.5248201Z   ✔ ST-F-12: a same_incident link without a candidate id is refused and writes nothing (223.337354ms)
+2026-11-19T14:20:37.5248779Z   ✔ ST-F-12: a same_incident link to a candidate that was not retrieved writes nothing (65.586157ms)
+2026-11-19T14:20:37.5249398Z   ✔ ST-F-12: a report with no usable location is held for a moderator and is never labelled corroborated (54.828739ms)
+2026-11-19T14:20:37.5250610Z   ✔ ST-F-12: an unresolved correlation is held for a moderator and is never labelled corroborated (55.280266ms)
+2026-11-19T14:20:37.5251588Z   ✔ ST-F-12: the live path persists no investigation case, with or without cited evidence (68.935842ms)
+2026-11-19T14:20:37.5252408Z ✔ ST-F-12 live correlation: the workflow on the live path (database) (8235.980954ms)
+------------------------------------------------------------
+
+### apps/worker/test/pipeline-flow-no-text.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 7; passing in the log: 7; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:17:22.9118257Z   ✔ ST-F-08: control, each marker is stored in its table, so its absence from a response means something (4.580411ms)
+2026-11-19T14:17:22.9447891Z   ✔ ST-F-08: the moderator flow snapshot carries counts, labels and timestamps, and no marker text (34.804567ms)
+2026-11-19T14:17:22.9515635Z   ✔ ST-F-08: the flow answers only GET, so the view cannot write (6.866365ms)
+2026-11-19T14:17:23.0396175Z   ✔ ST-F-08: every drill-down returns metadata rows only, and a title only on the proposal, review and published nodes (85.238986ms)
+2026-11-19T14:17:23.0465631Z   ✔ ST-F-08: the embedding view returns no chunk text and no body text past its 100-character title prefix (7.174299ms)
+2026-11-19T14:17:23.0698791Z   ✔ ST-F-08: a non-moderator gets 401 or 403, and the refusal carries no text (11.017993ms)
+2026-11-19T14:17:23.0727531Z ✔ ST-F-08 moderator flow and embedding view return no body, claim, prompt or checkpoint text (11850.497615ms)
+------------------------------------------------------------
+
+### apps/worker/test/adr061-gate-db.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 1; passing in the log: 1; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:45.1960685Z   ✔ ST-F-16: the automatic publication decision carries the proposal trace id (23.618328ms)
+------------------------------------------------------------
+
+### apps/worker/test/nfr04-public-reads-no-inference.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 4; passing in the log: 4; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:17:10.3510340Z   ✔ NFR-04: public reads never call acquisition or inference (44.327212ms)
+2026-11-19T14:17:10.3516317Z   ✔ NFR-04: updates and briefings fail closed without a database runtime, and make no call (1.494165ms)
+2026-11-19T14:17:10.3518021Z   ✔ NFR-04 control: the outbound stub records the acquisition trigger, so the empty record above is not an unwired stub (0.949972ms)
+2026-11-19T14:17:10.3519354Z ✔ NFR-04 public reads never call acquisition or inference (11606.052388ms)
+------------------------------------------------------------
+
+### apps/worker/test/perf01-public-event-list.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 4; passing in the log: 4; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:17:14.4569191Z   ✔ PERF-01: the page reader issues a constant number of SQL queries regardless of page size (1129.737453ms)
+2026-11-19T14:17:14.4573066Z   ✔ PERF-01: a 20-event page equals the per-event projection path byte for byte, in the same order (322.133001ms)
+2026-11-19T14:17:14.9846211Z   ✔ PERF-01: every page of a 20-event walk equals the per-event path, including each continuation cursor (587.630114ms)
+2026-11-19T14:17:14.9847658Z ✔ PERF-01 live event list reads (PGlite, real publication path) (13521.906967ms)
+------------------------------------------------------------
+
+### apps/db/test/nfr06-demo-rebuild.test.ts
+Step: `npm run db:test`. Titles: 3; passing in the log: 3; failing: 0; not found: 0.
+===== DB test: nfr06-demo-rebuild.test.ts =====
+===== PASS: nfr06-demo-rebuild.test.ts =====
+------------------------------------------------------------
+2026-11-19T14:08:44.6384426Z   ✔ NFR-06: the demo dataset rebuilds from migrations and fixtures twice with identical public results (1.09106ms)
+2026-11-19T14:08:44.6385913Z   ✔ NFR-06: the withdrawn demo event stays withdrawn after each rebuild and is absent from the public results (0.145535ms)
+2026-11-19T14:08:44.6395044Z ✔ NFR-06: demo dataset rebuild (13553.966813ms)
+------------------------------------------------------------
+
+### tools/hosted/restore-rehearsal.test.ts
+Step: `npm run accounts:test`. Titles: 21; passing in the log: 21; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:24:41.0285813Z   ✔ excludes account and session state, recording only counts (3.965143ms)
+2026-11-19T14:24:41.0807261Z   ✔ keeps password hashes, session token hashes and usernames out of every dump file (54.640031ms)
+2026-11-19T14:24:41.1220729Z   ✔ records the migration ids and checksums from the ledger, matching the repository (5.02689ms)
+2026-11-19T14:24:41.1221913Z   ✔ writes manifest row counts that match the source database (22.416728ms)
+2026-11-19T14:24:41.1222737Z   ✔ restores every table to the manifest counts and the same published events (0.198513ms)
+2026-11-19T14:24:41.1223655Z   ✔ reads the same public event digest from the source and from the restored database (13.509671ms)
+2026-11-19T14:24:41.1232953Z   ✔ writes restore-report.json next to the dump with timings and counts (1.359967ms)
+2026-11-19T14:24:41.2433467Z   ✔ reads the export in one read-only snapshot and rejects a write attempt made inside it (119.720872ms)
+2026-11-19T14:24:41.2443063Z   ✔ refuses to write into a directory that already has files (0.86714ms)
+2026-11-19T14:24:41.2661970Z   ✔ refuses a dump whose file was changed, before any restore database exists (21.94362ms)
+2026-11-19T14:24:41.3168626Z   ✔ refuses a dump whose migration checksum differs, before any restore database exists (25.885488ms)
+2026-11-19T14:24:41.3170160Z   ✔ NFR-06: the withdrawn event is still withdrawn after restore and absent from the public list and views (9.95884ms)
+2026-11-19T14:24:41.3171216Z   ✔ NFR-06: the tombstone summary is identical on the source and on the restored database (14.656704ms)
+2026-11-19T14:24:41.3176871Z   ✔ NFR-06: the restore report records the tombstone counts and tombstonesPreserved true (1.009911ms)
+2026-11-19T14:24:48.4484798Z   ✔ NFR-06: a restore that drops the withdrawal reports tombstonesPreserved false (7111.37799ms)
+2026-11-19T14:24:48.4608142Z ✔ restore rehearsal (21637.348186ms)
+2026-11-19T14:24:48.4609694Z   ✔ accepts only a directory strictly inside .codex-build/restore (0.706192ms)
+2026-11-19T14:24:48.4610671Z   ✔ orders parents before children and reports the cyclic remainder (0.129541ms)
+2026-11-19T14:24:48.4611612Z   ✔ excludes any table with a credential-style column, and nothing else (0.084395ms)
+2026-11-19T14:24:48.4612599Z   ✔ refuses a dump directory outside the restore root before any connection (0.864786ms)
+2026-11-19T14:24:48.4613294Z ✔ restore rehearsal helpers (1.956658ms)
+------------------------------------------------------------
+
+### apps/worker/test/nfr07-approved-host-fetch.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 12; passing in the log: 12; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:17:10.5638391Z ✔ NFR-07: an approved host is fetched, and the feed it serves is ingested past the host check (54.304815ms)
+2026-11-19T14:17:10.5660319Z ✔ NFR-07: an unapproved host is refused without a network call, and the feed is recorded as a failed fetch (3.756525ms)
+2026-11-19T14:17:10.5661773Z ✔ NFR-07: a source whose registry row declares no host is refused (fail closed), with no request (0.192023ms)
+2026-11-19T14:17:10.5663007Z ✔ NFR-07: a redirect to an unapproved host is refused, and the redirect target is never requested (1.767629ms)
+2026-11-19T14:17:10.5665642Z ✔ NFR-07: a redirect to a host the registry also approves is still not followed (0.322055ms)
+2026-11-19T14:17:10.5666807Z ✔ NFR-07: BMKG sends no request to an endpoint whose host is not approved (0.466319ms)
+2026-11-19T14:17:10.5668089Z ✔ NFR-07: BMKG fetches both endpoints when the registry approves their host, and ingests the earthquake (1.313989ms)
+2026-11-19T14:17:10.5669348Z ✔ NFR-07: PetaBencana sends no request to an endpoint whose host is not approved (0.433861ms)
+2026-11-19T14:17:10.5670569Z ✔ NFR-07: PetaBencana fetches its endpoint when the registry approves its host, and ingests the flood report (12.705644ms)
+2026-11-19T14:17:10.5671870Z ✔ NFR-07: without a registry list, the configured feed's own host is the allow-list (1.558932ms)
+2026-11-19T14:17:10.5673332Z ✔ NFR-07: the host check reads the parsed host, so credential-style, look-alike and case-variant URLs are judged on it (0.364338ms)
+2026-11-19T14:17:10.5674988Z ✔ NFR-07: the declared hosts of the configured endpoints are the hosts of those endpoints, without duplicates (0.214547ms)
+------------------------------------------------------------
+
+### apps/intelligence/test/nfr07-source-text-isolation.test.ts
+Step: `npm run test:intelligence`. Titles: 13; passing in the log: 13; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:19:53.7280583Z   ✔ the agents are built with the reviewed instruction constants, and those constants hold no source text (1.58477ms)
+2026-11-19T14:19:53.7281780Z   ✔ every injected line sits inside the REPORT TEXT or EVIDENCE CHUNKS data sections only (2.152938ms)
+2026-11-19T14:19:53.7282839Z   ✔ the source metadata goes in the header, and the instruction constant holds no source text (0.560818ms)
+2026-11-19T14:19:53.7284113Z   ✔ the parsed answer comes only from the model reply, never from JSON inside the source text (0.327453ms)
+2026-11-19T14:19:53.7285220Z   ✔ a report line that imitates a section header cannot add a second evidence section (0.441522ms)
+2026-11-19T14:19:53.7286222Z ✔ NFR-07 A1: report interpretation prompt isolates source text (5.967148ms)
+2026-11-19T14:19:53.7287966Z   ✔ the incoming report and the candidate description carry source text only in their own sections (0.624322ms)
+2026-11-19T14:19:53.7288768Z ✔ NFR-07 A1: incident correlation prompt isolates source text (0.759511ms)
+2026-11-19T14:19:53.7295024Z   ✔ a forged section header or template line in any source field is marked, and the prompt keeps one section of each (0.625633ms)
+2026-11-19T14:19:53.7296404Z   ✔ every source-derived field is written only after neutralisation, so the fixed instructions stay the reviewed constant (0.309727ms)
+2026-11-19T14:19:53.7297743Z   ✔ a quote copied from a marked line passes the provenance check, because it is in the source with or without the mark (0.480409ms)
+2026-11-19T14:19:53.7299017Z   ✔ the mark never makes a quote match: a marked quote absent from the source is still refused (0.633205ms)
+2026-11-19T14:19:53.7301839Z ✔ NFR-07 F-43: incident correlation prompt neutralises every source-derived field (2.343579ms)
+------------------------------------------------------------
+
+### apps/db/test/nfr07-retention-purge.test.ts
+Step: `npm run db:test`. Titles: 12; passing in the log: 12; failing: 0; not found: 0.
+===== DB test: nfr07-retention-purge.test.ts =====
+===== PASS: nfr07-retention-purge.test.ts =====
+------------------------------------------------------------
+2026-11-19T14:08:52.2522440Z   ✔ NFR-07: expired text is purged at the 365-day cap and at 90 days, and fresh, current, open and retracted text is kept (2.29666ms)
+2026-11-19T14:08:52.2524864Z   ✔ NFR-07: text cited only by a superseded version is kept for 90 days after that version stops being current, then purged (0.649468ms)
+2026-11-19T14:08:52.2526299Z   ✔ NFR-07: a purged revision keeps its row, hash, retrieval time, status and every key that points at it (1.118411ms)
+2026-11-19T14:08:52.2527921Z   ✔ NFR-07: embeddings are purged with their source text or their retraction, and the embedding of current text is kept however old it is (1.333348ms)
+2026-11-19T14:08:52.2529083Z   ✔ NFR-07: audit rows older than 24 months are purged, and younger audit rows are kept (1.343793ms)
+2026-11-19T14:08:52.2530274Z   ✔ NFR-07: triage decisions expired over 30 days ago are purged; recently expired and unexpired decisions are kept (0.604141ms)
+2026-11-19T14:08:52.2545042Z   ✔ NFR-07: published public events still read correctly after the purge (9.371884ms)
+2026-11-19T14:08:52.2546270Z   ✔ NFR-07: the purge deletes no published version, claim, evidence reference, decision, revision row or source row (10.67019ms)
+2026-11-19T14:08:52.2547490Z   ✔ NFR-07: the purge is idempotent: a second run on the same clock removes nothing (8.160936ms)
+2026-11-19T14:08:52.2548656Z   ✔ NFR-07: the append-only guards still refuse every other change to revisions and audit rows, for the owner role (5.963673ms)
+2026-11-19T14:08:52.2549879Z   ✔ NFR-07: the purger role can run the purge and write nothing else, and a layer role cannot run it (4.839774ms)
+2026-11-19T14:08:52.2550824Z ✔ NFR-07 F-39..F-41: retention purge (ADR-005) (7196.428167ms)
+------------------------------------------------------------
+
+### tools/hosted/nfr07-retention-purge.test.ts
+Step: `npm run accounts:test`. Titles: 7; passing in the log: 7; failing: 0; not found: 0.
+===== DB test: nfr07-retention-purge.test.ts =====
+===== PASS: nfr07-retention-purge.test.ts =====
+------------------------------------------------------------
+2026-11-19T14:24:48.9750138Z ✔ NFR-07: the retention purge runs once per run, after the backfills and before the freshness pass (1.553323ms)
+2026-11-19T14:24:48.9751712Z ✔ NFR-07: the purge line carries the counts and nothing else (0.238111ms)
+2026-11-19T14:24:48.9753264Z ✔ NFR-07: a failed purge logs one fixed line, never fails the run, and the freshness pass still runs (0.327834ms)
+2026-11-19T14:24:48.9758276Z ✔ NFR-07: a run without a retention step keeps its order and its lines (0.175068ms)
+2026-11-19T14:24:48.9759824Z ✔ NFR-07: the purge runs as the purger role for one statement, passes the clock as a parameter, and resets the role (0.553888ms)
+2026-11-19T14:24:48.9762612Z ✔ NFR-07: the purge resets the role even when the function throws, so the rest of the session is not left in the purger role (0.446639ms)
+2026-11-19T14:24:48.9763667Z ✔ NFR-07: an invalid clock is refused before any statement runs (0.187597ms)
+------------------------------------------------------------
+
+### apps/worker/test/webhook-ingest.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 1; passing in the log: 1; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:18:05.0554783Z ✔ ST-F-11: a malformed webhook item creates no revision, proposal, broadcast or AI-job callback (5.797227ms)
+------------------------------------------------------------
+
+### apps/worker/test/webhook-ingest-db.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 2; passing in the log: 2; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:18:05.0542438Z   ✔ a malformed event answers 400 and writes nothing, even though the same batch has a valid item (4.852333ms)
+2026-11-19T14:18:05.0547043Z ✔ F-05 / ST-F-11: webhook route storage path (database) (10494.875027ms)
+------------------------------------------------------------
+
+### apps/web/test/updates-center.test.tsx
+Step: `npm run test --workspace=@waspada/web`. Titles: 2; passing in the log: 2; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:32.2199098Z ✔ update cards distinguish current event time, published-change time, and system check time (3.695505ms)
+2026-11-19T14:14:32.2202447Z ✔ ST-F-02: a correction re-polled in a later cycle is shown once, and a newer version of that event is its own card (4.423189ms)
+------------------------------------------------------------
+
+### apps/web/test/preferences.test.tsx
+Step: `npm run test --workspace=@waspada/web`. Titles: 2; passing in the log: 2; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:30.6576089Z ✔ ST-F-02: Ringkasan saya lists each matched event once, each with its reason (3.092315ms)
+2026-11-19T14:14:30.6577354Z ✔ ST-F-02: a briefing that repeats one event shows that event once, at its first position (2.361987ms)
+------------------------------------------------------------
+
+### apps/web/test/interest-removal.test.ts
+Step: `npm run test --workspace=@waspada/web`. Titles: 1; passing in the log: 1; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:28.8876155Z ✔ removing an interest removes it from the saved store, the next briefing request and the update matches (4.53851ms)
+------------------------------------------------------------
+
+### apps/web/test/api-client.test.ts
+Step: `npm run test --workspace=@waspada/web`. Titles: 1; passing in the log: 1; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:26.9918790Z ✔ briefing POST sends only the current interests in the existing JSON request contract (1.437181ms)
+------------------------------------------------------------
+
+### apps/worker/test/briefing-interest-removal.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 3; passing in the log: 3; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:57.9564795Z   ✔ selects an event only while one of its interests is in the request (96.572589ms)
+2026-11-19T14:14:57.9623517Z   ✔ gives the matched reason only for the interests still saved (1.174484ms)
+2026-11-19T14:14:57.9633318Z ✔ FR-11 briefing personalisation follows the interests in the request (11118.971232ms)
+------------------------------------------------------------
+
+### apps/web/test/map-home.test.tsx
+Step: `npm run test --workspace=@waspada/web`. Titles: 2; passing in the log: 2; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:29.2926726Z ✔ ST-F-15: a live map with no published events says an empty list is not an all-clear, and carries the live label (3.08905ms)
+2026-11-19T14:14:29.2928029Z ✔ ST-F-15: a demo map with no published events carries the demo label and never the live one (2.314967ms)
+------------------------------------------------------------
+
+### apps/web/test/admin-workspace.test.tsx
+Step: `npm run test --workspace=@waspada/web`. Titles: 1; passing in the log: 1; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:14:26.9575968Z ✔ on a narrow screen Alur and Embedding show an empty state instead of the canvas, while the other tabs still load (44.708243ms)
+------------------------------------------------------------
+
+### apps/worker/test/repeated-coverage-alerts.test.ts
+Step: `npm run test --workspace=@waspada/worker`. Titles: 2; passing in the log: 2; failing: 0; not found: 0.
+------------------------------------------------------------
+2026-11-19T14:18:05.0367533Z   ✔ NFR-05: repeated deliveries of one publication leave one decision, one updates-feed entry and one public event (158.128826ms)
+2026-11-19T14:18:05.0368713Z   ✔ NFR-05: a repeated delivery adds no publication_outbox row and no second updates-feed entry (445.977187ms)
+------------------------------------------------------------
+
+## 3. File-level summaries for the hosted tools and the db files
+
+The accounts chain runs `tools/hosted/restore-rehearsal.test.ts` and then `tools/hosted/nfr07-retention-purge.test.ts` as its last two commands, so these are the last two summary blocks of that step. The db runner prints one summary block per file.
+
+[accounts step, summary block at log line 6431]
+2026-11-19T14:24:48.6922614Z ℹ tests 19
+2026-11-19T14:24:48.6923394Z ℹ suites 2
+2026-11-19T14:24:48.6923787Z ℹ pass 19
+2026-11-19T14:24:48.6924332Z ℹ fail 0
+2026-11-19T14:24:48.6924653Z ℹ cancelled 0
+2026-11-19T14:24:48.6925006Z ℹ skipped 0
+2026-11-19T14:24:48.6925293Z ℹ todo 0
+------------------------------------------------------------
+[accounts step, summary block at log line 6446]
+2026-11-19T14:24:49.0104809Z ℹ tests 7
+2026-11-19T14:24:49.0105236Z ℹ suites 0
+2026-11-19T14:24:49.0105530Z ℹ pass 7
+2026-11-19T14:24:49.0106011Z ℹ fail 0
+2026-11-19T14:24:49.0106675Z ℹ cancelled 0
+2026-11-19T14:24:49.0107329Z ℹ skipped 0
+2026-11-19T14:24:49.0108162Z ℹ todo 0
+------------------------------------------------------------
+[db step, summary block at log line 817]
+2026-11-19T14:08:44.7631690Z ℹ tests 2
+2026-11-19T14:08:44.7632250Z ℹ suites 1
+2026-11-19T14:08:44.7632630Z ℹ pass 2
+2026-11-19T14:08:44.7632958Z ℹ fail 0
+2026-11-19T14:08:44.7633304Z ℹ cancelled 0
+2026-11-19T14:08:44.7633644Z ℹ skipped 0
+2026-11-19T14:08:44.7634138Z ℹ todo 0
+------------------------------------------------------------
+[db step, summary block at log line 841]
+2026-11-19T14:08:52.3653323Z ℹ tests 11
+2026-11-19T14:08:52.3653709Z ℹ suites 1
+2026-11-19T14:08:52.3654073Z ℹ pass 11
+2026-11-19T14:08:52.3654363Z ℹ fail 0
+2026-11-19T14:08:52.3654641Z ℹ cancelled 0
+2026-11-19T14:08:52.3654923Z ℹ skipped 0
+2026-11-19T14:08:52.3655186Z ℹ todo 0
+------------------------------------------------------------
+
+## 4. Files listed in the job command lines
+
+The web and worker steps run `tsx --test <files>` with the file list from each package.json. The intelligence step runs `tsx --test --test-concurrency=1 test/*.test.ts`. The db step reads every `*.test.ts` in `apps/db/test`. The accounts step runs `tools/hosted/restore-rehearsal.test.ts` and `tools/hosted/nfr07-retention-purge.test.ts`. The cited files are therefore in the run.

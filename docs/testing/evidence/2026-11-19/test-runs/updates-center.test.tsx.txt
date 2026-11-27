@@ -1,0 +1,26 @@
+✔ only exact-live mode with readable normalized interests is eligible (2.393821ms)
+✔ gate and status copy is accessible and does not imply coverage or safety (16.690848ms)
+✔ component reads only the versioned local preference store and sends no interests during rendering (3.406093ms)
+✔ current detail validation accepts date-only time and rejects malformed identity, fields, and scope (2.199049ms)
+✔ matching uses normalized exact scope names from event, claim, and impact only (1.693574ms)
+✔ detail hydration fetches unique event IDs with at most four concurrent requests (28.975121ms)
+✔ aborted or hidden pages do not persist cursors, expose stale entries, or schedule polling (4.289638ms)
+✔ successful bootstrap stores only its cursor and schedules at least sixty seconds later (1.963774ms)
+✔ a transient or malformed detail keeps the whole page and cursor uncommitted (1.314874ms)
+✔ confirmed current-detail 404 is omitted and a fully processed page advances its cursor (1.373872ms)
+✔ cursor restart clears displayed history, baselines before snapshot refresh, then resumes polling (3.785304ms)
+✔ failed 410 snapshot refresh stays pending and is retried before cursor polling (1.254522ms)
+✔ 410 clears in-memory cards before storage removal failure and retries from a fresh baseline (1.717129ms)
+✔ page budget stops after five full pages and continues from the fifth cursor next cycle (2.726065ms)
+✔ default update clients compose correction hydration and 410 cursor recovery (60.876097ms)
+✔ update cards distinguish current event time, published-change time, and system check time (6.592782ms)
+✔ POLISH-02: an automatic refresh in the updates feed reads Diperbarui otomatis, and a moderator correction keeps Versi dikoreksi (4.735052ms)
+✔ ST-F-02: a correction re-polled in a later cycle is shown once, and a newer version of that event is its own card (8.58052ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1880.293303
