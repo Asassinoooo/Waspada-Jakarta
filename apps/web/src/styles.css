@@ -2292,3 +2292,30 @@ time,
     animation-iteration-count: 1 !important;
   }
 }
+
+/* GUI-03: Area saya keeps places and categories up front; rarer interest kinds wait in one disclosure. */
+.preferences-more {
+  margin-block: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.preferences-more > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.preferences-more[open] > summary { margin-bottom: var(--space-3); }
+
+/* The privacy note closes the page as a quiet line instead of a banner before the form. */
+.preferences-page .preferences-privacy {
+  margin-top: var(--space-6);
+  border-left-width: 2px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
