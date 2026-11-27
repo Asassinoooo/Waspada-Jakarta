@@ -1,0 +1,539 @@
+/*
+ * GUI-04 "Tenang": one design layer over the whole app (27 Nov 2026).
+ *
+ * Principles:
+ *  1. One neutral ink-on-paper palette. Teal is the only accent and marks what can be acted on.
+ *     Red is reserved for incidents and errors.
+ *  2. Flat surfaces with a 1px hairline. No glass blur. Shadow only on what floats above the map or the page.
+ *  3. One radius scale (6 / 10 / 14), one control height (40px, 44px on touch), one button family.
+ *  4. Type carries the hierarchy: tight display headings, quiet small labels, no decorative kickers in colour.
+ *  5. The map is a quiet canvas: a washed basemap, a single top bar, and the reports as the only colour.
+ *
+ * It loads after every other stylesheet. Rules sit under `html` so lazy route CSS (admin, moderator)
+ * loaded later cannot override them at equal specificity.
+ */
+
+/* ---------- Tokens ---------- */
+
+:root {
+  --color-bg: #F4F4F2;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #FFFFFF;
+  --color-surface-sunken: #EDEDEA;
+  --color-surface-hover: #F0F2F1;
+  --color-border: #E2E2DE;
+  --color-border-strong: #C9C9C4;
+  --color-text: #0E1112;
+  --color-text-muted: #565D60;
+  --color-text-subtle: #676E71;
+  --color-text-inverse: #FFFFFF;
+
+  --color-accent: #0B6B66;
+  --color-accent-hover: #08524E;
+  --color-accent-soft: #E7F1F0;
+  --color-accent-border: #C5DEDB;
+  --color-on-accent: #FFFFFF;
+  --color-focus: #0B6B66;
+
+  --color-danger: #C8372C;
+  --color-danger-text: #9A2A21;
+  --color-danger-soft: #FBEEEC;
+  --color-danger-border: #EFC4BF;
+
+  --color-overlay: rgb(14 17 18 / 0.42);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 14px;
+
+  --shadow-xs: none;
+  --shadow-sm: 0 1px 2px rgb(14 17 18 / 0.06);
+  --shadow-md: 0 1px 2px rgb(14 17 18 / 0.06), 0 6px 20px -8px rgb(14 17 18 / 0.18);
+  --shadow-lg: 0 1px 2px rgb(14 17 18 / 0.08), 0 20px 48px -16px rgb(14 17 18 / 0.28);
+  --shadow-focus: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-focus);
+
+  --control-h: 2.5rem;
+  --hairline: 1px solid var(--color-border);
+
+  /* The older aliases follow the new palette. */
+  --hujan-pagi: var(--color-bg);
+  --tinta-kota: var(--color-text);
+  --kali-teal: var(--color-accent);
+  --beton: var(--color-border);
+  --surface: var(--color-surface);
+  --quiet-ink: var(--color-text-muted);
+  --soft-panel: var(--color-surface-sunken);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #0B0D0E;
+    --color-surface: #131617;
+    --color-surface-raised: #171A1C;
+    --color-surface-sunken: #0F1112;
+    --color-surface-hover: #1C2022;
+    --color-border: #24292B;
+    --color-border-strong: #353B3E;
+    --color-text: #EDEFEF;
+    --color-text-muted: #A2A9AC;
+    --color-text-subtle: #858D90;
+    --color-text-inverse: #0E1112;
+    --color-accent: #5DC4BA;
+    --color-accent-hover: #7DD3CA;
+    --color-accent-soft: #12292A;
+    --color-accent-border: #1E4644;
+    --color-on-accent: #04201E;
+    --color-focus: #5DC4BA;
+    --color-danger: #E5776C;
+    --color-overlay: rgb(0 0 0 / 0.6);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+    --shadow-lg: 0 1px 2px rgb(0 0 0 / 0.5), 0 24px 56px -16px rgb(0 0 0 / 0.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #0B0D0E;
+  --color-surface: #131617;
+  --color-surface-raised: #171A1C;
+  --color-surface-sunken: #0F1112;
+  --color-surface-hover: #1C2022;
+  --color-border: #24292B;
+  --color-border-strong: #353B3E;
+  --color-text: #EDEFEF;
+  --color-text-muted: #A2A9AC;
+  --color-text-subtle: #858D90;
+  --color-text-inverse: #0E1112;
+  --color-accent: #5DC4BA;
+  --color-accent-hover: #7DD3CA;
+  --color-accent-soft: #12292A;
+  --color-accent-border: #1E4644;
+  --color-on-accent: #04201E;
+  --color-focus: #5DC4BA;
+  --color-danger: #E5776C;
+  --color-overlay: rgb(0 0 0 / 0.6);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 1px 2px rgb(0 0 0 / 0.5), 0 24px 56px -16px rgb(0 0 0 / 0.7);
+}
+
+/* ---------- Base ---------- */
+
+html body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html :is(h1, h2, h3) {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+html p { text-wrap: pretty; }
+
+/* Kickers are quiet labels, not a second colour. */
+html :is(.section-kicker, .eyebrow, .page-header__eyebrow, .download-card__kicker) {
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+html :focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ---------- Surfaces: flat, hairline, one radius ---------- */
+
+html :is(
+  .card, .panel, .detail-panel, .preference-card, .event-card, .experience-card, .account-card,
+  .state-panel, .download-card, .notify-card, .update-center-card, .feed-panel, .map-panel,
+  .admin-queue-card, .admin-inspector, .admin-support-panel, .admin-map-panel, .admin-layers,
+  .review-proposal, .review-evidence, .presentation-card, .quote-card, .span-card, .claim-card,
+  .help-page__app, .preferences-more
+) {
+  border: var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+html .claim-card { border-left-width: 1px; }
+
+html :is(.state-panel--compact, .preference-empty, .admin-empty, .empty-state) {
+  border-style: solid;
+  background: var(--color-surface-sunken);
+}
+
+/* No glass anywhere: floating chrome is solid with a hairline and one soft shadow. */
+html :is(
+  .site-header, .map-home__panel, .map-home__toolbar, .map-legend.map-legend--severity, .map-home__footer,
+  .map-home .map-zoom-controls, .map-home__scope, .map-popup, .sheet, .popover__panel, .menu__list
+) {
+  border: var(--hairline);
+  background: var(--color-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ---------- Controls: one family ---------- */
+
+html :is(
+  .button, .admin-button, .action-button, .modal-btn, .experience-action, .source-point-map__button,
+  .embedding-3d__btn, .queue-filter-btn
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: 0 var(--space-4);
+  border: var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  box-shadow: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+html :is(
+  .button, .admin-button, .action-button, .modal-btn, .experience-action, .source-point-map__button,
+  .embedding-3d__btn, .queue-filter-btn
+):hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-hover);
+}
+
+html :is(
+  .button--primary, .admin-button--primary, .modal-btn--primary, .experience-action--primary,
+  .action-button--approve, .queue-filter-btn--active
+) {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+html :is(
+  .button--primary, .admin-button--primary, .modal-btn--primary, .experience-action--primary,
+  .action-button--approve, .queue-filter-btn--active
+):hover:not(:disabled) {
+  border-color: var(--color-accent-hover);
+  background: var(--color-accent-hover);
+  color: var(--color-on-accent);
+}
+
+html .action-button--reject {
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+html :is(.button--quiet, .admin-button--quiet, .experience-action--quiet) {
+  background: transparent;
+}
+
+html .button--sm {
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+html :is(.button, .admin-button, .action-button, .modal-btn):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+html :is(.input, .modal-text-input, input[type="text"], input[type="search"], input[type="password"], textarea, select) {
+  min-height: var(--control-h);
+  border: var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: none;
+}
+
+html :is(.input, .modal-text-input, input[type="text"], input[type="search"], input[type="password"], textarea, select):focus-visible {
+  border-color: var(--color-focus);
+  outline: 2px solid color-mix(in srgb, var(--color-focus) 35%, transparent);
+  outline-offset: 0;
+}
+
+html :is(.badge, .count-chip, .fixture-chip, .unified-chip, .incident-badge, .admin-read-only-chip, .synthetic-label) {
+  border: var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html .badge--accent { color: var(--color-accent); }
+
+html :is(.filter-pill, .facility-filter-pill) {
+  border: var(--hairline);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  box-shadow: none;
+}
+
+html :is(.filter-pill, .facility-filter-pill)[aria-pressed="true"],
+html :is(.facility-filter-pill--active) {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-surface);
+}
+
+html .text-link { text-underline-offset: 3px; }
+
+/* ---------- Header ---------- */
+
+html .site-header {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+html .primary-nav a[aria-current="page"],
+html .primary-nav a.is-active {
+  color: var(--color-text);
+}
+
+html .brand-mark {
+  border-radius: var(--radius-md);
+  background: var(--color-text);
+  color: var(--color-surface);
+  box-shadow: none;
+}
+
+/* ---------- Map: quiet canvas ---------- */
+
+/* Washed basemap: streets stay readable, colour and label noise drop away so reports are the only colour. */
+html :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
+  filter: grayscale(1) contrast(0.82) brightness(1.08);
+  opacity: 0.92;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
+    filter: invert(1) hue-rotate(180deg) grayscale(1) contrast(0.82) brightness(0.62);
+    opacity: 1;
+  }
+}
+
+html[data-theme="dark"] :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
+  filter: invert(1) hue-rotate(180deg) grayscale(1) contrast(0.82) brightness(0.62);
+  opacity: 1;
+}
+
+html .map-home__panel {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: none;
+}
+
+html .map-home__toolbar {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+html .map-home__tool {
+  min-height: var(--control-h);
+  border: 0;
+  background: transparent;
+}
+
+html .map-home .map-zoom-controls {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+html .map-home .map-zoom-controls button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+}
+
+/* The window caption is plain text on a chip, no icon tint. */
+html .map-home__scope {
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  animation: none;
+}
+
+html .map-home__scope-icon { color: var(--color-text-subtle); }
+
+html .map-legend.map-legend--severity {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* The map footer is a single quiet line, not a card. */
+html .map-home__footer {
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  box-shadow: none;
+  color: var(--color-text-muted);
+}
+
+html .map-home__footer-links a {
+  color: var(--color-text);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 3px;
+}
+
+html .map-popup {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Pins: the only saturated colour on the map. The selected ring is ink, not a second hue. */
+html .incident-beacon-core {
+  fill: var(--color-danger);
+  stroke: var(--color-surface);
+}
+
+html .map-marker__ring { stroke: var(--color-text); stroke-width: 2.5; }
+
+/* List: cards become rows separated by hairlines. */
+html .map-list__items { gap: 0; }
+
+html .map-card {
+  border: 0;
+  border-bottom: var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-3) var(--space-1);
+  animation: none;
+}
+
+html .map-card:hover { background: var(--color-surface-hover); transform: none; box-shadow: none; }
+
+html .map-card--selected {
+  background: var(--color-accent-soft);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+html .map-list__scope {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+@media (max-width: 767px) {
+  /* Phones: the legend leaves the map (the list and popup name each level in words); links live in the menu. */
+  html .map-legend.map-legend--severity { display: none; }
+  html .map-home__footer-links { display: none; }
+  html .map-home__footer { padding: 2px var(--space-2); }
+}
+
+/* ---------- Sheets, dialogs, menus ---------- */
+
+html :is(.sheet, .ui-dialog, .modal-dialog, .intro-dialog) {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+html :is(.sheet-overlay, .ui-overlay, .modal-overlay, .modal-backdrop) {
+  background: var(--color-overlay);
+  backdrop-filter: none;
+}
+
+html .menu__list { border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+
+html .menu__item { border-radius: var(--radius-sm); }
+
+/* ---------- Banners ---------- */
+
+html .feedback-banner {
+  border: var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+html .feedback-banner--error { border-color: var(--color-danger-border); background: var(--color-danger-soft); }
+
+html .fixture-notice {
+  border: 0;
+  border-left: 2px solid var(--color-border-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+/* ---------- Motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html * { transition: none !important; animation: none !important; }
+}
+
+/* ---------- Sign in: one centred card, two tabs ---------- */
+
+html .account-page .page-column:has(.account-flow--auth) {
+  max-width: 26rem;
+  margin-inline: auto;
+}
+
+html .account-flow--auth { display: grid; gap: var(--space-4); }
+
+html .auth-card { padding: var(--space-6); }
+
+html .auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin-bottom: var(--space-6);
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+html .auth-tabs__tab {
+  min-height: 2.25rem;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+html .auth-tabs__tab[aria-selected="true"] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+html .auth-panel { display: grid; gap: var(--space-4); }
+html .auth-panel[hidden] { display: none; }
+
+html .auth-panel__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+html .auth-panel__note,
+html .auth-aside {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+html .auth-aside { text-align: center; }
+
+html .auth-card :is(.button--primary, button[type="submit"]) { width: 100%; }
