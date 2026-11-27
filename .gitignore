@@ -54,3 +54,8 @@ RPL 1 INTRODUCTION - RFS 2026 (1).pptx
 .DS_Store
 Thumbs.db
 .idea/
+
+# Windows download markers and local copies of team documents (27 Nov 2026)
+*Zone.Identifier
+/*.pdf
+/*.csv
