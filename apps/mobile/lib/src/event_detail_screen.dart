@@ -42,6 +42,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   String? _historyCursor;
   int _detailGeneration = 0;
   int _historyGeneration = 0;
+  // GUI-03: long records stay short. Three claims and three versions show until the reader asks for more.
+  static const int _visibleItems = 3;
+  bool _showAllClaims = false;
+  bool _showAllHistory = false;
 
   @override
   void initState() {
@@ -355,7 +359,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           title: 'Bukti tidak tersedia pada respons ini.',
                           message:
                               'Ketiadaan klaim atau sumber di detail ini tidak membuktikan benar, salah, aman, atau selesai.'),
-                    ...event.claims.map((claim) => Padding(
+                    ...(_showAllClaims
+                            ? event.claims
+                            : event.claims.take(_visibleItems))
+                        .map((claim) => Padding(
                           padding: const EdgeInsets.only(top: 12),
                           child: Container(
                             width: double.infinity,
@@ -441,6 +448,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                 ]),
                           ),
                         )),
+                    if (event.claims.length > _visibleItems)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              setState(() => _showAllClaims = !_showAllClaims),
+                          icon: Icon(_showAllClaims
+                              ? Icons.expand_less
+                              : Icons.expand_more),
+                          label: Text(_showAllClaims
+                              ? 'Sembunyikan klaim lainnya'
+                              : 'Tampilkan ${event.claims.length - _visibleItems} klaim lainnya'),
+                        ),
+                      ),
                   ]))),
       const SizedBox(height: 16),
       Card(
@@ -512,6 +533,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     ];
   }
 
+  /// GUI-03: newest version first; only the first three until the reader opens the rest.
+  List<HistoryEntry> _visibleHistory() {
+    final entries = [..._history!.data]
+      ..sort((left, right) => right.version.compareTo(left.version));
+    return _showAllHistory ? entries : entries.take(_visibleItems).toList();
+  }
+
   Widget _historyContent() {
     return Card(
         child: Padding(
@@ -547,7 +575,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         'Daftar kosong tidak menunjukkan keselamatan atau penyelesaian kejadian.'),
               ],
               if (_history != null)
-                ..._history!.data.map((entry) => Padding(
+                ..._visibleHistory().map((entry) => Padding(
                       padding: const EdgeInsets.only(top: 12),
                       child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -584,7 +612,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                 ])),
                           ]),
                     )),
-              if (_historyCursor != null) ...[
+              if (_history != null && _history!.data.length > _visibleItems)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        setState(() => _showAllHistory = !_showAllHistory),
+                    icon: Icon(
+                        _showAllHistory ? Icons.expand_less : Icons.expand_more),
+                    label: Text(_showAllHistory
+                        ? 'Sembunyikan versi sebelumnya'
+                        : 'Lihat ${_history!.data.length - _visibleItems} versi sebelumnya'),
+                  ),
+                ),
+              if (_historyCursor != null && (_showAllHistory || _history!.data.length <= _visibleItems)) ...[
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                     onPressed: _loadingMoreHistory

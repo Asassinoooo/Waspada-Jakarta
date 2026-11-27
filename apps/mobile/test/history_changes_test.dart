@@ -165,4 +165,62 @@ void main() {
     expect(find.text('Lama'), findsOneWidget);
     expect(find.text('Baru'), findsOneWidget);
   });
+
+  testWidgets('GUI-03: five versions show the newest three first and the rest behind one button', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = SyntheticPublicApi(
+        history: HistoryPage.fromJson({
+      'data': [
+        for (var version = 1; version <= 5; version++)
+          {
+            'event_id': 'synthetic-event-1',
+            'version': version,
+            'change_type': version == 1 ? 'published' : 'corrected',
+            'changed_at': '2026-09-24T09:0$version:00+07:00',
+            'summary': 'Ringkasan versi $version.',
+          },
+      ],
+      'page': {'next_cursor': null, 'cursor_expires_at': null},
+    }));
+    await tester.pumpWidget(MaterialApp(
+      home: EventDetailScreen(
+        api: api,
+        contextInfo: PublicContext.fromJson(syntheticContext),
+        eventId: 'synthetic-event-1',
+        initialInterests: const LocalInterests(),
+        preferences: PreferencesRepository(MemoryStorage()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Lihat 2 versi sebelumnya'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 40,
+    );
+    expect(find.text('Ringkasan versi 5.'), findsOneWidget);
+    expect(find.text('Ringkasan versi 3.'), findsOneWidget);
+    expect(find.text('Ringkasan versi 2.'), findsNothing);
+    expect(
+        tester.getTopLeft(find.text('Ringkasan versi 5.')).dy <
+            tester.getTopLeft(find.text('Ringkasan versi 4.')).dy,
+        isTrue,
+        reason: 'newest first');
+    final showOlder = find.text('Lihat 2 versi sebelumnya');
+    await tester.ensureVisible(showOlder);
+    await tester.pumpAndSettle();
+    await tester.tap(showOlder);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Ringkasan versi 1.'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 20,
+    );
+    expect(find.text('Ringkasan versi 1.'), findsOneWidget);
+    expect(find.text('Sembunyikan versi sebelumnya'), findsOneWidget);
+  });
 }
