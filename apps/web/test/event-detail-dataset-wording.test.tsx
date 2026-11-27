@@ -57,7 +57,7 @@ test("R-05: a live record is labelled as live data, never as synthetic or fixtur
   assert.match(html, /Laporan ini menampilkan waktu dan sumbernya\. Ini bukan peringatan darurat/u);
   assert.match(html, /<dt>Siklus<\/dt><dd>Berlangsung<\/dd>/u);
   assert.match(html, /Dievaluasi /u);
-  assert.match(html, /Data API/u);
+  assert.doesNotMatch(textOf(html), /Data API|Proyeksi publik/u, "GUI-03: no internal labels on the public detail");
   assert.match(html, /Tidak tersedia pada laporan/u);
 });
 

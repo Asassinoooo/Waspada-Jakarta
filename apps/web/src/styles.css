@@ -1742,6 +1742,58 @@ time,
   min-width: 0;
 }
 
+/* GUI-03: compact version timeline, newest first. A thin rule replaces the per-version card. */
+.history-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
+  border-left: 2px solid var(--color-border);
+}
+
+.history-item:first-child { border-left-color: var(--color-accent); }
+
+.history-item p { margin: 0; }
+
+.history-item__time {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* GUI-03: one quiet disclosure for anything past the first few items. */
+.detail-more {
+  margin-top: var(--space-3);
+}
+
+.detail-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  color: var(--color-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.detail-more[open] > summary { margin-bottom: var(--space-3); }
+
+.detail-more > .detail-facts { margin-top: 0; }
+
+.detail-muted {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.detail-muted strong { color: var(--color-text); font-weight: 600; }
+
 .history-current {
   margin-bottom: var(--space-3);
   color: var(--quiet-ink);
