@@ -59,7 +59,7 @@ export function MapFilterSheet({ applied, onApply, onClose }: MapFilterSheetProp
     }));
 
   return (
-    <Sheet open onClose={onClose} titleId="map-filter-title" side="left" className="map-filter-sheet">
+    <Sheet open onClose={onClose} titleId="map-filter-title" side="right" className="map-filter-sheet">
       <div className="map-filter__head">
         <h2 id="map-filter-title">Filter laporan</h2>
         <button type="button" className="button button--quiet button--sm" onClick={onClose}>

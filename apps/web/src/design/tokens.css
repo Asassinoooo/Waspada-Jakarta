@@ -323,7 +323,7 @@
 
 /*
  * Smooth theme transition: when data-theme changes on :root, background and text
- * colours cross-fade over 250ms on key surface elements instead of snapping instantly.
+ * colours cross-fade over 0.75s on key surface elements instead of snapping instantly.
  * We target specific selectors (not * { transition }) to avoid fighting button/map
  * animations and transforms that use their own carefully-timed transitions.
  */
@@ -357,10 +357,10 @@ body,
 .preferences-page,
 .admin-workspace {
   transition:
-    background-color 500ms ease,
-    color 450ms ease,
-    border-color 450ms ease,
-    box-shadow 500ms ease;
+    background-color 0.75s ease,
+    color 0.75s ease,
+    border-color 0.75s ease,
+    box-shadow 0.75s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

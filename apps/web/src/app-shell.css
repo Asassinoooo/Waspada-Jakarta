@@ -37,16 +37,19 @@
     grid-template-columns var(--duration-base) var(--ease-standard),
     column-gap var(--duration-base) var(--ease-standard),
     padding-inline var(--duration-base) var(--ease-standard),
-    background-color 250ms ease,
-    border-color 250ms ease,
-    box-shadow 250ms ease;
+    background-color 0.75s ease,
+    border-color 0.75s ease,
+    box-shadow 0.75s ease;
 }
 
-/* Collapsed: only the [WJ] brand-mark is visible; nav and tools slide out. */
+/* Collapsed: only the [WJ] brand-mark is visible; border shrinks to wrap the logo only. */
 .site-header--collapsed {
   grid-template-columns: auto 0 0;
   column-gap: 0;
-  padding-inline: var(--space-3) var(--space-3);
+  width: fit-content;
+  min-width: 0;
+  margin-inline: var(--shell-gap) auto;
+  padding-inline: var(--space-2);
 }
 
 .site-header--collapsed .primary-nav,

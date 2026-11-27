@@ -368,13 +368,17 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
               <span className="map-home__tool-label">Daftar</span>{" "}
               <span className="count-chip map-home__count">{visibleEvents.length}</span>
             </button>
+          </div>
+
+          <div className="toolbar map-home__toolbar map-home__toolbar--right">
             <button
               type="button"
               className="button button--quiet map-home__tool"
               aria-haspopup="dialog"
               aria-expanded={filterOpen}
               aria-label={activeCount > 0 ? `Filter ${activeCount} aktif` : "Filter"}
-              onClick={() => setFilterOpen(true)}
+              onClick={() => setFilterOpen((open) => !open)}
+              title={filterOpen ? "Tutup filter" : "Buka filter"}
             >
               <svg className="map-home__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M4 6h16M7 12h10M10 18h4" />
