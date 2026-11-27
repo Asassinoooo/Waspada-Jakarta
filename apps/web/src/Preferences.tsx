@@ -75,7 +75,7 @@ function feedbackAfterEdit(text: string): Feedback {
   return { kind: "status", text };
 }
 
-export function Preferences({ storage, context = null, contextSnapshotId }: PreferencesProps) {
+export function Preferences({ storage, context = null }: PreferencesProps) {
   const [activeStorage] = useState<PreferencesStorage | null>(() =>
     storage === undefined ? browserPreferencesStorage() : storage,
   );
