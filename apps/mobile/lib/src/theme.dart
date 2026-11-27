@@ -7,14 +7,14 @@ import 'package:flutter/material.dart';
 /// [WaspadaColors] keeps the light values as constants for painters and legacy call sites. Widgets that should follow
 /// dark mode read [WaspadaPalette] through `context.palette`.
 abstract final class WaspadaColors {
-  static const canvas = Color(0xFFF6F4EF); // Kertas
-  static const ink = Color(0xFF0F2229); // Tinta Kota
-  static const teal = Color(0xFF0B6E69); // Kali Teal
-  static const concrete = Color(0xFFE3DFD6); // Beton
+  static const canvas = Color(0xFFF4F4F2); // Kertas
+  static const ink = Color(0xFF0E1112); // Tinta
+  static const teal = Color(0xFF0B6B66); // Kali Teal
+  static const concrete = Color(0xFFE2E2DE); // Garis
   static const caution = Color(0xFFF2B84B); // Kuning Perhatian
   static const marker = Color(0xFFC0392B); // Merah Tanda
   static const white = Color(0xFFFFFFFF);
-  static const softPanel = Color(0xFFEFECE5);
+  static const softPanel = Color(0xFFECECE9);
 }
 
 const _fontFamily = 'PlusJakartaSans';
@@ -60,43 +60,43 @@ class WaspadaPalette extends ThemeExtension<WaspadaPalette> {
   final Color heroEnd;
 
   static const light = WaspadaPalette(
-    canvas: Color(0xFFF6F4EF),
+    canvas: Color(0xFFF4F4F2),
     surface: Color(0xFFFFFFFF),
-    surfaceAlt: Color(0xFFEFECE5),
-    ink: Color(0xFF0F2229),
-    inkMuted: Color(0xFF55636A),
-    line: Color(0xFFE3DFD6),
-    brand: Color(0xFF0B6E69),
+    surfaceAlt: Color(0xFFECECE9),
+    ink: Color(0xFF0E1112),
+    inkMuted: Color(0xFF565D60),
+    line: Color(0xFFE2E2DE),
+    brand: Color(0xFF0B6B66),
     onBrand: Color(0xFFFFFFFF),
-    brandSoft: Color(0xFFDDEEEB),
+    brandSoft: Color(0xFFE3EFEE),
     signalLow: Color(0xFFF6D77A),
     signalMedium: Color(0xFFF2A541),
     signalHigh: Color(0xFFE4572E),
     signalCritical: Color(0xFFA4161A),
-    onSignal: Color(0xFF0F2229),
+    onSignal: Color(0xFF0E1112),
     demo: Color(0xFFF2B84B),
-    heroStart: Color(0xFF0F2229),
-    heroEnd: Color(0xFF0B4F4C),
+    heroStart: Color(0xFF0E1112),
+    heroEnd: Color(0xFF1B2022),
   );
 
   static const dark = WaspadaPalette(
-    canvas: Color(0xFF0A1316),
-    surface: Color(0xFF111C20),
-    surfaceAlt: Color(0xFF18262B),
-    ink: Color(0xFFEAF0F0),
-    inkMuted: Color(0xFF9AABB0),
-    line: Color(0xFF243338),
-    brand: Color(0xFF5CC8BE),
-    onBrand: Color(0xFF032623),
-    brandSoft: Color(0xFF15302E),
+    canvas: Color(0xFF0B0D0E),
+    surface: Color(0xFF131617),
+    surfaceAlt: Color(0xFF1A1E1F),
+    ink: Color(0xFFEDEFEF),
+    inkMuted: Color(0xFF9CA3A5),
+    line: Color(0xFF262B2D),
+    brand: Color(0xFF5DC4BA),
+    onBrand: Color(0xFF04211F),
+    brandSoft: Color(0xFF132A28),
     signalLow: Color(0xFFE9C766),
     signalMedium: Color(0xFFF0A04B),
     signalHigh: Color(0xFFF26B45),
     signalCritical: Color(0xFFE0474C),
-    onSignal: Color(0xFF0A1316),
+    onSignal: Color(0xFF0B0D0E),
     demo: Color(0xFFE9B04A),
-    heroStart: Color(0xFF0E2A2E),
-    heroEnd: Color(0xFF07171A),
+    heroStart: Color(0xFF16191A),
+    heroEnd: Color(0xFF0B0D0E),
   );
 
   @override
