@@ -254,8 +254,8 @@ function WithdrawDialog({
         {localError ? <p role="alert" className="pem__error">{localError}</p> : null}
         {error ? <ActionFailure error={error} /> : null}
         <div className="pem__actions">
-          <button type="button" onClick={onClose} disabled={submitting}>Batal</button>
-          <button type="submit" disabled={submitting}>
+          <button type="button" className="button button--quiet" onClick={onClose} disabled={submitting}>Batal</button>
+          <button type="submit" className="button button--primary" disabled={submitting}>
             {submitting ? "Menarik…" : "Ya, tarik peristiwa"}
           </button>
         </div>
@@ -345,8 +345,8 @@ function CorrectionDialog({
         </label>
         {error ? <ActionFailure error={error} /> : null}
         <div className="pem__actions">
-          <button type="button" onClick={onClose} disabled={submitting}>Batal</button>
-          <button type="submit" disabled={submitting}>{submitting ? "Mengirim…" : "Kirim koreksi"}</button>
+          <button type="button" className="button button--quiet" onClick={onClose} disabled={submitting}>Batal</button>
+          <button type="submit" className="button button--primary" disabled={submitting}>{submitting ? "Mengirim…" : "Kirim koreksi"}</button>
         </div>
       </form>
     </Dialog>
@@ -417,8 +417,8 @@ export function PublishedEventModeration({
               <strong>{event.title}</strong> <span>versi {event.version}</span>
             </p>
             <div className="pem__actions">
-              <button type="button" onClick={() => setOpen({ kind: "withdraw", event })}>Tarik peristiwa</button>
-              <button type="button" onClick={() => setOpen({ kind: "correct", event })}>Ajukan koreksi</button>
+              <button type="button" className="button button--sm button--quiet" onClick={() => setOpen({ kind: "correct", event })}>Ajukan koreksi</button>
+              <button type="button" className="button button--sm button--quiet button--danger" onClick={() => setOpen({ kind: "withdraw", event })}>Tarik peristiwa</button>
             </div>
           </li>
         ))}
