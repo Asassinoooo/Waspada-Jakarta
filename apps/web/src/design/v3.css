@@ -625,3 +625,85 @@ time,
 .reset-code__meta { font-size: var(--text-sm); line-height: 1.5; }
 
 .reset-done h2 { letter-spacing: var(--tracking-tight); }
+
+/* ---------- GUI-03 (27 Nov 2026): quieter map, clearer pins, flatter cards ---------- */
+
+/* Pins draw at 1:1 (44 px box for a 44-unit viewBox) with a thicker halo, so they read on the busy basemap. */
+.map-marker__svg {
+  width: 2.75rem;
+  height: 2.75rem;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+}
+
+.map-marker--selected .map-marker__svg {
+  width: 3rem;
+  height: 3rem;
+}
+
+.map-marker .incident-beacon-core { stroke-width: 3px; }
+
+/* Facility pins are context, not reports: they step back until pointed at. */
+.map-facility { opacity: 0.7; }
+.map-facility:hover,
+.map-facility:focus-within { opacity: 1; }
+
+/* List cards: flat, one tight stack; long titles stop at three lines. */
+.map-card {
+  gap: var(--space-1);
+  padding: var(--space-3);
+  box-shadow: none;
+}
+
+.map-card__title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.map-card__times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+}
+
+.map-card__times > .map-card__meta + .map-card__meta::before {
+  content: "· ";
+}
+
+.map-card__meta { font-size: var(--text-xs); }
+
+@media (max-width: 767px) {
+  /* The legend shrinks to its three sized dots; its name stays for screen readers (aria-label). */
+  .map-legend.map-legend--severity {
+    padding: var(--space-1) var(--space-2);
+    box-shadow: none;
+  }
+
+  .map-legend.map-legend--severity .map-legend__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* The hidden-count lives in the list; the caption keeps only the window it names. */
+  .map-home__scope-more { display: none; }
+
+  .map-home__scope,
+  .map-home__footer { box-shadow: none; }
+
+  .map-home__footer { padding: var(--space-1) var(--space-2); }
+}
+
+@media (max-width: 600px) {
+  /* GUI-03: on phones the status trigger is a bare dot beside "Akun", not a filled circle that reads as an avatar. */
+  .site-header .site-header__badge {
+    min-width: 2.75rem;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+}
