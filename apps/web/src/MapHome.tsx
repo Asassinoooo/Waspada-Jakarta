@@ -111,6 +111,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [deepLinkMissing, setDeepLinkMissing] = useState(false);
   const [detailEventId, setDetailEventId] = useState<string | null>(null);
+  const [detailFullscreen, setDetailFullscreen] = useState(false);
   const detail = usePublicEventDetail(detailEventId);
   const focusPopupOnOpen = useRef(false);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -448,7 +449,6 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
           applied={applied}
           onApply={(next) => {
             setApplied(next);
-            setFilterOpen(false);
           }}
           onClose={() => setFilterOpen(false)}
         />
@@ -468,12 +468,28 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
       )}
 
       {detailEventId !== null && (
-        <Sheet open onClose={closeDetail} titleId={DETAIL_TITLE_ID} className="map-detail-sheet">
+        <Sheet
+          open
+          onClose={closeDetail}
+          titleId={DETAIL_TITLE_ID}
+          className={`map-detail-sheet${detailFullscreen ? " map-detail-sheet--fullscreen" : ""}`}
+        >
           <div className="map-detail-sheet__head">
             <h2 id={DETAIL_TITLE_ID}>Detail laporan</h2>
-            <button type="button" className="button button--quiet button--sm" onClick={closeDetail}>
-              Tutup
-            </button>
+            <div className="map-detail-sheet__actions">
+              <button
+                type="button"
+                className="button button--quiet button--sm"
+                onClick={() => setDetailFullscreen((prev) => !prev)}
+                title={detailFullscreen ? "Kecilkan jendela" : "Layar penuh"}
+                aria-pressed={detailFullscreen}
+              >
+                {detailFullscreen ? "Perkecil" : "Layar penuh"}
+              </button>
+              <button type="button" className="button button--quiet button--sm" onClick={closeDetail}>
+                Tutup
+              </button>
+            </div>
           </div>
           <EventDetail
             variant="sheet"

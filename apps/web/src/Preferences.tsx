@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { PublicContext } from "@waspada/worker/public-contracts";
 import { categoryLabel } from "./display.js";
-import { BriefingResults } from "./BriefingResults.js";
 import { NotificationSettings } from "./NotificationSettings.js";
 import { PageHeader } from "./ui/PageHeader.js";
 import {
@@ -192,25 +191,12 @@ export function Preferences({ storage, context = null, contextSnapshotId }: Pref
           lead="Periksa dan ubah minat yang ingin Anda simpan untuk browser ini."
         />
 
-        <section className="preferences-privacy" aria-label="Penyimpanan minat">
-          <strong>Minat tetap di browser ini.</strong>
-          <p>
-            Minat dikirim ke layanan hanya saat Anda meminta briefing dan tidak disimpan oleh layanan. Menghapus data browser juga menghapus minat tersimpan di sini.
-          </p>
-        </section>
-
         <NotificationSettings
           storage={activeStorage}
           live={context?.dataset_mode === "live"}
           hasInterests={state.loadStatus !== "malformed" && (state.interests.categories.length > 0
             || state.interests.places.length > 0 || state.interests.services.length > 0
             || state.interests.institutions.length > 0 || state.interests.audiences.length > 0)}
-        />
-
-        <BriefingResults
-          context={context}
-          interests={state.interests}
-          contextSnapshotId={contextSnapshotId}
         />
 
         {state.feedback && (
