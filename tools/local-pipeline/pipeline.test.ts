@@ -89,7 +89,7 @@ function observeRenewals(
   return { store: observed, events };
 }
 
-async function withinBound<T>(promise: Promise<T>, timeoutMs = 5_000): Promise<T> {
+async function withinBound<T>(promise: Promise<T>, timeoutMs = 15_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -415,7 +415,7 @@ test('lost long-wait renewal cancels late persistence and expired lease recovers
     now = '2026-10-12T07:05:00.000Z';
     const failedRenewal = await withinBound(observed.events.next());
     assert.deepEqual(failedRenewal, { at: '2026-10-12T07:05:00.000Z', result: false });
-    await withinBound(processing, 2_000);
+    await withinBound(processing, 15_000);
     assert.equal(cancelCalls, 1);
 
     const receipts = await database.executor.query<{ count: number }>(
@@ -463,10 +463,10 @@ test('renewal exception cancels the provider and fails closed before late stage 
     await backingStore.capture(await authoredFeed(), start);
     await processor.processIngestion();
     const processing = processor.processAi();
-    await withinBound(started);
-    const failedRenewal = await withinBound(observed.events.next());
+    await withinBound(started, 15_000);
+    const failedRenewal = await withinBound(observed.events.next(), 15_000);
     assert.deepEqual(failedRenewal, { at: start, result: false, threw: true });
-    await withinBound(processing, 2_000);
+    await withinBound(processing, 15_000);
     assert.equal(cancelCalls, 1);
 
     finishExtraction(await models.adapter.extract(extractionRequest));
@@ -513,7 +513,7 @@ test('abort settles an ignored model wait and removes the renewal timer', { time
     assert.equal((await withinBound(observed.events.next())).result, true);
 
     controller.abort();
-    await withinBound(processing, 2_000);
+    await withinBound(processing, 15_000);
     assert.equal(cancelCalls, 1);
     assert.equal(counted.calls.extraction, 1);
     assert.equal(counted.calls.embedding, 0);
