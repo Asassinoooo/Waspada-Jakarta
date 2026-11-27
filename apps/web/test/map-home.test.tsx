@@ -87,7 +87,8 @@ test("deep link resolves an event only when it is in the published list", () => 
 
 test("the toolbar and zoom group show at most five controls on the first screen", () => {
   const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
-  const toolbar = html.match(/class="toolbar map-home__toolbar">([\s\S]*?)<\/div>/)?.[1] ?? "";
+  // PR #5 split the toolbar into a left (list) and right (filter) group; search moved into the list panel.
+  const toolbar = [...html.matchAll(/class="toolbar map-home__toolbar[^"]*">([\s\S]*?)<\/div>/g)].map((match) => match[1]).join("");
   const zoom = html.match(/class="map-zoom-controls"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
   const controls = (toolbar.match(/<(button|input)\b/g) ?? []).length + (zoom.match(/<(button|input)\b/g) ?? []).length;
   assert.ok(controls >= 4 && controls <= 5, `found ${controls} controls`);

@@ -192,7 +192,7 @@ test("the header and footer intent handler prefetches the link under the pointer
   assert.deepEqual(loaded, ["preferences"]);
 
   const shell = readFileSync(new URL("../src/AppShell.tsx", import.meta.url), "utf8");
-  assert.match(shell, /<header className="site-header" onPointerOver=\{prefetchRouteOnIntent\} onFocus=\{prefetchRouteOnIntent\} onTouchStart=\{prefetchRouteOnIntent\}>/);
+  assert.match(shell, /<header className=\{`site-header\$\{brandCollapsed \? " site-header--collapsed" : ""\}`\} onPointerOver=\{prefetchRouteOnIntent\} onFocus=\{prefetchRouteOnIntent\} onTouchStart=\{prefetchRouteOnIntent\}>/);
   assert.match(shell, /<footer className="site-footer" onPointerOver=\{prefetchRouteOnIntent\} onFocus=\{prefetchRouteOnIntent\} onTouchStart=\{prefetchRouteOnIntent\}>/);
 });
 
