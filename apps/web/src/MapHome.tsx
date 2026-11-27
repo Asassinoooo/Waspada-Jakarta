@@ -84,6 +84,9 @@ function withRecency(value: MapFilterValue, recency: PublicationRecency): MapFil
   return { ...value, filters: { ...value.filters, recency } };
 }
 
+/** GUI-03: shown when a shared link to an older report switched the map from the 24-hour window to every report. */
+export const WIDENED_BY_LINK_TEXT = "Semua laporan ditampilkan karena tautan ini menunjuk laporan lama.";
+
 export function MapHome({ deepLinkEventId = null, context = null, initialEvents, initialMarkers, now: fixedNow }: MapHomeProps) {
   const seed = useMemo(
     () => (initialEvents === undefined ? undefined : { events: initialEvents, markers: initialMarkers ?? NO_MARKERS }),
@@ -110,6 +113,8 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   const islandRef = useRef<HTMLElement | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [deepLinkMissing, setDeepLinkMissing] = useState(false);
+  // GUI-03: true while a shared link to an older report has widened the window; the map then says so.
+  const [widenedByLink, setWidenedByLink] = useState(false);
   const [detailEventId, setDetailEventId] = useState<string | null>(null);
   const [detailFullscreen, setDetailFullscreen] = useState(false);
   const detail = usePublicEventDetail(detailEventId);
@@ -196,6 +201,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
     setQuery("");
     // A shared link to an older event widens the window, so the event it names is shown, never hidden by the default.
     setApplied(publishedRecently(target.event, now) ? DEFAULT_MAP_FILTER_VALUE : withRecency(DEFAULT_MAP_FILTER_VALUE, "all"));
+    setWidenedByLink(!publishedRecently(target.event, now));
     setSelectedId(target.event.event_id);
     setCopyMessage(null);
     if (target.marker) flyTo(target.marker.coordinate, MAP_DETAIL_ZOOM);
@@ -270,9 +276,11 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
   function resetFilters() {
     setQuery("");
     setApplied(DEFAULT_MAP_FILTER_VALUE);
+    setWidenedByLink(false);
   }
 
   function setRecency(recency: PublicationRecency) {
+    setWidenedByLink(false);
     setApplied((current) => withRecency(current, recency));
   }
 
@@ -402,6 +410,12 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
             </p>
           )}
 
+          {widenedByLink && !recentOnly && data.status === "loaded" && !(wide && listOpen) && (
+            <p className="map-home__scope" role="status">
+              <span>{WIDENED_BY_LINK_TEXT}</span>
+            </p>
+          )}
+
           {data.markersUnavailable && (
             <div className="feedback-banner feedback-banner--error map-home__notice" role="alert">
               <span>Peta belum dapat dimuat. Daftar tetap tersedia.</span>
@@ -449,6 +463,7 @@ export function MapHome({ deepLinkEventId = null, context = null, initialEvents,
           applied={applied}
           onApply={(next) => {
             setApplied(next);
+            setWidenedByLink(false);
           }}
           onClose={() => setFilterOpen(false)}
         />

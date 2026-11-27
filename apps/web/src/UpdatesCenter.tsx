@@ -439,7 +439,7 @@ export function UpdateCenterContent({
           eyebrow="Pembaruan untuk minat lokal"
           title="Pembaruan"
           titleId="updates-center-title"
-          lead="Hanya ringkasan perubahan yang cocok dengan minat tersimpan dan detail kejadian publik terkini yang ditampilkan."
+          lead="Perubahan pada laporan terbit yang cocok dengan minat Anda."
         />
 
         {gate === "unknown" ? (
