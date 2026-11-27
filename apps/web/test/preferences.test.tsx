@@ -171,10 +171,9 @@ test("empty preferences render a labelled editor and all ten contract categories
   assert.match(markup, /name="audiences"/);
   assert.equal((markup.match(/name="categories"/g) ?? []).length, CATEGORY_VALUES.length);
   for (const category of CATEGORY_VALUES) assert.match(markup, new RegExp('value="' + category + '"'));
-  assert.match(markup, /Minat tetap di browser ini/);
-  assert.match(markup, /Minat dikirim ke layanan hanya saat Anda meminta briefing dan tidak disimpan oleh layanan/);
-  assert.match(markup, /Menghapus data browser juga menghapus minat tersimpan/);
-  assert.match(markup, /status dataset belum dapat diverifikasi/);
+  assert.match(markup, /Minat di perangkat ini/);
+  assert.match(markup, /Pencocokan dilakukan di browser ini; minat Anda tidak dikirim ke layanan/);
+  assert.match(markup, /Notifikasi hanya berjalan selama tab Waspada Jakarta terbuka/);
   assert.match(markup, /Simpan di perangkat ini/);
   assert.match(markup, /Hapus semua minat/);
   // HOSTED-32: the place help text does not promise a kecamatan or kelurahan match, which the service cannot confirm.
@@ -197,11 +196,10 @@ test("saved preferences render their values without claiming a relevance match",
   assert.match(markup, /TransJakarta/);
   assert.match(markup, /mahasiswa/);
   assert.match(markup, /Minat yang tersimpan di browser ini telah dimuat/);
-  assert.match(markup, /status dataset belum dapat diverifikasi/);
   assert.doesNotMatch(markup, /Tampilkan ringkasan|Perbarui ringkasan|Tidak dinilai/);
 });
 
-test("rendering saved live preferences leaves briefing idle until the explicit request action", (t) => {
+test("rendering saved live preferences does not request briefing data", (t) => {
   const storage = new MemoryStorage();
   savePreferences(storage, {
     places: ["Pondok Labu"],
@@ -224,8 +222,8 @@ test("rendering saved live preferences leaves briefing idle until the explicit r
   });
 
   const markup = renderToStaticMarkup(<Preferences storage={storage} context={liveContext} />);
-  assert.match(markup, /Briefing belum diminta/);
-  assert.match(markup, />Tampilkan ringkasan</);
+  assert.match(markup, /Pondok Labu/);
+  assert.doesNotMatch(markup, /Tampilkan ringkasan/);
   assert.equal(requests, 0);
 });
 
