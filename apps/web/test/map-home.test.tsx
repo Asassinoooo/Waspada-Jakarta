@@ -475,3 +475,24 @@ test("MAP-RECENT-01: a deep link to an older event widens the window so the link
   const source = readFileSync(new URL("../src/MapHome.tsx", import.meta.url), "utf8");
   assert.match(source, /publishedRecently\(target\.event, now\) \? DEFAULT_MAP_FILTER_VALUE : withRecency\(DEFAULT_MAP_FILTER_VALUE, "all"\)/u);
 });
+
+test("GUI-03: a card without a named place does not spell out the missing place; the badge says it once", () => {
+  const html = renderToStaticMarkup(createElement(MapEventList, {
+    headingId: "t",
+    status: "loaded",
+    events: [
+      event("no-place-1", { location_label: null, scope: { places: [], services: [], institutions: [], audiences: [] } }),
+      event("place-1", { location_label: null, scope: { places: ["Kemang"], services: [], institutions: [], audiences: [] } }),
+    ],
+    markers: new Map(),
+    selectedId: null,
+    filtersActive: false,
+    errorMessage: null,
+    onSelect: () => {},
+    onReset: () => {},
+    onRetry: () => {},
+  }));
+  assert.doesNotMatch(html, /Lokasi tidak tercatat/u);
+  assert.match(html, /Kemang/u);
+  assert.match(html, /Belum dipetakan/u);
+});

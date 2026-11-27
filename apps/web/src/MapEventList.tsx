@@ -20,6 +20,9 @@ export const EMPTY_LIST_NOTE = "Daftar ini hanya memuat laporan yang sudah terbi
 /** HOSTED-34: the empty message when only the text search is active (no category, time or source filter). */
 export const EMPTY_SEARCH_TITLE = "Tidak ada laporan terbit yang cocok dengan pencarian ini.";
 /** MAP-RECENT-01: the list states its default window, and an empty window never reads as "nothing happened". */
+/** What `areaText` returns when the report names no place. */
+export const UNKNOWN_AREA_TEXT = "Lokasi tidak tercatat";
+
 export const RECENT_SCOPE_TEXT = "Terbit atau diperbarui dalam 24 jam terakhir.";
 export const EMPTY_RECENT_TITLE = "Tidak ada laporan yang terbit atau diperbarui dalam 24 jam terakhir.";
 export function showAllText(olderCount: number): string {
@@ -191,11 +194,14 @@ export function MapEventList({
                     <span className="map-card__freshness">{freshnessText(event.freshness.status)}</span>
                   </span>
                   <strong className="map-card__title">{event.title}</strong>
-                  <span className="map-card__meta">{areaText(event)}</span>
-                  <span className="map-card__meta">{eventHasTime(event) ? `Waktu kejadian: ${eventTimeText(event.event_time)}` : eventTimeText(event.event_time)}</span>
-                  {!eventHasTime(event) && sourcePublishedAtText(event) !== null && (
-                    <span className="map-card__meta">Dipublikasikan sumber: {sourcePublishedAtText(event)}</span>
-                  )}
+                  {/* GUI-03: an unknown place is not spelled out on the card; the "Tanpa titik" badge below says it once. */}
+                  {areaText(event) !== UNKNOWN_AREA_TEXT && <span className="map-card__meta">{areaText(event)}</span>}
+                  <span className="map-card__times">
+                    <span className="map-card__meta">{eventHasTime(event) ? `Waktu kejadian: ${eventTimeText(event.event_time)}` : eventTimeText(event.event_time)}</span>
+                    {!eventHasTime(event) && sourcePublishedAtText(event) !== null && (
+                      <span className="map-card__meta">Dipublikasikan sumber: {sourcePublishedAtText(event)}</span>
+                    )}
+                  </span>
                   <span className="map-card__foot">
                     {severity !== null && <SeverityChip level={severity} />}
                     <span className="map-card__sources">{sourceCountText(sources.outlets, sources.copies)}</span>
