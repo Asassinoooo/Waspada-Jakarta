@@ -222,7 +222,7 @@ export function displayedLayers(snapshot: AdminSnapshot | null, mode: AdminMode)
       layer,
       name: LAYER_NAMES[layer],
       description: mode === "public_api"
-        ? "Proyeksi publik tidak membuka keadaan internal lapisan ini."
+        ? ""
         : "Belum ada ringkasan untuk tahap ini dalam skrip simulasi.",
       availability: mode === "simulation" ? "simulated" : "unavailable",
       count: null,
@@ -560,16 +560,19 @@ function LayerOverview({ snapshot, mode, monitorState }: {
           return (
             <li className={`admin-layer-card${unavailable ? " admin-layer-card--unavailable" : ""}`} key={layer.layer}>
               <div className="admin-layer-card__heading">
-                <span className="admin-layer-chip">ID {layer.layer}</span>
+                <span className="admin-layer-chip">{layer.layer}</span>
                 <span>{unavailable ? "Tidak tersedia" : mode === "simulation" ? "Contoh rekaan" : "Terlihat pada data"}</span>
               </div>
               <h3>{layer.name || LAYER_NAMES[layer.layer]}</h3>
-              <p>{layer.description}</p>
+              {layer.description && <p>{layer.description}</p>}
               <div className="admin-layer-card__count">
                 <strong>{unavailable || layer.count === null ? "—" : layer.count}</strong>
-                <span>{unavailable ? mode === "public_api" ? "jumlah internal tidak tersedia" : "belum ada angka" : countLabel}</span>
+                {!(unavailable && mode === "public_api") && <span>{unavailable ? "belum ada angka" : countLabel}</span>}
               </div>
-              <p className="admin-layer-card__note">{mode === "public_api" ? layer.availability === "observed" ? layer.note : "Metrik privat tidak tersedia melalui endpoint publik." : step ? `${itemStateLabel(step.state)} · ${step.label}` : layer.note}</p>
+              {/* GUI-04: the section note above says once that internal numbers are not public; cards no longer repeat it. */}
+              {!(mode === "public_api" && layer.availability !== "observed") && (
+                <p className="admin-layer-card__note">{mode === "public_api" ? layer.note : step ? `${itemStateLabel(step.state)} · ${step.label}` : layer.note}</p>
+              )}
               {mode === "public_api" && layer.layer === "L5" && monitorState.currentAttempt && (
                 <p className="admin-layer-card__note">{monitorState.currentAttempt.probes.length > 0
                   ? `${monitorState.currentAttempt.probes.filter((probe) => probe.status === "succeeded").length} dari ${monitorState.currentAttempt.probes.length} permintaan browser berhasil pada pembaruan terakhir. Ini bukan status keseluruhan sistem.`
@@ -940,7 +943,7 @@ export function AdminDashboard({
   return (
     <div className="admin-page">
       <header className="admin-intro">
-        <p className="admin-kicker">Pengelola · baca saja</p>
+        <p className="admin-kicker">Ringkasan</p>
         <p className="admin-header__lede">Pilih laporan untuk melihat sumber, waktu, status informasi, dan lokasinya di peta.</p>
       </header>
 
@@ -1124,10 +1127,6 @@ export function AdminDashboard({
         </div>
       </details>
 
-      <footer className="admin-footer">
-        <strong>Halaman ini hanya membaca data.</strong>
-        <p>Halaman tidak mengambil laporan dari sumber, menjalankan pemeriksaan, atau mengubah status laporan.</p>
-      </footer>
     </div>
   );
 }

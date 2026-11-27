@@ -912,9 +912,9 @@ export function ModeratorReviewQueue({
 
       <section className="review-heading" aria-labelledby="review-title">
         <div>
-          <p className="section-kicker">Antrean Kerja Moderator L4</p>
-          <h2 id="review-title">Tinjau Bukti & Moderasi Insiden</h2>
-          <p>Verifikasi grounding bukti sumber terhadap klaim sebelum penerbitan ke publik.</p>
+          <p className="section-kicker">Moderasi</p>
+          <h2 id="review-title">Tinjau bukti</h2>
+          <p>Periksa bukti sumber untuk setiap klaim sebelum laporan terbit.</p>
         </div>
         <div className="review-heading-status">
           {realtimeConnected && (
@@ -1554,7 +1554,6 @@ export function ModeratorReviewQueue({
         <a className="text-link" href="#peta">
           Kembali ke peta
         </a>
-        <span>MOD-01 diperlukan untuk autentikasi dan tindakan review.</span>
       </div>
     </div>
   );
@@ -1675,7 +1674,6 @@ function renderReadOnlyFixture(): React.JSX.Element {
 
       <div className="review-footer">
         <a className="text-link" href="#peta">Kembali ke peta</a>
-        <span>MOD-01 diperlukan untuk autentikasi dan tindakan review.</span>
       </div>
     </div>
   );
