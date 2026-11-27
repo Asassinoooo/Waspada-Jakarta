@@ -662,3 +662,33 @@ html .admin-provenance strong {
 }
 
 html .admin-provenance strong { color: var(--color-text); }
+
+/* ---------- Page layout: one readable column on every text page ---------- */
+
+/* Pages share one column: up to 72rem wide, centred, with a gutter that grows with the screen.
+   Body text stops near 70 characters a line. */
+html .main-shell:not(.map-home):not(.admin-ws__body) {
+  padding-inline: clamp(1rem, 0.5rem + 2.5vw, 2.5rem);
+}
+
+html .page-column {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+/* Only plain running text gets the measure; styled blocks (notices, chips, rows) keep their full width. */
+html .page-column :is(p, li, dd):not([class]) { max-width: 72ch; }
+
+html .preferences-page .preferences-grid:has(> :only-child) { grid-template-columns: 1fr; }
+
+/* List-card times wrap as two plain facts; no separator dot left at a line start. */
+html .map-card__times { column-gap: var(--space-3); }
+html .map-card__times > .map-card__meta + .map-card__meta::before { content: none; }
+
+html .main-shell.detail-page {
+  max-width: 76rem;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
