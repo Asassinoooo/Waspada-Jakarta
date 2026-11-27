@@ -317,19 +317,19 @@ html .brand-mark {
 
 /* Washed basemap: streets stay readable, colour and label noise drop away so reports are the only colour. */
 html :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
-  filter: grayscale(1) contrast(0.82) brightness(1.08);
+  filter: saturate(0.5) contrast(0.9) brightness(1.04);
   opacity: 0.92;
 }
 
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
-    filter: invert(1) hue-rotate(180deg) grayscale(1) contrast(0.82) brightness(0.62);
+  html:root:not([data-theme="light"]) :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
+    filter: invert(1) hue-rotate(180deg) saturate(0.5) contrast(0.88) brightness(0.74);
     opacity: 1;
   }
 }
 
-html[data-theme="dark"] :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
-  filter: invert(1) hue-rotate(180deg) grayscale(1) contrast(0.82) brightness(0.62);
+html:root[data-theme="dark"] :is(.map-tile-layer, .record-map__tile, .map-canvas__tile) {
+  filter: invert(1) hue-rotate(180deg) saturate(0.5) contrast(0.88) brightness(0.74);
   opacity: 1;
 }
 
@@ -643,17 +643,17 @@ html .moderator-empty-queue {
 
 /* Every map in the app shares the washed basemap. */
 html .source-point-map__tiles {
-  filter: grayscale(1) contrast(0.82) brightness(1.08);
+  filter: saturate(0.5) contrast(0.9) brightness(1.04);
 }
 
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) :is(.source-point-map__tiles) {
-    filter: invert(1) hue-rotate(180deg) grayscale(1) contrast(0.82) brightness(0.62);
+  html:root:not([data-theme="light"]) .source-point-map__tiles {
+    filter: invert(1) hue-rotate(180deg) saturate(0.5) contrast(0.88) brightness(0.74);
   }
 }
 
-html[data-theme="dark"] .source-point-map__tiles {
-  filter: invert(1) hue-rotate(180deg) grayscale(1) contrast(0.82) brightness(0.62);
+html:root[data-theme="dark"] .source-point-map__tiles {
+  filter: invert(1) hue-rotate(180deg) saturate(0.5) contrast(0.88) brightness(0.74);
 }
 
 html .page-header .page-header__eyebrow,

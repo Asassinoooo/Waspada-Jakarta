@@ -7,7 +7,7 @@ On 27 Nov 2026 the owner asked for the redesign to be applied without review, ai
 1. **Event titles and summaries (audit finding #2, direction C).**
    - **Problem:** titles are the first source sentence cut with "…", and summaries repeat the same sentence 3–4 times.
    - **Why it isn't fixed:** the cause is the AI pipeline's text, not the UI. Fixing it means changing the intelligence prompt and possibly the proposal contract.
-   - **Decision:** do you want a new task (for example CONTENT-01: headline ≤ 80 characters, deduplicated summary) and approval to change the prompt? Until then the UI clamps list titles to 3 lines, but the detail page still shows the full long title.
+   - **Owner decision (28 Nov 2026): keep it as is.** No content task and no prompt change. List titles stay clamped to 3 lines.
 2. **Logo click (from PR #5).**
    - **Problem:** clicking "WJ" now collapses the brand instead of going to the map. The element is still an `<a href="#peta">` with `aria-expanded`, so screen readers announce a link that doesn't navigate.
    - **Options:**
@@ -23,7 +23,7 @@ On 27 Nov 2026 the owner asked for the redesign to be applied without review, ai
    - **Option:** removing them from history means a history rewrite and a force-push, which every teammate has to re-clone after.
    - **Backups:** local copies are in `/home/perry/waspada-removed-files-2026-11-27/`.
 6. **Full visual refresh (direction B).** You asked for it on 27 Nov ("awwwards level", minimal, strongly unified). GUI-04 below is the first pass. Two follow-ups are yours to decide:
-   - **(a) Basemap provider.** The map now washes the OpenStreetMap tiles to greyscale. A purpose-built quiet basemap (for example CARTO Positron / Dark Matter) would look cleaner. That means adding a third-party tile host to the CSP and accepting its terms, which are free for non-commercial use with attribution.
+   - **(a) Basemap. Owner decision (28 Nov 2026): don't grey it out entirely.** The OSM tiles stay with a softer wash (`saturate(0.5)` in both themes; dark is inverted), so water, parks and main roads keep muted colour and the pins stay the strongest colour. Earlier option, not taken: The map now washes the OpenStreetMap tiles to greyscale. A purpose-built quiet basemap (for example CARTO Positron / Dark Matter) would look cleaner. That means adding a third-party tile host to the CSP and accepting its terms, which are free for non-commercial use with attribution.
    - **(b) Brand mark.** The "WJ" square is now ink-on-paper. A proper logo or wordmark would need your input.
 7. **Android release.** The Flutter detail change (fewer claims and versions shown at once) ships only in a new APK. The tag push was blocked for me before. To release, run:
    `git tag mobile-v0.2.1 origin/main && git push origin mobile-v0.2.1`
