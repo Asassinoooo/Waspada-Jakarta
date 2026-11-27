@@ -336,3 +336,16 @@ test("ST-F-02: a briefing that repeats one event shows that event once, at its f
   assert.ok(markup.indexOf("Koreksi Cawang") < markup.indexOf("Genangan lain"), "the first occurrence keeps its place");
   assert.match(markup, /2 informasi terbit cocok dengan pilihan Anda\./u);
 });
+
+test("GUI-03: places and categories lead; services, institutions and audiences wait in one disclosure", () => {
+  const empty = renderToStaticMarkup(<Preferences storage={new MemoryStorage()} />);
+  assert.match(empty, /<details class="preferences-more"><summary>Minat lain: layanan, institusi, kelompok<\/summary>/u, "closed when empty");
+  assert.ok(empty.indexOf('name="places"') < empty.indexOf('name="categories"'), "places before categories");
+  assert.ok(empty.indexOf('name="categories"') < empty.indexOf('name="services"'), "categories before the disclosure");
+  assert.doesNotMatch(empty, /Belum ada minat untuk|karakter Unicode per nilai|kontrak briefing/u);
+
+  const storage = new MemoryStorage();
+  savePreferences(storage, { places: [], services: ["TransJakarta"], institutions: [], audiences: [], categories: [] });
+  const saved = renderToStaticMarkup(<Preferences storage={storage} />);
+  assert.match(saved, /<details class="preferences-more" open="">/u, "open when a rarer kind holds a value");
+});
