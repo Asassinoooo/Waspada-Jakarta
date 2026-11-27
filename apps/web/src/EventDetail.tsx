@@ -46,6 +46,14 @@ function historyChangeLabel(entry: HistoryPage["data"][number]) {
   }
 }
 
+/** GUI-03: the first few items stay visible; the rest wait behind one native disclosure. */
+const VISIBLE_HISTORY = 3;
+const VISIBLE_CLAIMS = 3;
+
+function splitVisible<T>(items: readonly T[], visible: number): [T[], T[]] {
+  return [items.slice(0, visible), items.slice(visible)];
+}
+
 function ApiHistory({
   state,
   onRetry,
@@ -59,7 +67,7 @@ function ApiHistory({
     <section className="detail-panel history-panel" aria-labelledby="api-history-heading">
       <div className="panel-heading">
         <div><p className="section-kicker">{wording(demo, "Riwayat fixture sintetis", "Riwayat")}</p><h2 id="api-history-heading">Perubahan</h2></div>
-        {state.status === "loaded" && <span className="count-chip">{state.data.data.length} entri</span>}
+        {state.status === "loaded" && <span className="count-chip">{state.data.data.length} versi</span>}
       </div>
       {state.status === "loading" && (
         <div className="state-panel state-panel--loading" role="status">
@@ -88,18 +96,91 @@ function ApiHistory({
         </div>
       )}
       {state.status === "loaded" && state.data.data.length > 0 && (
-        <ol className="claims-list" aria-label={wording(demo, "Entri riwayat fixture sintetis", "Entri riwayat")}>
-          {state.data.data.map((entry) => (
-            <li className="claim-card" key={`${entry.event_id}:${entry.version}:${entry.change_type}:${entry.changed_at}`}>
-              <span className="claim-card__label">{historyChangeLabel(entry)} · versi {entry.version}{wording(demo, " · fixture demo", "")}</span>
-              <p>{entry.summary}</p>
-              <p>{wording(demo, "Waktu pada fixture: ", "Waktu: ")}<time dateTime={entry.changed_at}>{formatInstant(entry.changed_at)}</time></p>
-              <HistoryChanges changes={entry.changes} />
-            </li>
-          ))}
-        </ol>
+        <HistoryList entries={state.data.data} demo={demo} />
       )}
     </section>
+  );
+}
+
+type HistoryEntryRecord = HistoryPage["data"][number];
+
+function HistoryItem({ entry, demo }: { entry: HistoryEntryRecord; demo: boolean }) {
+  return (
+    <li className="history-item">
+      <span className="claim-card__label">{historyChangeLabel(entry)} · versi {entry.version}{wording(demo, " · fixture demo", "")}</span>
+      <p>{entry.summary}</p>
+      <p className="history-item__time">{wording(demo, "Waktu pada fixture: ", "Waktu: ")}<time dateTime={entry.changed_at}>{formatInstant(entry.changed_at)}</time></p>
+      <HistoryChanges changes={entry.changes} />
+    </li>
+  );
+}
+
+/** GUI-03: newest version first; older versions sit in one disclosure so the page stays short. */
+function HistoryList({ entries, demo }: { entries: readonly HistoryEntryRecord[]; demo: boolean }) {
+  const newestFirst = [...entries].sort((left, right) => right.version - left.version);
+  const [recent, older] = splitVisible(newestFirst, VISIBLE_HISTORY);
+  const key = (entry: HistoryEntryRecord) => `${entry.event_id}:${entry.version}:${entry.change_type}:${entry.changed_at}`;
+  return (
+    <>
+      <ol className="history-list" reversed aria-label={wording(demo, "Entri riwayat fixture sintetis", "Entri riwayat, terbaru dulu")}>
+        {recent.map((entry) => <HistoryItem entry={entry} demo={demo} key={key(entry)} />)}
+      </ol>
+      {older.length > 0 && (
+        <details className="detail-more">
+          <summary>{`Lihat ${older.length} versi sebelumnya`}</summary>
+          <ol className="history-list" reversed start={older.length} aria-label="Versi sebelumnya">
+            {older.map((entry) => <HistoryItem entry={entry} demo={demo} key={key(entry)} />)}
+          </ol>
+        </details>
+      )}
+    </>
+  );
+}
+
+function ClaimCard({ claim }: { claim: EventDetailRecord["claims"][number] }) {
+  return (
+    <article className="claim-card">
+      <span className="claim-card__label">{evidenceLabel(claim.evidence_label)}</span>
+      <blockquote>{claim.text}</blockquote>
+      {claim.event_time !== null && claim.event_time !== undefined && <p>Waktu kejadian klaim: {eventTimeText(claim.event_time)}</p>}
+      {claim.qualifiers.length > 0 && <p className="qualifier">{claim.qualifiers.join(" ")}</p>}
+      {claim.sources.length === 0 && <p>Atribusi sumber tidak tersedia pada laporan ini.</p>}
+      {collapseClaimSources(claim.sources).map(({ source, excerpts }, index) => {
+        // Every distinct excerpt is kept. The first shows; the rest sit in a disclosure under the same source.
+        const [firstExcerpt, ...moreExcerpts] = excerpts;
+        return (
+          <div className="source-record" key={`${index}:${source.url}`}>
+            <h3>{source.display_name}</h3>
+            <p>Waktu sumber diterbitkan: {source.published_at ? formatInstant(source.published_at) : "Tidak disebutkan"} · waktu observasi: {formatInstant(source.observed_at)}</p>
+            {firstExcerpt !== undefined && <blockquote className="source-excerpt">{firstExcerpt}</blockquote>}
+            {moreExcerpts.length > 0 && (
+              <details>
+                <summary>{`Lihat ${moreExcerpts.length} kutipan lainnya`}</summary>
+                {moreExcerpts.map((excerpt) => <blockquote className="source-excerpt" key={excerpt}>{excerpt}</blockquote>)}
+              </details>
+            )}
+            <a className="text-link" href={source.url} target="_blank" rel="noreferrer">Buka sumber publik</a>
+          </div>
+        );
+      })}
+    </article>
+  );
+}
+
+function ClaimsList({ claims }: { claims: EventDetailRecord["claims"] }) {
+  const [shown, rest] = splitVisible(claims, VISIBLE_CLAIMS);
+  return (
+    <div className="claims-list">
+      {shown.map((claim) => <ClaimCard claim={claim} key={claim.claim_id} />)}
+      {rest.length > 0 && (
+        <details className="detail-more">
+          <summary>{`Tampilkan ${rest.length} klaim lainnya`}</summary>
+          <div className="claims-list">
+            {rest.map((claim) => <ClaimCard claim={claim} key={claim.claim_id} />)}
+          </div>
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -186,8 +267,8 @@ function ApiEventDetail({
           <div className="detail-columns">
             <section className="detail-panel" aria-labelledby="api-facts-heading">
               <div className="panel-heading">
-                <div><p className="section-kicker">Proyeksi publik</p><h2 id="api-facts-heading">Waktu dan cakupan</h2></div>
-                <span className="synthetic-label">{wording(demo, "Contoh API", "Data API")}</span>
+                <h2 id="api-facts-heading">Waktu dan cakupan</h2>
+                {demo && <span className="synthetic-label">Contoh API</span>}
               </div>
               <dl className="detail-facts detail-facts--spacious">
                 <div><dt>Waktu kejadian</dt><dd>{eventTimeText(event.event_time)}</dd></div>
@@ -195,22 +276,27 @@ function ApiEventDetail({
                 <div><dt>Validitas pada laporan</dt><dd>{event.validity.valid_from || event.validity.valid_until
                   ? <>{event.validity.valid_from ? formatInstant(event.validity.valid_from) : "Tidak ada waktu awal"} sampai {event.validity.valid_until ? formatInstant(event.validity.valid_until) : "Tidak ada waktu akhir"}</>
                   : `Tidak tersedia pada ${noun}`}</dd></div>
-                <div><dt>Versi publik diterbitkan{wording(demo, " (waktu fixture)", "")}</dt><dd><time dateTime={event.published_at}>{formatInstant(event.published_at)}</time></dd></div>
-                {event.publication && sourceCounts !== null && (
-                  <div><dt>Cara penerbitan</dt><dd>{publicationPathText({ mode: event.publication.mode, source_count: sourceCounts.outlets }, sourceCounts.copies)}</dd></div>
-                )}
-                <div><dt>Data dimuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
-                <div><dt>Waktu pengambilan sumber</dt><dd>{sourceRetrieved ?? "Tidak disebutkan"}</dd></div>
                 {typeof event.location_label === "string" && event.location_label.trim().length > 0 && (
                   <div><dt>Lokasi menurut laporan</dt><dd>{event.location_label.trim()}{LOCATION_LABEL_NOTE}</dd></div>
                 )}
                 <div><dt>Cakupan tempat/layanan/kelompok</dt><dd>{event.scope.places.concat(event.scope.services, event.scope.institutions, event.scope.audiences).join(", ") || `Tidak tersedia pada ${noun}`}</dd></div>
               </dl>
+              <details className="detail-more">
+                <summary>Waktu penerbitan dan pengambilan sumber</summary>
+                <dl className="detail-facts">
+                  <div><dt>Versi publik diterbitkan{wording(demo, " (waktu fixture)", "")}</dt><dd><time dateTime={event.published_at}>{formatInstant(event.published_at)}</time></dd></div>
+                  {event.publication && sourceCounts !== null && (
+                    <div><dt>Cara penerbitan</dt><dd>{publicationPathText({ mode: event.publication.mode, source_count: sourceCounts.outlets }, sourceCounts.copies)}</dd></div>
+                  )}
+                  <div><dt>Data dimuat</dt><dd>{formatInstant(context?.generated_at)}</dd></div>
+                  <div><dt>Waktu pengambilan sumber</dt><dd>{sourceRetrieved ?? "Tidak disebutkan"}</dd></div>
+                </dl>
+              </details>
               {event.impacts.length === 0 ? (
-                <div className="state-panel state-panel--compact" role="note">
-                  <strong>{`Dampak tidak tersedia pada ${noun} ini.`}</strong>
-                  <p>Ketiadaan dampak di laporan tidak menjelaskan kondisi atau keselamatan.</p>
-                </div>
+                <p className="detail-muted" role="note">
+                  <strong>{`Dampak tidak tersedia pada ${noun} ini.`}</strong>{" "}
+                  Ketiadaan dampak di laporan tidak menjelaskan kondisi atau keselamatan.
+                </p>
               ) : (
                 <div className="claims-list" aria-label="Dampak yang tercantum pada laporan">
                   {event.impacts.map((impact) => (
@@ -228,6 +314,7 @@ function ApiEventDetail({
             <section className="detail-panel" aria-labelledby="api-claim-heading">
               <div className="panel-heading">
                 <div><p className="section-kicker">Klaim per sumber</p><h2 id="api-claim-heading">Bukti</h2></div>
+                {event.claims.length > 0 && <span className="count-chip">{event.claims.length} klaim</span>}
               </div>
               {event.claims.length === 0 ? (
                 <div className="state-panel state-panel--compact" role="note">
@@ -235,35 +322,7 @@ function ApiEventDetail({
                   <p>Tidak ada klaim, atribusi sumber, atau kutipan dalam laporan. {wording(demo, "Ringkasan contoh bukan bukti.", "Ringkasan bukan bukti.")}</p>
                 </div>
               ) : (
-                <div className="claims-list">
-                  {event.claims.map((claim) => (
-                    <article className="claim-card" key={claim.claim_id}>
-                      <span className="claim-card__label">{evidenceLabel(claim.evidence_label)}</span>
-                      <blockquote>{claim.text}</blockquote>
-                      <p>Waktu kejadian klaim: {eventTimeText(claim.event_time)}</p>
-                      {claim.qualifiers.length > 0 && <p className="qualifier">{claim.qualifiers.join(" ")}</p>}
-                      {claim.sources.length === 0 && <p>Atribusi sumber tidak tersedia pada laporan ini.</p>}
-                      {collapseClaimSources(claim.sources).map(({ source, excerpts }, index) => {
-                        // Every distinct excerpt is kept. The first shows; the rest sit in a disclosure under the same source.
-                        const [firstExcerpt, ...moreExcerpts] = excerpts;
-                        return (
-                          <div className="source-record" key={`${index}:${source.url}`}>
-                            <h3>{source.display_name}</h3>
-                            <p>Waktu sumber diterbitkan: {source.published_at ? formatInstant(source.published_at) : "Tidak disebutkan"} · waktu observasi: {formatInstant(source.observed_at)}</p>
-                            {firstExcerpt !== undefined && <blockquote className="source-excerpt">{firstExcerpt}</blockquote>}
-                            {moreExcerpts.length > 0 && (
-                              <details>
-                                <summary>{`Lihat ${moreExcerpts.length} kutipan lainnya`}</summary>
-                                {moreExcerpts.map((excerpt) => <blockquote className="source-excerpt" key={excerpt}>{excerpt}</blockquote>)}
-                              </details>
-                            )}
-                            <a className="text-link" href={source.url} target="_blank" rel="noreferrer">Buka sumber publik</a>
-                          </div>
-                        );
-                      })}
-                    </article>
-                  ))}
-                </div>
+                <ClaimsList claims={event.claims} />
               )}
             </section>
           </div>

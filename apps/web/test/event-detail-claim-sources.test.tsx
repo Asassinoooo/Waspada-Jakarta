@@ -260,3 +260,22 @@ test("ST-F-05: a null source publish time reads Tidak disebutkan on its source l
   assert.equal(countOf(html, "Waktu sumber diterbitkan: Tidak disebutkan"), 1);
   assert.equal(countOf(html, `Waktu sumber diterbitkan: ${formatInstant(eventAt)}`), 0, "the event time does not fill the issuer line");
 });
+
+// GUI-03 (27 Nov 2026): a long record stays short. Three claims and three versions show; the rest wait in a disclosure.
+test("GUI-03: claims past the third and versions past the third sit in closed disclosures, newest version first", () => {
+  const claims = Array.from({ length: 7 }, (_, index) => ({ ...claim([source({ url: `https://news.example/${index}` })]), claim_id: `c-${index}`, text: `Klaim nomor ${index}.` }));
+  const entries = Array.from({ length: 5 }, (_, index) => historyEntry({ version: index + 1, changed_at: `2026-11-1${index}T09:05:00.000Z`, summary: `Versi ${index + 1} terbit.` }));
+  const html = renderWithHistory(record(claims), entries);
+  assert.match(html, /<span class="count-chip">7 klaim<\/span>/u);
+  assert.match(html, /<summary>Tampilkan 4 klaim lainnya<\/summary>/u);
+  assert.match(html, /<summary>Lihat 2 versi sebelumnya<\/summary>/u);
+  assert.doesNotMatch(html, /<details[^>]* open/u, "disclosures start closed");
+  assert.ok(html.indexOf("Versi 5 terbit.") < html.indexOf("Versi 4 terbit."), "newest version first");
+  assert.ok(html.indexOf("Versi 3 terbit.") < html.indexOf("Lihat 2 versi sebelumnya"), "three newest versions before the disclosure");
+  for (let index = 0; index < 7; index += 1) assert.match(html, new RegExp(`Klaim nomor ${index}\\.`), "every claim is still in the page");
+});
+
+test("GUI-03: an unknown claim time is not repeated on every claim card", () => {
+  const html = renderLive(record([{ ...claim([source()]), event_time: null as never }]));
+  assert.doesNotMatch(html, /Waktu kejadian klaim/u);
+});
