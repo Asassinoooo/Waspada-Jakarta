@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { AccountRole, AccountUser, AccountUserUpdate, SessionEnvelope } from "@waspada/worker/account-contracts";
 import { PageHeader } from "./ui/PageHeader.js";
 import {
@@ -269,6 +269,15 @@ function PasswordLogin({
   client: AccountClient;
   returnTo?: AccountReturnTarget;
 }) {
+  // GUI-04: one form at a time. Both stay in the page (hidden), so switching keeps what was typed.
+  const [mode, setMode] = useState<"login" | "register">("login");
+  function onTabKey(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next = mode === "login" ? "register" : "login";
+    setMode(next);
+    document.getElementById(next === "login" ? "auth-tab-login" : "auth-tab-register")?.focus();
+  }
   if (sessionState.status === "loading") return <SessionLoading />;
   if (sessionState.status === "error") return <SessionUnavailable onRetry={onRefreshSession} />;
   if (sessionState.status === "authenticated") {
@@ -290,33 +299,36 @@ function PasswordLogin({
   }
 
   return (
-    <div className="account-flow">
-      <section className="account-card" aria-labelledby="login-title">
-        <h2 id="login-title">Masuk dengan nama pengguna</h2>
-        <p>Masuk bersifat opsional. Peta, laporan publik, riwayat, dan minat lokal tetap dapat digunakan tanpa akun.</p>
-        {loginAvailable
-          ? <LoginForm client={client} onSignedIn={enterAccount} />
-          : <p className="account-message" role="status">Masuk dengan nama pengguna belum disiapkan pada layanan ini.</p>}
-      </section>
-      {registrationAvailable
-        ? (
-          <section className="account-card" aria-labelledby="register-title">
-            <h2 id="register-title">Buat akun baru</h2>
-            <p>Akun baru selalu mendapat peran Pengguna. Peran lain hanya dapat diberikan oleh administrator.</p>
-            <RegisterForm client={client} onSignedIn={enterAccount} />
-          </section>
-        )
-        : (
-          <section className="account-card account-card--quiet" role="status">
-            <h2>Pendaftaran belum tersedia</h2>
-            <p>Layanan ini belum membuka pendaftaran akun baru. Peta dan laporan publik tetap dapat dibaca.</p>
-          </section>
+    <div className="account-flow account-flow--auth">
+      <section className="account-card auth-card" aria-label="Masuk atau daftar">
+        {registrationAvailable && (
+          <div className="auth-tabs" role="tablist" aria-label="Pilih masuk atau daftar">
+            <button type="button" role="tab" id="auth-tab-login" className="auth-tabs__tab" aria-selected={mode === "login"} aria-controls="auth-panel-login" tabIndex={mode === "login" ? 0 : -1} onClick={() => setMode("login")} onKeyDown={onTabKey}>Masuk</button>
+            <button type="button" role="tab" id="auth-tab-register" className="auth-tabs__tab" aria-selected={mode === "register"} aria-controls="auth-panel-register" tabIndex={mode === "register" ? 0 : -1} onClick={() => setMode("register")} onKeyDown={onTabKey}>Daftar</button>
+          </div>
         )}
-      <section className="account-card account-card--quiet">
-        <h2>Ingin melihat pengenalan singkat?</h2>
-        <p>Tiga langkah berikut menjelaskan status laporan, minat lokal, dan privasi. Akun tidak diperlukan.</p>
-        <a className="button button--quiet" href="#mulai">Lihat pengenalan</a>
+        <div id="auth-panel-login" role={registrationAvailable ? "tabpanel" : undefined} aria-labelledby={registrationAvailable ? "auth-tab-login" : "login-title"} hidden={mode !== "login"} className="auth-panel">
+          <h2 id="login-title" className="auth-panel__title">Masuk dengan nama pengguna</h2>
+          {loginAvailable
+            ? <LoginForm client={client} onSignedIn={enterAccount} />
+            : <p className="account-message" role="status">Masuk dengan nama pengguna belum disiapkan pada layanan ini.</p>}
+        </div>
+        {registrationAvailable && (
+          <div id="auth-panel-register" role="tabpanel" aria-labelledby="auth-tab-register" hidden={mode !== "register"} className="auth-panel">
+            <h2 id="register-title" className="auth-panel__title">Buat akun baru</h2>
+            <p className="auth-panel__note">Akun baru selalu mendapat peran Pengguna. Peran lain hanya dapat diberikan oleh administrator.</p>
+            <RegisterForm client={client} onSignedIn={enterAccount} />
+          </div>
+        )}
       </section>
+      {!registrationAvailable && (
+        <p className="auth-aside" role="status">
+          <strong>Pendaftaran belum tersedia.</strong> Layanan ini belum membuka pendaftaran akun baru. Peta dan laporan publik tetap dapat dibaca.
+        </p>
+      )}
+      <p className="auth-aside">
+        Akun bersifat opsional. <a className="text-link" href="#peta">Lanjutkan tanpa akun</a> · <a className="text-link" href="#mulai">Lihat pengenalan singkat</a>
+      </p>
     </div>
   );
 }
@@ -975,7 +987,7 @@ export function AccountPage({
   client = accountClient,
   confirmUpdate = defaultConfirmUpdate,
 }: AccountPageProps) {
-  const title = screen === "login" ? "Masuk atau lanjutkan sebagai tamu" : screen === "onboarding" ? "Pengenalan singkat" : "Akun Anda";
+  const title = screen === "login" ? "Masuk ke Waspada Jakarta" : screen === "onboarding" ? "Pengenalan singkat" : "Akun Anda";
 
   if (screen === "login") {
     return <AccountFrame title={title} kicker="Masuk · opsional">

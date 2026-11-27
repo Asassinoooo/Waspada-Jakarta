@@ -303,3 +303,13 @@ test("profile offers a password change form that never shows the current or new 
   assert.match(html, /mencabut sesi lain untuk akun ini/u);
   assert.doesNotMatch(html, /Google|value="kata-sandi/u);
 });
+
+test("GUI-04: sign-in and sign-up are two tabs of one card; sign-up starts hidden", () => {
+  const html = renderToStaticMarkup(<AccountPage screen="login" sessionState={sessionState(anonymousSession)} isNarrowScreen={false} onRefreshSession={() => {}} />);
+  assert.match(html, /role="tablist"/u);
+  assert.match(html, /<button type="button" role="tab" id="auth-tab-login"[^>]*aria-selected="true"/u);
+  assert.match(html, /<button type="button" role="tab" id="auth-tab-register"[^>]*aria-selected="false"/u);
+  assert.match(html, /<div id="auth-panel-register" role="tabpanel"[^>]*hidden=""/u);
+  assert.doesNotMatch(html, /<div id="auth-panel-login"[^>]*hidden=""/u);
+  assert.match(html, /Lanjutkan tanpa akun/u);
+});
