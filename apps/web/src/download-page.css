@@ -154,3 +154,17 @@
   .download-file__button { justify-self: stretch; justify-content: center; }
   .download-card__title { font-size: var(--text-2xl); }
 }
+
+/* GUI-03: the closed disclosure shows an arrow, so it reads as something to open. */
+.download-card__others > summary::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-start: var(--space-2);
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 150ms ease;
+}
+
+.download-card__others[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }

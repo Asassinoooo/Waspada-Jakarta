@@ -8,7 +8,7 @@ import { SiteHeader } from "../src/AppShell.js";
 import { routeFromHash } from "../src/App.js";
 import { MapEventList, EMPTY_LIST_NOTE, EMPTY_LIST_TITLE, EMPTY_RECENT_TITLE, RECENT_SCOPE_TEXT, showAllText } from "../src/MapEventList.js";
 import { MapFilterSheet, DEFAULT_MAP_FILTER_VALUE, FACILITY_NOTE, RECENCY_NOTE } from "../src/MapFilterSheet.js";
-import { MapHome } from "../src/MapHome.js";
+import { MapHome, WIDENED_BY_LINK_TEXT } from "../src/MapHome.js";
 import { buildEventHash, parseEventIdFromHash } from "../src/map-links.js";
 import {
   countActiveFilters,
@@ -495,4 +495,11 @@ test("GUI-03: a card without a named place does not spell out the missing place;
   assert.doesNotMatch(html, /Lokasi tidak tercatat/u);
   assert.match(html, /Kemang/u);
   assert.match(html, /Belum dipetakan/u);
+});
+
+test("GUI-03: the widened-window caption names why every report shows, without safety wording", () => {
+  assert.equal(WIDENED_BY_LINK_TEXT, "Semua laporan ditampilkan karena tautan ini menunjuk laporan lama.");
+  assert.doesNotMatch(WIDENED_BY_LINK_TEXT, /\baman\b/iu);
+  const html = renderToStaticMarkup(createElement(MapHome, { now: FIXTURE_NOW, initialEvents: [event("evt-1")], initialMarkers: markers }));
+  assert.doesNotMatch(html, /tautan ini menunjuk laporan lama/u, "not shown without a widening link");
 });
