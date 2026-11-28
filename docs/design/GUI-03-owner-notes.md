@@ -24,7 +24,7 @@ On 27 Nov 2026 the owner asked for the redesign to be applied without review, ai
    - **Backups:** local copies are in `/home/perry/waspada-removed-files-2026-11-27/`.
 6. **Full visual refresh (direction B).** You asked for it on 27 Nov ("awwwards level", minimal, strongly unified). GUI-04 below is the first pass. Two follow-ups are yours to decide:
    - **(a) Basemap. Owner decision (28 Nov 2026): don't grey it out entirely.** The OSM tiles stay with a softer wash (`saturate(0.5)` in both themes; dark is inverted), so water, parks and main roads keep muted colour and the pins stay the strongest colour. Earlier option, not taken: The map now washes the OpenStreetMap tiles to greyscale. A purpose-built quiet basemap (for example CARTO Positron / Dark Matter) would look cleaner. That means adding a third-party tile host to the CSP and accepting its terms, which are free for non-commercial use with attribution.
-   - **(b) Brand mark.** The "WJ" square is now ink-on-paper. A proper logo or wordmark would need your input.
+   - **(b) Brand mark. Owner decision (28 Nov 2026): logo A "Tugu"** (Monas as an "i", flame as the dot), chosen from three candidates in `docs/design/logo/`. It is now used in the header, the favicon and the Android launcher icon.
 7. **Android release.** The Flutter detail change (fewer claims and versions shown at once) ships only in a new APK. The tag push was blocked for me before. To release, run:
    `git tag mobile-v0.2.1 origin/main && git push origin mobile-v0.2.1`
 8. **Not audited yet:**
