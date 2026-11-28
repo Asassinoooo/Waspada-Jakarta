@@ -182,7 +182,7 @@ test("the header offers one primary link per tab and keeps the way back to the p
   const admin = renderToStaticMarkup(<AdminWorkspace initialTab="ringkasan" session={adminSession} context={demoContext} isNarrowScreen={false} onRefreshSession={() => {}} />);
   assert.equal((admin.match(/class="button button--primary admin-ws__primary"/gu) ?? []).length, 1);
   assert.match(admin, /class="button button--primary admin-ws__primary" href="#admin\/tinjau">Tinjau bukti<\/a>/u);
-  assert.match(admin, /class="admin-ws__home" href="#peta">Waspada Jakarta<\/a>/u);
+  assert.match(admin, /class="admin-ws__home" href="#peta"><span class="brand-mark admin-ws__mark" aria-hidden="true"><svg class="brand-mark__svg"[\s\S]*?<\/span>Waspada Jakarta<\/a>/u);
   assert.match(admin, /aria-label="Aksi lain"|>Aksi lain</u, "secondary actions sit in the ⋯ menu");
 
   const moderatorOnAlur = renderToStaticMarkup(<AdminWorkspace initialTab="alur" session={moderatorSession} context={null} isNarrowScreen={false} onRefreshSession={() => {}} />);

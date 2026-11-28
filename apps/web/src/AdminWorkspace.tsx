@@ -1,4 +1,5 @@
 import { providerFetchAllowed } from "./provider-fetch-access.js";
+import { BrandMark } from "./ui/BrandMark.js";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import type { PublicContext } from "@waspada/worker/public-contracts";
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
@@ -136,7 +137,7 @@ export function AdminWorkspace({ initialTab, session, context, isNarrowScreen, o
       <a className="skip-link" href="#main-content">Lewati ke konten utama</a>
       <header className="admin-ws__header">
         <div className="admin-ws__identity">
-          <a className="admin-ws__home" href="#peta">Waspada Jakarta</a>
+          <a className="admin-ws__home" href="#peta"><span className="brand-mark admin-ws__mark" aria-hidden="true"><BrandMark /></span>Waspada Jakarta</a>
           <h1 className="admin-ws__title">Ruang kerja</h1>
           <p className="admin-ws__tab-title">{definition?.title}</p>
         </div>

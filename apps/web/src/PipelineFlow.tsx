@@ -530,11 +530,11 @@ export function PipelineFlow() {
   return (
     <div className="pipeline-page">
       <header className="pipeline-page__intro">
-        <p className="pipeline-kicker">Moderator · baca saja</p>
+        <p className="pipeline-kicker">Pemantauan</p>
         <h2>Alur agen</h2>
         <p className="pipeline-page__lede">
-          Hitungan item dari sumber sampai terbit. Angka menunjukkan aliran kerja, bukan bukti bahwa suatu kejadian benar
-          atau bahwa suatu wilayah aman.
+          Jumlah laporan di setiap tahap, dari sumber sampai terbit. Ini aliran kerja, bukan bukti bahwa suatu kejadian
+          benar atau bahwa suatu wilayah aman.
         </p>
       </header>
       <PipelineHeaderStrip
