@@ -11,7 +11,7 @@ const loadAccountGate = () => import("./account-gate.js");
 const loadDownloadPage = () => import("./DownloadPage.js");
 const loadPresentationDetail = () => import("./PresentationDetail.js");
 const loadAdminEntry = () => import("./admin-entry.js");
-const loadAdminOverview = () => import("./AdminDashboard.js");
+const loadAdminOverview = () => import("./AdminOverview.js");
 
 export const LazyPreferences = lazy(() => loadPreferences().then((module) => ({ default: module.Preferences })));
 export const LazyUpdatesCenter = lazy(() => loadUpdatesCenter().then((module) => ({ default: module.UpdatesCenter })));
