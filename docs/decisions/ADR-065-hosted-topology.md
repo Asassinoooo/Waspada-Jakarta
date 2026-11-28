@@ -106,3 +106,7 @@ Status 18 Nov 2026: the Hyperdrive bindings, static assets, cron trigger (HOSTED
 
 - **Password reset: decided.** This replaces the 18 Nov 2026 line above. Owner decision, 23 Nov 2026: a password reset goes through the administrator. An administrator issues a one-time code of 10 Crockford base32 characters, valid for 30 minutes, usable once, and burned after 5 wrong attempts. Only its PBKDF2 hash is stored, and the audit row `password_reset_code_issued` never holds the code. There is no email. Delivered by AUTH-RESET-01 (merge `4b34b3d`); migration 063 was applied to the hosted Neon database on 23 Nov 2026.
 - **Notifications: local only** (owner decision, 23 Nov 2026). "Area saya" notifications run on the device. There is no Firebase and no Web Push, and interests are never uploaded. Delivered by NOTIFY-01 (web `a7768db`, Android merge `51c3ed2`).
+
+## Amendment (28 Nov 2026, HOSTED-26)
+
+The owner cut the ingest cadence from every 30 minutes (`7,37 * * * *`) to once an hour (`7 * * * *`) to save Neon Free compute. Neon showed 25.77 CU-hours used, against a 100 CU-hour monthly allowance. Each run wakes the database for the run plus the roughly 5-minute idle suspend, so the ingest share of compute about halves. Trade-off: new reports reach the hosted site up to about an hour after publication instead of about 30 minutes.

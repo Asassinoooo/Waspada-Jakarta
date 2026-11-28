@@ -37,7 +37,7 @@ INGEST_DISPATCH_REF = "main"
 
 # Off-peak minutes, every 30 minutes. Each run takes 8 to 16 minutes, so runs do not overlap.
 [env.production.triggers]
-crons = ["7,37 * * * *"]
+crons = ["7 * * * *"]
 
 # Hyperdrive config waspada-public (HOSTED-23), query caching ON. Public GET reads only (HOSTED-37).
 # Same Neon database as the scheduled ingest (owner decision).

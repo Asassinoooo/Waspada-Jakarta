@@ -1,6 +1,6 @@
 name: Hosted live ingest
 
-# HOSTED-13: one bounded ingest cycle against the hosted Neon database every 30 minutes (started by the Worker cron), then exit.
+# HOSTED-13: one bounded ingest cycle against the hosted Neon database once an hour (started by the Worker cron, HOSTED-26), then exit.
 # The repository is public, so every log line here is public. The step prints counts and fixed stop reasons only.
 # The concurrency group below is the only lock. Local PC mode (serve:live or serve:hosted-ingest without --once)
 # has no lock, so it must not run alongside this schedule.
