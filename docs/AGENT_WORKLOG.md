@@ -35,7 +35,7 @@ This file links to them. It does not copy them.
 | Production | https://waspada-jakarta.waspada-worker.workers.dev. Worker version `3b918744…`, deployed 24 Nov 2026 by CD (CI run 45147791923, jobs test, e2e and deploy all succeeded) |
 | CD | Every push to `main` deploys once `test` and `e2e` pass (`.github/workflows/ci.yml`). The secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` were set on 24 Nov 2026 |
 | Database | Neon Free through Hyperdrive. Migrations up to `063_password_reset_codes.sql` are applied to the hosted database (23 Nov 2026, `npm run hosted:bootstrap`) |
-| Ingest | GitHub Actions `ingest.yml`, started by the Worker cron at `7,37 * * * *` |
+| Ingest | GitHub Actions `ingest.yml`, started by the Worker cron at `7 * * * *` (hourly since HOSTED-26, 28 Nov 2026, to save Neon Free compute) |
 | Mobile | Flutter `apps/mobile`. Debug APK built on 23 Nov 2026 (not committed; sha256 in `docs/testing/evidence/2026-11-23/mobile/NOTIFY-01-apk.md`) |
 
 **Hosted checks on 24 Nov 2026:**
