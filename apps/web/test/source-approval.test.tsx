@@ -18,6 +18,8 @@ import {
   publicDisplayText,
   reuseBasisText,
   sourceHealthLines,
+  sourceMatchesFilter,
+  sourceNeedsAttention,
 } from "../src/SourceApprovalPanel.js";
 
 const CSRF = "csrf-token-with-enough-entropy";
@@ -329,4 +331,30 @@ test("the list parser accepts the restriction and health fields, null health inc
 
   const missingHealth = fakeFetch([{ status: 200, body: { sources: [{ ...SOURCES[0], health_status: undefined }] } }]);
   await assert.rejects(createSourceApprovalClient(missingHealth.fetch).listSources(), SourceApprovalPayloadError);
+});
+
+test("ADMIN-UI-03: a pending or failing source needs attention; filters split the list by approval", () => {
+  assert.equal(sourceNeedsAttention(source({ approval_status: "pending", health_status: "healthy" })), true);
+  assert.equal(sourceNeedsAttention(source({ approval_status: "approved", health_status: "degraded" })), true);
+  assert.equal(sourceNeedsAttention(source({ approval_status: "approved", health_status: "unavailable" })), true);
+  assert.equal(sourceNeedsAttention(source({ approval_status: "approved", health_status: "healthy" })), false);
+  assert.equal(sourceNeedsAttention(source({ approval_status: "revoked", health_status: "unknown" })), false);
+  assert.deepEqual(SOURCES.filter((item) => sourceMatchesFilter(item, "approved")).map((item) => item.source_id), ["source-disetujui"]);
+  assert.equal(SOURCES.filter((item) => sourceMatchesFilter(item, "all")).length, SOURCES.length);
+});
+
+test("ADMIN-UI-03: each row shows approval, health in short form and one action; the details stay behind Rincian", () => {
+  const now = Date.parse("2026-11-28T10:00:00.000Z");
+  const html = renderToStaticMarkup(
+    <SourceApprovalList
+      nowMs={now}
+      sources={[source({ display_name: "Sumber sehat", approval_status: "approved", health_status: "healthy", last_checked_at: "2026-11-28T09:51:00.000Z", last_success_at: "2026-11-28T09:51:00.000Z", public_display_granted: true })]}
+      onRequestChange={() => {}}
+    />,
+  );
+  assert.match(html, /Berhasil 9 menit lalu/u);
+  assert.match(html, /source-approval__chip--approved/u);
+  assert.match(html, /<details class="source-approval__more"><summary>Rincian<\/summary>/u);
+  assert.equal((html.match(/<button/gu) ?? []).length, 1);
+  assert.doesNotMatch(html, /\baman\b/u);
 });

@@ -60,6 +60,8 @@ test("AUTH-RESET-01: a refused code gets one generic message that never says whe
 test("AUTH-RESET-01: the login form links to Lupa kata sandi, and the admin row offers a reset code only for others' active accounts", () => {
   const source = readFileSync(new URL("../src/AccountPages.tsx", import.meta.url), "utf8");
   assert.match(source, /<a className="account-form__link" href="#lupa-sandi">Lupa kata sandi\?<\/a>/u);
-  assert.match(source, /\{!isSelf && user\.active && <AdminResetCode user=\{user\} client=\{client\} csrfToken=\{csrfToken\} \/>\}/u);
+  // ADMIN-UI-03: the reset code sits in the editor that only opens for someone else's account, and only when it is active.
+  assert.match(source, /\{!isSelf && open && \([\s\S]*?\{user\.active && \([\s\S]*?<AdminResetCode user=\{user\} client=\{client\} csrfToken=\{csrfToken\} \/>/u);
+  assert.equal((source.match(/<AdminResetCode /gu) ?? []).length, 1, "the reset control is rendered in one place only");
   assert.match(source, /Kode hanya ditampilkan sekarang/u);
 });

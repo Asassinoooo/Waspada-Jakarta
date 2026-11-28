@@ -562,6 +562,7 @@ function AdminUserRow({
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const isSelf = user.id === viewerId;
   const dirty = role !== user.role || active !== user.active;
 
@@ -599,34 +600,74 @@ function AdminUserRow({
     }
   }
 
+  const editorId = `account-user-editor-${user.id}`;
   return (
-    <article className="account-user-row" aria-labelledby={`account-user-${user.id}`}>
-      <div className="account-user-row__identity">
-        <h3 id={`account-user-${user.id}`}>{user.display_name}</h3>
-        <p>{user.email}</p>
-        <span className="account-user-row__meta">{user.active ? "Aktif" : "Nonaktif"} · {roleLabel(user.role)} · pengenalan {user.onboarding_version === 1 ? "selesai" : "belum selesai"} · versi {user.version}</span>
+    <article className={`account-user-row${open ? " account-user-row--open" : ""}${user.active ? "" : " account-user-row--inactive"}`} aria-labelledby={`account-user-${user.id}`}>
+      <div className="account-user-row__summary">
+        <span className="account-user-row__avatar" aria-hidden="true">{initials(user.display_name)}</span>
+        <div className="account-user-row__identity">
+          <h3 id={`account-user-${user.id}`}>{user.display_name}{isSelf && <span className="account-user-row__you">Anda</span>}</h3>
+          <p>{user.email ?? (user.onboarding_version === 1 ? "Pengenalan selesai" : "Pengenalan belum selesai")}</p>
+        </div>
+        <div className="account-user-row__chips">
+          <span className={`account-chip account-chip--${user.role}`}>{roleLabel(user.role)}</span>
+          <span className={`account-chip account-chip--${user.active ? "active" : "inactive"}`}>{user.active ? "Aktif" : "Nonaktif"}</span>
+        </div>
+        {isSelf
+          ? <span className="account-user-row__self-note">Tidak dapat diubah</span>
+          : <button className="button button--quiet button--sm" type="button" aria-expanded={open} aria-controls={editorId} onClick={() => setOpen((value) => !value)}>{open ? "Tutup" : "Kelola"}</button>}
       </div>
-      {isSelf
-        ? <p className="account-inline-note">Akun Anda tidak dapat diubah dari daftar ini.</p>
-        : <div className="account-user-row__editor">
-          <label>Peran
-            <select value={role} onChange={(event) => setRole(event.currentTarget.value as AccountRole)} disabled={saving}>
-              <option value="user">Pengguna</option>
-              <option value="moderator">Moderator</option>
-              <option value="admin">Administrator</option>
-            </select>
-          </label>
-          <label className="account-checkbox"><input type="checkbox" checked={active} onChange={(event) => setActive(event.currentTarget.checked)} disabled={saving} /> Akun aktif</label>
-          <label>Alasan perubahan
-            <textarea value={reason} onChange={(event) => setReason(event.currentTarget.value)} maxLength={500} rows={2} disabled={saving} required />
-          </label>
-          <button className="button" type="button" onClick={() => void save()} disabled={saving || !dirty || reason.trim().length < 1}>{saving ? "Menyimpan…" : "Simpan perubahan"}</button>
-        </div>}
-      {!isSelf && user.active && <AdminResetCode user={user} client={client} csrfToken={csrfToken} />}
+      {isSelf && <p className="visually-hidden">Akun Anda tidak dapat diubah dari daftar ini.</p>}
+      {!isSelf && open && (
+        <div className="account-user-row__panel" id={editorId}>
+          <div className="account-user-row__editor">
+            <fieldset className="account-role-picker" disabled={saving}>
+              <legend>Peran</legend>
+              <div className="account-role-picker__options">
+              {ROLE_CHOICES.map((choice) => (
+                <label key={choice.role} className="account-role-picker__option">
+                  <input type="radio" name={`role-${user.id}`} value={choice.role} checked={role === choice.role} onChange={() => setRole(choice.role)} />
+                  <span><strong>{choice.label}</strong><small>{choice.detail}</small></span>
+                </label>
+              ))}
+              </div>
+            </fieldset>
+            <label className="account-switch">
+              <input type="checkbox" role="switch" checked={active} onChange={(event) => setActive(event.currentTarget.checked)} disabled={saving} />
+              <span>Akun aktif</span>
+            </label>
+            <label className="account-user-row__reason">Alasan perubahan
+              <textarea value={reason} onChange={(event) => setReason(event.currentTarget.value)} maxLength={500} rows={2} disabled={saving} required placeholder="Contoh: ditunjuk sebagai moderator piket November" />
+            </label>
+            <div className="account-user-row__save">
+              <p>Menyimpan mengeluarkan akun ini dari semua sesi.</p>
+              <button className="button button--primary button--sm" type="button" onClick={() => void save()} disabled={saving || !dirty || reason.trim().length < 1}>{saving ? "Menyimpan…" : "Simpan perubahan"}</button>
+            </div>
+          </div>
+          {user.active && (
+            <div className="account-user-row__password">
+              <h4>Kata sandi</h4>
+              <AdminResetCode user={user} client={client} csrfToken={csrfToken} />
+            </div>
+          )}
+        </div>
+      )}
       {message && <p className="account-message" role="status">{message}</p>}
     </article>
   );
 }
+
+/** Two letters for the avatar; the name itself is the accessible label. */
+function initials(name: string): string {
+  const words = name.replace(/\(.*?\)/gu, "").trim().split(/\s+/u).filter(Boolean);
+  return ((words[0]?.[0] ?? "?") + (words[1]?.[0] ?? "")).toLocaleUpperCase("id-ID");
+}
+
+const ROLE_CHOICES: ReadonlyArray<{ role: AccountRole; label: string; detail: string }> = [
+  { role: "user", label: "Pengguna", detail: "Peta, pembaruan, dan area saya." },
+  { role: "moderator", label: "Moderator", detail: "Ditambah ruang kerja: tinjau bukti dan alur agen." },
+  { role: "admin", label: "Administrator", detail: "Ditambah akun, peran, dan persetujuan sumber." },
+];
 
 const WIB_TIME = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" });
 
@@ -723,6 +764,8 @@ function AdminUsersPanel({
   const [loadMore, setLoadMore] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [filter, setFilter] = useState<AccountFilter>("all");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -784,24 +827,45 @@ function AdminUsersPanel({
     setNotice(accountUpdatedMessage(updated));
   }
 
+  const visible = sortAccounts(users)
+    .filter((item) => accountMatchesFilter(item, filter))
+    .filter((item) => query.trim() === "" || item.display_name.toLocaleLowerCase("id-ID").includes(query.trim().toLocaleLowerCase("id-ID")));
+  const counts = accountCounts(users);
+
   return (
     <section className="account-admin-users" aria-labelledby="admin-accounts-title">
-      <div className="account-admin-users__heading">
+      <header className="account-admin-users__heading">
         <div>
-          <p className="experience-kicker">Administrator · akses akun</p>
+          <p className="account-admin-users__kicker">Administrasi</p>
           <h2 id="admin-accounts-title">Akun pengguna</h2>
+          <p className="account-admin-users__lede">Peran menentukan halaman yang terbuka. Setiap perubahan butuh alasan dan mengeluarkan akun itu dari semua sesi.</p>
         </div>
-        {loadState !== "loading" && <button className="button button--quiet" type="button" onClick={() => setReloadVersion((current) => current + 1)}>Muat ulang</button>}
-      </div>
-      <p className="account-inline-note">Daftar dibatasi 20 akun per halaman. Setiap perubahan memerlukan alasan dan mencabut semua sesi akun sasaran. Akun Anda sendiri tidak dapat diubah.</p>
+        {loadState !== "loading" && <button className="button button--quiet button--sm" type="button" onClick={() => setReloadVersion((current) => current + 1)}>Muat ulang</button>}
+      </header>
       {notice && <p className="account-message" role="status">{notice}</p>}
       {loadState === "loading" && <SessionLoading label="Memuat daftar akun…" />}
       {loadState === "forbidden" && <section className="state-panel state-panel--error" role="alert"><strong>Izin administrator berubah.</strong><p>Sesi akun diperiksa kembali sebelum daftar dibuka.</p></section>}
       {loadState === "unavailable" && <section className="state-panel state-panel--error" role="alert"><strong>Daftar akun belum dapat dimuat.</strong><p>Perubahan akun tidak dilakukan.</p><button className="button button--quiet" type="button" onClick={() => setReloadVersion((current) => current + 1)}>Coba lagi</button></section>}
+      {loadState === "ready" && (
+        <div className="account-admin-users__tools">
+          <div className="pipeline-range account-filter" role="group" aria-label="Saring akun">
+            {ACCOUNT_FILTERS.map((option) => (
+              <button key={option.id} type="button" className="filter-pill" aria-pressed={filter === option.id} onClick={() => setFilter(option.id)}>
+                {option.label} <span className="account-filter__count">{counts[option.id]}</span>
+              </button>
+            ))}
+          </div>
+          <label className="account-search">
+            <span className="visually-hidden">Cari nama</span>
+            <input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Cari nama…" />
+          </label>
+        </div>
+      )}
       {loadState === "ready" && users.length === 0 && <p className="account-inline-note">Belum ada akun pada halaman ini.</p>}
-      {loadState === "ready" && users.length > 0 && (
+      {loadState === "ready" && users.length > 0 && visible.length === 0 && <p className="account-inline-note">Tidak ada akun yang cocok dengan saringan ini.</p>}
+      {loadState === "ready" && visible.length > 0 && (
         <div className="account-user-list">
-          {users.map((item) => <AdminUserRow
+          {visible.map((item) => <AdminUserRow
             key={item.id}
             user={item}
             viewerId={user.id}
@@ -815,8 +879,44 @@ function AdminUsersPanel({
         </div>
       )}
       {loadState === "ready" && nextCursor !== null && <button className="button button--quiet" type="button" onClick={() => void loadNextPage()} disabled={loadMore}>{loadMore ? "Memuat…" : "Muat 20 akun berikutnya"}</button>}
+      {loadState === "ready" && <p className="account-admin-users__foot">Menampilkan {users.length} akun yang dimuat (20 per halaman). Akun Anda sendiri tidak dapat diubah dari sini.</p>}
     </section>
   );
+}
+
+type AccountFilter = "all" | AccountRole | "inactive";
+const ACCOUNT_FILTERS: ReadonlyArray<{ id: AccountFilter; label: string }> = [
+  { id: "all", label: "Semua" },
+  { id: "admin", label: "Administrator" },
+  { id: "moderator", label: "Moderator" },
+  { id: "user", label: "Pengguna" },
+  { id: "inactive", label: "Nonaktif" },
+];
+
+/** Role filters count active accounts only; inactive accounts sit under their own filter. */
+export function accountMatchesFilter(user: AccountUser, filter: AccountFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "inactive") return !user.active;
+  return user.active && user.role === filter;
+}
+
+export function accountCounts(users: readonly AccountUser[]): Record<AccountFilter, number> {
+  const counts: Record<AccountFilter, number> = { all: users.length, admin: 0, moderator: 0, user: 0, inactive: 0 };
+  for (const item of users) {
+    if (!item.active) counts.inactive += 1;
+    else counts[item.role] += 1;
+  }
+  return counts;
+}
+
+const ROLE_ORDER: Readonly<Record<AccountRole, number>> = { admin: 0, moderator: 1, user: 2 };
+
+/** Staff first, inactive last, then by name. */
+export function sortAccounts(users: readonly AccountUser[]): AccountUser[] {
+  return [...users].sort((a, b) =>
+    Number(!a.active) - Number(!b.active)
+    || ROLE_ORDER[a.role] - ROLE_ORDER[b.role]
+    || a.display_name.localeCompare(b.display_name, "id-ID"));
 }
 
 function AccountProfile({

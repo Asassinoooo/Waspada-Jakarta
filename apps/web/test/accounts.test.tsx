@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AccountUser, AccountUserUpdate, SessionEnvelope } from "@waspada/worker/account-contracts";
-import { ACCOUNT_ONBOARDING_STEPS, AccountAccessGate, AccountPage, adminUpdateErrorMessage, hasProtectedShellAccess } from "../src/AccountPages.js";
+import { ACCOUNT_ONBOARDING_STEPS, AccountAccessGate, AccountPage, accountCounts, accountMatchesFilter, adminUpdateErrorMessage, hasProtectedShellAccess, sortAccounts } from "../src/AccountPages.js";
 import {
   AccountHttpError,
   AccountPayloadError,
@@ -312,4 +312,17 @@ test("GUI-04: sign-in and sign-up are two tabs of one card; sign-up starts hidde
   assert.match(html, /<div id="auth-panel-register" role="tabpanel"[^>]*hidden=""/u);
   assert.doesNotMatch(html, /<div id="auth-panel-login"[^>]*hidden=""/u);
   assert.match(html, /Lanjutkan tanpa akun/u);
+});
+
+function person(id: string, role: AccountUser["role"], active = true, name = id): AccountUser {
+  return { id, display_name: name, email: null, role, active, onboarding_version: 1, onboarding_completed_at: null, version: 1 };
+}
+
+test("ADMIN-UI-03: staff first, inactive last; role filters count active accounts and inactive ones have their own filter", () => {
+  const users = [person("u1", "user", true, "Zaki"), person("m1", "moderator", true, "Budi"), person("u2", "user", false, "Ani"), person("a1", "admin", true, "Dewi"), person("u3", "user", true, "Agus")];
+  assert.deepEqual(sortAccounts(users).map((item) => item.id), ["a1", "m1", "u3", "u1", "u2"]);
+  assert.deepEqual(accountCounts(users), { all: 5, admin: 1, moderator: 1, user: 2, inactive: 1 });
+  assert.equal(accountMatchesFilter(users[2]!, "user"), false, "an inactive user sits under Nonaktif, not Pengguna");
+  assert.equal(accountMatchesFilter(users[2]!, "inactive"), true);
+  assert.equal(accountMatchesFilter(users[0]!, "all"), true);
 });
