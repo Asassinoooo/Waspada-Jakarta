@@ -4,12 +4,22 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#087B75"
+        android:fillColor="#0E1112"
         android:pathData="M0,0 H108 V108 H0 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M26,34 L35,34 L42,62 L51,43 L57,43 L66,62 L73,34 L82,34 L71,76 L63,76 L54,55 L45,76 L37,76 Z" />
-    <path
-        android:fillColor="#E7B448"
-        android:pathData="M80,18 L87,25 L80,32 L73,25 Z" />
+    <!-- BRAND-01 Tugu (docs/design/logo/a-tugu.svg), 64-unit mark placed in the 66dp safe zone. -->
+    <group
+        android:translateX="21"
+        android:translateY="21"
+        android:scaleX="1.03125"
+        android:scaleY="1.03125">
+        <path
+            android:fillColor="#5DC4BA"
+            android:pathData="M32.8,6.8c0.45,2.9 3.5,4.7 3.5,8.1a4.3,4.3 0,0 1,-8.6 0c0,-2.35 1.45,-3.7 2.5,-4.85 0.2,1.25 0.7,2.05 1.6,2.5 0.35,-1.9 0.75,-3.8 1,-5.75z" />
+        <path
+            android:fillColor="#F4F4F2"
+            android:pathData="M25.9,21.2H38.1L35.1,24.2L36.3,47.2H49.7L45.8,52.2H18.2L14.3,47.2H27.7L28.9,24.2Z" />
+        <path
+            android:fillColor="#F4F4F2"
+            android:pathData="M12.7,53.6H51.3A1.2,1.2 0,0 1,52.5 54.8V55.2A1.2,1.2 0,0 1,51.3 56.4H12.7A1.2,1.2 0,0 1,11.5 55.2V54.8A1.2,1.2 0,0 1,12.7 53.6Z" />
+    </group>
 </vector>

@@ -7,6 +7,7 @@ import { prefetchRouteOnIntent } from "./lazy-routes.js";
 import { hasProtectedShellAccess } from "./account-access.js";
 import { openOnboardingIntro } from "./intro-trigger.js";
 import { THEME_LABEL, ThemeToggle, nextThemePreference, setThemePreference, useThemePreference } from "./ThemeToggle.js";
+import { BrandMark } from "./ui/BrandMark.js";
 import { Menu, type MenuItem } from "./ui/Menu.js";
 import { Popover } from "./ui/Popover.js";
 
@@ -189,7 +190,7 @@ export function SiteHeader({ route, context = null, sessionKey = 0, accountRevis
           title={brandCollapsed ? "Tampilkan nama Waspada Jakarta" : "Klik untuk menciutkan logo"}
           aria-expanded={!brandCollapsed}
         >
-          <span className="brand-mark" aria-hidden="true">WJ</span>
+          <span className="brand-mark" aria-hidden="true"><BrandMark /></span>
           <span className="brand__text">
             <strong>Waspada Jakarta</strong>
             <small>Informasi dengan jejak sumber</small>

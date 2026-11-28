@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Waspada Jakarta">
+<style>.t{fill:#0E1112}.m{fill:#F4F4F2}.s{stroke:#F4F4F2}.a{fill:#5DC4BA}
+@media (prefers-color-scheme: dark){.t{fill:#F4F4F2}.m{fill:#0E1112}.s{stroke:#0E1112}.a{fill:#0B6B66}}</style>
+<rect class="t" width="64" height="64" rx="14"/>
+<rect class="a" x="10" y="15" width="44" height="5.2" rx="1.6"/>
+  <svg x="0" y="23.4" width="64" height="40.6" viewBox="0 23.4 64 40.6"><path fill="none" class="s" stroke-width="6.6" stroke-linejoin="miter" stroke-miterlimit="10" d="M13.4 17L23.2 39.6L32 19.5L40.8 39.6L50.6 17"/></svg>
+</svg>

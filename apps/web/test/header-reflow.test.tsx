@@ -44,3 +44,19 @@ test("below 768px the brand name is hidden and the brand mark keeps its link and
   assert.deepEqual(navLabels, ["<span>Peta</span>", "<span>Pembaruan</span>", "<span>Area saya</span>"]);
   assert.match(markup, /class="site-header__badge-label">Status data</u, "the dataset label is in the header markup");
 });
+
+test("BRAND-01: the header brand mark is the Tugu logo, decorative, with its teal flame and no WJ text", () => {
+  const markup = renderToStaticMarkup(createElement(SiteHeader, { route: { screen: "discover" }, context: null }));
+  const mark = markup.match(/<span class="brand-mark"[^>]*>([\s\S]*?)<\/span>/u);
+  assert.ok(mark, "brand mark present");
+  assert.match(mark[0], /aria-hidden="true"/u);
+  assert.match(mark[1], /<svg class="brand-mark__svg" viewBox="0 0 64 64"/u);
+  assert.match(mark[1], /class="brand-mark__flame"/u);
+  assert.doesNotMatch(mark[1], /WJ/u);
+  assert.match(markup, /Waspada Jakarta/u, "the visible or accessible name stays text");
+  const favicon = readFileSync(new URL("../public/favicon.svg", import.meta.url), "utf8");
+  assert.match(favicon, /prefers-color-scheme: dark/u);
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /<link rel="icon" href="\/favicon.svg" type="image\/svg\+xml" \/>/u);
+  assert.match(html, /<link rel="apple-touch-icon" href="\/apple-touch-icon.png" \/>/u);
+});
