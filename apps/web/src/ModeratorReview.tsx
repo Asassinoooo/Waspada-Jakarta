@@ -944,7 +944,7 @@ export function ModeratorReviewQueue({
           className={`queue-filter-btn ${reviewView === "triage" ? "queue-filter-btn--active" : ""}`}
           onClick={() => setReviewView("triage")}
         >
-          Tinjauan Tertahan
+          Tinjauan tertahan
         </button>
       </div>
 
@@ -974,7 +974,7 @@ export function ModeratorReviewQueue({
       ) : reviewView === "triage" ? (
         <section className="state-panel" aria-label="Antrean tertahan untuk inspeksi">
           <p className="section-kicker">Inspeksi metadata — tanpa teks artikel</p>
-          <h3>Tinjauan Tertahan</h3>
+          <h3>Tinjauan tertahan</h3>
           <p>Keputusan drop/uncertain hanya metadata. Peninjauan ulang terjadi lewat siklus polling resmi berikutnya.</p>
           {triageFeedback && <p role="alert">{triageFeedback}</p>}
           {triageLoading ? (
@@ -1122,9 +1122,9 @@ export function ModeratorReviewQueue({
                       </div>
                       <strong className="proposal-card-title">{item.title}</strong>
                       <div className="proposal-card-meta">
-                        <span>📍 {item.location_label || "Lokasi belum ditentukan"}</span>
-                        <span>⏱ {proposalEventTimeText(item.event_time)}</span>
-                        <span>📄 {item.claims.length} klaim untuk ditinjau</span>
+                        <span>{item.location_label || "Lokasi belum ditentukan"}</span>
+                        <span>{proposalEventTimeText(item.event_time)}</span>
+                        <span>{item.claims.length} klaim untuk ditinjau</span>
                       </div>
                       {item.impacts && item.impacts.length > 0 && (
                         <div className="proposal-card-impacts">
@@ -1550,11 +1550,6 @@ export function ModeratorReviewQueue({
         </div>
       )}
 
-      <div className="review-footer">
-        <a className="text-link" href="#peta">
-          Kembali ke peta
-        </a>
-      </div>
     </div>
   );
 }

@@ -428,7 +428,7 @@ export function InteractiveIncidentMap({
             title="Rumah Sakit"
             aria-label="Filter rumah sakit"
           >
-            🏥 RS ({facilityCounts.hospital})
+            RS ({facilityCounts.hospital})
           </button>
           <button
             type="button"
@@ -438,7 +438,7 @@ export function InteractiveIncidentMap({
             title="Kepolisian"
             aria-label="Filter kepolisian"
           >
-            👮 Polisi ({facilityCounts.police})
+            Polisi ({facilityCounts.police})
           </button>
           <button
             type="button"
@@ -448,7 +448,7 @@ export function InteractiveIncidentMap({
             title="Pemadam Kebakaran"
             aria-label="Filter pemadam kebakaran"
           >
-            🚒 Damkar ({facilityCounts.fire_station})
+            Damkar ({facilityCounts.fire_station})
           </button>
         </div>
 

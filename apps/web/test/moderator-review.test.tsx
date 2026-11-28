@@ -501,9 +501,9 @@ test("interactive map renders Web Mercator canvas, animated beacon pin, and near
 
   // Facility filter pills
   assert.match(html, /Semua Fasilitas/);
-  assert.match(html, /🏥 RS/);
-  assert.match(html, /👮 Polisi/);
-  assert.match(html, /🚒 Damkar/);
+  assert.match(html, />RS \(\d+\)</);
+  assert.match(html, />Polisi \(\d+\)</);
+  assert.match(html, />Damkar \(\d+\)</);
 
   // Navigation tools
   assert.match(html, /Perbesar/);

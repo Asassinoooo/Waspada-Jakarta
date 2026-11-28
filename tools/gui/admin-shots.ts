@@ -7,6 +7,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { chromium } from "playwright";
+import { REVIEW_CHUNKS, REVIEW_PROPOSALS } from "./review-fixtures.js";
 import { createTestDatabase } from "../../apps/db/test/harness.js";
 import { applyMigrations, readMigrations } from "../../apps/db/src/migrations.js";
 import { createAccountStore } from "../../apps/db/src/accounts.js";
@@ -59,6 +60,15 @@ async function main() {
           data: { username: USERNAME, password: PASSWORD },
         });
         if (login.status() !== 200) throw new Error(`login ${login.status()}`);
+        // GUI_REVIEW_FIXTURE=1: the review queue shows synthetic proposals (tools/gui/review-fixtures.ts) instead of an empty queue.
+        if (process.env.GUI_REVIEW_FIXTURE === "1") {
+          await context.route("**/api/v1/moderation/proposals", (route) => route.fulfill({ json: { proposals: REVIEW_PROPOSALS } }));
+          await context.route("**/api/v1/moderation/proposals/*", (route) => {
+            const id = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop() ?? "");
+            const proposal = REVIEW_PROPOSALS.find((item) => item.proposal_id === id);
+            return proposal ? route.fulfill({ json: { proposal, chunks: REVIEW_CHUNKS[id] ?? [] } }) : route.fallback();
+          });
+        }
         for (const tab of TABS) {
           const page = await context.newPage();
           await page.goto(`${server.baseUrl}/#admin/${tab}`, { waitUntil: "domcontentloaded" });
