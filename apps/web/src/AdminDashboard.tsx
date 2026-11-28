@@ -760,7 +760,11 @@ export function AdminDashboard({
     consecutiveFailures: 0,
     currentAttempt: null,
   });
-  const [apiAttemptBaseline, setApiAttemptBaseline] = useState<AdminMonitorState["currentAttempt"] | undefined>(undefined);
+  // `null` = no live reading yet, so the first one that finishes is current. `undefined` (simulation) shows none until the
+  // person switches to live mode. Starting live with `undefined` left the overview on "Memuat" until a mode toggle.
+  const [apiAttemptBaseline, setApiAttemptBaseline] = useState<AdminMonitorState["currentAttempt"] | undefined>(
+    initialMode === "public_api" ? null : undefined,
+  );
   const [monitoringEnabled, setMonitoringEnabled] = useState(true);
   const [documentVisible, setDocumentVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   const [query, setQuery] = useState("");

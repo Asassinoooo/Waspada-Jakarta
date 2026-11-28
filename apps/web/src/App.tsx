@@ -28,6 +28,7 @@ import {
   LazyPreferences,
   LazyUpdatesCenter,
   RouteFallback,
+  preloadAdminRoute,
 } from "./lazy-routes.js";
 
 // UI-V2-C: the administrator workspace (tabs for overview, review, flow, 3D view, accounts and source demo).
@@ -261,6 +262,10 @@ export function App() {
     ? { status: "loading", session: null }
     : sessionResult.state;
   const refreshAccountSession = useCallback(() => setSessionRevision((current) => current + 1), []);
+
+  useEffect(() => {
+    if (route.screen === "admin-workspace") preloadAdminRoute(window.location.hash);
+  }, [route.screen]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 900px)");

@@ -11,6 +11,7 @@ const loadAccountGate = () => import("./account-gate.js");
 const loadDownloadPage = () => import("./DownloadPage.js");
 const loadPresentationDetail = () => import("./PresentationDetail.js");
 const loadAdminEntry = () => import("./admin-entry.js");
+const loadAdminOverview = () => import("./AdminDashboard.js");
 
 export const LazyPreferences = lazy(() => loadPreferences().then((module) => ({ default: module.Preferences })));
 export const LazyUpdatesCenter = lazy(() => loadUpdatesCenter().then((module) => ({ default: module.UpdatesCenter })));
@@ -47,6 +48,18 @@ const routeChunkLoaders: Readonly<Record<RouteChunk, () => Promise<unknown>>> = 
   download: loadDownloadPage,
   admin: loadAdminEntry,
 };
+
+/**
+ * Opening an admin hash: the gate checks the session first and only then renders the workspace, which only then asks for
+ * its default tab. Starting both chunks with the session check saves two round trips. They are static code with no data;
+ * the server still checks every request.
+ */
+export function preloadAdminRoute(hash: string): void {
+  const tab = adminWorkspaceTabFromHash(hash);
+  if (tab === null) return;
+  loadAdminEntry().catch(() => {});
+  if (tab === "ringkasan") loadAdminOverview().catch(() => {});
+}
 
 /** The route chunk that a hash link opens, or null for the map home and for anything that is not a route of this app. */
 export function routeChunkForHref(href: string): RouteChunk | null {
