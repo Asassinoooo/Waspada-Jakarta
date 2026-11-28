@@ -166,7 +166,7 @@ test("on a narrow screen Alur and Embedding show an empty state instead of the c
   }
   // The overview is lazy: on a cold render it shows its loading state, and once loaded it renders inline.
   const overview = renderToStaticMarkup(<AdminWorkspace initialTab="ringkasan" session={adminSession} context={demoContext} isNarrowScreen={true} onRefreshSession={() => {}} />);
-  assert.match(overview, /Memuat ringkasan…|class="admin-page"/u);
+  assert.match(overview, /Memuat ringkasan…|class="overview"/u);
   assert.doesNotMatch(overview, /Buka di layar yang lebih lebar/u);
 });
 
