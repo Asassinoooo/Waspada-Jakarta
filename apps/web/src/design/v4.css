@@ -927,3 +927,16 @@ html .admin-ws__mode-chip { border: 0; padding: 0 0 0 var(--space-1); font-weigh
 
 /* Same top spacing as the Alur agen page head. */
 html .admin-ws .embedding-3d { padding-top: var(--space-6); }
+
+/* GUI-05: the account trigger shows an icon only below 360px, so "Area saya" is not clipped at 320px. The word stays as
+   the accessible name. */
+html .site-header__account-icon { display: none; width: 1.25rem; height: 1.25rem; }
+@media (max-width: 359px) {
+  html .site-header__account-icon { display: block; }
+  html .site-header__account { min-width: 2.75rem; padding: 0; justify-content: center; }
+  html .site-header { gap: var(--space-1); }
+  html .site-header .primary-nav a { padding-inline: 3px; }
+  html .site-header__account-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}

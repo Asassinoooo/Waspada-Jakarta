@@ -265,7 +265,7 @@ test("account screens keep the account entry in the header menu and out of the p
 
   const header = renderToStaticMarkup(<SiteHeader route={{ screen: "account" }} context={liveContext} />);
   assert.equal(primaryNavLinks(header).length, 3);
-  assert.match(header, /aria-haspopup="menu"[^>]*>Akun</u);
+  assert.match(header, /aria-haspopup="menu"[^>]*>(?:<svg[^]*?<\/svg>)?<span class="site-header__account-label">Akun</u);
 });
 
 test("the public map is the home route and every legacy public hash resolves to it", () => {
