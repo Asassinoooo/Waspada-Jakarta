@@ -270,3 +270,15 @@ test("the first-screen import graph does not reach the lazily loaded route modul
   assert.equal(names.includes("MapHome.tsx"), true, "the map home stays on the first screen");
   assert.equal(names.includes("EventDetail.tsx"), true, "the event detail panel stays on the first screen");
 });
+
+test("opening an admin hash preloads the workspace and its overview chunks with the session check, and nothing else does", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const routes = readFileSync(new URL("../src/lazy-routes.tsx", import.meta.url), "utf8");
+  // App starts the preload only on the admin-workspace screen.
+  assert.match(app, /if \(route\.screen === "admin-workspace"\) preloadAdminRoute\(window\.location\.hash\);/);
+  // The overview chunk is preloaded only for the overview tab; other tabs load their own chunk when they open.
+  assert.match(routes, /if \(tab === "ringkasan"\) loadAdminOverview\(\)/);
+  // A hash that is not an admin route is ignored without touching any loader.
+  assert.doesNotThrow(() => lazyRoutes.preloadAdminRoute("#peta"));
+  assert.doesNotThrow(() => lazyRoutes.preloadAdminRoute("#ringkasan-saya"));
+});

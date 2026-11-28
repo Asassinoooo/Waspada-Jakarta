@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -130,6 +131,22 @@ test("API records and dataset labels require a new current context after entry o
   const validContext = currentApiObservation(currentDemoContext, baselineAttempt);
   assert.equal(validContext.snapshot, apiSnapshot);
   assert.equal(validContext.context?.dataset_mode, "demo");
+});
+
+test("opening in live mode shows the first finished reading; simulation and a mode switch still need a new one", () => {
+  const first = monitorStateWithAttempt({ at: "2026-10-10T08:00:02.000Z", context: apiSnapshot.context, probes: [] });
+  // The dashboard opens in live mode with a `null` baseline (no reading yet), so the first reading is current.
+  const opened = currentApiObservation(first, null);
+  assert.equal(opened.isCurrentAttempt, true);
+  assert.equal(opened.snapshot, apiSnapshot);
+  // `undefined` (simulation) never shows API data; neither does a pre-existing attempt after a switch back.
+  assert.equal(currentApiObservation(first, undefined).snapshot, null);
+  assert.equal(currentApiObservation(first, first.currentAttempt).snapshot, null);
+  // No reading at all yet: nothing to show.
+  assert.equal(currentApiObservation({ ...first, currentAttempt: null }, null).isCurrentAttempt, false);
+  // The component must start live mode with that `null` baseline (with `undefined` the overview stayed on "Memuat").
+  const source = readFileSync(new URL("../src/AdminDashboard.tsx", import.meta.url), "utf8");
+  assert.match(source, /useState<AdminMonitorState\["currentAttempt"\] \| undefined>\(\s*initialMode === "public_api" \? null : undefined,\s*\)/);
 });
 
 test("public inspector keeps lifecycle, freshness, date precision, validity, and browser retrieval distinct", () => {
