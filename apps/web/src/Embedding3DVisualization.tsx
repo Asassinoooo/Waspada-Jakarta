@@ -253,7 +253,7 @@ export function Embedding3DVisualization() {
     scene.add(dirLightBack);
 
     // Coordinate Grid at floor
-    const gridHelper = new THREE.GridHelper(30, 30, 0x334155, 0x1e293b);
+    const gridHelper = new THREE.GridHelper(30, 30, readCssColor("--viz-grid", 0x334155), readCssColor("--viz-grid-minor", 0x1e293b));
     gridHelper.position.y = -14;
     scene.add(gridHelper);
 
@@ -461,24 +461,23 @@ export function Embedding3DVisualization() {
   }, [searchQuery, selectedSource, selectedPointIndex]);
 
   return (
-    <section className="embedding-3d" aria-label="Visualisasi 3D Embedding Potongan Teks">
+    <section className="embedding-3d" aria-labelledby="embedding-3d-title">
       {/* Header and Context Metadata */}
       <header className="embedding-3d__header">
         <div className="embedding-3d__title-group">
-          <h2>Visualisasi 3D Embedding Potongan Teks</h2>
+          <p className="pipeline-kicker">Pemantauan</p>
+          <h2 id="embedding-3d-title">Peta embedding</h2>
           <p className="embedding-3d__subtitle">
-            Proyeksi vektor 768-dimensi (NineRouter Gemini Embedding) ke ruang 3D melalui Dual Gram-Matrix PCA.
+            Setiap titik adalah satu potongan teks laporan; titik yang berdekatan berisi hal yang mirip. Posisinya
+            diringkas dari vektor 768 dimensi ke tiga sumbu dengan PCA.
           </p>
         </div>
         <div className="embedding-3d__meta-badges">
           <span className={`embedding-3d__badge ${dataPayload?.datasetKind === "live" ? "embedding-3d__badge--live" : ""}`}>
-            Dataset: {dataPayload?.datasetKind === "live" ? "Live Postgres" : "Demo Fiktif"}
-          </span>
-          <span className="embedding-3d__badge embedding-3d__badge--pca">
-            PCA 768D → 3D
+            {dataPayload?.datasetKind === "live" ? "Data langsung" : "Data contoh"}
           </span>
           <span className="embedding-3d__badge">
-            {pcaResult.points.length} Chunk
+            {pcaResult.points.length} potongan
           </span>
         </div>
       </header>
@@ -489,10 +488,10 @@ export function Embedding3DVisualization() {
           <input
             type="search"
             className="embedding-3d__search-input"
-            placeholder="Cari kata kunci dalam teks chunk…"
+            placeholder="Cari kata dalam potongan teks…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Pencarian chunk teks"
+            aria-label="Cari potongan teks"
           />
           <select
             className="embedding-3d__source-select"
@@ -500,7 +499,7 @@ export function Embedding3DVisualization() {
             onChange={(e) => setSelectedSource(e.target.value)}
             aria-label="Saring berdasarkan sumber"
           >
-            <option value="all">Semua Sumber ({pcaResult.points.length})</option>
+            <option value="all">Semua sumber ({pcaResult.points.length})</option>
             {uniqueSources.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -512,25 +511,25 @@ export function Embedding3DVisualization() {
             type="button"
             className={`embedding-3d__btn ${autoRotate ? "embedding-3d__btn--active" : ""}`}
             onClick={() => setAutoRotate(!autoRotate)}
-            aria-label="Putar kamera otomatis"
+            aria-pressed={autoRotate}
           >
-            {autoRotate ? "⏹ Hentikan Putar" : "⟳ Putar Otomatis"}
+            Putar otomatis
           </button>
           <button
             type="button"
             className={`embedding-3d__btn ${showClusterLines ? "embedding-3d__btn--active" : ""}`}
             onClick={() => setShowClusterLines(!showClusterLines)}
-            aria-label="Tampilkan garis klaster semantik"
+            aria-pressed={showClusterLines}
+            title="Hubungkan potongan dengan kemiripan 0,75 atau lebih"
           >
-            {showClusterLines ? "Sembunyikan Garis Klaster" : "Garis Klaster (≥0.75)"}
+            Garis klaster
           </button>
           <button
             type="button"
             className="embedding-3d__btn"
             onClick={handleResetCamera}
-            aria-label="Atur ulang posisi kamera"
           >
-            Reset Kamera
+            Atur ulang kamera
           </button>
         </div>
       </section>
@@ -667,8 +666,8 @@ export function Embedding3DVisualization() {
       )}
 
       {/* Accessible Non-WebGL Fallback List */}
-      <section className="sr-only" aria-label="Daftar Data Koordinat Embedding 3D">
-        <h2>Daftar Vektor Chunk Terproyeksi</h2>
+      <section className="visually-hidden" aria-label="Daftar koordinat embedding">
+        <h2>Koordinat potongan teks</h2>
         <table className="embedding-3d__fallback-table">
           <thead>
             <tr>

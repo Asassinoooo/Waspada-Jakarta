@@ -66,13 +66,15 @@ test("fetchEmbeddingVisualizationData handles valid and error responses", async 
 test("Embedding3DVisualization renders static markup cleanly without WebGL crash", () => {
   const markup = renderToStaticMarkup(createElement(Embedding3DVisualization));
 
-  assert.ok(markup.includes("Visualisasi 3D Embedding Potongan Teks"));
-  assert.ok(markup.includes("PCA 768D → 3D"));
-  assert.ok(markup.includes("Pencarian chunk teks"));
-  assert.ok(markup.includes("Putar Otomatis"));
-  assert.ok(markup.includes("Garis Klaster"));
-  assert.ok(markup.includes("Reset Kamera"));
-  assert.ok(markup.includes("Daftar Vektor Chunk Terproyeksi"));
+  assert.ok(markup.includes("Peta embedding"));
+  assert.match(markup, /768 dimensi ke tiga sumbu dengan PCA/u);
+  assert.ok(markup.includes("Cari potongan teks"));
+  // GUI-05: toggles expose their state instead of swapping labels.
+  assert.match(markup, /aria-pressed="false"[^>]*>Putar otomatis</u);
+  assert.match(markup, /aria-pressed="true"[^>]*>Garis klaster</u);
+  assert.ok(markup.includes("Atur ulang kamera"));
+  // The coordinate table stays for screen readers but is visually hidden.
+  assert.match(markup, /<section class="visually-hidden" aria-label="Daftar koordinat embedding"><h2>Koordinat potongan teks<\/h2>/u);
 });
 
 test("anonymous or non-moderator embedding requests map to moderator copy instead of a transport error", async () => {

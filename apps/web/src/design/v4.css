@@ -706,3 +706,224 @@ html .main-shell.detail-page {
   margin-inline: auto;
   box-sizing: border-box;
 }
+
+/* ---------- GUI-05: Alur agen and Peta embedding join the workspace ---------- */
+
+/* One page head for both: grey kicker, sentence-case title, one plain lead. */
+html :is(.pipeline-page__intro, .embedding-3d__title-group) h2 {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
+}
+
+html :is(.pipeline-page__lede, .embedding-3d__subtitle) {
+  max-width: 68ch;
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+/* Same left edge as the other admin pages. */
+html .admin-ws .embedding-3d { padding: 0; gap: var(--space-5); }
+
+/* Layer chips are labels, not a rainbow: state colour is kept for what needs attention. */
+html .pipeline-legend__item span,
+html .pipeline-card__lane {
+  border: var(--hairline);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+}
+
+html .pipeline-lane,
+html :is(.pipeline-lane--l1, .pipeline-lane--l2, .pipeline-lane--l3, .pipeline-lane--l4, .pipeline-lane--l5) {
+  border: var(--hairline);
+  border-style: solid;
+  background: transparent;
+}
+
+html .pipeline-card {
+  border: var(--hairline);
+  border-left-width: 1px;
+  border-left-color: var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: none;
+  transition: border-color 0.15s ease;
+}
+
+html .pipeline-card:hover { border-color: var(--color-border-strong); }
+html .pipeline-card--waiting { border-color: var(--color-warning-border); }
+html .pipeline-card--failing { border-color: var(--color-danger-border); background: var(--color-danger-soft); }
+html .pipeline-card--unavailable { border-style: dashed; background: var(--color-surface-sunken); box-shadow: none; }
+
+html .pipeline-canvas {
+  border: var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-sunken);
+}
+
+html .pipeline-strip {
+  border: var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+html .pipeline-badge--demo,
+html .embedding-3d__badge,
+html .embedding-3d__badge--live {
+  border: var(--hairline);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+}
+
+/* Time range as one segmented control, like the Ringkasan mode switch. */
+html .pipeline-range {
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+html .pipeline-range .filter-pill {
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--color-text-muted);
+  box-shadow: none;
+}
+
+html .pipeline-range .filter-pill[aria-pressed="true"] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Embedding controls: toggles show their state with the shared pressed style. */
+html .embedding-3d__btn[aria-pressed="true"] {
+  border-color: var(--color-text);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+html .embedding-3d__toolbar {
+  border: var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+/* The 3D stage follows the theme: a quiet sunken ground, grey grid, the sources stay the only colour. */
+:root {
+  --viz-stage: #ECECE9;
+  --viz-panel: rgb(255 255 255 / 0.92);
+  --viz-panel-strong: #FFFFFF;
+  --viz-border: #E2E2DE;
+  --viz-text: #2A2F31;
+  --viz-text-strong: #0E1112;
+  --viz-text-muted: #565D60;
+  --viz-accent: #0B6B66;
+  --viz-grid: #C4C7C3;
+  --viz-grid-minor: #D9DAD6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --viz-stage: #131617;
+    --viz-panel: rgb(19 22 23 / 0.92);
+    --viz-panel-strong: #1A1E1F;
+    --viz-border: #262B2D;
+    --viz-text: #D7DBDC;
+    --viz-text-strong: #EDEFEF;
+    --viz-text-muted: #9CA3A5;
+    --viz-accent: #5DC4BA;
+    --viz-grid: #343A3C;
+    --viz-grid-minor: #22272A;
+  }
+}
+
+:root[data-theme="dark"] {
+  --viz-stage: #131617;
+  --viz-panel: rgb(19 22 23 / 0.92);
+  --viz-panel-strong: #1A1E1F;
+  --viz-border: #262B2D;
+  --viz-text: #D7DBDC;
+  --viz-text-strong: #EDEFEF;
+  --viz-text-muted: #9CA3A5;
+  --viz-accent: #5DC4BA;
+  --viz-grid: #343A3C;
+  --viz-grid-minor: #22272A;
+}
+
+html .embedding-3d__canvas-container,
+html .embedding-3d__canvas { border-radius: var(--radius-lg); }
+
+/* Workspace top bar: the same Tugu mark as the public header. */
+html .admin-ws__home {
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+html .admin-ws__mark {
+  display: inline-block;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- GUI-05 motion: one vocabulary across the app ----------
+   Overlays rise a few pixels, backdrops and content fade, controls change colour on one fast curve.
+   Lists appear at once (a moving list reads as a change in the data). Reduced motion turns all of it off above. */
+
+@keyframes wj-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes wj-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+html :is(.ui-dialog, .modal-dialog, [role="dialog"][aria-modal="true"].dialog, .menu__list, .popover__panel:not([hidden])) {
+  animation: wj-rise var(--duration-base) var(--ease-out-expo) both;
+}
+
+html :is(.modal-overlay, .modal-backdrop, .sheet-overlay) {
+  animation: wj-fade var(--duration-base) var(--ease-standard) both;
+}
+
+html :is(.page-header, .map-home__scope, .notify-card, .reset-code__issued, .pipeline-page__intro, .embedding-3d__header) {
+  animation: wj-fade var(--duration-slow) var(--ease-standard) both;
+}
+
+html .map-card { animation: none; }
+
+html details[open] > :not(summary) {
+  animation: wj-fade var(--duration-base) var(--ease-standard);
+}
+
+/* Zero-specificity defaults: any component's own transition still wins. */
+html :where(a, button, summary, input, select, textarea, [role="tab"], .filter-pill, .chip, .badge) {
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+/* Pressed feedback is the same 1px settle on every button family. */
+html :where(.button, .admin-button, .action-button, .modal-btn, .experience-action, .filter-pill, .embedding-3d__btn, .queue-filter-btn, .map-control):active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+html :where(button, .button, [role="button"]):disabled { cursor: not-allowed; }
+
+/* Phone workspace badge: the FR-15 demo word sits beside the dot inside one badge, not as a pill in a pill. */
+html .admin-ws__mode-chip { border: 0; padding: 0 0 0 var(--space-1); font-weight: 600; letter-spacing: 0; }
+
+/* Same top spacing as the Alur agen page head. */
+html .admin-ws .embedding-3d { padding-top: var(--space-6); }
