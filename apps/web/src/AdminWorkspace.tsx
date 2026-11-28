@@ -22,7 +22,7 @@ import { PublishedEventModeration } from "./PublishedEventModeration.js";
 
 // Each heavy tab loads only when it opens: three.js with the embedding view, @xyflow/react with the flow,
 // and the source map with the demo source tab. Akun is already part of the main chunk through AccountPages.
-const AdminDashboard = lazy(() => import("./AdminDashboard.js"));
+const AdminOverview = lazy(() => import("./AdminOverview.js"));
 const ModeratorReview = lazy(() => import("./ModeratorReview.js").then((module) => ({ default: module.ModeratorReview })));
 const PipelineFlow = lazy(() => import("./pipeline-flow-entry.js"));
 const Embedding3DVisualization = lazy(() =>
@@ -113,7 +113,7 @@ export function AdminWorkspace({ initialTab, session, context, isNarrowScreen, o
     if (isNarrowScreen && tabNeedsWideScreen(tab)) return <NarrowScreenNotice canOpenReview={allowedIds.includes("tinjau")} />;
     switch (tab) {
       case "ringkasan":
-        return <Suspense fallback={<TabLoading label="Memuat ringkasan…" />}><AdminDashboard /></Suspense>;
+        return <Suspense fallback={<TabLoading label="Memuat ringkasan…" />}><AdminOverview canOpenSources={allowedIds.includes("sumber")} /></Suspense>;
       case "tinjau":
         return (
           <>
