@@ -3,6 +3,7 @@ import type { AdminSourceApprovalItem, AdminSourceApprovalStatus } from "@waspad
 import type { SessionEnvelope } from "@waspada/worker/account-contracts";
 import { Dialog } from "./ui/Dialog.js";
 import { formatInstant } from "./display.js";
+import { relativeAgo } from "./admin-overview-model.js";
 import {
   SourceApprovalHttpError,
   canManageSourceApprovals,
@@ -136,7 +137,38 @@ export interface SourceApprovalListProps {
   readonly onRequestChange?: (source: AdminSourceApprovalItem, status: AdminSourceApprovalStatus) => void;
 }
 
-export function SourceApprovalList({ sources, onRequestChange }: SourceApprovalListProps) {
+const KIND_LABEL: Readonly<Record<string, string>> = {
+  newsroom: "Media berita",
+  authority: "Lembaga resmi",
+  operator: "Operator",
+  institution: "Institusi",
+  community: "Komunitas",
+};
+
+const METHOD_LABEL: Readonly<Record<string, string>> = { rss: "RSS", api: "API", cap: "CAP", webhook: "Webhook" };
+
+type HealthTone = "ok" | "warn" | "fail" | "unknown";
+
+function healthTone(status: string): HealthTone {
+  if (status === "healthy") return "ok";
+  if (status === "degraded") return "warn";
+  if (status === "unavailable") return "fail";
+  return "unknown";
+}
+
+/** "berhasil 9 menit lalu" in the row; the full Jakarta times stay in Rincian. */
+function lastSuccessShort(source: AdminSourceApprovalItem, nowMs: number): string {
+  if (source.last_checked_at === null) return "Belum pernah diperiksa";
+  if (source.last_success_at === null) return "Belum pernah berhasil";
+  return `Berhasil ${relativeAgo(Date.parse(source.last_success_at), nowMs).toLocaleLowerCase("id-ID")}`;
+}
+
+/** Needs a look: a failing or never-checked source, or one still waiting for a decision. */
+export function sourceNeedsAttention(source: AdminSourceApprovalItem): boolean {
+  return source.approval_status === "pending" || source.health_status === "degraded" || source.health_status === "unavailable";
+}
+
+export function SourceApprovalList({ sources, onRequestChange, nowMs = Date.now() }: SourceApprovalListProps & { readonly nowMs?: number }) {
   if (sources.length === 0) return <p className="source-approval__empty">Belum ada sumber di registri.</p>;
   return (
     <ul className="source-approval__list">
@@ -145,47 +177,82 @@ export function SourceApprovalList({ sources, onRequestChange }: SourceApprovalL
         const name = source.display_name;
         const actionLabel = target === "approved" ? "Setujui" : "Cabut";
         const ariaLabel = target === "approved" ? `Setujui ${name}` : `Cabut persetujuan ${name}`;
+        const tone = healthTone(source.health_status);
         return (
-          <li key={source.source_id} className="source-approval__item">
+          <li key={source.source_id} className={`source-approval__item source-approval__item--${source.approval_status}`}>
             <div className="source-approval__identity">
               <h3 className="source-approval__name">{name}</h3>
-              <p className="source-approval__id"><code>{source.source_id}</code> · {source.source_kind} · {source.access_method}</p>
+              <p className="source-approval__id">
+                {KIND_LABEL[source.source_kind] ?? "Sumber"} · {METHOD_LABEL[source.access_method] ?? source.access_method}
+                {source.polling_interval_seconds !== null && <> · {pollingIntervalText(source.polling_interval_seconds).replace("Interval pengambilan: ", "")}</>}
+              </p>
             </div>
             <ul className="source-approval__facts" aria-label={`Persetujuan ${name}`}>
-              <li>{approvalLabel(source.approval_status)}</li>
+              <li className={`source-approval__chip source-approval__chip--${source.approval_status}`}>{approvalLabel(source.approval_status)}</li>
             </ul>
-            <section className="source-approval__block" aria-label={`Pembatasan ${name}`}>
-              <h4 className="source-approval__subtitle">Pembatasan</h4>
-              <ul className="source-approval__details">
-                <li>{REGISTRY_LABEL[source.registry_status] ?? "Registri tidak dikenal"}</li>
-                <li>{source.auto_acquisition_enabled ? "Pengumpulan otomatis aktif" : "Pengumpulan otomatis nonaktif"}</li>
-                <li>{publicDisplayText(source.public_display_granted)}</li>
-                <li>{reuseBasisText(source.reuse_basis)}</li>
-                <li>{accessRestrictionsText(source.access_restrictions)}</li>
-                <li>{pollingIntervalText(source.polling_interval_seconds)}</li>
-              </ul>
-            </section>
-            <section className="source-approval__block" aria-label={`Kesehatan ${name}`}>
-              <h4 className="source-approval__subtitle">Kesehatan sumber</h4>
-              <ul className="source-approval__details">
-                {sourceHealthLines(source).map((line) => <li key={line}>{line}</li>)}
-              </ul>
-            </section>
-            {onRequestChange && (
-              <button
-                type="button"
-                className="button button--quiet"
-                aria-label={ariaLabel}
-                onClick={() => onRequestChange(source, target)}
-              >
-                {actionLabel}
-              </button>
-            )}
+            <p className={`source-approval__health source-approval__health--${tone}`}>
+              <span className="source-approval__dot" aria-hidden="true" />
+              <span>
+                <strong>{HEALTH_LABEL[source.health_status] ?? "Status tidak dikenal"}</strong>
+                <small>{lastSuccessShort(source, nowMs)}</small>
+              </span>
+            </p>
+            <p className="source-approval__display">{source.public_display_granted ? "Boleh tampil" : "Tidak tampil publik"}</p>
+            {onRequestChange
+              ? (
+                <button
+                  type="button"
+                  className={`button button--sm ${target === "approved" ? "button--primary" : "button--quiet button--danger"}`}
+                  aria-label={ariaLabel}
+                  onClick={() => onRequestChange(source, target)}
+                >
+                  {actionLabel}
+                </button>
+              )
+              : <span />}
+            <details className="source-approval__more">
+              <summary>Rincian</summary>
+              <div className="source-approval__more-grid">
+                <section className="source-approval__block" aria-label={`Pembatasan ${name}`}>
+                  <h4 className="source-approval__subtitle">Pembatasan</h4>
+                  <ul className="source-approval__details">
+                    <li>{REGISTRY_LABEL[source.registry_status] ?? "Registri tidak dikenal"}</li>
+                    <li>{source.auto_acquisition_enabled ? "Pengumpulan otomatis aktif" : "Pengumpulan otomatis nonaktif"}</li>
+                    <li>{publicDisplayText(source.public_display_granted)}</li>
+                    <li>{reuseBasisText(source.reuse_basis)}</li>
+                    <li>{accessRestrictionsText(source.access_restrictions)}</li>
+                    <li>{pollingIntervalText(source.polling_interval_seconds)}</li>
+                  </ul>
+                </section>
+                <section className="source-approval__block" aria-label={`Kesehatan ${name}`}>
+                  <h4 className="source-approval__subtitle">Kesehatan sumber</h4>
+                  <ul className="source-approval__details">
+                    {sourceHealthLines(source).map((line) => <li key={line}>{line}</li>)}
+                  </ul>
+                  <p className="source-approval__source-id"><code>{source.source_id}</code></p>
+                </section>
+              </div>
+            </details>
           </li>
         );
       })}
     </ul>
   );
+}
+
+type SourceFilter = "all" | "attention" | "approved" | "revoked" | "pending";
+const SOURCE_FILTERS: ReadonlyArray<{ id: SourceFilter; label: string }> = [
+  { id: "all", label: "Semua" },
+  { id: "attention", label: "Perlu perhatian" },
+  { id: "approved", label: "Disetujui" },
+  { id: "revoked", label: "Dicabut" },
+  { id: "pending", label: "Menunggu" },
+];
+
+export function sourceMatchesFilter(source: AdminSourceApprovalItem, filter: SourceFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "attention") return sourceNeedsAttention(source);
+  return source.approval_status === filter;
 }
 
 type ListState =
@@ -209,6 +276,7 @@ export function SourceApprovalPanel({ session, client = sourceApprovalClient }: 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [filter, setFilter] = useState<SourceFilter>("all");
 
   useEffect(() => {
     if (!canManage) return undefined;
@@ -274,11 +342,29 @@ export function SourceApprovalPanel({ session, client = sourceApprovalClient }: 
   }
 
   const changeName = change?.source.display_name ?? "";
+  const sources = list.status === "ready" ? list.sources : [];
+  const shown = sources.filter((source) => sourceMatchesFilter(source, filter));
   return (
     <section className="source-approval" aria-labelledby="source-approval-title">
-      <h2 id="source-approval-title">Persetujuan sumber</h2>
-      <p className="source-approval__intro">{SOURCE_APPROVAL_INTRO}</p>
+      <header className="source-approval__head">
+        <p className="source-approval__kicker">Administrasi</p>
+        <h2 id="source-approval-title">Persetujuan sumber</h2>
+        <p className="source-approval__lede">Menentukan sumber mana yang laporannya boleh terbit. Pengumpulan tetap berjalan apa pun statusnya.</p>
+        <details className="source-approval__how">
+          <summary>Cara kerja persetujuan</summary>
+          <p className="source-approval__intro">{SOURCE_APPROVAL_INTRO}</p>
+        </details>
+      </header>
       {message && <p className="source-approval__message" role="status">{message}</p>}
+      {list.status === "ready" && sources.length > 0 && (
+        <div className="pipeline-range source-approval__filters" role="group" aria-label="Saring sumber">
+          {SOURCE_FILTERS.map((option) => (
+            <button key={option.id} type="button" className="filter-pill" aria-pressed={filter === option.id} onClick={() => setFilter(option.id)}>
+              {option.label} <span className="account-filter__count">{sources.filter((source) => sourceMatchesFilter(source, option.id)).length}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {list.status === "loading" && <p role="status">Memuat daftar sumber…</p>}
       {list.status === "error" && (
         <p role="alert">
@@ -286,9 +372,12 @@ export function SourceApprovalPanel({ session, client = sourceApprovalClient }: 
           <button type="button" className="button button--quiet" onClick={() => setReloadToken((value) => value + 1)}>Coba lagi</button>
         </p>
       )}
-      {list.status === "ready" && (
+      {list.status === "ready" && sources.length > 0 && shown.length === 0 && (
+        <p className="source-approval__empty">Tidak ada sumber pada saringan ini.</p>
+      )}
+      {list.status === "ready" && (sources.length === 0 || shown.length > 0) && (
         <SourceApprovalList
-          sources={list.sources}
+          sources={shown}
           onRequestChange={(source, status) => {
             setMessage(null);
             setFormError(null);

@@ -333,10 +333,6 @@
   font-weight: var(--weight-semibold);
 }
 
-.account-user-row__editor label:nth-of-type(3),
-.account-user-row__editor button {
-  grid-column: 1 / -1;
-}
 
 @media (max-width: 900px) {
   .account-user-row {
