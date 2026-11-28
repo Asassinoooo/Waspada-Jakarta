@@ -131,6 +131,16 @@ function ChevronIcon() {
   );
 }
 
+// Shown instead of the word "Akun" only below 360px, where the nav would otherwise be clipped; the word stays the
+// accessible name (visually hidden there).
+function AccountIcon() {
+  return (
+    <svg className="site-header__account-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8.5c.8-3.4 3.6-5.5 7-5.5s6.2 2.1 7 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // Icons only show on phones (see app-shell.css). They are decorative; the link text names each destination.
 function NavIcon({ kind }: { kind: "map" | "bell" | "star" }) {
   const paths = {
@@ -213,7 +223,7 @@ export function SiteHeader({ route, context = null, sessionKey = 0, accountRevis
           {!compact && <ThemeToggle className="site-header__theme" />}
           <Menu
             triggerClassName="button button--quiet site-header__account"
-            triggerContent={<>Akun<ChevronIcon /></>}
+            triggerContent={<><AccountIcon /><span className="site-header__account-label">Akun</span><ChevronIcon /></>}
             items={menuItems}
             align="end"
           />
